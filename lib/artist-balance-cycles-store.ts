@@ -223,6 +223,14 @@ export interface CurrentBalanceCycle {
   // Filtering stays exclusive (entryDate < endDate) — only the LABEL shows the raw
   // date; a transaction dated exactly endDate still belongs to the NEXT cycle.
   endDate: string;
+  // The REAL lower bound used to compute `totals` below — equals `startDate`
+  // except for cycle_index 0 with a first-cycle bootstrap configured, where it's
+  // the (earlier) bootstrap date. NEVER shown as the cycle's date range (that's
+  // always startDate/endDate) — this exists so any UI that lists the entries
+  // making up `totals` (e.g. a "card details" modal) filters by the EXACT same
+  // window the server summed, instead of accidentally re-deriving a narrower
+  // one from startDate and silently disagreeing with the card's own total.
+  calcStartDate: string;
   daysUntilClose: number;   // negative when the natural end date has already passed
   totals: ArtistBalanceTotals;
 }
@@ -271,7 +279,7 @@ export async function getBalanceCycleState(
   return {
     anchorDate,
     current: {
-      index, startDate: start, endDate: end,
+      index, startDate: start, endDate: end, calcStartDate: calcStart,
       daysUntilClose: daysBetweenYmd(today, end),
       totals,
     },

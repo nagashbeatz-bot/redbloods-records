@@ -345,7 +345,7 @@ export type ClosedBalanceCycle = {
   endingBalance: number; closedAt: string; createdAt: string;
 };
 export type CurrentBalanceCycle = {
-  index: number; startDate: string; endDate: string;
+  index: number; startDate: string; endDate: string; calcStartDate: string;
   daysUntilClose: number; totals: BalanceTotals;
 };
 export type BalanceCycleState = { anchorDate: string | null; current: CurrentBalanceCycle | null; closed: ClosedBalanceCycle[] };
@@ -2124,6 +2124,7 @@ function BalancePage({
   const [closeCycleOpen, setCloseCycleOpen] = useState(false);
   const [editAnchorOpen, setEditAnchorOpen] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState<"הכנסות" | "תשלומים" | "הוצאות" | null>(null);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -2142,12 +2143,24 @@ function BalancePage({
   const allTimeTotals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
   const cycle = cycleState?.anchorDate && cycleState.current ? cycleState.current : null;
   const totals = cycle ? cycle.totals : allTimeTotals;
-  const inCycle = (e: BalanceEntry) => !cycle || (e.entryDate >= cycle.startDate && e.entryDate < cycle.endDate);
+  // Uses calcStartDate (the REAL window the server summed into `totals`), never
+  // startDate (the DISPLAYED range) — cycle 0 with a first-cycle bootstrap has
+  // calcStartDate earlier than startDate on purpose. Filtering by startDate here
+  // would silently disagree with the card totals below (the exact bug already
+  // hit once with "הכנסות צפויות" before calcStartDate existed) — every entries
+  // list that must sum to a card's total uses this same inCycle, so they can
+  // never drift apart again.
+  const inCycle = (e: BalanceEntry) => !cycle || (e.entryDate >= cycle.calcStartDate && e.entryDate < cycle.endDate);
   // The main "היסטוריית תנועות" shows only REALIZED movements. Both expected categories
   // are managed via their own modals and EXCLUDED from that list (display-only — never
   // hidden/removed from the DB/API; their totals still feed the cards/strip).
   const expectedIncomeEntries  = entries.filter(e => e.entryType === "הכנסות צפויות" && inCycle(e));
   const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות" && inCycle(e));
+  // New "card details" modals for the 3 realized types — same inCycle window as
+  // the cards' own totals, so sum(entries) === card total by construction.
+  const incomeEntries  = entries.filter(e => e.entryType === "הכנסות" && inCycle(e));
+  const paymentEntries = entries.filter(e => e.entryType === "תשלומים" && inCycle(e));
+  const expenseEntries = entries.filter(e => e.entryType === "הוצאות" && inCycle(e));
   // "היסטוריית תנועות" is ALL-TIME, deliberately NOT scoped to the current
   // cycle — only the 4 reporting cards + the expected-income/expense modals
   // above are. Cycles are a reporting lens over the ledger, not a filter that
@@ -2201,35 +2214,49 @@ function BalancePage({
         ) : null)
       )}
 
-      {/* 4 primary summary cards. "הכנסות צפויות" is clickable → its management modal
-          (view / add / edit / delete / "סמן כהתקבל"). */}
+      {/* 4 primary summary cards — ALL clickable now, for both owner and readOnly.
+          "הכנסות צפויות" opens its existing management modal (owner: full
+          actions; readOnly: view-only). The other 3 open a plain read-only
+          "details" modal listing exactly the entries summed into that total. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
         {cards.map(c => {
           const m = BAL_TYPE_META[c.label];
-          const clickable = c.label === "הכנסות צפויות" && !readOnly; // shalev: view-only, no manage
+          const openCard = () => {
+            if (c.label === "הכנסות צפויות") setManageIncomeOpen(true);
+            else setDetailOpen(c.label as "הכנסות" | "תשלומים" | "הוצאות");
+          };
           return (
             <div
               key={c.label}
-              onClick={clickable ? () => setManageIncomeOpen(true) : undefined}
-              role={clickable ? "button" : undefined}
-              tabIndex={clickable ? 0 : undefined}
-              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setManageIncomeOpen(true); } } : undefined}
-              onMouseEnter={clickable ? (e) => { e.currentTarget.style.borderColor = `${m.color}55`; } : undefined}
-              onMouseLeave={clickable ? (e) => { e.currentTarget.style.borderColor = BDR2; } : undefined}
-              style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px", cursor: clickable ? "pointer" : "default", transition: "border-color .14s" }}
+              onClick={openCard}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCard(); } }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${m.color}55`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = BDR2; }}
+              style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px", cursor: "pointer", transition: "border-color .14s" }}
             >
               <div style={{ fontSize: isMobile ? 13 : 14.5, fontWeight: 800, color: TEXT }}>{c.label}</div>
               <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: m.color, direction: "ltr", textAlign: "start", marginTop: 8 }}>{fmtMoney(c.value, curr)}</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{m.sub}</div>
-              {clickable && <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>לחץ לצפייה וניהול ←</div>}
+              <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>
+                {c.label === "הכנסות צפויות" && !readOnly ? "לחץ לצפייה וניהול ←" : "לחץ לצפייה ←"}
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* 5th category — "הוצאות צפויות" as a slim, clear summary strip (visible, not a full
-          card). Managed via a dedicated modal (they're hidden from the main history list). */}
-      <div style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: isMobile ? "13px 16px" : "14px 22px" }}>
+          card). The whole strip is clickable (owner: existing management modal with its
+          actions; readOnly: same modal, view-only) — the button is kept for owner as a
+          clear affordance, but isn't the only way in anymore. */}
+      <div
+        onClick={() => setManageOpen(true)}
+        role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setManageOpen(true); } }}
+        style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: isMobile ? "13px 16px" : "14px 22px", cursor: "pointer" }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: BAL_TYPE_META["הוצאות צפויות"].color, flexShrink: 0 }} />
           <span style={{ fontSize: isMobile ? 13.5 : 14.5, fontWeight: 800, color: TEXT }}>הוצאות צפויות</span>
@@ -2238,7 +2265,7 @@ function BalancePage({
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           <span style={{ fontSize: isMobile ? 17 : 19, fontWeight: 900, color: BAL_TYPE_META["הוצאות צפויות"].color, direction: "ltr" }}>{fmtMoney(totals.expectedExpenses, curr)}</span>
           {!readOnly && (
-          <button onClick={() => setManageOpen(true)} style={{
+          <button onClick={(e) => { e.stopPropagation(); setManageOpen(true); }} style={{
             padding: isMobile ? "6px 12px" : "7px 14px", borderRadius: 9, cursor: "pointer",
             background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
             fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
@@ -2323,15 +2350,15 @@ function BalancePage({
 
       {manageOpen && (
         <BalanceExpectedManageModal
-          title="ניהול הוצאות צפויות"
+          title="פירוט הוצאות צפויות"
           addLabel="הוסף הוצאה צפויה"
           color={BAL_TYPE_META["הוצאות צפויות"].color}
           entries={expectedExpenseEntries}
           total={totals.expectedExpenses}
           onClose={() => setManageOpen(false)}
-          onAdd={() => setModal({ mode: "addExpected" })}
-          onEdit={(e) => setModal({ mode: "edit", entry: e })}
-          onDelete={(e) => setDeleteTarget(e)}
+          onAdd={!readOnly ? () => setModal({ mode: "addExpected" }) : undefined}
+          onEdit={!readOnly ? (e) => setModal({ mode: "edit", entry: e }) : undefined}
+          onDelete={!readOnly ? (e) => setDeleteTarget(e) : undefined}
         />
       )}
       {manageIncomeOpen && (
@@ -2342,10 +2369,19 @@ function BalancePage({
           entries={expectedIncomeEntries}
           total={totals.expectedIncome}
           onClose={() => setManageIncomeOpen(false)}
-          onAdd={() => setModal({ mode: "addExpectedIncome" })}
-          onEdit={(e) => setModal({ mode: "edit", entry: e })}
-          onDelete={(e) => setDeleteTarget(e)}
-          onMarkReceived={(e) => setMarkReceivedTarget(e)}
+          onAdd={!readOnly ? () => setModal({ mode: "addExpectedIncome" }) : undefined}
+          onEdit={!readOnly ? (e) => setModal({ mode: "edit", entry: e }) : undefined}
+          onDelete={!readOnly ? (e) => setDeleteTarget(e) : undefined}
+          onMarkReceived={!readOnly ? (e) => setMarkReceivedTarget(e) : undefined}
+        />
+      )}
+      {detailOpen && (
+        <BalanceDetailModal
+          title={detailOpen === "הכנסות" ? "פירוט הכנסות" : detailOpen === "תשלומים" ? "פירוט תשלומים" : "פירוט הוצאות"}
+          color={BAL_TYPE_META[detailOpen].color}
+          entries={detailOpen === "הכנסות" ? incomeEntries : detailOpen === "תשלומים" ? paymentEntries : expenseEntries}
+          total={detailOpen === "הכנסות" ? totals.income : detailOpen === "תשלומים" ? totals.payments : totals.expenses}
+          onClose={() => setDetailOpen(null)}
         />
       )}
       {markReceivedTarget && artistId && (
@@ -2411,23 +2447,30 @@ function todayYmd(): string {
 // Income also gets a "סמן כהתקבל" action (onMarkReceived). Reuses the entry/delete/mark
 // modals (stacked). Reads the live ledger → refreshes after any change. Display-layer
 // only — no API/DB/permission change.
+// onAdd/onEdit/onDelete/onMarkReceived are all optional — the caller simply
+// doesn't pass them for a readOnly viewer, and the corresponding UI (the add
+// button, the per-row edit/delete icons, the mark-received button) never
+// renders. No separate `readOnly` boolean needed; "can this action happen"
+// and "is the callback provided" are the same question.
 function BalanceExpectedManageModal({ title, addLabel, color, entries, total, onClose, onAdd, onEdit, onDelete, onMarkReceived }: {
-  title: string; addLabel: string; color: string; entries: BalanceEntry[]; total: number;
-  onClose: () => void; onAdd: () => void; onEdit: (e: BalanceEntry) => void; onDelete: (e: BalanceEntry) => void;
+  title: string; addLabel?: string; color: string; entries: BalanceEntry[]; total: number;
+  onClose: () => void; onAdd?: () => void; onEdit?: (e: BalanceEntry) => void; onDelete?: (e: BalanceEntry) => void;
   onMarkReceived?: (e: BalanceEntry) => void;
 }) {
   return (
     <BalanceModalShell title={title} onClose={onClose} busy={false}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: TEXT2 }}>סה״כ: <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(total, "₪")}</b></div>
-        <button onClick={onAdd} style={{
-          display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 10, cursor: "pointer",
-          background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
-          fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
-        }}><span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>{addLabel}</button>
+        {onAdd && addLabel && (
+          <button onClick={onAdd} style={{
+            display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 10, cursor: "pointer",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+            fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+          }}><span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>{addLabel}</button>
+        )}
       </div>
       {entries.length === 0 ? (
-        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין רשומות</div>
+        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין תנועות בתקופה הזו</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {entries.map(e => (
@@ -2438,10 +2481,12 @@ function BalanceExpectedManageModal({ title, addLabel, color, entries, total, on
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(e.entryDate)}</div>
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 900, color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(e.amount, "₪")}</div>
-                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                  <button onClick={() => onEdit(e)} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
-                  <button onClick={() => onDelete(e)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
-                </div>
+                {(onEdit || onDelete) && (
+                  <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                    {onEdit && <button onClick={() => onEdit(e)} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>}
+                    {onDelete && <button onClick={() => onDelete(e)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>}
+                  </div>
+                )}
               </div>
               {e.note && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 7, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.note}</div>}
               {onMarkReceived && (
@@ -2453,6 +2498,47 @@ function BalanceExpectedManageModal({ title, addLabel, color, entries, total, on
                   }}>✓ סמן כהתקבל</button>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 18 }}>
+        <button onClick={onClose} style={{
+          width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+        }}>סגור</button>
+      </div>
+    </BalanceModalShell>
+  );
+}
+
+// Pure "card details" view for the 3 realized types (הכנסות/תשלומים/הוצאות) —
+// no actions at all, for owner or artist alike. `entries` must always be
+// exactly the same inCycle-filtered set the card's own total was summed from
+// (see BalancePage's inCycle/incomeEntries/paymentEntries/expenseEntries) —
+// this is what guarantees sum(entries) === total, never a silent mismatch.
+function BalanceDetailModal({ title, color, entries, total, onClose }: {
+  title: string; color: string; entries: BalanceEntry[]; total: number; onClose: () => void;
+}) {
+  return (
+    <BalanceModalShell title={title} onClose={onClose} busy={false}>
+      <div style={{ fontSize: 13, color: TEXT2, marginBottom: 14 }}>
+        סה״כ: <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(total, "₪")}</b>
+      </div>
+      {entries.length === 0 ? (
+        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין תנועות בתקופה הזו</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {entries.map(e => (
+            <div key={e.id} style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description || e.entryType}</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(e.entryDate)}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 900, color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(e.amount, "₪")}</div>
+              </div>
+              {e.note && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 7, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.note}</div>}
             </div>
           ))}
         </div>
