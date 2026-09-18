@@ -25,6 +25,7 @@ import {
   hasOtherOpenWork,
   decideProjectSync,
   computeFinalFilesFlags,
+  finalFilesFocusVisible,
   parseRequestAt,
   finalFilesRequestedKey,
   finalFilesRequestedProjectKey,
@@ -690,6 +691,64 @@ async function main() {
     // a work-scoped row on a project-linked work is ignored; project-linked works read the project's row
     const k = computeFinalFilesFlags([{ id: "A", projectId: "P" }], { finalRows: [], requestRows: [{ key: finalFilesRequestedKey("A"), value: { at: "2026-09-18T10:00:00.000Z" } }] });
     check("a stray work-scoped row on a project-linked work is ignored", k.finalFilesRequested.size === 0);
+  }
+
+  console.log("\n— FOCUS STATE VISIBILITY: Steven AND the owner (no role gating) —");
+  {
+    // The server truth is shared; each VIEWER keeps its own local UI state (opening the modal = fresh local state).
+    type Viewer = { role: "owner" | "steven"; fresh: boolean; dismissed: boolean; finalUploaded: boolean };
+    const open = (role: Viewer["role"]): Viewer => ({ role, fresh: true, dismissed: false, finalUploaded: false });
+    const uiStatus = (db: string) => (db === "אושר" ? "הושלם" : db === "לא נשלח" ? "לא התחיל" : "פעיל");
+    const shows = (w: World, v: Viewer, id: string) => {
+      const f = w.flags();
+      return finalFilesFocusVisible({
+        fresh: v.fresh, dismissed: v.dismissed, finalUploaded: v.finalUploaded, uiStatus: uiStatus(w.works[id].status),
+        finalFilesRequested: f.finalFilesRequested.has(id), hasCurrentFinalFiles: f.hasCurrentFinalFiles.has(id),
+      });
+    };
+    const w = makeWorld({
+      projects: { P: { status: "בעבודה", endDate: null }, Q: { status: "בעבודה", endDate: null }, L: { status: "הושלם", endDate: "2026-01-05" } },
+      works: { A: { projectId: "P", status: "בתהליך" }, N: { projectId: "Q", status: "בתהליך" }, O: { projectId: "L", status: "אושר" } },
+    });
+    w.commit("A"); await w.run("A", "P");                                       // A completes → request row for project P
+
+    const owner = open("owner"), steven = open("steven");
+    check("1. Owner opens a completed job with no final files → Blur", shows(w, owner, "A"));
+    check("2. Steven opens the same job → Blur", shows(w, steven, "A"));
+    const before = JSON.stringify([...w.rows]) + "|" + w.files.length;
+    owner.dismissed = true;                                                     // the owner clicks the blurred area
+    check("3. Owner dismisses → it goes away for the owner", !shows(w, owner, "A"));
+    check("4. …and Steven STILL sees it (dismissal is local to each viewer)", shows(w, steven, "A"));
+    check("3/4. dismissing writes nothing (request row and files untouched)", JSON.stringify([...w.rows]) + "|" + w.files.length === before);
+    const ownerAgain = open("owner");                                           // owner closes and re-opens the modal
+    check("5. Owner closes and re-opens → the Blur is back (nothing was persisted)", shows(w, ownerAgain, "A"));
+    steven.dismissed = true;
+    check("5b. Steven dismissing does not affect the owner's view either", shows(w, ownerAgain, "A") && !shows(w, steven, "A"));
+
+    // Owner uploads through the same flow → only a file AFTER the request lifts it, for BOTH
+    const ownerUploader: Viewer = { ...open("owner"), finalUploaded: true };
+    check("(local) right after an upload in THIS session the uploader's Blur is gone even before the list catches up", !shows(w, ownerUploader, "A") && shows(w, open("steven"), "A"));
+    w.advance(10 * MIN); w.upload("A");
+    check("6. A new final file (after the request) uploaded → Blur gone for the OWNER", !shows(w, open("owner"), "A"));
+    check("6. …and for STEVEN", !shows(w, open("steven"), "A"));
+    w.advance(3 * HOUR);
+    check("7. a further open → it does not come back, for either", !shows(w, open("owner"), "A") && !shows(w, open("steven"), "A"));
+
+    check("8. an ACTIVE job → no Blur, for either", !shows(w, open("owner"), "N") && !shows(w, open("steven"), "N"));
+    check("9. an OLD completed job with no request row → no Blur, for either", !shows(w, open("owner"), "O") && !shows(w, open("steven"), "O"));
+
+    // a job the owner just completed from the table: the local list has never seen the request row
+    const stale = finalFilesFocusVisible({ fresh: false, dismissed: false, finalUploaded: false, uiStatus: "הושלם", finalFilesRequested: true, hasCurrentFinalFiles: false });
+    const staleFlags = finalFilesFocusVisible({ fresh: true, dismissed: false, finalUploaded: false, uiStatus: "הושלם", finalFilesRequested: false, hasCurrentFinalFiles: false });
+    const refreshed = finalFilesFocusVisible({ fresh: true, dismissed: false, finalUploaded: false, uiStatus: "הושלם", finalFilesRequested: true, hasCurrentFinalFiles: false });
+    check("not shown until the server refresh has landed (stale list is never trusted)", !stale && !staleFlags && refreshed);
+
+    // a new cycle is seen by both again, even though last cycle's file exists
+    await w.reopen("A"); w.advance(DAY); w.commit("A"); await w.run("A", "P", "U9");
+    check("a new cycle (reopen → complete again): both see the Blur again despite last cycle's file", shows(w, open("owner"), "A") && shows(w, open("steven"), "A"));
+
+    check("the decision has NO role input at all (structural: one object param, no role/isSteven/isOwner in it)",
+      finalFilesFocusVisible.length === 1 && !/isSteven|isOwner|role/i.test(finalFilesFocusVisible.toString()));
   }
 
   console.log("\n— keys / texts —");

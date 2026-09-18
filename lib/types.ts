@@ -840,8 +840,8 @@ export interface SoundEngineerWork {
    * work on the project completes, deleted when a Steven work on it becomes open
    * again or a new open one is created (see lib/steven-completion.ts). Together with
    * `!hasCurrentFinalFiles` it turns on Steven's "Upload Final Files" focus state, so a work
-   * completed long before this existed never shows it. Populated ONLY by
-   * listSoundEngineerWork.
+   * completed long before this existed never shows it — for Steven and the owner alike.
+   * Populated ONLY by listSoundEngineerWork.
    */
   finalFilesRequested?: boolean;
 }

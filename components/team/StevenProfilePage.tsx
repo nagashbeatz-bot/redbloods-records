@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
+import { finalFilesFocusVisible } from "@/lib/steven-completed-pure";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
@@ -289,7 +290,7 @@ interface Work {
   // True once ≥1 mix version exists (final_files excluded). Drives whether a
   // "לא נשלח" DB status reads as "לא התחיל" (no mixes) or "פעיל" (has mixes).
   hasMixVersion: boolean;
-  // Server-side hints (listSoundEngineerWork only) that drive Steven's "Upload Final
+  // Server-side hints (listSoundEngineerWork only) that drive the "Upload Final
   // Files" focus state: the project's final-files request row exists / a final file was
   // uploaded AFTER that request (project-aware, and cycle-aware: older files don't count).
   hasCurrentFinalFiles?: boolean;
@@ -1925,24 +1926,31 @@ function finalFilesBtnStyle(disabled: boolean, dragOver = false): React.CSSPrope
 function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId = null, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, onRefresh, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; focusTargetId?: string | null; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; onRefresh?: () => Promise<void>; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // ── "Upload Final Files" focus state (Steven only) ───────────────────────────
-  // A completed job whose completion asked him for the final files (marker) and that
-  // has none yet opens with the body blurred behind one CTA. Pure UI state: nothing
-  // is written anywhere by showing, dismissing or re-opening it.
+  // ── "Upload Final Files" focus state (Steven AND the owner) ───────────────────
+  // A completed job whose completion asked for the final files (request row) and that
+  // has none uploaded after that request opens with the body blurred behind one CTA —
+  // for whoever opens it. There is deliberately NO role condition: the decision is
+  // finalFilesFocusVisible() (lib/steven-completed-pure), which takes none. Pure UI
+  // state: nothing is written anywhere by showing, dismissing or re-opening it.
   //   fresh      — the works list was re-fetched from the server AFTER this modal
   //                opened. The list is loaded once and never polls, so a push tapped
-  //                while the page was already open would otherwise be judged on a
-  //                stale status. Until it lands (or fails → fall back to what we have)
-  //                the focus state is not shown.
-  //   dismissed  — he clicked the blurred area; lasts for THIS open only (the modal
-  //                unmounts on close, so re-opening re-arms it).
+  //                while the page was already open — or a job the OWNER just completed
+  //                from the table, whose request row the local list has never seen —
+  //                would otherwise be judged on stale data. Until it lands (or fails →
+  //                fall back to what we have) the focus state is not shown.
+  //   dismissed  — THIS viewer clicked the blurred area; lasts for THIS open only (the
+  //                modal unmounts on close, so re-opening re-arms it). Local per viewer:
+  //                the owner dismissing it never affects Steven, and vice versa.
   //   finalUploaded — a final-file upload succeeded in this session (the refreshed
   //                list catches up right after).
-  const [fresh, setFresh] = useState(!isSteven || !onRefresh);
+  // The CTA needs no authorization of its own: it drives the existing final-files
+  // flow, whose upload URL is already role-scoped (finalFilesUrl → the owner's
+  // requireOwner routes, or Steven's ownership-checked ones).
+  const [fresh, setFresh] = useState(!onRefresh);
   const [dismissed, setDismissed] = useState(false);
   const [finalUploaded, setFinalUploaded] = useState(false);
   useEffect(() => {
-    if (!isSteven || !onRefresh) return;
+    if (!onRefresh) return;
     let alive = true;
     void onRefresh().finally(() => { if (alive) setFresh(true); });
     return () => { alive = false; };
@@ -1950,8 +1958,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     // must NOT re-run when the works list it refreshes hands us a new `work`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const focusMode = isSteven && fresh && !dismissed && !finalUploaded
-    && work.status === "הושלם" && !!work.finalFilesRequested && !work.hasCurrentFinalFiles;
+  const focusMode = finalFilesFocusVisible({
+    fresh, dismissed, finalUploaded, uiStatus: work.status,
+    finalFilesRequested: !!work.finalFilesRequested, hasCurrentFinalFiles: !!work.hasCurrentFinalFiles,
+  });
   const rtl = lang === "he";
   // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
   // versions/comments SUFFIXES match; only the prefix (and /work for versions) differ.
@@ -2705,7 +2715,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     if (anyVersionOk) onWorkStale?.();
     // A final file landed → drop the focus state now and let the parent list catch up
     // (so a later re-open reads hasCurrentFinalFiles=true from the server).
-    if (anyFinalOk) { setFinalUploaded(true); if (isSteven) onWorkStale?.(); }
+    if (anyFinalOk) { setFinalUploaded(true); onWorkStale?.(); }
   }
 
   function setVersionStatus(v: MixVersion, status: string) {
@@ -3843,8 +3853,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
         <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
         <input ref={moreFilesInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => appendFiles(e.target.files)} />
 
-        {/* "Upload Final Files" focus state — Steven only, completed job, final files requested
-            and none uploaded yet (see focusMode above). A clicked-away overlay: it changes NO
+        {/* "Upload Final Files" focus state — Steven and owner alike: completed job, final files
+            requested and none uploaded since (see focusMode above). A clicked-away overlay: it changes NO
             data. The CTA reuses the ONE existing final-files flow (newVersionInputRef →
             openRolePicker("final") → runFinalUpload) and the exact green button style. */}
         {focusMode && (

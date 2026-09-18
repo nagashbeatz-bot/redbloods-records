@@ -201,6 +201,32 @@ export function computeFinalFilesFlags(
   return { hasCurrentFinalFiles, finalFilesRequested };
 }
 
+/**
+ * Should the WorkModal show the "Upload Final Files" focus state (blurred + inert body
+ * behind one CTA)? Shown to WHOEVER opens the job — Steven and the owner alike — so this
+ * takes NO role on purpose; the only per-viewer inputs are local UI state:
+ *
+ *   fresh          the works list was re-fetched from the server after this modal opened
+ *   dismissed      this viewer clicked the blurred area (this open only; never persisted)
+ *   finalUploaded  a final-file upload succeeded in THIS viewer's session
+ *
+ * everything else is shared server truth: the job is completed (UI status "הושלם"), its
+ * cycle's final-files request exists, and no final file was uploaded after that request.
+ * Showing or dismissing it writes nothing anywhere.
+ */
+export function finalFilesFocusVisible(s: {
+  fresh: boolean;
+  dismissed: boolean;
+  finalUploaded: boolean;
+  /** the job's UI status as the page shows it ("הושלם" = completed) */
+  uiStatus: string;
+  finalFilesRequested: boolean;
+  hasCurrentFinalFiles: boolean;
+}): boolean {
+  return s.fresh && !s.dismissed && !s.finalUploaded
+    && s.uiStatus === "הושלם" && s.finalFilesRequested && !s.hasCurrentFinalFiles;
+}
+
 // ── Texts ─────────────────────────────────────────────────────────────────────
 
 /** Shape-compatible with lib/push.ts PushPayload (kept local: this file must not
