@@ -833,7 +833,9 @@ function BriefSegmentPlayer({
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const laneRef = useRef<HTMLDivElement | null>(null);
   const [laneW, setLaneW] = useState(0); // lane px width → decide label detail per block
-  const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean }>(null);
+  // nb = the neighbor that shares the dragged edge (resize modes only): its id
+  // plus its FIXED far edge (nEdge), so the shared boundary can move within them.
+  const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean; nb: null | { id: string; nEdge: number }; b: number | null }>(null);
   const segsRef = useRef(segs); segsRef.current = segs;
   const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
 
@@ -969,13 +971,31 @@ function BriefSegmentPlayer({
   }
   // Drag / resize via pointer events (no library). "move" = whole block; "l"/"r"
   // = resize that edge. Live free-move (clamped to bounds); cascade on release.
+  // An INTERNAL edge (a neighbor exists on that side) is a SHARED boundary: dragging
+  // it moves prev.end and next.start together (prev.end === next.start), both ways.
   function beginDrag(e: React.PointerEvent, id: string, mode: "move" | "l" | "r") {
     if (!isOwner) return;
     e.stopPropagation();
     const seg = segs.find(s => s.id === id); if (!seg) return;
     setActiveId(id);
-    dragRef.current = { id, mode, startX: e.clientX, s0: seg.start, e0: seg.end, moved: false };
+    let nb: { id: string; nEdge: number } | null = null;
+    if (mode !== "move") {
+      const sorted = [...segsRef.current].sort((a, b) => a.start - b.start);
+      const i = sorted.findIndex(s => s.id === id);
+      const n = sorted[mode === "l" ? i - 1 : i + 1];
+      if (n) nb = { id: n.id, nEdge: mode === "l" ? n.start : n.end };
+    }
+    dragRef.current = { id, mode, startX: e.clientX, s0: seg.start, e0: seg.end, moved: false, nb, b: null };
     try { laneRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  // Set the shared boundary to b: the dragged block's edge and its neighbor's
+  // adjacent edge get the exact same value (no gap, no overlap). Nothing else moves.
+  function applyBoundary(list: BriefSegment[], dr: { id: string; mode: "move" | "l" | "r"; nb: { id: string } | null }, b: number): BriefSegment[] {
+    return list.map(s => {
+      if (s.id === dr.id) return dr.mode === "l" ? { ...s, start: b } : { ...s, end: b };
+      if (dr.nb && s.id === dr.nb.id) return dr.mode === "l" ? { ...s, end: b } : { ...s, start: b };
+      return s;
+    });
   }
   function onLaneMove(e: React.PointerEvent) {
     const dr = dragRef.current, lane = laneRef.current, d = duration;
@@ -983,6 +1003,17 @@ function BriefSegmentPlayer({
     const w = lane.getBoundingClientRect().width; if (!w) return;
     if (Math.abs(e.clientX - dr.startX) > 4) dr.moved = true;
     const delta = ((e.clientX - dr.startX) / w) * d;
+    if (dr.nb && dr.mode !== "move") {
+      if (!dr.moved) return; // a tap must not touch anything
+      // Boundary stays ≥ MIN_SEG away from each block's far edge.
+      const lo = dr.mode === "l" ? dr.nb.nEdge + MIN_SEG : dr.s0 + MIN_SEG;
+      const hi = dr.mode === "l" ? dr.e0 - MIN_SEG : dr.nb.nEdge - MIN_SEG;
+      const cur = dr.mode === "l" ? dr.s0 : dr.e0;
+      const b = hi >= lo ? Math.min(hi, Math.max(lo, cur + delta)) : cur;
+      dr.b = b;
+      setSegs(prev => applyBoundary(prev, dr, b));
+      return;
+    }
     setSegs(prev => prev.map(s => {
       if (s.id !== dr.id) return s;
       if (dr.mode === "move") {
@@ -1000,6 +1031,9 @@ function BriefSegmentPlayer({
     if (!dr) return;
     // A tap that didn't move → seek to the block's start (owner too).
     if (!dr.moved) { const seg = segsRef.current.find(s => s.id === dr.id); if (seg) seekTo(seg.start); return; }
+    // Shared-boundary drag: already contiguous + ≥ MIN_SEG by construction → save
+    // exactly that (a normalize pass could reintroduce float drift at the seam).
+    if (dr.nb && dr.mode !== "move" && dr.b !== null) { persist(applyBoundary(segsRef.current, dr, dr.b)); return; }
     persist(normalizeSegs(segsRef.current, duration)); // cascade + save on release
   }
 
