@@ -6,6 +6,7 @@ import {
 } from "@/lib/sound-engineer-store";
 import { requireOwner } from "@/lib/require-auth";
 import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
+import type { StevenCompletionOutcome } from "@/lib/steven-completed-pure";
 
 /**
  * PATCH /api/sound-engineer/[id]
@@ -41,8 +42,13 @@ export async function PATCH(
       if (denied) return denied;
     }
 
-    const work = await updateSoundEngineerWork(id, body);
-    return NextResponse.json({ ok: true, work });
+    // Filled only when this PATCH was a real Steven work → completed transition, so the
+    // owner's UI can refresh /projects or report that the project sync failed.
+    const flow: { completion?: StevenCompletionOutcome } = {};
+    const work = await updateSoundEngineerWork(id, body, {
+      onStevenCompletion: (outcome) => { flow.completion = outcome; },
+    });
+    return NextResponse.json({ ok: true, work, ...(flow.completion ? { completion: flow.completion } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

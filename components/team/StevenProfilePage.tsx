@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { usePlayerSafe } from "@/components/PlayerProvider";
+import { useProjects } from "@/components/ProjectsProvider";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
@@ -288,6 +289,11 @@ interface Work {
   // True once ≥1 mix version exists (final_files excluded). Drives whether a
   // "לא נשלח" DB status reads as "לא התחיל" (no mixes) or "פעיל" (has mixes).
   hasMixVersion: boolean;
+  // Server-side hints (listSoundEngineerWork only) that drive Steven's "Upload Final
+  // Files" focus state: the project's final-files request row exists / a final file was
+  // uploaded AFTER that request (project-aware, and cycle-aware: older files don't count).
+  hasCurrentFinalFiles?: boolean;
+  finalFilesRequested?: boolean;
 }
 
 // ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
@@ -354,6 +360,8 @@ function mapRecord(r: SoundEngineerWork): Work {
     paymentDate: r.paymentDate ?? null,
     lastUploadAt: r.lastUploadAt ?? null,
     hasMixVersion: r.hasMixVersion ?? false,
+    hasCurrentFinalFiles: r.hasCurrentFinalFiles ?? false,
+    finalFilesRequested: r.finalFilesRequested ?? false,
   };
 }
 
@@ -405,6 +413,7 @@ const TR = {
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט", wmMatSub: "Rough Mix · רפרנסים · Stems · הוראות",
+    focusTitle: "הפרויקט הושלם", focusBody: "אנא העלה את הקבצים הסופיים", focusHint: "לחץ מחוץ לאזור כדי לחזור לתצוגה הרגילה",
     uploadFinalBtn: "העלאת קבצים סופיים", uploadFinalHint: "מאסטרים · סטמים · אינסטרומנטל · אקפלה · קבצי מסירה — עד 1GB לכל קובץ", rpRetry: "נסה שוב לקבצים שנכשלו", rpStPending: "ממתין", rpStUploading: "מעלה", rpStDone: "הושלם", rpStFailed: "נכשל",
     uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
     uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
@@ -482,6 +491,7 @@ const TR = {
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files", wmMatSub: "Rough Mix · References · Stems · Instructions",
+    focusTitle: "Project completed", focusBody: "Please upload the final files", focusHint: "Tap outside this box to return to the job view",
     uploadFinalBtn: "Upload Final Files", uploadFinalHint: "Masters · stems · instrumental · acapella · delivery files — up to 1GB each", rpRetry: "Retry failed files", rpStPending: "Pending", rpStUploading: "Uploading", rpStDone: "Done", rpStFailed: "Failed",
     uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
     uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
@@ -972,11 +982,16 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const wideDesktop =
     mainW != null && jobsTableNaturalWidth != null && mainW >= jobsTableNaturalWidth + SIDE_COL_WIDTH + GRID_GAP;
 
-  function notify(msg: string) {
+  function notify(msg: string, ms = 2500) {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2500);
+    toastTimer.current = setTimeout(() => setToast(null), ms);
   }
+
+  // The ProjectsProvider (app/layout.tsx) fetches once and never polls. When a Steven
+  // work's completion also completes its linked project on the server, the owner's
+  // /projects list has to be refreshed from here or it would keep the old status.
+  const { refresh: refreshProjects } = useProjects();
 
   // Load Steven's real work records from the existing API (also called after a
   // create so a new job is shown from the SERVER truth, never a local phantom).
@@ -1094,6 +1109,15 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
         notify(rtl ? "השמירה נכשלה" : "Save failed");
         return false;
+      }
+      // A real Steven work → completed transition reports what the server did to the
+      // linked project. Updated → refresh /projects now (owner only, no polling).
+      // Failed → say so clearly: the work IS completed, the project is not.
+      if (patch.status === "הושלם") {
+        const d = (await res.json().catch(() => null)) as { completion?: { projectSync?: string } } | null;
+        const sync = d?.completion?.projectSync;
+        if (sync === "updated" && isOwner) void refreshProjects();
+        else if (sync === "failed") notify(rtl ? "העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט." : "Steven's job was marked completed, but the project status could not be updated.", 8000);
       }
       return true;
     } catch {
@@ -1572,7 +1596,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} focusTargetId={pendingFocusTarget?.workId === openWork.id ? pendingFocusTarget.targetId : null} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} focusTargetId={pendingFocusTarget?.workId === openWork.id ? pendingFocusTarget.targetId : null} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} onRefresh={reloadWorks} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
@@ -1885,9 +1909,49 @@ function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact 
   );
 });
 
+/** The green "Upload Final Files" button look — ONE definition, shared by the button in
+ *  the upload column and the CTA of the completed-job focus state, so the two can never
+ *  drift apart (the blue is "Upload new version"; the CTA must NOT use it). */
+function finalFilesBtnStyle(disabled: boolean, dragOver = false): React.CSSProperties {
+  return {
+    width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12,
+    border: dragOver ? "2px solid #22C55E" : "none", cursor: disabled ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff",
+    background: disabled ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", boxShadow: disabled ? "none" : "0 6px 18px rgba(34,197,94,0.30)",
+    opacity: disabled ? 0.7 : 1, transition: "all .15s",
+  };
+}
+
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId = null, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; focusTargetId?: string | null; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId = null, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, onRefresh, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; focusTargetId?: string | null; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; onRefresh?: () => Promise<void>; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // ── "Upload Final Files" focus state (Steven only) ───────────────────────────
+  // A completed job whose completion asked him for the final files (marker) and that
+  // has none yet opens with the body blurred behind one CTA. Pure UI state: nothing
+  // is written anywhere by showing, dismissing or re-opening it.
+  //   fresh      — the works list was re-fetched from the server AFTER this modal
+  //                opened. The list is loaded once and never polls, so a push tapped
+  //                while the page was already open would otherwise be judged on a
+  //                stale status. Until it lands (or fails → fall back to what we have)
+  //                the focus state is not shown.
+  //   dismissed  — he clicked the blurred area; lasts for THIS open only (the modal
+  //                unmounts on close, so re-opening re-arms it).
+  //   finalUploaded — a final-file upload succeeded in this session (the refreshed
+  //                list catches up right after).
+  const [fresh, setFresh] = useState(!isSteven || !onRefresh);
+  const [dismissed, setDismissed] = useState(false);
+  const [finalUploaded, setFinalUploaded] = useState(false);
+  useEffect(() => {
+    if (!isSteven || !onRefresh) return;
+    let alive = true;
+    void onRefresh().finally(() => { if (alive) setFresh(true); });
+    return () => { alive = false; };
+    // Once per open: `onRefresh` is the page's reloadWorks (stable per role), and this
+    // must NOT re-run when the works list it refreshes hands us a new `work`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const focusMode = isSteven && fresh && !dismissed && !finalUploaded
+    && work.status === "הושלם" && !!work.finalFilesRequested && !work.hasCurrentFinalFiles;
   const rtl = lang === "he";
   // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
   // versions/comments SUFFIXES match; only the prefix (and /work for versions) differ.
@@ -2585,6 +2649,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     // parent works list (status may have auto-advanced "לא התחיל" → "פעיל" and
     // the list needs to re-sort). final_files never affect the work status.
     let anyVersionOk = false;
+    // Did at least one FINAL FILE land? Turns the "Upload Final Files" focus state off
+    // for good (hasCurrentFinalFiles is then true server-side too: the file is newer than the request).
+    let anyFinalOk = false;
 
     for (let i = 0; i < picker.items.length; i++) {
       const it = picker.items[i];
@@ -2601,7 +2668,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
         const r = it.file.size > VER_CHUNK_LIMIT
           ? await uploadChunkedFinal(it.file, batchId, onPct)
           : await uploadSingleFinalXhr(it.file, batchId, onPct);
-        if (r.ok) setItem(i, { status: "done", pct: 100 });
+        if (r.ok) { anyFinalOk = true; setItem(i, { status: "done", pct: 100 }); }
         else setItem(i, { status: "error", error: r.status === 409
           ? (rtl ? "כבר קיים קובץ בשם הזה בתיקיית הקבצים הסופיים" : "A file with this name already exists in the final files folder.")
           : (rtl ? "ההעלאה נכשלה" : "Upload failed") });
@@ -2636,6 +2703,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     // server ("לא התחיל" → "פעיל"). Refresh the parent list so the badge + the
     // active-tab ordering update immediately, with no manual reload.
     if (anyVersionOk) onWorkStale?.();
+    // A final file landed → drop the focus state now and let the parent list catch up
+    // (so a later re-open reads hasCurrentFinalFiles=true from the server).
+    if (anyFinalOk) { setFinalUploaded(true); if (isSteven) onWorkStale?.(); }
   }
 
   function setVersionStatus(v: MixVersion, status: string) {
@@ -2982,8 +3052,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
           </div>
         </div>
 
-        {/* Body — 3-column workboard: versions/files (left) · players+comments (center) · details (right) */}
-        <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "thin", padding: narrow ? "14px 14px calc(20px + env(safe-area-inset-bottom))" : "18px 22px" }}>
+        {/* Body — 3-column workboard: versions/files (left) · players+comments (center) · details (right).
+            Wrapped in a relative box so the "Upload Final Files" focus overlay can sit ABOVE the
+            (scrolling, blurred, inert) body instead of inside it — the CTA must never be blurred,
+            and it stays centred in the visible area however far the body is scrolled. */}
+        <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div
+          {...(focusMode ? { inert: true, "aria-hidden": true } : {})}
+          style={{ flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "thin", padding: narrow ? "14px 14px calc(20px + env(safe-area-inset-bottom))" : "18px 22px", ...(focusMode ? { filter: "blur(7px) brightness(0.6)", pointerEvents: "none", userSelect: "none" } : null) }}>
           <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "300px minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
 
             {/* ═══ LEFT: versions · upload · project files · Dropbox ═══ */}
@@ -3155,12 +3231,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                 )}
               </div>
 
-              {/* Hidden inputs (multiple) — used by the upload areas AND the center
-                  "add file to this version" button. Kept mounted for both roles. */}
-              <input ref={newMixInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("newVersion", e.target.files)} />
-              <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("final", e.target.files)} />
-              <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
-              <input ref={moreFilesInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => appendFiles(e.target.files)} />
+              {/* (The four hidden file inputs live just below the body, outside the
+                  focus-state `inert` subtree — see "Hidden inputs" further down.) */}
 
               {/* "Upload new version" — creates a brand-new mix version (backend
                   auto-names it "Mix N"). Real mix-version upload via versionsUrl,
@@ -3207,7 +3279,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                     onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                     onDragLeave={e => { e.preventDefault(); setDrag(false); }}
                     onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("final", e.dataTransfer.files); }}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: drag ? "2px solid #22C55E" : "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", boxShadow: uploading ? "none" : "0 6px 18px rgba(34,197,94,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
+                    style={finalFilesBtnStyle(uploading, drag)}
                   >
                     {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadFinalBtn}</>}
                   </button>
@@ -3759,6 +3831,42 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
             </div>
 
           </div>
+        </div>
+
+        {/* Hidden inputs (multiple) — used by the upload areas AND the center "add file to this
+            version" button, AND by the focus-state CTA below. They sit OUTSIDE the body on purpose:
+            while the focus state is on, the body is `inert`, and a programmatic .click() on a file
+            input inside an inert subtree is not something to depend on. Same refs, same handlers,
+            same mount — only their place in the DOM moved. */}
+        <input ref={newMixInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("newVersion", e.target.files)} />
+        <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("final", e.target.files)} />
+        <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
+        <input ref={moreFilesInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => appendFiles(e.target.files)} />
+
+        {/* "Upload Final Files" focus state — Steven only, completed job, final files requested
+            and none uploaded yet (see focusMode above). A clicked-away overlay: it changes NO
+            data. The CTA reuses the ONE existing final-files flow (newVersionInputRef →
+            openRolePicker("final") → runFinalUpload) and the exact green button style. */}
+        {focusMode && (
+          <div onClick={() => setDismissed(true)}
+            style={{ position: "absolute", inset: 0, zIndex: 3, display: "flex", alignItems: "center", justifyContent: "center", padding: narrow ? 16 : 24, background: "rgba(0,0,0,0.34)", cursor: "pointer" }}>
+            <div onClick={e => e.stopPropagation()} role="alertdialog" aria-label={t.focusTitle}
+              style={{ cursor: "default", width: "min(420px, 100%)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: narrow ? "8px 4px" : "8px 12px" }}>
+              <div style={{ width: 54, height: 54, borderRadius: "50%", border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", color: TEXT, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}><UploadIcon size={24} /></div>
+              <div style={{ fontSize: narrow ? 21 : 24, fontWeight: 900, color: TEXT, lineHeight: 1.2, textShadow: "0 2px 14px rgba(0,0,0,0.6)" }}>{t.focusTitle}</div>
+              <div style={{ fontSize: 14.5, fontWeight: 600, color: TEXT2, lineHeight: 1.5, marginBottom: 8 }}>{t.focusBody}</div>
+              <button
+                type="button"
+                onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
+                disabled={uploading}
+                style={{ ...finalFilesBtnStyle(uploading), maxWidth: 340 }}
+              >
+                {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadFinalBtn}</>}
+              </button>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.55, marginTop: 6 }}>{t.focusHint}</div>
+            </div>
+          </div>
+        )}
         </div>
 
         {/* Delete confirmation (in-app, no browser confirm) */}

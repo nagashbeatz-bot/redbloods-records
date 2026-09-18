@@ -18,6 +18,15 @@ import type {
   SoundEngineerStatus,
   SoundEngineerWorkType,
 } from "@/lib/types";
+import { isClosedStatus } from "@/lib/steven-mix-reminder-pure";
+import {
+  isCompletionTransition,
+  isBecameOpenTransition,
+  computeFinalFilesFlags,
+  FINAL_FILES_REQUESTED_PREFIX,
+  FINAL_FILES_REQUESTED_PROJECT_PREFIX,
+  type StevenCompletionOutcome,
+} from "@/lib/steven-completed-pure";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +56,13 @@ export function stevenDisplayName(w: Pick<SoundEngineerWork, "workTitle" | "proj
 type UploadHints = {
   lastUploadAt: Map<string, string>;
   hasMixVersion: Set<string>;
+  /** workIds whose current final-files request has already been satisfied: a final file
+   *  was uploaded AFTER the request time (project-aware, cycle-aware — see
+   *  computeFinalFilesFlags). Only meaningful for works that have a request. */
+  hasCurrentFinalFiles: Set<string>;
+  /** workIds whose final-files request row exists (project-scoped for a project-linked
+   *  work; written only when Steven's LAST open work completed — see steven-completion). */
+  finalFilesRequested: Set<string>;
 };
 
 function mapRow(
@@ -87,6 +103,8 @@ function mapRow(
     updatedAt:            (row.updated_at           as string) ?? "",
     lastUploadAt:         hints?.lastUploadAt.get(row.id as string) ?? null,
     hasMixVersion:        hints?.hasMixVersion.has(row.id as string) ?? false,
+    hasCurrentFinalFiles: hints?.hasCurrentFinalFiles.has(row.id as string) ?? false,
+    finalFilesRequested:  hints?.finalFilesRequested.has(row.id as string) ?? false,
   };
 }
 
@@ -106,11 +124,24 @@ function mapRow(
  *
  * Also returns `hasMixVersion` — the set of workIds with ≥1 mix_versions row
  * (final_files deliberately excluded). Same two selects, no extra query.
+ *
+ * And the two final-files hints (see computeFinalFilesFlags). `finalFilesRequested`
+ * reads the request row (one per project, or per standalone work). `hasCurrentFinalFiles`
+ * is true when a final file was uploaded AFTER that request's time (its value.at) —
+ * final files from an earlier cycle stay untouched but never satisfy a new request.
+ * It is PROJECT-aware too: final_files carries project_id AND work_id and the Final
+ * Files folder is per project, so a file uploaded through one Steven work satisfies
+ * every other work on that project (a standalone work counts only its own work_id).
+ * Read-only, no schema change.
  */
-async function buildUploadHints(workIds: string[]): Promise<UploadHints> {
+async function buildUploadHints(works: { id: string; projectId: string | null }[]): Promise<UploadHints> {
+  const workIds = works.map((w) => w.id);
+  const projectIds = Array.from(new Set(works.map((w) => w.projectId).filter((p): p is string => !!p)));
   const map = new Map<string, string>();
   const hasMixVersion = new Set<string>();
-  if (workIds.length === 0) return { lastUploadAt: map, hasMixVersion };
+  if (workIds.length === 0) {
+    return { lastUploadAt: map, hasMixVersion, hasCurrentFinalFiles: new Set<string>(), finalFilesRequested: new Set<string>() };
+  }
 
   const keep = (workId: string | null, createdAt: string | null) => {
     if (!workId || !createdAt) return;
@@ -118,7 +149,7 @@ async function buildUploadHints(workIds: string[]): Promise<UploadHints> {
     if (!cur || Date.parse(createdAt) > Date.parse(cur)) map.set(workId, createdAt);
   };
 
-  const [versions, finals] = await Promise.all([
+  const [versions, finals, finalsByProject, requestedWork, requestedProject] = await Promise.all([
     supabase
       .from("mix_versions")
       .select("sound_engineer_work_id, created_at")
@@ -129,6 +160,15 @@ async function buildUploadHints(workIds: string[]): Promise<UploadHints> {
       .select("work_id, created_at")
       .in("work_id", workIds)
       .order("created_at", { ascending: false }),
+    // Project-level final files: every final_files row of the works' projects, whichever
+    // work uploaded it. (Skipped when no work is project-linked.)
+    projectIds.length > 0
+      ? supabase.from("final_files").select("project_id, created_at").in("project_id", projectIds)
+      : Promise.resolve({ data: [] as { project_id: string | null; created_at: string | null }[], error: null }),
+    // The few final-files request rows (their value.at is the request time): project-scoped,
+    // and work-scoped (standalone works).
+    supabase.from("settings").select("key, value").like("key", `${FINAL_FILES_REQUESTED_PROJECT_PREFIX}%`),
+    supabase.from("settings").select("key, value").like("key", `${FINAL_FILES_REQUESTED_PREFIX}%`),
   ]);
 
   // A failure here must never break the works list — it only means the extra
@@ -138,10 +178,22 @@ async function buildUploadHints(workIds: string[]): Promise<UploadHints> {
     if (wid) hasMixVersion.add(wid);
     keep(wid, (r as { created_at: string | null }).created_at);
   });
-  (finals.data ?? []).forEach((r) =>
-    keep((r as { work_id: string | null }).work_id, (r as { created_at: string | null }).created_at)
-  );
-  return { lastUploadAt: map, hasMixVersion };
+  (finals.data ?? []).forEach((r) => {
+    keep((r as { work_id: string | null }).work_id, (r as { created_at: string | null }).created_at);
+  });
+
+  const flags = computeFinalFilesFlags(works, {
+    finalRows: [
+      ...((finals.data ?? []) as { work_id: string | null; created_at: string | null }[]),
+      ...((finalsByProject.data ?? []) as { project_id: string | null; created_at: string | null }[]),
+    ],
+    requestRows: [...(requestedWork.data ?? []), ...(requestedProject.data ?? [])] as { key: string; value: unknown }[],
+  });
+  // FAIL CLOSED. If we could not read final_files we cannot tell whether the request was
+  // satisfied, so never ask (no work is offered the focus state); a failed request-row read
+  // already leaves finalFilesRequested empty for the same reason.
+  if (finals.error || finalsByProject.error) workIds.forEach((id) => flags.hasCurrentFinalFiles.add(id));
+  return { lastUploadAt: map, hasMixVersion, hasCurrentFinalFiles: flags.hasCurrentFinalFiles, finalFilesRequested: flags.finalFilesRequested };
 }
 
 /**
@@ -270,7 +322,7 @@ export async function listSoundEngineerWork(
   const rows = (data ?? []) as Record<string, unknown>[];
   // lastUploadAt / hasMixVersion are read-only display/ordering hints (see
   // buildUploadHints); the DB order above is unchanged — the client decides.
-  const hints = await buildUploadHints(rows.map((r) => r.id as string));
+  const hints = await buildUploadHints(rows.map((r) => ({ id: r.id as string, projectId: (r.project_id as string | null) ?? null })));
   return rows.map((r) => mapRow(r, projectMap, hints));
 }
 
@@ -401,7 +453,20 @@ export async function createSoundEngineerWork(
   const projectMap = projectId
     ? new Map([[projectId, { name: projectName, artist, projectType }]])
     : new Map<string, { name: string; artist: string; projectType: string }>();
-  return mapRow(row, projectMap);
+  const created = mapRow(row, projectMap);
+
+  // A new OPEN Steven work on a project means that project has open work again: whatever
+  // final-files request its previous (finished) cycle left behind is over, so the next
+  // completion is a new cycle. Best-effort, restricted to Steven, never throws.
+  if (!isClosedStatus(row.status as string | null)) {
+    try {
+      const { releaseStevenFinalFilesRequestFor } = await import("@/lib/steven-completion");
+      await releaseStevenFinalFilesRequestFor({ id: created.id, engineerName: created.engineerName, projectId: created.projectId });
+    } catch (e) {
+      console.error("[sound-engineer] steven request release (create) failed (non-fatal):", e);
+    }
+  }
+  return created;
 }
 
 /** Update a sound engineer work record. Syncs transaction if price fields changed. */
@@ -421,7 +486,13 @@ export async function updateSoundEngineerWork(
     paymentDate:      string | null;   // YYYY-MM-DD when marked paid, or null to clear
     /** When true, skip the linked-transaction sync entirely (Steven flow). Not persisted. */
     skipFinanceSync:  boolean;
-  }>
+  }>,
+  hooks?: {
+    /** Called (once) with the outcome of the Steven "work completed" flow, only when
+     *  this call was a REAL transition of a Steven work into completed. Lets the
+     *  route tell the owner's UI whether the linked project was synced or failed. */
+    onStevenCompletion?: (outcome: StevenCompletionOutcome) => void;
+  }
 ): Promise<SoundEngineerWork> {
   // Fetch current record first
   const { data: current, error: fetchErr } = await supabase
@@ -526,6 +597,42 @@ export async function updateSoundEngineerWork(
       });
     } catch (e) {
       console.error("[sound-engineer] payment notify failed (non-fatal):", e);
+    }
+  }
+
+  // ── Steven "work completed" (project sync + final-files request + push) ─────
+  // Fires ONLY on a real transition into completed ("אושר"): the pre-update row
+  // was not completed, THIS request carried the completed status, and the row now
+  // is completed. A re-save / payment edit / refresh never re-fires. All behaviour
+  // (last-open-work check, project sync, marker, claim, push) lives in
+  // lib/steven-completion.ts; it is restricted to engineer_name "Steven" and never
+  // throws, so it can neither fail nor roll back this update.
+  if (isCompletionTransition(cur.status as string | null, fields.status, row.status as string | null)) {
+    try {
+      const { runStevenWorkCompleted } = await import("@/lib/steven-completion");
+      const outcome = await runStevenWorkCompleted({
+        id:            result.id,
+        engineerName:  result.engineerName,
+        projectId:     result.projectId,
+        displayName:   stevenDisplayName(result), // the name Steven sees
+        fromUpdatedAt: String(cur.updated_at ?? "na"),
+      });
+      if (outcome) hooks?.onStevenCompletion?.(outcome);
+    } catch (e) {
+      console.error("[sound-engineer] steven completion flow failed (non-fatal):", e);
+    }
+  }
+
+  // ── A Steven work is OPEN again (closed → open): the project's current final-files
+  // request cycle is over. Releasing its request row is what lets the next "last open
+  // work completed" be a NEW cycle (הושלם → פעיל → הושלם) instead of being swallowed as
+  // a duplicate. Best-effort, restricted to Steven, never throws.
+  if (isBecameOpenTransition(cur.status as string | null, fields.status, row.status as string | null)) {
+    try {
+      const { releaseStevenFinalFilesRequestFor } = await import("@/lib/steven-completion");
+      await releaseStevenFinalFilesRequestFor({ id: result.id, engineerName: result.engineerName, projectId: result.projectId });
+    } catch (e) {
+      console.error("[sound-engineer] steven request release failed (non-fatal):", e);
     }
   }
 

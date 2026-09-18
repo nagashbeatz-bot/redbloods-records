@@ -822,6 +822,28 @@ export interface SoundEngineerWork {
    * legacy "לא נשלח" but that already has mixes.
    */
   hasMixVersion: boolean;
+  /**
+   * True when the CURRENT final-files request has been satisfied: a row in `final_files`
+   * was created AFTER the request time (the request row's value.at). Project-aware —
+   * whichever work of the project uploaded it counts (final_files carries project_id and
+   * the Final Files folder is per project); a standalone work counts only its own
+   * work_id. Final files from before the request (an earlier cycle) are left untouched
+   * but never satisfy it. Only meaningful where `finalFilesRequested` is true. Read-only
+   * aggregate, no column of its own. Populated ONLY by listSoundEngineerWork; the
+   * single-record fetchers leave it false.
+   */
+  hasCurrentFinalFiles?: boolean;
+  /**
+   * True when this work's final-files request row exists in `settings` — ONE row per
+   * project (`steven_final_files_requested_project:{projectId}`), or per standalone
+   * work (`steven_final_files_requested:{workId}`). Written when Steven's LAST open
+   * work on the project completes, deleted when a Steven work on it becomes open
+   * again or a new open one is created (see lib/steven-completion.ts). Together with
+   * `!hasCurrentFinalFiles` it turns on Steven's "Upload Final Files" focus state, so a work
+   * completed long before this existed never shows it. Populated ONLY by
+   * listSoundEngineerWork.
+   */
+  finalFilesRequested?: boolean;
 }
 
 /** Input to create an alert (before DB insertion) */
