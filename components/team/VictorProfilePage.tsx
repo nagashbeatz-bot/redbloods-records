@@ -777,6 +777,32 @@ function normalizeSegs(list: BriefSegment[], dur: number): BriefSegment[] {
   return out;
 }
 
+// Shared boundary between two neighbors. Moving an INTERNAL edge of block `id`
+// ("start" = its boundary with the previous block, "end" = with the next one)
+// sets prev.end and next.start to the exact same value — never a gap, never an
+// overlap — clamped so both blocks keep ≥ MIN_SEG. Only those two blocks change.
+// Returns null for an OUTER edge (no neighbor): the caller keeps its own behavior.
+// Used by BOTH the pointer drag and the Advanced start/end fields.
+function moveSharedBoundary(list: BriefSegment[], id: string, edge: "start" | "end", raw: number): { list: BriefSegment[]; b: number } | null {
+  const sorted = [...list].sort((a, b) => a.start - b.start);
+  const i = sorted.findIndex(s => s.id === id);
+  const s = sorted[i];
+  const n = sorted[edge === "start" ? i - 1 : i + 1];
+  if (!s || !n) return null;
+  const lo = edge === "start" ? n.start + MIN_SEG : s.start + MIN_SEG;
+  const hi = edge === "start" ? s.end - MIN_SEG : n.end - MIN_SEG;
+  const cur = edge === "start" ? s.start : s.end;
+  const b = hi >= lo ? Math.min(hi, Math.max(lo, raw)) : cur;
+  return {
+    b,
+    list: list.map(x => {
+      if (x.id === id) return edge === "start" ? { ...x, start: b } : { ...x, end: b };
+      if (x.id === n.id) return edge === "start" ? { ...x, end: b } : { ...x, start: b };
+      return x;
+    }),
+  };
+}
+
 // The page used to declare its own IconPlay/Pause/Download/Trash/Music here.
 // They now live in ./victor-icons together with the rest of the set, so every
 // icon on the Victor pages comes from one place and shares one stroke language.
@@ -833,9 +859,11 @@ function BriefSegmentPlayer({
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const laneRef = useRef<HTMLDivElement | null>(null);
   const [laneW, setLaneW] = useState(0); // lane px width → decide label detail per block
-  // nb = the neighbor that shares the dragged edge (resize modes only): its id
-  // plus its FIXED far edge (nEdge), so the shared boundary can move within them.
-  const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean; nb: null | { id: string; nEdge: number }; b: number | null }>(null);
+  // shared = the dragged edge is an internal boundary (has a neighbor); b = its
+  // latest boundary value while dragging (saved exactly on release).
+  const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean; shared: boolean; b: number | null }>(null);
+  // Text being typed in an Advanced start/end field (so clamping never rewrites what you type).
+  const [advDraft, setAdvDraft] = useState<{ id: string; key: "start" | "end"; text: string } | null>(null);
   const segsRef = useRef(segs); segsRef.current = segs;
   const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
 
@@ -965,9 +993,15 @@ function BriefSegmentPlayer({
     persist(segs.filter(s => s.id !== id));
   }
   // Advanced numeric / custom-name edits: update locally, save on blur (flush).
+  // An internal start/end is a SHARED boundary (same rule as drag); outer edges and
+  // the custom name keep the existing normalize path.
   function editActiveLocal(patch: Partial<BriefSegment>) {
     if (!activeId) return;
-    setSegs(prev => normalizeSegs(prev.map(s => s.id === activeId ? { ...s, ...patch } : s), duration));
+    const edge = patch.start !== undefined ? "start" : patch.end !== undefined ? "end" : null;
+    setSegs(prev => {
+      const shared = edge ? moveSharedBoundary(prev, activeId, edge, patch[edge] as number) : null;
+      return shared ? shared.list : normalizeSegs(prev.map(s => s.id === activeId ? { ...s, ...patch } : s), duration);
+    });
   }
   // Drag / resize via pointer events (no library). "move" = whole block; "l"/"r"
   // = resize that edge. Live free-move (clamped to bounds); cascade on release.
@@ -978,24 +1012,10 @@ function BriefSegmentPlayer({
     e.stopPropagation();
     const seg = segs.find(s => s.id === id); if (!seg) return;
     setActiveId(id);
-    let nb: { id: string; nEdge: number } | null = null;
-    if (mode !== "move") {
-      const sorted = [...segsRef.current].sort((a, b) => a.start - b.start);
-      const i = sorted.findIndex(s => s.id === id);
-      const n = sorted[mode === "l" ? i - 1 : i + 1];
-      if (n) nb = { id: n.id, nEdge: mode === "l" ? n.start : n.end };
-    }
-    dragRef.current = { id, mode, startX: e.clientX, s0: seg.start, e0: seg.end, moved: false, nb, b: null };
+    // Internal edge? (moveSharedBoundary returns null when there is no neighbor.)
+    const shared = mode !== "move" && moveSharedBoundary(segsRef.current, id, mode === "l" ? "start" : "end", 0) !== null;
+    dragRef.current = { id, mode, startX: e.clientX, s0: seg.start, e0: seg.end, moved: false, shared, b: null };
     try { laneRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-  }
-  // Set the shared boundary to b: the dragged block's edge and its neighbor's
-  // adjacent edge get the exact same value (no gap, no overlap). Nothing else moves.
-  function applyBoundary(list: BriefSegment[], dr: { id: string; mode: "move" | "l" | "r"; nb: { id: string } | null }, b: number): BriefSegment[] {
-    return list.map(s => {
-      if (s.id === dr.id) return dr.mode === "l" ? { ...s, start: b } : { ...s, end: b };
-      if (dr.nb && s.id === dr.nb.id) return dr.mode === "l" ? { ...s, end: b } : { ...s, start: b };
-      return s;
-    });
   }
   function onLaneMove(e: React.PointerEvent) {
     const dr = dragRef.current, lane = laneRef.current, d = duration;
@@ -1003,15 +1023,10 @@ function BriefSegmentPlayer({
     const w = lane.getBoundingClientRect().width; if (!w) return;
     if (Math.abs(e.clientX - dr.startX) > 4) dr.moved = true;
     const delta = ((e.clientX - dr.startX) / w) * d;
-    if (dr.nb && dr.mode !== "move") {
+    if (dr.shared && dr.mode !== "move") {
       if (!dr.moved) return; // a tap must not touch anything
-      // Boundary stays ≥ MIN_SEG away from each block's far edge.
-      const lo = dr.mode === "l" ? dr.nb.nEdge + MIN_SEG : dr.s0 + MIN_SEG;
-      const hi = dr.mode === "l" ? dr.e0 - MIN_SEG : dr.nb.nEdge - MIN_SEG;
-      const cur = dr.mode === "l" ? dr.s0 : dr.e0;
-      const b = hi >= lo ? Math.min(hi, Math.max(lo, cur + delta)) : cur;
-      dr.b = b;
-      setSegs(prev => applyBoundary(prev, dr, b));
+      const res = moveSharedBoundary(segsRef.current, dr.id, dr.mode === "l" ? "start" : "end", (dr.mode === "l" ? dr.s0 : dr.e0) + delta);
+      if (res) { dr.b = res.b; setSegs(res.list); }
       return;
     }
     setSegs(prev => prev.map(s => {
@@ -1033,7 +1048,10 @@ function BriefSegmentPlayer({
     if (!dr.moved) { const seg = segsRef.current.find(s => s.id === dr.id); if (seg) seekTo(seg.start); return; }
     // Shared-boundary drag: already contiguous + ≥ MIN_SEG by construction → save
     // exactly that (a normalize pass could reintroduce float drift at the seam).
-    if (dr.nb && dr.mode !== "move" && dr.b !== null) { persist(applyBoundary(segsRef.current, dr, dr.b)); return; }
+    if (dr.shared && dr.mode !== "move" && dr.b !== null) {
+      const res = moveSharedBoundary(segsRef.current, dr.id, dr.mode === "l" ? "start" : "end", dr.b);
+      if (res) { persist(res.list); return; }
+    }
     persist(normalizeSegs(segsRef.current, duration)); // cascade + save on release
   }
 
@@ -1057,7 +1075,8 @@ function BriefSegmentPlayer({
   function segGeo(seg: BriefSegment) {
     return {
       left: dur ? Math.min(100, (seg.start / dur) * 100) : 0,
-      width: dur ? Math.max(4, ((seg.end - seg.start) / dur) * 100) : 0,
+      // True to the data: width is exactly (end - start) / dur — no visual minimum.
+      width: dur ? ((seg.end - seg.start) / dur) * 100 : 0,
     };
   }
 
@@ -1134,17 +1153,24 @@ function BriefSegmentPlayer({
               const wPx = (width / 100) * laneW;
               const tier = wPx >= fullMin ? "full" : wPx >= shortMin ? "short" : "dot";
               const pad = tier === "full" ? "0 12px" : tier === "short" ? "0 6px" : "0";
+              // Handle hit area is always handleW wide. In a narrow block the visible
+              // grip shrinks (so the body stays reachable) and the rest of the hit
+              // area extends OUTSIDE the block — the block's own width never grows.
+              const grip = Math.max(3, Math.min(handleW, Math.floor(wPx / 3)));
+              const reach = handleW - grip;
               return (
                 <div key={seg.id}
                   onPointerDown={isOwner ? (e) => beginDrag(e, seg.id, "move") : undefined}
                   onClick={isOwner ? undefined : () => { seekTo(seg.start); setActiveId(seg.id); }}
                   title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
-                  style={{ position: "absolute", top: 5, bottom: 5, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 8, color: "#fff", fontSize: blockFont, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: pad, userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
-                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", borderRadius: "8px 0 0 8px", background: `${seg.color}55` }} />}
+                  style={{ position: "absolute", top: 5, bottom: 5, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 8, color: "#fff", fontSize: blockFont, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: pad, userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
+                  {isOwner && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: grip, borderRadius: "8px 0 0 8px", background: `${seg.color}55`, pointerEvents: "none" }} />}
+                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: -reach, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", zIndex: 2 }} />}
                   {tier === "dot"
                     ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.92)", boxShadow: active ? `0 0 0 2px ${seg.color}` : "none", flexShrink: 0, pointerEvents: "none" }} />
                     : <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{tier === "full" ? segLabel(seg, t) : segShortLabel(seg, t)}</span>}
-                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", borderRadius: "0 8px 8px 0", background: `${seg.color}55` }} />}
+                  {isOwner && <span style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: grip, borderRadius: "0 8px 8px 0", background: `${seg.color}55`, pointerEvents: "none" }} />}
+                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: -reach, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", zIndex: 2 }} />}
                 </div>
               );
             })}
@@ -1220,7 +1246,9 @@ function BriefSegmentPlayer({
                   {(["start", "end"] as const).map(key => (
                     <label key={key} style={{ flex: 1 }}>
                       <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 3 }}>{t(`seg.${key}`)} (s)</div>
-                      <input type="number" min={0} value={Math.round(activeSeg[key])} onChange={e => editActiveLocal({ [key]: Math.max(0, Number(e.target.value) || 0) })} onBlur={flush} style={{ ...inputStyle, direction: "ltr" }} />
+                      <input type="number" min={0} value={advDraft?.id === activeSeg.id && advDraft.key === key ? advDraft.text : Math.round(activeSeg[key])}
+                        onChange={e => { setAdvDraft({ id: activeSeg.id, key, text: e.target.value }); editActiveLocal({ [key]: Math.max(0, Number(e.target.value) || 0) }); }}
+                        onBlur={() => { setAdvDraft(null); flush(); }} style={{ ...inputStyle, direction: "ltr" }} />
                     </label>
                   ))}
                 </div>
