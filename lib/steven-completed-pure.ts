@@ -227,6 +227,19 @@ export function finalFilesFocusVisible(s: {
     && s.uiStatus === "הושלם" && s.finalFilesRequested && !s.hasCurrentFinalFiles;
 }
 
+/**
+ * The optimistic LOCAL update for a status edit made in the UI. finalFilesRequested /
+ * hasCurrentFinalFiles belong to the SERVER (a completion creates the request row, a
+ * reopen releases it), so they are cleared here — never guessed, and never left over
+ * from an earlier cycle. Without this, completing a job again in the same open modal
+ * would show the focus state from the STALE flags before the server had confirmed the
+ * transition. The caller re-reads the list after a successful PATCH; only then can the
+ * flags — and so the focus state — appear.
+ */
+export function withFinalFilesHintsCleared<T extends { finalFilesRequested?: boolean; hasCurrentFinalFiles?: boolean }>(work: T): T {
+  return { ...work, finalFilesRequested: false, hasCurrentFinalFiles: false };
+}
+
 // ── Texts ─────────────────────────────────────────────────────────────────────
 
 /** Shape-compatible with lib/push.ts PushPayload (kept local: this file must not

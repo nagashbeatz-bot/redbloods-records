@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
-import { finalFilesFocusVisible } from "@/lib/steven-completed-pure";
+import { finalFilesFocusVisible, withFinalFilesHintsCleared } from "@/lib/steven-completed-pure";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
@@ -1082,7 +1082,11 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
       // The picker writes the raw ISO date; keep the display string (DD.MM.YY)
       // derived from it so the card + jobs table update immediately.
       if (patch.deadlineISO !== undefined) next.deadline = fmtDbDate(patch.deadlineISO);
-      return next;
+      // A status edit changes what the SERVER holds about this job's final-files request
+      // (created on a completion, released on a reopen): clear the local hints instead of
+      // guessing them, so the focus state can only appear after the server confirmed the
+      // transition and the list below was re-read.
+      return patch.status !== undefined ? withFinalFilesHintsCleared(next) : next;
     }));
     if (!target || !target.dbBacked) return true; // manual "new work" rows are local-only
 
@@ -1119,6 +1123,11 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         const sync = d?.completion?.projectSync;
         if (sync === "updated" && isOwner) void refreshProjects();
         else if (sync === "failed") notify(rtl ? "העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט." : "Steven's job was marked completed, but the project status could not be updated.", 8000);
+        // The PATCH succeeded, so the server has now decided whether this completion made
+        // a final-files request. Re-read the list (never assume) — an open WorkModal picks
+        // finalFilesRequested up from it and shows the focus state right away, with no
+        // need to close and re-open. Errors are swallowed inside reloadWorks.
+        await reloadWorks();
       }
       return true;
     } catch {
@@ -1958,6 +1967,16 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     // must NOT re-run when the works list it refreshes hands us a new `work`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A status change in this open modal starts a different situation: a dismissal or an
+  // upload from the previous state must not hide the focus state of a NEW completion
+  // (complete → dismiss/upload → reopen → complete again, all inside one open).
+  const lastStatusRef = useRef(work.status);
+  useEffect(() => {
+    if (lastStatusRef.current === work.status) return;
+    lastStatusRef.current = work.status;
+    setDismissed(false);
+    setFinalUploaded(false);
+  }, [work.status]);
   const focusMode = finalFilesFocusVisible({
     fresh, dismissed, finalUploaded, uiStatus: work.status,
     finalFilesRequested: !!work.finalFilesRequested, hasCurrentFinalFiles: !!work.hasCurrentFinalFiles,

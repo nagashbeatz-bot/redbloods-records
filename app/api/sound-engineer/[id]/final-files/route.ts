@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!file) return NextResponse.json({ ok: false, error: "חסר קובץ" }, { status: 400 });
     const batchId = (form.get("batchId") as string | null) ?? null;
 
-    const result = await uploadFinalFileSingle(workId, file, batchId);
+    const result = await uploadFinalFileSingle(workId, file, batchId, "owner");
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
     return NextResponse.json({ ok: true, file: { id: result.file.id, fileName: result.file.fileName } });
   } catch (err) {

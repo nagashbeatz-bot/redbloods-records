@@ -26,6 +26,7 @@ import {
   decideProjectSync,
   computeFinalFilesFlags,
   finalFilesFocusVisible,
+  withFinalFilesHintsCleared,
   parseRequestAt,
   finalFilesRequestedKey,
   finalFilesRequestedProjectKey,
@@ -749,6 +750,73 @@ async function main() {
 
     check("the decision has NO role input at all (structural: one object param, no role/isSteven/isOwner in it)",
       finalFilesFocusVisible.length === 1 && !/isSteven|isOwner|role/i.test(finalFilesFocusVisible.toString()));
+  }
+
+  console.log("\n— IMMEDIATE FOCUS STATE when the owner completes a job INSIDE the open modal —");
+  {
+    // `local` = what the open WorkModal holds. updateWork applies an OPTIMISTIC local edit, sends the PATCH, and
+    // only after a successful PATCH re-reads the list from the server (reloadWorks) — the server truth replaces it.
+    type CW = { status: string; finalFilesRequested: boolean; hasCurrentFinalFiles: boolean };
+    const uiStatus = (db: string) => (db === "אושר" ? "הושלם" : db === "לא נשלח" ? "לא התחיל" : "פעיל");
+    const fromServer = (w: World, id: string): CW => { const f = w.flags(); return { status: uiStatus(w.works[id].status), finalFilesRequested: f.finalFilesRequested.has(id), hasCurrentFinalFiles: f.hasCurrentFinalFiles.has(id) }; };
+    const focus = (c: CW) => finalFilesFocusVisible({ fresh: true, dismissed: false, finalUploaded: false, uiStatus: c.status, finalFilesRequested: c.finalFilesRequested, hasCurrentFinalFiles: c.hasCurrentFinalFiles });
+    const editLocally = (c: CW, status: string): CW => withFinalFilesHintsCleared({ ...c, status });   // exactly what updateWork does
+
+    {
+      const w = makeWorld({ projects: { P: { status: "בעבודה", endDate: null } }, works: { A: { projectId: "P", status: "בתהליך" } } });
+      let local = fromServer(w, "A");                                          // 1. the owner opens an ACTIVE job
+      check("1. an active job opens with no focus state", !focus(local));
+      const beforeEdit = local;
+      local = editLocally(local, "הושלם");                                      // 2. picks "הושלם" inside the modal; PATCH in flight
+      check("2. optimistic edit only → NO focus state (the server has not confirmed anything)", !focus(local));
+      w.commit("A"); const out = await w.run("A", "P");                        //    the PATCH succeeds: server completes + creates the request
+      check("(server side of that PATCH: completed, request made, one push)", out.push === "sent" && w.stevenPushes.length === 1);
+      check("3. …and still none until the list has been re-read (nothing is assumed from the PATCH response)", !focus(local));
+      local = fromServer(w, "A");                                              //    reloadWorks() after the successful PATCH
+      check("3. after PATCH success + refresh the focus state appears AT ONCE, in the same open modal", focus(local));
+      check("4. no close/re-open was needed: the same `local` object went from no-focus to focus with one server refresh", !focus(beforeEdit) && focus(local));
+      const pushesBefore = w.stevenPushes.length;
+      for (let i = 0; i < 5; i++) fromServer(w, "A");                          // 5. refreshes / re-reads never write or push
+      const repeat = await w.run("A", "P", "U-repeat");                        //    and a repeated completion is a duplicate
+      check("5. refreshing does not push; a repeated completion is skipped_duplicate", w.stevenPushes.length === pushesBefore && repeat.push === "skipped_duplicate");
+    }
+    {
+      // the PATCH fails → the optimistic edit is reverted and nothing ever showed
+      const w = makeWorld({ projects: { P: { status: "בעבודה", endDate: null } }, works: { A: { projectId: "P", status: "בתהליך" } } });
+      const target = fromServer(w, "A"); let local = editLocally(target, "הושלם");
+      const shownDuring = focus(local);
+      local = target;                                                          // revert on failure
+      check("a FAILED PATCH: the focus state never showed, and the revert leaves none", !shownDuring && !focus(local) && w.rows.size === 0);
+    }
+    {
+      // the PATCH succeeds but this completion made no request (another Steven work is still open)
+      const w = makeWorld({
+        projects: { P: { status: "בעבודה", endDate: null } },
+        works: { A: { projectId: "P", status: "בתהליך" }, B: { projectId: "P", status: "בתהליך" } },
+      });
+      let local = editLocally(fromServer(w, "A"), "הושלם");
+      w.commit("A"); await w.run("A", "P");
+      local = fromServer(w, "A");
+      check("a completion that made NO request (sibling still open) → no focus state, even after the refresh", !focus(local) && w.stevenPushes.length === 0);
+    }
+    {
+      // a SECOND cycle inside the same open modal — the stale-hints trap the clear step exists for
+      const w = makeWorld({ projects: { P: { status: "בעבודה", endDate: null } }, works: { A: { projectId: "P", status: "בתהליך" } } });
+      w.commit("A"); await w.run("A", "P", "U1");
+      let local = fromServer(w, "A");
+      check("(cycle 1) the job is completed and the focus state is on", focus(local));
+      const stale = { ...local, status: "פעיל" };                              // WITHOUT the clear step the request flag would linger…
+      check("(why the hints are cleared) lingering flags + an optimistic re-completion WOULD show the focus state before the server confirmed", focus({ ...stale, status: "הושלם" }));
+      local = editLocally(local, "פעיל"); await w.reopen("A");                 // owner reopens inside the modal
+      check("reopen: no focus state", !focus(local));
+      local = editLocally(local, "הושלם");                                      // completes again — PATCH in flight
+      check("cycle 2, optimistic: NO focus state yet (stale flags were cleared, not reused)", !focus(local));
+      w.advance(DAY); w.commit("A"); await w.run("A", "P", "U2");
+      local = fromServer(w, "A");
+      check("cycle 2 after PATCH success + refresh: the focus state appears at once, and a second push went out", focus(local) && w.stevenPushes.length === 2);
+      w.advance(10 * MIN); w.upload("A"); local = fromServer(w, "A");
+      check("an upload after the new request lifts it", !focus(local));
+    }
   }
 
   console.log("\n— keys / texts —");

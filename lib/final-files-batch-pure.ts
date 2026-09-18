@@ -42,6 +42,25 @@ export function isBatchStale(existing: BatchValue, nowMs: number, staleMs: numbe
   return nowMs - new Date(existing.lastUpdateAt).getTime() >= staleMs;
 }
 
+/** Who performed a final-files upload — decided by WHICH ROUTE received it (the owner routes
+ *  are requireOwner-gated, Steven's are ownership-checked), never by a client value. */
+export type FinalUploader = "owner" | "steven";
+
+/**
+ * Pure: should a successful final-file save be counted into the owner-summary batch
+ * ("Steven העלה קבצים סופיים")? Only when STEVEN uploaded into one of Steven's works with
+ * a batch id. When the owner uploads, they did it themselves — the summary would
+ * attribute their own action to Steven, so no batch is recorded and no push is sent
+ * (the explicit batch-complete call is then a silent no-op: no row → nothing to claim).
+ */
+export function shouldRecordFinalFilesBatch(a: {
+  batchId: string | null | undefined;
+  isStevenWork: boolean;
+  uploader: FinalUploader;
+}): boolean {
+  return !!a.batchId && a.isStevenWork && a.uploader === "steven";
+}
+
 export interface FinalFilesPush { title: string; body: string; url: string }
 
 /** Exact copy requested — singular/plural, workId/workName are the only

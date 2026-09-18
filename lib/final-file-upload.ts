@@ -3,6 +3,7 @@ import { finalFilesFolder } from "@/lib/project-paths";
 import { dropboxArg } from "@/lib/mix-version-upload";
 import { finalFileNameExists, createFinalFile, type FinalFile } from "@/lib/final-files-store";
 import { STEVEN_ENGINEER } from "@/lib/steven-scope";
+import { shouldRecordFinalFilesBatch, type FinalUploader } from "@/lib/final-files-batch-pure";
 
 /**
  * "Upload Final Files" upload core — server-only, SEPARATE from mix versions.
@@ -93,6 +94,8 @@ async function dropboxDelete(token: string, path: string): Promise<void> {
 export async function finalizeFinalFile(args: {
   workId: string; target: FinalTarget; fileName: string; finalPath: string;
   fileSize: number | null; token: string; batchId?: string | null;
+  /** Who is uploading — the ROUTE decides (owner route → "owner", Steven's → "steven"). */
+  uploader: FinalUploader;
 }): Promise<FinalUploadResult> {
   const res = await createFinalFile({
     workId: args.workId,
@@ -108,18 +111,18 @@ export async function finalizeFinalFile(args: {
     return { ok: false, status: 409, error: FINAL_CONFLICT_MSG };
   }
 
-  // The row is committed — anything uploaded into Steven's work counts as a
-  // "Steven uploaded final files" batch for owner-notification purposes,
-  // regardless of whether Owner or Steven actually clicked upload (business
-  // rule — same as mix-version-upload.ts's queueStevenUploadNotice gate).
+  // The row is committed. A file STEVEN uploads into his own work counts into a
+  // "Steven uploaded final files" batch for the owner's summary push. A file the OWNER
+  // uploads does not: they did it themselves, and the summary would credit it to Steven
+  // (see shouldRecordFinalFilesBatch — the upload itself is unaffected either way).
   // Best-effort: never fails the upload. Requires an explicit batchId — a
   // client-side "Upload Final Files" run generates one and passes it on every
   // file in that run, so the eventual summary push is keyed to the BATCH, not
   // just workId (a work can have several batches over time).
-  if (args.batchId && args.target.engineerName === STEVEN_ENGINEER) {
+  if (shouldRecordFinalFilesBatch({ batchId: args.batchId, isStevenWork: args.target.engineerName === STEVEN_ENGINEER, uploader: args.uploader })) {
     try {
       const { recordFinalFileBatchSuccess } = await import("@/lib/final-files-batch-notify");
-      await recordFinalFileBatchSuccess(args.batchId, args.workId, args.target.workName);
+      await recordFinalFileBatchSuccess(args.batchId as string, args.workId, args.target.workName);
     } catch (notifyErr) {
       console.error("[final-file-upload] batch record failed:", notifyErr);
     }
@@ -132,7 +135,7 @@ export async function finalizeFinalFile(args: {
  * Single-shot upload (≤150MB) of one final file, keeping the original name. Caller
  * must have authorized the write for `workId`.
  */
-export async function uploadFinalFileSingle(workId: string, file: File, batchId?: string | null): Promise<FinalUploadResult> {
+export async function uploadFinalFileSingle(workId: string, file: File, batchId: string | null | undefined, uploader: FinalUploader): Promise<FinalUploadResult> {
   if (!file) return { ok: false, status: 400, error: "חסר קובץ" };
   const nameErr = validateFinalFileName(file.name);
   if (nameErr) return { ok: false, status: 400, error: nameErr };
@@ -168,5 +171,5 @@ export async function uploadFinalFileSingle(workId: string, file: File, batchId?
     return { ok: false, status: 500, error: `Dropbox: ${detail}` };
   }
   const uploaded = (await uploadRes.json()) as { path_display: string };
-  return finalizeFinalFile({ workId, target, fileName: file.name, finalPath: uploaded.path_display, fileSize: file.size, token, batchId });
+  return finalizeFinalFile({ workId, target, fileName: file.name, finalPath: uploaded.path_display, fileSize: file.size, token, batchId, uploader });
 }

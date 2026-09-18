@@ -16,6 +16,7 @@ import {
   shouldClaimBatch,
   isBatchStale,
   buildFinalFilesBatchPush,
+  shouldRecordFinalFilesBatch,
   type BatchValue,
 } from "../lib/final-files-batch-pure";
 
@@ -168,6 +169,38 @@ function main() {
     const wrongWork = s.complete("batch-8", "not-w8");
     check("completing with the wrong workId is rejected", wrongWork === "not_owned" && s.pushes.length === 0);
     check("the real batch is untouched and can still be completed by its real work", s.complete("batch-8", "w8") === "sent");
+  }
+
+  // ── Owner uploads must not produce "Steven uploaded final files" ─────────────────────────────
+  // finalizeFinalFile records into a batch only when shouldRecordFinalFilesBatch says so; the owner routes pass
+  // uploader "owner", Steven's pass "steven". Without a recorded batch the client's batch-complete is a silent no-op.
+  {
+    const s = makeStore();
+    const now = new Date().toISOString();
+    const upload = (batchId: string, workId: string, name: string, uploader: "owner" | "steven", files: number, isStevenWork = true) => {
+      for (let i = 0; i < files; i++) if (shouldRecordFinalFilesBatch({ batchId, isStevenWork, uploader })) s.recordSuccess(batchId, workId, name, now);
+    };
+
+    s.resetPushes();
+    upload("own-1", "w1", "Song A", "owner", 3);
+    check("OWNER uploads 3 files into Steven's work → no batch is recorded", s.peek("own-1") === null);
+    check("OWNER's batch-complete is a silent no-op → NO owner push at all", s.complete("own-1", "w1") === "no_batch" && s.pushes.length === 0);
+
+    s.resetPushes();
+    upload("stv-1", "w1", "Song A", "steven", 3);
+    check("STEVEN uploads 3 files → the batch is recorded", s.peek("stv-1") !== null);
+    check("STEVEN's batch-complete sends exactly one existing summary push (3 files)", s.complete("stv-1", "w1") === "sent" && s.pushes.length === 1 && s.pushes[0].successCount === 3);
+    check("…with the unchanged copy", buildFinalFilesBatchPush("w1", "Song A", 3).body === "Steven העלה 3 קבצים סופיים ל-Song A" && buildFinalFilesBatchPush("w1", "Song A", 1).body === "Steven העלה קובץ סופי ל-Song A");
+
+    s.resetPushes();
+    upload("stv-2", "w2", "Song B", "steven", 2);                        // Steven's run is still open…
+    upload("own-2", "w2", "Song B", "owner", 4);                         // …when the owner uploads to the same work
+    check("an owner upload never joins or disturbs Steven's open batch", s.complete("own-2", "w2") === "no_batch" && s.peek("stv-2") !== null);
+    check("Steven's batch then reports ONLY Steven's own 2 files", s.complete("stv-2", "w2") === "sent" && s.pushes.length === 1 && s.pushes[0].successCount === 2);
+
+    check("no batch id → never recorded (either uploader)", !shouldRecordFinalFilesBatch({ batchId: null, isStevenWork: true, uploader: "steven" }) && !shouldRecordFinalFilesBatch({ batchId: "", isStevenWork: true, uploader: "steven" }) && !shouldRecordFinalFilesBatch({ batchId: undefined, isStevenWork: true, uploader: "owner" }));
+    check("a non-Steven work (Bill etc.) is never recorded (unchanged)", !shouldRecordFinalFilesBatch({ batchId: "b", isStevenWork: false, uploader: "steven" }) && !shouldRecordFinalFilesBatch({ batchId: "b", isStevenWork: false, uploader: "owner" }));
+    check("the ONLY case that records: Steven uploading into a Steven work with a batch id", shouldRecordFinalFilesBatch({ batchId: "b", isStevenWork: true, uploader: "steven" }) && !shouldRecordFinalFilesBatch({ batchId: "b", isStevenWork: true, uploader: "owner" }));
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
