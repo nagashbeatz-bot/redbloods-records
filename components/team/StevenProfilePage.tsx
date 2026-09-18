@@ -948,22 +948,29 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Mobile layout: below 760px the desktop two-column body (jobs table + side
   // card) can't fit, so we stack to a single column and tighten the chrome.
   const narrow = useIsNarrow(760);
-  // Mid-desktop: keep the jobs table + payment history SIDE BY SIDE as long as a
-  // usable two-column composition physically fits. The floor is the jobs table's
-  // own minWidth (660) + the grid gap (16) + a still-readable payment column
-  // (280) = 956px of container. Measured on the container itself, so the 248px
-  // sidebar is already out of the number.
-  //   container >= 1200 : the original fluid 2.4fr / 1fr — wide screens, untouched.
-  //   956 .. 1200       : freeze the two columns at a compact size and centre the
-  //                       whole block, so a smaller window reads as the wide
-  //                       desktop shrunk & centred (not stretched, not stacked).
-  //   < 956             : two usable columns can't coexist -> stack to one column.
-  // (<=760 viewport is still handled by `narrow` — the mobile card layout.)
+  // Desktop: jobs table + payment history side by side ONLY when the container
+  // is provably wide enough for BOTH at their real size — never by shrinking
+  // the table or wrapping its Actions buttons (that's the bug this replaced:
+  // a fixed 2.4fr/1fr split could starve the table below what its own widest
+  // row needs, and the row's only non-nowrap cell — Actions — silently wrapped
+  // to two lines instead of the table properly requesting more room).
+  //
+  // The jobs table itself now reports its OWN true minimum width live: the
+  // <table> is `width: "max-content"` (not 100%) with every cell — including
+  // Actions — `nowrap`, so it always renders at its real single-line content
+  // width and `jobsTableRef` measures that via ResizeObserver. No hardcoded
+  // "how wide is the widest row" number: it re-measures itself if a project
+  // name gets longer/shorter, fonts change, or the language (he/en) changes.
+  //
+  // Two columns only once: mainW >= jobsTableNaturalWidth + SIDE_COL_WIDTH + GRID_GAP.
+  // Until the first measurement lands (jobsTableNaturalWidth == null), we default
+  // to stacked — never flash a two-column layout that might turn out too narrow.
   const [mainRef, mainW] = useContainerWidth<HTMLDivElement>();
-  const TWO_COL_MIN = 956;
-  const WIDE_MIN    = 1200;
-  const compactTwoCol = mainW != null && mainW >= TWO_COL_MIN && mainW < WIDE_MIN;
-  const stackMain     = mainW != null && mainW < TWO_COL_MIN;
+  const [jobsTableRef, jobsTableNaturalWidth] = useContainerWidth<HTMLTableElement>();
+  const SIDE_COL_WIDTH = 280; // payment-history column — same fixed width the old compact tier already proved sufficient
+  const GRID_GAP = 16;
+  const wideDesktop =
+    mainW != null && jobsTableNaturalWidth != null && mainW >= jobsTableNaturalWidth + SIDE_COL_WIDTH + GRID_GAP;
 
   function notify(msg: string) {
     setToast(msg);
@@ -1221,6 +1228,126 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Payment history — paid works, newest payment first (legacy/no-date rows sort last).
   const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
+  // Renders the jobs table. Used TWICE below (see the JSX): once visibly
+  // (width:"100%", fills its column) and once hidden/off-screen (width:"max-content",
+  // feeding jobsTableRef) — one source of truth for the markup, so the two copies
+  // can never drift apart. Every cell, including Actions, is nowrap: an auto-layout
+  // table can never shrink below this content's true width, it can only overflow
+  // into the existing overflowX:"auto" wrapper (the safety net) — never silently
+  // wrap a cell again.
+  const renderJobsTable = (opts?: { ref?: React.Ref<HTMLTableElement>; natural?: boolean }) => (
+    <table ref={opts?.ref} style={{ width: opts?.natural ? "max-content" : "100%", minWidth: 660, borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ background: CARD2 }}>
+          <th aria-hidden style={{ width: 26 }} />
+          {[t.project, t.projectTypeCol, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
+            <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+          ))}
+          {/* Actions column — subtle spotlight so the row-action area reads as one group */}
+          <th style={{ padding: "10px 14px", textAlign: "center", fontSize: 10, fontWeight: 800, color: "#E4DAC4", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", background: "radial-gradient(ellipse at center, rgba(245,158,11,0.12), rgba(245,158,11,0) 72%)" }}>{t.action}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
+              <td colSpan={9} style={{ padding: "0 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
+                  <Shimmer w={140} h={13} /><Shimmer w={60} h={22} r={999} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
+                  <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
+                  <Shimmer w={64} h={22} r={999} /><div style={{ flex: 1 }} /><Shimmer w={70} h={24} r={10} />
+                </div>
+              </td>
+            </tr>
+          ))
+        ) : works.length === 0 ? (
+          <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
+        ) : visibleWorks.length === 0 ? (
+          <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</td></tr>
+        ) : visibleWorks.map((w, i) => (
+          <tr key={w.id}
+            onClick={() => setOpenId(w.id)}
+            onMouseEnter={() => setHoverId(w.id)}
+            onMouseLeave={() => setHoverId(cur => (cur === w.id ? null : cur))}
+            onDragOver={e => { if (dragId && jobsTab === "active") { e.preventDefault(); if (overId !== w.id) setOverId(w.id); } }}
+            onDrop={e => { if (dragId && jobsTab === "active") { e.preventDefault(); void reorderWorks(dragId, w.id); } setDragId(null); setOverId(null); }}
+            style={{
+              borderTop: overId === w.id && dragId ? `2px solid ${BRAND}` : `1px solid ${BDR}`,
+              background: dragId === w.id ? "rgba(220,38,38,0.05)" : hoverId === w.id ? "rgba(220,38,38,0.08)" : (i % 2 ? "rgba(255,255,255,0.01)" : "transparent"),
+              opacity: dragId === w.id ? 0.5 : 1,
+              cursor: "pointer",
+              transition: "background 0.12s ease",
+            }}>
+            <td onClick={e => e.stopPropagation()} style={{ padding: "0 4px", textAlign: "center", width: 26 }}>
+              {/* Reorder handle — owner only, and only meaningful on the
+                  Active tab (History is date-sorted, not manually ordered). */}
+              {!isSteven && jobsTab === "active" && <span
+                draggable
+                onDragStart={e => { setDragId(w.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch {} }}
+                onDragEnd={() => { setDragId(null); setOverId(null); }}
+                title={rtl ? "גרור לשינוי סדר" : "Drag to reorder"}
+                style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>}
+            </td>
+            <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{w.project}</td>
+            <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}><ProjectTypeBadge projectType={w.projectType} lang={lang} /></td>
+            <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
+            <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
+              {isSteven ? (
+                // Steven: status is READ-ONLY (a colored badge, not a select).
+                <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${STATUS_COLOR[w.status]}1A`, border: `1px solid ${STATUS_COLOR[w.status]}40`, color: STATUS_COLOR[w.status] }}>{statusLabel(w.status, lang)}</span>
+              ) : (
+                <InlineSelect
+                  value={w.status}
+                  display={statusLabel(w.status, lang)}
+                  color={STATUS_COLOR[w.status]}
+                  options={OWNER_STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))}
+                  onChange={v => updateWork(w.id, { status: v })}
+                />
+              )}
+            </td>
+            <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
+            {/* Price — read-only text for both roles. */}
+            <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
+            {/* Payment — read-only badge for Steven; editable select for owner. */}
+            <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
+              {isSteven ? (
+                <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${PAY_COLOR[w.pay]}1A`, border: `1px solid ${PAY_COLOR[w.pay]}40`, color: PAY_COLOR[w.pay] }}>{payLabel(w.pay, lang)}</span>
+              ) : (
+                <InlineSelect
+                  value={w.pay}
+                  display={payLabel(w.pay, lang)}
+                  color={PAY_COLOR[w.pay]}
+                  options={[
+                    { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
+                    { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
+                  ]}
+                  onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
+                />
+              )}
+            </td>
+            <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
+              {/* nowrap: this is the ONE column the table's width threshold is
+                  built around (see renderJobsTable/jobsTableRef above) — it must
+                  never silently wrap to 2 lines again. */}
+              <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "nowrap" }}>
+                {/* Work Materials — light style, sits on the RIGHT (RTL first) */}
+                <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#E9E9EF"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; e.currentTarget.style.boxShadow = "0 0 10px rgba(255,255,255,0.18)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.boxShadow = "none"; }}
+                  style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><SlidersIcon size={13} /> {t.wmButton}</button>
+                {/* Open Job — dark w/ amber/gold border, sits on the LEFT (RTL second) */}
+                <button onClick={() => setOpenId(w.id)}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
+                  style={{ fontSize: 11, fontWeight: 700, color: "#F0B24A", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.openJob}</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "16px 16px calc(104px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
       <div ref={mainRef} style={{ maxWidth: 1600, margin: "0 auto" }}>
@@ -1312,21 +1439,17 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
 
         {/* ── Main grid ── (jobs table + Payment History side card, both roles) */}
-        {/* Three tiers (see the container-width block up top):
-              wide (>=1200)   : original fluid 2.4fr / 1fr, fills the container.
-              compact (956..1200): two columns frozen compact (table keeps its 660
-                                   min, payment a fixed 280) and the whole block
-                                   centred via maxWidth + marginInline:auto.
-              stack (<956) / mobile (<=760): one column, table then payment. */}
+        {/* Two tiers (see the container-width block up top — content-measured,
+              not a hardcoded number):
+              wide desktop : mainW >= jobsTableNaturalWidth + SIDE_COL_WIDTH + GRID_GAP
+                             -> table gets all remaining space, payment fixed 280px.
+              stacked (incl. mobile <=760, and "not measured yet"): one column,
+                             table at full width, payment card below it. */}
         <div style={{
           display: "grid",
-          gridTemplateColumns:
-            (narrow || stackMain) ? "minmax(0, 1fr)"
-            : compactTwoCol       ? "minmax(660px, 1fr) 280px"
-            :                       "minmax(0, 2.4fr) minmax(300px, 1fr)",
-          gap: 16,
+          gridTemplateColumns: (narrow || !wideDesktop) ? "minmax(0, 1fr)" : `minmax(0, 1fr) ${SIDE_COL_WIDTH}px`,
+          gap: GRID_GAP,
           alignItems: "start",
-          ...(compactTwoCol ? { maxWidth: 1040, marginInline: "auto" } : null),
         }}>
 
           <div style={sectionCard}>
@@ -1407,116 +1530,21 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
               </div>
             ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: 660, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: CARD2 }}>
-                    <th aria-hidden style={{ width: 26 }} />
-                    {[t.project, t.projectTypeCol, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                    {/* Actions column — subtle spotlight so the row-action area reads as one group */}
-                    <th style={{ padding: "10px 14px", textAlign: "center", fontSize: 10, fontWeight: 800, color: "#E4DAC4", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", background: "radial-gradient(ellipse at center, rgba(245,158,11,0.12), rgba(245,158,11,0) 72%)" }}>{t.action}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    Array.from({ length: 4 }).map((_, i) => (
-                      <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
-                        <td colSpan={9} style={{ padding: "0 14px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
-                            <Shimmer w={140} h={13} /><Shimmer w={60} h={22} r={999} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
-                            <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
-                            <Shimmer w={64} h={22} r={999} /><div style={{ flex: 1 }} /><Shimmer w={70} h={24} r={10} />
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : works.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
-                  ) : visibleWorks.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</td></tr>
-                  ) : visibleWorks.map((w, i) => (
-                    <tr key={w.id}
-                      onClick={() => setOpenId(w.id)}
-                      onMouseEnter={() => setHoverId(w.id)}
-                      onMouseLeave={() => setHoverId(cur => (cur === w.id ? null : cur))}
-                      onDragOver={e => { if (dragId && jobsTab === "active") { e.preventDefault(); if (overId !== w.id) setOverId(w.id); } }}
-                      onDrop={e => { if (dragId && jobsTab === "active") { e.preventDefault(); void reorderWorks(dragId, w.id); } setDragId(null); setOverId(null); }}
-                      style={{
-                        borderTop: overId === w.id && dragId ? `2px solid ${BRAND}` : `1px solid ${BDR}`,
-                        background: dragId === w.id ? "rgba(220,38,38,0.05)" : hoverId === w.id ? "rgba(220,38,38,0.08)" : (i % 2 ? "rgba(255,255,255,0.01)" : "transparent"),
-                        opacity: dragId === w.id ? 0.5 : 1,
-                        cursor: "pointer",
-                        transition: "background 0.12s ease",
-                      }}>
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "0 4px", textAlign: "center", width: 26 }}>
-                        {/* Reorder handle — owner only, and only meaningful on the
-                            Active tab (History is date-sorted, not manually ordered). */}
-                        {!isSteven && jobsTab === "active" && <span
-                          draggable
-                          onDragStart={e => { setDragId(w.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch {} }}
-                          onDragEnd={() => { setDragId(null); setOverId(null); }}
-                          title={rtl ? "גרור לשינוי סדר" : "Drag to reorder"}
-                          style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>}
-                      </td>
-                      <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{w.project}</td>
-                      <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}><ProjectTypeBadge projectType={w.projectType} lang={lang} /></td>
-                      <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
-                        {isSteven ? (
-                          // Steven: status is READ-ONLY (a colored badge, not a select).
-                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${STATUS_COLOR[w.status]}1A`, border: `1px solid ${STATUS_COLOR[w.status]}40`, color: STATUS_COLOR[w.status] }}>{statusLabel(w.status, lang)}</span>
-                        ) : (
-                          <InlineSelect
-                            value={w.status}
-                            display={statusLabel(w.status, lang)}
-                            color={STATUS_COLOR[w.status]}
-                            options={OWNER_STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))}
-                            onChange={v => updateWork(w.id, { status: v })}
-                          />
-                        )}
-                      </td>
-                      <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
-                      {/* Price — read-only text for both roles. */}
-                      <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
-                      {/* Payment — read-only badge for Steven; editable select for owner. */}
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
-                        {isSteven ? (
-                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${PAY_COLOR[w.pay]}1A`, border: `1px solid ${PAY_COLOR[w.pay]}40`, color: PAY_COLOR[w.pay] }}>{payLabel(w.pay, lang)}</span>
-                        ) : (
-                          <InlineSelect
-                            value={w.pay}
-                            display={payLabel(w.pay, lang)}
-                            color={PAY_COLOR[w.pay]}
-                            options={[
-                              { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
-                              { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
-                            ]}
-                            onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
-                          />
-                        )}
-                      </td>
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
-                          {/* Work Materials — light style, sits on the RIGHT (RTL first) */}
-                          <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#E9E9EF"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; e.currentTarget.style.boxShadow = "0 0 10px rgba(255,255,255,0.18)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.boxShadow = "none"; }}
-                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><SlidersIcon size={13} /> {t.wmButton}</button>
-                          {/* Open Job — dark w/ amber/gold border, sits on the LEFT (RTL second) */}
-                          <button onClick={() => setOpenId(w.id)}
-                            onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
-                            style={{ fontSize: 11, fontWeight: 700, color: "#F0B24A", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.openJob}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {renderJobsTable()}
             </div>
             )}
           </div>
+
+          {/* Hidden measurement copy of the same table (see renderJobsTable above
+              the return statement) — position:fixed + width:0 + overflow:hidden so
+              it never paints or affects page scroll/layout, but the <table> inside
+              still computes its own true intrinsic width (width:"max-content") and
+              feeds it to jobsTableRef, independent of the visible copy above. */}
+          {!narrow && (
+            <div aria-hidden style={{ position: "fixed", top: 0, insetInlineStart: 0, width: 0, height: 0, overflow: "hidden", visibility: "hidden", pointerEvents: "none" }}>
+              {renderJobsTable({ ref: jobsTableRef, natural: true })}
+            </div>
+          )}
 
           {/* Side cards — Payment History (read-only; shown to Steven too). */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1566,15 +1594,21 @@ function useIsNarrow(max = 760): boolean {
 }
 
 // ── Container-width hook — measures an element's OWN width via ResizeObserver ─────
-// Used for the mid-desktop breakpoint of the jobs/payments grid: window.innerWidth
-// would ignore the 248px app sidebar and mislead by ~265px, so we watch the real
-// content container instead. Returns null until the first measurement (SSR + first
-// client paint), which callers treat as "assume wide".
-function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number | null] {
-  const ref = useRef<T>(null);
+// Used for the jobs/payments grid's two-column threshold: window.innerWidth would
+// ignore the 248px app sidebar and mislead by ~265px, so we watch the real content
+// container instead — and, separately, to measure the jobs table's own intrinsic
+// width (see renderJobsTable). Returns null until the first measurement (SSR +
+// first client paint); every caller here treats null as "not ready" and defaults
+// to the stacked/single-column layout, never a wide one that might turn out wrong.
+function useContainerWidth<T extends HTMLElement>(): [(node: T | null) => void, number | null] {
+  // A callback ref (not useRef) so the effect re-attaches whenever the DOM node
+  // itself changes — needed for elements that conditionally mount/unmount (e.g.
+  // the jobs table, which swaps out for the mobile card list under `narrow`).
+  // A plain useRef would only ever observe the FIRST node and go stale after
+  // any such remount.
+  const [el, setEl] = useState<T | null>(null);
   const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
-    const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(entries => {
       for (const e of entries) setWidth(e.contentRect.width);
@@ -1582,8 +1616,8 @@ function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>,
     ro.observe(el);
     setWidth(el.getBoundingClientRect().width);
     return () => ro.disconnect();
-  }, []);
-  return [ref, width];
+  }, [el]);
+  return [setEl, width];
 }
 
 // ── Empty "ready work area" (versions / player) — structured, not tiny text ──────
