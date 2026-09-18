@@ -711,9 +711,16 @@ const SEG_COLOR: Record<BriefSegmentType, string> = {
   custom: "#6B7280",
 };
 // Decorative waveform heights — deterministic (no lib, no Math.random) so SSR
-// and client render identically (no hydration mismatch).
-const WAVE_BARS = Array.from({ length: 64 }, (_, i) =>
-  0.34 + 0.62 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6)));
+// and client render identically (no hydration mismatch). Sampled by normalized
+// position x∈[0,1] (same curve as the old 64-bar version) so the shape stays
+// stable while the bar COUNT follows the available width.
+const WAVE_BASE_BARS = 64;
+function waveHeight(x: number): number {
+  return 0.34 + 0.62 * Math.abs(Math.sin(x * WAVE_BASE_BARS * 1.7) * Math.cos(x * WAVE_BASE_BARS * 0.6));
+}
+const WAVE_MIN_BARS = 48;
+const WAVE_MAX_BARS = 320;
+const WAVE_BAR_PX = 5; // target px per bar (bar + gap)
 
 function segLabel(seg: BriefSegment, t: (k: string) => string): string {
   if (seg.type === "custom") return (seg.label ?? "").trim() || t("seg.custom");
@@ -774,15 +781,30 @@ function normalizeSegs(list: BriefSegment[], dur: number): BriefSegment[] {
 // They now live in ./victor-icons together with the rest of the set, so every
 // icon on the Victor pages comes from one place and shares one stroke language.
 
+// Empty host <div> rendered at the top of the project modal body; the player's
+// full song-structure editor is portaled into it (see BriefSegmentPlayer). One
+// slot per brief audio file so several files keep a stable order.
+function BriefEditorSlot({ slotKey, onHost }: { slotKey: string; onHost: (key: string, el: HTMLDivElement | null) => void }) {
+  const ref = useCallback((el: HTMLDivElement | null) => onHost(slotKey, el), [slotKey, onHost]);
+  return <div ref={ref} style={{ minWidth: 0 }} />;
+}
+
 // Inline brief-audio player with colored structure segments over the timeline.
 // Its own <audio>, guarded by the shared currentVictorAudio so it never plays
 // alongside a version. Segments persist via onSaveSegments (owner-only route).
+//
+// ONE component instance = ONE <audio> + ONE state. It renders two views of it:
+//   • a compact file row (play · name · download · delete) in place, and
+//   • the full wide editor (segments lane + waveform + block controls), portaled
+//     into `editorHost` at the top of the modal.
+// Both views read/write the same state, so there is never a second player.
 function BriefSegmentPlayer({
   file, workId, isOwner, onSaveSegments, onDownload, onDelete,
-  deleteConfirm, onDeleteConfirm, onDeleteCancel, deleting, deleteError,
+  deleteConfirm, onDeleteConfirm, onDeleteCancel, deleting, deleteError, editorHost,
 }: {
   file: FileLink;
   workId?: string;
+  editorHost: HTMLElement | null;
   isOwner: boolean;
   onSaveSegments: (segments: BriefSegment[]) => Promise<boolean>;
   onDownload: () => void;
@@ -820,6 +842,8 @@ function BriefSegmentPlayer({
 
   // Track the lane's pixel width so each block can pick full / short / dot label
   // by how much room it actually has (browser ResizeObserver — no library).
+  // The lane only exists once the editor is portaled into its host, so re-bind
+  // whenever the host element changes.
   useEffect(() => {
     const el = laneRef.current; if (!el) return;
     const update = () => setLaneW(el.getBoundingClientRect().width);
@@ -827,7 +851,7 @@ function BriefSegmentPlayer({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [editorHost]);
 
   // One stable <audio>; same single-active guard as the version player, so
   // brief audio and version audio can never play at the same time.
@@ -985,19 +1009,39 @@ function BriefSegmentPlayer({
     outline: "none", fontFamily: "inherit", boxSizing: "border-box", width: "100%",
   };
 
-  return (
-    <div style={{ borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
-      {/* Header: play · name · download · (owner) delete */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+  // ── Layout-only sizing for the wide editor (no behavior depends on these) ──
+  const laneH = isMobile ? 42 : 52;
+  const waveH = isMobile ? 78 : 120;
+  const handleW = isMobile ? 11 : 10;
+  const blockFont = isMobile ? 10 : 12;
+  const fullMin = isMobile ? 62 : 80;   // px a block needs to show its full name
+  const shortMin = isMobile ? 34 : 42;  // …its short name (below → a dot)
+  // Decorative bar count follows the lane width so a wide editor stays dense.
+  const barCount = laneW > 0
+    ? Math.max(WAVE_MIN_BARS, Math.min(WAVE_MAX_BARS, Math.round(laneW / WAVE_BAR_PX)))
+    : WAVE_BASE_BARS;
+  function segGeo(seg: BriefSegment) {
+    return {
+      left: dur ? Math.min(100, (seg.start / dur) * 100) : 0,
+      width: dur ? Math.max(4, ((seg.end - seg.start) / dur) * 100) : 0,
+    };
+  }
+
+  // Shared header: play · name · download · (owner) delete. Used by BOTH the
+  // compact in-place row and the wide top editor (same handlers, same state).
+  function renderHeader(big: boolean) {
+    const play = big && !isMobile ? 44 : big ? 40 : 34;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: big ? 14 : 10, padding: big ? (isMobile ? "12px 14px" : "16px 20px") : "10px 12px" }}>
         <button onClick={togglePlay} disabled={!hasUrl} title={name} style={{
-          width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+          width: play, height: play, borderRadius: "50%", flexShrink: 0,
           background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
           color: "#fff", cursor: hasUrl ? "pointer" : "not-allowed", display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 13, fontFamily: "inherit", outline: "none",
-        }}>{playing ? <IconPause size={15} /> : <IconPlay size={15} />}</button>
+        }}>{playing ? <IconPause size={big ? 18 : 15} /> : <IconPlay size={big ? 18 : 15} />}</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
-          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><IconMusic size={11} /> {t("seg.title")}</div>
+          <div title={name} style={{ fontSize: big ? 14 : 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
+          <div style={{ fontSize: big ? 11 : 9.5, color: MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><IconMusic size={11} /> {t("seg.title")}</div>
         </div>
         <button onClick={e => { e.stopPropagation(); onDownload(); }} disabled={!hasUrl} title={t("file.download")}
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", outline: "none" }}><IconDownload size={15} /></button>
@@ -1006,85 +1050,132 @@ function BriefSegmentPlayer({
             style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 8, cursor: "pointer", color: "#F87171", padding: 0, flexShrink: 0, outline: "none", fontFamily: "inherit" }}><IconTrash size={13} /></button>
         )}
       </div>
+    );
+  }
 
-      {/* Timeline block — forced LTR inside the RTL drawer so time flows L→R. */}
-      <div style={{ padding: "2px 12px 12px", direction: "ltr" }}>
-        {/* Structure segments — draggable/resizable blocks (owner); tap to seek */}
-        <div ref={laneRef} onPointerMove={isOwner ? onLaneMove : undefined} onPointerUp={isOwner ? onLaneUp : undefined}
-          style={{ position: "relative", height: 40, marginBottom: 6, borderRadius: 8, background: "rgba(255,255,255,0.025)", border: `1px solid ${BDR}`, touchAction: "none", overflow: "hidden" }}>
-          {segs.length === 0 && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED }}>{isOwner ? t("seg.hint") : t("seg.empty")}</div>
-          )}
-          {segs.map(seg => {
-            const left = dur ? Math.min(100, (seg.start / dur) * 100) : 0;
-            const width = dur ? Math.max(4, ((seg.end - seg.start) / dur) * 100) : 0;
-            const active = seg.id === activeId;
-            // Fit the label to the block's real px width: full → short → dot.
-            // No cut-off text: too narrow shows just a clean dot, and the full
-            // name+time is always in the tooltip and the selected toolbar.
-            const wPx = (width / 100) * laneW;
-            const tier = wPx >= 62 ? "full" : wPx >= 34 ? "short" : "dot";
-            const pad = tier === "full" ? "0 10px" : tier === "short" ? "0 5px" : "0";
-            return (
-              <div key={seg.id}
-                onPointerDown={isOwner ? (e) => beginDrag(e, seg.id, "move") : undefined}
-                onClick={isOwner ? undefined : () => { seekTo(seg.start); setActiveId(seg.id); }}
-                title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
-                style={{ position: "absolute", top: 4, bottom: 4, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 7, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: pad, userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
-                {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "7px 0 0 7px", background: `${seg.color}55` }} />}
-                {tier === "dot"
-                  ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.92)", boxShadow: active ? `0 0 0 2px ${seg.color}` : "none", flexShrink: 0, pointerEvents: "none" }} />
-                  : <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{tier === "full" ? segLabel(seg, t) : segShortLabel(seg, t)}</span>}
-                {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "0 7px 7px 0", background: `${seg.color}55` }} />}
-              </div>
-            );
-          })}
-        </div>
+  // Inline delete confirm (owner). Driven by the parent's deleteConfirm state, so
+  // it shows consistently in whichever view the owner clicked delete in.
+  function renderDeleteConfirm() {
+    if (!deleteConfirm) return null;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
+        <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>{t("file.deleteConfirm")}</span>
+        {deleteError && <span style={{ fontSize: 10, color: RED }}>{t("file.retryError")}</span>}
+        <button onClick={e => { e.stopPropagation(); onDelete(); }} disabled={deleting}
+          style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{deleting ? "…" : t("drawer.confirm")}</button>
+        <button onClick={e => { e.stopPropagation(); onDeleteCancel(); }} disabled={deleting}
+          style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("drawer.cancel")}</button>
+      </div>
+    );
+  }
 
-        {/* Decorative waveform + playhead — click / drag to seek */}
-        <div ref={barRef} onPointerDown={onBarPointerDown} onPointerMove={onBarPointerMove}
-          style={{ position: "relative", height: 42, cursor: "pointer", touchAction: "none", display: "flex", alignItems: "center", gap: 2, padding: "0 1px", borderRadius: 8, background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
-          {WAVE_BARS.map((h, i) => {
-            const barPct = ((i + 0.5) / WAVE_BARS.length) * 100;
-            const played = barPct <= progressPct;
-            return <div key={i} style={{ flex: 1, height: `${Math.round(h * 100)}%`, borderRadius: 1, background: played ? PURPLE : "rgba(255,255,255,0.14)" }} />;
-          })}
-          <div style={{ position: "absolute", left: `${progressPct}%`, top: 0, bottom: 0, width: 2, background: "#fff", opacity: 0.85, pointerEvents: "none" }} />
+  // The selected block's name + time (shared by owner toolbar and Victor's view).
+  const activeChip = activeSeg && (
+    <span style={{ fontSize: 11.5, fontWeight: 800, color: "#fff", padding: "4px 11px", borderRadius: 8, background: `${activeSeg.color}22`, border: `1px solid ${activeSeg.color}` }}>{segLabel(activeSeg, t)}</span>
+  );
+  const activeTime = activeSeg && (
+    <span style={{ fontSize: 11, color: MUTED, direction: "ltr" }}>{fmt(activeSeg.start)}–{fmt(activeSeg.end)}</span>
+  );
+
+  // ── Wide editor: segments lane + waveform in ONE stage, then block controls ──
+  const editor = (
+    <div style={{ borderRadius: 16, background: CARD, border: `1px solid ${PURPLE}40`, boxShadow: `0 0 0 1px ${PURPLE}10, 0 10px 34px rgba(139,92,246,0.10)`, overflow: "hidden", minWidth: 0 }}>
+      {renderHeader(true)}
+
+      {/* Timeline block — forced LTR inside the RTL modal so time flows L→R. */}
+      <div style={{ padding: isMobile ? "2px 14px 16px" : "4px 20px 20px", direction: "ltr" }}>
+        <div style={{ position: "relative", borderRadius: 12, background: "rgba(255,255,255,0.025)", border: `1px solid ${BDR}`, overflow: "hidden" }}>
+          {/* Structure segments — draggable/resizable blocks (owner); tap to seek */}
+          <div ref={laneRef} onPointerMove={isOwner ? onLaneMove : undefined} onPointerUp={isOwner ? onLaneUp : undefined}
+            style={{ position: "relative", height: laneH, borderBottom: `1px solid ${BDR}`, touchAction: "none", overflow: "hidden" }}>
+            {segs.length === 0 && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: MUTED }}>{isOwner ? t("seg.hint") : t("seg.empty")}</div>
+            )}
+            {segs.map(seg => {
+              const { left, width } = segGeo(seg);
+              const active = seg.id === activeId;
+              // Fit the label to the block's real px width: full → short → dot.
+              // No cut-off text: too narrow shows just a clean dot, and the full
+              // name+time is always in the tooltip and the selected toolbar.
+              const wPx = (width / 100) * laneW;
+              const tier = wPx >= fullMin ? "full" : wPx >= shortMin ? "short" : "dot";
+              const pad = tier === "full" ? "0 12px" : tier === "short" ? "0 6px" : "0";
+              return (
+                <div key={seg.id}
+                  onPointerDown={isOwner ? (e) => beginDrag(e, seg.id, "move") : undefined}
+                  onClick={isOwner ? undefined : () => { seekTo(seg.start); setActiveId(seg.id); }}
+                  title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
+                  style={{ position: "absolute", top: 5, bottom: 5, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 8, color: "#fff", fontSize: blockFont, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: pad, userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
+                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", borderRadius: "8px 0 0 8px", background: `${seg.color}55` }} />}
+                  {tier === "dot"
+                    ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.92)", boxShadow: active ? `0 0 0 2px ${seg.color}` : "none", flexShrink: 0, pointerEvents: "none" }} />
+                    : <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{tier === "full" ? segLabel(seg, t) : segShortLabel(seg, t)}</span>}
+                  {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: handleW, cursor: "ew-resize", borderRadius: "0 8px 8px 0", background: `${seg.color}55` }} />}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Decorative waveform — click / drag to seek. Colored bands echo each block. */}
+          <div style={{ position: "relative", height: waveH }}>
+            <div ref={barRef} onPointerDown={onBarPointerDown} onPointerMove={onBarPointerMove}
+              style={{ position: "absolute", inset: 0, cursor: "pointer", touchAction: "none", display: "flex", alignItems: "center", gap: 2, padding: "0 2px", overflow: "hidden" }}>
+              {Array.from({ length: barCount }, (_, i) => {
+                const x = (i + 0.5) / barCount;
+                const played = x * 100 <= progressPct;
+                return <div key={i} style={{ flex: 1, height: `${Math.round(waveHeight(x) * 92)}%`, borderRadius: 2, background: played ? PURPLE : "rgba(255,255,255,0.16)" }} />;
+              })}
+            </div>
+            {segs.map(seg => {
+              const { left, width } = segGeo(seg);
+              const active = seg.id === activeId;
+              return <div key={seg.id} style={{ position: "absolute", top: 0, bottom: 0, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "26" : "12"}`, borderLeft: `1px solid ${seg.color}${active ? "99" : "40"}`, borderRight: `1px solid ${seg.color}${active ? "99" : "40"}`, pointerEvents: "none" }} />;
+            })}
+          </div>
+
+          {/* Playhead spans lane + waveform so boundaries can be lined up against it */}
+          <div style={{ position: "absolute", left: `${progressPct}%`, top: 0, bottom: 0, width: 2, marginLeft: -1, background: "#fff", opacity: 0.85, pointerEvents: "none", zIndex: 3 }} />
         </div>
 
         {/* Time labels */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: MUTED, marginTop: 3 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 8 }}>
           <span>{fmt(cur)}</span>
           <span>{duration > 0 ? fmt(duration) : "—"}</span>
         </div>
 
         {/* Owner: click a type → block appears instantly; then drag / resize it */}
         {isOwner && (
-          <div style={{ marginTop: 11 }}>
-            <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 6, direction: formDir }}>{t("seg.addTitle")}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {SEG_ORDER.map(type => (
-                <button key={type} onClick={() => addSegment(type)} disabled={!duration} title={duration ? "" : t("seg.hint")}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: duration ? "pointer" : "not-allowed", fontFamily: "inherit", outline: "none", border: `1px solid ${SEG_COLOR[type]}66`, background: `${SEG_COLOR[type]}16`, color: "#fff", opacity: duration ? 1 : 0.45 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: SEG_COLOR[type], flexShrink: 0 }} />
-                  {t(`seg.${type}`)}
-                </button>
-              ))}
-            </div>
-            {activeSeg && (
-              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", direction: formDir }}>
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", padding: "3px 9px", borderRadius: 7, background: `${activeSeg.color}22`, border: `1px solid ${activeSeg.color}` }}>{segLabel(activeSeg, t)}</span>
-                <span style={{ fontSize: 10, color: MUTED, direction: "ltr" }}>{fmt(activeSeg.start)}–{fmt(activeSeg.end)}</span>
-                <button onClick={() => setAdvanced(a => !a)}
-                  style={{ fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: advanced ? `${PURPLE}18` : "rgba(255,255,255,0.05)", border: `1px solid ${advanced ? `${PURPLE}55` : BDR2}`, color: advanced ? PURPLE : TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.advanced")}</button>
-                <button onClick={() => removeSeg(activeSeg.id)} title={t("file.delete")}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit", outline: "none" }}><IconTrash size={13} />{t("file.delete")}</button>
-                {saving === "saving" && <span style={{ fontSize: 10, color: MUTED }}>…</span>}
-                {saving === "error" && <span style={{ fontSize: 10, color: RED }}>{t("seg.saveFail")}</span>}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "flex-start", gap: isMobile ? 8 : 16, direction: formDir }}>
+              <div style={{ fontSize: 11.5, color: TEXT2, fontWeight: 700, whiteSpace: "nowrap", paddingTop: isMobile ? 0 : 7 }}>{t("seg.addTitle")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, flex: 1, minWidth: 0, direction: "ltr" }}>
+                {SEG_ORDER.map(type => (
+                  <button key={type} onClick={() => addSegment(type)} disabled={!duration} title={duration ? "" : t("seg.hint")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "6px 13px", borderRadius: 999, cursor: duration ? "pointer" : "not-allowed", fontFamily: "inherit", outline: "none", border: `1px solid ${SEG_COLOR[type]}66`, background: `${SEG_COLOR[type]}16`, color: "#fff", opacity: duration ? 1 : 0.45 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: SEG_COLOR[type], flexShrink: 0 }} />
+                    {t(`seg.${type}`)}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+            {/* Selected-block toolbar — fixed min-height so selecting a block never shifts the page */}
+            <div style={{ marginTop: 16, minHeight: 34, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", direction: formDir }}>
+              {activeSeg && (
+                <>
+                  {activeChip}
+                  <button onClick={() => setAdvanced(a => !a)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: advanced ? `${PURPLE}18` : "rgba(255,255,255,0.05)", border: `1px solid ${advanced ? `${PURPLE}55` : BDR2}`, color: advanced ? PURPLE : TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.advanced")}</button>
+                  <button onClick={() => removeSeg(activeSeg.id)} title={t("file.delete")}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit", outline: "none" }}><IconTrash size={13} />{t("file.delete")}</button>
+                  {saving === "saving" && <span style={{ fontSize: 10, color: MUTED }}>…</span>}
+                  {saving === "error" && <span style={{ fontSize: 10, color: RED }}>{t("seg.saveFail")}</span>}
+                  <span style={{ flex: 1 }} />
+                  {activeTime}
+                </>
+              )}
+            </div>
             {activeSeg && advanced && (
-              <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: CARD, border: `1px solid ${BDR2}`, direction: formDir, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: CARD2, border: `1px solid ${BDR2}`, direction: formDir, display: "flex", flexDirection: "column", gap: 10, maxWidth: 480 }}>
                 {activeSeg.type === "custom" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <input value={activeSeg.label ?? ""} onChange={e => editActiveLocal({ label: e.target.value })} onBlur={flush} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
@@ -1106,26 +1197,27 @@ function BriefSegmentPlayer({
 
         {/* Victor read-only: tapping a block (no hover on mobile) surfaces its
             full localized name + time here — never edit controls. */}
-        {!isOwner && activeSeg && (
-          <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", padding: "3px 9px", borderRadius: 7, background: `${activeSeg.color}22`, border: `1px solid ${activeSeg.color}` }}>{segLabel(activeSeg, t)}</span>
-            <span style={{ fontSize: 10, color: MUTED }}>{fmt(activeSeg.start)}–{fmt(activeSeg.end)}</span>
+        {!isOwner && (
+          <div style={{ marginTop: 14, minHeight: 28, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {activeSeg && <>{activeChip}{activeTime}</>}
           </div>
         )}
       </div>
 
-      {/* Inline delete confirm (owner) */}
-      {deleteConfirm && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
-          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>{t("file.deleteConfirm")}</span>
-          {deleteError && <span style={{ fontSize: 10, color: RED }}>{t("file.retryError")}</span>}
-          <button onClick={e => { e.stopPropagation(); onDelete(); }} disabled={deleting}
-            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{deleting ? "…" : t("drawer.confirm")}</button>
-          <button onClick={e => { e.stopPropagation(); onDeleteCancel(); }} disabled={deleting}
-            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("drawer.cancel")}</button>
-        </div>
-      )}
+      {renderDeleteConfirm()}
     </div>
+  );
+
+  return (
+    <>
+      {/* Compact file row — stays in "brief files", shares state with the editor */}
+      <div style={{ borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
+        {renderHeader(false)}
+        {renderDeleteConfirm()}
+      </div>
+      {/* Full editor — portaled to the top of the modal (same instance, same <audio>) */}
+      {editorHost && createPortal(editor, editorHost)}
+    </>
   );
 }
 
@@ -1402,6 +1494,12 @@ function VictorProjectDrawer({
   const [briefUploading, setBriefUploading] = useState(false);
   const [briefErr, setBriefErr] = useState<string | null>(null);
   const [briefDelPath, setBriefDelPath] = useState<string | null>(null);
+  // Top-of-modal host elements for each brief audio file's wide song-structure
+  // editor (the player portals its editor into its host; stable ref callback).
+  const [briefEditorHosts, setBriefEditorHosts] = useState<Record<string, HTMLDivElement | null>>({});
+  const setBriefEditorHost = useCallback((key: string, el: HTMLDivElement | null) => {
+    setBriefEditorHosts(p => (p[key] === el ? p : { ...p, [key]: el }));
+  }, []);
   const briefFileInputRef = useRef<HTMLInputElement | null>(null);
   // References (YouTube) — owner adds/edits/deletes, Victor views/opens.
   const [effectiveRefs, setEffectiveRefs] = useState<VictorReference[]>(work.references ?? []);
@@ -2570,6 +2668,15 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? `16px 14px calc(${useMainPlayer && mainPlayer?.track ? 104 : 40}px + env(safe-area-inset-bottom))` : "18px 20px" }}>
+          {/* ── Song-structure editor(s): full-width, above the columns. Each slot
+               is filled by that brief file's BriefSegmentPlayer (single instance). ── */}
+          {effectiveBriefFiles.some(f => isAudioFile(f.name)) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20, minWidth: 0 }}>
+              {effectiveBriefFiles.map((f, i) => isAudioFile(f.name) ? (
+                <BriefEditorSlot key={f.fileRef ?? f.dropboxPath ?? i} slotKey={String(f.fileRef ?? f.dropboxPath ?? i)} onHost={setBriefEditorHost} />
+              ) : null)}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 0.8fr) minmax(520px, 1.85fr) minmax(360px, 1fr)", gap: 20, alignItems: "start" }}>
 
             {/* ════ RIGHT column: brief + references (was MAIN). order maps it to
@@ -2645,6 +2752,7 @@ function VictorProjectDrawer({
                                   key={f.fileRef ?? f.dropboxPath ?? i}
                                   file={f}
                                   workId={work.id}
+                                  editorHost={briefEditorHosts[String(f.fileRef ?? f.dropboxPath ?? i)] ?? null}
                                   isOwner={isOwner}
                                   onSaveSegments={(segments) => f.dropboxPath ? saveBriefSegments(f.dropboxPath, segments) : Promise.resolve(false)}
                                   onDownload={() => downloadFile(f, work.id)}
