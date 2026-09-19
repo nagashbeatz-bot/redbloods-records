@@ -273,6 +273,23 @@ body {
   }
 }
 
+/*
+  Mobile foundation — iOS Safari zooms the page in when a text field with a
+  computed font-size below 16px gets focus. Most fields here are styled inline
+  (12–15px), so the floor has to be !important to beat the inline style.
+  Scope: phones only (<768px, same breakpoint as the shell block above);
+  desktop is untouched. Only the size changes — no width/height/padding.
+  - Skipped input types that never open the keyboard, so never trigger the zoom
+    (checkbox, radio, range, color, file, buttons, hidden).
+  - Skipped fields that already declare an inline size of 17px or more (e.g. the
+    18px amount inputs): this is a floor, it must never SHRINK a bigger field.
+*/
+@media (max-width: 767px) {
+  :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="hidden"], [style*="font-size: 17"], [style*="font-size: 18"], [style*="font-size: 19"], [style*="font-size: 2"], [style*="font-size: 3"], [style*="font-size: 4"]) {
+    font-size: 16px !important;
+  }
+}
+
 /* Bottom sheet animation */
 @keyframes rb-sheet-in {
   from { transform: translateY(100%); }

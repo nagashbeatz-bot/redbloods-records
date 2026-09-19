@@ -187,6 +187,7 @@ export default function MixSetupModal({
           borderRadius: 22,
           padding: "24px 24px 20px",
           width: 420,
+          maxWidth: "calc(100vw - 32px)",
           maxHeight: "90vh",
           overflowY: "auto",
           direction: "rtl",

@@ -2420,7 +2420,7 @@ function QuickTransactionModal({
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)" }} />
       {/* card */}
       <div dir="rtl" style={{
-        position: "relative", width: 460, maxHeight: "90vh", overflowY: "auto",
+        position: "relative", width: 460, maxWidth: "calc(100vw - 32px)", maxHeight: "90vh", overflowY: "auto",
         borderRadius: 22,
         background: "linear-gradient(160deg, #12121A 0%, #0E0E14 100%)",
         border: `1.5px solid ${accent}40`,
@@ -2505,7 +2505,7 @@ function SplitPaymentModal({
     <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)" }} />
       <div dir="rtl" style={{
-        position: "relative", width: 440, maxHeight: "90vh", overflowY: "auto",
+        position: "relative", width: 440, maxWidth: "calc(100vw - 32px)", maxHeight: "90vh", overflowY: "auto",
         borderRadius: 22, background: "linear-gradient(160deg, #12121A 0%, #0E0E14 100%)",
         border: `1.5px solid ${accent}40`, boxShadow: `0 32px 80px rgba(0,0,0,0.85), 0 0 0 1px ${accent}18`,
         padding: "24px 24px 22px", display: "flex", flexDirection: "column", gap: 14,

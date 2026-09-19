@@ -360,7 +360,7 @@ function AddTrackModal({ projectId, accentColor, onClose, onCreated }: AddTrackP
       onClick={onClose}
     >
       <div
-        style={{ background: "#111", border: `1px solid ${accentColor}33`, borderRadius: 16, padding: "24px 28px", width: 360, direction: "rtl", display: "flex", flexDirection: "column", gap: 14 }}
+        style={{ background: "#111", border: `1px solid ${accentColor}33`, borderRadius: 16, padding: "24px 28px", width: 360, maxWidth: "calc(100vw - 32px)", direction: "rtl", display: "flex", flexDirection: "column", gap: 14 }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0" }}>הוסף שיר לאלבום</div>

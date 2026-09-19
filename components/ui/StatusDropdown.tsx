@@ -306,7 +306,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
             style={{
               background: "#161616", border: "1px solid #2A2A2A",
               borderRadius: 16, padding: "24px 24px 20px",
-              width: 340, direction: "rtl",
+              width: 340, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
             }}
           >
@@ -389,7 +389,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
             style={{
               background: "#161616", border: "1px solid #3A2A10",
               borderRadius: 16, padding: "24px 24px 20px",
-              width: 360, direction: "rtl",
+              width: 360, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
             }}
           >
@@ -571,7 +571,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
             style={{
               background: "#161616", border: "1px solid #3A1A1A",
               borderRadius: 16, padding: "24px 24px 20px",
-              width: 360, direction: "rtl",
+              width: 360, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
             }}
           >

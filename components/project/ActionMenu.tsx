@@ -258,7 +258,7 @@ export default function ActionMenu({ projectId, projectName, artist, projectType
             style={{
               background: "#161616", border: "1px solid #2A2A2A",
               borderRadius: 16, padding: "24px 28px 22px",
-              width: 340, direction: "rtl",
+              width: 340, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
               textAlign: "center",
             }}

@@ -1445,7 +1445,7 @@ export default function FinancePage() {
               {noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}
             </span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 12 }}>
             {attentionUnpaidIncome.length > 0 && (
               <button onClick={() => { setViewTab("income"); setStatusFilter("לא שולם"); }} style={attnCard(RED)}>
                 <span style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0, background: `${RED}20`, border: `1px solid ${RED}38`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⚡</span>

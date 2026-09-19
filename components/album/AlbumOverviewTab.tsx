@@ -390,7 +390,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1C1C1C", border: "1px solid #303030", borderRadius: 14,
-              padding: "22px 24px", width: 300, direction: "rtl",
+              padding: "22px 24px", width: 300, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
             }}
           >
@@ -440,7 +440,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#1C1C1C", border: "1px solid #303030", borderRadius: 14,
-              padding: "22px 24px", width: 320, direction: "rtl",
+              padding: "22px 24px", width: 320, maxWidth: "calc(100vw - 32px)", direction: "rtl",
               boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
             }}
           >

@@ -122,7 +122,7 @@ export default function MixRevertModal({
   const card: React.CSSProperties = {
     background: "#141414", border: "1px solid #262626",
     borderRadius: 22, padding: "24px 24px 20px",
-    width: 420, maxHeight: "85vh", overflowY: "auto",
+    width: 420, maxWidth: "calc(100vw - 32px)", maxHeight: "85vh", overflowY: "auto",
     direction: "rtl", boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
   };
   const btnPrimary: React.CSSProperties = {
