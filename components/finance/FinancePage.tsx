@@ -1147,7 +1147,7 @@ export default function FinancePage() {
     const contact  = tx.artist || proj?.artist || "";
     const chip: React.CSSProperties = {
       display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
-      fontSize: 11.5, fontWeight: 600, borderRadius: 7, padding: "3px 9px",
+      fontSize: 11.5, fontWeight: 600, borderRadius: 7, padding: "2px 8px",
       background: "rgba(255,255,255,0.045)", border: `1px solid ${BDR}`, color: TEXT2,
     };
     const chipText: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
@@ -1157,11 +1157,11 @@ export default function FinancePage() {
         onClick={() => openEdit(tx)}
         style={{
           background: undated ? "#1D1810" : CARD, border: `1px solid ${BDR}`,
-          borderRadius: 14, padding: "12px 14px", cursor: "pointer",
+          borderRadius: 14, padding: "9px 12px", cursor: "pointer",
         }}
       >
         {/* amount + quick status */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ fontSize: 21, fontWeight: 900, color: isIncome ? GREEN : RED, letterSpacing: "-0.02em", lineHeight: 1.15, overflowWrap: "anywhere", direction: "ltr", unicodeBidi: "isolate" }}>
             {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
           </div>
@@ -1171,16 +1171,18 @@ export default function FinancePage() {
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
               setStatusMenu(statusMenu?.id === tx.id ? null : { id: tx.id, x: r.left, y: r.bottom });
             }}
-            style={{ background: "none", border: "none", padding: "8px 0 8px 6px", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+            // 44px hit area kept, but the button's top edge is pulled into the card's own top padding
+            // (margin -9) so it no longer makes the row 9px taller than the badge needs.
+            style={{ background: "none", border: "none", padding: "8px 0 8px 6px", minHeight: 44, margin: "-9px 0 0", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
             <StatusBadge status={tx.payment_status} />
           </button>
         </div>
         {/* description */}
-        <div style={{ fontSize: 14.5, color: TEXT, fontWeight: 600, marginTop: 4, lineHeight: 1.4, overflowWrap: "anywhere" }}>
+        <div style={{ fontSize: 14.5, color: TEXT, fontWeight: 600, marginTop: 2, lineHeight: 1.35, overflowWrap: "anywhere" }}>
           {getTransactionLabel(tx)}
         </div>
         {/* chips */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
           <span style={{ ...chip, ...(undated ? { color: AMBER, borderColor: `${AMBER}40` } : {}) }}>
             <span style={chipText}>{undated ? "ללא תאריך" : fmtDate(tx.date)}</span>
           </span>
@@ -1423,10 +1425,10 @@ export default function FinancePage() {
           .rb-fin-tablewrap { background: transparent !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
           .rb-fin-thead, .rb-fin-gcol, .rb-fin-drow { display: none !important; }
           .rb-fin-mhdr { border: 1px solid rgba(255,255,255,0.07) !important; border-radius: 10px !important; margin: 6px 0 10px !important; padding: 8px 12px !important; }
-          .rb-fin-mcard { display: block; margin: 0 0 10px; }
+          .rb-fin-mcard { display: block; margin: 0 0 8px; }
           .rb-fin-mcard:active { background: rgba(255,255,255,0.05) !important; }
           .rb-fin-mc-status span { font-size: 12px !important; padding: 4px 10px !important; }
-          .rb-fin-groupbody { padding: 10px 10px 0; }
+          .rb-fin-groupbody { padding: 8px 8px 0; }
           .rb-fin-tfoot { flex-wrap: wrap !important; gap: 6px 16px !important; border-radius: 12px !important; border: 1px solid rgba(255,255,255,0.07) !important; }
           .rb-fin-empty { padding: 32px 16px !important; }
         }
