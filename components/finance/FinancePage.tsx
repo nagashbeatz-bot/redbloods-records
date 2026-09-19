@@ -315,7 +315,7 @@ function SummaryCard({
   const pct = progress === undefined ? undefined : Math.max(0, Math.min(1, progress));
 
   return (
-    <div style={{
+    <div className="rb-fin-kpi" style={{
       background: `linear-gradient(158deg, ${color}12, ${CARD} 52%)`,
       border: `1px solid ${BDR2}`, borderRadius: 18,
       padding: "22px 24px 20px", flex: "1 1 0", minWidth: 0, minHeight: 176,
@@ -325,22 +325,22 @@ function SummaryCard({
       {/* top accent */}
       <div style={{ position: "absolute", top: 0, insetInline: 0, height: 4, background: `linear-gradient(270deg, ${color}, ${color}00)` }} />
       {/* header: label + icon, chevron drill affordance */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ color: MUTED, fontSize: 15, opacity: 0.7 }}>‹</span>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, letterSpacing: "0.01em", lineHeight: 1.2, marginInlineStart: "auto", textAlign: "left" }}>
+      <div className="rb-fin-kpi-head" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span className="rb-fin-kpi-chev" style={{ color: MUTED, fontSize: 15, opacity: 0.7 }}>‹</span>
+        <div className="rb-fin-kpi-label" style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, letterSpacing: "0.01em", lineHeight: 1.2, marginInlineStart: "auto", textAlign: "left" }}>
           {label}
         </div>
         {icon && (
-          <div style={{
+          <div className="rb-fin-kpi-icon" style={{
             width: 46, height: 46, borderRadius: 13, flexShrink: 0,
             background: `${color}1E`, border: `1px solid ${color}38`, color,
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23,
           }}>{icon}</div>
         )}
       </div>
-      <div style={{ fontSize: 42, fontWeight: 900, color, letterSpacing: "-0.045em", lineHeight: 1, marginTop: "auto", textShadow: `0 0 26px ${color}33` }}>{value}</div>
+      <div className="rb-fin-kpi-val" style={{ fontSize: 42, fontWeight: 900, color, letterSpacing: "-0.045em", lineHeight: 1, marginTop: "auto", textShadow: `0 0 26px ${color}33` }}>{value}</div>
       {sub && (
-        <div style={{ fontSize: 12, color: TEXT2, marginTop: 8 }}>{sub}</div>
+        <div className="rb-fin-kpi-sub" style={{ fontSize: 12, color: TEXT2, marginTop: 8 }}>{sub}</div>
       )}
       {pct !== undefined && (
         <div style={{ marginTop: 11 }}>
@@ -1061,6 +1061,7 @@ export default function FinancePage() {
       <div key={tx.id}>
         {/* Row — click anywhere opens the edit modal */}
         <div
+          className="rb-fin-drow"
           onClick={() => openEdit(tx)}
           style={{
             display: "grid", gridTemplateColumns: GRID_COLS,
@@ -1130,6 +1131,71 @@ export default function FinancePage() {
             ✏
           </button>
         </div>
+        {renderTxCard(tx, aff)}
+      </div>
+    );
+  }
+
+  // Mobile-only card for ONE transaction (<768px; hidden on desktop by CSS). It reads
+  // the very same `tx` object and calls the very same handlers as the desktop row —
+  // openEdit for the card, the same quick-status popover for the badge — it only
+  // presents them differently. Empty fields render no chip.
+  function renderTxCard(tx: Transaction, aff: { label: string; icon: string; col: string }) {
+    const proj     = projects.find((p) => p.id === tx.project_id);
+    const isIncome = tx.type === "income";
+    const undated  = !tx.date;
+    const contact  = tx.artist || proj?.artist || "";
+    const chip: React.CSSProperties = {
+      display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
+      fontSize: 11.5, fontWeight: 600, borderRadius: 7, padding: "3px 9px",
+      background: "rgba(255,255,255,0.045)", border: `1px solid ${BDR}`, color: TEXT2,
+    };
+    const chipText: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+    return (
+      <div
+        className="rb-fin-mcard"
+        onClick={() => openEdit(tx)}
+        style={{
+          background: undated ? "#1D1810" : CARD, border: `1px solid ${BDR}`,
+          borderRadius: 14, padding: "12px 14px", cursor: "pointer",
+        }}
+      >
+        {/* amount + quick status */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontSize: 21, fontWeight: 900, color: isIncome ? GREEN : RED, letterSpacing: "-0.02em", lineHeight: 1.15, overflowWrap: "anywhere", direction: "ltr", unicodeBidi: "isolate" }}>
+            {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
+          </div>
+          <button type="button" title="שינוי סטטוס מהיר" className="rb-fin-mc-status"
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setStatusMenu(statusMenu?.id === tx.id ? null : { id: tx.id, x: r.left, y: r.bottom });
+            }}
+            style={{ background: "none", border: "none", padding: "8px 0 8px 6px", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+            <StatusBadge status={tx.payment_status} />
+          </button>
+        </div>
+        {/* description */}
+        <div style={{ fontSize: 14.5, color: TEXT, fontWeight: 600, marginTop: 4, lineHeight: 1.4, overflowWrap: "anywhere" }}>
+          {getTransactionLabel(tx)}
+        </div>
+        {/* chips */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          <span style={{ ...chip, ...(undated ? { color: AMBER, borderColor: `${AMBER}40` } : {}) }}>
+            <span style={chipText}>{undated ? "ללא תאריך" : fmtDate(tx.date)}</span>
+          </span>
+          <span style={{
+            ...chip, fontWeight: 800,
+            background: isIncome ? `${GREEN}18` : `${RED}16`, color: isIncome ? GREEN : RED,
+            border: `1px solid ${isIncome ? `${GREEN}33` : `${RED}30`}`,
+          }}>{isIncome ? "הכנסה" : "הוצאה"}</span>
+          {tx.category && <span style={chip}><span style={chipText}>{tx.category}</span></span>}
+          <span style={{ ...chip, fontWeight: 700, color: aff.col, background: `${aff.col}14`, border: `1px solid ${aff.col}30` }}>
+            <span style={{ flexShrink: 0 }}>{aff.icon}</span>
+            <span style={chipText}>{aff.label}</span>
+          </span>
+          {contact && <span style={chip}><span style={chipText}>{contact}</span></span>}
+        </div>
       </div>
     );
   }
@@ -1137,7 +1203,7 @@ export default function FinancePage() {
   // Shared per-group column header.
   function groupColHeader() {
     return (
-      <div style={{
+      <div className="rb-fin-gcol" style={{
         display: "grid", gridTemplateColumns: GRID_COLS,
         gap: 12, padding: "9px 16px",
         background: CARD2, borderBottom: `1px solid ${BDR}`,
@@ -1190,7 +1256,7 @@ export default function FinancePage() {
         {!collapsed && (
           <div>
             {groupColHeader()}
-            {body}
+            <div className="rb-fin-groupbody">{body}</div>
           </div>
         )}
       </div>
@@ -1259,7 +1325,7 @@ export default function FinancePage() {
   const goalStat = (label: string, val: string, col: string) => (
     <div style={{ textAlign: "center" }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.04em" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 900, color: col, marginTop: 4 }}>{val}</div>
+      <div className="rb-fin-gstat-val" style={{ fontSize: 18, fontWeight: 900, color: col, marginTop: 4 }}>{val}</div>
     </div>
   );
 
@@ -1275,7 +1341,7 @@ export default function FinancePage() {
   // real page immediately. Fixed min-height keeps the layout from jumping.
   if (privacyHidden) {
     return (
-      <div dir="rtl" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
+      <div dir="rtl" className="rb-fin-page" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
         <div style={{ minHeight: "72vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ textAlign: "center", maxWidth: 440, padding: "40px 34px", borderRadius: 18, background: CARD, border: "1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ fontSize: 42, marginBottom: 14, color: "#EAB308" }}>👁</div>
@@ -1292,7 +1358,84 @@ export default function FinancePage() {
   }
 
   return (
-    <div dir="rtl" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
+    <div dir="rtl" className="rb-fin-page" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
+
+      {/*
+        Mobile layout for Finance — presentation only. Scoped .rb-fin-* classes; every rule
+        lives inside @media (max-width:767px), so desktop is untouched. !important is
+        needed because the desktop layout is set with inline styles. The transaction
+        cards (.rb-fin-mcard) are always in the DOM but display:none outside the media
+        query; the desktop table rows (.rb-fin-drow / .rb-fin-thead) are hidden inside it.
+      */}
+      <style>{`
+        .rb-fin-mcard { display: none; }
+        @media (max-width: 767px) {
+          .rb-fin-page { padding: 14px 14px 28px !important; }
+
+          .rb-fin-header { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; margin-bottom: 14px !important; }
+          .rb-fin-title { font-size: 28px !important; }
+          .rb-fin-month { width: 100% !important; justify-content: space-between !important; gap: 8px !important; }
+          .rb-fin-month-label { flex: 1 1 auto !important; min-width: 0 !important; font-size: 16px !important; }
+          .rb-fin-navbtn { width: 44px !important; height: 44px !important; flex: 0 0 auto !important; }
+          .rb-fin-add { width: 100% !important; justify-content: center !important; padding: 13px 16px !important; }
+
+          .rb-fin-periods { display: grid !important; grid-template-columns: repeat(6, minmax(0, 1fr)) !important; gap: 8px !important; }
+          .rb-fin-periods > button { grid-column: span 2; min-height: 44px; padding: 10px 4px !important; font-size: 13px !important; text-align: center; }
+          .rb-fin-periods > button:nth-child(n+4) { grid-column: span 3; }
+          .rb-fin-custom { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; }
+          .rb-fin-custom > span { display: none !important; }
+          .rb-fin-custom > div { width: 100% !important; }
+          .rb-fin-custom input { flex: 1 1 auto !important; width: 100% !important; min-width: 0 !important; }
+
+          .rb-fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; margin-bottom: 14px !important; }
+          .rb-fin-kpi { padding: 14px 14px 13px !important; min-height: 0 !important; border-radius: 16px !important; }
+          .rb-fin-kpi-head { gap: 8px !important; align-items: flex-start !important; }
+          .rb-fin-kpi-chev { display: none !important; }
+          .rb-fin-kpi-label { flex: 1 1 auto !important; min-width: 0 !important; margin-inline-start: 0 !important; text-align: right !important; font-size: 13.5px !important; overflow-wrap: anywhere; }
+          .rb-fin-kpi-icon { width: 34px !important; height: 34px !important; border-radius: 10px !important; font-size: 17px !important; }
+          .rb-fin-kpi-val { font-size: clamp(22px, 6.3vw, 26px) !important; margin-top: 12px !important; line-height: 1.1 !important; overflow-wrap: anywhere; }
+          .rb-fin-kpi-sub { font-size: 11.5px !important; line-height: 1.4 !important; }
+
+          .rb-fin-goal { padding: 16px 14px !important; margin-bottom: 14px !important; border-radius: 16px !important; }
+          .rb-fin-goal-body { flex-direction: column !important; align-items: stretch !important; gap: 16px !important; }
+          .rb-fin-goal-pct, .rb-fin-goal-main { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; }
+          .rb-fin-goal-stats { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+          .rb-fin-gstat-val { font-size: clamp(12px, 3.6vw, 15px) !important; overflow-wrap: anywhere; }
+
+          .rb-fin-fstrip { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; padding: 12px !important; margin-bottom: 12px !important; }
+          .rb-fin-fstrip > * { min-width: 0 !important; }
+          .rb-fin-fstrip select, .rb-fin-fstrip button { width: 100% !important; min-height: 44px; }
+          .rb-fin-f-search { grid-column: 1 / -1; order: 0; flex: none !important; }
+          .rb-fin-f-search input { min-height: 44px; }
+          .rb-fin-f-status { order: 1; }
+          .rb-fin-f-category { order: 2; }
+          .rb-fin-f-contact { order: 3; }
+          .rb-fin-f-source { order: 4; }
+          .rb-fin-f-project { order: 5; grid-column: 1 / -1; }
+          .rb-fin-f-sort { order: 6; }
+          .rb-fin-f-count { order: 7; align-self: center; text-align: end; margin: 0 !important; }
+          .rb-fin-f-gsrc { order: 8; }
+          .rb-fin-f-gmonth { order: 9; }
+
+          .rb-fin-main { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; gap: 14px !important; }
+          .rb-fin-summary, .rb-fin-tablecol { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; }
+
+          .rb-fin-tablewrap { background: transparent !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+          .rb-fin-thead, .rb-fin-gcol, .rb-fin-drow { display: none !important; }
+          .rb-fin-mhdr { border: 1px solid rgba(255,255,255,0.07) !important; border-radius: 10px !important; margin: 6px 0 10px !important; padding: 8px 12px !important; }
+          .rb-fin-mcard { display: block; margin: 0 0 10px; }
+          .rb-fin-mcard:active { background: rgba(255,255,255,0.05) !important; }
+          .rb-fin-mc-status span { font-size: 12px !important; padding: 4px 10px !important; }
+          .rb-fin-groupbody { padding: 10px 10px 0; }
+          .rb-fin-tfoot { flex-wrap: wrap !important; gap: 6px 16px !important; border-radius: 12px !important; border: 1px solid rgba(255,255,255,0.07) !important; }
+          .rb-fin-empty { padding: 32px 16px !important; }
+        }
+        @media (max-width: 340px) {
+          .rb-fin-kpis { gap: 8px !important; }
+          .rb-fin-kpi { padding: 12px 11px !important; }
+          .rb-fin-kpi-val { font-size: 19px !important; }
+        }
+      `}</style>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -1313,7 +1456,9 @@ export default function FinancePage() {
           <>
             <div onClick={() => setStatusMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 99998 }} />
             <div onClick={(e) => e.stopPropagation()} style={{
-              position: "fixed", top: statusMenu.y + 4, left: statusMenu.x, zIndex: 99999,
+              position: "fixed", top: statusMenu.y + 4,
+              left: window.innerWidth < 768 ? Math.max(8, Math.min(statusMenu.x, window.innerWidth - 150)) : statusMenu.x,
+              zIndex: 99999,
               background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10,
               boxShadow: "0 12px 40px rgba(0,0,0,0.7)", padding: 4, minWidth: 130,
               display: "flex", flexDirection: "column", gap: 2, direction: "rtl",
@@ -1344,21 +1489,21 @@ export default function FinancePage() {
       })(), document.body)}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+      <div className="rb-fin-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         {/* Right: title */}
-        <h1 style={{ fontSize: 34, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.035em" }}>כספים</h1>
+        <h1 className="rb-fin-title" style={{ fontSize: 34, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.035em" }}>כספים</h1>
 
         {/* Center: month navigator */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o - 1); }} style={navBtnStyle}>‹</button>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, minWidth: 150, textAlign: "center" }}>
+        <div className="rb-fin-month" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="rb-fin-navbtn" onClick={() => { setPeriod("month"); setMonthOffset((o) => o - 1); }} style={navBtnStyle}>‹</button>
+          <div className="rb-fin-month-label" style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, minWidth: 150, textAlign: "center" }}>
             📅 {periodTitle}
           </div>
-          <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o + 1); }} style={navBtnStyle}>›</button>
+          <button className="rb-fin-navbtn" onClick={() => { setPeriod("month"); setMonthOffset((o) => o + 1); }} style={navBtnStyle}>›</button>
         </div>
 
         {/* Left: add button */}
-        <button onClick={openAdd} style={{
+        <button className="rb-fin-add" onClick={openAdd} style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: "12px 26px", borderRadius: 12,
           background: BRAND, border: "none", color: "#fff",
@@ -1370,7 +1515,7 @@ export default function FinancePage() {
 
       {/* ── Period selector ─────────────────────────────────────────────── */}
       <div style={{ marginBottom: 22 }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="rb-fin-periods" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {PERIOD_OPTIONS.map(({ label, period: optPeriod, offset }) => {
             const active = optPeriod === "month"
               ? period === "month" && monthOffset === offset
@@ -1394,7 +1539,7 @@ export default function FinancePage() {
         </div>
 
         {period === "custom" && (
-          <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+          <div className="rb-fin-custom" style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <label style={{ fontSize: 11, color: MUTED }}>מ</label>
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
@@ -1412,7 +1557,7 @@ export default function FinancePage() {
 
       {/* ── KPI cards (4 in a row) ───────────────────────────────────────── */}
       {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → נטו בפועל → הכנסות צפויות */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 18 }}>
+      <div className="rb-fin-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 18 }}>
         <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
           sub={`${periodTx.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).length} תשלומים שהתקבלו`}
@@ -1493,11 +1638,11 @@ export default function FinancePage() {
         const realW   = Math.max(0, Math.min(100, (real / goal) * 100));
         const estW    = Math.max(0, Math.min(100, (est  / goal) * 100));
         return (
-      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 22px 22px", marginBottom: 20, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
+      <div className="rb-fin-goal" style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 22px 22px", marginBottom: 20, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 18 }}>יעד נטו חודשי</div>
-        <div style={{ display: "flex", gap: 30, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="rb-fin-goal-body" style={{ display: "flex", gap: 30, alignItems: "center", flexWrap: "wrap" }}>
           {/* Right (RTL-first): headline percentage */}
-          <div style={{ flex: "0 0 180px", minWidth: 150, textAlign: "center" }}>
+          <div className="rb-fin-goal-pct" style={{ flex: "0 0 180px", minWidth: 150, textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, letterSpacing: "0.05em" }}>עמידה ביעד</div>
             <div style={{ fontSize: 50, fontWeight: 900, color: real >= 0 ? GREEN : RED, lineHeight: 1.05, letterSpacing: "-0.03em", textShadow: `0 0 30px ${(real >= 0 ? GREEN : RED)}38` }}>{realPct}%</div>
             {est > real && (
@@ -1505,8 +1650,8 @@ export default function FinancePage() {
             )}
           </div>
           {/* Left: stat labels + long bar + baseline */}
-          <div style={{ flex: "1 1 440px", minWidth: 300 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+          <div className="rb-fin-goal-main" style={{ flex: "1 1 440px", minWidth: 300 }}>
+            <div className="rb-fin-goal-stats" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
               {goalStat("נטו בפועל", fmtAmount(real), real >= 0 ? GREEN : RED)}
               {goalStat("נטו צפוי", fmtAmount(est), est >= 0 ? AMBER : RED)}
               {goalStat("יעד", fmtAmount(goal), TEXT)}
@@ -1540,50 +1685,50 @@ export default function FinancePage() {
       })()}
 
       {/* ── Filter strip (full width) ────────────────────────────────────── */}
-      <div style={{
+      <div className="rb-fin-fstrip" style={{
         display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14,
         alignItems: "center", padding: "12px 16px",
         background: CARD, border: `1px solid ${BDR}`, borderRadius: 14,
       }}>
-        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 170 }}>
+        <div className="rb-fin-f-search" style={{ position: "relative", flex: "1 1 220px", minWidth: 170 }}>
           <span style={{ position: "absolute", insetInlineStart: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13, pointerEvents: "none" }}>🔍</span>
           <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חיפוש..."
             style={{ ...INPUT_S, padding: "9px 36px 9px 14px", fontSize: 13, border: `1px solid ${BDR}` }} />
         </div>
 
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
+        <select className="rb-fin-f-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
           ...selectStyle, color: statusFilter ? BRAND : TEXT2, borderColor: statusFilter ? `${BRAND}40` : BDR,
         }}>
           <option value="">כל הסטטוסים</option>
           {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{
+        <select className="rb-fin-f-category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{
           ...selectStyle, color: categoryFilter ? BRAND : TEXT2, borderColor: categoryFilter ? `${BRAND}40` : BDR,
         }}>
           <option value="">כל הקטגוריות</option>
           {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} style={{
+        <select className="rb-fin-f-contact" value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} style={{
           ...selectStyle, color: contactFilter ? BRAND : TEXT2, borderColor: contactFilter ? `${BRAND}40` : BDR,
         }}>
           <option value="">כל אנשי הקשר</option>
           {allContacts.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={selectStyle}>
+        <select className="rb-fin-f-project" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={selectStyle}>
           <option value="">כל הפרויקטים</option>
           {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={selectStyle}>
+        <select className="rb-fin-f-source" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={selectStyle}>
           <option value="all">כל המקורות</option>
           <option value="project">📁 פרויקטים</option>
           <option value="general">🏢 כללי</option>
         </select>
 
-        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
+        <select className="rb-fin-f-sort" value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
           <option value="date-desc">מהחדש לישן</option>
           <option value="date-asc">מהישן לחדש</option>
           <option value="amount-desc">לפי סכום</option>
@@ -1592,24 +1737,24 @@ export default function FinancePage() {
           <option value="type">לפי סוג</option>
         </select>
 
-        <button onClick={() => setGroupBySource((v) => !v)} style={{
+        <button className="rb-fin-f-gsrc" onClick={() => setGroupBySource((v) => !v)} style={{
           ...selectStyle, background: groupBySource ? `${BLUE}15` : CARD,
           color: groupBySource ? BLUE : TEXT2, borderColor: groupBySource ? `${BLUE}40` : BDR,
         }}>קיבוץ מקור</button>
 
-        <button onClick={() => setGroupByMonth((v) => !v)} style={{
+        <button className="rb-fin-f-gmonth" onClick={() => setGroupByMonth((v) => !v)} style={{
           ...selectStyle, background: groupByMonth ? `${PURPLE}15` : CARD,
           color: groupByMonth ? PURPLE : TEXT2, borderColor: groupByMonth ? `${PURPLE}40` : BDR,
         }}>קיבוץ חודשי</button>
 
-        <span style={{ fontSize: 11, color: MUTED, marginInlineStart: "auto" }}>{filtered.length} תנועות</span>
+        <span className="rb-fin-f-count" style={{ fontSize: 11, color: MUTED, marginInlineStart: "auto" }}>{filtered.length} תנועות</span>
       </div>
 
       {/* ── Main: transactions table (left) + quick summary (right) ──────── */}
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="rb-fin-main" style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
 
         {/* Quick summary — real (existing) figures only */}
-        <div style={{ flex: "0 0 280px", minWidth: 240 }}>
+        <div className="rb-fin-summary" style={{ flex: "0 0 280px", minWidth: 240 }}>
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 20px", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 16 }}>סיכום מהיר</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1636,7 +1781,7 @@ export default function FinancePage() {
         </div>
 
         {/* Table column */}
-        <div style={{ flex: "1 1 560px", minWidth: 0 }}>
+        <div className="rb-fin-tablecol" style={{ flex: "1 1 560px", minWidth: 0 }}>
 
           {/* ── Table title + underline tabs ──────────────────────────── */}
           <div style={{ marginBottom: 14 }}>
@@ -1671,7 +1816,7 @@ export default function FinancePage() {
           {!loaded ? (
             <div style={{ color: MUTED, fontSize: 13, padding: "48px", textAlign: "center" }}>טוען...</div>
           ) : filtered.length === 0 ? (
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "60px", textAlign: "center", color: MUTED, fontSize: 13 }}>
+            <div className="rb-fin-empty" style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "60px", textAlign: "center", color: MUTED, fontSize: 13 }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
               {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות — ${periodTitle}`}
               <div style={{ marginTop: 14 }}>
@@ -1686,7 +1831,7 @@ export default function FinancePage() {
               {renderGroup("g-shows", "הופעות", "🎤", BRAND, showsTxs, renderShowsBody(showsTxs))}
               {renderGroup("g-projects", "פרויקטים", "📁", BLUE, projectTxs, projectTxs.map((tx, i) => renderTxRow(tx, i)))}
               {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
-              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
+              <div className="rb-fin-tfoot" style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
                 <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
@@ -1694,9 +1839,9 @@ export default function FinancePage() {
             </>
           ) : (
             /* Default: flat "כל התנועות" table (month headers when קיבוץ חודשי is on) */
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
+            <div className="rb-fin-tablewrap" style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
               {/* Table header */}
-              <div style={{
+              <div className="rb-fin-thead" style={{
                 display: "grid", gridTemplateColumns: FLAT_COLS,
                 gap: 10, padding: "13px 18px",
                 background: CARD2, borderBottom: `1px solid ${BDR}`,
@@ -1709,7 +1854,7 @@ export default function FinancePage() {
               {displayItems.map((item) => {
                 if (item.kind === "header") {
                   return (
-                    <div key={`hdr-${item.key}`} style={{
+                    <div key={`hdr-${item.key}`} className="rb-fin-mhdr" style={{
                       padding: "8px 16px 6px", background: CARD2,
                       borderBottom: `1px solid ${BDR}`,
                       fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
@@ -1734,6 +1879,7 @@ export default function FinancePage() {
                 return (
                   <div key={tx.id}>
                     <div
+                      className="rb-fin-drow"
                       onClick={() => openEdit(tx)}
                       style={{
                         display: "grid", gridTemplateColumns: FLAT_COLS,
@@ -1806,12 +1952,13 @@ export default function FinancePage() {
                         ✏
                       </button>
                     </div>
+                    {renderTxCard(tx, src)}
                   </div>
                 );
               })}
 
               {/* Footer totals */}
-              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
+              <div className="rb-fin-tfoot" style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
                 <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
