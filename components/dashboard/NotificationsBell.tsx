@@ -19,6 +19,7 @@ import { useRole } from "@/lib/use-role";
 import { syncAppBadge } from "@/lib/app-badge";
 import { victorT, useVictorLang, type VictorLang } from "@/lib/victor-i18n";
 import { ownerCategoryOf } from "@/lib/owner-notification-category";
+import { localizeStevenForOwner } from "@/lib/owner-steven-notification-text";
 
 // ── API shape (mirrors GET /api/notifications) ─────────────────────────────
 interface ApiNotification {
@@ -696,7 +697,10 @@ export default function NotificationsBell() {
                 shown.map((n) => (
                   <NotificationRow
                     key={n.id}
-                    n={n}
+                    // Owner: Steven's English system text shown in Hebrew (display
+                    // only — categories, click/deep-link, read state and the stored
+                    // row all keep using the original `n`).
+                    n={role === "owner" ? { ...n, ...localizeStevenForOwner(n) } : n}
                     lang={lang}
                     onClick={() => onRowClick(n)}
                     onMarkRead={() => onMarkReadClick(n)}
