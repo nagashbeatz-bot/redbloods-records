@@ -8,7 +8,8 @@ import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
 import ChatPanel from "./ai/ChatPanel";
 import MiniPlayer from "./ui/MiniPlayer";
-import DebugOverlay from "./ui/DebugOverlay";
+import DebugOverlay from "./ui/DebugOverlay"; // TEMP unmounted while ViewportProbe is in use — see bottom of the shell
+import ViewportProbe from "./ui/ViewportProbe";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
@@ -243,13 +244,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {/* Mobile header — CSS hidden on desktop (no JS flash) */}
             <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
               {canRadio ? <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} variant="mobile" /> : <div style={{ width: 40 }} />}
-              <div style={{
+              {/* data-rb-logo + pointerEvents:auto: the wordmark is the 5-tap switch for the
+                  temporary ViewportProbe (ui/ViewportProbe.tsx). It has no other behaviour
+                  and nothing sits under it (it is centred between the bell and the radio pill),
+                  so hit-testing it changes nothing visible. touch-action/user-select stop
+                  iOS double-tap-zoom and text selection on the rapid taps. */}
+              <div data-rb-logo style={{
                 position: "absolute",
                 left: "50%",
                 transform: "translateX(-50%)",
                 textAlign: "center",
                 lineHeight: 1.15,
-                pointerEvents: "none",
+                pointerEvents: "auto",
+                touchAction: "manipulation",
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                WebkitTouchCallout: "none",
               }}>
                 <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
                 <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
@@ -422,6 +432,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           through the portal. Player/Radio logic untouched. */}
       {isClient && createPortal(
         <div
+          data-rb-miniplayer
           className="fixed left-0 right-0 z-50 md:hidden"
           style={{
             // navClearance clears the fixed bottom nav (its OWN measured height,
@@ -462,10 +473,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Debug overlay — only active when ?debug=1 in URL */}
-      <Suspense fallback={null}>
-        <DebugOverlay shellRef={shellRef} navRef={mobileNavRef} />
-      </Suspense>
+      {/* TEMPORARY diagnostic (nav-jump bug): ViewportProbe replaces DebugOverlay while
+          it is in use so the two never overlap. OFF by default; 5 taps on the logo (or
+          ?debug=1 / ?debug=0) toggle it. To go back: delete this line and restore
+            <Suspense fallback={null}><DebugOverlay shellRef={shellRef} navRef={mobileNavRef} /></Suspense>
+          (DebugOverlay.tsx itself is untouched). */}
+      <ViewportProbe measuredNavH={measuredNavH} />
     </div>
     </GlobalProjectDrawerProvider>
   );
