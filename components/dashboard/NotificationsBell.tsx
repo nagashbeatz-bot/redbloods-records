@@ -185,6 +185,11 @@ const NON_OWNER_MAX_HEIGHT = "min(70vh, 560px)";
 // most this many sequential requests per click, and only while the server says
 // there is more. Never a loop: every step is one awaited GET.
 const MAX_FILTER_FETCH_PAGES = 5;
+// Owner auto-fill: on open / when switching to a category or unread view that
+// has fewer than PAGE_SIZE matches among what's loaded, fetch older pages by
+// itself so "חשוב" shows real content immediately. Hard ceiling: at most this
+// many sequential GETs, ONCE per (open, view) — see the auto-fill effect.
+const AUTO_FILL_MAX_PAGES = 10;
 type OwnerCategoryTab = "important" | "activity" | "all";
 interface PanelPos { top: number; left: number; width: number; maxHeight: number | string; }
 
@@ -212,6 +217,14 @@ export default function NotificationsBell() {
   // "כווץ" (collapse) can shrink the visible list back to PAGE_SIZE without
   // dropping any loaded data, fetching, or touching read state.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Owner auto-fill bookkeeping. `loadedSeq` bumps on every completed refresh
+  // (so each open is a fresh budget); `refreshing` covers an in-flight refresh
+  // so auto-fill never runs against the stale pre-open list; `autoTried` holds
+  // the (seq|category|unread) views auto-fill already ran for — each at most once.
+  const [refreshing, setRefreshing]   = useState(false);
+  const [loadedSeq, setLoadedSeq]     = useState(0);
+  const [autoTried, setAutoTried]     = useState<string[]>([]);
+  const seqRef = useRef(0);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const router = useRouter();
@@ -274,6 +287,7 @@ export default function NotificationsBell() {
   // API's default-50/no-cursor behaviour is byte-for-byte unchanged for them.
   const refresh = useCallback(async () => {
     setStatus((s) => (items.length === 0 ? "loading" : s));
+    setRefreshing(true);
     try {
       const url = role === "owner" ? "/api/notifications?limit=10" : "/api/notifications";
       const data = await loadNotifications(url);
@@ -281,9 +295,13 @@ export default function NotificationsBell() {
       setUnreadCount(data.unreadCount);
       setHasMore(role === "owner" ? data.hasMore : false);
       setVisibleCount(PAGE_SIZE); // every refresh re-fetches from scratch — start collapsed again
+      seqRef.current += 1;
+      setLoadedSeq(seqRef.current);
       setStatus("ready");
     } catch {
       setStatus("error");
+    } finally {
+      setRefreshing(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
@@ -316,19 +334,22 @@ export default function NotificationsBell() {
   // page brings no matching row it keeps going, one awaited GET at a time, up to
   // MAX_FILTER_FETCH_PAGES, stopping as soon as something matches or the server
   // says there is no more. With category "הכל" and no unread filter every row
-  // matches, so that is exactly one request per click — the original behaviour. ──
-  const loadMore = useCallback(async () => {
+  // matches, so that is exactly one request per click — the original behaviour.
+  // The same routine backs the auto-fill (see below) with its own stop target
+  // (`needMatches`) and ceiling (`maxPages`). ──
+  const loadOlder = useCallback(async (needMatches: number, maxPages: number) => {
     if (role !== "owner" || loadingMore || !hasMore || items.length === 0) return;
     setLoadingMore(true);
     setActionError(null);
     const startKey = filterKeyRef.current;
+    const startSeq = seqRef.current;
     try {
       const seen = new Set(items.map((p) => p.id));
       const collected: ApiNotification[] = [];
       let cursor = items[items.length - 1].createdAt;
       let more = true;
       let newMatches = 0;
-      for (let page = 0; page < MAX_FILTER_FETCH_PAGES && more && newMatches === 0; page++) {
+      for (let page = 0; page < maxPages && more && newMatches < needMatches; page++) {
         const res = await fetch(`/api/notifications?limit=10&before=${encodeURIComponent(cursor)}`, { headers: { "cache-control": "no-store" } });
         if (!res.ok) throw new Error();
         const data = await res.json();
@@ -341,6 +362,9 @@ export default function NotificationsBell() {
         if (fresh.length === 0) { more = false; break; } // nothing to advance the cursor with
         cursor = fresh[fresh.length - 1].createdAt;
       }
+      // A refresh landed while this was in flight (panel reopened) → the list was
+      // rebuilt from scratch, so these older pages no longer belong to it. Drop them.
+      if (seqRef.current !== startSeq) return;
       setItems((prev) => {
         const have = new Set(prev.map((p) => p.id));
         return [...prev, ...collected.filter((c) => !have.has(c.id))];
@@ -356,6 +380,29 @@ export default function NotificationsBell() {
       setLoadingMore(false);
     }
   }, [role, loadingMore, hasMore, items, lang, matchesFilter, filteredItems.length]);
+
+  // Manual "הצג עוד": stop at the first page that yields a match, ≤ 5 requests.
+  const loadMore = useCallback(() => loadOlder(1, MAX_FILTER_FETCH_PAGES), [loadOlder]);
+
+  // ── Owner auto-fill ────────────────────────────────────────────────────────
+  // While the panel is open on a view (category / unread) with fewer than
+  // PAGE_SIZE matches among the loaded rows and the server still has older ones,
+  // fetch older pages once — enough to fill one page of that view, or until the
+  // history ends, capped at AUTO_FILL_MAX_PAGES sequential GETs. "Once" is
+  // enforced per (refresh, category, unread) key, so a view that stays short
+  // after the cap never re-triggers by itself (the manual "הצג עוד" continues
+  // from there), and it re-arms on every reopen and every manual tab switch.
+  // Waits for the open-refresh to finish so it never runs on the stale list.
+  // Read-only GETs to the existing /api/notifications only: no marking read, no
+  // count change, nothing else. Never runs for non-owner.
+  const fillKey = `${loadedSeq}|${category}|${tab}`;
+  const viewShort = role === "owner" && status === "ready" && items.length > 0 && hasMore && filteredItems.length < PAGE_SIZE;
+  const fillPending = open && viewShort && !refreshing && !autoTried.includes(fillKey);
+  useEffect(() => {
+    if (!fillPending || loadingMore) return;
+    setAutoTried((prev) => [...prev.filter((k) => k.startsWith(`${loadedSeq}|`)), fillKey]);
+    void loadOlder(PAGE_SIZE - filteredItems.length, AUTO_FILL_MAX_PAGES);
+  }, [fillPending, loadingMore, fillKey, loadedSeq, filteredItems.length, loadOlder]);
 
   // ── "הצג עוד" button handler — Owner only. If the next page is already
   // sitting in `items` from a previous load, just reveal it (no request); only
@@ -627,15 +674,23 @@ export default function NotificationsBell() {
                     {t("bell.retry")}
                   </button>
                 </div>
+              ) : shown.length === 0 && role === "owner" && (refreshing || loadingMore || fillPending) ? (
+                // Owner: a refresh / auto-fill is still looking — never flash an
+                // empty state while older pages are being fetched for this view.
+                <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>{t("bell.loading")}</div>
               ) : shown.length === 0 ? (
                 <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>
                   {role === "owner" && category !== "all" && (hasMore || items.length > 0)
-                    // Owner, a category with nothing in what's loaded. Say so honestly:
-                    // older rows may still match ("הצג עוד" is in the footer).
+                    // Owner, a category with nothing in what's loaded.
                     ? t(tab === "unread"
                         ? (category === "important" ? "bell.emptyImportantUnread" : "bell.emptyActivityUnread")
                         : (category === "important" ? "bell.emptyImportant" : "bell.emptyActivity"))
                     : tab === "unread" ? t("bell.emptyUnread") : t("bell.emptyAll")}
+                  {role === "owner" && hasMore && (
+                    // Only reachable when the auto-fill hit its ceiling with the
+                    // server still holding older rows: don't claim there are none.
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: "#505050" }}>{t("bell.emptyMoreHint")}</div>
+                  )}
                 </div>
               ) : (
                 shown.map((n) => (

@@ -450,6 +450,7 @@ const HE: Dict = {
   "bell.emptyActivity": "אין פעילות",
   "bell.emptyImportantUnread": "אין התראות חשובות שלא נקראו",
   "bell.emptyActivityUnread": "אין פעילות שלא נקראה",
+  "bell.emptyMoreHint": "לא נמצא בהתראות האחרונות — לחץ ״הצג עוד״ להמשך חיפוש",
   "bell.emptyAll": "אין התראות עדיין",
   "bell.emptyUnread": "אין התראות שלא נקראו",
   "bell.loading": "טוען…",
