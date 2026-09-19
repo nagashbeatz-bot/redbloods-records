@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Suspense } from "react";
@@ -20,6 +20,7 @@ import QuickActionsButton from "@/components/quick-actions/QuickActionsButton";
 import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
 import { useRole } from "@/lib/use-role";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { useIsClient } from "@/lib/use-is-client";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
@@ -67,6 +68,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
+  // The bottom nav is portalled to <body> (MobileNav.tsx) and mounts AFTER the
+  // client flag flips — later than this component's first layout effect — so a
+  // plain ref would still be null when we try to measure it. A callback ref tells
+  // us the moment the real node exists (and when it goes away): navEl drives the
+  // measurement below, mobileNavRef is kept in sync for DebugOverlay.
+  const [navEl, setNavEl] = useState<HTMLElement | null>(null);
+  const setMobileNav = useCallback((el: HTMLElement | null) => {
+    mobileNavRef.current = el;
+    setNavEl(el);
+  }, []);
+  const isClient = useIsClient(); // portal target (document.body) exists only on the client
   const pathname = usePathname();
 
   useLayoutEffect(() => {
@@ -88,19 +100,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   //    via navClearance below, so behavior is unchanged until/unless a real nav
   //    exists to measure. useLayoutEffect (not useEffect) mirrors the isMobile
   //    check above — no visible flash before first paint.
+  //    Keyed on navEl (the callback-ref node), not on `role`: the nav is portalled
+  //    and mounts/unmounts on its own schedule, so the effect re-runs exactly when
+  //    the node appears or disappears.
   const [measuredNavH, setMeasuredNavH] = useState<number | null>(null);
   useLayoutEffect(() => {
-    const el = mobileNavRef.current;
-    if (!el) { setMeasuredNavH(null); return; }
-    const measure = () => setMeasuredNavH(Math.round(el.getBoundingClientRect().height));
+    if (!navEl) { setMeasuredNavH(null); return; }
+    const measure = () => setMeasuredNavH(Math.round(navEl.getBoundingClientRect().height));
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(navEl);
     return () => ro.disconnect();
-    // Re-run when the role changes: that's the only thing that mounts/unmounts
-    // the underlying <nav> (MobileNav returns null for a role with no tabs).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [navEl]);
   const navClearance = measuredNavH != null
     ? `${measuredNavH}px`
     : `calc(${navH}px + env(safe-area-inset-bottom))`;
@@ -345,18 +356,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/*
-        Mobile bottom nav. On DESKTOP this is an in-flow flex child (the root
-        shell is position:fixed inset:0, so it lands at the real bottom with no
-        JS). On MOBILE, globals.css's @media(max-width:767px) block forces
-        .app-shell-nav to position:fixed;bottom:0 instead — the shell itself
-        becomes position:relative there (body scrolls, for the iOS touch-hitbox
-        fix below), so the flex-flow trick no longer applies on mobile. Both
-        this element's height (its own safe-area padding included) and the
-        mobile mini player's `bottom` are measured from the real <nav> DOM node
-        — see measuredNavH/navClearance above — not guessed.
+        Mobile bottom nav. Rendered by MobileNav through a portal directly under
+        <body> (position:fixed;bottom:0 from globals.css's mobile-scope
+        .app-shell-nav rule), so it sits outside this shell's overflow chain and is
+        positioned against the viewport only. Its height (safe-area padding
+        included) and the mobile mini player's `bottom` come from measuring the
+        real <nav> node through the setMobileNav callback ref — see
+        navEl/measuredNavH/navClearance above — not guessed.
         Hidden on desktop via md:hidden inside MobileNav.
       */}
-      <MobileNav onOpenChat={() => setChatOpen(true)} navRef={mobileNavRef} />
+      <MobileNav onOpenChat={() => setChatOpen(true)} navRef={setMobileNav} />
 
       {/* ── Overlays & floating elements ── */}
 
@@ -407,30 +416,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* pointer-events:none when hidden — iOS Safari keeps touch hitbox at
           layout position even after transform, so the invisible wrapper would
           block taps on content below if pointer-events were left as "auto". */}
-      <div
-        className="fixed left-0 right-0 z-50 md:hidden"
-        style={{
-          // navClearance clears the fixed bottom nav (its OWN measured height,
-          // safe-area included — see measuredNavH above). The Victor work sheet
-          // (position:fixed inset:0) COVERS that nav, so while it is open there is
-          // nothing to clear — drop the navClearance term and dock flush to the
-          // viewport bottom (same as the roles that have no bottom nav). Nothing
-          // else about the wrapper changes: still position:fixed, still
-          // viewport-relative, no transform/height change.
-          bottom: victorSheetOpen
-            ? "env(safe-area-inset-bottom)"
-            : navClearance,
-          transform: playerVisible ? "translateY(0)" : "translateY(100%)",
-          transition: "transform 0.25s",
-          pointerEvents: playerVisible ? "auto" : "none",
-          // Lift above the Victor work sheet (z-1001) so that overlay reuses THIS
-          // MiniPlayer instead of rendering its own. Its inner sub-modals are all
-          // ≥ z-2000, so they still sit above the player.
-          zIndex: victorSheetOpen ? 1002 : undefined,
-        }}
-      >
-        <MiniPlayer mobile />
-      </div>
+      {/* Portalled to <body> like the bottom nav: same fixed/viewport isolation,
+          same z-index (50, or 1002 over the Victor sheet) so its stacking against
+          the nav and page content is unchanged. Context (player/projects) flows
+          through the portal. Player/Radio logic untouched. */}
+      {isClient && createPortal(
+        <div
+          className="fixed left-0 right-0 z-50 md:hidden"
+          style={{
+            // navClearance clears the fixed bottom nav (its OWN measured height,
+            // safe-area included — see measuredNavH above). The Victor work sheet
+            // (position:fixed inset:0) COVERS that nav, so while it is open there is
+            // nothing to clear — drop the navClearance term and dock flush to the
+            // viewport bottom (same as the roles that have no bottom nav). Nothing
+            // else about the wrapper changes: still position:fixed, still
+            // viewport-relative, no transform/height change.
+            bottom: victorSheetOpen
+              ? "env(safe-area-inset-bottom)"
+              : navClearance,
+            transform: playerVisible ? "translateY(0)" : "translateY(100%)",
+            transition: "transform 0.25s",
+            pointerEvents: playerVisible ? "auto" : "none",
+            // Lift above the Victor work sheet (z-1001) so that overlay reuses THIS
+            // MiniPlayer instead of rendering its own. Its inner sub-modals are all
+            // ≥ z-2000, so they still sit above the player.
+            zIndex: victorSheetOpen ? 1002 : undefined,
+          }}
+        >
+          <MiniPlayer mobile />
+        </div>,
+        document.body
+      )}
 
       {/* MobileFAB (floating + quick-actions sheet) removed — the red
           "פעולות מהירות" button is now the single entry point. */}

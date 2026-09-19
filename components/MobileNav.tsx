@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type RefObject } from "react";
+import { useState, useEffect, type Ref } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -8,6 +8,7 @@ import { useRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { useVictorT } from "@/lib/victor-i18n";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { useIsClient } from "@/lib/use-is-client";
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -130,25 +131,31 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
   );
 }
 
-// ── MobileNav — in-flow on desktop, position:fixed on mobile ──────────────────
+// ── MobileNav — position:fixed, portalled to <body> ───────────────────────────
 //
-// Placed as the last flex child of AppShell (which is position:fixed inset:0
-// on desktop). On desktop that flex-flow placement is what pins it to the
-// bottom with no JS. On MOBILE, globals.css's .app-shell-nav rule inside
-// @media(max-width:767px) overrides this to position:fixed;bottom:0 — because
-// the shell itself switches to position:relative on mobile (body scrolls,
-// for the iOS touch-hitbox fix), the flex-flow trick no longer applies there.
-// AppShell measures this element's real rendered height (via `navRef`) as the
-// single source of truth for both its own safe-area clearance and the mobile
-// mini player's position — see measuredNavH/navClearance in AppShell.tsx.
+// The <nav> is rendered through createPortal directly under document.body, NOT
+// inside AppShell's DOM. On mobile the shell is a chain of overflow boxes
+// (html/body/root/row/main) and iOS resolved the fixed nav against that chain,
+// so it rode up with the scroll offset. Under <body> it has no shell ancestor,
+// no scroll container and no stacking context of the app's content — it can only
+// be positioned against the viewport. Its fixed/bottom/left/right/z-index come
+// from globals.css's .app-shell-nav rule (mobile scope); md:hidden hides it on
+// desktop, so desktop layout is untouched.
+//
+// `navRef` is a Ref (AppShell passes a CALLBACK ref): the portal mounts after the
+// client flag flips, later than AppShell's first layout effect, so AppShell has
+// to be told when the node actually exists — see setMobileNav / navEl there.
+// AppShell measures this element's real rendered height as the single source of
+// truth for its own safe-area clearance and the mobile mini player's position.
 
 export default function MobileNav({
   onOpenChat,
   navRef,
 }: {
   onOpenChat?: () => void;
-  navRef?: RefObject<HTMLElement | null>;
+  navRef?: Ref<HTMLElement>;
 }) {
+  const isClient = useIsClient();
   const pathname = usePathname();
   const role = useRole();
   const vt = useVictorT(); // Victor sees his language; owner keeps Hebrew via role gates
@@ -196,73 +203,77 @@ export default function MobileNav({
   return (
     <>
       {/*
-        md:hidden via className — NOT overridden by inline style.
-        No position:fixed — this element is in the flex flow of AppShell,
-        so it is always at the actual bottom of the viewport.
+        Portalled to <body>: no AppShell/overflow ancestor, so it can only be
+        positioned against the viewport. Fixed/bottom/left/right/z-index come from
+        .app-shell-nav (globals.css, mobile scope); md:hidden hides it on desktop.
+        isClient guards SSR/hydration — document.body only exists on the client.
       */}
-      <nav
-        ref={navRef}
-        className="app-shell-nav md:hidden border-t grid flex-shrink-0"
-        style={{
-          background: "#141414",
-          borderColor: "#2A2A2A",
-          gridTemplateColumns: `repeat(${tabs.length + 1}, 1fr)`,
-          paddingBottom: "env(safe-area-inset-bottom)",
-        }}
-      >
-        {tabs.map(({ href, label, icon, iconColor }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link
-              key={href}
-              href={href}
+      {isClient && createPortal(
+        <nav
+          ref={navRef}
+          className="app-shell-nav md:hidden border-t grid flex-shrink-0"
+          style={{
+            background: "#141414",
+            borderColor: "#2A2A2A",
+            gridTemplateColumns: `repeat(${tabs.length + 1}, 1fr)`,
+            paddingBottom: "env(safe-area-inset-bottom)",
+          }}
+        >
+          {tabs.map(({ href, label, icon, iconColor }) => {
+            const active = pathname === href || pathname.startsWith(href + "/");
+            return (
+              <Link
+                key={href}
+                href={href}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  gap: 3, padding: "10px 0", minHeight: 56,
+                  color: active ? "#DC2626" : "#666",
+                  fontSize: 11, fontWeight: 600, textDecoration: "none",
+                }}
+              >
+                <span style={{ fontSize: 22, lineHeight: 1, ...(iconColor ? { color: active ? iconColor : "#555" } : {}) }}>
+                  {icon}
+                </span>
+                {label}
+              </Link>
+            );
+          })}
+
+          {isOwner ? (
+            <button
+              onClick={() => setMoreOpen(true)}
               style={{
                 display: "flex", flexDirection: "column", alignItems: "center",
                 gap: 3, padding: "10px 0", minHeight: 56,
-                color: active ? "#DC2626" : "#666",
-                fontSize: 11, fontWeight: 600, textDecoration: "none",
+                color: moreActive || moreOpen ? "#DC2626" : "#666",
+                fontSize: 11, fontWeight: 600,
+                background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
               }}
             >
-              <span style={{ fontSize: 22, lineHeight: 1, ...(iconColor ? { color: active ? iconColor : "#555" } : {}) }}>
-                {icon}
-              </span>
-              {label}
-            </Link>
-          );
-        })}
-
-        {isOwner ? (
-          <button
-            onClick={() => setMoreOpen(true)}
-            style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 3, padding: "10px 0", minHeight: 56,
-              color: moreActive || moreOpen ? "#DC2626" : "#666",
-              fontSize: 11, fontWeight: 600,
-              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <span style={{ fontSize: 22, lineHeight: 1 }}>•••</span>
-            עוד
-          </button>
-        ) : (
-          // Non-owner (e.g. Victor) has no "more" sheet — give a direct logout.
-          <button
-            onClick={signOutAndRedirect}
-            style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 3, padding: "10px 0", minHeight: 56,
-              color: "#DC2626", fontSize: 11, fontWeight: 700,
-              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <span style={{ fontSize: 22, lineHeight: 1 }}>🚪</span>
-            {/* Steven works in English — mirror the Sidebar's "Logout"; Victor
-                keeps his own i18n label. (vt resolves to Hebrew for steven.) */}
-            {role === "steven" ? "Logout" : vt("common.signOut")}
-          </button>
-        )}
-      </nav>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>•••</span>
+              עוד
+            </button>
+          ) : (
+            // Non-owner (e.g. Victor) has no "more" sheet — give a direct logout.
+            <button
+              onClick={signOutAndRedirect}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center",
+                gap: 3, padding: "10px 0", minHeight: 56,
+                color: "#DC2626", fontSize: 11, fontWeight: 700,
+                background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 22, lineHeight: 1 }}>🚪</span>
+              {/* Steven works in English — mirror the Sidebar's "Logout"; Victor
+                  keeps his own i18n label. (vt resolves to Hebrew for steven.) */}
+              {role === "steven" ? "Logout" : vt("common.signOut")}
+            </button>
+          )}
+        </nav>,
+        document.body
+      )}
 
       {isOwner && moreOpen && (
         <MoreSheet
