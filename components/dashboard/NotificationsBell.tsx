@@ -11,13 +11,14 @@
 // to keep the two apart. What the role DOES decide here is language — see
 // `lang` below.
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { useRole } from "@/lib/use-role";
 import { syncAppBadge } from "@/lib/app-badge";
 import { victorT, useVictorLang, type VictorLang } from "@/lib/victor-i18n";
+import { ownerCategoryOf } from "@/lib/owner-notification-category";
 
 // ── API shape (mirrors GET /api/notifications) ─────────────────────────────
 interface ApiNotification {
@@ -179,11 +180,21 @@ const PAGE_SIZE = 10;
 const PANEL_SAFE_BOTTOM_MARGIN = 16;
 const PANEL_MIN_MAX_HEIGHT = 240; // floor so a very short viewport never yields ~0
 const NON_OWNER_MAX_HEIGHT = "min(70vh, 560px)";
+// Owner "הצג עוד" under a category filter: the API pages the UNFILTERED list, so
+// when a page brings no row for the active category we keep fetching — but at
+// most this many sequential requests per click, and only while the server says
+// there is more. Never a loop: every step is one awaited GET.
+const MAX_FILTER_FETCH_PAGES = 5;
+type OwnerCategoryTab = "important" | "activity" | "all";
 interface PanelPos { top: number; left: number; width: number; maxHeight: number | string; }
 
 export default function NotificationsBell() {
   const [open, setOpen]               = useState(false);
   const [tab, setTab]                 = useState<"all" | "unread">("all");
+  // Owner only: the main category tabs (חשוב | פעילות | הכל). `tab` above stays
+  // as the unread filter (for the Owner it is a secondary toggle, combined with
+  // the category). Every open resets to "important" — see toggleOpen.
+  const [category, setCategory]       = useState<OwnerCategoryTab>("important");
   const [mounted, setMounted]         = useState(false);
   const [pos, setPos]                 = useState<PanelPos | null>(null);
   const [items, setItems]             = useState<ApiNotification[]>([]);
@@ -220,6 +231,21 @@ export default function NotificationsBell() {
   const t = (key: string, vars?: Record<string, string | number>) => victorT(lang, key, vars);
 
   useEffect(() => setMounted(true), []);
+
+  // ── Owner category + unread filter (display-only) ─────────────────────────
+  // Applied to what is already loaded; nothing here fetches, marks read, or
+  // touches unreadCount. Non-owner never uses it (their list is `items` as-is).
+  const matchesFilter = useCallback((n: ApiNotification) => {
+    if (tab === "unread" && n.readAt) return false;
+    return category === "all" || ownerCategoryOf(n) === category;
+  }, [category, tab]);
+  const filteredItems = useMemo(
+    () => (role === "owner" ? items.filter(matchesFilter) : items),
+    [role, items, matchesFilter],
+  );
+  // Lets an in-flight "הצג עוד" tell whether the user switched filter meanwhile.
+  const filterKeyRef = useRef("");
+  useEffect(() => { filterKeyRef.current = `${category}|${tab}`; }, [category, tab]);
 
   // ── App Icon Badge sync ───────────────────────────────────────────────
   // Mirrors the SAME unreadCount this bell already tracks — no separate count
@@ -267,36 +293,69 @@ export default function NotificationsBell() {
   const toggleOpen = () => {
     const next = !open;
     setOpen(next);
-    if (next) { setActionError(null); refresh(); } // controlled refresh on open only
+    if (next) {
+      setActionError(null);
+      // Owner: every open starts on "חשוב" with no unread filter. Pure view
+      // state — read/unread and the bell count are not touched.
+      if (role === "owner") { setCategory("important"); setTab("all"); }
+      refresh(); // controlled refresh on open only
+    }
   };
+
+  // Owner: switching category / unread filter starts from the first page of
+  // that view again (loaded items stay in state; no fetch, no read change).
+  const selectCategory = (c: OwnerCategoryTab) => { setCategory(c); setVisibleCount(PAGE_SIZE); };
+  const toggleUnreadFilter = () => { setTab((v) => (v === "unread" ? "all" : "unread")); setVisibleCount(PAGE_SIZE); };
 
   // ── "הצג עוד" fetch step — Owner only. Fetches the next 10 older than the
   // oldest item currently loaded (cursor = its createdAt), appends with an
   // id-based dedup safety net, and never touches read state. Unchanged
-  // pagination contract (limit/before/hasMore/dedup) — the only addition is
-  // advancing visibleCount by however many new rows actually landed, so they
-  // become visible immediately instead of sitting loaded-but-hidden. ──
+  // pagination contract (limit/before/hasMore/dedup) — the additions are:
+  // visibleCount advances by however many NEW rows match the active category
+  // (so they show immediately instead of sitting loaded-but-hidden), and when a
+  // page brings no matching row it keeps going, one awaited GET at a time, up to
+  // MAX_FILTER_FETCH_PAGES, stopping as soon as something matches or the server
+  // says there is no more. With category "הכל" and no unread filter every row
+  // matches, so that is exactly one request per click — the original behaviour. ──
   const loadMore = useCallback(async () => {
     if (role !== "owner" || loadingMore || !hasMore || items.length === 0) return;
     setLoadingMore(true);
     setActionError(null);
+    const startKey = filterKeyRef.current;
     try {
-      const cursor = items[items.length - 1].createdAt;
-      const res = await fetch(`/api/notifications?limit=10&before=${encodeURIComponent(cursor)}`, { headers: { "cache-control": "no-store" } });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const fresh: ApiNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
       const seen = new Set(items.map((p) => p.id));
-      const uniqueFresh = fresh.filter((f) => !seen.has(f.id));
-      setItems((prev) => [...prev, ...uniqueFresh]);
-      setVisibleCount((c) => c + uniqueFresh.length);
-      setHasMore(typeof data.hasMore === "boolean" ? data.hasMore : false);
+      const collected: ApiNotification[] = [];
+      let cursor = items[items.length - 1].createdAt;
+      let more = true;
+      let newMatches = 0;
+      for (let page = 0; page < MAX_FILTER_FETCH_PAGES && more && newMatches === 0; page++) {
+        const res = await fetch(`/api/notifications?limit=10&before=${encodeURIComponent(cursor)}`, { headers: { "cache-control": "no-store" } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const fresh: ApiNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
+        const uniqueFresh = fresh.filter((f) => !seen.has(f.id));
+        uniqueFresh.forEach((f) => seen.add(f.id));
+        collected.push(...uniqueFresh);
+        newMatches += uniqueFresh.filter(matchesFilter).length;
+        more = typeof data.hasMore === "boolean" ? data.hasMore : false;
+        if (fresh.length === 0) { more = false; break; } // nothing to advance the cursor with
+        cursor = fresh[fresh.length - 1].createdAt;
+      }
+      setItems((prev) => {
+        const have = new Set(prev.map((p) => p.id));
+        return [...prev, ...collected.filter((c) => !have.has(c.id))];
+      });
+      // Only reveal if the user is still on the view this load was for.
+      // (min(): visibleCount can sit above a small filtered list — e.g. 10 vs 3
+      // "important" rows — so advance from what is actually shown, not from it.)
+      if (filterKeyRef.current === startKey) setVisibleCount((c) => Math.min(c, filteredItems.length) + newMatches);
+      setHasMore(more);
     } catch {
       setActionError(victorT(lang, "bell.loadMoreError"));
     } finally {
       setLoadingMore(false);
     }
-  }, [role, loadingMore, hasMore, items, lang]);
+  }, [role, loadingMore, hasMore, items, lang, matchesFilter, filteredItems.length]);
 
   // ── "הצג עוד" button handler — Owner only. If the next page is already
   // sitting in `items` from a previous load, just reveal it (no request); only
@@ -305,12 +364,12 @@ export default function NotificationsBell() {
   // not rendered for them). ──
   const handleShowMore = useCallback(() => {
     if (role !== "owner") return;
-    if (visibleCount < items.length) {
-      setVisibleCount((c) => Math.min(items.length, c + PAGE_SIZE));
+    if (visibleCount < filteredItems.length) {
+      setVisibleCount((c) => Math.min(filteredItems.length, c + PAGE_SIZE));
       return;
     }
     void loadMore();
-  }, [role, visibleCount, items.length, loadMore]);
+  }, [role, visibleCount, filteredItems.length, loadMore]);
 
   // ── "כווץ" — Owner only, UI-only collapse back to the first page. Loaded
   // items stay in state (untouched); no fetch, no read-state change. Does NOT
@@ -386,11 +445,13 @@ export default function NotificationsBell() {
     }
   };
 
-  // Owner: only reveal up to visibleCount of what's loaded (rest stays in
-  // state, ready for "הצג עוד"/"כווץ"). Every other role renders every loaded
-  // item, exactly as before — visibleCount never applies to them.
-  const paged = role === "owner" ? items.slice(0, visibleCount) : items;
-  const shown = tab === "unread" ? paged.filter((n) => !n.readAt) : paged;
+  // Owner: filter by category (+ optional unread) first, then only reveal up to
+  // visibleCount of that view (rest stays in state, ready for "הצג עוד"/"כווץ").
+  // Every other role renders every loaded item, exactly as before — neither the
+  // category nor visibleCount ever applies to them.
+  const shown = role === "owner"
+    ? filteredItems.slice(0, visibleCount)
+    : (tab === "unread" ? items.filter((n) => !n.readAt) : items);
   const badge = unreadCount > 99 ? "99+" : String(unreadCount);
 
   // Position the panel under the bell, clamped to the viewport. Owner also
@@ -530,10 +591,21 @@ export default function NotificationsBell() {
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <FilterPill label={t("bell.tabAll")}    active={tab === "all"}    onClick={() => setTab("all")} />
-                <FilterPill label={t("bell.tabUnread")} active={tab === "unread"} onClick={() => setTab("unread")} count={unreadCount} />
-              </div>
+              {role === "owner" ? (
+                // Owner: main categories (חשוב | פעילות | הכל) + a quieter
+                // secondary "לא נקראו" filter at the far end of the same row.
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <FilterPill label={t("bell.catImportant")} active={category === "important"} onClick={() => selectCategory("important")} />
+                  <FilterPill label={t("bell.catActivity")}  active={category === "activity"}  onClick={() => selectCategory("activity")} />
+                  <FilterPill label={t("bell.catAll")}       active={category === "all"}       onClick={() => selectCategory("all")} />
+                  <UnreadToggle label={t("bell.tabUnread")} active={tab === "unread"} count={unreadCount} onClick={toggleUnreadFilter} />
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <FilterPill label={t("bell.tabAll")}    active={tab === "all"}    onClick={() => setTab("all")} />
+                  <FilterPill label={t("bell.tabUnread")} active={tab === "unread"} onClick={() => setTab("unread")} count={unreadCount} />
+                </div>
+              )}
             </div>
 
             {/* List */}
@@ -557,7 +629,13 @@ export default function NotificationsBell() {
                 </div>
               ) : shown.length === 0 ? (
                 <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>
-                  {tab === "unread" ? t("bell.emptyUnread") : t("bell.emptyAll")}
+                  {role === "owner" && category !== "all" && (hasMore || items.length > 0)
+                    // Owner, a category with nothing in what's loaded. Say so honestly:
+                    // older rows may still match ("הצג עוד" is in the footer).
+                    ? t(tab === "unread"
+                        ? (category === "important" ? "bell.emptyImportantUnread" : "bell.emptyActivityUnread")
+                        : (category === "important" ? "bell.emptyImportant" : "bell.emptyActivity"))
+                    : tab === "unread" ? t("bell.emptyUnread") : t("bell.emptyAll")}
                 </div>
               ) : (
                 shown.map((n) => (
@@ -590,7 +668,7 @@ export default function NotificationsBell() {
                 original static, inert footer, byte-for-byte unchanged. */}
             {role === "owner" ? (
               (() => {
-                const canShowMore = visibleCount < items.length || hasMore;
+                const canShowMore = visibleCount < filteredItems.length || hasMore;
                 const isExpanded = visibleCount > PAGE_SIZE;
                 if (!canShowMore && !isExpanded) return null;
                 return (
@@ -694,6 +772,37 @@ function FilterPill({ label, active, onClick, count }: { label: string; active: 
         }}>{count > 99 ? "99+" : count}</span>
       )}
       {label}
+    </button>
+  );
+}
+
+// ── Owner secondary "unread only" toggle ───────────────────────────────────
+// Deliberately quieter than FilterPill (no border at rest, smaller type) so the
+// three categories read as the primary tabs. Pushed to the far end of the row.
+function UnreadToggle({ label, active, count, onClick }: { label: string; active: boolean; count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        marginInlineStart: "auto",
+        display: "inline-flex", alignItems: "center", gap: 5,
+        padding: "4px 9px", borderRadius: 99,
+        fontSize: 11.5, fontWeight: 600, fontFamily: "inherit",
+        cursor: "pointer",
+        background: active ? "rgba(220,38,38,0.10)" : "transparent",
+        border: `1px solid ${active ? "rgba(220,38,38,0.35)" : "transparent"}`,
+        color: active ? "#F87171" : "#7C7C7C",
+        transition: "all 0.15s",
+      }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = "#C0C0C0"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = "#7C7C7C"; }}
+    >
+      {label}
+      {count > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: active ? "#FCA5A5" : "#9A9A9A" }}>{count > 99 ? "99+" : count}</span>
+      )}
     </button>
   );
 }

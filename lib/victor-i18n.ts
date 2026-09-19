@@ -441,6 +441,15 @@ const HE: Dict = {
   "bell.markAll": "סמן הכל כנקרא",
   "bell.tabAll": "הכל",
   "bell.tabUnread": "לא נקראו",
+  // Owner-only category tabs — he-only on purpose (victorT falls back to he, and
+  // only the Hebrew owner bell renders them).
+  "bell.catImportant": "חשוב",
+  "bell.catActivity": "פעילות",
+  "bell.catAll": "הכל",
+  "bell.emptyImportant": "אין התראות חשובות",
+  "bell.emptyActivity": "אין פעילות",
+  "bell.emptyImportantUnread": "אין התראות חשובות שלא נקראו",
+  "bell.emptyActivityUnread": "אין פעילות שלא נקראה",
   "bell.emptyAll": "אין התראות עדיין",
   "bell.emptyUnread": "אין התראות שלא נקראו",
   "bell.loading": "טוען…",
