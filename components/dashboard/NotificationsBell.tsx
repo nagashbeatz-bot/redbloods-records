@@ -175,6 +175,12 @@ function KindIcon({ kind, size = 17 }: { kind: NotifKind; size?: number }) {
 
 // ── Panel geometry ─────────────────────────────────────────────────────────
 const PANEL_W = 344;
+// Layering: the bell is portaled to <body> next to ProjectDrawerV2 (z 99999/100000,
+// sub-modals 199999) and AlbumCenterModal sub-modals (300000), so it must sit above
+// all of them. Stays below the temporary ViewportProbe debug overlay (2147483000).
+const Z_BELL_BACKDROP = 2_000_000_000;
+const Z_BELL_PANEL    = 2_000_000_001;
+const Z_BELL_TOOLTIP  = 2_000_000_002;
 // Owner-only "expand downward" tuning — see place() below. Non-owner keeps the
 // original fixed cap untouched (same string, same value, same type).
 const PAGE_SIZE = 10;
@@ -596,7 +602,7 @@ export default function NotificationsBell() {
           {/* click-outside backdrop (transparent) */}
           <div
             onClick={() => setOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 9997, background: "transparent" }}
+            style={{ position: "fixed", inset: 0, zIndex: Z_BELL_BACKDROP, background: "transparent" }}
           />
           <div
             dir={lang === "he" ? "rtl" : "ltr"}
@@ -606,7 +612,7 @@ export default function NotificationsBell() {
               position: "fixed",
               top: pos.top, left: pos.left, width: pos.width,
               maxHeight: pos.maxHeight,
-              zIndex: 9998,
+              zIndex: Z_BELL_PANEL,
               display: "flex", flexDirection: "column",
               background: "#181818",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -960,7 +966,7 @@ function NotificationRow({
             maxWidth: tip.maxWidth,
             maxHeight: tip.maxHeight,
             overflow: "hidden",
-            zIndex: 10000,
+            zIndex: Z_BELL_TOOLTIP,
             pointerEvents: "none",
             background: "#202020",
             border: "1px solid rgba(255,255,255,0.12)",
