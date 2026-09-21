@@ -219,7 +219,7 @@ export default function ProjectCoverModal({ projectId, name, cover, onClose, onS
           <div style={{ flex: 1, minWidth: 150, fontSize: 12, color: SUB, lineHeight: 1.5 }}>
             {draft.kind === "upload" ? "תמונה חדשה נבחרה — לחץ שמור כדי להחיל אותה."
               : draft.kind === "keep" ? "פעילה כרגע תמונה מותאמת אישית."
-              : "התמונה משמשת כרקע, ושם הפרויקט נשאר מעליה."}
+              : "תמונה שהעלית מוצגת כמו שהיא, בלי שם הפרויקט מעליה."}
           </div>
           {draft.kind === "upload" && (
             <button type="button" onClick={() => setDraft(cover?.customImage ? { kind: "keep" } : { kind: "theme", theme: cover?.theme ?? DEFAULT_COVER_THEME })}
