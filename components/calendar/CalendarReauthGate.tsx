@@ -4,21 +4,30 @@
  * App-wide, fully blocking "Google Calendar connection required" gate.
  *
  * Mounted once in the root layout, so it sits above every page/AppShell. Google
- * Calendar is a REQUIRED connection for Redbloods OS, so on entry (owner) it runs
- * a LIGHT credentials check (/api/calendar/auth-check — no calendar sync):
+ * Calendar is a REQUIRED connection for Redbloods OS, so the owner's FIRST entry
+ * of each local day runs ONE LIGHT credentials check (/api/calendar/auth-check —
+ * no calendar sync):
  *
- *   ok                          → app opens immediately
+ *   ok                          → app opens (and today's marker is stored)
  *   needs_reauth / not_connected → blocking connect screen
  *   unknown / non-200 / network / timeout → app released, NEVER locked
  *
- * While that first check is in flight a short, clean loading cover blocks
- * interaction so the app cannot be used for a few moments before the verdict. That
- * cover has a hard client budget (INITIAL_BUDGET_MS): a slow/failed check releases
- * the app instead of holding it for the server's own timeout. A definitive answer
- * that arrives later still blocks.
+ * Once-a-day rule: after a verified "ok" the browser-LOCAL date (never UTC) is
+ * stored in localStorage (MARKER_KEY). While the marker equals today's local date
+ * every entry/refresh/navigation opens the app instantly — no request, no spinner,
+ * no cover. There are NO other automatic checks (no focus / interval / navigation
+ * re-checks). The marker is deliberately NOT written for a blocking result (a
+ * refresh must not escape the block) nor for an inconclusive one (that check did
+ * not complete, so the next entry tries again).
  *
- * Once a connect screen is showing, only an explicit "ok" lifts it — transient
- * answers change nothing.
+ * The one exception is the explicit reconnect button: it clears the marker before
+ * leaving for OAuth, so the return from Google runs one verification check.
+ *
+ * While the daily check is in flight a short, clean loading cover blocks
+ * interaction so the app cannot be used before the verdict. That cover has a hard
+ * client budget (INITIAL_BUDGET_MS): a slow/failed check releases the app instead
+ * of holding it for the server's own timeout. A definitive answer that arrives
+ * later still blocks.
  *
  * Blocking model: the cover is portalled to a dedicated <body> child; every OTHER
  * body child (app root, sidebar, mini player, bottom nav, other portals — kept up
@@ -34,16 +43,27 @@ import { ROLE_CACHE_KEY } from "@/lib/use-role";
 
 const CHECK_URL           = "/api/calendar/auth-check";
 const INITIAL_BUDGET_MS   = 3_000;        // max time the entry loading cover may hold the app
-const FETCH_ABORT_MS      = 15_000;       // hygiene: never let a hung request pin `inFlight`
-const MIN_GAP_MS          = 5_000;        // never check more often than this on wake events
-const RECHECK_HEALTHY_MS  = 10 * 60_000;  // focus/visibility re-check throttle while healthy
-const INTERVAL_HEALTHY_MS = 30 * 60_000;  // long-lived tabs / PWA
-const POLL_BLOCKED_MS     = 30_000;       // while blocked: notice a reconnect done elsewhere
+const FETCH_ABORT_MS      = 15_000;       // hygiene: never let a hung request pin the check
+const MARKER_KEY          = "calendar_auth_last_check"; // YYYY-MM-DD (browser-local) of the last verified-ok check
 const Z_INDEX             = 2147483000;
 
 type View = "idle" | "checking" | "needs_reauth" | "not_connected";
 
-const isBlocking = (v: View) => v === "needs_reauth" || v === "not_connected";
+/** Browser-LOCAL calendar day as YYYY-MM-DD — deliberately not UTC (toISOString). */
+function localDateStr(d: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function readMarker(): string | null {
+  try { return localStorage.getItem(MARKER_KEY); } catch { return null; }
+}
+function writeMarker(day: string): void {
+  try { localStorage.setItem(MARKER_KEY, day); } catch { /* storage unavailable → just check again next entry */ }
+}
+function clearMarker(): void {
+  try { localStorage.removeItem(MARKER_KEY); } catch { /* ignore */ }
+}
 
 /** Pages where there is no owner session to check (or the app is intentionally locked). */
 function isExcludedPath(pathname: string | null): boolean {
@@ -64,82 +84,53 @@ export default function CalendarReauthGate() {
   const pathname = usePathname();
   const [view, setView] = useState<View>("idle");
   const viewRef        = useRef<View>("idle");
-  const inFlight       = useRef(false);
-  const lastCheck      = useRef(0);
-  const initialDone    = useRef(false);
+  const attempted      = useRef(false); // at most ONE automatic check per page load
   const excluded       = isExcludedPath(pathname);
-  const excludedRef    = useRef(excluded);
-  excludedRef.current  = excluded;
 
   const applyView = useCallback((v: View) => { viewRef.current = v; setView(v); }, []);
 
-  /** Ends the entry loading cover without a verdict (no-op if a connect screen is showing). */
+  /** Ends the loading cover without a verdict (no-op if a connect screen is showing). */
   const finishInitial = useCallback(() => {
-    initialDone.current = true;
     if (viewRef.current === "checking") applyView("idle");
   }, [applyView]);
 
-  const runCheck = useCallback(async () => {
-    if (inFlight.current || excludedRef.current) return;
-    if (!isBlocking(viewRef.current) && cachedRoleIsNotOwner()) { finishInitial(); return; }
-    inFlight.current = true;
-    lastCheck.current = Date.now();
+  const runCheck = useCallback(async (day: string) => {
     const ctrl = new AbortController();
     const abortTimer = setTimeout(() => ctrl.abort(), FETCH_ABORT_MS);
     try {
       const res = await fetch(CHECK_URL, { cache: "no-store", credentials: "same-origin", signal: ctrl.signal });
-      if (!res.ok) { finishInitial(); return; }          // 401/403/5xx → unknown → never lock
+      if (!res.ok) { finishInitial(); return; }          // 401/403/5xx → unknown → never lock, no marker
       const data = await res.json() as { state?: string; needsReauth?: boolean };
       if (data.state === "needs_reauth" && data.needsReauth === true) {
-        initialDone.current = true; applyView("needs_reauth");
+        applyView("needs_reauth");                        // no marker: a refresh must not escape the block
       } else if (data.state === "not_connected") {
-        initialDone.current = true; applyView("not_connected");
+        applyView("not_connected");
       } else if (data.state === "ok") {
-        initialDone.current = true; applyView("idle");
+        writeMarker(day);                                 // verified → no more checks today
+        applyView("idle");
       } else {
-        finishInitial();                                  // "unknown" / malformed → never lock
+        finishInitial();                                  // "unknown" / malformed → never lock, no marker
       }
     } catch {
-      finishInitial();                                    // network error / abort / bad JSON → never lock
+      finishInitial();                                    // network error / abort / bad JSON → never lock, no marker
     } finally {
       clearTimeout(abortTimer);
-      inFlight.current = false;
     }
   }, [applyView, finishInitial]);
 
-  // Entry check (before first paint, so the app is never usable ahead of the verdict)
-  // + re-checks (focus, long-lived tab, fast poll while blocked).
+  // The daily check. Layout effect so the cover is up before first paint and the app
+  // is never usable ahead of the verdict. Nothing re-triggers it: no focus / interval /
+  // navigation listeners — `attempted` also stops route changes from re-running it.
   useLayoutEffect(() => {
-    if (excluded) return;
+    if (excluded || attempted.current) return;
+    if (cachedRoleIsNotOwner()) return;
+    const today = localDateStr();
+    if (readMarker() === today) return;   // already verified today → open instantly (no request, no spinner)
 
-    let budget: ReturnType<typeof setTimeout> | undefined;
-    if (!initialDone.current && !cachedRoleIsNotOwner()) {
-      applyView("checking");
-      budget = setTimeout(finishInitial, INITIAL_BUDGET_MS);
-    }
-    runCheck();
-
-    const onWake = () => {
-      if (document.visibilityState === "hidden") return;
-      const gap = Date.now() - lastCheck.current;
-      if (gap < MIN_GAP_MS) return;             // focus events can fire in bursts
-      if (isBlocking(viewRef.current) || gap > RECHECK_HEALTHY_MS) runCheck();
-    };
-    document.addEventListener("visibilitychange", onWake);
-    window.addEventListener("focus", onWake);
-
-    const healthy = setInterval(() => {
-      if (!isBlocking(viewRef.current) && document.visibilityState === "visible") runCheck();
-    }, INTERVAL_HEALTHY_MS);
-    const poll = setInterval(() => { if (isBlocking(viewRef.current)) runCheck(); }, POLL_BLOCKED_MS);
-
-    return () => {
-      clearTimeout(budget);
-      document.removeEventListener("visibilitychange", onWake);
-      window.removeEventListener("focus", onWake);
-      clearInterval(healthy);
-      clearInterval(poll);
-    };
+    attempted.current = true;
+    applyView("checking");
+    setTimeout(finishInitial, INITIAL_BUDGET_MS); // hard budget; finishInitial is idempotent
+    runCheck(today);
   }, [excluded, runCheck, finishInitial, applyView]);
 
   if (view === "idle" || excluded) return null;
@@ -224,6 +215,9 @@ function GateOverlay({ mode }: { mode: Exclude<View, "idle"> }) {
   async function reconnect() {
     setBusy(true);
     setError(null);
+    // Explicit reconnect: drop today's marker BEFORE leaving for OAuth so the return
+    // from Google runs one verification check (not the regular daily check).
+    clearMarker();
     try {
       const r = await fetch("/api/calendar/auth");   // existing OAuth flow
       const d = await r.json();
