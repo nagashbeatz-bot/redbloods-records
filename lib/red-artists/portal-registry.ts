@@ -11,6 +11,7 @@ export const PORTAL_ARTISTS: Record<string, { slug: string }> = {
   "שליו טסמה": { slug: "shalev-tasama" },
   "אבי מולה":   { slug: "avi-molla" },
   "DJ CLEANTONE": { slug: "dj-cleantone" },
+  "נגש ביטס":     { slug: "nagash-beats" },
 };
 
 export const SHALEV_NAME = "שליו טסמה";
@@ -18,6 +19,7 @@ export const SHALEV_SLUG = "shalev-tasama";
 // The other registered portal names, so callers stop re-declaring them locally.
 export const AVI_NAME = "אבי מולה";
 export const CLEANTONE_NAME = "DJ CLEANTONE";
+export const NAGASH_NAME = "נגש ביטס";
 
 /** True iff this exact label_artists.name has a registered portal. */
 export function isPortalArtistName(name: string | null | undefined): boolean {

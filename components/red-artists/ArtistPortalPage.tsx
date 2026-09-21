@@ -11,7 +11,7 @@ import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
-import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName } from "@/lib/red-artists/portal-registry";
+import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName, NAGASH_NAME } from "@/lib/red-artists/portal-registry";
 import { saveFileAs } from "@/lib/download-file";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
@@ -544,6 +544,12 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // DJ CLEANTONE's own session; isCleantone (role) alone would miss that
   // preview case entirely, which is exactly the bug this fixes.
   const isCleantonePortal = isCleantone || artistName === CLEANTONE_ARTIST_NAME;
+  // נגש ביטס — a deliberately minimal portal: only "בית" + "המוזיקה שלי" (see visibleTabs).
+  // Like DJ CLEANTONE it is keyed to WHICH ARTIST'S PORTAL this is, never to the viewer's
+  // role, so the owner preview and any future own session render the exact same thing. The
+  // shows / balance / schedule / next-work modules are not enabled for him, so their
+  // fetches are skipped below rather than fetched and hidden.
+  const isNagashPortal = artistName === NAGASH_NAME;
 
   // Entry beacon — fires once per real app session (a fresh tab, or the app
   // reopened after being fully closed), never on a reload or in-app navigation
@@ -585,6 +591,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const visibleTabs: readonly Tab[] =
     isAviPortal ? (["בית", "ההופעות שלי", "המוזיקה שלי", "ביטים פנויים"] as const)
     : isCleantonePortal ? (["בית", "ההופעות שלי"] as const)
+    : isNagashPortal ? (["בית", "המוזיקה שלי"] as const)
     : TABS;
 
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
@@ -715,6 +722,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [summaryState, setSummaryState] = useState<LoadState>("loading");
   const reloadSummary = useCallback(() => {
     if (isCleantonePortal) return; // his own summary is fetched separately below (cleantoneSummary)
+    if (isNagashPortal) return;    // no shows / schedule / updates module for him
     fetch(summaryUrl)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
@@ -722,7 +730,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         else setSummaryState("error");
       })
       .catch(() => setSummaryState("error"));
-  }, [summaryUrl, isCleantonePortal]);
+  }, [summaryUrl, isCleantonePortal, isNagashPortal]);
   useEffect(() => { reloadSummary(); }, [reloadSummary]);
   // A session created/deleted anywhere (e.g. via the schedule page's "קבע סשן"
   // button, which opens the SAME global quick-actions modal) should refresh
@@ -758,7 +766,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [ledger, setLedger] = useState<BalanceLedger | null>(null);
   const [ledgerState, setLedgerState] = useState<LoadState>("loading");
   const reloadLedger = useCallback(async () => {
-    if (isCleantonePortal) return; // no מאזן tab for him — not even owner-preview
+    if (isCleantonePortal || isNagashPortal) return; // no מאזן tab for them — not even owner-preview
     // Owner reads the label endpoint (needs the artist id); shalev reads his own
     // scoped, READ-ONLY endpoint (artist resolved server-side, no id needed).
     const url = isShalev ? "/api/red-artists/balance" : (isOwner && artistId ? `/api/label/artists/${artistId}/balance` : null);
@@ -769,7 +777,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       if (r.ok && d?.ok) { setLedger({ entries: d.entries ?? [], totals: d.totals }); setLedgerState("ready"); }
       else setLedgerState("error");
     } catch { setLedgerState("error"); }
-  }, [isOwner, isShalev, artistId, isCleantonePortal]);
+  }, [isOwner, isShalev, artistId, isCleantonePortal, isNagashPortal]);
   useEffect(() => { void reloadLedger(); }, [reloadLedger]);
 
   // Financial-cycle state — same owner/shalev URL split as the ledger above.
@@ -778,7 +786,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [cycleState, setCycleState] = useState<BalanceCycleState | null>(null);
   const [cycleLoadState, setCycleLoadState] = useState<LoadState>("loading");
   const reloadCycles = useCallback(async () => {
-    if (isCleantonePortal) return;
+    if (isCleantonePortal || isNagashPortal) return;
     const url = isShalev ? "/api/red-artists/balance/cycles" : (isOwner && artistId ? `/api/label/artists/${artistId}/balance/cycles` : null);
     if (!url) return;
     try {
@@ -787,18 +795,18 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       if (r.ok && d?.ok) { setCycleState({ anchorDate: d.anchorDate ?? null, current: d.current ?? null, closed: d.closed ?? [] }); setCycleLoadState("ready"); }
       else setCycleLoadState("error");
     } catch { setCycleLoadState("error"); }
-  }, [isOwner, isShalev, artistId, isCleantonePortal]);
+  }, [isOwner, isShalev, artistId, isCleantonePortal, isNagashPortal]);
   useEffect(() => { void reloadCycles(); }, [reloadCycles]);
 
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
-    if (isCleantonePortal) return; // no music/work tab for him
+    if (isCleantonePortal || isNagashPortal) return; // no "הפרויקט הבא לעבודה" for them
     try {
       const r = await fetch(`${apiBase}/next-work`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextWork(d.work ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, [apiBase, isCleantonePortal]);
+  }, [apiBase, isCleantonePortal, isNagashPortal]);
   useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
 
   // The nearest today-or-future release from the label pipeline — computed
@@ -1008,11 +1016,16 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             </PortalHero>
           ) : (
             <PortalHero title={portalGreeting(artistName)} emoji="✨" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
-              </div>
-              <NewsFlash items={summary?.updates ?? []} />
+              {/* No news flash for נגש ביטס — its data comes from the summary module he doesn't have. */}
+              {!isNagashPortal && (
+                <>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
+                  </div>
+                  <NewsFlash items={summary?.updates ?? []} />
+                </>
+              )}
             </PortalHero>
           )
         ) : tab === "המוזיקה שלי" ? (
@@ -1035,7 +1048,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           {tab === "בית" ? (
             isCleantonePortal
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} isCleantone={isCleantone} isOwner={isOwner} />
-              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} />
+              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} minimal={isNagashPortal} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} ratings={ratings} onRate={rateSketch} showRatings={showRatings} />
             : tab === "ההופעות שלי" ? (
@@ -5103,7 +5116,9 @@ function NextReleaseCard({ release }: { release: PortalRelease | null }) {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, isShalev, isOwner, isAvi, apiBase }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; isShalev?: boolean; isOwner?: boolean; isAvi?: boolean; apiBase?: string }) {
+// `minimal` (נגש ביטס): only "הריליס הבא" + "המוזיקה שלי" — everything that depends on a module
+// he doesn't have (sessions, next work, shows, weekly calendar, label updates) is not rendered.
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, isShalev, isOwner, isAvi, apiBase, minimal }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; isShalev?: boolean; isOwner?: boolean; isAvi?: boolean; apiBase?: string; minimal?: boolean }) {
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
@@ -5113,7 +5128,8 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
       {/* ── הריליס הבא — computed live from the label release pipeline, read-only ── */}
       <NextReleaseCard release={nextRelease} />
 
-      {/* ── "מה מחכה לך עכשיו" ── */}
+      {/* ── "מה מחכה לך עכשיו" — sessions + next work; not for the minimal portal ── */}
+      {!minimal && (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
@@ -5138,8 +5154,9 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           />
         </div>
       </div>
+      )}
 
-      {workPickerOpen && !isShalev && (
+      {!minimal && workPickerOpen && !isShalev && (
         <NextWorkModal
           sketches={sketches}
           current={nextWork}
@@ -5149,7 +5166,7 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
       )}
 
       {/* ── 3. Main grid (row A) — music-forward in RTL: המוזיקה שלי (right) → ביטים → מאזן ── */}
-      <div className="rap-grid-a">
+      <div className="rap-grid-a" style={minimal ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
 
         {/* המוזיקה שלי — up to 4 of the artist's own sketches (manifest source) */}
         <SectionCard title="המוזיקה שלי">
@@ -5183,24 +5200,28 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
         {/* ── ההופעה הבאה — same UI family as הסשן הקרוב (see NextShowCard /
             NextSessionCard). Replaces the old מאזן home mini-card for everyone;
             the full מאזן data still lives untouched in the מאזן tab. ── */}
-        <NextShowCard
-          show={(summary?.shows.upcoming ?? [])[0] ?? null}
-          loading={summaryState === "loading"}
-          onOpen={onOpenShows}
-        />
+        {!minimal && (
+          <NextShowCard
+            show={(summary?.shows.upcoming ?? [])[0] ?? null}
+            loading={summaryState === "loading"}
+            onOpen={onOpenShows}
+          />
+        )}
       </div>
 
       {/* ── 3. Weekly calendar — the SAME WeeklyCalendarSection component the
              לו״ז tab renders, pinned to the current week (no navigation). ── */}
-      <WeeklyCalendarSection title="יומן השבוע" showNavigation={false} isOwner={isOwner} />
+      {!minimal && <WeeklyCalendarSection title="יומן השבוע" showNavigation={false} isOwner={isOwner} />}
 
       {/* ── 4. עדכונים מהלייבל — REAL data (summary.updates) ── */}
+      {!minimal && (
       <SchedSection title="עדכונים מהלייבל">
         {summaryState === "loading" ? <SchedEmpty text="טוען…" />
           : summaryState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
           : (summary?.updates?.length ?? 0) === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
           : <UpdatesList items={summary!.updates} />}
       </SchedSection>
+      )}
 
       {/* ── shalev on mobile — his "האזור שלי" + "יציאה" live here (a tidy page-end
           area) instead of a fixed bottom bar. Owner/desktop keep their own nav. ── */}
