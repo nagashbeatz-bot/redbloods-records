@@ -4,6 +4,7 @@ import "./globals.css";
 import ProjectsProvider from "@/components/ProjectsProvider";
 import PlayerProvider from "@/components/PlayerProvider";
 import RadioProvider from "@/components/radio/RadioProvider";
+import CalendarReauthGate from "@/components/calendar/CalendarReauthGate";
 
 export const metadata: Metadata = {
   title: "Redbloods Records",
@@ -52,6 +53,8 @@ export default function RootLayout({
             </RadioProvider>
           </PlayerProvider>
         </ProjectsProvider>
+        {/* Blocks the whole app ONLY when Google Calendar definitively needs OAuth again. */}
+        <CalendarReauthGate />
       </body>
     </html>
   );

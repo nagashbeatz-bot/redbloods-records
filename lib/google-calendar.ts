@@ -96,6 +96,96 @@ export async function getAuthenticatedClient() {
   return oauth2;
 }
 
+// ─── Light auth check (drives the app-wide "reconnect" gate) ─────────────────
+
+/**
+ * Result of a credentials-only check. ONLY `needs_reauth` means the user must run
+ * OAuth again; every other state — including `unknown` (Supabase/network/timeout/
+ * Google 5xx/429/invalid_client…) — must NEVER lock the app.
+ */
+export type CalendarAuthCheck =
+  | { state: "ok" }
+  | { state: "not_connected" }
+  | { state: "needs_reauth"; reason: "invalid_grant" | "no_refresh_token" }
+  | { state: "unknown" };
+
+const AUTH_CHECK_TIMEOUT_MS = 8_000;
+
+/** Google answered the refresh with a definitive "this grant is dead" (HTTP 400). */
+function isInvalidGrant(err: unknown): boolean {
+  const e = err as { message?: unknown; response?: { data?: { error?: unknown } } } | null;
+  return e?.response?.data?.error === "invalid_grant" || e?.message === "invalid_grant";
+}
+
+/**
+ * Tries to obtain a usable access token from a stored token blob — NO Calendar
+ * API call. If the access token is still valid this makes no network request at
+ * all; otherwise it does one refresh against Google's token endpoint (persisting
+ * the refreshed token exactly like getAuthenticatedClient does).
+ */
+export async function probeCalendarToken(
+  token: Record<string, unknown>
+): Promise<CalendarAuthCheck> {
+  if (typeof token.refresh_token !== "string" || !token.refresh_token) {
+    return { state: "needs_reauth", reason: "no_refresh_token" };
+  }
+
+  const attempt = async (): Promise<void> => {
+    const oauth2 = getOAuthClient();
+    oauth2.setCredentials(token as Parameters<typeof oauth2.setCredentials>[0]);
+    oauth2.on("tokens", (newTokens) => {
+      saveToken({ ...token, ...newTokens }).catch(console.error);
+    });
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("calendar auth check timeout")), AUTH_CHECK_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([oauth2.getAccessToken(), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    await attempt();
+    return { state: "ok" };
+  } catch (err) {
+    if (!isInvalidGrant(err)) return { state: "unknown" };
+    // Definitive answer — confirm once before declaring the grant dead.
+    await new Promise((r) => setTimeout(r, 600));
+    try {
+      await attempt();
+      return { state: "ok" };
+    } catch (err2) {
+      if (isInvalidGrant(err2)) {
+        console.error("[calendar/auth-check] invalid_grant — Google Calendar needs reconnect");
+        return { state: "needs_reauth", reason: "invalid_grant" };
+      }
+      return { state: "unknown" };
+    }
+  }
+}
+
+export async function checkCalendarAuth(): Promise<CalendarAuthCheck> {
+  try {
+    const { supabase } = await import("./supabase");
+    const { data, error } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("key", "google_calendar_token")
+      .maybeSingle();
+    // A DB error is NOT "disconnected" — never lock on it.
+    if (error) return { state: "unknown" };
+    if (!data?.value) return { state: "not_connected" };
+    if (typeof data.value !== "object") return { state: "unknown" };
+    return await probeCalendarToken(data.value as Record<string, unknown>);
+  } catch {
+    return { state: "unknown" };
+  }
+}
+
 // ─── Types (re-exported from calendar-utils for server callers) ───────────────
 
 export type { CalendarEventType, ParsedCalendarEvent } from "./calendar-utils";
