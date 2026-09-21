@@ -110,6 +110,54 @@ const roleLabel = (r: FileRole, lang: Lang) => (lang === "en" ? ROLE_LABEL[r].en
 /** Audio files get a player; archives (stems/zip/rar) are download-only rows. */
 const isAudioName = (n: string) => /\.(wav|mp3|m4a|aiff?|flac|ogg|aac|opus)$/i.test(n || "");
 
+/**
+ * The ONE download action for every file download in this page (mix player, project
+ * files, work materials, latest mix). Never opens a tab. `url` is the existing
+ * same-origin stream URL (owner /api/dropbox/stream or Steven's scoped stream) — it
+ * 302s to a Dropbox temp link that answers CORS with `*`, so it is fetched as-is.
+ *
+ * Chrome/Edge: showSaveFilePicker is the FIRST thing this runs, synchronously inside
+ * the caller's click (no await before it — that would drop the user activation).
+ * Only once a location is chosen is the stream fetched and piped straight into the
+ * file, so a big WAV is never held in memory. Cancel is silent; a real failure calls
+ * `onError`. Everything else falls back to a plain same-tab <a download> click.
+ */
+type SaveWritable = WritableStream<Uint8Array>;
+type SaveHandle = { createWritable: () => Promise<SaveWritable> };
+async function saveFileAs(url: string, fileName: string, onError: () => void): Promise<void> {
+  const name = (fileName || "").replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
+  const picker = (window as unknown as {
+    showSaveFilePicker?: (o: { suggestedName: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<SaveHandle>;
+  }).showSaveFilePicker;
+
+  if (typeof picker !== "function") {
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener"; a.style.display = "none";
+    document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
+
+  const ext = /\.([a-z0-9]{1,8})$/i.exec(name)?.[1];
+  let handle: SaveHandle;
+  try {
+    handle = await picker.call(window, {
+      suggestedName: name,
+      ...(ext ? { types: [{ description: `${ext.toUpperCase()} file`, accept: { "application/octet-stream": [`.${ext.toLowerCase()}`] } }] } : {}),
+    });
+  } catch (e) {
+    if (!(e instanceof DOMException && e.name === "AbortError")) onError(); // Cancel = silent
+    return;
+  }
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    await res.body.pipeTo(await handle.createWritable());
+  } catch {
+    onError();
+  }
+}
+
 function detectRole(name: string): FileRole {
   const s = (name || "").toLowerCase();
   if (/(\.(zip|rar|7z)$|stems|ערוצים)/.test(s)) return "stems";
@@ -407,7 +455,7 @@ const TR = {
     vSelectToPlay: "בחר גרסה מהרשימה כדי לנגן", vAudioLoading: "טוען קובץ…", vAudioError: "טעינת הקובץ נכשלה", vPlay: "נגן",
     pNoVersionsTitle: "עדיין אין גרסאות לניגון", pNoVersionsSub: "העלה גרסה ראשונה כדי להפעיל את הנגן", detailsAndInstructions: "פרטי עבודה והוראות למיקס",
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
-    vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
+    vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה", vDownloadFail: "ההורדה נכשלה",
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
     cAddAtTime: "הוסף הערה בזמן הנוכחי", cGeneral: "הערה כללית", cGeneralTitle: "הערה כללית למיקס", cGeneralTag: "כללי",
     cResolved: "בוצע", cMarkDone: "סמן כבוצע", cMarkOpen: "סמן כפתוחה",
@@ -485,7 +533,7 @@ const TR = {
     vSelectToPlay: "Select a version to play", vAudioLoading: "Loading file…", vAudioError: "Failed to load the file", vPlay: "Play",
     pNoVersionsTitle: "No versions to play yet", pNoVersionsSub: "Upload the first version to start the player", detailsAndInstructions: "Job details & mix instructions",
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
-    vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
+    vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download", vDownloadFail: "Download failed",
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
     cAddAtTime: "Add comment at current time", cGeneral: "General note", cGeneralTitle: "General note for the mix", cGeneralTag: "General",
     cResolved: "DONE", cMarkDone: "Mark as done", cMarkOpen: "Mark as open",
@@ -2986,6 +3034,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     ? anyVer.dropboxPath.slice(0, anyVer.dropboxPath.lastIndexOf("/"))
     : null;
 
+  // Every download in this modal (player, project files) goes through saveFileAs.
+  const saveFile = (url: string, fileName: string) => { void saveFileAs(url, fileName, () => notify(t.vDownloadFail)); };
+
   // Open the folder in Dropbox via a plain web deep-link — client-only, NO API,
   // NO token, NO shared link. window.open runs INSIDE the click gesture with a
   // real URL, so there's no pre-opened blank tab and no popup-blocker race; a
@@ -3331,10 +3382,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                         <div title={dName} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{dName}</div>
                         <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>{roleLabel(f.role, lang)}{f.fileSize ? ` · ${fmtBytes(f.fileSize)}` : ""}</div>
                       </div>
-                      <a href={f.url} target="_blank" rel="noopener noreferrer" title={t.vDownload}
-                        style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                      <button type="button" onClick={() => saveFile(f.url, f.fileName)} title={t.vDownload}
+                        style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, fontFamily: "inherit" }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg>
-                      </a>
+                      </button>
                     </div>
                     );
                   })}
@@ -3436,7 +3487,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                             onCommentHover={setHoverCommentId}
                             onCommentLeave={() => setHoverCommentId(null)}
                             activeCommentId={hoverCommentId ?? nearestActiveId}
-                            onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                            onDownload={() => saveFile(f.url, f.fileName)}
                             t={t}
                           />
                         ))}
@@ -4528,7 +4579,8 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
     const ext = (m.name.split(".").pop() ?? "").toUpperCase();
     return [ext, m.durationSeconds ? fmtTime(m.durationSeconds) : null, m.size ? fmtBytes(m.size) : null].filter(Boolean).join(" · ");
   }
-  const dl = (m: WMMaterial) => () => window.open(m.url, "_blank", "noopener,noreferrer");
+  const saveFile = (url: string, fileName: string) => { void saveFileAs(url, fileName, () => notify(t.vDownloadFail)); };
+  const dl = (m: WMMaterial) => () => saveFile(m.url, m.name);
 
   const materials = data?.materials ?? [];
   const rough      = materials.filter(m => m.materialType === "rough");
@@ -4709,7 +4761,7 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareLatest}</div>
                     {data.latestMix
-                      ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={`${work.project} ${data.latestMix.label}`.trim()} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
+                      ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={`${work.project} ${data.latestMix.label}`.trim()} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => saveFile(data.latestMix!.url, data.latestMix!.fileName)} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
                       : emptyLine(t.wmNoLatest)}
                   </div>
                 </div>
