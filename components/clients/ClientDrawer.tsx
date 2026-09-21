@@ -9,6 +9,8 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import { PROJECT_TYPES } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +36,9 @@ interface DeliveryRecord {
 interface ProjectFinance {
   projectId: string; name: string; status: string;
   agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; cancelledIncome: number; totalExpenses: number;
+  // R5: money in a currency OTHER than the project's finance currency. It is never added into
+  // totalPaid / totalExpected / totalExpenses (which are in `currency`), only kept aside.
+  otherPaid: CurrencyTotals; otherExpected: CurrencyTotals; otherExpenses: CurrencyTotals;
 }
 interface Meeting {
   id: string; client_id: string; client_name: string;
@@ -152,23 +157,27 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
       const finMap = new Map<string, ProjectFinance>();
       for (const p of clientProjects) {
-        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0 });
+        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0, otherPaid: {}, otherExpected: {}, otherExpenses: {} });
       }
-      for (const t of allTx) {
-        if (!projectIds.has(t.project_id)) continue;
-        const fin = finMap.get(t.project_id)!;
-        // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
-        if (isSongIncome(t)) {
-          if (["שולם","התקבל"].includes(t.payment_status)) fin.totalPaid += t.amount;
-          else if (isCancelledPayment(t.payment_status)) fin.cancelledIncome += t.amount;
-          else if (["צפוי","חלקי"].includes(t.payment_status)) fin.totalExpected += t.amount;
-        } else if (t.type === "expense") { fin.totalExpenses += t.amount; }
-      }
+      // Settings first: the project's finance currency must be known before its transactions are
+      // classified (R5). Only projects that belong to this client are looked up — never a scan of
+      // every finance_* row, so orphan finance settings can't leak in.
       for (const s of allSettings) {
         if (!finMap.has(s.project_id)) continue;
         const fin = finMap.get(s.project_id)!;
         fin.agreedPrice = s.agreedPrice ?? 0;
-        fin.currency    = s.currency    ?? "₪";
+        fin.currency    = normalizeCurrency(s.currency);
+      }
+      for (const t of allTx) {
+        if (!projectIds.has(t.project_id)) continue;
+        const fin = finMap.get(t.project_id)!;
+        const inProjectCurrency = sameCurrency(t.currency, fin.currency); // R5
+        // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
+        if (isSongIncome(t)) {
+          if (["שולם","התקבל"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalPaid += t.amount; else addToTotals(fin.otherPaid, t.currency, t.amount); }
+          else if (isCancelledPayment(t.payment_status)) { if (inProjectCurrency) fin.cancelledIncome += t.amount; }
+          else if (["צפוי","חלקי"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalExpected += t.amount; else addToTotals(fin.otherExpected, t.currency, t.amount); }
+        } else if (t.type === "expense") { if (inProjectCurrency) fin.totalExpenses += t.amount; else addToTotals(fin.otherExpenses, t.currency, t.amount); }
       }
 
       setProjects(clientProjects);
@@ -303,12 +312,37 @@ function ModalContent({
 }) {
   const today = new Date().toISOString().split("T")[0];
 
-  const totalAgreed   = finances.reduce((s, f) => s + f.agreedPrice, 0);
-  const totalPaid     = finances.reduce((s, f) => s + f.totalPaid, 0);
-  const totalExpected = finances.reduce((s, f) => s + f.totalExpected, 0);
+  // Client totals, PER CURRENCY — currencies are never added together (no FX). The headline is ₪
+  // when any project is in ₪ (else the first project's currency, exactly as before); every other
+  // currency is shown on its own line under it.
+  type CurAgg = { agreed: number; paid: number; expected: number; expenses: number };
+  const aggByCur: Record<string, CurAgg> = {};
+  const bump = (cur: string, k: keyof CurAgg, v: number) => {
+    (aggByCur[cur] ??= { agreed: 0, paid: 0, expected: 0, expenses: 0 })[k] += v;
+  };
+  for (const f of finances) {
+    bump(f.currency, "agreed", f.agreedPrice);
+    bump(f.currency, "paid", f.totalPaid);
+    bump(f.currency, "expected", f.totalExpected);
+    bump(f.currency, "expenses", f.totalExpenses);
+    for (const [c, v] of Object.entries(f.otherPaid))     bump(c, "paid", v);
+    for (const [c, v] of Object.entries(f.otherExpected)) bump(c, "expected", v);
+    for (const [c, v] of Object.entries(f.otherExpenses)) bump(c, "expenses", v);
+  }
+  const currency      = finances.some((f) => f.currency === DEFAULT_CURRENCY) ? DEFAULT_CURRENCY : (finances[0]?.currency ?? DEFAULT_CURRENCY);
+  const head          = aggByCur[currency] ?? { agreed: 0, paid: 0, expected: 0, expenses: 0 };
+  const totalAgreed   = head.agreed;
+  const totalPaid     = head.paid;
+  const totalExpected = head.expected;
   const totalBalance  = totalAgreed - totalPaid;
-  const totalExpenses = finances.reduce((s, f) => s + f.totalExpenses, 0);
-  const currency      = finances[0]?.currency ?? "₪";
+  const totalExpenses = head.expenses;
+  const otherCurs     = orderCurrencies(Object.keys(aggByCur).filter((c) => c !== currency));
+  const nz = (n: number) => Math.round(n * 100) !== 0;
+  const otherLines = (pick: (a: CurAgg) => number, signColor = false): CurrencyLine[] =>
+    otherCurs
+      .map((c) => ({ c, v: pick(aggByCur[c]) }))
+      .filter(({ v }) => nz(v))
+      .map(({ c, v }) => ({ text: formatOtherAmount(v, c), ...(signColor ? { color: v >= 0 ? "#10B981" : "#EF4444" } : {}) }));
 
   const completedSessions = sessions.filter((s) => s.status === "התקיים").length;
   const plannedSessions   = sessions.filter((s) => s.status === "מתוכנן").length;
@@ -426,14 +460,22 @@ function ModalContent({
             {totalAgreed > 0 ? (
               <SectionCard title="כספים">
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: totalExpected > 0 ? 10 : 0 }}>
-                  <StatCard label="סוכם" value={fmtMoney(totalAgreed, currency)} color="#A855F7" />
-                  <StatCard label="שולם" value={fmtMoney(totalPaid, currency)} color="#10B981" />
-                  <StatCard label="יתרה" value={fmtMoney(totalBalance, currency)} color={totalBalance <= 0 ? "#10B981" : "#EF4444"} />
-                  <StatCard label="רווח" value={fmtMoney(totalPaid - totalExpenses, currency)} color={(totalPaid - totalExpenses) >= 0 ? "#10B981" : "#EF4444"} />
+                  <StatCard label="סוכם" value={fmtMoney(totalAgreed, currency)} color="#A855F7" extra={otherLines((a) => a.agreed)} />
+                  <StatCard label="שולם" value={fmtMoney(totalPaid, currency)} color="#10B981" extra={otherLines((a) => a.paid)} />
+                  <StatCard label="יתרה" value={fmtMoney(totalBalance, currency)} color={totalBalance <= 0 ? "#10B981" : "#EF4444"} extra={otherLines((a) => a.agreed - a.paid, true).map((l) => ({ ...l, color: l.color === "#10B981" ? "#EF4444" : "#10B981" }))} />
+                  <StatCard label="רווח" value={fmtMoney(totalPaid - totalExpenses, currency)} color={(totalPaid - totalExpenses) >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((a) => a.paid - a.expenses, true)} />
                 </div>
-                {totalExpected > 0 && (
+                {(totalExpected > 0 || otherLines((a) => a.expected).length > 0) && (
                   <div style={{ fontSize: 12, color: "#555", borderTop: "1px solid #222", paddingTop: 8 }}>
-                    תשלום צפוי: <span style={{ color: "#3B82F6", fontWeight: 600 }}>{fmtMoney(totalExpected, currency)}</span>
+                    {totalExpected > 0 && <>תשלום צפוי: <span style={{ color: "#3B82F6", fontWeight: 600 }}>{fmtMoney(totalExpected, currency)}</span></>}
+                    {otherLines((a) => a.expected).length > 0 && (
+                      <div style={{ marginTop: totalExpected > 0 ? 4 : 0 }}>
+                        {totalExpected > 0 ? "" : "תשלום צפוי: "}
+                        {otherLines((a) => a.expected).map((l, i) => (
+                          <span key={l.text} style={{ direction: "ltr", unicodeBidi: "isolate", display: "inline-block", color: "#3B82F6", fontWeight: 600, marginInlineStart: i > 0 ? 8 : 0 }}>{l.text}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </SectionCard>
@@ -1094,11 +1136,12 @@ function Chip({ children, bg, color, border, glow }: { children: React.ReactNode
   );
 }
 
-function StatCard({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
+function StatCard({ label, value, color, small, extra }: { label: string; value: string; color: string; small?: boolean; extra?: CurrencyLine[] }) {
   return (
     <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 10, padding: small ? "8px 10px" : "10px 12px" }}>
       <div style={{ fontSize: 10, color: "#444", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: small ? 14 : 15, fontWeight: 700, color }}>{value}</div>
+      {extra && extra.length > 0 && <CurrencyLines lines={extra} color={color} size={small ? 12 : 13} align="right" />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 import { isCancelledPayment } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { sameCurrency } from "@/lib/finance";
 
 // ── Mobile summary: group issues into up to 3 category lines ─────────────────
 function buildSummaryLines(issues: ProjectIssue[]): string[] {
@@ -240,7 +241,7 @@ export default function HealthAlert() {
       .then((d) => {
         const transactions: Array<{
           project_id: string; type: string; amount: number;
-          payment_status: string; date: string | null; expense_scope?: string;
+          payment_status: string; date: string | null; expense_scope?: string; currency?: string | null;
         }> = d.transactions ?? [];
         const settings: Array<{
           project_id: string; agreedPrice: number; currency: string;
@@ -254,8 +255,17 @@ export default function HealthAlert() {
           return map.get(pid)!;
         };
 
+        // Settings first: each project's finance currency must be known before its transactions are
+        // classified. R5 — only money in that currency is compared against the project's agreedPrice.
+        for (const setting of settings) {
+          const s = ensure(setting.project_id);
+          s.agreedPrice = setting.agreedPrice ?? 0;
+          s.currency    = setting.currency    ?? "₪";
+        }
+
         for (const t of transactions) {
           const s = ensure(t.project_id);
+          if (!sameCurrency(t.currency, s.currency)) continue;
           // Clip income belongs to the clip deal, not to the project's agreed
           // price — counting it here would fake a fully-paid / overpaid song.
           if (isSongIncome(t)) {
@@ -270,11 +280,6 @@ export default function HealthAlert() {
           } else if (t.type === "expense") {
             if (t.payment_status === "שולם") s.totalExpenses += t.amount;
           }
-        }
-        for (const setting of settings) {
-          const s = ensure(setting.project_id);
-          s.agreedPrice = setting.agreedPrice ?? 0;
-          s.currency    = setting.currency    ?? "₪";
         }
         setFinanceSummaries(Array.from(map.values()));
       })

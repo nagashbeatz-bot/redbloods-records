@@ -10,6 +10,8 @@ import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY } from "@/lib/finance";
+import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
@@ -275,7 +277,7 @@ interface Props {
 // Mai Operational Layer — read-only, pure, no mutations, no fetch.
 // Uses checkHealth + checkFinanceHealth from lib/health.ts.
 
-interface TxLike { type: string; payment_status: string; amount: number; date: string | null; expense_scope?: string }
+interface TxLike { type: string; payment_status: string; amount: number; date: string | null; expense_scope?: string; currency?: string | null }
 
 function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }: {
   project: { id: string; name: string; artist: string; status: string; deadline: string | null; isOverdue: boolean; parentProject: string; projectType?: string };
@@ -288,12 +290,15 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
   const PAID_S    = new Set(["שולם", "התקבל"]);
   const EXPECT_S  = new Set(["צפוי", "חלקי"]);
 
+  // R5: only money in the project's finance currency is measured against its agreedPrice.
+  const txs = partitionByCurrency(transactions, currency).same;
+
   // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
-  const totalPaid     = transactions.filter((t) => isSongIncome(t) && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpected = transactions.filter((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome = transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const overduePayment = transactions.some((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
+  const totalPaid     = txs.filter((t) => isSongIncome(t) && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpected = txs.filter((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome = txs.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = txs.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const overduePayment = txs.some((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
 
   const summary: FinanceSummary = {
     projectId:    project.id,
@@ -1633,12 +1638,27 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const expenseList      = transactions.filter((t) => t.type === "expense");
   const clipExpenseList  = expenseList.filter((t) => t.expense_scope === "קליפ");
   const nonClipExpenses  = expenseList.filter((t) => t.expense_scope !== "קליפ");
-  const totalPaid        = songIncomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome  = songIncomeList.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExp         = expenseList.reduce((s, t) => s + t.amount, 0);
-  const totalClipExp     = clipExpenseList.reduce((s, t) => s + t.amount, 0);
+  // R5 + no FX: the totals below are in the project's finance currency (`finCurrency`) ONLY.
+  // Money in any other currency is never added to them — it is summed on its own (per currency)
+  // and shown on a second line under the matching row.
+  const songIncomeParts  = partitionByCurrency(songIncomeList, finCurrency);
+  const expenseParts     = partitionByCurrency(expenseList, finCurrency);
+  const totalPaid        = songIncomeParts.same.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome  = songIncomeParts.same.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExp         = expenseParts.same.reduce((s, t) => s + t.amount, 0);
+  const totalClipExp     = clipExpenseList.filter((t) => expenseParts.same.includes(t)).reduce((s, t) => s + t.amount, 0);
   const balance          = collectibleBalance(agreedPrice, totalPaid, cancelledIncome);
   const profit           = totalPaid - totalExp;
+  const otherPaidTotals  = sumByCurrency(songIncomeParts.other.filter((t) => PAID_STATUSES.has(t.payment_status)), (t) => t.amount);
+  const otherExpTotals   = sumByCurrency(expenseParts.other, (t) => t.amount);
+  const otherCurCodes    = orderCurrencies(Array.from(new Set([...Object.keys(otherPaidTotals), ...Object.keys(otherExpTotals)])).filter((c) => c !== finCurrency));
+  const nzAmt = (n: number) => Math.round(n * 100) !== 0;
+  const otherPaidLines: CurrencyLine[] = otherCurCodes.filter((c) => nzAmt(otherPaidTotals[c] ?? 0)).map((c) => ({ text: formatOtherAmount(otherPaidTotals[c], c) }));
+  const otherExpLines: CurrencyLine[]  = otherCurCodes.filter((c) => nzAmt(otherExpTotals[c] ?? 0)).map((c) => ({ text: formatOtherAmount(-otherExpTotals[c], c) }));
+  const otherProfitLines: CurrencyLine[] = otherCurCodes
+    .map((c) => ({ c, v: (otherPaidTotals[c] ?? 0) - (otherExpTotals[c] ?? 0) }))
+    .filter(({ v }) => nzAmt(v))
+    .map(({ c, v }) => ({ text: formatOtherAmount(v, c), color: v >= 0 ? "#10B981" : "#EF4444" }));
 
   // ── Files ─────────────────────────────────────────────────────────────────
   const allFiles = [...project.files].reverse(); // newest first
@@ -2379,11 +2399,11 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
             {/* Stats rows */}
             {[
-              { label: "שולם עד עכשיו",    value: totalPaid,    color: "#10B981", prefix: "",  sub: null },
-              { label: "יתרה לתשלום",       value: balance,      color: balance > 0 ? "#EF4444" : "#10B981", prefix: "", sub: null },
-              { label: "הוצאות סה״כ",       value: totalExp,     color: "#F59E0B", prefix: "−", sub: totalClipExp > 0 ? `מתוכן קליפ: ${totalClipExp.toLocaleString()}₪` : null },
-              { label: "רווח משוער",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "", sub: null },
-            ].map(({ label, value, color, prefix, sub }) => (
+              { label: "שולם עד עכשיו",    value: totalPaid,    color: "#10B981", prefix: "",  sub: null, extra: otherPaidLines },
+              { label: "יתרה לתשלום",       value: balance,      color: balance > 0 ? "#EF4444" : "#10B981", prefix: "", sub: null, extra: [] as CurrencyLine[] },
+              { label: "הוצאות סה״כ",       value: totalExp,     color: "#F59E0B", prefix: "−", sub: totalClipExp > 0 ? `מתוכן קליפ: ${totalClipExp.toLocaleString()}₪` : null, extra: otherExpLines },
+              { label: "רווח משוער",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "", sub: null, extra: otherProfitLines },
+            ].map(({ label, value, color, prefix, sub, extra }) => (
               <div key={label} style={{ padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2418,6 +2438,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 <div style={{ fontSize: 13, fontWeight: 700, color }}>{prefix}{value.toLocaleString()}{finCurrency}</div>
                 </div>
                 {sub && <div style={{ fontSize: 10, color: "#A855F7", marginTop: 2, paddingRight: 2 }}>🎬 {sub}</div>}
+                <CurrencyLines lines={extra} color={color} size={12} align="left" />
               </div>
             ))}
 

@@ -5,6 +5,11 @@ import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import { isClipScoped } from "@/lib/clip-finance";
+import {
+  calcPeriodStats, groupByCurrency, sumByCurrency, totalOf, orderCurrencies, otherAmountsFrom,
+  otherCurrencyAmounts, formatCurrencyAmounts, formatOtherAmount, DEFAULT_CURRENCY,
+  type CurrencyTotals,
+} from "@/lib/finance";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const BRAND  = "#DC2626";
@@ -244,21 +249,29 @@ function getTransactionLabel(tx: Transaction): string {
   return isIncome ? "הכנסה כללית" : "הוצאה כללית";
 }
 
+// Per-currency (lib/finance/stats.ts — the same formulas, verbatim). The ₪ figures
+// are the headline; any other currency is computed on its own under `.other` and is
+// NEVER added into the ₪ figures. There is no FX conversion.
 function calcStats(txList: Transaction[]) {
-  const income          = txList.filter((t) => t.type === "income");
-  const expenses        = txList.filter((t) => t.type === "expense");
-  const projectExpenses = expenses.filter((t) => (t.scope ?? "project") === "project");
-  const generalExpenses = expenses.filter((t) => t.scope === "general");
+  return calcPeriodStats(txList);
+}
+type CurStats = ReturnType<typeof calcStats>["other"][string];
+/** One additional-currency line: text (e.g. "$2,200") and an optional colour override. */
+type ExtraLine = { text: string; color?: string };
 
-  const incomeReceived    = income.filter((t) => ["התקבל", "שולם"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected    = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const projExpPaid       = projectExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
-  const genExpPaid        = generalExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
-  const expensesPaid      = projExpPaid + genExpPaid;
-  const expensesExpected  = expenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const profitReal        = incomeReceived - expensesPaid;
-  const profitEst         = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
-  return { incomeReceived, incomeExpected, projExpPaid, genExpPaid, expensesPaid, expensesExpected, profitReal, profitEst };
+// LTR-isolated inline text — keeps "$2,200" / "−$2,200" reading correctly inside RTL.
+function Ltr({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <span style={{ direction: "ltr", unicodeBidi: "isolate", display: "inline-block", ...style }}>{children}</span>;
+}
+
+// "₪X" (this surface's own formatter, unchanged) first when there are ₪ rows, then each
+// other currency on its own. With ₪ rows only this is exactly [fmtAmount(sum)].
+function amountParts(totals: CurrencyTotals): { text: string; isMain: boolean }[] {
+  const parts: { text: string; isMain: boolean }[] = [];
+  if (totals[DEFAULT_CURRENCY] !== undefined) parts.push({ text: fmtAmount(totals[DEFAULT_CURRENCY]), isMain: true });
+  for (const o of otherCurrencyAmounts(totals)) parts.push({ text: formatOtherAmount(o.amount, o.currency), isMain: false });
+  if (parts.length === 0) parts.push({ text: fmtAmount(0), isMain: true });
+  return parts;
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -307,10 +320,12 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
 function SummaryCard({
-  label, value, color, sub, icon, progress, progressLabel,
+  label, value, color, sub, icon, progress, progressLabel, extra,
 }: {
   label: string; value: string; color: string; sub?: string; icon?: string;
   progress?: number; progressLabel?: string;
+  /** Additional currencies (never ₪), each shown on its own line under the headline. */
+  extra?: ExtraLine[];
 }) {
   const pct = progress === undefined ? undefined : Math.max(0, Math.min(1, progress));
 
@@ -339,6 +354,15 @@ function SummaryCard({
         )}
       </div>
       <div className="rb-fin-kpi-val" style={{ fontSize: 42, fontWeight: 900, color, letterSpacing: "-0.045em", lineHeight: 1, marginTop: "auto", textShadow: `0 0 26px ${color}33` }}>{value}</div>
+      {extra && extra.length > 0 && (
+        <div className="rb-fin-kpi-extra" style={{ marginTop: 6 }}>
+          {extra.map((line) => (
+            <div key={line.text} style={{ textAlign: "right", lineHeight: 1.25 }}>
+              <Ltr style={{ fontSize: 22, fontWeight: 800, color: line.color ?? color, letterSpacing: "-0.02em", opacity: 0.92 }}>{line.text}</Ltr>
+            </div>
+          ))}
+        </div>
+      )}
       {sub && (
         <div className="rb-fin-kpi-sub" style={{ fontSize: 12, color: TEXT2, marginTop: 8 }}>{sub}</div>
       )}
@@ -1022,6 +1046,39 @@ export default function FinancePage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const expensesPaid   = stats.projExpPaid + stats.genExpPaid;
+
+  // ── Additional currencies (never merged into ₪; no FX) ──────────────────────
+  // signColor: colour each line by its own sign (used for net figures).
+  const curLines = (pick: (s: CurStats) => number, signColor = false): ExtraLine[] =>
+    otherAmountsFrom(stats.other, pick).map((x) => ({
+      text: formatOtherAmount(x.amount, x.currency),
+      ...(signColor ? { color: x.amount >= 0 ? GREEN : RED } : {}),
+    }));
+  const hasOtherCurrency = Object.values(stats.other).some((s) =>
+    [s.incomeReceived, s.incomeExpected, s.expensesPaid, s.expensesExpected].some((v) => Math.round(v * 100) !== 0));
+  const expExpectedOther = curLines((s) => s.expensesExpected);
+  const goalNetOther = curLines((s) => s.profitReal, true);
+
+  // "Needs attention" totals — per currency, so $ rows stay $ (never shown as ₪).
+  const attUnpaidIncParts = amountParts(sumByCurrency(attentionUnpaidIncome, (t) => t.amount));
+  const attOpenExpParts   = amountParts(sumByCurrency(attentionOpenExpenses, (t) => t.amount));
+  const partNode = (p: { text: string; isMain: boolean }) => (p.isMain ? p.text : <Ltr>{p.text}</Ltr>);
+
+  // List footers: ₪ totals as before + any additional currency on its own line.
+  const footIncome  = sumByCurrency(filtered.filter((t) => t.type === "income"),  (t) => t.amount);
+  const footExpense = sumByCurrency(filtered.filter((t) => t.type === "expense"), (t) => t.amount);
+  const footOther = orderCurrencies(Array.from(new Set([...Object.keys(footIncome), ...Object.keys(footExpense)])).filter((c) => c !== DEFAULT_CURRENCY))
+    .flatMap((c) => [
+      ...(Math.round((footIncome[c] ?? 0) * 100) !== 0  ? [{ label: "הכנסות", text: formatOtherAmount(footIncome[c], c) }]  : []),
+      ...(Math.round((footExpense[c] ?? 0) * 100) !== 0 ? [{ label: "הוצאות", text: formatOtherAmount(footExpense[c], c) }] : []),
+    ]);
+  const footOtherNode = footOther.length > 0 && (
+    <span>מטבע נוסף:{" "}
+      {footOther.map((p, i) => (
+        <span key={`${p.label}-${p.text}`}>{i > 0 ? " · " : ""}{p.label} <Ltr>{p.text}</Ltr></span>
+      ))}
+    </span>
+  );
   const unpaidCount    = periodTx.filter((t) => t.payment_status === "לא שולם").length;
   const attentionCount = periodTx.filter(needsAttention).length;
 
@@ -1035,9 +1092,17 @@ export default function FinancePage() {
   const generalTxs  = filtered.filter((t) => !isShowTx(t) && !isProjectTx(t));
 
   function groupSummary(txs: Transaction[]) {
-    const inc = txs.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-    const exp = txs.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-    return { inc, exp, net: inc - exp };
+    // Same sums as before (all listed rows), computed per currency: ₪ is the headline,
+    // other currencies are returned separately and never added into it.
+    const sums = (rows: Transaction[]) => {
+      const inc = rows.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+      const exp = rows.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+      return { inc, exp, net: inc - exp };
+    };
+    const byCur = groupByCurrency(txs);
+    const other: Record<string, { inc: number; exp: number; net: number }> = {};
+    for (const [cur, rows] of byCur) if (cur !== DEFAULT_CURRENCY) other[cur] = sums(rows);
+    return { ...sums(byCur.get(DEFAULT_CURRENCY) ?? []), other };
   }
   const toggleGroup = (key: string) =>
     setCollapsedGroups((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -1221,8 +1286,12 @@ export default function FinancePage() {
   function renderGroup(key: string, title: string, icon: string, accent: string, txs: Transaction[], body: React.ReactNode) {
     if (txs.length === 0) return null;
     const collapsed = collapsedGroups.has(key);
-    const { inc, exp, net } = groupSummary(txs);
-    const pill = (label: string, val: number, col: string) => (
+    const { inc, exp, net, other: groupOther } = groupSummary(txs);
+    const groupOtherParts = orderCurrencies(Object.keys(groupOther)).flatMap((c) =>
+      ([["סך הכנסות", groupOther[c].inc], ["סך הוצאות", groupOther[c].exp], ["נטו", groupOther[c].net]] as [string, number][])
+        .filter(([, v]) => Math.round(v * 100) !== 0)
+        .map(([label, v]) => ({ label, text: formatOtherAmount(v, c) })));
+    const pill =(label: string, val: number, col: string) => (
       <span style={{
         display: "inline-flex", alignItems: "baseline", gap: 5,
         background: `${col}12`, border: `1px solid ${col}28`, borderRadius: 100,
@@ -1254,6 +1323,14 @@ export default function FinancePage() {
             {pill("נטו", net, net >= 0 ? GREEN : RED)}
           </span>
           <span style={{ color: accent, fontSize: 14, transform: collapsed ? "rotate(180deg)" : "rotate(0deg)" }}>⌄</span>
+          {groupOtherParts.length > 0 && (
+            <span style={{ flexBasis: "100%", fontSize: 11, color: MUTED, textAlign: "right" }}>
+              במטבע נוסף:{" "}
+              {groupOtherParts.map((p, i) => (
+                <span key={`${p.label}-${p.text}`}>{i > 0 ? " · " : ""}{p.label} <Ltr>{p.text}</Ltr></span>
+              ))}
+            </span>
+          )}
         </button>
         {!collapsed && (
           <div>
@@ -1331,12 +1408,25 @@ export default function FinancePage() {
     </div>
   );
 
-  const sumRow = (label: string, val: number, col: string, bold = false) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <span style={{ fontSize: bold ? 14 : 13, color: bold ? TEXT : TEXT2, fontWeight: bold ? 800 : 500 }}>{label}</span>
-      <span style={{ fontSize: bold ? 18 : 15.5, fontWeight: bold ? 900 : 800, color: col }}>{fmtAmount(val)}</span>
-    </div>
-  );
+  const sumRow = (label: string, val: number, col: string, bold = false, extra: ExtraLine[] = []) => {
+    const row = (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: bold ? 14 : 13, color: bold ? TEXT : TEXT2, fontWeight: bold ? 800 : 500 }}>{label}</span>
+        <span style={{ fontSize: bold ? 18 : 15.5, fontWeight: bold ? 900 : 800, color: col }}>{fmtAmount(val)}</span>
+      </div>
+    );
+    if (extra.length === 0) return row; // ₪-only: exactly the markup that was here before
+    return (
+      <div>
+        {row}
+        {extra.map((line) => (
+          <div key={line.text} style={{ textAlign: "left", marginTop: 3 }}>
+            <Ltr style={{ fontSize: bold ? 16 : 14, fontWeight: bold ? 900 : 800, color: line.color ?? col }}>{line.text}</Ltr>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   // Privacy / "מצב לקוח": never render any financial content — show a clean
   // placeholder instead (same route, no redirect). Toggling off re-renders the
@@ -1397,6 +1487,8 @@ export default function FinancePage() {
           .rb-fin-kpi-icon { width: 34px !important; height: 34px !important; border-radius: 10px !important; font-size: 17px !important; }
           .rb-fin-kpi-val { font-size: clamp(22px, 6.3vw, 26px) !important; margin-top: 12px !important; line-height: 1.1 !important; overflow-wrap: anywhere; }
           .rb-fin-kpi-sub { font-size: 11.5px !important; line-height: 1.4 !important; }
+          .rb-fin-kpi-extra { margin-top: 4px !important; }
+          .rb-fin-kpi-extra span { font-size: clamp(16px, 4.6vw, 19px) !important; overflow-wrap: anywhere; }
 
           .rb-fin-goal { padding: 16px 14px !important; margin-bottom: 14px !important; border-radius: 16px !important; }
           .rb-fin-goal-body { flex-direction: column !important; align-items: stretch !important; gap: 16px !important; }
@@ -1436,6 +1528,7 @@ export default function FinancePage() {
           .rb-fin-kpis { gap: 8px !important; }
           .rb-fin-kpi { padding: 12px 11px !important; }
           .rb-fin-kpi-val { font-size: 19px !important; }
+          .rb-fin-kpi-extra span { font-size: 15px !important; }
         }
       `}</style>
 
@@ -1562,18 +1655,22 @@ export default function FinancePage() {
       <div className="rb-fin-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 18 }}>
         <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
+          extra={curLines((s) => s.incomeReceived)}
           sub={`${periodTx.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).length} תשלומים שהתקבלו`}
         />
         <SummaryCard icon="📉" label="הוצאות בפועל"
           value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}
+          extra={curLines((s) => s.expensesPaid)}
           sub="שולם בפועל"
         />
         <SummaryCard icon="📈" label="נטו בפועל"
           value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
+          extra={curLines((s) => s.profitReal, true)}
           sub="התקבל בפועל − שולם בפועל"
         />
         <SummaryCard icon="⏳" label="הכנסות צפויות"
           value={fmtAmount(stats.incomeExpected)} color={stats.incomeExpected > 0 ? AMBER : MUTED}
+          extra={curLines((s) => s.incomeExpected)}
           sub="הכנסות שטרם התקבלו"
         />
       </div>
@@ -1600,7 +1697,10 @@ export default function FinancePage() {
                   <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
                     <strong style={{ color: RED }}>{attentionUnpaidIncome.length}</strong> הכנסות לא שולמו
                   </div>
-                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>דורש גבייה · {fmtAmount(attentionUnpaidIncome.reduce((s, t) => s + t.amount, 0))}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>דורש גבייה · {partNode(attUnpaidIncParts[0])}</div>
+                  {attUnpaidIncParts.slice(1).map((p) => (
+                    <div key={p.text} style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>{partNode(p)}</div>
+                  ))}
                 </div>
               </button>
             )}
@@ -1611,7 +1711,10 @@ export default function FinancePage() {
                   <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
                     <strong style={{ color: AMBER }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
                   </div>
-                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>ממתינות לתשלום · {fmtAmount(attentionOpenExpenses.reduce((s, t) => s + t.amount, 0))}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>ממתינות לתשלום · {partNode(attOpenExpParts[0])}</div>
+                  {attOpenExpParts.slice(1).map((p) => (
+                    <div key={p.text} style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>{partNode(p)}</div>
+                  ))}
                 </div>
               </button>
             )}
@@ -1679,6 +1782,17 @@ export default function FinancePage() {
                 <strong style={{ color: RED }}>{fmtAmount(stats.expensesExpected)}</strong>
               </span>
               <span style={{ fontSize: 11, color: MUTED }}>נטו צפוי כולל הכנסות והוצאות צפויות</span>
+              {expExpectedOther.length > 0 && (
+                <span style={{ fontSize: 11.5, color: TEXT2 }}>
+                  הוצאות צפויות במטבע נוסף: <Ltr>{expExpectedOther.map((l) => l.text).join(" · ")}</Ltr>
+                </span>
+              )}
+              {hasOtherCurrency && (
+                <span style={{ fontSize: 11, color: MUTED }}>
+                  היעד והאחוזים מחושבים ב-₪ בלבד, מטבע נוסף לא נכלל בהם
+                  {goalNetOther.length > 0 && <> · נטו בפועל במטבע נוסף: {goalNetOther.map((l, i) => (<span key={l.text}>{i > 0 ? " · " : ""}<Ltr style={{ color: l.color }}>{l.text}</Ltr></span>))}</>}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1760,11 +1874,11 @@ export default function FinancePage() {
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 20px", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 16 }}>סיכום מהיר</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {sumRow("הכנסות שהתקבלו", stats.incomeReceived, GREEN)}
-              {sumRow("הוצאות ששולמו", expensesPaid, RED)}
-              {sumRow("הכנסות צפויות", stats.incomeExpected, AMBER)}
+              {sumRow("הכנסות שהתקבלו", stats.incomeReceived, GREEN, false, curLines((s) => s.incomeReceived))}
+              {sumRow("הוצאות ששולמו", expensesPaid, RED, false, curLines((s) => s.expensesPaid))}
+              {sumRow("הכנסות צפויות", stats.incomeExpected, AMBER, false, curLines((s) => s.incomeExpected))}
               <div style={{ borderTop: `1px solid ${BDR}`, marginTop: 2, paddingTop: 14 }}>
-                {sumRow("נטו בפועל", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true)}
+                {sumRow("נטו בפועל", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true, curLines((s) => s.profitReal, true))}
               </div>
             </div>
             <button
@@ -1833,9 +1947,10 @@ export default function FinancePage() {
               {renderGroup("g-shows", "הופעות", "🎤", BRAND, showsTxs, renderShowsBody(showsTxs))}
               {renderGroup("g-projects", "פרויקטים", "📁", BLUE, projectTxs, projectTxs.map((tx, i) => renderTxRow(tx, i)))}
               {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
-              <div className="rb-fin-tfoot" style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
-                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+              <div className="rb-fin-tfoot" style={{ display: "flex", ...(footOther.length > 0 ? { flexWrap: "wrap" as const } : {}), gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
+                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(totalOf(footIncome))}</strong></span>
+                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(totalOf(footExpense))}</strong></span>
+                {footOtherNode}
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </>
@@ -1960,9 +2075,10 @@ export default function FinancePage() {
               })}
 
               {/* Footer totals */}
-              <div className="rb-fin-tfoot" style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
-                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+              <div className="rb-fin-tfoot" style={{ display: "flex", ...(footOther.length > 0 ? { flexWrap: "wrap" as const } : {}), gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
+                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(totalOf(footIncome))}</strong></span>
+                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(totalOf(footExpense))}</strong></span>
+                {footOtherNode}
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </div>

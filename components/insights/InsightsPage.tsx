@@ -6,6 +6,10 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import {
+  calcPeriodTotals, normalizeCurrency, sameCurrency, otherAmountsFrom, formatOtherAmount, DEFAULT_CURRENCY,
+} from "@/lib/finance";
+import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -109,11 +113,14 @@ function Card({ title, icon, children }: { title: string; icon: string; children
 }
 
 // ── Stat row ──────────────────────────────────────────────────────────────────
-function StatRow({ label, value, color = "#AAA", sub, onClick }: {
+type ExtraLine = CurrencyLine;
+
+function StatRow({ label, value, color = "#AAA", sub, onClick, extra }: {
   label: string; value: string | number; color?: string; sub?: string; onClick?: () => void;
+  extra?: ExtraLine[];
 }) {
   const isClickable = !!onClick;
-  return (
+  const row = (
     <div
       onClick={onClick}
       style={{
@@ -134,6 +141,13 @@ function StatRow({ label, value, color = "#AAA", sub, onClick }: {
         <span style={{ fontSize: 14, fontWeight: 700, color }}>{value}</span>
         {isClickable && <span style={{ fontSize: 10, color: "#444" }}>←</span>}
       </div>
+    </div>
+  );
+  if (!extra || extra.length === 0) return row; // ₪-only: exactly the markup that was here before
+  return (
+    <div>
+      {row}
+      <CurrencyLines lines={extra} color={color} size={12.5} align="left" />
     </div>
   );
 }
@@ -166,11 +180,12 @@ function AlertItem({ alert, onClick }: { alert: Alert; onClick?: () => void }) {
 }
 
 // ── Summary chip ──────────────────────────────────────────────────────────────
-function SummaryChip({ label, value, color = "#AAA" }: { label: string; value: string | number; color?: string }) {
+function SummaryChip({ label, value, color = "#AAA", extra }: { label: string; value: string | number; color?: string; extra?: ExtraLine[] }) {
   return (
     <div style={{ flex: "1 1 0", minWidth: 0, background: "#1C1C1C", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px", textAlign: "right" }}>
       <div style={{ fontSize: 10, color: "#555", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color, letterSpacing: "-0.5px" }}>{value}</div>
+      {extra && extra.length > 0 && <CurrencyLines lines={extra} color={color} size={14} align="right" />}
     </div>
   );
 }
@@ -730,26 +745,33 @@ export default function InsightsPage() {
   // ── Finance ─────────────────────────────────────────────────────────────────
   // Must match ProjectDrawer's PAID_STATUSES: both "שולם" and "התקבל" count as received.
   const PAID_STATUSES_SET = new Set(["שולם", "התקבל"]);
+  // R5: a project's money is compared against its agreedPrice ONLY within the currency
+  // of its finance_<projectId> setting (missing = ₪). Other-currency rows never count
+  // toward paid / cancelled / balance.
+  const finCurrencyByProject = new Map(finSettings.map((s) => [s.project_id, normalizeCurrency(s.currency)]));
+  const inProjectCurrency = (t: Transaction) => sameCurrency(t.currency, finCurrencyByProject.get(t.project_id));
   // Song-deal income only — clip income (expense_scope="קליפ") is a separate deal
   // and must not count against a project's agreed price (lib/clip-finance.ts).
   const paidByProject: Record<string, number> = {};
-  transactions.filter((t) => isSongIncome(t) && PAID_STATUSES_SET.has(t.payment_status)).forEach((t) => {
+  transactions.filter((t) => isSongIncome(t) && PAID_STATUSES_SET.has(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
     paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
   });
   // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
   const cancelledByProject: Record<string, number> = {};
-  transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).forEach((t) => {
+  transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
     cancelledByProject[t.project_id] = (cancelledByProject[t.project_id] ?? 0) + t.amount;
   });
 
-  const periodIncome    = transactions.filter((t) => t.type === "income"  && inRange(t.date, range));
-  const periodExpenses  = transactions.filter((t) => t.type === "expense" && inRange(t.date, range));
-  const incomeReceived  = periodIncome.filter((t) => PAID_STATUSES_SET.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected  = periodIncome.filter((t) => ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const expensesPaid    = periodExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
-  const expensesExpected= periodExpenses.filter((t) => ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const profitReal      = incomeReceived - expensesPaid;
-  const profitEst       = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
+  // Period totals per currency (lib/finance/stats.ts — same formulas as before). The ₪
+  // figures are the headline; any other currency is computed separately (`.other`) and is
+  // never added into them. No FX conversion.
+  const periodTotals    = calcPeriodTotals(transactions.filter((t) => inRange(t.date, range)));
+  const { incomeReceived, incomeExpected, expensesPaid, expensesExpected, profitReal, profitEst } = periodTotals;
+  const otherLines = (pick: (s: (typeof periodTotals)["other"][string]) => number, signColor = false) =>
+    otherAmountsFrom(periodTotals.other, pick).map((x) => ({
+      text: formatOtherAmount(x.amount, x.currency),
+      ...(signColor ? { color: x.amount >= 0 ? "#10B981" : "#EF4444" } : {}),
+    }));
 
   const projectsWithOpenBalance = projects.filter((p) => {
     const setting = finSettings.find((s) => s.project_id === p.id);
@@ -799,6 +821,8 @@ export default function InsightsPage() {
   const artistBalances: Record<string, number> = {};
   projectsWithOpenBalance.forEach((p) => {
     const setting = finSettings.find((s) => s.project_id === p.id);
+    // Balances are summed per artist and shown in ₪ — never add a project in another currency into it.
+    if (!sameCurrency(setting?.currency, DEFAULT_CURRENCY)) return;
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
     const cancelled = cancelledByProject[p.id] ?? 0;
@@ -820,7 +844,8 @@ export default function InsightsPage() {
     const setting = finSettings.find((s) => s.project_id === p.id);
     const agreed  = setting?.agreedPrice ?? 0;
     const paid    = paidByProject[p.id] ?? 0;
-    const projectExp = transactions.filter((t) => t.type === "expense" && t.project_id === p.id).reduce((s, t) => s + t.amount, 0);
+    // R5: only expenses in the project's own currency are set against its agreed price.
+    const projectExp = transactions.filter((t) => t.type === "expense" && t.project_id === p.id && sameCurrency(t.currency, setting?.currency ?? DEFAULT_CURRENCY)).reduce((s, t) => s + t.amount, 0);
     const hasOpenBalance = projectsWithOpenBalance.some((op) => op.id === p.id);
     const netEst  = agreed > 0 ? agreed - projectExp : paid - projectExp;
     if (count > limit && hasOpenBalance) {
@@ -1015,8 +1040,8 @@ export default function InsightsPage() {
             <SummaryChip label="סשנים בתקופה"      value={periodSessions.length}       color="#A855F7" />
             <SummaryChip label="שעות עבודה בתקופה" value={totalHours > 0 ? fmtHours(totalHours) : "—"} color="#A855F7" />
             <SummaryChip label="פרויקטים פעילים"   value={activeProjects.length}        color="#3B82F6" />
-            <SummaryChip label="רווח בפועל"        value={fmtMoney(profitReal)}         color={profitReal >= 0 ? "#10B981" : "#EF4444"} />
-            <SummaryChip label="רווח משוער"         value={fmtMoney(profitEst)}          color={profitEst >= 0 ? "#10B981" : "#EF4444"} />
+            <SummaryChip label="רווח בפועל"        value={fmtMoney(profitReal)}         color={profitReal >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((s) => s.profitReal, true)} />
+            <SummaryChip label="רווח משוער"         value={fmtMoney(profitEst)}          color={profitEst >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((s) => s.profitEst, true)} />
           </div>
 
           {/* Cards grid */}
@@ -1050,13 +1075,13 @@ export default function InsightsPage() {
 
             {/* כספים */}
             <Card title="כספים" icon="₪">
-              <StatRow label="הכנסות שהתקבלו"   value={fmtMoney(incomeReceived)}   color="#10B981" />
-              <StatRow label="הכנסות צפויות"     value={fmtMoney(incomeExpected)}   color="#3B82F6" />
-              <StatRow label="הוצאות ששולמו"     value={fmtMoney(expensesPaid)}     color="#F59E0B" />
-              <StatRow label="הוצאות צפויות"     value={fmtMoney(expensesExpected)} color="#F59E0B" />
+              <StatRow label="הכנסות שהתקבלו"   value={fmtMoney(incomeReceived)}   color="#10B981" extra={otherLines((s) => s.incomeReceived)} />
+              <StatRow label="הכנסות צפויות"     value={fmtMoney(incomeExpected)}   color="#3B82F6" extra={otherLines((s) => s.incomeExpected)} />
+              <StatRow label="הוצאות ששולמו"     value={fmtMoney(expensesPaid)}     color="#F59E0B" extra={otherLines((s) => s.expensesPaid)} />
+              <StatRow label="הוצאות צפויות"     value={fmtMoney(expensesExpected)} color="#F59E0B" extra={otherLines((s) => s.expensesExpected)} />
               <div style={{ height: 1, background: "#222", margin: "4px 0" }} />
-              <StatRow label="רווח בפועל"        value={fmtMoney(profitReal)}       color={profitReal >= 0 ? "#10B981" : "#EF4444"} />
-              <StatRow label="רווח משוער"         value={fmtMoney(profitEst)}        color={profitEst >= 0 ? "#10B981" : "#EF4444"} />
+              <StatRow label="רווח בפועל"        value={fmtMoney(profitReal)}       color={profitReal >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((s) => s.profitReal, true)} />
+              <StatRow label="רווח משוער"         value={fmtMoney(profitEst)}        color={profitEst >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((s) => s.profitEst, true)} />
               <div style={{ height: 1, background: "#222", margin: "4px 0" }} />
               <StatRow
                 label="פרויקטים עם יתרה פתוחה"

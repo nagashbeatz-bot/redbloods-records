@@ -14,6 +14,8 @@ import {
   CLIP_PAYMENT_STATUSES, isClipIncome, isSongIncome,
   summarizeClipFinance, clipStatusColor,
 } from "@/lib/clip-finance";
+import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount } from "@/lib/finance";
+import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import ProjectCover from "@/components/ui/ProjectCover";
@@ -33,6 +35,9 @@ interface Props {
 
 type PaymentStatus = "שולם" | "התקבל" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "לבדיקה";
 
+/** Second-line amounts in currencies other than the project's (never merged into the headline). */
+interface OtherCurLines { received: CurrencyLine[]; expenses: CurrencyLine[]; net: CurrencyLine[] }
+
 interface Transaction {
   id:              string;
   type:            "income" | "expense";
@@ -46,6 +51,8 @@ interface Transaction {
   notes?:          string;
   // "קליפ" marks this row as part of the CLIP deal, not the song deal.
   expense_scope?:  string;
+  // Row currency ("₪" | "$" | "€"); the API returns it on every row. Missing = the project's currency.
+  currency?:       string;
 }
 
 interface Session {
@@ -856,20 +863,37 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     : TEXT2;
   // SONG-deal income only — clip income (expense_scope="קליפ") is a separate deal
   // and must never count against this project's agreedPrice. See lib/clip-finance.ts.
-  const received    = transactions
+  // R5 + no FX: the figures below are in the project's finance currency (`currency`) ONLY. Money in
+  // any other currency is never added to them; it is summed on its own and shown on a second line.
+  const txParts     = partitionByCurrency(transactions, currency);
+  const received    = txParts.same
     .filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome = transactions
+  const cancelledIncome = txParts.same
     .filter(t => isSongIncome(t) && isCancelledPayment(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
-  const totalExp    = transactions
+  const totalExp    = txParts.same
     .filter(t => t.type === "expense" && t.payment_status === "שולם")
     .reduce((s, t) => s + t.amount, 0);
   // Finance-exception projects (no charge / favor) carry no receivable balance.
   const balance     = financeException ? 0 : collectibleBalance(agreedPrice, received, cancelledIncome);
 
+  // Other-currency lines (display only) for the summary card and the Finance tab.
+  const otherReceivedTotals = sumByCurrency(txParts.other.filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status)), t => t.amount);
+  const otherExpPaidTotals  = sumByCurrency(txParts.other.filter(t => t.type === "expense" && t.payment_status === "שולם"), t => t.amount);
+  const otherCurCodes = orderCurrencies(Array.from(new Set([...Object.keys(otherReceivedTotals), ...Object.keys(otherExpPaidTotals)])));
+  const nzAmt = (n: number) => Math.round(n * 100) !== 0;
+  const otherCur: OtherCurLines = {
+    received: otherCurCodes.filter(c => nzAmt(otherReceivedTotals[c] ?? 0)).map(c => ({ text: formatOtherAmount(otherReceivedTotals[c], c) })),
+    expenses: otherCurCodes.filter(c => nzAmt(otherExpPaidTotals[c] ?? 0)).map(c => ({ text: formatOtherAmount(otherExpPaidTotals[c], c) })),
+    net: otherCurCodes
+      .map(c => ({ c, v: (otherReceivedTotals[c] ?? 0) - (otherExpPaidTotals[c] ?? 0) }))
+      .filter(({ v }) => nzAmt(v))
+      .map(({ c, v }) => ({ text: formatOtherAmount(v, c), color: v >= 0 ? GREEN : RED_WARN })),
+  };
+
   // Reminder to set a due date for an open balance that has no expected payment yet.
-  const hasExpectedIncome = transactions.some(t => isSongIncome(t) && t.payment_status === "צפוי");
+  const hasExpectedIncome = txParts.same.some(t => isSongIncome(t) && t.payment_status === "צפוי");
   const showBalanceReminder =
     finLoaded &&
     !financeException &&
@@ -1431,6 +1455,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               received={received}
               totalExp={totalExp}
               balance={balance}
+              otherCur={otherCur}
               pct={pct}
               filesCount={filesCount}
               sessDone={sessDone}
@@ -1451,6 +1476,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               received={received}
               totalExp={totalExp}
               balance={balance}
+              otherCur={otherCur}
               projectId={projectId}
               initialFormType={financeFormType}
               onTxAdded={() => {
@@ -1687,7 +1713,7 @@ function PrivacyHiddenCard({ text, minHeight = 180 }: { text: string; minHeight?
 function OverviewContent({
   project, transactions, sessions, projectActions,
   agreedPrice, currency, finLoaded, accent,
-  received, totalExp, balance,
+  received, totalExp, balance, otherCur,
   pct, filesCount, sessDone, statusColor, onTabChange, onDeleteAction,
 }: {
   project:         Project;
@@ -1701,6 +1727,7 @@ function OverviewContent({
   received:        number;
   totalExp:        number;
   balance:         number;
+  otherCur:        OtherCurLines;
   pct:             number;
   filesCount:      number;
   sessDone:        number;
@@ -1747,8 +1774,9 @@ function OverviewContent({
     return type === "income" ? GREEN : AMBER;
   };
 
-  const txTitle = (status: string, type: "income" | "expense", amount: number): string => {
-    const amt = privacyHidden ? "••••" : `${currency}${amount.toLocaleString()}`;
+  const txTitle = (status: string, type: "income" | "expense", amount: number, rowCurrency?: string): string => {
+    // The row's own currency (a $ row is shown as $, never as the project's ₪); missing = the project's.
+    const amt = privacyHidden ? "••••" : `${rowCurrency || currency}${amount.toLocaleString()}`;
     if (type === "income") {
       if (status === "התקבל") return `התקבל תשלום: ${amt}`;
       if (status === "שולם")  return `שולם תשלום: ${amt}`;
@@ -1802,7 +1830,7 @@ function OverviewContent({
     transactions.forEach(tx => {
       allFeedItems.push({
         icon: tx.type === "income" ? "₪" : "💸",
-        title: txTitle(tx.payment_status, tx.type, tx.amount),
+        title: txTitle(tx.payment_status, tx.type, tx.amount, tx.currency),
         sub: tx.description || undefined,
         sortKey: tx.created_at ?? tx.date ?? "",
         displayDate: fmtDisplayDate(tx.date ?? tx.created_at) ?? "ללא תאריך",
@@ -2106,15 +2134,15 @@ function OverviewContent({
             {(() => {
               const netProfit = received - totalExp;
               const npColor = netProfit >= 0 ? GREEN : RED_WARN;
-              const cells = [
+              const cells: { label: string; val: number; color: string; bg: string; border: string; extra?: CurrencyLine[] }[] = [
                 { label: "מחיר מוסכם", val: agreedPrice, color: TEXT,    bg: CARD_BG2,          border: BORDER },
-                { label: "התקבל",       val: received,    color: GREEN,   bg: `${GREEN}0C`,      border: `${GREEN}2A` },
-                { label: "הוצאות",      val: totalExp,    color: AMBER,   bg: `${AMBER}0A`,      border: `${AMBER}28` },
-                { label: "רווח נקי",    val: netProfit,   color: npColor, bg: `${npColor}0B`,    border: `${npColor}28` },
+                { label: "התקבל",       val: received,    color: GREEN,   bg: `${GREEN}0C`,      border: `${GREEN}2A`, extra: otherCur.received },
+                { label: "הוצאות",      val: totalExp,    color: AMBER,   bg: `${AMBER}0A`,      border: `${AMBER}28`, extra: otherCur.expenses },
+                { label: "רווח נקי",    val: netProfit,   color: npColor, bg: `${npColor}0B`,    border: `${npColor}28`, extra: otherCur.net },
               ];
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
-                  {cells.map(({ label, val, color, bg, border }) => (
+                  {cells.map(({ label, val, color, bg, border, extra }) => (
                     <div key={label} style={{
                       padding: "12px 14px", borderRadius: 12,
                       background: bg, border: `1px solid ${border}`,
@@ -2124,6 +2152,7 @@ function OverviewContent({
                       <div style={{ fontSize: 18, fontWeight: 900, color }}>
                         {val < 0 ? "-" : ""}{currency}{Math.abs(val).toLocaleString()}
                       </div>
+                      {extra && extra.length > 0 && <CurrencyLines lines={extra} color={color} size={15} weight={800} marginTop={0} align="right" />}
                     </div>
                   ))}
                 </div>
@@ -2905,7 +2934,7 @@ function ArtistPickerModal({
 
 // ─── FinanceContent ────────────────────────────────────────────────────────────
 function FinanceContent({
-  transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
+  transactions, agreedPrice, currency, finLoaded, received, totalExp, balance, otherCur,
   projectId, initialFormType, onTxAdded, onPriceUpdate,
 }: {
   transactions:    Transaction[];
@@ -2915,6 +2944,7 @@ function FinanceContent({
   received:        number;
   totalExp:        number;
   balance:         number;
+  otherCur:        OtherCurLines;
   projectId:       string;
   initialFormType: "income" | "expense";
   onTxAdded:       () => void;
@@ -2984,10 +3014,10 @@ function FinanceContent({
 
   const pctOf = (n: number) => agreedPrice > 0 ? Math.round(n / agreedPrice * 100) : 0;
 
-  const kpis = [
+  const kpis: { label: string; value: number; color: string; sub: string; extra?: CurrencyLine[] }[] = [
     { label: "מחיר מוסכם", value: agreedPrice,       color: TEXT,     sub: "סכום כולל" },
-    { label: "התקבל",       value: received,          color: GREEN,    sub: `${pctOf(received)}% מהסכום` },
-    { label: "הוצאות",      value: totalExp,          color: AMBER,    sub: `${pctOf(totalExp)}% מהסכום` },
+    { label: "התקבל",       value: received,          color: GREEN,    sub: `${pctOf(received)}% מהסכום`, extra: otherCur.received },
+    { label: "הוצאות",      value: totalExp,          color: AMBER,    sub: `${pctOf(totalExp)}% מהסכום`, extra: otherCur.expenses },
     { label: "יתרה לקבלה", value: Math.abs(balance), color: balance > 0 ? RED_WARN : GREEN,
       sub: balance > 0 ? "טרם שולם" : balance < 0 ? "שולם ביתר" : "שולם במלואו ✓" },
   ];
@@ -3012,7 +3042,7 @@ function FinanceContent({
 
       {/* ── KPI row ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        {kpis.map(({ label, value, color, sub }) => {
+        {kpis.map(({ label, value, color, sub, extra }) => {
           const isAgreed = label === "מחיר מוסכם";
           return (
             <div key={label} style={{
@@ -3079,6 +3109,11 @@ function FinanceContent({
                   <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1, marginBottom: 7 }}>
                     {finLoaded ? `${currency}${value.toLocaleString()}` : "…"}
                   </div>
+                  {finLoaded && extra && extra.length > 0 && (
+                    <div style={{ marginBottom: 7, marginTop: -2 }}>
+                      <CurrencyLines lines={extra} color={color} size={17} weight={800} marginTop={0} align="right" />
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>
                     {isAgreed && priceFeedback === "saved" ? <span style={{ color: GREEN }}>✓ נשמר</span> : sub}
                   </div>
@@ -3142,7 +3177,7 @@ function FinanceContent({
                         )}
                       </div>
                       <div style={{ fontSize: 16, fontWeight: 900, color: GREEN, whiteSpace: "nowrap", flexShrink: 0 }}>
-                        +{currency}{tx.amount.toLocaleString()}
+                        +{tx.currency || currency}{tx.amount.toLocaleString()}
                       </div>
                     </div>
                     {/* bottom row */}
@@ -3278,7 +3313,7 @@ function FinanceContent({
                         {tx.description || "הוצאה"}
                       </div>
                       <div style={{ fontSize: 16, fontWeight: 900, color: AMBER, whiteSpace: "nowrap", flexShrink: 0 }}>
-                        -{currency}{tx.amount.toLocaleString()}
+                        -{tx.currency || currency}{tx.amount.toLocaleString()}
                       </div>
                     </div>
                     {isDelConf ? (

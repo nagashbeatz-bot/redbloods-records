@@ -15,6 +15,7 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { sameCurrency } from "@/lib/finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
 import { sortProjectsForList } from "@/lib/projects-sort";
@@ -395,7 +396,7 @@ export default function ProjectsDesignPreview() {
   const [showNewProject,  setShowNewProject]  = useState(false);
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }>>({});
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; items: KpiPopoverItem[] } | null>(null);
   const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -403,16 +404,18 @@ export default function ProjectsDesignPreview() {
     fetch("/api/transactions?all=1")
       .then(r => r.json())
       .then(d => {
-        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; financeException?: boolean }) => {
+        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }> = {};
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; financeException?: boolean; currency?: string | null }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
+          map[s.project_id].currency = s.currency; // R5: transactions below only count in this currency
           map[s.project_id].financeException = s.financeException ?? false;
         });
         // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string }) => {
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string; currency?: string | null }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           if (!isSongIncome(t)) return;
+          if (!sameCurrency(t.currency, map[t.project_id].currency)) return; // R5: compare only within the project currency
           if (["התקבל", "שולם"].includes(t.payment_status))
             map[t.project_id].paid += t.amount;
           if (isCancelledPayment(t.payment_status))

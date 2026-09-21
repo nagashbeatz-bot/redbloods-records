@@ -10,6 +10,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { sameCurrency } from "@/lib/finance";
 import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
@@ -596,7 +597,7 @@ export default function DashboardDesignPreview() {
 
   // Per-project finance summary (agreed price + actually-paid) — same source as
   // the Projects page "הכנסה צפויה". Drives the "תשלומים צפויים" card + popover.
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }>>({});
   const [financeLoaded,  setFinanceLoaded]  = useState(false);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
@@ -677,16 +678,18 @@ export default function DashboardDesignPreview() {
       .then(d => {
         // Same logic as the Projects page: agreed from settings, paid from
         // actually-received income (שולם / התקבל). NOT based on "צפוי" rows.
-        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number; financeException?: boolean }) => {
+        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }> = {};
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number; financeException?: boolean; currency?: string | null }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
+          map[s.project_id].currency = s.currency; // R5: transactions below only count in this currency
           map[s.project_id].financeException = s.financeException ?? false;
         });
         // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string }) => {
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string; currency?: string | null }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           if (!isSongIncome(t)) return;
+          if (!sameCurrency(t.currency, map[t.project_id].currency)) return; // R5: compare only within the project currency
           if (["התקבל", "שולם"].includes(t.payment_status))
             map[t.project_id].paid += t.amount;
           if (isCancelledPayment(t.payment_status))
