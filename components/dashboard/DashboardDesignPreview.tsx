@@ -20,6 +20,7 @@ import { usePrivacyMode } from "@/lib/use-privacy";
 import Link from "next/link";
 import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
 import UpcomingReleasesCard from "@/components/dashboard/UpcomingReleasesCard";
+import CooSection from "@/components/coo/CooSection";
 import { summarizeUpcomingReleases } from "@/lib/dashboard-releases";
 
 // Minimal calendar event shape (only what preview needs)
@@ -1076,6 +1077,9 @@ export default function DashboardDesignPreview() {
               )}
             </div>
           </div>
+
+          {/* ── Redbloods COO (Owner-only, deterministic morning brief) ── */}
+          <CooSection />
 
           {/* ── KPI grid ── */}
           {!hasMounted ? (
