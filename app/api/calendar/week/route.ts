@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clampRangeDays } from "@/lib/release-calendar";
 
 /**
- * GET /api/calendar/week?weekStart=YYYY-MM-DD
- * Returns all calendar events for the 7-day period starting on weekStart.
+ * GET /api/calendar/week?weekStart=YYYY-MM-DD[&days=N]
+ * Returns all calendar events for the period starting on weekStart — 7 days by default.
+ * The optional `days` (1..45) lets the "הוסף ריליס" date step read a month grid from the
+ * same read-only path; without it the response is exactly what it always was.
  */
 export async function GET(req: NextRequest) {
   const weekStart = req.nextUrl.searchParams.get("weekStart");
   if (!weekStart) {
     return NextResponse.json({ error: "weekStart חסר" }, { status: 400 });
   }
+  const days = clampRangeDays(req.nextUrl.searchParams.get("days"));
 
   try {
     const { isConnected, fetchEventsInRange } = await import("@/lib/google-calendar");
@@ -17,7 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     const start = new Date(weekStart + "T00:00:00");
-    const end   = new Date(start.getTime() + 7 * 86_400_000);
+    const end   = new Date(start.getTime() + days * 86_400_000);
 
     // Project stubs for matching — best-effort (calendar still works without them)
     let projects: { id: string; name: string; artist: string }[] = [];

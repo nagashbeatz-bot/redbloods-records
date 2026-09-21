@@ -145,15 +145,18 @@ export function GhostBtn({ children, onClick }: { children: React.ReactNode; onC
   return <button onClick={onClick} style={{ flex: 1, padding: "11px 0", borderRadius: 11, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, color: SUB, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{children}</button>;
 }
 
-export function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+/** Optional size overrides for a modal that needs more room (defaults = every existing modal). */
+export interface ModalLayout { width?: string; maxHeight?: string; outerPad?: number; innerPad?: string }
+
+export function ModalShell({ title, children, onClose, layout }: { title: string; children: React.ReactNode; onClose: () => void; layout?: ModalLayout }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100040, background: "rgba(0,0,0,0.74)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} dir="rtl" style={{ width: "min(540px, 94vw)", maxHeight: "90vh", overflowY: "auto", background: "linear-gradient(160deg,#161616 0%,#0F0F0F 100%)", border: `1px solid ${BORDER}`, borderRadius: 20, padding: "22px 24px", boxShadow: "0 28px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100040, background: "rgba(0,0,0,0.74)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: layout?.outerPad ?? 20 }}>
+      <div onClick={(e) => e.stopPropagation()} dir="rtl" style={{ width: layout?.width ?? "min(540px, 94vw)", maxHeight: layout?.maxHeight ?? "90vh", overflowY: "auto", background: "linear-gradient(160deg,#161616 0%,#0F0F0F 100%)", border: `1px solid ${BORDER}`, borderRadius: 20, padding: layout?.innerPad ?? "22px 24px", boxShadow: "0 28px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>{title}</div>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`, color: SUB, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✕</button>

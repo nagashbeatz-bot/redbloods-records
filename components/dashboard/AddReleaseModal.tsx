@@ -9,17 +9,22 @@
 // (convertProjectToLabelRelease). An owner with no label_artists row is created via the
 // existing POST /api/label/artists ONLY after an explicit "צור אמן והמשך" press, and is
 // never deleted. No new endpoint, no DB change.
+// The date step also shows the EXISTING Google Calendar events inside the grid, as display-only
+// context (GET /api/calendar/week, one cached request per shown month) — it never blocks a date
+// and never writes to the calendar.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { LabelRelease } from "@/lib/types";
+import type { ParsedCalendarEvent } from "@/lib/calendar-utils";
 import { ilTodayYMD } from "@/lib/red-artists/week";
 import { releaseShortDate } from "@/lib/dashboard-releases";
+import { addDays, eventsByDay, eventDotColor, monthGridRange, summarizeDay, type DayEvent } from "@/lib/release-calendar";
 import {
   buildReleaseCandidates, filterCandidates, normName, CANDIDATE_BLOCK_TEXT, CANDIDATE_BLOCK_HELP,
   type CandidateProject, type RosterArtist, type ReleaseCandidate,
 } from "@/lib/release-candidates";
-import { ModalShell, PrimaryBtn, GhostBtn, fieldStyle, BRAND, CARD2, BORDER, TEXT, SUB, MUTED } from "@/components/label/labelShared";
+import { ModalShell, PrimaryBtn, GhostBtn, fieldStyle, BRAND, CARD2, BORDER, TEXT, SUB, MUTED, type ModalLayout } from "@/components/label/labelShared";
 
 // Same starting stage /label uses today (MarkExistingModal sends "רעיון"; the
 // server default is "רעיון" too). Not a new stage.
@@ -32,76 +37,146 @@ async function getJson(url: string): Promise<unknown> {
   return r.json();
 }
 
-// ── Small inline calendar (RTL, YYYY-MM-DD) ───────────────────────────────────
-// DatePickerInput is a dropdown attached to a trigger field, so it can't sit inline
-// in the modal like the mockup; this is a small local twin with the same conventions
-// (Sunday on the right, right arrow = previous month, no dependency).
+// ── Inline calendar (RTL, YYYY-MM-DD) with the existing calendar events as context ──
+// DatePickerInput is a dropdown attached to a trigger field, so it can't sit inline in the
+// modal; this is a local twin with the same conventions (Sunday on the right, right arrow =
+// previous month, no dependency). Selecting a day is the PRIMARY state; events are display-only
+// context (never block or validate a date). Days outside the shown month are dimmed and inert.
 const MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 const WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-function ReleaseCalendar({ value, onChange, disabled }: { value: string; onChange: (ymd: string) => void; disabled: boolean }) {
+/** ≤ 640px → the compact (phone) calendar. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const on = () => setNarrow(window.innerWidth < 640);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return narrow;
+}
+
+function DayEvents({ shown, compact }: { shown: DayEvent[]; compact: boolean }) {
+  if (shown.length === 0) return null;
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: compact ? 2 : 3, width: "100%", minWidth: 0, marginTop: compact ? 2 : 4 }}>
+      {shown.map((ev) => (
+        <span
+          key={ev.id}
+          title={`${ev.time ? `${ev.time} ` : ""}${ev.title}`}
+          style={{ display: "flex", alignItems: "center", gap: compact ? 3 : 5, minWidth: 0, fontSize: compact ? 9 : 11, lineHeight: 1.25, color: "#CFCFD6", fontWeight: 500 }}
+        >
+          <span aria-hidden style={{ width: compact ? 5 : 6, height: compact ? 5 : 6, borderRadius: "50%", background: eventDotColor(ev.type), flexShrink: 0 }} />
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
+          {/* timed events show their hour on a wide calendar; all-day events never do */}
+          {!compact && ev.time && <span style={{ flexShrink: 0, marginInlineStart: "auto", fontSize: 10, color: MUTED, direction: "ltr", fontVariantNumeric: "tabular-nums" }}>{ev.time}</span>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ReleaseCalendar({ value, onChange, disabled, compact, eventsByDay: byDay, onViewChange }: {
+  value: string; onChange: (ymd: string) => void; disabled: boolean; compact: boolean;
+  eventsByDay: Map<string, DayEvent[]>;
+  /** Called on mount and whenever the shown month changes (the parent loads that month's events, once). */
+  onViewChange: (year: number, month0: number) => void;
+}) {
   const today = ilTodayYMD();
   const seed = value || today;
   const [view, setView] = useState({ y: Number(seed.slice(0, 4)), m: Number(seed.slice(5, 7)) - 1 });
+  useEffect(() => { onViewChange(view.y, view.m); }, [view, onViewChange]);
 
   const shift = (delta: number) => setView((v) => {
     const t = v.y * 12 + v.m + delta;
     return { y: Math.floor(t / 12), m: ((t % 12) + 12) % 12 };
   });
 
+  const first = `${view.y}-${pad2(view.m + 1)}-01`;
   const lead = new Date(Date.UTC(view.y, view.m, 1)).getUTCDay();        // 0 = Sunday
   const daysInMonth = new Date(Date.UTC(view.y, view.m + 1, 0)).getUTCDate();
-  const cells: (number | null)[] = [...Array<null>(lead).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  while (cells.length % 7 !== 0) cells.push(null);
-  const weeks: (number | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const total = Math.ceil((lead + daysInMonth) / 7) * 7;
+  const gridStart = addDays(first, -lead);
+  const weeks: string[][] = [];
+  for (let i = 0; i < total; i += 7) weeks.push(Array.from({ length: 7 }, (_, j) => addDays(gridStart, i + j)));
+  const monthPrefix = `${view.y}-${pad2(view.m + 1)}-`;
 
   const navBtn: React.CSSProperties = {
-    width: 30, height: 30, borderRadius: 8, border: "none", cursor: "pointer", flexShrink: 0,
+    width: compact ? 30 : 36, height: compact ? 30 : 36, borderRadius: 9, border: "none", cursor: "pointer", flexShrink: 0,
     background: "rgba(255,255,255,0.06)", color: "#D8D8DE", display: "flex", alignItems: "center", justifyContent: "center",
   };
+  const cellH = compact ? 58 : 84;
 
   return (
-    <div dir="rtl" style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "12px 12px 8px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+    <div dir="rtl" style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 14, padding: compact ? "10px 6px 6px" : "16px 16px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: compact ? 8 : 12 }}>
         <button type="button" aria-label="חודש קודם" onClick={() => shift(-1)} style={navBtn}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{MONTHS[view.m]} {view.y}</div>
+        <div style={{ fontSize: compact ? 14 : 18, fontWeight: 800, color: TEXT }}>{MONTHS[view.m]} {view.y}</div>
         <button type="button" aria-label="חודש הבא" onClick={() => shift(1)} style={navBtn}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 2 }}>
-        {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 700, color: MUTED, padding: "4px 0" }}>{w}</div>)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginBottom: 4 }}>
+        {WEEKDAYS.map((w) => <div key={w} style={{ textAlign: "center", fontSize: compact ? 10.5 : 12, fontWeight: 700, color: MUTED, padding: "4px 0" }}>{w}</div>)}
       </div>
-      {weeks.map((week, wi) => (
-        <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-          {week.map((day, di) => {
-            if (day === null) return <div key={di} />;
-            const ymd = `${view.y}-${pad2(view.m + 1)}-${pad2(day)}`;
-            const selected = ymd === value;
-            const isToday = ymd === today;
-            return (
-              <button
-                key={di}
-                type="button"
-                disabled={disabled}
-                aria-pressed={selected}
-                onClick={() => onChange(ymd)}
-                style={{
-                  margin: 2, height: 34, borderRadius: 9, cursor: disabled ? "default" : "pointer", fontFamily: "inherit",
-                  fontSize: 13, fontVariantNumeric: "tabular-nums", fontWeight: selected || isToday ? 800 : 500,
-                  color: selected ? "#fff" : TEXT,
-                  background: selected ? BRAND : "transparent",
-                  border: selected ? `1px solid ${BRAND}` : isToday ? "1px solid rgba(255,255,255,0.22)" : "1px solid transparent",
-                }}
-              >{day}</button>
-            );
-          })}
-        </div>
-      ))}
+      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+        {weeks.map((week, wi) => (
+          <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderTop: wi === 0 ? "none" : `1px solid ${BORDER}` }}>
+            {week.map((ymd, di) => {
+              const cellBorder = di === 0 ? "none" : `1px solid ${BORDER}`;
+              const dayNum = Number(ymd.slice(8, 10));
+              if (!ymd.startsWith(monthPrefix)) {
+                // Adjacent-month day: dimmed, inert, no events (same as a plain calendar)
+                return (
+                  <div key={ymd} aria-hidden style={{ height: cellH, padding: compact ? "4px 4px" : "7px 9px", borderInlineStart: cellBorder, fontSize: compact ? 12 : 14, color: "#3A3A42", fontVariantNumeric: "tabular-nums" }}>{dayNum}</div>
+                );
+              }
+              const selected = ymd === value;
+              const isToday = ymd === today;
+              const list = byDay.get(ymd);
+              const n = list?.length ?? 0;
+              const { shown, more } = summarizeDay(list, 2); // at most 2 events in the cell; the rest is a "+N"
+              return (
+                <button
+                  key={ymd}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={selected}
+                  aria-label={`${dayNum} ${MONTHS[view.m]}${n ? `, ${n} אירועים ביומן` : ""}`}
+                  onClick={() => onChange(ymd)}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start",
+                    height: cellH, minWidth: 0, overflow: "hidden", textAlign: "right", fontFamily: "inherit",
+                    padding: compact ? "4px 4px" : "7px 9px", cursor: disabled ? "default" : "pointer",
+                    background: selected ? "rgba(220,38,38,0.20)" : "transparent",
+                    border: "none", borderInlineStart: cellBorder,
+                    outline: selected ? `2px solid ${BRAND}` : "none", outlineOffset: -2,
+                    boxShadow: selected ? "inset 0 0 0 1px rgba(255,255,255,0.10)" : "none",
+                  }}
+                >
+                  {/* day number on the start side, "+N" on the far side — same row, so a busy day never grows the cell */}
+                  <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      minWidth: compact ? 20 : 26, height: compact ? 20 : 26, borderRadius: 99, padding: "0 4px",
+                      fontSize: compact ? 12 : 14, fontVariantNumeric: "tabular-nums",
+                      fontWeight: selected || isToday ? 800 : 600,
+                      color: selected ? "#fff" : TEXT,
+                      background: selected ? BRAND : "transparent",
+                      border: !selected && isToday ? "1px solid rgba(255,255,255,0.35)" : "1px solid transparent",
+                    }}>{dayNum}</span>
+                    {more > 0 && <span dir="ltr" style={{ fontSize: compact ? 9.5 : 11, fontWeight: 800, color: SUB, paddingInline: 2 }}>+{more}</span>}
+                  </span>
+                  <DayEvents shown={shown} compact={compact} />
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -132,6 +207,35 @@ export default function AddReleaseModal({ onClose, onCreated }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const submitting = useRef(false); // synchronous double-submit guard
+
+  // ── Calendar context for the date step (display only) ───────────────────────────────
+  // One read-only GET per month the user actually looks at, cached for the life of the modal:
+  // going back to a loaded month is client-side only. If the calendar is not connected or
+  // fails, the note says so, nothing more is requested, and picking a date works as usual.
+  const narrow = useNarrow();
+  const [calEvents, setCalEvents] = useState<Map<string, ParsedCalendarEvent>>(() => new Map());
+  const [calStatus, setCalStatus] = useState<"idle" | "loading" | "ok" | "unavailable">("idle");
+  const [calNote, setCalNote] = useState("");
+  const calRequested = useRef<Set<string>>(new Set()); // months already requested — never asked twice
+  const calDown = useRef(false);                        // once unavailable, stop asking
+  const calPending = useRef(0);
+  const loadCalendarMonth = useCallback((y: number, m0: number) => {
+    const key = `${y}-${pad2(m0 + 1)}`;
+    if (calDown.current || calRequested.current.has(key)) return;
+    calRequested.current.add(key);
+    const { weekStart, days } = monthGridRange(y, m0);
+    calPending.current += 1; setCalStatus("loading");
+    fetch(`/api/calendar/week?weekStart=${weekStart}&days=${days}`)
+      .then(async (r) => {
+        const d = (await r.json().catch(() => null)) as { events?: ParsedCalendarEvent[]; error?: string } | null;
+        if (!r.ok || !d || d.error) throw new Error(d?.error ?? String(r.status));
+        return Array.isArray(d.events) ? d.events : [];
+      })
+      .then((events) => setCalEvents((prev) => { const next = new Map(prev); for (const ev of events) next.set(ev.id, ev); return next; }))
+      .catch((e: Error) => { calDown.current = true; setCalNote(e.message === "not_connected" ? "היומן לא מחובר — אפשר לבחור תאריך כרגיל" : "לא ניתן לטעון אירועים מהיומן — אפשר לבחור תאריך כרגיל"); })
+      .finally(() => { calPending.current -= 1; if (calPending.current === 0) setCalStatus(calDown.current ? "unavailable" : "ok"); });
+  }, []);
+  const dayEvents = useMemo(() => eventsByDay([...calEvents.values()]), [calEvents]);
 
   const load = useCallback(() => {
     setLoadState("loading");
@@ -244,8 +348,14 @@ export default function AddReleaseModal({ onClose, onCreated }: {
     </div>
   );
 
+  // Only the date step gets the big modal (desktop) / near-full-screen (phone); the other steps keep the default size.
+  const layout: ModalLayout | undefined =
+    view !== "date" ? undefined
+    : narrow ? { width: "100%", maxHeight: "96vh", outerPad: 6, innerPad: "14px 10px" }
+    : { width: "min(880px, 96vw)", maxHeight: "94vh" };
+
   return createPortal(
-    <ModalShell title="הוספת ריליס חדש" onClose={requestClose}>
+    <ModalShell title="הוספת ריליס חדש" onClose={requestClose} layout={layout}>
       <div style={{ marginTop: -8, marginBottom: 16 }}>
         <div style={{ fontSize: 12.5, color: SUB }}>{subtitle}</div>
         <div style={{ display: "flex", gap: 4, width: 120, marginTop: 8 }}><span style={bar(true)} /><span style={bar(view === "date")} /></div>
@@ -365,7 +475,16 @@ export default function AddReleaseModal({ onClose, onCreated }: {
             <span style={{ fontSize: 12, fontWeight: 700, color: SUB }}>תאריך ריליס</span>
             <span style={{ fontSize: 15, fontWeight: 800, color: date ? TEXT : MUTED, ...(date ? { direction: "ltr" as const } : {}) }}>{date ? releaseShortDate(date) : "בחר תאריך בלוח"}</span>
           </div>
-          <ReleaseCalendar value={date} onChange={setDate} disabled={busy} />
+          {/* Existing calendar events are context only — they never block or validate a date. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, fontSize: narrow ? 11 : 12.5, color: calStatus === "unavailable" ? "#E5C77A" : MUTED }}>
+            <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" /><path d="M12 11v5M12 8v.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            <span>
+              {calStatus === "unavailable" ? calNote
+                : calStatus === "ok" ? "אירועים מהיומן מוצגים כדי לעזור בבחירת תאריך"
+                : "טוען אירועים מהיומן…"}
+            </span>
+          </div>
+          <ReleaseCalendar value={date} onChange={setDate} disabled={busy} compact={narrow} eventsByDay={dayEvents} onViewChange={loadCalendarMonth} />
 
           {needsArtist && owner && (
             <div style={{ marginTop: 12, padding: "11px 13px", borderRadius: 12, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.28)", fontSize: 12.5, lineHeight: 1.6, color: "#E5C77A" }}>
