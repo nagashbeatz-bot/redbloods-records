@@ -126,29 +126,79 @@ export function coverImageUrl(projectId: string, cover: ProjectCoverConfig | nul
 
 const graphemes = (s: string): string[] => Array.from(s);
 
-/** First visible character of the name — the compact (thumbnail) cover's mark. */
-export function coverInitial(name: string): string {
-  const c = graphemes((name || "").trim())[0];
-  return c ? c.toUpperCase() : "•";
+// ── Title typography ─────────────────────────────────────────────────────────
+// ONE design at every size: the project name, centred, semibold, with generous
+// padding. Only the font-size changes with the cover's edge, and it is decided by
+// simulating the line-wrap (never by a fixed table), so a name always fits in at
+// most MAX_LINES lines and no word is ever cut when it can be avoided.
+
+/** Inner text width as a fraction of the cover's edge (the rest is breathing room). */
+export const COVER_TEXT_WIDTH = 0.76;
+export const COVER_TITLE_MAX_LINES = 3;
+/** Smallest font (px) we ever draw — below this a name is unreadable anyway. */
+export const COVER_MIN_FONT_PX = 6;
+
+/** Average glyph advance in em (semibold), by script/case. Slightly generous on purpose. */
+function glyphEm(ch: string): number {
+  if (/\s/.test(ch)) return 0.27;
+  if (/[A-Z]/.test(ch)) return 0.7;
+  if (/[a-z0-9]/.test(ch)) return 0.57;
+  if (/[֐-׿]/.test(ch)) return 0.55;
+  return 0.62;
+}
+const wordEm = (w: string): number => graphemes(w).reduce((n, ch) => n + glyphEm(ch), 0);
+
+/** Greedy word-wrap simulation → line count and the widest single word (both in em). */
+function wrapMetrics(words: string[], maxEm: number): { lines: number; widest: number } {
+  let lines = 1, cur = 0, widest = 0;
+  for (const w of words) {
+    const wEm = wordEm(w);
+    widest = Math.max(widest, wEm);
+    if (cur === 0) cur = wEm;
+    else if (cur + 0.27 + wEm <= maxEm) cur += 0.27 + wEm;
+    else { lines++; cur = wEm; }
+  }
+  return { lines, widest };
 }
 
 /**
- * Title font-size as a PERCENT of the cover's edge (e.g. 17 → 0.17 × size).
- * Two limits, the smaller wins: (1) the longest word must fit on one line, so a
- * word is never cut mid-way; (2) the whole name gets smaller as it gets longer so
- * it settles on 2–3 balanced lines. Works the same for Hebrew, English and mixed.
+ * Font size for `name` on a cover whose edge is `edgePx`.
+ *  • the PREFERRED size shrinks with name length (short → a touch larger) and is a
+ *    little larger, relatively, on small covers so a 46–60px thumbnail stays legible;
+ *  • it is then stepped down until the wrapped name fits ≤ 3 lines with every word
+ *    on one line;
+ *  • never below COVER_MIN_FONT_PX. A name too long even for that keeps the minimum
+ *    and may use more lines — `clamp` is how many the box can actually show, so the
+ *    name is wrapped, never cut with an ellipsis, while it fits the cover's height.
+ * `fits` = the normal case (≤ 3 lines, no cut word).
  */
-export function coverTitleScale(name: string): number {
+export function coverTitleLayout(name: string, edgePx: number): { fontPx: number; lines: number; clamp: number; fits: boolean } {
   const text = (name || "").trim();
-  const total = graphemes(text).length;
-  const longest = Math.max(1, ...text.split(/\s+/).map((w) => graphemes(w).length));
-  const byWord = 80 / (longest * 0.62);
-  const byTotal = total <= 6 ? 22 : total <= 12 ? 17 : total <= 20 ? 13 : total <= 32 ? 10.5 : 8.5;
-  return Math.min(22, Math.max(6.5, Math.min(byWord, byTotal)));
-}
+  const edge = Math.max(24, edgePx);
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return { fontPx: Math.max(COVER_MIN_FONT_PX, edge * 0.11), lines: 1, clamp: COVER_TITLE_MAX_LINES, fits: true };
 
-/** Below this edge (px) the cover is "compact": theme/image + initial, no title. */
-export const COVER_COMPACT_BELOW = 72;
+  const total = graphemes(text).length;
+  const basePct = total <= 6 ? 13 : total <= 12 ? 11.5 : total <= 20 ? 10 : total <= 32 ? 8.5 : 7.5;
+  const smallBoost = Math.pow(192 / edge, 0.25);          // 1.0 at 192px, ≈1.34 at 60px, ≈1.43 at 46px
+  const preferred = Math.min(edge * 0.2, (edge * basePct * smallBoost) / 100);
+
+  const maxWidth = edge * COVER_TEXT_WIDTH;
+  const tryFont = (fs: number) => {
+    const { lines, widest } = wrapMetrics(words, maxWidth / fs);
+    return lines <= COVER_TITLE_MAX_LINES && widest * fs <= maxWidth ? lines : null;
+  };
+  const step = Math.max(0.25, preferred * 0.03);
+  for (let fs = preferred; fs > COVER_MIN_FONT_PX; fs -= step) {
+    const lines = tryFont(fs);
+    if (lines !== null) return { fontPx: Number(fs.toFixed(2)), lines, clamp: COVER_TITLE_MAX_LINES, fits: true };
+  }
+  const atMin = tryFont(COVER_MIN_FONT_PX);
+  if (atMin !== null) return { fontPx: COVER_MIN_FONT_PX, lines: atMin, clamp: COVER_TITLE_MAX_LINES, fits: true };
+  const { lines } = wrapMetrics(words, maxWidth / COVER_MIN_FONT_PX);
+  const byHeight = Math.max(COVER_TITLE_MAX_LINES, Math.floor((edge * COVER_TEXT_WIDTH) / (COVER_MIN_FONT_PX * 1.2)));
+  return { fontPx: COVER_MIN_FONT_PX, lines, clamp: Math.min(lines, byHeight), fits: false };
+}
 
 // ── Storage-shape guards (pure, so they are unit-testable; used by the store/routes) ──
 

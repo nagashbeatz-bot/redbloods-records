@@ -9,8 +9,8 @@
  * nothing here touches production.
  */
 import {
-  COVER_THEMES, DEFAULT_COVER_THEME, coverDropboxPath, coverImageUrl, coverInitial,
-  coverSettingsKey, coverTitleScale, getCoverTheme, isCoverThemeId, isSafeProjectId,
+  COVER_THEMES, DEFAULT_COVER_THEME, coverDropboxPath, coverImageUrl,
+  coverSettingsKey, coverTitleLayout, COVER_MIN_FONT_PX, COVER_TITLE_MAX_LINES, getCoverTheme, isCoverThemeId, isSafeProjectId,
   looksLikeJpeg, normalizeCover,
 } from "../lib/project-cover";
 import {
@@ -54,18 +54,36 @@ check("portal URL (artist-scoped)", coverImageUrl(PID, custom, "/api/label/artis
 check("cache-buster changes with updatedAt", coverImageUrl(PID, custom) !== coverImageUrl(PID, { ...custom, updatedAt: "2026-09-22T00:00:00.000Z" }), true);
 check("settings key", coverSettingsKey(PID), `project_cover_${PID}`);
 
-console.log("title fitting");
-const s = (n: string) => Number(coverTitleScale(n).toFixed(2));
-check("short Hebrew is largest", s("שלום") , 22);
-check("12-char Hebrew (דאנסהול סקול) ≤ 17%", s("דאנסהול סקול") <= 17, true);
-check("longer name is never bigger", s("Closer To You") >= s("Closer To You (Extended Radio Mix) feat. Somebody"), true);
-check("very long name floors at 6.5%", s("א".repeat(120)), 6.5);
-check("long single word shrinks so it fits one line", s("Supercalifragilistic") < s("Super Cali"), true);
-check("mixed Hebrew/English in range", s("Dancehall School חלק א׳") >= 6.5 && s("Dancehall School חלק א׳") <= 22, true);
-check("empty name safe", s(""), 22);
-check("initial: Hebrew", coverInitial("דאנסהול סקול"), "ד");
-check("initial: English uppercased", coverInitial("closer"), "C");
-check("initial: empty", coverInitial("  "), "•");
+console.log("title typography (name at EVERY size, never an initial)");
+const L = coverTitleLayout;
+const NAMES = ["לא מאמינה", "Dancehall School חלק א׳", "Closer To You", "שלום", "פרצייפ", "דאנסהול סקול"];
+const VERY_LONG = "Closer To You (Extended Radio Mix) feat. Somebody";
+const EDGES = [236, 192, 148, 124, 60, 46];
+for (const n of NAMES) {
+  for (const e of EDGES) {
+    const r = L(n, e);
+    check(`"${n}" @${e}px: fits in ≤${COVER_TITLE_MAX_LINES} lines, font ≥ ${COVER_MIN_FONT_PX}px`, r.fits && r.lines <= COVER_TITLE_MAX_LINES && r.fontPx >= COVER_MIN_FONT_PX, true);
+  }
+}
+// A 50-char name wraps fully down to a 60px thumbnail; on a 46px one (≈35px of text
+// width) it is the only case allowed to clamp — nobody names a release like that.
+for (const e of EDGES.filter((x) => x >= 60)) {
+  const r = L(VERY_LONG, e);
+  check(`very long name @${e}px: wraps fully (no ellipsis cut), font ≥ ${COVER_MIN_FONT_PX}px`, r.clamp >= r.lines && r.fontPx >= COVER_MIN_FONT_PX, true);
+}
+check("לא מאמינה @192: elegant size (18–26px)", L("לא מאמינה", 192).fontPx >= 18 && L("לא מאמינה", 192).fontPx <= 26, true);
+check("לא מאמינה @148 smaller than @192", L("לא מאמינה", 148).fontPx < L("לא מאמינה", 192).fontPx, true);
+check("לא מאמינה @60 smaller than @148", L("לא מאמינה", 60).fontPx < L("לא מאמינה", 148).fontPx, true);
+check("לא מאמינה @46 ≤ @60", L("לא מאמינה", 46).fontPx <= L("לא מאמינה", 60).fontPx, true);
+check("לא מאמינה @46 still readable (≥7px)", L("לא מאמינה", 46).fontPx >= 7, true);
+check("relative size grows on small covers (60px thumb > hero share)", L("לא מאמינה", 60).fontPx / 60 > L("לא מאמינה", 192).fontPx / 192, true);
+check("hero type is calm (≤ 14% of the edge)", L("לא מאמינה", 192).fontPx / 192 <= 0.14, true);
+check("longer name is never bigger @192", L("Closer To You", 192).fontPx >= L("Closer To You (Extended Radio Mix) feat. Somebody", 192).fontPx, true);
+check("long single word shrinks so it stays on one line", L("Supercalifragilistic", 192).fontPx < L("Super Cali", 192).fontPx, true);
+check("impossible name floors at the minimum, never throws", L("א".repeat(200), 46).fontPx, COVER_MIN_FONT_PX);
+check("impossible name reports fits=false", L("א".repeat(200), 46).fits, false);
+check("empty name safe", L("", 192).lines, 1);
+check("same input → same output (deterministic)", JSON.stringify(L("Closer To You", 60)) === JSON.stringify(L("Closer To You", 60)), true);
 
 console.log("storage guards");
 check("uuid is a safe id", isSafeProjectId(PID), true);

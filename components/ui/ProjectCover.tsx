@@ -5,17 +5,15 @@
 // fetches: the caller passes the project's `cover` config (already delivered with
 // the data the screen loads), so a list of covers costs zero extra requests.
 //
-// Layout is fixed and identical everywhere: background (theme, or the custom
-// image with a soft scrim) + the project name centred on top. Below
-// COVER_COMPACT_BELOW px (list thumbnails) the name would be illegible, so the
-// cover keeps its background and shows only the initial (none over a photo) —
-// the full name always sits next to a thumbnail in the row anyway.
+// One identity at every size: background (theme, or the custom image under a soft
+// scrim) + the project NAME, centred. There is no "compact" variant and no initial —
+// only the font-size changes with the cover's edge (lib/project-cover.ts
+// coverTitleLayout: preferred size by length, stepped down until the wrapped name
+// fits ≤ 3 lines with no word cut). Size and phone size are CSS variables so the
+// same markup serves both without a second implementation.
 
 import { useState, type CSSProperties } from "react";
-import {
-  COVER_COMPACT_BELOW, coverImageUrl, coverInitial, coverTitleScale, getCoverTheme,
-  type ProjectCoverConfig,
-} from "@/lib/project-cover";
+import { coverImageUrl, coverTitleLayout, getCoverTheme, type ProjectCoverConfig } from "@/lib/project-cover";
 
 interface Props {
   projectId: string;
@@ -38,6 +36,8 @@ interface Props {
 }
 
 const RADIUS = "max(6px, calc(var(--pc-cur) * 0.11))";
+/** Hover "edit" hint only where it can be read. */
+const HINT_MIN_PX = 120;
 
 export default function ProjectCover({ projectId, name, cover, size, mobileSize, imageBase, imageSrc, onClick, style }: Props) {
   const theme = getCoverTheme(cover);
@@ -45,10 +45,20 @@ export default function ProjectCover({ projectId, name, cover, size, mobileSize,
   // If the image can't load, fall back to the plain theme — never a broken image.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = !!src && failedSrc !== src;
-  const compact = Math.min(size, mobileSize ?? size) < COVER_COMPACT_BELOW;
   const label = (name || "").trim();
 
-  const vars = { "--pc-size": `${size}px`, "--pc-size-m": `${mobileSize ?? size}px` } as CSSProperties;
+  const mSize = mobileSize ?? size;
+  const desk = coverTitleLayout(label, size);
+  const mob = mSize === size ? desk : coverTitleLayout(label, mSize);
+  const vars = {
+    "--pc-size": `${size}px`, "--pc-size-m": `${mSize}px`,
+    "--pc-fs": `${desk.fontPx}px`, "--pc-fs-m": `${mob.fontPx}px`,
+  } as CSSProperties;
+
+  // Frame weight scales with the cover (a hairline on thumbnails, a fuller frame on heroes).
+  const large = Math.min(size, mSize) >= HINT_MIN_PX;
+  // Semibold on large covers; a touch heavier on thumbnails so small type stays crisp.
+  const weight = size >= 100 ? 600 : 700;
 
   const box = (
     <div
@@ -60,10 +70,10 @@ export default function ProjectCover({ projectId, name, cover, size, mobileSize,
         position: "relative", overflow: "hidden", flexShrink: 0, boxSizing: "border-box",
         borderRadius: RADIUS,
         background: theme.bg,
-        border: `${compact ? 1 : 2}px solid ${theme.accent}${compact ? "55" : "6B"}`,
-        boxShadow: compact
-          ? "0 1px 6px rgba(0,0,0,0.45), inset 0 0 14px rgba(0,0,0,0.4)"
-          : `0 0 60px ${theme.accent}33, 0 0 24px ${theme.accent}1F, 0 4px 32px rgba(0,0,0,0.75), inset 0 0 44px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)`,
+        border: `${large ? 2 : 1}px solid ${theme.accent}${large ? "6B" : "55"}`,
+        boxShadow: large
+          ? `0 0 60px ${theme.accent}33, 0 0 24px ${theme.accent}1F, 0 4px 32px rgba(0,0,0,0.75), inset 0 0 44px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)`
+          : "0 1px 6px rgba(0,0,0,0.45), inset 0 0 14px rgba(0,0,0,0.4)",
         ...(onClick ? null : style),
       }}
     >
@@ -80,47 +90,36 @@ export default function ProjectCover({ projectId, name, cover, size, mobileSize,
         />
       )}
 
-      {/* Readability scrim — only over a custom image, and only when a title is drawn. */}
-      {showImage && !compact && (
+      {/* Readability scrim — only over a custom image; soft, so the picture stays the hero. */}
+      {showImage && (
         <div aria-hidden style={{
           position: "absolute", inset: 0, pointerEvents: "none",
-          background: "radial-gradient(ellipse at center, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0) 72%), linear-gradient(180deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.42) 55%, rgba(0,0,0,0.68) 100%)",
+          background: "radial-gradient(ellipse at center, rgba(0,0,0,0.34) 0%, rgba(0,0,0,0) 74%), linear-gradient(180deg, rgba(0,0,0,0.14) 0%, rgba(0,0,0,0.34) 55%, rgba(0,0,0,0.58) 100%)",
         }} />
       )}
 
-      {!compact && !showImage && (
+      {!showImage && (
         <div aria-hidden style={{
           position: "absolute", top: 0, left: 0, width: "48%", height: "48%", pointerEvents: "none",
-          background: "radial-gradient(circle at 0 0, rgba(255,255,255,0.09) 0%, transparent 65%)",
+          background: "radial-gradient(circle at 0 0, rgba(255,255,255,0.08) 0%, transparent 65%)",
         }} />
       )}
 
-      {compact ? (
-        !showImage && (
-          <span aria-hidden style={{
-            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "calc(var(--pc-cur) * 0.44)", fontWeight: 900, lineHeight: 1, color: theme.accent,
-            textShadow: `0 0 14px ${theme.accent}77`, userSelect: "none",
-          }}>{coverInitial(label)}</span>
-        )
-      ) : (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "9%", boxSizing: "border-box" }}>
-          <div
-            dir="auto"
-            style={{
-              width: "100%", textAlign: "center", color: theme.ink, fontWeight: 900,
-              fontSize: `calc(var(--pc-cur) * ${(coverTitleScale(label) / 100).toFixed(4)})`,
-              lineHeight: 1.08, letterSpacing: "-0.01em",
-              overflowWrap: "anywhere", textWrap: "balance",
-              display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 4, overflow: "hidden",
-              textShadow: showImage
-                ? "0 2px 14px rgba(0,0,0,0.8), 0 0 3px rgba(0,0,0,0.6)"
-                : `0 0 30px ${theme.accent}88, 0 2px 8px rgba(0,0,0,0.5)`,
-              userSelect: "none",
-            }}
-          >{label}</div>
-        </div>
-      )}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "12%", boxSizing: "border-box" }}>
+        <div
+          dir="auto"
+          style={{
+            width: "100%", textAlign: "center", color: theme.ink, fontWeight: weight,
+            fontSize: "var(--pc-fs-cur)", lineHeight: 1.2, letterSpacing: "0.005em",
+            overflowWrap: "anywhere", textWrap: "balance",
+            display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: Math.max(desk.clamp, mob.clamp), overflow: "hidden",
+            textShadow: showImage
+              ? "0 1px calc(var(--pc-cur) * 0.06) rgba(0,0,0,0.75), 0 0 2px rgba(0,0,0,0.5)"
+              : `0 1px calc(var(--pc-cur) * 0.05) rgba(0,0,0,0.55), 0 0 calc(var(--pc-cur) * 0.12) ${theme.accent}40`,
+            userSelect: "none",
+          }}
+        >{label}</div>
+      </div>
     </div>
   );
 
@@ -133,7 +132,7 @@ export default function ProjectCover({ projectId, name, cover, size, mobileSize,
       style={{ ...vars, borderRadius: RADIUS, ...style }}
     >
       {box}
-      {!compact && (
+      {large && (
         <span className="rb-pc-hint" style={{ borderRadius: "inherit" }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
           עיצוב תמונת נושא
