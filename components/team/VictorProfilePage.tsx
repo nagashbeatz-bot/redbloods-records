@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
-import { inMonth } from "@/lib/victor-segments";
+import { inMonth, monthRef } from "@/lib/victor-segments";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { saveFileAs } from "@/lib/download-file";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
-import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
+import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, victorMonthName, type VictorLang } from "@/lib/victor-i18n";
 import {
   IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
   IconArrowUpRight, IconChevronLeft, IconChevronRight, IconX, IconPencil, IconTrash,
@@ -1474,16 +1474,63 @@ function ReferenceCard({
   );
 }
 
+// Previous / next project inside the same month (Victor list order). A missing
+// handler = no neighbour in that direction → rendered disabled.
+type ProjectNav = {
+  index: number;            // 0-based position in the month list
+  total: number;
+  monthLabel: string;       // localized month name, e.g. "ספטמבר"
+  onPrev?: () => void;
+  onNext?: () => void;
+};
+
+// Physical left = previous, right = next (matches ArrowLeft / ArrowRight).
+function ProjectNavButton({
+  side, size, disabled, title, onClick,
+}: {
+  side: "left" | "right";
+  size: number;
+  disabled: boolean;
+  title: string;
+  onClick?: () => void;
+}) {
+  const Chev = side === "left" ? IconChevronLeft : IconChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = `${PURPLE}30`; e.currentTarget.style.boxShadow = `0 0 18px ${PURPLE}55`; } }}
+      onMouseLeave={e => { e.currentTarget.style.background = `${PURPLE}14`; e.currentTarget.style.boxShadow = `0 0 12px ${PURPLE}22`; }}
+      style={{
+        width: size, height: size, borderRadius: "50%", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 0, fontFamily: "inherit", appearance: "none", WebkitAppearance: "none",
+        WebkitTapHighlightColor: "transparent",
+        background: `${PURPLE}14`, border: `1px solid ${PURPLE}55`,
+        color: "#EDE9FE", boxShadow: `0 0 12px ${PURPLE}22`,
+        opacity: disabled ? 0.28 : 1,
+        cursor: disabled ? "default" : "pointer",
+        transition: "background .15s, box-shadow .15s, opacity .15s",
+      }}
+    ><Chev size={Math.round(size * 0.45)} /></button>
+  );
+}
+
 function VictorProjectDrawer({
   work,
   onClose,
   onRefresh,
   isOwner,
+  nav,
 }: {
   work: VendorWork;
   onClose: () => void;
   onRefresh?: () => void;
   isOwner: boolean;
+  nav?: ProjectNav | null;
 }) {
   const router = useRouter();
   const t = useVictorT();
@@ -1620,6 +1667,49 @@ function VictorProjectDrawer({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, playingId, uploadActive]);
+
+  // ── Prev / next project (same month). The parent re-mounts this drawer per
+  //    work id (key), so every per-work state above resets cleanly on switch. ──
+  // Never switch away mid-transfer or while another dialog / inline editor is open.
+  const navBlocked =
+    uploadState !== "idle" || savingDbx || uploadCancelConfirm || !!playingId ||
+    confirmRemove || removing || sendConfirm || sending || refForm.open ||
+    editingTitle || editingBrief || deleteConfirmKey !== null;
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const navBlockedRef = useRef(navBlocked);
+  navBlockedRef.current = navBlocked;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // Alt+← is browser-back
+      if (navBlockedRef.current) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      // Arrow keys belong to text fields, sliders (seek / volume) and native media.
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "AUDIO" || tag === "VIDEO" || el?.isContentEditable) return;
+      const go = e.key === "ArrowLeft" ? navRef.current?.onPrev : navRef.current?.onNext;
+      if (!go) return;
+      e.preventDefault();
+      go();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  // Wide desktop → arrows float in the dark margins beside the modal (as in the
+  // reference); below that there is no room, so they sit in the header row.
+  const [vw, setVw] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const showNav = !!nav && nav.total > 1;
+  const floatingNav = showNav && !isMobile && vw >= 1200;
+  const NAV_BTN = 40;
+  const navMargin = (vw - Math.min(1600, vw * 0.92)) / 2;         // dark strip beside the modal
+  const navGap = navMargin - Math.min(navMargin / 2, 64) - NAV_BTN / 2; // button centred in the strip, ≤64px from the modal
+  const navLabels = navMargin >= 100;
 
   // Abort any in-flight upload (chunked fetch AND single-shot XHR) when the drawer
   // unmounts (close / switch), guard terminal setState, and clear the auto-close timer.
@@ -2653,6 +2743,13 @@ function VictorProjectDrawer({
               color: TEXT2, lineHeight: 1, fontFamily: "inherit",
               fontWeight: 700, display: "flex", alignItems: "center",
             }}><IconX size={14} /></button>
+            {showNav && !floatingNav && nav && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, direction: "ltr" }}>
+                <ProjectNavButton side="left" size={34} disabled={!nav.onPrev || navBlocked} title={t("drawer.prevProject")} onClick={nav.onPrev} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, minWidth: 34, textAlign: "center" }}>{nav.index + 1} / {nav.total}</span>
+                <ProjectNavButton side="right" size={34} disabled={!nav.onNext || navBlocked} title={t("drawer.nextProject")} onClick={nav.onNext} />
+              </div>
+            )}
             {/* Project link is OWNER-only — Victor never gets a way into the
                 original project, just the clean work name. */}
             {isOwner ? (
@@ -3613,6 +3710,30 @@ function VictorProjectDrawer({
         </div>,
         document.body
       )}
+      {/* Prev / next project — floats in the dark margins beside the modal (wide
+          desktop only; narrower widths use the header cluster). pointer-events:none
+          on the layer so the backdrop's click-to-close still works everywhere else. */}
+      {floatingNav && nav && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1002, pointerEvents: "none", direction: "ltr" }}>
+          {([
+            { side: "left" as const,  onClick: nav.onPrev, title: t("drawer.prevProject") },
+            { side: "right" as const, onClick: nav.onNext, title: t("drawer.nextProject") },
+          ]).map(b => (
+            <div key={b.side} style={{
+              position: "absolute", top: "50%", [b.side]: Math.max(4, navGap), transform: "translateY(-50%)",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+              pointerEvents: "auto",
+            }}>
+              <ProjectNavButton side={b.side} size={NAV_BTN} disabled={!b.onClick || navBlocked} title={b.title} onClick={b.onClick} />
+              {navLabels && (
+                <span style={{ width: NAV_BTN + 52, textAlign: "center", fontSize: 11, lineHeight: 1.35, color: MUTED, fontWeight: 700, opacity: b.onClick && !navBlocked ? 1 : 0.4 }}>
+                  {b.title}<br />({nav.monthLabel})
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {dlFailed && (
         <div role="alert" style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 1100, background: "#1A0F10", color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 8px 30px rgba(0,0,0,0.6)" }}>{t("file.downloadFail")}</div>
       )}
@@ -3840,6 +3961,26 @@ export default function VictorProfilePage() {
   // (inMonth: sent_date, else created_at), so the table stays consistent with them.
   // Victor-only items (project_id=null) carry a sent_date on creation, so they filter too.
   const monthWork   = work.filter((w) => inMonth(w, month));
+
+  // Prev/next inside the project drawer — the SAME list and order as monthWork
+  // above, but for the opened project's own month (a deep-linked project can sit
+  // outside the month tab being viewed). No neighbour → handler undefined → the
+  // arrow renders disabled.
+  let workNav: ProjectNav | null = null;
+  if (selectedWork) {
+    const selMonth = monthRef(selectedWork).slice(0, 7);
+    const siblings = selMonth === month ? monthWork : work.filter((w) => inMonth(w, selMonth));
+    const idx = siblings.findIndex((w) => w.id === selectedWork.id);
+    if (idx >= 0) {
+      workNav = {
+        index: idx,
+        total: siblings.length,
+        monthLabel: victorMonthName(selMonth, lang),
+        onPrev: idx > 0 ? () => setSelectedWork(siblings[idx - 1]) : undefined,
+        onNext: idx < siblings.length - 1 ? () => setSelectedWork(siblings[idx + 1]) : undefined,
+      };
+    }
+  }
   const displayWork = monthWork.slice(0, 12);
 
   // Monthly capacity = work actually handled in the selected month (active +
@@ -4565,7 +4706,9 @@ export default function VictorProfilePage() {
 
     {selectedWork && (
       <VictorProjectDrawer
+        key={selectedWork.id}
         work={selectedWork}
+        nav={workNav}
         isOwner={isOwner}
         onClose={() => setSelectedWork(null)}
         onRefresh={() => fetchMonth(month)}
