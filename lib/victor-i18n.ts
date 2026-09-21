@@ -74,11 +74,6 @@ const MONTHS: Record<VictorLang, string[]> = {
   en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
   ru: ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
 };
-/** "YYYY-MM" → localized month name only (no year). */
-export function victorMonthName(ym: string, lang: VictorLang): string {
-  const m = Number(ym.split("-")[1]);
-  return m >= 1 && m <= 12 ? MONTHS[lang][m - 1] : ym;
-}
 /** "YYYY-MM" → localized "Month YYYY". */
 export function victorMonthYear(ym: string, lang: VictorLang): string {
   const [y, m] = ym.split("-").map(Number);
@@ -320,8 +315,6 @@ const HE: Dict = {
   "drawer.save": "שמור",
   "drawer.saving": "שומר…",
   "drawer.cancel": "בטל",
-  "drawer.prevProject": "פרויקט קודם",
-  "drawer.nextProject": "פרויקט הבא",
   "drawer.briefEmptyOwner": "אין עדיין בריף — לחץ ערוך כדי להוסיף הוראות לויקטור",
   "drawer.briefEmptyViewer": "אין בריף לעבודה זו",
   // drawer — references
@@ -658,8 +651,6 @@ const EN: Dict = {
   "drawer.save": "Save",
   "drawer.saving": "Saving…",
   "drawer.cancel": "Cancel",
-  "drawer.prevProject": "Previous project",
-  "drawer.nextProject": "Next project",
   "drawer.briefEmptyOwner": "No brief yet — click Edit to add instructions for Viktor",
   "drawer.briefEmptyViewer": "No brief for this work",
   "drawer.refs": "References",
@@ -971,8 +962,6 @@ const RU: Dict = {
   "drawer.save": "Сохранить",
   "drawer.saving": "Сохраняю…",
   "drawer.cancel": "Отмена",
-  "drawer.prevProject": "Предыдущий проект",
-  "drawer.nextProject": "Следующий проект",
   "drawer.briefEmptyOwner": "Брифа пока нет — нажмите «Изменить», чтобы добавить инструкции для Viktor",
   "drawer.briefEmptyViewer": "Для этой работы нет брифа",
   "drawer.refs": "Референсы",
