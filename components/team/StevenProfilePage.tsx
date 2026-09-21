@@ -8,6 +8,7 @@ import { usePlayerSafe } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import { finalFilesFocusVisible, withFinalFilesHintsCleared } from "@/lib/steven-completed-pure";
 import LinkifiedText from "@/components/ui/LinkifiedText";
+import { saveFileAs } from "@/lib/download-file";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
 
@@ -109,54 +110,6 @@ const ROLE_LABEL: Record<FileRole, { he: string; en: string }> = {
 const roleLabel = (r: FileRole, lang: Lang) => (lang === "en" ? ROLE_LABEL[r].en : ROLE_LABEL[r].he);
 /** Audio files get a player; archives (stems/zip/rar) are download-only rows. */
 const isAudioName = (n: string) => /\.(wav|mp3|m4a|aiff?|flac|ogg|aac|opus)$/i.test(n || "");
-
-/**
- * The ONE download action for every file download in this page (mix player, project
- * files, work materials, latest mix). Never opens a tab. `url` is the existing
- * same-origin stream URL (owner /api/dropbox/stream or Steven's scoped stream) — it
- * 302s to a Dropbox temp link that answers CORS with `*`, so it is fetched as-is.
- *
- * Chrome/Edge: showSaveFilePicker is the FIRST thing this runs, synchronously inside
- * the caller's click (no await before it — that would drop the user activation).
- * Only once a location is chosen is the stream fetched and piped straight into the
- * file, so a big WAV is never held in memory. Cancel is silent; a real failure calls
- * `onError`. Everything else falls back to a plain same-tab <a download> click.
- */
-type SaveWritable = WritableStream<Uint8Array>;
-type SaveHandle = { createWritable: () => Promise<SaveWritable> };
-async function saveFileAs(url: string, fileName: string, onError: () => void): Promise<void> {
-  const name = (fileName || "").replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
-  const picker = (window as unknown as {
-    showSaveFilePicker?: (o: { suggestedName: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<SaveHandle>;
-  }).showSaveFilePicker;
-
-  if (typeof picker !== "function") {
-    const a = document.createElement("a");
-    a.href = url; a.download = name; a.rel = "noopener"; a.style.display = "none";
-    document.body.appendChild(a); a.click(); a.remove();
-    return;
-  }
-
-  const ext = /\.([a-z0-9]{1,8})$/i.exec(name)?.[1];
-  let handle: SaveHandle;
-  try {
-    handle = await picker.call(window, {
-      suggestedName: name,
-      ...(ext ? { types: [{ description: `${ext.toUpperCase()} file`, accept: { "application/octet-stream": [`.${ext.toLowerCase()}`] } }] } : {}),
-    });
-  } catch (e) {
-    if (!(e instanceof DOMException && e.name === "AbortError")) onError(); // Cancel = silent
-    return;
-  }
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-    await res.body.pipeTo(await handle.createWritable());
-  } catch {
-    onError();
-  }
-}
 
 function detectRole(name: string): FileRole {
   const s = (name || "").toLowerCase();

@@ -12,7 +12,7 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
 import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName } from "@/lib/red-artists/portal-registry";
-import { fetchAndSaveOrShare } from "@/lib/audio-share";
+import { saveFileAs } from "@/lib/download-file";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -391,19 +391,12 @@ function sketchBeatDownloadUrl(s: Sketch, base: string = "/api/red-artists"): st
 // it portal-agnostic: any portal whose sketch carries a beat gets the chip, and a
 // portal with no beat gets no new control at all.
 //
-// iOS Safari IGNORES <a download> and NAVIGATES to the URL, so an attachment
-// response would open as a full-screen MP3 preview page (leaving the portal). This
-// delegates to the SAME helper the global player uses, so the beat behaves exactly
-// like a track: on iOS the native Share Sheet opens with the real file (Files /
-// WhatsApp / AirDrop), on desktop it stays a plain blob download. Same-origin fetch
-// carries the session cookie (auth unchanged); never touches the player itself.
-//
-// `filename` is the sketch's stored beat name and is only the FALLBACK — the helper
-// prefers the route's Content-Disposition, which is the same RFC 5987 name the file
-// downloads under today, so the move does not rename anything.
-async function downloadFileNoNav(url: string, filename: string): Promise<void> {
-  await fetchAndSaveOrShare(url, filename);
-}
+// The download goes through the shared saveFileAs (lib/download-file.ts): native Save
+// As on desktop Chrome/Edge; on a touch device the File Share sheet (iOS Safari IGNORES
+// <a download> and would open a full-screen MP3 preview, leaving the portal), exactly as
+// the global player does; a same-tab <a download> otherwise. Same-origin fetch carries
+// the session cookie (auth unchanged); never touches the player itself. `filename` is
+// the sketch's stored beat file name (real name incl. extension).
 
 function BeatChip({ url, filename, onError }: { url: string; filename: string; onError?: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
@@ -411,8 +404,7 @@ function BeatChip({ url, filename, onError }: { url: string; filename: string; o
     e.stopPropagation(); e.preventDefault(); // never open the (owner-only) editor / navigate
     if (busy) return;                          // one click = one download (no double-submit)
     setBusy(true);
-    try { await downloadFileNoNav(url, filename); }
-    catch { onError?.("הורדת הביט נכשלה, נסה שוב"); }
+    try { await saveFileAs(url, filename, () => onError?.("הורדת הביט נכשלה, נסה שוב")); }
     finally { setBusy(false); }
   };
   return (
@@ -6424,13 +6416,12 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   const [beatDownloading, setBeatDownloading] = useState(false);
   const pickBeat = (f: File | null) => { setBeatFile(f); setBeatFileErr(f ? validateSketchFileClient(f) : null); };
 
-  // Download the beat WITHOUT navigating away (iOS-safe blob download — never
-  // opens an MP3 preview page, never touches the player).
+  // Download the beat via the shared saveFileAs — never navigates away (no MP3 preview
+  // page on iOS), never opens a tab, never touches the player.
   const downloadBeat = async () => {
     if (!sketch.beat || beatDownloading) return;
     setBeatDownloading(true); setBeatErr(null);
-    try { await downloadFileNoNav(sketchBeatDownloadUrl(sketch, apiBase), sketch.beat.fileName); }
-    catch { setBeatErr("הורדת הביט נכשלה, נסה שוב"); }
+    try { await saveFileAs(sketchBeatDownloadUrl(sketch, apiBase), sketch.beat.fileName, () => setBeatErr("הורדת הביט נכשלה, נסה שוב")); }
     finally { setBeatDownloading(false); }
   };
 

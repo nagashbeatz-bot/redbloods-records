@@ -19,6 +19,7 @@ import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import ActionMenu from "@/components/project/ActionMenu";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
+import { saveFileAs } from "@/lib/download-file";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
@@ -367,6 +368,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // Fallback for hidden projects not present in the visible-projects context
   const [fetchedProject, setFetchedProject] = useState<import("@/lib/types").Project | null>(null);
+  // Download button failed (shared saveFileAs -> onError). Auto-clears.
+  const [dlErr, setDlErr] = useState(false);
 
   // ── Mobile detection ───────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false);
@@ -3284,33 +3287,32 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                     {latestAudio.name}
                   </span>
                   {/* Download */}
-                  <a
-                    href={latestAudio.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="הורד / פתח קובץ מקורי"
+                  <button
+                    type="button"
+                    onClick={() => { void saveFileAs(latestAudio.url, latestAudio.name, () => { setDlErr(true); setTimeout(() => setDlErr(false), 3500); }); }}
+                    title={dlErr ? "ההורדה נכשלה" : "הורד קובץ מקורי"}
                     style={{
                       width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                      background: "rgba(255,255,255,0.04)", color: "#555",
+                      background: "rgba(255,255,255,0.04)", color: dlErr ? "#F87171" : "#555", border: "none", padding: 0, cursor: "pointer",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       textDecoration: "none", transition: "all 0.13s",
                     }}
                     onMouseEnter={(e) => {
-                      const el = e.currentTarget as HTMLAnchorElement;
+                      const el = e.currentTarget as HTMLButtonElement;
                       el.style.background = "rgba(255,255,255,0.1)";
                       el.style.color = "#AAA";
                     }}
                     onMouseLeave={(e) => {
-                      const el = e.currentTarget as HTMLAnchorElement;
+                      const el = e.currentTarget as HTMLButtonElement;
                       el.style.background = "rgba(255,255,255,0.04)";
-                      el.style.color = "#555";
+                      el.style.color = dlErr ? "#F87171" : "#555";
                     }}
                   >
                     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M6.5 1v7M3.5 5.5l3 3 3-3" />
                       <path d="M1.5 10.5h10" />
                     </svg>
-                  </a>
+                  </button>
 
                   {/* Copy share link */}
                   {latestAudio.dropboxPath && (

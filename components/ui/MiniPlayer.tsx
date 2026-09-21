@@ -5,6 +5,7 @@ import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import { canShareFiles, fetchAndSaveOrShare } from "@/lib/audio-share";
+import { saveFileAs } from "@/lib/download-file";
 
 const BRAND = "#DC2626";
 
@@ -55,26 +56,27 @@ function ShareIcon({ size = 14, color = "currentColor" }: { size?: number; color
 }
 
 /**
- * Download control. When the track carries a secure SAME-ORIGIN attachment endpoint
- * (`downloadUrl`), it hands the URL to the shared `fetchAndSaveOrShare` helper:
- * bytes → Blob → clean filename (from Content-Disposition) → the native Share Sheet
- * on a TOUCH device that supports the File Share API (iOS → "Save to Files" /
- * WhatsApp / AirDrop, no Quick Look, no navigation), or a normal Blob download on
- * desktop/Android. Legacy tracks with no downloadUrl keep the plain anchor. Never
- * uses window.open / opens a new tab / navigates the app.
+ * Download control. Every track that has a real filename WITH an extension goes through
+ * the shared `saveFileAs` (lib/download-file.ts): native Save As on desktop Chrome/Edge,
+ * the File Share sheet on a touch device (the exact behaviour this control already had),
+ * or a same-tab <a download>. It uses the track's `downloadUrl` (secure same-origin
+ * attachment endpoint) when it has one, else the stream `url` (which 302s to a Dropbox
+ * temp link that answers CORS). Never uses window.open / opens a tab / navigates the app.
  *
- * That helper lives in lib/audio-share.ts — the exact same code this component used
- * inline before, now shared with the sketch "ביט" download so the two can never
- * drift. Behaviour here is unchanged.
+ * A track whose name carries no extension at the moment of the click (free beats: the
+ * beat name only) keeps the previous mechanism unchanged — fetchAndSaveOrShare for those
+ * with a downloadUrl (the route's Content-Disposition names the file), the plain anchor
+ * otherwise — because a Save As dialog needs the real filename BEFORE the fetch.
  */
 function DownloadControl({ track, size, iconSize, radius }: {
   track: AudioTrack; size: number; iconSize: number; radius: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
-  // Heuristic for the icon/label only; the real path is decided at click time via
-  // navigator.canShare({ files }) with the actual file.
+  // Heuristic for the icon/label only; the real path is decided at click time.
   const shareMode = canShareFiles();
+  const name = downloadName(track);
+  const hasRealName = /\.(mp3|wav|m4a|ogg|flac|aiff?|aac)$/i.test(name); // a real audio filename, not just a title
 
   const box: React.CSSProperties = {
     width: size, height: size, borderRadius: radius, flexShrink: 0, textDecoration: "none",
@@ -83,23 +85,25 @@ function DownloadControl({ track, size, iconSize, radius }: {
     color: err ? "#F87171" : "#AAA",
   };
 
-  if (!track.downloadUrl) {
+  if (!track.downloadUrl && !hasRealName) {
     return (
-      <a href={track.url} download={downloadName(track)} title="הורד קובץ" onClick={e => e.stopPropagation()}
+      <a href={track.url} download={name} title="הורד קובץ" onClick={e => e.stopPropagation()}
         style={{ ...box, cursor: "pointer" }}>
         <DownloadIcon size={iconSize} />
       </a>
     );
   }
 
-  const onClick = async () => {
+  const onClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (busy) return;
     setBusy(true); setErr(false);
+    const fail = () => { setErr(true); setTimeout(() => setErr(false), 3500); };
     try {
-      await fetchAndSaveOrShare(track.downloadUrl!, downloadName(track));
+      if (hasRealName) await saveFileAs(track.downloadUrl ?? track.url, name, fail);
+      else await fetchAndSaveOrShare(track.downloadUrl!, name);
     } catch {
-      setErr(true);
-      setTimeout(() => setErr(false), 3500);
+      fail();
     } finally {
       setBusy(false);
     }

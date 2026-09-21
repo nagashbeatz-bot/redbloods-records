@@ -361,6 +361,7 @@ const HE: Dict = {
   // file row
   "file.download": "הורדה",
   "file.noDownload": "אין קישור להורדה",
+  "file.downloadFail": "ההורדה נכשלה",
   "file.delete": "מחק קובץ",
   "file.deleteBtn": "מחק",
   "file.deleteConfirm": "למחוק את הקובץ מהרשימה? יימחק גם מ-Dropbox אם קיים",
@@ -689,6 +690,7 @@ const EN: Dict = {
   "drawer.removing": "Deleting...",
   "file.download": "Download",
   "file.noDownload": "No download link",
+  "file.downloadFail": "Download failed",
   "file.delete": "Delete file",
   "file.deleteBtn": "Delete",
   "file.deleteConfirm": "Remove the file from the list? It will also be deleted from Dropbox if present",
@@ -998,6 +1000,7 @@ const RU: Dict = {
   "drawer.removing": "Удаляю...",
   "file.download": "Скачать",
   "file.noDownload": "Нет ссылки для скачивания",
+  "file.downloadFail": "Не удалось скачать",
   "file.delete": "Удалить файл",
   "file.deleteBtn": "Удалить",
   "file.deleteConfirm": "Удалить файл из списка? Он также будет удалён из Dropbox, если есть",

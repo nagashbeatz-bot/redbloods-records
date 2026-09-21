@@ -7,6 +7,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import LinkifiedText from "@/components/ui/LinkifiedText";
+import { saveFileAs } from "@/lib/download-file";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 import {
@@ -400,18 +401,26 @@ function fileExt(name: string): string {
   return (name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
 }
 
-function downloadFile(file: FileLink, workId?: string) {
-  // Victor (path-free): scoped download route via fileRef — no public link.
+// Every Victor download goes through the shared saveFileAs (native Save As on
+// desktop Chrome/Edge, share sheet on touch, same-tab <a download> otherwise) - it
+// never opens a tab. Permissions stay with the existing scoped routes.
+function downloadFile(file: FileLink, workId: string | undefined, onError: () => void) {
+  // Victor (path-free): scoped download route via fileRef - no public link.
   if (file.fileRef && workId) {
-    const a = document.createElement("a");
-    a.href = `/api/vendor/victor/download?workId=${encodeURIComponent(workId)}&fileRef=${encodeURIComponent(file.fileRef)}`;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void saveFileAs(`/api/vendor/victor/download?workId=${encodeURIComponent(workId)}&fileRef=${encodeURIComponent(file.fileRef)}`, file.name, onError);
     return;
   }
+  // Owner (full record, has the real path): the SAME scoped stream route that already
+  // plays this file. It resolves the path server-side against the Victor works and
+  // 403s anything else, so no new access is opened here.
+  if (file.dropboxPath) {
+    void saveFileAs(`/api/vendor/victor/stream?path=${encodeURIComponent(file.dropboxPath)}`, file.name, onError);
+    return;
+  }
+  // REMAINING LEGACY EXCEPTION - not the final solution. Only reachable for a file with
+  // no dropboxPath at all (a bare Dropbox share link). Cross-origin, so it cannot go
+  // through saveFileAs (no CORS); kept exactly as before. Production data checked
+  // 2026-09-21: 0 of 98 Victor files (filesSent/filesReceived/briefFiles) lack a path.
   const rawUrl = file.dropboxShareUrl || file.url || "";
   if (!rawUrl) return;
   // Force direct download via ?dl=1
@@ -1536,6 +1545,14 @@ function VictorProjectDrawer({
   const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null); // fileId of the row whose confirm is open
   const [deletingKey, setDeletingKey] = useState<string | null>(null);           // fileId currently being deleted
   const [deleteError, setDeleteError] = useState(false);
+  // Download failure toast (shared saveFileAs -> onError). Auto-clears.
+  const [dlFailed, setDlFailed] = useState(false);
+  const dlFailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dlFail = useCallback(() => {
+    setDlFailed(true);
+    if (dlFailTimer.current) clearTimeout(dlFailTimer.current);
+    dlFailTimer.current = setTimeout(() => setDlFailed(false), 3500);
+  }, []);
   const deletingRef = useRef<Set<string>>(new Set());                            // atomic double-request guard (no state race)
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -2326,7 +2343,7 @@ function VictorProjectDrawer({
             {typeof file.durationSeconds === "number" && file.durationSeconds > 0 && <span style={{ fontSize: 9.5, color: MUTED }}>· {fmtDur(file.durationSeconds)}</span>}
           </div>
         </div>
-        <button onClick={() => downloadFile(file, work.id)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
+        <button onClick={() => downloadFile(file, work.id, dlFail)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={15} /></button>
         {/* Delete a version file — owner (Hebrew) + Victor (English). Victor's
             delete goes through the secure fileRef endpoint (see handleDeleteFile). */}
@@ -2817,7 +2834,7 @@ function VictorProjectDrawer({
                                   editorHost={briefEditorHosts[String(f.fileRef ?? f.dropboxPath ?? i)] ?? null}
                                   isOwner={isOwner}
                                   onSaveSegments={(segments) => f.dropboxPath ? saveBriefSegments(f.dropboxPath, segments) : Promise.resolve(false)}
-                                  onDownload={() => downloadFile(f, work.id)}
+                                  onDownload={() => downloadFile(f, work.id, dlFail)}
                                   onDelete={() => f.dropboxPath && deleteBriefFile(f.dropboxPath)}
                                   deleteConfirm={briefDelPath === f.dropboxPath}
                                   onDeleteConfirm={() => setBriefDelPath(f.dropboxPath ?? null)}
@@ -2837,7 +2854,7 @@ function VictorProjectDrawer({
                                   <div title={f.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.name}</div>
                                   <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>{ext}{sz ? ` · ${sz}` : ""}</div>
                                 </div>
-                                <button onClick={() => downloadFile(f, work.id)} disabled={!hasUrl} title={t("file.download")}
+                                <button onClick={() => downloadFile(f, work.id, dlFail)} disabled={!hasUrl} title={t("file.download")}
                                   style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={14} /></button>
                                 {isOwner && (
                                   briefDelPath === f.dropboxPath ? (
@@ -3213,7 +3230,7 @@ function VictorProjectDrawer({
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
                 {receivedFiles.map((f, i) => {
                   const props = {
-                    file: f, workId: work.id, onDownload: () => downloadFile(f, work.id),
+                    file: f, workId: work.id, onDownload: () => downloadFile(f, work.id, dlFail),
                     deleteConfirm: false, onDeleteConfirm: () => {}, onDeleteCancel: () => {}, onDelete: () => {},
                     deleting: false, deleteError: false, canDelete: false,
                   };
@@ -3431,7 +3448,7 @@ function VictorProjectDrawer({
                   <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 84, accentColor: PURPLE, cursor: "pointer" }} />
                 </div>
               )}
-              <button onClick={() => downloadFile(npItem.file, work.id)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}><IconDownload size={15} /></button>
+              <button onClick={() => downloadFile(npItem.file, work.id, dlFail)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}><IconDownload size={15} /></button>
             </div>
           ) : (
             /* ── Empty state — no track selected. Controls muted/disabled, no download. ── */
@@ -3575,6 +3592,9 @@ function VictorProjectDrawer({
           </div>
         </div>,
         document.body
+      )}
+      {dlFailed && (
+        <div role="alert" style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 1100, background: "#1A0F10", color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 8px 30px rgba(0,0,0,0.6)" }}>{t("file.downloadFail")}</div>
       )}
     </>
   );
