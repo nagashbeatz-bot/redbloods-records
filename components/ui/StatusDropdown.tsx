@@ -100,13 +100,15 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
       // After marking complete, offer to create delivery folder + sync Victor work
       if (next === "הושלם") {
         setShowDeliveryPrompt(true);
-        // Sync Victor work to "הושלם" if one exists for this project
+        // One-way Projects → Victor sync: close Victor's work ONLY while it is still
+        // open ("פעיל"). Already "הושלם" or "בוטל" → leave it untouched (no PATCH, so
+        // no completed-push). The reverse direction (Victor → Projects) does not exist.
         try {
           const workRes = await fetch(`/api/vendor/victor/work?projectId=${projectId}`);
           if (workRes.ok) {
-            const workData = await workRes.json() as { work?: { id: string } | null };
+            const workData = await workRes.json() as { work?: { id: string; status?: string } | null };
             const workId = workData.work?.id;
-            if (workId) {
+            if (workId && workData.work?.status === "פעיל") {
               const patchRes = await fetch(`/api/vendor/victor/work/${workId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },

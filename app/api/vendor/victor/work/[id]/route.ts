@@ -64,9 +64,10 @@ export async function PATCH(
     // actually being written now — never just "the body contains הושלם" (a
     // repeat PATCH of an already-הושלם row has existingWork.status === "הושלם"
     // already, so this never re-fires). This is entirely about
-    // vendor_project_work.status; it does not read/write projects.status or
-    // touch the separate, pre-existing owner-driven project-status sync that
-    // the client performs itself via a second PATCH to /api/projects/[id].
+    // vendor_project_work.status; it does not read/write projects.status, and a
+    // Victor status change never propagates to the project. (The only sync is
+    // one-way Projects → Victor, done client-side by StatusDropdown, which
+    // PATCHes an open "פעיל" work to "הושלם" — it lands here as a normal transition.)
     if ("status" in body && existingWork && existingWork.status !== "הושלם" && body.status === "הושלם") {
       try {
         const updatedWork = await getVictorWorkById(id);
