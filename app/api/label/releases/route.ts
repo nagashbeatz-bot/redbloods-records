@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
     if (releaseStage !== undefined && !isValidStage(releaseStage)) {
       return NextResponse.json({ error: "שלב ריליס לא חוקי" }, { status: 400 });
     }
+    if (releaseTargetDate != null && releaseTargetDate !== "" && !(typeof releaseTargetDate === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(releaseTargetDate))) {
+      return NextResponse.json({ error: "תאריך ריליס לא חוקי" }, { status: 400 });
+    }
 
     const result = await convertProjectToLabelRelease(projectId, labelArtistId, {
       releaseStage, releaseTargetDate, nextAction, blocker, responsible,

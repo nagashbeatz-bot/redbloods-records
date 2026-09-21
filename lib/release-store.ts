@@ -96,14 +96,14 @@ export async function getReleaseDetails(projectId: string): Promise<ProjectRelea
 }
 
 // ── Guards ───────────────────────────────────────────────────────────────────
-async function fetchProject(projectId: string): Promise<{ project_type: string; project_business_type: string } | null> {
+async function fetchProject(projectId: string): Promise<{ project_type: string; project_business_type: string; artist: string } | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select("project_type, project_business_type")
+    .select("project_type, project_business_type, artist")
     .eq("id", projectId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as { project_type: string; project_business_type: string } | null) ?? null;
+  return (data as { project_type: string; project_business_type: string; artist: string } | null) ?? null;
 }
 async function fetchArtistName(labelArtistId: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -199,7 +199,20 @@ export async function convertProjectToLabelRelease(
     })
     .select()
     .single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // PK collision = a concurrent request created this release first. It owns the
+    // project flag now, so DON'T roll back — just report the duplicate.
+    if (error.code === "23505") return { status: "exists" };
+    // The two writes above aren't one transaction: undo the project change so a
+    // failed insert never leaves a project flagged לייבל (and its artist renamed)
+    // with no release row behind it.
+    const { error: rbErr } = await supabase
+      .from("projects")
+      .update({ project_business_type: proj.project_business_type, artist: proj.artist, updated_at: new Date().toISOString() })
+      .eq("id", projectId);
+    if (rbErr) console.error("[release-store] rollback of project failed after release insert error:", projectId, rbErr.message);
+    throw new Error(error.message);
+  }
   return { status: "ok", release: mapRelease(data as DbRelease) };
 }
 

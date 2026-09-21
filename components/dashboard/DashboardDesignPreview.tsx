@@ -566,7 +566,7 @@ export default function DashboardDesignPreview() {
   const [labelReleases, setLabelReleases] = useState<LabelRelease[] | null>(null);
   const [releasesError, setReleasesError] = useState(false);
   const loadReleases = useCallback(() => {
-    fetch("/api/label/releases")
+    return fetch("/api/label/releases")
       .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
       .then(d => { setLabelReleases(Array.isArray(d) ? d : []); setReleasesError(false); })
       .catch(() => setReleasesError(true));
