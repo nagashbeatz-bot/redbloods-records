@@ -9,16 +9,19 @@
  * no calendar sync):
  *
  *   ok                          → app opens (and today's marker is stored)
- *   needs_reauth / not_connected → blocking connect screen
+ *   needs_reauth / not_connected → blocking connect screen (NO marker)
  *   unknown / non-200 / network / timeout → app released, NEVER locked
+ *                                           (today's marker IS stored)
  *
- * Once-a-day rule: after a verified "ok" the browser-LOCAL date (never UTC) is
- * stored in localStorage (MARKER_KEY). While the marker equals today's local date
- * every entry/refresh/navigation opens the app instantly — no request, no spinner,
- * no cover. There are NO other automatic checks (no focus / interval / navigation
- * re-checks). The marker is deliberately NOT written for a blocking result (a
- * refresh must not escape the block) nor for an inconclusive one (that check did
- * not complete, so the next entry tries again).
+ * Once-a-day rule: when the daily check finishes — or hits the client timeout —
+ * with anything except a blocking verdict, the browser-LOCAL date (never UTC) is
+ * stored in localStorage (MARKER_KEY). A transient failure therefore neither locks
+ * the app nor earns a second check the same day. While the marker equals today's
+ * local date every entry/refresh/navigation opens the app instantly — no request,
+ * no spinner, no cover. There are NO other automatic checks (no focus / interval /
+ * navigation re-checks). Only a blocking verdict (needs_reauth / not_connected)
+ * leaves NO marker — and clears one written by an earlier timeout — because the app
+ * stays blocked until Google is connected; a refresh must not escape the block.
  *
  * The one exception is the explicit reconnect button: it clears the marker before
  * leaving for OAuth, so the return from Google runs one verification check.
@@ -89,9 +92,21 @@ export default function CalendarReauthGate() {
 
   const applyView = useCallback((v: View) => { viewRef.current = v; setView(v); }, []);
 
-  /** Ends the loading cover without a verdict (no-op if a connect screen is showing). */
-  const finishInitial = useCallback(() => {
+  /**
+   * Transient / inconclusive end of the daily check (unknown, network, timeout,
+   * non-200…): release the app AND count today's check as done. No-op while a
+   * connect screen is showing — a blocked app never gets a marker.
+   */
+  const settleInconclusive = useCallback((day: string) => {
+    if (viewRef.current === "needs_reauth" || viewRef.current === "not_connected") return;
+    writeMarker(day);
     if (viewRef.current === "checking") applyView("idle");
+  }, [applyView]);
+
+  /** Blocking verdict: show the connect screen and make sure NO marker survives. */
+  const block = useCallback((v: "needs_reauth" | "not_connected") => {
+    clearMarker();   // also removes one written by the timeout if this answer arrived late
+    applyView(v);
   }, [applyView]);
 
   const runCheck = useCallback(async (day: string) => {
@@ -99,24 +114,24 @@ export default function CalendarReauthGate() {
     const abortTimer = setTimeout(() => ctrl.abort(), FETCH_ABORT_MS);
     try {
       const res = await fetch(CHECK_URL, { cache: "no-store", credentials: "same-origin", signal: ctrl.signal });
-      if (!res.ok) { finishInitial(); return; }          // 401/403/5xx → unknown → never lock, no marker
+      if (!res.ok) { settleInconclusive(day); return; }   // 401/403/429/5xx → never lock, counts as today's check
       const data = await res.json() as { state?: string; needsReauth?: boolean };
       if (data.state === "needs_reauth" && data.needsReauth === true) {
-        applyView("needs_reauth");                        // no marker: a refresh must not escape the block
+        block("needs_reauth");
       } else if (data.state === "not_connected") {
-        applyView("not_connected");
+        block("not_connected");
       } else if (data.state === "ok") {
         writeMarker(day);                                 // verified → no more checks today
         applyView("idle");
       } else {
-        finishInitial();                                  // "unknown" / malformed → never lock, no marker
+        settleInconclusive(day);                          // "unknown" / malformed → never lock
       }
     } catch {
-      finishInitial();                                    // network error / abort / bad JSON → never lock, no marker
+      settleInconclusive(day);                            // network error / abort / bad JSON → never lock
     } finally {
       clearTimeout(abortTimer);
     }
-  }, [applyView, finishInitial]);
+  }, [applyView, block, settleInconclusive]);
 
   // The daily check. Layout effect so the cover is up before first paint and the app
   // is never usable ahead of the verdict. Nothing re-triggers it: no focus / interval /
@@ -129,9 +144,11 @@ export default function CalendarReauthGate() {
 
     attempted.current = true;
     applyView("checking");
-    setTimeout(finishInitial, INITIAL_BUDGET_MS); // hard budget; finishInitial is idempotent
+    // Hard client budget: still waiting after 3s → release the app; the day counts as
+    // checked. A blocking answer arriving later still blocks (and clears the marker).
+    setTimeout(() => { if (viewRef.current === "checking") settleInconclusive(today); }, INITIAL_BUDGET_MS);
     runCheck(today);
-  }, [excluded, runCheck, finishInitial, applyView]);
+  }, [excluded, runCheck, settleInconclusive, applyView]);
 
   if (view === "idle" || excluded) return null;
   return <GateOverlay mode={view} />;
