@@ -43,15 +43,33 @@ export function slugForPortalArtistName(name: string | null | undefined): string
 
 /**
  * The ONLY artists for whom the "Projects upload → link into their המוזיקה שלי
- * by reference" feature is enabled. Deliberately an explicit two-name list, not
- * a capability derived from PORTAL_ARTISTS — DJ CLEANTONE (and any future
- * portal artist) must stay OUT until someone adds them here on purpose.
+ * by reference" feature is enabled. Deliberately an explicit name list, not a
+ * capability derived from PORTAL_ARTISTS — DJ CLEANTONE (and any future portal
+ * artist) must stay OUT until someone adds them here on purpose.
  */
-export const LINK_ENABLED_NAMES: readonly string[] = [AVI_NAME, SHALEV_NAME];
+export const LINK_ENABLED_NAMES: readonly string[] = [AVI_NAME, SHALEV_NAME, NAGASH_NAME];
 
 /** True iff this exact label_artists.name may use the Projects→sketch link flow. */
 export function isLinkEnabledArtistName(name: string | null | undefined): boolean {
   return !!name && LINK_ENABLED_NAMES.includes(name);
+}
+
+/**
+ * The artists whose owner-triggered "שלח התראה" (and the automatic notify that
+ * follows a Projects link) can actually reach the ARTIST. Mirrors NOTIFY_TARGETS in
+ * app/api/label/artists/[id]/sketches/[sketchId]/notify/route.ts, which holds the
+ * real per-artist push audience and answers 403 for anyone else.
+ *
+ * Kept separate from LINK_ENABLED_NAMES on purpose: linking a file into a library
+ * needs no recipient, notifying does. נגש ביטס has no login/device, so he is
+ * link-enabled but NOT notify-enabled — the UI must neither offer nor fire a
+ * notification for him. Add a name here only together with its NOTIFY_TARGETS entry.
+ */
+export const NOTIFY_ENABLED_NAMES: readonly string[] = [AVI_NAME, SHALEV_NAME];
+
+/** True iff a notification about this artist's library has a real recipient. */
+export function isNotifyEnabledArtistName(name: string | null | undefined): boolean {
+  return !!name && NOTIFY_ENABLED_NAMES.includes(name);
 }
 
 /** Short Hebrew first name for UI copy ("אבי" / "שליו"). Falls back to the full

@@ -11,7 +11,7 @@ import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
-import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName, NAGASH_NAME } from "@/lib/red-artists/portal-registry";
+import { slugForPortalArtistName, isNotifyEnabledArtistName, shortArtistName, NAGASH_NAME } from "@/lib/red-artists/portal-registry";
 import { saveFileAs } from "@/lib/download-file";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
@@ -6451,7 +6451,9 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   // the artist + owner (two role-scoped sends server-side). The busy guard makes
   // one click = one send.
   const notifyName = shortArtistName(artistName);            // "אבי" / "שליו"
-  const canNotify = isOwnerViewer && isLinkEnabledArtistName(artistName);
+  // Only for an artist the notify route can reach (Avi, Shalev). נגש ביטס is link-enabled
+  // but has no login/device, so the button is not offered for him at all.
+  const canNotify = isOwnerViewer && isNotifyEnabledArtistName(artistName);
   const sendNotify = async () => {
     if (notifySending) return;
     setNotifySending(true); setNotifyErr(null);

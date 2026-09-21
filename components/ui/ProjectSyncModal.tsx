@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isNotifyEnabledArtistName } from "@/lib/red-artists/portal-registry";
 
 /**
  * Owner-facing confirm step shown AFTER a Projects audio upload succeeded, and
- * only when the project's primary artist is one of the two link-enabled portal
- * artists (Avi Molla, Shalev Tasama).
+ * only when the project's primary artist is a link-enabled portal artist
+ * (LINK_ENABLED_NAMES: Avi Molla, Shalev Tasama, נגש ביטס).
  *
  * Nothing happens until the owner presses "כן, עדכן את {שם}":
  *   confirm → POST project-link (manifest reference to the file ALREADY uploaded,
- *   no second copy anywhere) → only if that returns ok, POST the EXISTING
- *   .../sketches/{id}/notify route (the same one behind the "שלח התראה" button).
+ *   no second copy anywhere) → only if that returns ok AND the artist can actually
+ *   be notified (isNotifyEnabledArtistName — Avi, Shalev), POST the EXISTING
+ *   .../sketches/{id}/notify route (the same one behind the "שלח התראה" button). An
+ *   artist with no login/device (נגש ביטס) gets the link only: no notify request.
  *   "לא עכשיו" closes and fires no request at all.
  *
  * The target sketch is decided by an EXACT project-name ↔ sketch-title match
@@ -65,6 +68,8 @@ export default function ProjectSyncModal({ projectId, projectName, dropboxPath, 
   const [target, setTarget] = useState<string>("");
 
   const API = `/api/label/artists/${artistId}`;
+  /** false for an artist with no login/device (נגש ביטס) → link only, never a notify request. */
+  const notifies = isNotifyEnabledArtistName(artistName);
 
   // onClose comes from an inline arrow in the parent, so its identity changes on
   // every parent render. Kept in a ref so the lookup effect below depends on the
@@ -130,6 +135,10 @@ export default function ProjectSyncModal({ projectId, projectName, dropboxPath, 
       if (!linkRes.ok || !linkData.ok || !linkData.sketch?.id) {
         setErr(linkData.error ?? `החיבור לעמוד של ${shortName} נכשל`); setPhase("ask"); return;
       }
+
+      // No recipient for this artist → the link is the whole job. Nothing is sent,
+      // to the artist or to anyone in his place.
+      if (!notifies) { setWarn(null); setPhase("done"); setTimeout(onClose, 2200); return; }
 
       // Reuse the existing manual-notify route as-is — it re-reads the sketch and
       // derives the wording itself; we send no payload.
@@ -234,9 +243,11 @@ export default function ProjectSyncModal({ projectId, projectName, dropboxPath, 
         {phase === "done" && (
           <div style={{ textAlign: "center", padding: "10px 0" }}>
             <div style={{ fontSize: 15.5, fontWeight: 900, color: BRAND, marginBottom: 8 }}>✓ עודכן אצל {shortName}</div>
-            <div style={{ fontSize: 13, color: warn ? "#F59E0B" : TEXT2, lineHeight: 1.6 }}>
-              {warn ?? `ההתראה נשלחה ל${shortName}`}
-            </div>
+            {notifies && (
+              <div style={{ fontSize: 13, color: warn ? "#F59E0B" : TEXT2, lineHeight: 1.6 }}>
+                {warn ?? `ההתראה נשלחה ל${shortName}`}
+              </div>
+            )}
           </div>
         )}
       </div>

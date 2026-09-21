@@ -8,8 +8,8 @@ import type { FileLink, Project } from "@/lib/types";
 /**
  * Glue between a Projects upload and a portal artist's "המוזיקה שלי" library.
  *
- * Scoped to EXACTLY TWO artists — Avi Molla and Shalev Tasama (the list lives in
- * portal-registry.ts as LINK_ENABLED_NAMES). Every entry point either sits
+ * Scoped to an explicit list of artists — Avi Molla, Shalev Tasama and נגש ביטס (the
+ * list lives in portal-registry.ts as LINK_ENABLED_NAMES). Every entry point either sits
  * behind `resolveOwnerPortalAccess` + an `isLinkEnabledArtistName(config.name)`
  * check (the API routes) or calls `resolveLinkableProject()` here (the Projects
  * delete flow). Nothing generic is built for DJ CLEANTONE / future artists —
@@ -32,7 +32,7 @@ export function isLinkEnabledArtistField(artist: string | null | undefined): boo
   return isLinkEnabledArtistName(primaryArtist(artist ?? ""));
 }
 
-/** A project whose PRIMARY artist is one of the two link-enabled portal artists,
+/** A project whose PRIMARY artist is one of the link-enabled portal artists,
  *  together with THAT artist's registered name + slug. Null for anyone else. */
 export interface LinkableProject {
   project: Project;

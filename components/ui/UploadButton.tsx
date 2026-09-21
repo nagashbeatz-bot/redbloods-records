@@ -111,11 +111,11 @@ export default function UploadButton({
   const [linkPath,   setLinkPath]   = useState<string | null>(null);
   const { refresh } = useProjects();
 
-  // ── Avi Molla / Shalev Tasama only: offer to mirror the upload into their
+  // ── Avi Molla / Shalev Tasama / נגש ביטס only: offer to mirror the upload into their
   // "המוזיקה שלי" ─────────────────────────────────────────────────────────────
   // Gated to a PLAIN project version upload — a Delivery/stems/track/any-file
   // upload is not a sketch and never prompts. The artist test is exact: the
-  // project's PRIMARY artist must be one of the two link-enabled portal names,
+  // project's PRIMARY artist must be one of the link-enabled portal names,
   // so a project where they are a SECONDARY artist (or any other artist,
   // including DJ CLEANTONE) is untouched. The server re-verifies all of this —
   // including that the project belongs to the portal being written — before

@@ -15,9 +15,9 @@ import { errResponse } from "@/lib/red-artists/sketches-http";
  *   GET  ?projectId=…                       → what the confirm dialog should offer
  *   POST { projectId, dropboxPath, … }      → write the manifest reference
  *
- * Owner-only (resolveOwnerPortalAccess) AND hard-scoped to the TWO link-enabled
- * portal artists (Avi Molla, Shalev Tasama). Nothing here is generic: any other
- * artist's id gets 403 before any work happens.
+ * Owner-only (resolveOwnerPortalAccess) AND hard-scoped to the link-enabled
+ * portal artists (LINK_ENABLED_NAMES: Avi Molla, Shalev Tasama, נגש ביטס). Nothing
+ * here is generic: any other artist's id gets 403 before any work happens.
  *
  * TWO independent identity checks, both server-side:
  *   1. the artist resolved from the URL id must be link-enabled;
@@ -26,14 +26,16 @@ import { errResponse } from "@/lib/red-artists/sketches-http";
  * Shalev's manifest and vice versa. The target slug is taken from
  * `access.config` (the DB row for the id in the URL), never from the client.
  *
- * NOTE: this route never sends a push. The client calls the existing
+ * NOTE: this route never sends a push. For an artist who can be notified (Avi,
+ * Shalev — isNotifyEnabledArtistName) the client calls the existing
  * .../sketches/{sketchId}/notify route afterwards, and ONLY after this one
- * returned ok — so a failed link can never produce a notification.
+ * returned ok — so a failed link can never produce a notification. For an artist
+ * with no login/device (נגש ביטס) the client sends no notification at all.
  */
 
 const ID_RE = /^[0-9a-fA-F-]{36}$/;
 
-/** Owner + "this portal is one of the two link-enabled artists" — resolved from
+/** Owner + "this portal is a link-enabled artist" — resolved from
  *  the DB row, never from the client. */
 async function gate(id: string) {
   const access = await resolveOwnerPortalAccess(id);
