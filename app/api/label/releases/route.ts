@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       case "not_found":        return NextResponse.json({ error: "הפרויקט לא נמצא" }, { status: 404 });
       case "not_releasable":   return NextResponse.json({ error: "סוג הפרויקט לא מתאים לריליס (שיר, EP, אלבום או ריידים)" }, { status: 409 });
       case "artist_not_found": return NextResponse.json({ error: "אמן לייבל לא נמצא" }, { status: 404 });
+      case "artist_not_in_project": return NextResponse.json({ error: "האמן שנבחר לא מופיע בקרדיטים של הפרויקט" }, { status: 400 });
       case "exists":           return NextResponse.json({ error: "כבר קיימים פרטי ריליס לפרויקט זה" }, { status: 409 });
       case "ok":               return NextResponse.json({ ok: true, release: result.release });
       default:                 return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

@@ -1,22 +1,20 @@
-// Pure, client-safe: which projects the dashboard's "הוסף ריליס" flow lists, and
-// why some can't be picked.
+// Pure, client-safe: which projects the dashboard's "הוסף ריליס" flow lists, and who
+// can OWN the release.
 //
-// Rule: a project is a candidate when it belongs to a label artist and has no
-// release yet. Project STATUS is never looked at.
-//   • type    — isReleasableType (song, song+clip, EP, album, riddim) — lib/types.ts
-//   • artist  — projects.artist tokens (app-wide /[,،;]/ split, trim + collapse
-//               spaces + lowercase, exact full-name match, no fuzzy) against the
-//               label_artists roster. That roster is what a release can link to
-//               (project_release_details.label_artist_id), so it decides who OWNS
-//               the release.
+// Rule: a project is a candidate when it credits at least one label artist and has
+// no release yet. Project STATUS is never looked at.
+//   • type   — isReleasableType (song, song+clip, EP, album, riddim) — lib/types.ts
+//   • artist — projects.artist tokens (app-wide /[,،;]/ split, trim + collapse
+//              spaces + lowercase, exact full-name match, no fuzzy).
+//   • a "label artist" is one that is marked status "אמן לייבל" in the clients
+//     screen (the business definition) OR already exists in label_artists (the
+//     operational record: DJ CLEANTONE has no client row and stays valid).
+//   • one label artist among the credits → the owner, chosen automatically; 2+ →
+//     the UI asks which one owns the release (never guessed). Owner is only the
+//     release's label_artist_id — projects.artist keeps every credit.
+//   • an owner with no label_artists row yet (owner.rosterId === null) can only be
+//     used after the user explicitly creates that row (see AddReleaseModal).
 //   • a release already exists for the project → shown but not selectable.
-//
-// Collabs: one roster artist among the credits → that artist owns it (the credit
-// list is kept as-is). Two or more roster artists → ownership is ambiguous, so it
-// is shown disabled rather than guessed. An artist marked "אמן לייבל" in the
-// clients screen but missing from the roster can't own a release yet → shown
-// disabled with a hint to add them in ניהול הלייבל. Projects with no label
-// artist at all are not listed.
 
 import { isReleasableType } from "./types";
 
@@ -29,12 +27,22 @@ export interface CandidateProject {
 }
 export interface RosterArtist { id: string; name: string; }
 
-export type CandidateBlock = "exists" | "multi_label_artist" | "not_in_roster";
+/** A label artist credited on a project — a possible owner of its release. */
+export interface OwnerOption {
+  /** Display / creation name: the roster name if it exists, else the client's name verbatim. */
+  name: string;
+  /** Normalized name (identity used for matching). */
+  key: string;
+  /** label_artists.id, or null when the artist has no operational record yet. */
+  rosterId: string | null;
+}
+
+export type CandidateBlock = "exists";
 
 export interface ReleaseCandidate {
   project: CandidateProject;
-  /** Set only when block === null. */
-  labelArtistId: string | null;
+  /** Label artists credited on the project (empty only for `exists` rows). */
+  owners: OwnerOption[];
   /** null = selectable. */
   block: CandidateBlock | null;
 }
@@ -42,14 +50,10 @@ export interface ReleaseCandidate {
 /** Short badge shown on a disabled row. */
 export const CANDIDATE_BLOCK_TEXT: Record<CandidateBlock, string> = {
   exists: "כבר קיים כריליס",
-  multi_label_artist: "כמה אמני לייבל",
-  not_in_roster: "אמן לא בניהול הלייבל",
 };
 /** Longer explanation (tooltip). */
 export const CANDIDATE_BLOCK_HELP: Record<CandidateBlock, string> = {
   exists: "לפרויקט הזה כבר יש ריליס.",
-  multi_label_artist: "בפרויקט משתתפים כמה אמני לייבל, ולריליס יכול להיות אמן לייבל אחד בלבד. אפשר לסמן אותו דרך ניהול הלייבל.",
-  not_in_roster: "האמן מסומן כאמן לייבל בלקוחות אבל לא נוסף בניהול הלייבל. הוסף אותו שם (אמן חדש) והפרויקט יהיה זמין.",
 };
 
 /** House normalization of a free-text artist name: trim + collapse spaces, case-insensitive. */
@@ -58,6 +62,11 @@ export const normName = (s: string | null | undefined): string =>
 /** projects.artist → individual names (the app-wide /[,،;]/ split). */
 export const artistTokens = (artist: string | null | undefined): string[] =>
   (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
+
+/** True when `name` is one of the artists credited in the free-text `artist` field. */
+export function creditsInclude(artist: string | null | undefined, name: string): boolean {
+  return artistTokens(artist).includes(normName(name));
+}
 
 /** True when `artist` lists several names and one of them is `name` (a credit list to preserve). */
 export function creditsIncludeAmongMany(artist: string | null | undefined, name: string): boolean {
@@ -69,30 +78,36 @@ export function buildReleaseCandidates(
   projects: CandidateProject[],
   roster: RosterArtist[],
   existingReleaseProjectIds: Set<string>,
-  /** Names marked status "אמן לייבל" in the clients screen (used only to explain a missing roster entry). */
+  /** Names marked status "אמן לייבל" in the clients screen. */
   clientLabelArtistNames: string[] = [],
 ): ReleaseCandidate[] {
-  const byName = new Map<string, string>();
-  for (const a of roster) { const k = normName(a.name); if (k && !byName.has(k)) byName.set(k, a.id); }
-  const clientLabel = new Set(clientLabelArtistNames.map(normName).filter(Boolean));
+  const rosterByKey = new Map<string, RosterArtist>();
+  for (const a of roster) { const k = normName(a.name); if (k && !rosterByKey.has(k)) rosterByKey.set(k, a); }
+  const clientByKey = new Map<string, string>();
+  for (const n of clientLabelArtistNames) { const k = normName(n); if (k && !clientByKey.has(k)) clientByKey.set(k, n.trim()); }
 
   const out: ReleaseCandidate[] = [];
   for (const p of projects) {
     if (!isReleasableType(p.projectType)) continue;
-    if (existingReleaseProjectIds.has(p.id)) { out.push({ project: p, labelArtistId: null, block: "exists" }); continue; }
+    if (existingReleaseProjectIds.has(p.id)) { out.push({ project: p, owners: [], block: "exists" }); continue; }
 
-    const tokens = artistTokens(p.artist);
-    const owners = [...new Set(tokens.map((t) => byName.get(t)).filter((x): x is string => !!x))];
-    if (owners.length === 1) out.push({ project: p, labelArtistId: owners[0], block: null });
-    else if (owners.length > 1) out.push({ project: p, labelArtistId: null, block: "multi_label_artist" });
-    else if (tokens.some((t) => clientLabel.has(t))) out.push({ project: p, labelArtistId: null, block: "not_in_roster" });
+    const owners: OwnerOption[] = [];
+    const seen = new Set<string>();
+    for (const t of artistTokens(p.artist)) {
+      if (seen.has(t)) continue;
+      const r = rosterByKey.get(t);
+      const c = clientByKey.get(t);
+      if (!r && c === undefined) continue; // not a label artist
+      seen.add(t);
+      owners.push({ name: r ? r.name : (c as string), key: t, rosterId: r ? r.id : null });
+    }
+    if (owners.length > 0) out.push({ project: p, owners, block: null });
     // else: not a label artist's project → not listed
   }
 
-  // Selectable first, then already-a-release, then the other disabled ones.
+  // Selectable first, then already-a-release.
   // Array.prototype.sort is stable: the API's own order is kept within each group.
-  const rank = (c: ReleaseCandidate) => (c.block === null ? 0 : c.block === "exists" ? 1 : 2);
-  return out.sort((a, b) => rank(a) - rank(b));
+  return out.sort((a, b) => (a.block === null ? 0 : 1) - (b.block === null ? 0 : 1));
 }
 
 /** Search by project name OR artist (case-insensitive substring). */

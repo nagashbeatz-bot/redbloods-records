@@ -10,6 +10,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary, ArtistRecoupSummary } from "@/lib/types";
 import { isReleasableType } from "@/lib/types";
+import { creditsInclude } from "@/lib/release-candidates";
 import { MediaModal, MediaCancelModal, type MediaRec } from "./MediaModals";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
@@ -36,6 +37,11 @@ function MarkExistingModal({ artists, onClose, onSaved }: { artists: LabelArtist
     }).catch(() => setProjects([]));
   }, []);
 
+  // The server rejects linking an artist who isn't credited on the project, so list only the
+  // selected artist's projects (same normalized exact-name match as the server guard).
+  const artistName = artists.find((a) => a.id === artistId)?.name ?? "";
+  const shown = projects === null ? null : projects.filter((p) => creditsInclude(p.artist, artistName));
+
   async function convert(p: SlimProject) {
     if (!artistId) { setErr("יש לבחור אמן"); return; }
     setBusyId(p.id); setErr(null);
@@ -61,13 +67,13 @@ function MarkExistingModal({ artists, onClose, onSaved }: { artists: LabelArtist
       </div>
       {err && <div style={{ color: "#F87171", fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>{err}</div>}
       <label style={labelStyle}>פרויקט שיר לקישור</label>
-      {projects === null ? (
+      {shown === null ? (
         <div style={{ color: MUTED, fontSize: 13, padding: "20px 0", textAlign: "center" }}>טוען…</div>
-      ) : projects.length === 0 ? (
-        <div style={{ color: MUTED, fontSize: 13, padding: "20px 0", textAlign: "center" }}>אין פרויקטי שיר זמינים לסימון.</div>
+      ) : shown.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13, padding: "20px 0", textAlign: "center" }}>אין פרויקטים של האמן הזה זמינים לסימון.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "44vh", overflowY: "auto" }}>
-          {projects.map((p) => (
+          {shown.map((p) => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "10px 12px" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>

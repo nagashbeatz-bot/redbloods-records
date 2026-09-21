@@ -10,7 +10,7 @@ import type {
   ProjectBusinessType,
 } from "./types";
 import { RELEASE_STAGES, isReleasableType } from "./types";
-import { creditsIncludeAmongMany } from "./release-candidates";
+import { creditsInclude, creditsIncludeAmongMany } from "./release-candidates";
 
 // ── DB row shape (public.project_release_details) ────────────────────────────
 interface DbRelease {
@@ -156,6 +156,7 @@ export type ReleaseWriteResult =
   | { status: "ok"; release: ProjectReleaseDetails }
   | { status: "not_found" }
   | { status: "not_releasable" }
+  | { status: "artist_not_in_project" }
   | { status: "artist_not_found" }
   | { status: "exists" }
   | { status: "conflict" };
@@ -166,6 +167,11 @@ export type ReleaseWriteResult =
  * לייבל, syncs projects.artist to the artist's name (display) — EXCEPT when the
  * project already credits several artists including this one, whose credit list is
  * kept — and creates its project_release_details row with label_artist_id.
+ *
+ * Owner guard: the chosen label artist must be one of the artists credited in
+ * projects.artist (same normalized, exact-name, no-fuzzy match the candidate list
+ * uses) — the UI limiting the choices is not enough. In a collab the owner is only
+ * the release's label_artist_id; the credit list itself is never changed.
  */
 export async function convertProjectToLabelRelease(
   projectId: string,
@@ -181,6 +187,8 @@ export async function convertProjectToLabelRelease(
 
   const existing = await getReleaseDetails(projectId);
   if (existing) return { status: "exists" };
+
+  if (!creditsInclude(proj.artist, artistName)) return { status: "artist_not_in_project" };
 
   // A collab keeps its full credit list; anything else is synced to the label artist's name.
   const keepCredits = creditsIncludeAmongMany(proj.artist, artistName);
