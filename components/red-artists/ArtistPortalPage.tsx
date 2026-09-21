@@ -27,7 +27,11 @@ import type { ProjectCoverConfig } from "@/lib/project-cover";
 // Set ONCE by the top-level ArtistPortalPage component and read via
 // usePortalContext() everywhere else — avoids prop-drilling through every
 // intermediate card/modal component in this large file.
-interface PortalCtx { apiBase: string; artistName: string; isCleantonePortal?: boolean }
+//   avatarBase — ONLY set for DJ CLEANTONE's own session (no artistId): his profile
+//                image lives behind /api/red-artists/cleantone/* because the flat
+//                apiBase is Shalev's scope, which the proxy blocks for him. Every
+//                other portal leaves it unset and the avatar uses apiBase as before.
+interface PortalCtx { apiBase: string; artistName: string; isCleantonePortal?: boolean; avatarBase?: string }
 const PortalApiContext = createContext<PortalCtx>({ apiBase: "/api/red-artists", artistName: "שליו טסמה" });
 function usePortalContext(): PortalCtx {
   return useContext(PortalApiContext);
@@ -647,6 +651,9 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // this can never misfire the other way.
   const apiBase = artistId ? `/api/label/artists/${artistId}` : "/api/red-artists";
   const summaryUrl = artistId ? `/api/label/artists/${artistId}/summary` : "/api/red-artists/shalev-summary";
+  // DJ CLEANTONE's OWN session (rendered in place at /dj-cleantone, no artistId): apiBase
+  // above is Shalev's flat scope, blocked for him — his avatar uses his own scoped routes.
+  const avatarBase = !artistId && artistName === CLEANTONE_ARTIST_NAME ? "/api/red-artists/cleantone" : undefined;
   // (artistName is now defined earlier, right after isCleantonePortal needs it)
 
   const reloadSketches = useCallback(async () => {
@@ -920,7 +927,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [setTab]);
 
   return (
-    <PortalApiContext.Provider value={{ apiBase, artistName, isCleantonePortal }}>
+    <PortalApiContext.Provider value={{ apiBase, artistName, isCleantonePortal, avatarBase }}>
       {showMandatoryAvailabilityModal && <MandatoryAvailabilityModal onSend={handleMandatoryAvailabilitySend} />}
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
@@ -1009,7 +1016,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
           isCleantonePortal ? (
-            <PortalHero title={portalGreeting(artistName)} emoji="✨" subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
+            <PortalHero title={portalGreeting(artistName)} emoji="✨" canEditAvatar subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
@@ -5431,7 +5438,8 @@ function clearAvatarEdit(apiBase: string) {
 type SaveMeta = { zoom: number; offset: { x: number; y: number }; originalFile: File | null; originalFileName: string | null };
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
-  const { apiBase, artistName } = usePortalContext();
+  const { apiBase: portalApiBase, avatarBase, artistName } = usePortalContext();
+  const apiBase = avatarBase ?? portalApiBase;
   const initialCache = getAvatarCache(apiBase);
   const [path, setPath]   = useState<string | null>(initialCache.path);
   const [ver, setVer]     = useState(initialCache.ver); // cache-bust after re-upload (overwrites same path)
@@ -5464,13 +5472,10 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   // the initial letter for an artist who already has a photo. READ-ONLY GET;
   // artist-scoped by apiBase, so it can never surface another artist's image.
   useEffect(() => {
-    // DJ CLEANTONE's OWN session has no artistId prop, so apiBase falls back
-    // to the bare "/api/red-artists" default (Shalev's scoped prefix) — which
-    // isCleantoneAllowedPath correctly blocks for him. Skip the call only in
-    // THIS exact case; the owner-preview route (artistId set → a real
-    // /api/label/artists/[id]/profile-image) is unaffected and still fetches
-    // normally — his avatar is part of the HERO the owner-preview keeps.
-    if (artistName === CLEANTONE_ARTIST_NAME && apiBase === "/api/red-artists") return;
+    // DJ CLEANTONE's OWN session has no artistId, so the portal's flat apiBase is
+    // Shalev's scope (blocked for him) — but `apiBase` here is already his own
+    // /api/red-artists/cleantone avatar base (see the avatarBase override above),
+    // so it fetches normally like every other artist.
     let alive = true;
     fetch(`${apiBase}/profile-image`)
       .then((r) => (r.ok ? r.json() : null))
@@ -5490,7 +5495,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
       })
       .catch(() => { /* keep the instant local/cache fallback */ });
     return () => { alive = false; };
-  }, [apiBase, artistName]);
+  }, [apiBase]);
 
   // Editing is only allowed from the home tab. If the tab changes while the
   // editor is open (canEdit → false), close it so it can't linger elsewhere.
@@ -5631,7 +5636,8 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
   onSave: (blob: Blob, meta: SaveMeta, onProgress: (pct: number) => void) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const isMobile = useIsMobile();
-  const { apiBase } = usePortalContext();
+  const { apiBase: portalApiBase, avatarBase } = usePortalContext();
+  const apiBase = avatarBase ?? portalApiBase;
   const D = isMobile ? 236 : 260;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef    = useRef<HTMLImageElement | null>(null);
