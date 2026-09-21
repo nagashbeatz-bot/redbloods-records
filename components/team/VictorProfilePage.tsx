@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
-import { inMonth } from "@/lib/victor-segments";
+import { inMonth, monthRef } from "@/lib/victor-segments";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { saveFileAs } from "@/lib/download-file";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
-import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
+import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, victorMonthName, type VictorLang } from "@/lib/victor-i18n";
 import {
   IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
   IconArrowUpRight, IconChevronLeft, IconChevronRight, IconX, IconPencil, IconTrash,
@@ -145,26 +145,37 @@ function SalaryChip({ status }: { status: string }) {
 
 const VICTOR_WORK_STATUSES = ["פעיל", "הושלם", "בוטל"] as const;
 
-// Victor's status is his OWN work status (vendor_project_work.status). Changing it
-// — including "הושלם" — never touches projects.status. The only sync between the
-// two is one-way Projects → Victor, in components/ui/StatusDropdown.tsx.
+// Victor's status is his OWN work status (vendor_project_work.status). Picking
+// "הושלם" on a work linked to a project opens a modal with two explicit completions:
+//   • "כן, סמן הכול כהושלם"  → doUpdateWork(true):  work + projects.status
+//   • "הושלם רק אצל Victor"   → doUpdateWork(false): work only — projects.status and
+//                                end_date are never touched (no /api/projects call)
+// Any other status change, and "הושלם" on an unlinked work, only writes the work.
 function WorkStatusDropdown({
   workId,
   status,
+  workProjectId,
+  workProjectName,
   onUpdated,
 }: {
   workId: string;
   status: string;
+  workProjectId?: string | null;
+  workProjectName?: string;
   onUpdated?: (newStatus: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [localStatus, setLocalStatus] = useState(status);
   const [saving, setSaving] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const [lang] = useVictorLang();
+  const t = useVictorT();
+
+  const hasLinkedProject = !!(workProjectId && workProjectName && workProjectName !== "פרויקט לא ידוע");
 
   useEffect(() => {
     if (!open) return;
@@ -181,9 +192,47 @@ function WorkStatusDropdown({
 
   const col = STATUS_COLORS[localStatus] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
 
+  async function doUpdateWork(projectToo: boolean) {
+    setShowConfirm(false);
+    const prev = localStatus;
+    setLocalStatus("הושלם");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${workId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "הושלם" }),
+      });
+      if (!res.ok) throw new Error(`PATCH work ${res.status}`);
+
+      if (projectToo && workProjectId) {
+        const projRes = await fetch(`/api/projects/${workProjectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ field: "status", value: "הושלם" }),
+        });
+        if (!projRes.ok) {
+          console.warn(`[WorkStatusDropdown] עדכון פרויקט נכשל: PATCH /api/projects/${workProjectId} → ${projRes.status}`);
+        }
+      }
+
+      onUpdated?.("הושלם");
+    } catch (err) {
+      console.warn("[WorkStatusDropdown] שגיאה בעדכון סטטוס:", err);
+      setLocalStatus(prev);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSelect(next: string) {
     if (next === localStatus || saving) return;
     setOpen(false);
+
+    if (next === "הושלם" && hasLinkedProject) {
+      setShowConfirm(true);
+      return;
+    }
 
     const prev = localStatus;
     setLocalStatus(next);
@@ -260,6 +309,79 @@ function WorkStatusDropdown({
           })}
         </div>,
         document.body
+      )}
+
+      {showConfirm && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99998,
+            background: "rgba(0,0,0,0.65)", display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div style={{
+            background: "#111318",
+            border: "1px solid rgba(220,38,38,0.3)",
+            borderRadius: 16,
+            padding: "24px 28px",
+            maxWidth: 380,
+            width: "90%",
+            direction: "rtl",
+            boxShadow: "0 16px 48px rgba(0,0,0,0.8)",
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#F2F2F2", marginBottom: 8 }}>
+              {t("confirm.markCompleted")}
+            </div>
+            <div style={{ fontSize: 13, color: "#A0A0B0", marginBottom: 22, lineHeight: 1.5 }}>
+              {t("confirm.linkedTo")}{workProjectName ? ` "${workProjectName}"` : ""}.
+              {" "}{t("confirm.alsoProject")}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-start", flexWrap: "wrap" }}>
+              <button
+                onClick={() => doUpdateWork(true)}
+                disabled={saving}
+                style={{
+                  padding: "9px 18px", borderRadius: 10, border: "none",
+                  background: saving ? "#52526A" : "#10B981",
+                  color: "#fff", fontSize: 13, fontWeight: 800,
+                  cursor: saving ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {saving ? "…" : t("confirm.yesAll")}
+              </button>
+              <button
+                onClick={() => doUpdateWork(false)}
+                disabled={saving}
+                style={{
+                  padding: "9px 18px", borderRadius: 10,
+                  border: `1px solid ${PURPLE}66`,
+                  background: saving ? "#52526A" : `${PURPLE}22`,
+                  color: saving ? "#fff" : PURPLE, fontSize: 13, fontWeight: 800,
+                  cursor: saving ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {saving ? "…" : t("confirm.onlyVictor")}
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                disabled={saving}
+                style={{
+                  padding: "9px 16px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "transparent",
+                  color: "#A0A0B0", fontSize: 13, fontWeight: 700,
+                  cursor: saving ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {t("drawer.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1352,16 +1474,63 @@ function ReferenceCard({
   );
 }
 
+// Previous / next project inside the same month (Victor list order). A missing
+// handler = no neighbour in that direction → rendered disabled.
+type ProjectNav = {
+  index: number;            // 0-based position in the month list
+  total: number;
+  monthLabel: string;       // localized month name, e.g. "ספטמבר"
+  onPrev?: () => void;
+  onNext?: () => void;
+};
+
+// Physical left = previous, right = next (matches ArrowLeft / ArrowRight).
+function ProjectNavButton({
+  side, size, disabled, title, onClick,
+}: {
+  side: "left" | "right";
+  size: number;
+  disabled: boolean;
+  title: string;
+  onClick?: () => void;
+}) {
+  const Chev = side === "left" ? IconChevronLeft : IconChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = `${PURPLE}30`; e.currentTarget.style.boxShadow = `0 0 18px ${PURPLE}55`; } }}
+      onMouseLeave={e => { e.currentTarget.style.background = `${PURPLE}14`; e.currentTarget.style.boxShadow = `0 0 12px ${PURPLE}22`; }}
+      style={{
+        width: size, height: size, borderRadius: "50%", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 0, fontFamily: "inherit", appearance: "none", WebkitAppearance: "none",
+        WebkitTapHighlightColor: "transparent",
+        background: `${PURPLE}14`, border: `1px solid ${PURPLE}55`,
+        color: "#EDE9FE", boxShadow: `0 0 12px ${PURPLE}22`,
+        opacity: disabled ? 0.28 : 1,
+        cursor: disabled ? "default" : "pointer",
+        transition: "background .15s, box-shadow .15s, opacity .15s",
+      }}
+    ><Chev size={Math.round(size * 0.45)} /></button>
+  );
+}
+
 function VictorProjectDrawer({
   work,
   onClose,
   onRefresh,
   isOwner,
+  nav,
 }: {
   work: VendorWork;
   onClose: () => void;
   onRefresh?: () => void;
   isOwner: boolean;
+  nav?: ProjectNav | null;
 }) {
   const router = useRouter();
   const t = useVictorT();
@@ -1498,6 +1667,49 @@ function VictorProjectDrawer({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, playingId, uploadActive]);
+
+  // ── Prev / next project (same month). The parent re-mounts this drawer per
+  //    work id (key), so every per-work state above resets cleanly on switch. ──
+  // Never switch away mid-transfer or while another dialog / inline editor is open.
+  const navBlocked =
+    uploadState !== "idle" || savingDbx || uploadCancelConfirm || !!playingId ||
+    confirmRemove || removing || sendConfirm || sending || refForm.open ||
+    editingTitle || editingBrief || deleteConfirmKey !== null;
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const navBlockedRef = useRef(navBlocked);
+  navBlockedRef.current = navBlocked;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // Alt+← is browser-back
+      if (navBlockedRef.current) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      // Arrow keys belong to text fields, sliders (seek / volume) and native media.
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "AUDIO" || tag === "VIDEO" || el?.isContentEditable) return;
+      const go = e.key === "ArrowLeft" ? navRef.current?.onPrev : navRef.current?.onNext;
+      if (!go) return;
+      e.preventDefault();
+      go();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  // Wide desktop → arrows float in the dark margins beside the modal (as in the
+  // reference); below that there is no room, so they sit in the header row.
+  const [vw, setVw] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const showNav = !!nav && nav.total > 1;
+  const floatingNav = showNav && !isMobile && vw >= 1200;
+  const NAV_BTN = 40;
+  const navMargin = (vw - Math.min(1600, vw * 0.92)) / 2;         // dark strip beside the modal
+  const navGap = navMargin - Math.min(navMargin / 2, 64) - NAV_BTN / 2; // button centred in the strip, ≤64px from the modal
+  const navLabels = navMargin >= 100;
 
   // Abort any in-flight upload (chunked fetch AND single-shot XHR) when the drawer
   // unmounts (close / switch), guard terminal setState, and clear the auto-close timer.
@@ -2531,6 +2743,13 @@ function VictorProjectDrawer({
               color: TEXT2, lineHeight: 1, fontFamily: "inherit",
               fontWeight: 700, display: "flex", alignItems: "center",
             }}><IconX size={14} /></button>
+            {showNav && !floatingNav && nav && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, direction: "ltr" }}>
+                <ProjectNavButton side="left" size={34} disabled={!nav.onPrev || navBlocked} title={t("drawer.prevProject")} onClick={nav.onPrev} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, minWidth: 34, textAlign: "center" }}>{nav.index + 1} / {nav.total}</span>
+                <ProjectNavButton side="right" size={34} disabled={!nav.onNext || navBlocked} title={t("drawer.nextProject")} onClick={nav.onNext} />
+              </div>
+            )}
             {/* Project link is OWNER-only — Victor never gets a way into the
                 original project, just the clean work name. */}
             {isOwner ? (
@@ -2606,6 +2825,8 @@ function VictorProjectDrawer({
                   <WorkStatusDropdown
                     workId={work.id}
                     status={work.status}
+                    workProjectId={work.projectId}
+                    workProjectName={work.projectName}
                     onUpdated={() => { onRefresh?.(); }}
                   />
                 ) : (
@@ -4065,6 +4286,8 @@ export default function VictorProfilePage() {
                           <WorkStatusDropdown
                             workId={w.id}
                             status={w.status}
+                            workProjectId={w.projectId}
+                            workProjectName={w.projectName}
                             onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
                           />
                         ) : (
@@ -4139,6 +4362,8 @@ export default function VictorProfilePage() {
                           <WorkStatusDropdown
                             workId={w.id}
                             status={w.status}
+                            workProjectId={w.projectId}
+                            workProjectName={w.projectName}
                             onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
                           />
                           ) : (

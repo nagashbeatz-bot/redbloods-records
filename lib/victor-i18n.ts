@@ -74,6 +74,11 @@ const MONTHS: Record<VictorLang, string[]> = {
   en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
   ru: ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
 };
+/** "YYYY-MM" → localized month name only (no year). */
+export function victorMonthName(ym: string, lang: VictorLang): string {
+  const m = Number(ym.split("-")[1]);
+  return m >= 1 && m <= 12 ? MONTHS[lang][m - 1] : ym;
+}
 /** "YYYY-MM" → localized "Month YYYY". */
 export function victorMonthYear(ym: string, lang: VictorLang): string {
   const [y, m] = ym.split("-").map(Number);
@@ -315,6 +320,8 @@ const HE: Dict = {
   "drawer.save": "שמור",
   "drawer.saving": "שומר…",
   "drawer.cancel": "בטל",
+  "drawer.prevProject": "פרויקט קודם",
+  "drawer.nextProject": "פרויקט הבא",
   "drawer.briefEmptyOwner": "אין עדיין בריף — לחץ ערוך כדי להוסיף הוראות לויקטור",
   "drawer.briefEmptyViewer": "אין בריף לעבודה זו",
   // drawer — references
@@ -375,6 +382,7 @@ const HE: Dict = {
   "confirm.linkedTo": "העבודה מקושרת לפרויקט",
   "confirm.alsoProject": "לסמן גם את הפרויקט כהושלם?",
   "confirm.yesAll": "כן, סמן הכול כהושלם",
+  "confirm.onlyVictor": "הושלם רק אצל Victor",
   // new-work modal
   "newwork.title": "עבודה חדשה ל-Viktor",
   "newwork.subtitle": "עבודה פנימית של Viktor בלבד — לא נוצר פרויקט במערכת",
@@ -650,6 +658,8 @@ const EN: Dict = {
   "drawer.save": "Save",
   "drawer.saving": "Saving…",
   "drawer.cancel": "Cancel",
+  "drawer.prevProject": "Previous project",
+  "drawer.nextProject": "Next project",
   "drawer.briefEmptyOwner": "No brief yet — click Edit to add instructions for Viktor",
   "drawer.briefEmptyViewer": "No brief for this work",
   "drawer.refs": "References",
@@ -703,6 +713,7 @@ const EN: Dict = {
   "confirm.linkedTo": "The work is linked to a project",
   "confirm.alsoProject": "Mark the project as completed too?",
   "confirm.yesAll": "Yes, mark everything completed",
+  "confirm.onlyVictor": "Completed for Victor only",
   "newwork.title": "New work for Viktor",
   "newwork.subtitle": "Viktor-only internal work — no project is created",
   "newwork.nameLabel": "Work name *",
@@ -960,6 +971,8 @@ const RU: Dict = {
   "drawer.save": "Сохранить",
   "drawer.saving": "Сохраняю…",
   "drawer.cancel": "Отмена",
+  "drawer.prevProject": "Предыдущий проект",
+  "drawer.nextProject": "Следующий проект",
   "drawer.briefEmptyOwner": "Брифа пока нет — нажмите «Изменить», чтобы добавить инструкции для Viktor",
   "drawer.briefEmptyViewer": "Для этой работы нет брифа",
   "drawer.refs": "Референсы",
@@ -1013,6 +1026,7 @@ const RU: Dict = {
   "confirm.linkedTo": "Работа связана с проектом",
   "confirm.alsoProject": "Отметить проект завершённым тоже?",
   "confirm.yesAll": "Да, отметить всё завершённым",
+  "confirm.onlyVictor": "Завершено только у Victor",
   "newwork.title": "Новая работа для Viktor",
   "newwork.subtitle": "Внутренняя работа только для Viktor — проект не создаётся",
   "newwork.nameLabel": "Название работы *",

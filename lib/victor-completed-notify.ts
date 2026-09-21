@@ -14,12 +14,11 @@ import { classifyPushResult } from "@/lib/shalev-weekly-pure";
  * Victor-only helper.
  *
  * Scope: this is about vendor_project_work.status ONLY. It never reads or
- * writes projects.status/end_date, and never touches agent_alerts. A Victor
- * status change never propagates to the project (there is no Victor → Projects
- * sync). The only sync is one-way Projects → Victor: StatusDropdown PATCHes an
- * OPEN ("פעיל") Victor work to "הושלם" when its project is completed, which
- * arrives here as an ordinary real transition — this file does not call, extend
- * or depend on that path.
+ * writes projects.status/end_date, and never touches agent_alerts. Whether the
+ * linked project is closed too is decided by the client's own explicit choice in
+ * the Victor page modal (a separate PATCH to /api/projects/[id]) — this file does
+ * not call, extend or depend on it. Projects → Victor (StatusDropdown PATCHes an
+ * OPEN "פעיל" work to "הושלם") also arrives here as an ordinary real transition.
  *
  * Trigger: caller (app/api/vendor/victor/work/[id]/route.ts) determines the
  * REAL before/after transition itself, from a DB row fetched immediately
