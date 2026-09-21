@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type DragEvent } from "react";
 import { createPortal } from "react-dom";
+import { saveFileAs } from "@/lib/download-file";
 
 const FILE_TYPES = ["תסריט", "בריף", "שוט ליסט", "לו״ז צילום", "אישור / חוזה", "ציוד", "אחר"];
 
@@ -41,10 +42,12 @@ function previewCandidate(docs: Doc[]): Doc | null {
     ?? null;
 }
 
+// Download goes through the shared saveFileAs (native Save As) using the EXISTING
+// owner-only stream route with the document's real Dropbox path (302 -> Dropbox CDN,
+// so the bytes never pass through the server). The path is encoded, never concatenated
+// raw (spaces, &, #, Hebrew ...). The saved name is doc.file_name (real name + extension).
 function downloadUrl(doc: Doc) {
-  return doc.dropbox_url.includes("dl=")
-    ? doc.dropbox_url.replace(/dl=\d/, "dl=1")
-    : doc.dropbox_url + (doc.dropbox_url.includes("?") ? "&dl=1" : "?dl=1");
+  return `/api/dropbox/stream?path=${encodeURIComponent(doc.dropbox_path)}`;
 }
 
 function viewUrl(doc: Doc) {
@@ -57,6 +60,7 @@ function viewUrl(doc: Doc) {
 
 function PdfFullscreenViewer({ doc, onClose }: { doc: Doc; onClose: () => void }) {
   const [iframeError, setIframeError] = useState(false);
+  const [dlErr, setDlErr] = useState(false); // shared saveFileAs failed; auto-clears
   const previewSrc = `/api/red-films/documents/${doc.id}/preview`;
 
   // Lock body scroll while open; restore on close
@@ -178,16 +182,17 @@ function PdfFullscreenViewer({ doc, onClose }: { doc: Doc; onClose: () => void }
             >
               פתח ב-Dropbox
             </a>
-            <a
-              href={downloadUrl(doc)}
+            <button
+              type="button"
+              onClick={() => { void saveFileAs(downloadUrl(doc), doc.file_name, () => { setDlErr(true); setTimeout(() => setDlErr(false), 3500); }); }}
               style={{
                 padding: "10px 20px", borderRadius: 10, background: "#1A1A1A",
-                border: "1px solid #2A2A2A", color: "#888",
-                fontSize: 14, fontWeight: 600, textDecoration: "none",
+                border: "1px solid #2A2A2A", color: dlErr ? "#F87171" : "#888",
+                fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
               }}
             >
-              ⬇ הורד
-            </a>
+              {dlErr ? "ההורדה נכשלה" : "⬇ הורד"}
+            </button>
           </div>
         </div>
       ) : (
@@ -221,6 +226,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
   const [uploadErr, setUploadErr]   = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("אחר");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dlErr, setDlErr] = useState(false); // shared saveFileAs failed; auto-clears
   // Inline preview (desktop)
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   // Fullscreen viewer
@@ -374,12 +380,14 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
               >
                 📁
               </a>
-              <a
-                href={downloadUrl(candidate)}
-                style={{ fontSize: 11, color: "#555", textDecoration: "none", padding: "3px 8px", border: "1px solid #2A2A2A", borderRadius: 5 }}
+              <button
+                type="button"
+                onClick={() => { void saveFileAs(downloadUrl(candidate), candidate.file_name, () => { setDlErr(true); setTimeout(() => setDlErr(false), 3500); }); }}
+                title={dlErr ? "ההורדה נכשלה" : "הורד"}
+                style={{ fontSize: 11, color: dlErr ? "#F87171" : "#555", background: "transparent", cursor: "pointer", fontFamily: "inherit", padding: "3px 8px", border: "1px solid #2A2A2A", borderRadius: 5 }}
               >
-                ⬇
-              </a>
+                {dlErr ? "✕" : "⬇"}
+              </button>
             </div>
           </div>
 
