@@ -46,6 +46,21 @@ export function isSongType(t: string | null | undefined): boolean {
   return t === "שיר" || t === SONG_WITH_CLIP_TYPE;
 }
 
+/**
+ * Project types that can be a label release — the music products: a song (with or
+ * without a clip deal), an EP, an album, a riddim pack. Deliberately NOT: a
+ * clip-only project (tracked in Red Films), courses, "אחר" or an untyped project.
+ *
+ * The single source of truth for release eligibility by type: the server guard
+ * (convertProjectToLabelRelease), /label's "סמן קיים כריליס" list and the
+ * dashboard's "הוסף ריליס" list all use it. Unrelated to isSongType, which keeps
+ * meaning "a song" for campaigns and the type filter chips.
+ */
+export const RELEASABLE_PROJECT_TYPES: readonly string[] = ["שיר", SONG_WITH_CLIP_TYPE, "EP", "אלבום", "רידים"];
+export function isReleasableType(t: string | null | undefined): boolean {
+  return !!t && RELEASABLE_PROJECT_TYPES.includes(t);
+}
+
 /** True for a project that carries a clip — "קליפ" or the combined type. */
 export function hasClipType(t: string | null | undefined): boolean {
   return t === "קליפ" || t === SONG_WITH_CLIP_TYPE;

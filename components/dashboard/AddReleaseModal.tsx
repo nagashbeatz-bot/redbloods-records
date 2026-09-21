@@ -4,7 +4,8 @@
 // dashboard's "ריליסים קרובים" card. It reuses the SAME mutation as /label's
 // "סמן קיים כריליס": POST /api/label/releases → convertProjectToLabelRelease, with
 // the same initial stage ("רעיון") and the date sent in that one request.
-// Eligibility rules live in lib/release-candidates.ts. No new endpoint, no DB change.
+// Eligibility (any status; a label artist's project without a release) lives in
+// lib/release-candidates.ts. No new endpoint, no DB change.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -110,7 +111,9 @@ export default function AddReleaseModal({ onClose, onCreated }: {
 }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [loadState, setLoadState] = useState<"loading" | "error" | "ok">("loading");
-  const [candidates, setCandidates] = useState<ReleaseCandidate[]>([]);
+  const [data, setData] = useState<{ projects: CandidateProject[]; roster: RosterArtist[]; releaseIds: Set<string>; clientLabelNames: string[] } | null>(null);
+  // Projects the server said already have a release (409) although the list didn't know it.
+  const [conflictIds, setConflictIds] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<ReleaseCandidate | null>(null);
@@ -121,18 +124,32 @@ export default function AddReleaseModal({ onClose, onCreated }: {
 
   const load = useCallback(() => {
     setLoadState("loading");
-    // Same sources /label uses: /api/projects (+ artists roster, + existing releases for the duplicate badge).
-    Promise.all([getJson("/api/projects"), getJson("/api/label/artists"), getJson("/api/label/releases")])
-      .then(([projects, artists, releases]) => {
+    // Same sources /label uses: /api/projects, the label_artists roster, and the existing
+    // releases (duplicate badge). The clients list only adds the "why is this artist
+    // missing" hint, so its failure degrades that hint instead of blocking the flow.
+    Promise.all([
+      getJson("/api/projects"), getJson("/api/label/artists"), getJson("/api/label/releases"),
+      getJson("/api/clients").catch(() => null),
+    ])
+      .then(([projects, artists, releases, clients]) => {
         if (!Array.isArray(projects) || !Array.isArray(artists) || !Array.isArray(releases)) throw new Error("bad shape");
-        const existing = new Set((releases as LabelRelease[]).filter((r) => r.release).map((r) => r.projectId));
-        setCandidates(buildReleaseCandidates(projects as CandidateProject[], artists as RosterArtist[], existing));
+        const cl = (clients as { clients?: { name: string; status: string }[] } | null)?.clients;
+        setData({
+          projects: projects as CandidateProject[],
+          roster: artists as RosterArtist[],
+          releaseIds: new Set((releases as LabelRelease[]).filter((r) => r.release).map((r) => r.projectId)),
+          clientLabelNames: Array.isArray(cl) ? cl.filter((c) => c.status === "אמן לייבל").map((c) => c.name) : [],
+        });
         setLoadState("ok");
       })
       .catch(() => setLoadState("error"));
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const candidates = useMemo<ReleaseCandidate[]>(() => {
+    if (!data) return [];
+    return buildReleaseCandidates(data.projects, data.roster, new Set([...data.releaseIds, ...conflictIds]), data.clientLabelNames);
+  }, [data, conflictIds]);
   const visible = useMemo(() => filterCandidates(candidates, query), [candidates, query]);
   const selected = candidates.find((c) => c.project.id === selectedId && c.block === null) ?? null;
 
@@ -155,7 +172,7 @@ export default function AddReleaseModal({ onClose, onCreated }: {
       if (!res.ok) {
         const d = await res.json().catch(() => null);
         setErr(typeof d?.error === "string" && HEBREW.test(d.error) ? d.error : "יצירת הריליס נכשלה. נסה שוב.");
-        if (res.status === 409) load(); // someone already created it → refresh the badges
+        if (res.status === 409) { setConflictIds((s) => new Set(s).add(chosen.project.id)); load(); } // it already has a release → block it here too
         submitting.current = false; setBusy(false);
         return;
       }
@@ -195,7 +212,7 @@ export default function AddReleaseModal({ onClose, onCreated }: {
             </div>
           ) : visible.length === 0 ? (
             <div style={{ color: MUTED, fontSize: 13, padding: "28px 0", textAlign: "center" }}>
-              {query.trim() ? "לא נמצאו פרויקטים" : "אין פרויקטי שיר זמינים לריליס"}
+              {query.trim() ? "לא נמצאו פרויקטים" : "אין פרויקטים של אמני לייבל זמינים לריליס"}
             </div>
           ) : (
             <div role="radiogroup" aria-label="פרויקטים" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "44vh", overflowY: "auto", paddingBottom: 2 }}>
@@ -237,7 +254,7 @@ export default function AddReleaseModal({ onClose, onCreated }: {
               })}
             </div>
           )}
-          {loadState === "ok" && <div style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.6 }}>מוצגים פרויקטי שיר של אמני הלייבל. פרויקטים אחרים אפשר לסמן דרך ניהול הלייבל.</div>}
+          {loadState === "ok" && <div style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.6 }}>מוצגים פרויקטים של אמני לייבל, בכל סטטוס. פרויקט שלא מופיע אפשר לסמן דרך ניהול הלייבל.</div>}
 
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <GhostBtn onClick={requestClose}>ביטול</GhostBtn>

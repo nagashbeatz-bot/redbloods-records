@@ -9,7 +9,8 @@ import type {
   ProjectType,
   ProjectBusinessType,
 } from "./types";
-import { RELEASE_STAGES, isSongType } from "./types";
+import { RELEASE_STAGES, isReleasableType } from "./types";
+import { creditsIncludeAmongMany } from "./release-candidates";
 
 // ── DB row shape (public.project_release_details) ────────────────────────────
 interface DbRelease {
@@ -154,15 +155,17 @@ export async function createLabelSongRelease(fields: {
 export type ReleaseWriteResult =
   | { status: "ok"; release: ProjectReleaseDetails }
   | { status: "not_found" }
-  | { status: "not_song" }
+  | { status: "not_releasable" }
   | { status: "artist_not_found" }
   | { status: "exists" }
   | { status: "conflict" };
 
 /**
- * Convert an EXISTING song project into a label release linked to a chosen
- * label artist: marks it לייבל, syncs projects.artist to the artist's name (display),
- * and creates its project_release_details row with label_artist_id.
+ * Convert an EXISTING releasable project (song / song+clip / EP / album / riddim —
+ * isReleasableType) into a label release linked to a chosen label artist: marks it
+ * לייבל, syncs projects.artist to the artist's name (display) — EXCEPT when the
+ * project already credits several artists including this one, whose credit list is
+ * kept — and creates its project_release_details row with label_artist_id.
  */
 export async function convertProjectToLabelRelease(
   projectId: string,
@@ -171,8 +174,7 @@ export async function convertProjectToLabelRelease(
 ): Promise<ReleaseWriteResult> {
   const proj = await fetchProject(projectId);
   if (proj === null) return { status: "not_found" };
-  // "שיר + קליפ" is still a song — having a clip deal must not block a release.
-  if (!isSongType(proj.project_type)) return { status: "not_song" };
+  if (!isReleasableType(proj.project_type)) return { status: "not_releasable" };
 
   const artistName = await fetchArtistName(labelArtistId);
   if (artistName === null) return { status: "artist_not_found" };
@@ -180,9 +182,11 @@ export async function convertProjectToLabelRelease(
   const existing = await getReleaseDetails(projectId);
   if (existing) return { status: "exists" };
 
+  // A collab keeps its full credit list; anything else is synced to the label artist's name.
+  const keepCredits = creditsIncludeAmongMany(proj.artist, artistName);
   const { error: upErr } = await supabase
     .from("projects")
-    .update({ project_business_type: "לייבל", artist: artistName, updated_at: new Date().toISOString() })
+    .update({ project_business_type: "לייבל", ...(keepCredits ? {} : { artist: artistName }), updated_at: new Date().toISOString() })
     .eq("id", projectId);
   if (upErr) throw new Error(upErr.message);
 
