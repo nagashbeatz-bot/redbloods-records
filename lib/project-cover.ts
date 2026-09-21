@@ -74,7 +74,10 @@ export const COVER_THEMES: readonly CoverTheme[] = [
   },
   {
     id: "dancehall", label: "דאנסהול", accent: "#D4A017", ink: "#FFF9E6",
-    bg: "radial-gradient(ellipse at 20% 85%, rgba(212,160,23,0.26) 0%, transparent 55%), linear-gradient(155deg, #10301D 0%, #0A1B10 50%, #040A06 100%)",
+    // Same structure as "darkred": one highlight top-right, a base gradient that stays green
+    // corner to corner (no near-black end), and a soft gold glow centred at the bottom — so
+    // the colour is spread evenly across the whole square, not pooled on one side.
+    bg: "radial-gradient(ellipse at 50% 108%, rgba(212,160,23,0.20) 0%, transparent 58%), radial-gradient(ellipse at 72% 14%, rgba(74,180,116,0.17) 0%, transparent 58%), linear-gradient(160deg, #164A2D 0%, #0E2F1B 52%, #071A0E 100%)",
   },
   {
     id: "romantic", label: "רומנטי", accent: "#E879A6", ink: "#FFF0F6",

@@ -34,6 +34,17 @@ check("default theme exists", isCoverThemeId(DEFAULT_COVER_THEME), true);
 check("unknown theme rejected", isCoverThemeId("hacker"), false);
 check("non-string rejected", isCoverThemeId(42), false);
 
+console.log("theme backgrounds (every theme fills the whole square; modal preview == saved cover)");
+for (const t of COVER_THEMES) {
+  // A full-bleed base layer: the LAST background layer must be a linear-gradient, so the
+  // colour covers the entire square (radial glows sit on top and are only accents).
+  const layers = t.bg.split(/,\s*(?=radial-gradient|linear-gradient)/);
+  check(`${t.id}: base layer is a full-square linear-gradient`, layers[layers.length - 1].startsWith("linear-gradient"), true);
+  const draft = getCoverTheme({ theme: t.id, customImage: false, updatedAt: null });
+  const saved = getCoverTheme(normalizeCover({ theme: t.id, customImage: false, updatedAt: "2026-09-21T10:00:00Z" }));
+  check(`${t.id}: preview theme === saved theme`, draft.bg === saved.bg && draft.accent === saved.accent, true);
+}
+
 console.log("normalizeCover / default fallback");
 check("undefined → null (default cover)", normalizeCover(undefined), null);
 check("null → null", normalizeCover(null), null);
