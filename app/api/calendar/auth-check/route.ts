@@ -6,9 +6,10 @@ import { requireOwner } from "@/lib/require-auth";
  *
  * Light credentials check for the app-wide reconnect gate. NOT a calendar sync:
  * it only tries to obtain an access token from the stored refresh token.
- * Always 200 for owners; `needsReauth` is true ONLY when Google definitively
- * rejected the grant (invalid_grant) or there is no refresh token. Anything
- * transient reports state "unknown" with needsReauth=false.
+ * Always 200 for owners. The client blocks on the two definitive states:
+ * "needs_reauth" (needsReauth=true — Google rejected the grant with invalid_grant,
+ * or there is no refresh token) and "not_connected" (no token row). Anything
+ * transient reports state "unknown" with needsReauth=false and never blocks.
  */
 export async function GET() {
   const denied = await requireOwner();

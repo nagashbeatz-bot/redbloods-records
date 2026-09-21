@@ -99,8 +99,10 @@ export async function getAuthenticatedClient() {
 // ─── Light auth check (drives the app-wide "reconnect" gate) ─────────────────
 
 /**
- * Result of a credentials-only check. ONLY `needs_reauth` means the user must run
- * OAuth again; every other state — including `unknown` (Supabase/network/timeout/
+ * Result of a credentials-only check. Google Calendar is a REQUIRED connection, so
+ * the two DEFINITIVE states — `needs_reauth` (Google rejected the grant) and
+ * `not_connected` (no token row) — both make the client show the blocking connect
+ * screen. Every other state — including `unknown` (Supabase/network/timeout/
  * Google 5xx/429/invalid_client…) — must NEVER lock the app.
  */
 export type CalendarAuthCheck =
