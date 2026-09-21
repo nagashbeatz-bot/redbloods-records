@@ -4,19 +4,21 @@
 // Real data: projects (KPI + rows). Calendar / Alerts / Focus = dummy.
 // No writes, no drawer, no dispatch.
 
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import type { Project, AgentAlert } from "@/lib/types";
+import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import Link from "next/link";
 import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
+import UpcomingReleasesCard from "@/components/dashboard/UpcomingReleasesCard";
+import { summarizeUpcomingReleases } from "@/lib/dashboard-releases";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -560,6 +562,19 @@ export default function DashboardDesignPreview() {
       return true;
     });
   }, [alerts]);
+  // ── Label releases → "ריליסים קרובים" card + header chips (read-only) ──
+  const [labelReleases, setLabelReleases] = useState<LabelRelease[] | null>(null);
+  const [releasesError, setReleasesError] = useState(false);
+  const loadReleases = useCallback(() => {
+    fetch("/api/label/releases")
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(d => { setLabelReleases(Array.isArray(d) ? d : []); setReleasesError(false); })
+      .catch(() => setReleasesError(true));
+  }, []);
+  useEffect(() => { loadReleases(); }, [loadReleases]);
+  const upcomingReleases = useMemo(() => summarizeUpcomingReleases(labelReleases ?? []), [labelReleases]);
+  const releaseCount = upcomingReleases.rows.length;
+  const releaseAttention = upcomingReleases.needsAttentionCount;
   const [calToday, setCalToday]         = useState<CalEvent[]>([]);
   const [calTomorrow, setCalTomorrow]   = useState<CalEvent[]>([]);
   const [calConnected, setCalConnected] = useState<boolean | null>(null);
@@ -1014,23 +1029,37 @@ export default function DashboardDesignPreview() {
               <p style={{ fontSize: 14, color: MUTED, margin: isMobile ? "0 0 10px" : "0 0 14px", fontWeight: 500 }}>
                 {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
               </p>
-              {displayPills && (
+              {(displayPills || releaseCount > 0) && (
                 <div style={{ display: "flex", gap: isMobile ? 6 : 8, flexWrap: "wrap" }}>
-                  {displayPills.overdue > 0 && (
+                  {releaseAttention > 0 && (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
+                      fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
+                      background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444",
+                    }}>⚠️ {releaseAttention === 1 ? "ריליס אחד דורש טיפול" : `${releaseAttention} ריליסים דורשים טיפול`}</span>
+                  )}
+                  {releaseCount > 0 && (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
+                      fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
+                      background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", color: "#A855F7",
+                    }}>🎵 {releaseCount === 1 ? "ריליס קרוב אחד" : `${releaseCount} ריליסים קרובים`}</span>
+                  )}
+                  {displayPills && displayPills.overdue > 0 && (
                     <span style={{
                       display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
                       fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
                       background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444",
                     }}><Dot color="#EF4444" /> {displayPills.overdue} פרויקטים עברו דדליין</span>
                   )}
-                  {displayPills.active > 0 && (
+                  {displayPills && displayPills.active > 0 && (
                     <span style={{
                       display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
                       fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
                       background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", color: "#3B82F6",
                     }}><Dot color="#3B82F6" /> {displayPills.active} פרויקטים בעבודה פעילה</span>
                   )}
-                  {displayPills.overdue === 0 && displayPills.active === 0 && liveReady && (
+                  {displayPills && displayPills.overdue === 0 && displayPills.active === 0 && releaseAttention === 0 && liveReady && (
                     <span style={{ fontSize: 13, color: MUTED }}>הכל תחת שליטה 🎵</span>
                   )}
                 </div>
@@ -1231,79 +1260,12 @@ export default function DashboardDesignPreview() {
               </div>
             </div>
 
-            {/* Calendar (dummy) */}
-            <div style={{
-              background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
-              overflow: "hidden",
-              boxShadow: "0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "18px 22px 14px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
-                background: "rgba(255,255,255,0.015)",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>📅</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>אירועים קרובים</span>
-                </div>
-                <span style={{ fontSize: 11, color: MUTED }}>הצג יומן ←</span>
-              </div>
-              {(() => {
-                const TYPE_COLORS: Record<string, string> = {
-                  "סשן": "#A855F7", "הקלטות": "#A855F7", "חזרה": "#3B82F6",
-                  "הופעה": "#EC4899", "סאונדצ'ק": "#F97316", "פגישה": "#10B981", "אחר": "#6B7280",
-                };
-                const evColor = (type: string) => TYPE_COLORS[type] ?? "#6B7280";
-                const fmtTime = (ev: CalEvent) => {
-                  if (ev.isAllDay) return "כל היום";
-                  const t = (iso: string) => iso ? new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : "";
-                  return `${t(ev.startTime)}${ev.endTime ? "–" + t(ev.endTime) : ""}`;
-                };
-                return (
-                  <div style={{ padding: "0 20px 0", flex: 1 }}>
-                    {calConnected === false ? (
-                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 24 }}>יומן לא מחובר</div>
-                    ) : (
-                      <>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 99, background: BRAND, color: "#fff" }}>היום</span>
-                        </div>
-                        {calToday.length === 0 ? (
-                          <div style={{ fontSize: 11, color: MUTED, paddingBottom: 8 }}>אין אירועים היום</div>
-                        ) : calToday.slice(0, 3).map((ev, i, arr) => (
-                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BORDER2}` : "none" }}>
-                            <Dot color={evColor(ev.type)} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{fmtTime(ev)}</div>
-                              <div style={{ fontSize: 12.5, color: "#E0E0E0", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
-                              {ev.artist && <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ev.artist}</div>}
-                            </div>
-                          </div>
-                        ))}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "rgba(255,255,255,0.06)", color: SUB }}>מחר</span>
-                        </div>
-                        {calTomorrow.length === 0 ? (
-                          <div style={{ fontSize: 11, color: MUTED }}>אין אירועים מחר</div>
-                        ) : calTomorrow.slice(0, 2).map((ev, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0" }}>
-                            <Dot color={evColor(ev.type)} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{fmtTime(ev)}</div>
-                              <div style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-              <div style={{ padding: "10px 22px 14px", borderTop: `1px solid ${BORDER2}` }}>
-                <span style={{ fontSize: 10, color: DIM }}>יומן — נתונים אמיתיים</span>
-              </div>
-            </div>
+            {/* "ריליסים קרובים" — label releases (project_release_details) */}
+            <UpcomingReleasesCard
+              rows={upcomingReleases.rows}
+              state={releasesError ? "error" : labelReleases === null ? "loading" : "ok"}
+              onReload={loadReleases}
+            />
 
           </div>
 
