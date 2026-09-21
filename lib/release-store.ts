@@ -11,6 +11,8 @@ import type {
 } from "./types";
 import { RELEASE_STAGES, isReleasableType } from "./types";
 import { creditsInclude, creditsIncludeAmongMany } from "./release-candidates";
+import { attachCovers } from "./project-cover-store";
+import type { ProjectCoverConfig } from "./project-cover";
 
 // ── DB row shape (public.project_release_details) ────────────────────────────
 interface DbRelease {
@@ -75,7 +77,7 @@ export async function listLabelReleases(): Promise<LabelRelease[]> {
   const byId = new Map<string, ProjectReleaseDetails>();
   for (const r of (relRows ?? []) as DbRelease[]) byId.set(r.project_id, mapRelease(r));
 
-  return projects.map((p) => ({
+  const rows: LabelRelease[] = projects.map((p) => ({
     projectId:    p.id,
     name:         p.name,
     artist:       p.artist,
@@ -84,6 +86,8 @@ export async function listLabelReleases(): Promise<LabelRelease[]> {
     businessType: p.project_business_type as ProjectBusinessType,
     release:      byId.get(p.id) ?? null,
   }));
+  // Project Cover — one bulk settings read, attached as-is (no copy, no per-row fetch).
+  return attachCovers(rows, (r) => r.projectId, ids);
 }
 
 export async function getReleaseDetails(projectId: string): Promise<ProjectReleaseDetails | null> {
@@ -229,7 +233,7 @@ export async function convertProjectToLabelRelease(
 }
 
 /** Releases belonging to one label artist (joined to project name/type/status). */
-export async function listReleasesByArtist(labelArtistId: string): Promise<LabelRelease[]> {
+export async function listReleasesByArtist(labelArtistId: string, opts: { cover?: boolean } = {}): Promise<LabelRelease[]> {
   const { data: relRows, error: rErr } = await supabase
     .from("project_release_details")
     .select("*")
@@ -249,7 +253,7 @@ export async function listReleasesByArtist(labelArtistId: string): Promise<Label
   const pById = new Map<string, ProjRow>();
   for (const p of (projRows ?? []) as ProjRow[]) pById.set(p.id, p);
 
-  return rels
+  const rows = rels
     .map((r): LabelRelease | null => {
       const p = pById.get(r.project_id);
       if (!p) return null;
@@ -264,6 +268,8 @@ export async function listReleasesByArtist(labelArtistId: string): Promise<Label
       };
     })
     .filter((x): x is LabelRelease => x !== null);
+  // Project Cover (skipped by callers that never render it, e.g. the weekly calendar).
+  return opts.cover === false ? rows : attachCovers(rows, (r) => r.projectId, ids);
 }
 
 /** The nearest today-or-future release for one label artist, or null. A release
@@ -271,7 +277,7 @@ export async function listReleasesByArtist(labelArtistId: string): Promise<Label
  *  must disappear from "הריליס הבא" the moment its date is in the past, not
  *  linger until someone else replaces it. Ties/multiple upcoming releases are
  *  broken by release_target_date only (never created_at/updated_at). */
-export async function getNextRelease(labelArtistId: string): Promise<{ projectId: string; title: string; releaseDate: string } | null> {
+export async function getNextRelease(labelArtistId: string): Promise<{ projectId: string; title: string; releaseDate: string; cover?: ProjectCoverConfig | null } | null> {
   const releases = await listReleasesByArtist(labelArtistId);
   const today = ilTodayYMD();
   const upcoming = releases
@@ -279,7 +285,7 @@ export async function getNextRelease(labelArtistId: string): Promise<{ projectId
       !!r.release?.releaseTargetDate && r.release.releaseTargetDate >= today)
     .sort((a, b) => (a.release.releaseTargetDate < b.release.releaseTargetDate ? -1 : 1));
   const next = upcoming[0];
-  return next ? { projectId: next.projectId, title: next.name, releaseDate: next.release.releaseTargetDate } : null;
+  return next ? { projectId: next.projectId, title: next.name, releaseDate: next.release.releaseTargetDate, cover: next.cover ?? null } : null;
 }
 
 /**

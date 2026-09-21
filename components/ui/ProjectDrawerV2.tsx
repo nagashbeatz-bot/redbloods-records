@@ -16,6 +16,8 @@ import {
 } from "@/lib/clip-finance";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
+import ProjectCover from "@/components/ui/ProjectCover";
+import ProjectCoverModal from "@/components/ui/ProjectCoverModal";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
 import { sessionDurationMinutes } from "@/lib/session-duration";
 import type { Project } from "@/lib/types";
@@ -685,6 +687,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   // Dismisses the "missing balance due date" reminder for the current opening only.
   const [balanceReminderDismissed, setBalanceReminderDismissed] = useState(false);
   const [showArtistPicker, setShowArtistPicker] = useState(false);
+  const [coverOpen,        setCoverOpen]        = useState(false);
   const [sessions,        setSessions]        = useState<Session[]>([]);
   const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
   const [mounted,         setMounted]         = useState(false);
@@ -968,54 +971,11 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             marginRight: "auto",
           }}>
 
-            {/* ── Artwork 192×192 ── */}
-            <div style={{
-              width: 192, height: 192,
-              borderRadius: 20, flexShrink: 0,
-              background: `
-                radial-gradient(ellipse at 25% 25%, rgba(220,38,38,0.30) 0%, transparent 55%),
-                radial-gradient(ellipse at 75% 80%, rgba(139,0,0,0.18) 0%, transparent 50%),
-                linear-gradient(145deg, #2E0A0A 0%, #1A0404 40%, #0C0202 75%, #060101 100%)
-              `,
-              border: `2px solid rgba(220,38,38,0.42)`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: [
-                `0 0 80px rgba(220,38,38,0.25)`,
-                `0 0 30px rgba(220,38,38,0.14)`,
-                `0 4px 40px rgba(0,0,0,0.8)`,
-                `inset 0 0 50px rgba(0,0,0,0.55)`,
-                `inset 0 1px 0 rgba(255,255,255,0.07)`,
-                `inset 0 -1px 0 rgba(0,0,0,0.5)`,
-              ].join(", "),
-              position: "relative", overflow: "hidden",
-            }}>
-              {/* Corner gloss */}
-              <div style={{
-                position: "absolute", top: 0, left: 0, width: 90, height: 90,
-                background: "radial-gradient(circle at 0 0, rgba(255,255,255,0.09) 0%, transparent 65%)",
-              }} />
-              <div style={{
-                position: "absolute", bottom: 0, right: 0, width: 70, height: 70,
-                background: "radial-gradient(circle at 100% 100%, rgba(220,38,38,0.14) 0%, transparent 65%)",
-              }} />
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}>
-                <span style={{
-                  fontSize: 86, fontWeight: 900, lineHeight: 1, letterSpacing: -5,
-                  color: accent,
-                  textShadow: `0 0 60px ${accent}CC, 0 0 24px ${accent}77`,
-                  userSelect: "none",
-                }}>
-                  {project.name.charAt(0)}
-                </span>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.22)",
-                  letterSpacing: "0.22em", textTransform: "uppercase",
-                  userSelect: "none",
-                }}>
-                  PROJECT COVER
-                </span>
-              </div>
-            </div>
+            {/* ── Project Cover 192×192 — the shared ProjectCover; click opens the editor ── */}
+            <ProjectCover
+              projectId={project.id} name={project.name} cover={project.cover} size={192}
+              onClick={() => setCoverOpen(true)}
+            />
 
             {/* ── Info + Stats ── */}
             <div dir="rtl" style={{
@@ -1592,6 +1552,17 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             return true;
           }}
           onDismiss={() => setBalanceReminderDismissed(true)}
+        />
+      )}
+
+      {/* ── Project Cover editor ── */}
+      {coverOpen && (
+        <ProjectCoverModal
+          projectId={project.id}
+          name={project.name}
+          cover={project.cover}
+          onSaved={refresh}
+          onClose={() => setCoverOpen(false)}
         />
       )}
 

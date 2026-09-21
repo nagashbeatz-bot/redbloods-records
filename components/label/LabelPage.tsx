@@ -8,6 +8,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import ProjectCover from "@/components/ui/ProjectCover";
+import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
 import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary, ArtistRecoupSummary } from "@/lib/types";
 import { isReleasableType } from "@/lib/types";
 import { creditsInclude } from "@/lib/release-candidates";
@@ -111,6 +113,11 @@ export default function LabelPage() {
     }).catch(() => setState("error"));
   }, []);
   useEffect(() => { reload(); }, [reload]);
+  // A project's cover changed (drawer editor) → reload so the release thumbnails update.
+  useEffect(() => {
+    window.addEventListener(COVER_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(COVER_CHANGED_EVENT, reload);
+  }, [reload]);
 
   type ClipLine = LabelClipLine & { artistName: string };
   const [clips, setClips] = useState<{ totals: ArtistClipsSummary["totals"]; lines: ClipLine[] } | null>(null);
@@ -648,7 +655,9 @@ export default function LabelPage() {
                 {d.priority.map((r) => {
                   const overdue = (daysUntil(r.release.releaseTargetDate) ?? 99) < 0;
                   return (
-                    <button key={r.projectId} onClick={() => setEditItem(r)} style={{ textAlign: "right", background: CARD2, border: `1px solid ${r.release.blocker.trim() ? "rgba(248,113,113,0.3)" : BORDER}`, borderRadius: 13, padding: "12px 14px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", gap: 7 }}>
+                    <button key={r.projectId} onClick={() => setEditItem(r)} style={{ textAlign: "right", background: CARD2, border: `1px solid ${r.release.blocker.trim() ? "rgba(248,113,113,0.3)" : BORDER}`, borderRadius: 13, padding: "12px 14px", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <ProjectCover projectId={r.projectId} name={r.name} cover={r.cover} size={46} mobileSize={40} />
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <StageBadge stage={r.release.releaseStage} small />
                         <span style={{ fontSize: 14, fontWeight: 800, color: TEXT, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
@@ -659,6 +668,7 @@ export default function LabelPage() {
                         {r.release.blocker.trim() && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#F87171" }}>⛔ {r.release.blocker}</span>}
                         {overdue && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#F59E0B" }}>איחור בתאריך היעד</span>}
                         {r.release.responsible.trim() && <span style={{ fontSize: 11.5, color: MUTED }}>אחראי: {r.release.responsible}</span>}
+                      </div>
                       </div>
                     </button>
                   );
@@ -681,10 +691,13 @@ export default function LabelPage() {
                 {d.upcoming.map((r, i) => {
                   const du = daysUntil(r.release.releaseTargetDate);
                   return (
-                    <button key={r.projectId} onClick={() => setEditItem(r)} style={{ width: "100%", textAlign: "right", display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 0.9fr", gap: 8, alignItems: "center", padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", border: "none", borderBottom: i === d.upcoming.length - 1 ? "none" : `1px solid ${BORDER2}`, cursor: "pointer", fontFamily: "inherit" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
-                        <div style={{ fontSize: 11.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.artist}</div>
+                    <button key={r.projectId} onClick={() => setEditItem(r)} style={{ width: "100%", textAlign: "right", display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 0.9fr", gap: 8, alignItems: "center", padding: "10px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", border: "none", borderBottom: i === d.upcoming.length - 1 ? "none" : `1px solid ${BORDER2}`, cursor: "pointer", fontFamily: "inherit" }}>
+                      <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 11 }}>
+                        <ProjectCover projectId={r.projectId} name={r.name} cover={r.cover} size={44} mobileSize={38} />
+                        <div style={{ minWidth: 0 }}>
+                          <div dir="auto" style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                          <div dir="auto" style={{ fontSize: 11.5, color: MUTED, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.artist}</div>
+                        </div>
                       </div>
                       <div><StageBadge stage={r.release.releaseStage} small /></div>
                       <span style={{ fontSize: 13, fontWeight: 700, color: SUB }}>{fmtDate(r.release.releaseTargetDate)}</span>

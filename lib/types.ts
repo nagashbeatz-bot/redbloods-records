@@ -1,3 +1,5 @@
+import type { ProjectCoverConfig } from "./project-cover";
+
 export type ProjectStatus =
   | "בעבודה"
   | "מחכה למיקס"
@@ -256,6 +258,8 @@ export interface LabelRelease {
   status: ProjectStatus;
   businessType: ProjectBusinessType;
   release: ProjectReleaseDetails | null;
+  /** The PROJECT's cover config (settings.project_cover_{projectId}); absent = default cover. */
+  cover?: ProjectCoverConfig | null;
 }
 
 /** All fields that can be updated through the UI or agent */
@@ -533,6 +537,9 @@ export interface Project {
   lastAssetAt?: string | null;
   /** True when any artist on the project is on the label_artists roster. */
   isLabelArtist?: boolean;
+  /** Project Cover config (settings.project_cover_{id}); absent = default Redbloods cover.
+   *  Attached by GET /api/projects — never stored on the projects row. */
+  cover?: ProjectCoverConfig | null;
 }
 
 /** Free-text work-materials metadata shown to Steven/Bill (stored in projects.work_materials jsonb). */

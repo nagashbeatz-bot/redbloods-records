@@ -4,6 +4,7 @@ import { projectBaseFolder } from "@/lib/project-paths";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { supabase } from "@/lib/supabase";
 import { listTasks, deleteTask } from "@/lib/tasks-store";
+import { cleanupProjectCover } from "@/lib/project-cover-store";
 import type { UpdatableField } from "@/lib/types";
 
 /**
@@ -11,7 +12,8 @@ import type { UpdatableField } from "@/lib/types";
  *
  * Hard-deleted (owned by project):
  *   sessions (+ Google Calendar events), project_actions, clip_items,
- *   vendor_project_work, settings keys finance_{id} and delivery_{id}
+ *   vendor_project_work, settings keys finance_{id} and delivery_{id},
+ *   project_cover_{id} (+ its Dropbox image, best-effort)
  *
  * Unlinked (not deleted — data remains but no longer tied to project):
  *   transactions.project_id  → NULL
@@ -59,6 +61,9 @@ async function cleanupBeforeDelete(projectId: string): Promise<void> {
     `finance_${projectId}`,
     `delivery_${projectId}`,
   ]);
+
+  // ── 5b. Project Cover — settings row + Dropbox image, best-effort (never throws) ──
+  await cleanupProjectCover(projectId);
 
   // ── 6. transactions — unlink only, never delete ───────────────────────────
   await supabase

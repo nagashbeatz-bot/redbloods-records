@@ -164,6 +164,9 @@ export function isAviAllowedPath(pathname: string): boolean {
     `${base}/availability`,
     `${base}/weekly`,
     `${base}/profile-image`,
+    // Project Cover image for HIS own releases only (GET, read-only): the route
+    // re-checks that ?projectId is one of his releases and 404s anything else.
+    `${base}/project-cover`,
     `${base}/sketches`,
     `${base}/stream`,
     // Download of a project's companion BEAT only (his own files) — a narrow,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects-store";
 import { attachProjectSortMeta } from "@/lib/projects-sort-meta";
+import { attachCovers } from "@/lib/project-cover-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { requireOwner } from "@/lib/require-auth";
 
@@ -16,7 +17,8 @@ export async function GET(req: NextRequest) {
     // Read-only ordering hints for the Projects list (lastAssetAt / isLabelArtist).
     // Additive: the project rows themselves are untouched.
     const projects = await attachProjectSortMeta(await listProjects(filter));
-    return NextResponse.json(projects);
+    // Project Cover config (one bulk settings read; a project with no row = default cover).
+    return NextResponse.json(await attachCovers(projects, (p) => p.id));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[projects GET]", msg);

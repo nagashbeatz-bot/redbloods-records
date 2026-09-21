@@ -12,6 +12,7 @@ import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
@@ -572,6 +573,12 @@ export default function DashboardDesignPreview() {
       .catch(() => setReleasesError(true));
   }, []);
   useEffect(() => { loadReleases(); }, [loadReleases]);
+  // A project's cover was changed (drawer editor) → re-read the release rows so their thumbnails update.
+  useEffect(() => {
+    const h = () => { void loadReleases(); };
+    window.addEventListener(COVER_CHANGED_EVENT, h);
+    return () => window.removeEventListener(COVER_CHANGED_EVENT, h);
+  }, [loadReleases]);
   const upcomingReleases = useMemo(() => summarizeUpcomingReleases(labelReleases ?? []), [labelReleases]);
   const releaseCount = upcomingReleases.rows.length;
   const releaseAttention = upcomingReleases.needsAttentionCount;

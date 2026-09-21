@@ -83,7 +83,7 @@ export async function fetchArtistWeeklyEvents(artistName: string, weekStart: str
   // weekStart/weekEnd exactly like sessions.date, so there's no UTC shift.
   let releaseItems: WeeklyItem[] = [];
   if (labelArtistId) {
-    const releases = await listReleasesByArtist(labelArtistId);
+    const releases = await listReleasesByArtist(labelArtistId, { cover: false });
     releaseItems = releases
       .filter((r) => !!r.release?.releaseTargetDate && r.release.releaseTargetDate >= weekStart && r.release.releaseTargetDate <= weekEnd)
       .map((r) => ({

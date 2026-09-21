@@ -13,6 +13,8 @@ import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
 import { slugForPortalArtistName, isNotifyEnabledArtistName, shortArtistName, NAGASH_NAME } from "@/lib/red-artists/portal-registry";
 import { saveFileAs } from "@/lib/download-file";
+import ProjectCover from "@/components/ui/ProjectCover";
+import type { ProjectCoverConfig } from "@/lib/project-cover";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -464,7 +466,7 @@ function fmtSketchDate(iso: string | null | undefined): string {
 // release pipeline (project_release_details, via project_id → project name). ──
 // Source of truth = /api/red-artists/next-release → lib/release-store.ts's
 // getNextRelease(labelArtistId). Read-only here; editing happens in "ניהול הלייבל".
-export type PortalRelease = { projectId: string; title: string; releaseDate: string };
+export type PortalRelease = { projectId: string; title: string; releaseDate: string; cover?: ProjectCoverConfig | null };
 
 // ── Next project to work on — OWNER-chosen, manifest-stored pointer (a sketch +
 // an OPTIONAL deadline). Source = /api/red-artists/next-work. SEPARATE from
@@ -5003,12 +5005,14 @@ function releaseTargetMs(ymd: string): number {
   return Number.isFinite(t) ? t : Date.now();
 }
 
-// Square cover placeholder (no cover field in the model) with a disc peeking out
-// behind it toward the card centre. Premium Redbloods look; never a broken image.
-function ReleaseArtwork({ title, size }: { title: string; size: number }) {
+// The release's cover is the PROJECT's own (ProjectCover, read-only here — only the owner
+// edits it from the project). A disc peeks out behind it toward the card centre.
+// No cover config → the default Redbloods theme + the project name, never a placeholder.
+function ReleaseArtwork({ projectId, title, cover, size }: { projectId: string; title: string; cover?: ProjectCoverConfig | null; size: number }) {
+  const { apiBase } = usePortalContext();
   const disc = Math.round(size * 0.92);
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }} role="img" aria-label={`עטיפת הריליס ${title}`}>
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       {/* disc — behind, peeking out on the physical-right (toward the card centre in RTL) */}
       <div style={{
         position: "absolute", top: "50%", right: -Math.round(size * 0.30), transform: "translateY(-50%)",
@@ -5021,14 +5025,8 @@ function ReleaseArtwork({ title, size }: { title: string; size: number }) {
         <div style={{ position: "absolute", top: "50%", left: "50%", width: 7, height: 7, borderRadius: "50%", transform: "translate(-50%,-50%)", background: "#E5322F", boxShadow: "0 0 10px rgba(220,38,38,0.8)" }} />
       </div>
       {/* cover — in front */}
-      <div style={{
-        position: "relative", zIndex: 1, width: size, height: size, borderRadius: 14, overflow: "hidden",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: 10, boxSizing: "border-box",
-        background: "radial-gradient(120% 120% at 28% 18%, rgba(220,38,38,0.38) 0%, rgba(220,38,38,0.06) 44%, #100c0d 74%), linear-gradient(160deg, #1c1416 0%, #0b0a0b 100%)",
-        border: "1px solid rgba(220,38,38,0.4)", boxShadow: "0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)",
-      }}>
-        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.18em", color: "rgba(255,107,107,0.85)" }}>REDBLOODS</div>
-        <div style={{ fontSize: size >= 110 ? 17 : 14, fontWeight: 900, color: "#fff", textAlign: "center", lineHeight: 1.15, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{title}</div>
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <ProjectCover projectId={projectId} name={title} cover={cover} size={size} imageBase={apiBase} />
       </div>
     </div>
   );
@@ -5092,7 +5090,7 @@ function NextReleaseCard({ release }: { release: PortalRelease | null }) {
       display: "flex", gap: isMobile ? 18 : 26, flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
     }}>
       {/* left (RTL row-reverse): artwork + disc · mobile: top */}
-      <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
+      <ReleaseArtwork projectId={release.projectId} title={release.title} cover={release.cover} size={isMobile ? 124 : 148} />
 
       {/* centre: label · title · date · timer */}
       <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>

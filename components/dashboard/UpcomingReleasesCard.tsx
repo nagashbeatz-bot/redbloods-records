@@ -14,6 +14,7 @@ import {
   type ReleaseDisplayStatus, type ReleaseLineKind, type UpcomingReleaseRow,
 } from "@/lib/dashboard-releases";
 import AddReleaseModal from "@/components/dashboard/AddReleaseModal";
+import ProjectCover from "@/components/ui/ProjectCover";
 import { EditReleaseModal, BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED } from "@/components/label/labelShared";
 
 const MAX_ROWS = 3;
@@ -43,7 +44,7 @@ export default function UpcomingReleasesCard({ rows, state, onReload }: {
   const shown = rows.slice(0, MAX_ROWS);
 
   return (
-    <div style={{
+    <div className="rb-urc" style={{
       background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
       overflow: "hidden",
       boxShadow: "0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
@@ -68,6 +69,20 @@ export default function UpcomingReleasesCard({ rows, state, onReload }: {
         </div>
       </div>
 
+      <style>{`
+        .rb-urc { container-type: inline-size; }
+        /* wide: cover · text · status · date · calendar mark (RTL, one compact row) */
+        .rb-urc-row { display: grid; align-items: center; column-gap: 14px; row-gap: 6px;
+          grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+          grid-template-areas: "cover text pill date cal"; }
+        .rb-urc-cal { display: inline-flex; }
+        /* narrow card / phone: status drops under the text, calendar mark hidden */
+        @container (max-width: 500px) {
+          .rb-urc-row { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px;
+            grid-template-areas: "cover text date" "cover pill date"; }
+          .rb-urc-cal { display: none; }
+        }
+      `}</style>
       <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
         {state === "loading" ? (
           <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 20 }}>טוען…</div>
@@ -96,38 +111,46 @@ export default function UpcomingReleasesCard({ rows, state, onReload }: {
               type="button"
               onClick={() => setEditItem(r.item)}
               title="לחץ לעריכת הריליס"
+              className="rb-urc-row"
               style={{
                 width: "100%", textAlign: "right", fontFamily: "inherit", cursor: "pointer",
                 background: r.overdue ? "rgba(239,68,68,0.06)" : CARD2,
                 border: `1px solid ${r.overdue ? "rgba(239,68,68,0.28)" : BORDER}`,
-                borderRadius: 13, padding: "12px 14px",
+                borderRadius: 14, padding: "10px 14px",
                 boxShadow: "0 1px 6px rgba(0,0,0,0.3)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 10px" }}>
-                <div style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.item.name}</div>
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.item.artist}</div>
-                </div>
-                <span style={{
-                  fontSize: 10.5, fontWeight: 800, padding: "3px 10px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0,
-                  color: statusColor, background: `${statusColor}1A`, border: `1px solid ${statusColor}33`,
-                }}>{r.status}</span>
-                <div style={{ flexShrink: 0, textAlign: "left", minWidth: 72 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT }}>{releaseShortDate(r.item.release.releaseTargetDate!)}</div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: daysColor, marginTop: 2 }}>{releaseDaysText(r.daysLeft)}</div>
-                </div>
+              {/* RTL order: cover · name/artist/line · status · date/days · calendar mark.
+                  The cover is the PROJECT's own (ProjectCover) — this card holds no artwork. */}
+              <div style={{ gridArea: "cover", display: "flex" }}>
+                <ProjectCover projectId={r.item.projectId} name={r.item.name} cover={r.item.cover} size={60} mobileSize={46} />
               </div>
-              {r.line && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 7, marginTop: 9, paddingTop: 9,
-                  borderTop: `1px solid ${BORDER2}`,
-                  fontSize: 11.5, fontWeight: 600, color: lineColor(r.line.kind, urgent),
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: lineColor(r.line.kind, urgent), flexShrink: 0 }} />
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.line.text}</span>
-                </div>
-              )}
+              <div style={{ gridArea: "text", minWidth: 0 }}>
+                <div dir="auto" style={{ fontSize: 15, fontWeight: 800, color: TEXT, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.item.name}</div>
+                <div dir="auto" style={{ fontSize: 12.5, color: SUB, marginTop: 2, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.item.artist}</div>
+                {r.line && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 6, fontSize: 11.5, fontWeight: 600, color: lineColor(r.line.kind, urgent), minWidth: 0 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: lineColor(r.line.kind, urgent), flexShrink: 0 }} />
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.line.text}</span>
+                  </div>
+                )}
+              </div>
+              <span style={{
+                gridArea: "pill", justifySelf: "start", alignSelf: "center",
+                fontSize: 11, fontWeight: 800, padding: "4px 12px", borderRadius: 99, whiteSpace: "nowrap",
+                color: statusColor, background: `${statusColor}1A`, border: `1px solid ${statusColor}33`,
+              }}>{r.status}</span>
+              <div style={{ gridArea: "date", alignSelf: "center", textAlign: "left", minWidth: 74 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{releaseShortDate(r.item.release.releaseTargetDate!)}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: daysColor, marginTop: 2, whiteSpace: "nowrap" }}>{releaseDaysText(r.daysLeft)}</div>
+              </div>
+              <span className="rb-urc-cal" aria-hidden style={{
+                gridArea: "cal", alignSelf: "center", width: 34, height: 34, borderRadius: 10,
+                alignItems: "center", justifyContent: "center", color: SUB,
+                background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`,
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></svg>
+              </span>
             </button>
           );
         })}

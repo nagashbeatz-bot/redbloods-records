@@ -5,6 +5,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import type { LabelArtist, LabelRelease, ProjectReleaseDetails } from "@/lib/types";
+import ProjectCover from "@/components/ui/ProjectCover";
+import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM,
   ARTIST_STATUS_COLOR, fmtDate, daysUntil, daysInStage, ACTIVE_STAGES_SET,
@@ -30,6 +32,11 @@ export default function ArtistPage({ artistId }: { artistId: string }) {
     }).catch(() => setState("error"));
   }, [artistId]);
   useEffect(() => { reload(); }, [reload]);
+  // A project's cover changed (drawer editor) → reload so the release covers update.
+  useEffect(() => {
+    window.addEventListener(COVER_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(COVER_CHANGED_EVENT, reload);
+  }, [reload]);
 
   const d = useMemo(() => {
     const rels = (releases ?? []).filter((r): r is WithRelease => !!r.release);
@@ -78,13 +85,16 @@ export default function ArtistPage({ artistId }: { artistId: string }) {
         <Card>
           {d.next ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 19, fontWeight: 900, color: TEXT, marginBottom: 8 }}>{d.next.name}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
+              <ProjectCover projectId={d.next.projectId} name={d.next.name} cover={d.next.cover} size={88} mobileSize={72} />
+              <div style={{ minWidth: 0 }}>
+                <div dir="auto" style={{ fontSize: 19, fontWeight: 900, color: TEXT, marginBottom: 8, textAlign: "right" }}>{d.next.name}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <StageBadge stage={d.next.release.releaseStage} />
                   <span style={{ fontSize: 12.5, color: SUB }}>תאריך יעד: <b style={{ color: TEXT }}>{fmtDate(d.next.release.releaseTargetDate)}</b></span>
                   <span style={{ fontSize: 12.5, color: SUB }}>{daysInStage(d.next.release.stageEnteredAt)} ימים בשלב</span>
                 </div>
+              </div>
               </div>
               <button onClick={() => setEditItem(d.next!)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 15px", cursor: "pointer", fontFamily: "inherit" }}>עריכה</button>
             </div>
@@ -104,9 +114,12 @@ export default function ArtistPage({ artistId }: { artistId: string }) {
               return (
                 <button key={r.projectId} onClick={() => setEditItem(r)} style={{ textAlign: "right", background: CARD, border: `1px solid ${rel.blocker.trim() ? "rgba(248,113,113,0.28)" : BORDER}`, borderRadius: 16, padding: "16px 18px", cursor: "pointer", fontFamily: "inherit" }}>
                   <div className="rb-art-rel">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
-                      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>{daysInStage(rel.stageEnteredAt)} ימים בשלב</div>
+                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
+                      <ProjectCover projectId={r.projectId} name={r.name} cover={r.cover} size={52} mobileSize={44} />
+                      <div style={{ minWidth: 0 }}>
+                        <div dir="auto" style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>{daysInStage(rel.stageEnteredAt)} ימים בשלב</div>
+                      </div>
                     </div>
                     <div><StageBadge stage={rel.releaseStage} small /></div>
                     <div style={{ fontSize: 12.5, color: SUB }}>
