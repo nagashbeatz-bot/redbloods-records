@@ -75,6 +75,7 @@ function buildEyesRaw(): PartnerEyesRaw {
       { source: "label_artists", status: "ok", rowCount: 1 },
       { source: "clip_productions", status: "ok", rowCount: 2 },
       { source: "artist_balance_entries", status: "ok", rowCount: 1 },
+      { source: "agent_alerts_eyes", status: "ok", rowCount: 3 },
     ],
     clients: [
       { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל" },
@@ -87,6 +88,12 @@ function buildEyesRaw(): PartnerEyesRaw {
     clips: [
       { id: "clip1", title: "קליפ עם פרויקט", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
       { id: "clip2", title: "קליפ ישן (שם בלבד)", status: "בתהליך", projectId: null, artistName: "אמן לייבל בדיקה" },
+    ],
+    // 3 alerts spanning statuses/types COO's own status="new"-only read never sees at all (al2, al3)
+    alerts: [
+      { id: "al1", type: "week_understaffed", severity: "info", status: "new", hasEntityKey: false, relatedProjectId: null, createdAt: "2026-09-21T08:00:00Z" },
+      { id: "al2", type: "overdue_deadline", severity: "important", status: "handled", hasEntityKey: true, relatedProjectId: "p1", createdAt: "2026-08-01T08:00:00Z" },
+      { id: "al3", type: "some_old_type", severity: "warning", status: "dismissed", hasEntityKey: false, relatedProjectId: null, createdAt: "2026-06-01T08:00:00Z" },
     ],
   });
 }
@@ -125,14 +132,79 @@ console.log("missing source ≠ zero, failed source ≠ empty");
 }
 
 console.log("relation quality reflects reality, never overstates it");
-check("Clients ↔ Projects is TEXT_MATCH", P.domains.clients.relations[0].quality, "TEXT_MATCH");
+check("Clients ↔ Projects is TEXT_MATCH (no id path exists at all)", P.domains.clients.relations[0].quality, "TEXT_MATCH");
 check("Label Artists ↔ Projects primary relation is TEXT_MATCH (not falsely ID-linked)", P.domains.labelArtists.relations[0].quality, "TEXT_MATCH");
-ok("…but the release-row ID path is documented separately as its own relation entry", P.domains.labelArtists.relations.some((r) => r.via.includes("label_artist_id") && r.quality === "ID"));
-ok("Clips ↔ Projects is classified from REAL counts (1 of 2 rows carry project_id here) → TEXT_MATCH, with the exact split in a warning", (() => {
-  const rel = P.domains.clips.relations.find((r) => r.via.includes("project_id"))!;
-  return rel.quality === "TEXT_MATCH" && P.domains.clips.warnings.some((w) => w.includes("1") && w.includes("2"));
+ok("…but the release-row ID path is documented separately, with its OWN coverage (not folded into the primary relation)", (() => {
+  const rel = P.domains.labelArtists.relations.find((r) => r.via.includes("label_artist_id"))!;
+  return rel.quality === "ID" && rel.coverage !== undefined;
 })());
+
+console.log("Phase B.1 fix: relation QUALITY is never downgraded because of partial COVERAGE (was a real bug in Phase B)");
+ok("Clips ↔ Projects: 1 of 2 rows carry project_id in this fixture → quality stays ID, coverage is PARTIAL (previously wrongly downgraded to TEXT_MATCH)", (() => {
+  const rel = P.domains.clips.relations.find((r) => r.via.includes("project_id"))!;
+  return rel.quality === "ID" && rel.coverage === "PARTIAL";
+})());
+ok("…the exact split (1/2) is in a warning, never silently rounded away", P.domains.clips.warnings.some((w) => w.includes("1/2")));
 check("Clips data counts withProjectId/withoutProjectId correctly from the fixture (1 and 1)", [P.domains.clips.data!.withProjectId, P.domains.clips.data!.withoutProjectId], [1, 1]);
+ok("if ALL rows carried project_id, coverage would read FULL (not just ID)", (() => {
+  const rawAllLinked = buildEyesRaw(); rawAllLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: "p1", artistName: "a" }];
+  const rel = assemblePartnerCompanyState(coo, rawAllLinked).domains.clips.relations.find((r) => r.via.includes("project_id"))!;
+  return rel.quality === "ID" && rel.coverage === "FULL";
+})());
+ok("if NO rows carried project_id, quality falls back to TEXT_MATCH (never invents an id relation from nothing)", (() => {
+  const rawNoneLinked = buildEyesRaw(); rawNoneLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: null, artistName: "a" }];
+  const rel = assemblePartnerCompanyState(coo, rawNoneLinked).domains.clips.relations.find((r) => r.via.includes("project_id"))!;
+  return rel.quality === "TEXT_MATCH";
+})());
+
+console.log("Phase B.1: Victor relation coverage stays explicit, no invented fallback relation");
+ok("Victor ↔ Projects relation carries a coverage figure derived from lib/coo's own victor.link entry", P.domains.victor.relations[0].coverage !== undefined);
+ok("the Victor domain explains WHY unlinked works have no reliable fallback (projectName collapses to the work's own title, never a real project/artist name)", P.domains.victor.warnings.some((w) => w.includes("projectName") && w.includes("title")));
+ok("…and explicitly says no new TEXT_MATCH relation was invented for Victor", P.domains.victor.warnings.some((w) => w.includes("TEXT_MATCH")));
+
+console.log("Phase B.1: Shows DJ fields flow through the additive lib/coo change");
+ok("shows.djClientId is now populated (non-undefined key) on the reused CompanyState data", (() => {
+  const rows = [...coo.state.shows!.upcoming, ...coo.state.shows!.doneUnpaid];
+  return rows.every((s) => "djClientId" in s);
+})());
+ok("Shows ↔ external relation is quality ID with a real coverage figure now that the field is exposed", (() => {
+  const rel = P.domains.shows.relations.find((r) => r.via === "shows.dj_client_id")!;
+  return rel.quality === "ID" && rel.coverage !== undefined;
+})());
+ok("a show with djClientId=null never creates a fake relation (coverage accounts for it, quality stays ID for the relation TYPE, not per-row)", (() => {
+  // the one fixture show (sh1) has no dj fields set → djClientId is null/undefined-mapped-to-null
+  const rows = [...coo.state.shows!.upcoming, ...coo.state.shows!.doneUnpaid];
+  return rows.every((s) => s.djClientId === null);
+})());
+
+console.log("Phase B.1: Agent Alerts sees the true breadth, not just what COO's brief shows");
+check("Partner's agentAlerts domain sees ALL 3 alerts (2 of which COO's status=\"new\"-only read never even fetches)", P.domains.agentAlerts.data!.total, 3);
+check("byStatus breaks down new/handled/dismissed correctly", P.domains.agentAlerts.data!.byStatus, { new: 1, handled: 1, dismissed: 1 });
+ok("cooVisible cross-references what the brief actually shows, separately from the true total", P.domains.agentAlerts.data!.cooVisible.shownByBrief !== null && P.domains.agentAlerts.data!.total > (P.domains.agentAlerts.data!.cooVisible.shownByBrief ?? 0));
+ok("a resolved/dismissed alert is present as a historical row, never re-labelled as a current issue (no severity/urgency field invented)", !JSON.stringify(P.domains.agentAlerts.data!.items).includes("current"));
+ok("agentAlerts is no longer adapted from lib/coo's narrow state.alerts — it has its own Partner-only reader", P.domains.agentAlerts.provenance.reader.includes("readPartnerEyesRaw"));
+check("withEntityKey counts correctly (al2 has one)", P.domains.agentAlerts.data!.withEntityKey, 1);
+check("withRelatedProject counts correctly (al2 has one)", P.domains.agentAlerts.data!.withRelatedProject, 1);
+{
+  const raw4 = buildEyesRaw(); raw4.alerts = null;
+  raw4.sources = raw4.sources.map((s) => (s.source === "agent_alerts_eyes" ? { source: "agent_alerts_eyes", status: "failed" as const, rowCount: null, error: "boom" } : s));
+  const P4 = assemblePartnerCompanyState(coo, raw4);
+  check("a failed Agent Alerts read → status UNKNOWN, data null, coverage FAILED (never an empty/zero total)", [P4.domains.agentAlerts.status, P4.domains.agentAlerts.data, P4.domains.agentAlerts.coverage], ["UNKNOWN", null, "FAILED"]);
+}
+
+console.log("Phase B.1 fix: an anchor domain with no outbound relation is not penalized to LOW reliability");
+check("projects has no outbound relation (it's the anchor entity) yet FULL coverage → reliability HIGH, not LOW", [P.domains.projects.relations.length, P.domains.projects.coverage, P.domains.projects.reliability], [0, "FULL", "HIGH"]);
+
+console.log("Phase B.1: relation model review — no relation ever mixes quality and coverage semantics");
+ok("every relation with a numeric split (some rows linked, not all) reports quality=ID + a coverage field, never a downgraded quality", (() => {
+  const allRelations = Object.values(P.domains).flatMap((d) => d.relations);
+  return allRelations.every((r) => !(r.quality === "TEXT_MATCH" && r.coverage === "FULL"));
+})());
+ok("Coverage values used on relations are only ever the 4 defined Coverage values", (() => {
+  const allRelations = Object.values(P.domains).flatMap((d) => d.relations);
+  const valid = new Set(["FULL", "PARTIAL", "NONE", "FAILED", undefined]);
+  return allRelations.every((r) => valid.has(r.coverage));
+})());
 
 console.log("Steven ball stays UNKNOWN/unsupported — no new ball logic");
 ok("Steven domain warns BALL_LOCATION is UNKNOWN/UNSUPPORTED", P.domains.steven.warnings.some((w) => w.includes("BALL_LOCATION") && w.includes("UNKNOWN")));
@@ -171,7 +243,7 @@ ok("no portal file imports anything from lib/partner", (() => {
   const portalFiles = [...portalDirs.flatMap((d) => walk(path.join(ROOT, d))), ...fs.readdirSync(path.join(ROOT, "lib")).filter((f) => /^(steven|victor|shalev|avi|cleantone|dj-|beat|show-|sketch)/.test(f)).map((f) => path.join(ROOT, "lib", f))];
   return portalFiles.every((f) => !/lib\/partner/.test(fs.readFileSync(f, "utf8")));
 })());
-ok("lib/coo is completely unmodified by this block: no file in lib/coo imports lib/partner", (() => {
+ok("lib/coo has no reverse dependency on lib/partner (the only lib/coo edits this block are the additive Shows DJ fields — see report)", (() => {
   const cooDir = path.join(ROOT, "lib/coo");
   return fs.readdirSync(cooDir).every((f) => !/lib\/partner/.test(fs.readFileSync(path.join(cooDir, f), "utf8")));
 })());

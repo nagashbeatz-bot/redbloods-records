@@ -58,17 +58,42 @@ async function main() {
   console.log(`Partner Eyes snapshot — ${snapshot.capturedAt} (Israel date ${snapshot.todayIL})`);
   console.log(`eyes schema: ${snapshot.schemaVersion} | coo schema: ${snapshot.cooSchemaVersion}\n`);
 
-  const rows: Array<[string, string, string, string | number, string, string]> = [];
+  // Domain / Rows / Coverage / Reliability / Relation type / Relation coverage / Warnings
+  const rows: Array<[string, string | number, string, string, string, string, string]> = [];
   for (const [key, d] of Object.entries(snapshot.domains)) {
-    const relSummary = d.relations.length ? d.relations.map((r) => `${r.toDomain}:${r.quality}`).join(", ") : "—";
-    rows.push([key, d.status, d.coverage, countOf(d.data), relSummary, String(d.warnings.length)]);
+    const relType = d.relations.length ? d.relations.map((r) => `${r.toDomain}:${r.quality}`).join(", ") : "—";
+    const relCoverage = d.relations.length ? d.relations.map((r) => r.coverage ?? "—").join(", ") : "—";
+    rows.push([key, countOf(d.data), d.coverage, d.reliability, relType, relCoverage, String(d.warnings.length)]);
   }
-  const header = ["Domain", "Status", "Coverage", "Count", "Relations", "Warnings"];
+  const header = ["Domain", "Rows", "Coverage", "Reliability", "Relation type", "Relation coverage", "Warnings"];
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
   const line = (cols: string[]) => cols.map((c, i) => c.padEnd(widths[i])).join("  ");
   console.log(line(header));
   console.log(widths.map((w) => "-".repeat(w)).join("  "));
   for (const r of rows) console.log(line(r.map(String)));
+
+  // ── Special call-outs (Phase B.1 §7) ──────────────────────────────────────
+  console.log("\n── Agent Alerts: raw vs COO-visible ──");
+  const aa = snapshot.domains.agentAlerts.data;
+  if (aa) {
+    console.log(`  total (all statuses, Partner Eyes): ${aa.total}`);
+    console.log(`  byStatus: ${Object.entries(aa.byStatus).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+    console.log(`  shown by COO's brief (status="new" + allowlist + recent): ${aa.cooVisible.shownByBrief ?? "—"}`);
+    console.log(`  withEntityKey: ${aa.withEntityKey} | withRelatedProject: ${aa.withRelatedProject}`);
+  } else console.log("  (unavailable)");
+
+  console.log("\n── Clips: real project_id coverage ──");
+  const clips = snapshot.domains.clips.data;
+  if (clips) console.log(`  ${clips.withProjectId}/${clips.total} carry project_id (relation quality ID, coverage measured — never downgraded for partial coverage)`);
+  else console.log("  (unavailable)");
+
+  console.log("\n── Shows: DJ id/confirmation coverage ──");
+  const showsRel = snapshot.domains.shows.relations.find((r) => r.via === "shows.dj_client_id");
+  console.log(`  ${showsRel ? `${showsRel.notes ?? ""}` : "(no dj relation reported)"}`);
+
+  console.log("\n── Victor: project relation coverage ──");
+  const victorRel = snapshot.domains.victor.relations[0];
+  console.log(`  ${victorRel?.notes ?? "—"} | coverage=${victorRel?.coverage ?? "—"}`);
 
   console.log("\nWarnings detail:");
   for (const [key, d] of Object.entries(snapshot.domains)) {

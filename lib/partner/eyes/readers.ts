@@ -15,6 +15,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { listClients } from "@/lib/clients-store";
 import { listLabelArtists } from "@/lib/label-artists-store";
+import { getAlerts } from "@/lib/agent/alerts-store";
 import type { SourceStatus } from "../../coo/types";
 import type { PartnerEyesRaw } from "./types";
 
@@ -27,7 +28,7 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     catch (e) { results[name] = { ok: false, count: null, error: msg(e) }; return null; }
   };
 
-  const [clients, labelArtists, clips] = await Promise.all([
+  const [clients, labelArtists, clips, alerts] = await Promise.all([
     track("clients", async () => (await listClients()).map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status })), (v) => v.length),
     track("label_artists", async () => (await listLabelArtists()).map((a) => ({ id: a.id, name: a.name, status: a.status })), (v) => v.length),
     track("clip_productions", async () => {
@@ -44,6 +45,12 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
         artistName: (r.artist_name as string | null) ?? "",
       }));
     }, (v) => v.length),
+    // Deliberately NO status filter — lib/coo's own read narrows to status="new" for the brief;
+    // Eyes needs the true breadth (every status, every type). Read-only: no update/resolve/delete.
+    track("agent_alerts_eyes", async () => (await getAlerts({ limit: 1000 })).map((a) => ({
+      id: a.id, type: a.type, severity: a.severity, status: a.status,
+      hasEntityKey: a.entityKey !== null, relatedProjectId: a.relatedProjectId, createdAt: a.createdAt,
+    })), (v) => v.length),
   ]);
 
   // Bulk artist_id-only select, counted in JS — one query, no per-artist round trips.
@@ -63,10 +70,10 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     results["artist_balance_entries"] = { ok: false, count: null, error: "label_artists unavailable" };
   }
 
-  const order = ["clients", "label_artists", "clip_productions", "artist_balance_entries"];
+  const order = ["clients", "label_artists", "clip_productions", "artist_balance_entries", "agent_alerts_eyes"];
   const sources: SourceStatus[] = order.filter((n) => results[n]).map((n) => ({
     source: n, status: results[n].ok ? "ok" : "failed", rowCount: results[n].count, ...(results[n].error ? { error: results[n].error } : {}),
   }));
 
-  return { sources, clients, labelArtists, clips, artistBalanceCounts };
+  return { sources, clients, labelArtists, clips, artistBalanceCounts, alerts };
 }

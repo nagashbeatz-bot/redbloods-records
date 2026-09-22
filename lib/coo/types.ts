@@ -266,6 +266,10 @@ export interface ShowFact {
   price: number;
   advance: number;
   incomeTxId: string | null;
+  /** Additive (Partner Phase B.1) — not read by any signal/case/priority/brief logic. */
+  djClientId: string | null;
+  djConfirmationStatus: string | null;
+  djConfirmedAt: string | null;
 }
 export interface ShowsFact {
   total: number;
@@ -454,6 +458,9 @@ export interface RawProposal {
 export interface RawShow {
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
   price: number; advance: number; incomeTxId: string | null;
+  /** Additive (Partner Phase B.1) — already fetched by listShows()'s select("*"), just not read by Phase 1a signals/cases.
+   *  Optional so existing fixtures/tests never need to change; missing = null. */
+  djClientId?: string | null; djConfirmationStatus?: string | null; djConfirmedAt?: string | null;
 }
 export interface RawSession {
   id: string; projectId: string | null; date: string; startTime: string | null; endTime: string | null;

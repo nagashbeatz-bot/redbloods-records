@@ -216,7 +216,10 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
   if (raw.shows) {
     const facts: ShowFact[] = raw.shows.map((s) => {
       const d = parseYmd(s.date);
-      return { id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, incomeTxId: s.incomeTxId };
+      return {
+        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, incomeTxId: s.incomeTxId,
+        djClientId: s.djClientId ?? null, djConfirmationStatus: s.djConfirmationStatus ?? null, djConfirmedAt: s.djConfirmedAt ?? null,
+      };
     });
     const cancelled = (s: ShowFact) => s.status === "בוטל" || s.paymentStatus === "בוטל";
     const upcoming = facts.filter((s) => CONFIRMED_SHOW.has(s.status) && !cancelled(s) && s.daysTo !== null && s.daysTo >= 0)

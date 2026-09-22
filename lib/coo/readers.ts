@@ -92,6 +92,8 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
     track("shows", async () => (await listShows()).map((s) => ({
       id: s.id, name: s.name, status: s.status as string, paymentStatus: s.payment_status as string, date: s.date, price: s.show_price ?? 0,
       advance: s.advance_payment ?? 0, incomeTxId: s.linked_income_transaction_id ?? null,
+      // Additive (Partner Phase B.1) — already returned by listShows()'s select("*"); no new query.
+      djClientId: s.dj_client_id ?? null, djConfirmationStatus: (s.dj_confirmation_status as string | null) ?? null, djConfirmedAt: s.dj_confirmed_at ?? null,
     })), (v) => v.length),
     track("sessions", async () => {
       const rows = await selectAll<{ id: string; project_id: string | null; date: string; start_time: string | null; end_time: string | null; status: string; session_type: string }>(

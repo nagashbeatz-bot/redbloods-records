@@ -58,7 +58,15 @@ export interface PartnerDomainProvenance {
 
 export interface PartnerRelation {
   toDomain: PartnerDomainKey | "external";
+  /** The KIND of link — a real id vs. free-text matching. Never downgraded because only some rows carry it. */
   quality: RelationQuality;
+  /**
+   * How many of the RELEVANT records actually carry this relation (distinct from `quality`,
+   * which never changes because of partial coverage — see lib/partner/eyes/coverage.ts).
+   * Omitted when not computable without a new read (e.g. per-row transaction→project linkage,
+   * which lib/coo's aggregated FinanceFact does not preserve).
+   */
+  coverage?: Coverage;
   /** The exact field(s) or key pattern that carries the relation, e.g. "projects.artist = clients.name". */
   via: string;
   notes?: string;
@@ -101,11 +109,36 @@ export interface ClipsFact {
   items: ClipSummary[];
 }
 
-// ── Raw input for the NEW Partner-only readers (nothing lib/coo already reads) ──
+/**
+ * agent_alerts, Phase B.1: lib/coo's own read is intentionally narrow (status="new"
+ * only, then allowlisted-type + max-age for the brief) — correct for a morning brief,
+ * too narrow for Eyes. This is the BROAD picture: every status, every type, no age cutoff.
+ * Still no reasoning: an old/resolved alert here is a historical row, never "current".
+ */
+export interface AlertSummary {
+  id: string; type: string; severity: string; status: string;
+  hasEntityKey: boolean; relatedProjectId: string | null; createdAt: string; ageDays: number | null;
+}
+export interface AgentAlertsFact {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  withEntityKey: number;
+  withRelatedProject: number;
+  ageStats: { median: number | null; oldest: number | null };
+  /** What lib/coo's own brief-oriented read actually shows — a cross-reference, not a second source of truth. */
+  cooVisible: { shownByBrief: number | null; note: string };
+  items: AlertSummary[];
+}
+
+// ── Raw input for the NEW Partner-only readers (nothing lib/coo already reads, or lib/coo reads a narrower subset) ──
 
 export interface RawClient { id: string; name: string; type: string; status: string }
 export interface RawLabelArtist { id: string; name: string; status: string }
 export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string }
+export interface RawAlertEyes {
+  id: string; type: string; severity: string; status: string; hasEntityKey: boolean; relatedProjectId: string | null; createdAt: string;
+}
 
 export interface PartnerEyesRaw {
   sources: SourceStatus[];
@@ -114,6 +147,8 @@ export interface PartnerEyesRaw {
   /** label_artists.id -> row count in artist_balance_entries. null = the read failed or labelArtists is null. */
   artistBalanceCounts: Record<string, number> | null;
   clips: RawClip[] | null;
+  /** ALL agent_alerts rows regardless of status — see AgentAlertsFact. */
+  alerts: RawAlertEyes[] | null;
 }
 
 // ── The snapshot ──────────────────────────────────────────────────────────────
@@ -137,7 +172,8 @@ export interface PartnerCompanyState {
     victor: PartnerDomainState<CompanyState["team"]["victor"]>;
     steven: PartnerDomainState<CompanyState["team"]["steven"]>;
     tasks: PartnerDomainState<CompanyState["tasks"]>;
-    agentAlerts: PartnerDomainState<CompanyState["alerts"]>;
+    /** Partner-only broad read (Phase B.1) — see AgentAlertsFact for why this is NOT adapted from lib/coo's state.alerts. */
+    agentAlerts: PartnerDomainState<AgentAlertsFact>;
     labelArtists: PartnerDomainState<LabelArtistsFact>;
     clips: PartnerDomainState<ClipsFact>;
     suppliers: PartnerDomainState<null>;

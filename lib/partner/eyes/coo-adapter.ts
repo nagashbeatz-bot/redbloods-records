@@ -7,11 +7,17 @@
  * CompanyState as lib/coo/facts.ts already built it (including its own
  * coverage accounting and its Hardening-1 Victor-ball semantics). Nothing
  * here recomputes or reinterprets a COO fact.
+ *
+ * Agent Alerts is deliberately NOT adapted here (Phase B.1) — lib/coo's own
+ * read is status="new"-only, then further narrowed to allowlisted+recent for
+ * the brief. That is correct for a morning brief and too narrow for Eyes, so
+ * it gets its own Partner-only reader — see lib/partner/eyes/readers.ts and
+ * company-state.ts's buildAgentAlerts().
  */
 import type { CooResult } from "../../coo/pipeline";
 import type { CompanyState, SourceStatus } from "../../coo/types";
 import { coverageFromCounts, coverageFromStatus, reliabilityFrom, statusFromSource } from "./coverage";
-import type { PartnerCompanyState, PartnerDomainState, PartnerRelation } from "./types";
+import type { Coverage, PartnerCompanyState, PartnerDomainState, PartnerRelation } from "./types";
 
 const READER = "lib/coo (reused via buildCoo())";
 
@@ -21,13 +27,16 @@ function sourceOf(sources: SourceStatus[], name: string): SourceStatus | undefin
 function coverageEntry(state: CompanyState, key: string) {
   return state.coverage.find((c) => c.key === key);
 }
+function relCoverage(usable: number | null | undefined, total: number | null | undefined): Coverage | undefined {
+  return usable == null || total == null ? undefined : coverageFromCounts(usable, total);
+}
 
 function domainState<T>(
   state: CompanyState,
   sourceName: string,
   data: T | null,
   relations: PartnerRelation[],
-  opts: { coverage?: ReturnType<typeof coverageFromCounts>; warnings?: string[] } = {},
+  opts: { coverage?: Coverage; warnings?: string[] } = {},
 ): Omit<PartnerDomainState<T>, "domain"> {
   const status = statusFromSource(sourceOf(state.sources, sourceName));
   const coverage = opts.coverage ?? coverageFromStatus(status);
@@ -45,7 +54,7 @@ function domainState<T>(
 
 export type CooAdaptedDomains = Pick<
   PartnerCompanyState["domains"],
-  "projects" | "proposals" | "finance" | "receivables" | "sessions" | "releases" | "shows" | "victor" | "steven" | "tasks" | "agentAlerts"
+  "projects" | "proposals" | "finance" | "receivables" | "sessions" | "releases" | "shows" | "victor" | "steven" | "tasks"
 >;
 
 export function adaptCooCompanyState(coo: CooResult): CooAdaptedDomains {
@@ -56,13 +65,21 @@ export function adaptCooCompanyState(coo: CooResult): CooAdaptedDomains {
     warnings: projectsCov ? [`${projectsCov.usable ?? "?"} מתוך ${projectsCov.total ?? "?"} פרויקטים פעילים עם דדליין תקין (${projectsCov.note})`] : [],
   }) };
 
+  const proposalsWithProject = state.proposals ? state.proposals.filter((p) => p.linkedProjectId !== null).length : null;
   const proposals = { domain: "proposals" as const, ...domainState(state, "proposals", state.proposals, [
-    { toDomain: "projects", quality: "ID", via: "proposals.linked_project_id", notes: "נאלבל — יכול להיות null" },
+    {
+      toDomain: "projects", quality: "ID", via: "proposals.linked_project_id",
+      coverage: relCoverage(proposalsWithProject, state.proposals?.length ?? null),
+      notes: state.proposals ? `${proposalsWithProject} מתוך ${state.proposals.length} הצעות מקושרות לפרויקט (נאלבל לגיטימי לשאר)` : undefined,
+    },
   ]) };
 
   const financeCov = coverageEntry(state, "finance.dated");
   const finance = { domain: "finance" as const, ...domainState(state, "transactions", state.finance, [
-    { toDomain: "projects", quality: "ID", via: "transactions.project_id", notes: "נאלבל לתנועות כלליות (לא ספציפיות לפרויקט)" },
+    {
+      toDomain: "projects", quality: "ID", via: "transactions.project_id",
+      notes: "כיסוי per-row לא ניתן לחישוב מ-FinanceFact המצרפי בלי query נוסף — לא הומצא מספר.",
+    },
   ], {
     coverage: financeCov ? coverageFromCounts(financeCov.usable, financeCov.total) : undefined,
     warnings: financeCov ? [`${financeCov.usable ?? "?"} מתוך ${financeCov.total ?? "?"} תנועות עם תאריך`] : [],
@@ -70,53 +87,76 @@ export function adaptCooCompanyState(coo: CooResult): CooAdaptedDomains {
 
   const recCov = coverageEntry(state, "receivables");
   const receivables = { domain: "receivables" as const, ...domainState(state, "finance_settings", state.receivables, [
-    { toDomain: "projects", quality: "ID", via: "settings.key = `finance_${projectId}`", notes: "מפתח דטרמיניסטי, לא free text" },
+    {
+      toDomain: "projects", quality: "ID", via: "settings.key = `finance_${projectId}`",
+      coverage: recCov ? coverageFromCounts(recCov.usable, recCov.total) : undefined,
+      notes: "מפתח דטרמיניסטי, לא free text",
+    },
   ], {
     coverage: recCov ? coverageFromCounts(recCov.usable, recCov.total) : undefined,
     warnings: recCov ? [`${recCov.usable ?? "?"} מתוך ${recCov.total ?? "?"} פרויקטים עם מחיר מוסכם (${recCov.note})`] : [],
   }) };
 
   // Sessions: COO only ever fetches a forward window (see lib/coo/config.ts sessionWindowDays).
-  // total is deliberately unknown (no full-history read) — PARTIAL is a statement about SCOPE,
-  // not a failure, and must never be confused with one.
+  // Domain coverage = PARTIAL is about SCOPE (no history read), never a source failure.
+  // The relation's own coverage below is a SEPARATE number: of the sessions we DID fetch, how many carry project_id.
+  const sessionsWithProject = state.sessions ? state.sessions.filter((s) => s.projectId !== null).length : null;
   const sessions = { domain: "sessions" as const, ...domainState(state, "sessions", state.sessions, [
-    { toDomain: "projects", quality: "ID", via: "sessions.project_id", notes: "נאלבל לסשנים כלליים" },
+    {
+      toDomain: "projects", quality: "ID", via: "sessions.project_id",
+      coverage: relCoverage(sessionsWithProject, state.sessions?.length ?? null),
+      notes: state.sessions ? `${sessionsWithProject} מתוך ${state.sessions.length} סשנים (בחלון הקדימה) מקושרים לפרויקט` : undefined,
+    },
   ], {
     coverage: state.sessions !== null ? "PARTIAL" : coverageFromStatus(statusFromSource(sourceOf(state.sources, "sessions"))),
-    warnings: ["רק חלון קדימה (sessionWindowDays בקונפיג של COO) — אין קריאת היסטוריה. 'PARTIAL' כאן הוא scope, לא כשל מקור."],
+    warnings: ["רק חלון קדימה (sessionWindowDays בקונפיג של COO) — אין קריאת היסטוריה. 'PARTIAL' כאן הוא scope, לא כשל מקור. ראה recommendation נפרד (Phase B.1 §4)."],
   }) };
 
   const relCov = coverageEntry(state, "releases");
+  // ReleaseFact.projectId is a required (non-nullable) field — every fetched row carries it.
   const releases = { domain: "releases" as const, ...domainState(state, "releases", state.releases, [
-    { toDomain: "projects", quality: "ID", via: "project_release_details.project_id" },
-    { toDomain: "labelArtists", quality: "ID", via: "project_release_details.label_artist_id", notes: "נאלבל — לא כל שורת release נושאת label_artist_id" },
+    { toDomain: "projects", quality: "ID", via: "project_release_details.project_id", coverage: state.releases ? "FULL" : undefined },
   ], {
     coverage: relCov ? coverageFromCounts(relCov.usable, relCov.total) : undefined,
-    warnings: relCov ? [`${relCov.usable ?? "?"} מתוך ${relCov.total ?? "?"} פרויקטי לייבל עם שורת release (${relCov.note})`] : [],
-  }) };
-
-  const shows = { domain: "shows" as const, ...domainState(state, "shows", state.shows, [
-    { toDomain: "external", quality: "ID", via: "shows.dj_client_id", notes: "קיים ב-DB ונקרא כבר ע\"י listShows() (select *), אך אינו חשוף כרגע ב-Partner Eyes — ראה warnings" },
-  ], {
     warnings: [
-      "shows.dj_client_id / dj_confirmation_status / dj_confirmed_at קיימים בטבלה ונקראים ע\"י lib/shows-store.ts (select *), אך lib/coo/readers.ts משמיט אותם בשלב המיפוי ל-RawShow — Partner לא חושף אותם בבלוק הזה כדי לא לגעת ב-lib/coo וגם לא לפתוח query כפול. מועמד ברור לשיפור עתידי מאושר.",
+      ...(relCov ? [`${relCov.usable ?? "?"} מתוך ${relCov.total ?? "?"} פרויקטי לייבל עם שורת release (${relCov.note})`] : []),
+      "תיקון מהדוח הקודם (Phase B): project_release_details.label_artist_id אכן קיים ב-DB ונקרא ע\"י listLabelReleases(), אך lib/coo/types.ts ReleaseFact אינו שומר אותו — הטענה הקודמת שהיחס הזה כבר זמין ל-Partner הייתה שגויה. לא נחשף כרגע (אותה קטגוריה כמו Shows DJ fields לפני התיקון) — מועמד לשינוי additive עתידי, טרם אושר.",
     ],
   }) };
 
+  const showRows = state.shows ? [...state.shows.upcoming, ...state.shows.doneUnpaid] : null;
+  const showsWithDj = showRows ? showRows.filter((s) => s.djClientId !== null).length : null;
+  const shows = { domain: "shows" as const, ...domainState(state, "shows", state.shows, [
+    {
+      toDomain: "external", quality: "ID", via: "shows.dj_client_id",
+      coverage: relCoverage(showsWithDj, showRows?.length ?? null),
+      notes: showRows ? `${showsWithDj} מתוך ${showRows.length} הופעות (upcoming+doneUnpaid) עם dj_client_id — נחשף לראשונה ב-Phase B.1 (שינוי additive ל-lib/coo/types.ts, ללא שינוי signals/cases/brief)` : "shows.dj_client_id נחשף לראשונה ב-Phase B.1",
+    },
+  ]) };
+
   const victorCov = coverageEntry(state, "victor.link");
   const victor = { domain: "victor" as const, ...domainState(state, "victor", state.team.victor, [
-    { toDomain: "projects", quality: "ID", via: "vendor_project_work.project_id", notes: "נאלבל לעבודות כלליות" },
+    {
+      toDomain: "projects", quality: "ID", via: "vendor_project_work.project_id",
+      coverage: victorCov ? coverageFromCounts(victorCov.usable, victorCov.total) : undefined,
+      notes: "נאלבל לעבודות כלליות/עצמאיות — ראה warnings לאבחון (Phase B.1 §5)",
+    },
   ], {
     coverage: victorCov ? coverageFromCounts(victorCov.usable, victorCov.total) : undefined,
     warnings: [
       "ball.holder הוא 'latest recorded action' בלבד (Hardening 1: files_sent[].uploadedAt מול version_reviews[].sentAt) — לא הוכחה ש'התור אצל הבעלים' במציאות.",
       ...(victorCov ? [`${victorCov.usable ?? "?"} מתוך ${victorCov.total ?? "?"} עבודות Victor פעילות מקושרות לפרויקט`] : []),
+      "אבחון (Phase B.1 §5): כשאין project_id, vendor-store.ts מפיל את projectName ל-title (כותרת העבודה עצמה — לא שם פרויקט/אמן) או לפלייסהולדר \"עבודה ללא פרויקט\". אין שדה טקסט אמין שיכול לשמש fallback relation — לכן לא הומצא TEXT_MATCH חדש. תואם עם עבודות עצמאיות/legacy שלא נועדו להיות מקושרות לפרויקט; לא ניתן לקבוע יחס ללא קריאת תוכן חופשי (מחוץ לתחום read-only Eyes tool).",
     ],
   }) };
 
   const stevenCov = coverageEntry(state, "steven.link");
   const steven = { domain: "steven" as const, ...domainState(state, "steven", state.team.steven, [
-    { toDomain: "projects", quality: "ID", via: "sound_engineer_work.project_id", notes: "נאלבל לעבודות עצמאיות" },
+    {
+      toDomain: "projects", quality: "ID", via: "sound_engineer_work.project_id",
+      coverage: stevenCov ? coverageFromCounts(stevenCov.usable, stevenCov.total) : undefined,
+      notes: "נאלבל לעבודות עצמאיות",
+    },
   ], {
     coverage: stevenCov ? coverageFromCounts(stevenCov.usable, stevenCov.total) : undefined,
     warnings: [
@@ -127,19 +167,15 @@ export function adaptCooCompanyState(coo: CooResult): CooAdaptedDomains {
 
   const tasksCov = coverageEntry(state, "tasks.link");
   const tasks = { domain: "tasks" as const, ...domainState(state, "tasks", state.tasks, [
-    { toDomain: "projects", quality: "ID", via: "tasks.related_id (when related_type=\"project\")", notes: "קישור לא-נפתר מדווח כ-data quality note, לא מוסתר" },
+    {
+      toDomain: "projects", quality: "ID", via: "tasks.related_id (when related_type=\"project\")",
+      coverage: tasksCov ? coverageFromCounts(tasksCov.usable, tasksCov.total) : undefined,
+      notes: "קישור לא-נפתר מדווח כ-data quality note, לא מוסתר",
+    },
   ], {
     coverage: tasksCov ? coverageFromCounts(tasksCov.usable, tasksCov.total) : undefined,
     warnings: tasksCov ? [`${tasksCov.usable ?? "?"} מתוך ${tasksCov.total ?? "?"} משימות פתוחות מקושרות לפרויקט קיים (${tasksCov.note})`] : [],
   }) };
 
-  const alertsCov = coverageEntry(state, "alerts");
-  const agentAlerts = { domain: "agentAlerts" as const, ...domainState(state, "agent_alerts", state.alerts, [
-    { toDomain: "projects", quality: "ID", via: "agent_alerts.related_project_id", notes: "נאלבל" },
-  ], {
-    coverage: alertsCov ? coverageFromCounts(alertsCov.usable, alertsCov.total) : undefined,
-    warnings: alertsCov ? [`מקור משני: ${alertsCov.usable ?? "?"} מוצגות מתוך ${alertsCov.total ?? "?"} שנרשמו (${alertsCov.note})`] : [],
-  }) };
-
-  return { projects, proposals, finance, receivables, sessions, releases, shows, victor, steven, tasks, agentAlerts };
+  return { projects, proposals, finance, receivables, sessions, releases, shows, victor, steven, tasks };
 }
