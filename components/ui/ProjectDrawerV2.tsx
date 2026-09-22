@@ -9,7 +9,7 @@ import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl, isDeliveryFile } fr
 import UploadButton from "@/components/ui/UploadButton";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice, collectibleAmount } from "@/lib/payment-status";
 import {
   CLIP_PAYMENT_STATUSES, isClipIncome, isSongIncome,
   summarizeClipFinance, clipStatusColor,
@@ -876,7 +876,15 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     .filter(t => t.type === "expense" && t.payment_status === "שולם")
     .reduce((s, t) => s + t.amount, 0);
   // Finance-exception projects (no charge / favor) carry no receivable balance.
-  const balance     = financeException ? 0 : collectibleBalance(agreedPrice, received, cancelledIncome);
+  // ACTUAL PAYMENT POSITION — displayed everywhere below; never nets out cancelled
+  // ("בוטל") income (Finance Semantics Unification audit, 2026-09-22).
+  const balance     = financeException ? 0 : actualBalanceAgainstAgreedPrice(agreedPrice, received);
+  // COLLECTION INTENT — a separate, narrower concept: drives ONLY the "set a due
+  // date" reminder below. Equal to `balance` unless the PROJECT itself is
+  // formally cancelled (status "בוטל") and the Owner explicitly chose "cancel
+  // the balance" in the existing cancel-project flow (components/ui/StatusDropdown.tsx)
+  // — see lib/payment-status.ts module doc.
+  const collectionRemaining = financeException ? 0 : collectibleAmount(agreedPrice, received, cancelledIncome, project.status);
 
   // Other-currency lines (display only) for the summary card and the Finance tab.
   const otherReceivedTotals = sumByCurrency(txParts.other.filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status)), t => t.amount);
@@ -900,7 +908,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     !balanceReminderDismissed &&
     agreedPrice > 0 &&
     received < agreedPrice &&
-    balance > 0 &&
+    collectionRemaining > 0 &&
     !hasExpectedIncome;
   const latestFile  = project.files ? getLatestAudioFile(project.files) : null;
   const isPlaying   = player?.track?.projectId === projectId && (player?.playing ?? false);
@@ -1540,7 +1548,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       {/* ── Missing balance due-date reminder ── */}
       {showBalanceReminder && (
         <BalanceReminderModal
-          balance={balance}
+          balance={collectionRemaining}
           currency={currency}
           onSetDate={async (date) => {
             const res = await fetch("/api/transactions", {
@@ -1549,7 +1557,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               body: JSON.stringify({
                 projectId,
                 type: "income",
-                amount: balance,
+                amount: collectionRemaining,
                 paymentStatus: "צפוי",
                 date: date || null,
                 description: "יתרת תשלום לפרויקט",

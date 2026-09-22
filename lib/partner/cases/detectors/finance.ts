@@ -15,19 +15,22 @@
  * `cancelled` (בוטל) is NEVER money received and must NEVER move a project
  * across these three outcomes.
  *
- * This is deliberately NOT r.balance. r.balance is
- * lib/payment-status.ts:collectibleBalance = agreedPrice − received −
- * cancelled — an app-wide "how much is still collectible" figure (it nets
- * out cancelled because a cancelled charge no longer needs collecting). That
- * is a different business question from "is this project fully paid", and
- * conflating them produced a real false positive in production: a project
- * with agreedPrice === received (fully paid) but a cancelled transaction
- * still showed PROJECT_OVERPAYMENT because balance went negative. `balance`
- * is kept below as a clearly-labelled legacy/traceability fact only — it is
- * never the input to this detector's classification. Do NOT "fix" this by
- * changing collectibleBalance itself — it is correct for its own callers
- * (ProjectDrawer, Finance, Dashboard, Insights, etc.); this detector simply
- * needs a different formula.
+ * This detector deliberately never reads r.balance — it computes outstanding/
+ * overpayment itself from r.agreedPrice/r.received. At the time this was
+ * written, r.balance (lib/coo/facts.ts) was built from the app-wide
+ * `collectibleBalance` helper, which subtracted cancelled income and produced
+ * a real production false positive here (agreedPrice === received but a
+ * cancelled transaction still showed PROJECT_OVERPAYMENT).
+ *
+ * Finance Semantics Unification (2026-09-22, follow-up Owner decision):
+ * `collectibleBalance` was removed app-wide and split into two explicit
+ * concepts in lib/payment-status.ts — actual payment position (agreedPrice
+ * vs paidIncome only) and a separate, narrower "collection intent" concept
+ * used only where a surface's own purpose calls for it. r.balance now uses
+ * the actual-payment-position formula too, so it is no longer distinct from
+ * this detector's own `outstanding`/`overpayment` — the `balance_legacy` fact
+ * below is kept only for continuity/traceability, not because it still
+ * differs.
  */
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";

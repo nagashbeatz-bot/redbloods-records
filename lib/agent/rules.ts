@@ -4,7 +4,7 @@
  * The caller decides whether to persist them (with cooldown).
  */
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
 import { CLIP_SCOPE } from "@/lib/clip-finance";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -216,8 +216,6 @@ export function checkBalanceMissingDueDate(
 ): AlertInput[] {
   // Paid income per project — same income predicate + statuses as the UI balance.
   const paidByProject = new Map<string, number>();
-  // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
-  const cancelledByProject = new Map<string, number>();
   // Projects that already have an expected ("צפוי") income carrying a date.
   const hasDatedExpected = new Set<string>();
   for (const t of transactions) {
@@ -227,9 +225,6 @@ export function checkBalanceMissingDueDate(
     if ((t.expenseScope ?? "") === CLIP_SCOPE) continue;
     if (FULLY_PAID_STATUSES.has(t.paymentStatus)) {
       paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
-    }
-    if (isCancelledPayment(t.paymentStatus)) {
-      cancelledByProject.set(t.projectId, (cancelledByProject.get(t.projectId) ?? 0) + t.amount);
     }
     if (t.paymentStatus === "צפוי" && t.date) {
       hasDatedExpected.add(t.projectId);
@@ -244,8 +239,14 @@ export function checkBalanceMissingDueDate(
     const agreed = setting?.agreedPrice ?? 0;
     if (!agreed || agreed <= 0) continue;                     // (1) agreedPrice > 0
     const paidIncome = paidByProject.get(p.id) ?? 0;
-    const cancelledIncome = cancelledByProject.get(p.id) ?? 0;
-    const balance = collectibleBalance(agreed, paidIncome, cancelledIncome);
+    // Actual payment truth — agreedPrice vs paidIncome only. This function only
+    // ever reaches non-cancelled projects (the `p.status === "בוטל"` check
+    // above), so an individually-cancelled transaction on one of these must
+    // never suppress a real balance (Finance Semantics Unification audit,
+    // 2026-09-22 — this was a confirmed live miss: a completed project with
+    // agreedPrice=3200/received=1600/one cancelled ₪1600 line item was
+    // silently never alerted on).
+    const balance = actualOutstandingAgainstAgreedPrice(agreed, paidIncome);
     if (balance <= 0) continue;                               // (2)(3)(6) open balance
     if (hasDatedExpected.has(p.id)) continue;                 // (4) no dated expected income
 

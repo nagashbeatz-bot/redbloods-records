@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import {
   calcPeriodTotals, normalizeCurrency, sameCurrency, otherAmountsFrom, formatOtherAmount, DEFAULT_CURRENCY,
@@ -376,8 +376,9 @@ function InsightDetailModal({
     const setting = finSettings.find((s) => s.project_id === p.id);
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
-    const cancelled = cancelledByProject[p.id] ?? 0;
-    const balance   = collectibleBalance(agreed, paid, cancelled);
+    // Actual payment truth — never nets out cancelled income (Finance Semantics
+    // Unification audit, 2026-09-22).
+    const balance   = actualBalanceAgainstAgreedPrice(agreed, paid);
     return (
       <div style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 12, padding: "12px 14px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -780,8 +781,9 @@ export default function InsightsPage() {
     if (setting?.financeException) return false;
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
-    const cancelled = cancelledByProject[p.id] ?? 0;
-    return agreed > 0 && collectibleBalance(agreed, paid, cancelled) > 0;
+    // Actual payment truth — never nets out cancelled income (Finance Semantics
+    // Unification audit, 2026-09-22).
+    return agreed > 0 && actualOutstandingAgainstAgreedPrice(agreed, paid) > 0;
   });
   const projectsInMixUnpaid = projects.filter((p) =>
     ["מחכה למיקס","במיקס"].includes(p.status) && projectsWithOpenBalance.some((op) => op.id === p.id)
@@ -825,8 +827,9 @@ export default function InsightsPage() {
     if (!sameCurrency(setting?.currency, DEFAULT_CURRENCY)) return;
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
-    const cancelled = cancelledByProject[p.id] ?? 0;
-    const balance   = collectibleBalance(agreed, paid, cancelled);
+    // Actual payment truth — never nets out cancelled income (Finance Semantics
+    // Unification audit, 2026-09-22).
+    const balance   = actualOutstandingAgainstAgreedPrice(agreed, paid);
     p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean).forEach((a) => {
       artistBalances[a] = (artistBalances[a] ?? 0) + balance;
     });

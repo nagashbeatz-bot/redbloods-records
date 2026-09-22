@@ -7,7 +7,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
@@ -505,7 +505,9 @@ function ModalContent({
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: formMode === "newProject" ? 12 : 0 }}>
                   {projects.map((p) => {
                     const fin = finances.find((f) => f.projectId === p.id);
-                    const balance = fin ? collectibleBalance(fin.agreedPrice, fin.totalPaid, fin.cancelledIncome) : 0;
+                    // Actual payment truth — never nets out cancelled income (Finance
+                    // Semantics Unification audit, 2026-09-22).
+                    const balance = fin ? actualBalanceAgainstAgreedPrice(fin.agreedPrice, fin.totalPaid) : 0;
                     const sColor  = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
                     return (
                       <ProjectRow
@@ -987,11 +989,14 @@ function ProjectRow({ project: p, balance, fin, statusColor, onOpen, onRestore }
         {p.deadline && <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>דדליין: {fmtDate(p.deadline)}</div>}
       </div>
 
-      {fin && fin.agreedPrice > 0 && (
-        <span style={{ fontSize: 11, color: balance <= 0 ? "#10B981" : "#EF4444", flexShrink: 0, fontWeight: 600 }}>
-          {balance <= 0 ? "✓ שולם" : fmtMoney(balance, fin.currency)}
-        </span>
-      )}
+      {fin && fin.agreedPrice > 0 && (() => {
+        const paid = isFullyPaid(fin.agreedPrice, fin.totalPaid);
+        return (
+          <span style={{ fontSize: 11, color: paid ? "#10B981" : "#EF4444", flexShrink: 0, fontWeight: 600 }}>
+            {paid ? "✓ שולם" : fmtMoney(balance, fin.currency)}
+          </span>
+        );
+      })()}
 
       <button
         onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}

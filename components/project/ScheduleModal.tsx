@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { ActionDef, FreeSlot } from "@/lib/action-types";
 import { buildEventTitle } from "@/lib/action-types";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import {
   validStartTimes, fmtHM, fmtDayDate, confirmLabel,
@@ -204,8 +204,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           currency: d.currency ?? "₪",
         };
         setFinanceInfo(info);
-        // Pre-fill amount with open balance if not already set
-        const balance = collectibleBalance(info.agreedPrice, totalPaid, cancelledIncome);
+        // Pre-fill amount with open balance if not already set — actual
+        // outstanding only, never nets out cancelled income.
+        const balance = actualOutstandingAgainstAgreedPrice(info.agreedPrice, totalPaid);
         if (balance > 0 && !paymentDraft.amount) {
           setPaymentDraft((prev) => ({ ...prev, amount: String(balance) }));
         }
@@ -1518,7 +1519,13 @@ function FinancePanel({
   onCancel: () => void;
   onBack: () => void;
 }) {
-  const balance  = info ? collectibleBalance(info.agreedPrice, info.totalPaid, info.cancelledIncome) : 0;
+  // Scheduling prefill uses actual outstanding (agreedPrice vs totalPaid only).
+  // This modal doesn't have the project's own status available, so it always
+  // treats the project as non-cancelled — correct for the overwhelming common
+  // case (scheduling a payment collection for an active project) and never
+  // wrong in the direction that matters (never suppresses/understates real
+  // debt to a cancelled transaction). See lib/payment-status.ts module doc.
+  const balance  = info ? actualOutstandingAgainstAgreedPrice(info.agreedPrice, info.totalPaid) : 0;
   const hasPrice = info && info.agreedPrice > 0;
   const currency = info?.currency ?? "₪";
 

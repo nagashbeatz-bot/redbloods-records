@@ -19,7 +19,7 @@ import type {
 import { COO_TZ, addDays, daysSinceIso, diffDays, ilYmd, monthOf, parseYmd, prevMonth, weekdayHe } from "./dates";
 import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, isCancelledStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "../finance";
 import { isSongIncome } from "../clip-finance";
-import { collectibleBalance } from "../payment-status";
+import { actualBalanceAgainstAgreedPrice } from "../payment-status";
 import { totalsRich, richText } from "./rich";
 import { computeVictorBall } from "./victor-ball";
 
@@ -315,7 +315,12 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         const song = partitionByCurrency(mine.filter((t) => isSongIncome(t)), currency).same;
         const received = song.filter((t) => isReceivedStatus(t.status)).reduce((s, t) => s + t.amount, 0);
         const cancelledSum = song.filter((t) => isCancelledStatus(t.status)).reduce((s, t) => s + t.amount, 0);
-        const balance = collectibleBalance(st.agreedPrice, received, cancelledSum);
+        // Actual payment truth — agreedPrice vs received ONLY. `considered` already
+        // excludes cancelled PROJECTS (line above); an individually-cancelled
+        // transaction on a still-open project must never reduce this (Finance
+        // Semantics Unification audit, 2026-09-22). `cancelledSum` stays exposed on
+        // the row for transparency, never subtracted here.
+        const balance = actualBalanceAgainstAgreedPrice(st.agreedPrice, received);
         const hasDatedExpected = song.some((t) => t.status === "צפוי" && parseYmd(t.date) !== null);
         rows.push({ projectId: p.id, projectName: p.name, projectStatus: p.status, agreedPrice: st.agreedPrice, currency, received, cancelled: cancelledSum, balance, financeException: false, hasDatedExpected });
         if (balance > 0) addToTotals(balanceByCurrency, currency, balance);

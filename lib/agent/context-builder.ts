@@ -11,7 +11,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { getAlerts } from "./alerts-store";
 import type { AlertSeverity } from "@/lib/types";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice } from "@/lib/payment-status";
 import { CLIP_SCOPE, summarizeClipFinance } from "@/lib/clip-finance";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -642,10 +642,9 @@ async function buildProjectDetailContext(
         const received = (txns ?? [])
           .filter((t) => t.type !== "הוצאה" && !isClipRow(t) && PAID_STATUSES.has(t.payment_status))
           .reduce((s, t) => s + (t.amount ?? 0), 0);
-        const cancelled = (txns ?? [])
-          .filter((t) => t.type !== "הוצאה" && !isClipRow(t) && isCancelledPayment(t.payment_status))
-          .reduce((s, t) => s + (t.amount ?? 0), 0);
-        const balance = collectibleBalance(agreed, received, cancelled);
+        // Actual payment truth for Mai — never nets out a cancelled ("בוטל")
+        // transaction (Finance Semantics Unification audit, 2026-09-22).
+        const balance = actualBalanceAgainstAgreedPrice(agreed, received);
         lines.push(`מחיר מוסכם: ${fmt(agreed)}${curr} | שולם: ${fmt(received)}${curr} | יתרה: ${fmt(balance)}${curr}`);
       }
       // Clip deal — its own price, its own payments.

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation, matchesTypeFilter } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualOutstandingAgainstAgreedPrice, isFullyPaid, collectibleAmount } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency } from "@/lib/finance";
 import StatusDropdown from "@/components/ui/StatusDropdown";
@@ -334,7 +334,9 @@ function MobileProjectCard({
   const overdue = p.isOverdue && p.status !== "הושלם";
   const dueSoon = days !== null && days >= 0 && days <= 7 && p.status !== "הושלם";
   const fin = financeSummary[p.id];
-  const balance = fin ? collectibleBalance(fin.agreed, fin.paid, fin.cancelled) : 0;
+  // Actual payment truth — never nets out cancelled income (Finance Semantics
+  // Unification audit, 2026-09-22).
+  const balance = fin ? actualOutstandingAgainstAgreedPrice(fin.agreed, fin.paid) : 0;
   const sc = STATUS_COLORS[p.status] ?? { bg: "rgba(75,85,99,0.15)", color: "#6B7280" };
 
   const player = usePlayerSafe();
@@ -642,7 +644,8 @@ function CollectionDetailModal({
   const allRows = Object.entries(financeSummary)
     .map(([projectId, fin]) => {
       const project = projects.find((p) => p.id === projectId);
-      const remaining = Math.max(0, collectibleBalance(fin.agreed, fin.paid, fin.cancelled));
+      // COLLECTION INTENT — see lib/payment-status.ts module doc.
+      const remaining = collectibleAmount(fin.agreed, fin.paid, fin.cancelled, project?.status);
       return { projectId, project, fin, remaining, isKnown: knownIds.has(projectId) };
     })
     .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0);
@@ -1123,11 +1126,15 @@ export default function ProjectsTable() {
                 {
                   label: "לגבייה",
                   value: (() => {
-                    // Only include projects that actually exist — orphaned settings/transactions are excluded
-                    const knownIds = new Set(projects.map((p) => p.id));
+                    // COLLECTION INTENT — "how much are we still actively planning to
+                    // collect". Only include projects that actually exist — orphaned
+                    // settings/transactions are excluded. See lib/payment-status.ts
+                    // module doc: a cancelled TRANSACTION on a non-cancelled project
+                    // never reduces this; only a formally-cancelled PROJECT can.
+                    const statusById = new Map(projects.map((p) => [p.id, p.status]));
                     const total = Object.entries(financeSummary)
-                      .filter(([id]) => knownIds.has(id))
-                      .reduce((s, [, f]) => s + Math.max(0, collectibleBalance(f.agreed, f.paid, f.cancelled)), 0);
+                      .filter(([id]) => statusById.has(id))
+                      .reduce((s, [id, f]) => s + collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)), 0);
                     return total > 0 ? `₪${total.toLocaleString()}` : "—";
                   })(),
                   color: "#F59E0B",
@@ -1522,8 +1529,12 @@ export default function ProjectsTable() {
                     {(() => {
                       const fin = financeSummary[p.id];
                       if (!fin) return <span style={{ fontSize: 11, color: "#2A2A2A" }}>—</span>;
-                      const bal = collectibleBalance(fin.agreed, fin.paid, fin.cancelled);
-                      if (bal <= 0) return <span style={{ fontSize: 11, color: "#34D399" }}>שולם ✓</span>;
+                      // Actual payment truth ONLY — paidIncome vs agreedPrice. Never
+                      // collectibleBalance, never cancelled income (confirmed live bug,
+                      // Finance Semantics Unification audit, 2026-09-22: a cancelled
+                      // transaction on an active/completed project must never show "שולם ✓").
+                      if (isFullyPaid(fin.agreed, fin.paid)) return <span style={{ fontSize: 11, color: "#34D399" }}>שולם ✓</span>;
+                      const bal = actualOutstandingAgainstAgreedPrice(fin.agreed, fin.paid);
                       return (
                         <span style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", whiteSpace: "nowrap" }}>
                           {fin.currency}{bal.toLocaleString()}

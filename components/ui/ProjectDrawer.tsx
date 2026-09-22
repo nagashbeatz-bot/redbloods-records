@@ -8,7 +8,7 @@ import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components
 import { PROJECT_TYPES, hasClipType } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
@@ -1644,10 +1644,11 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const songIncomeParts  = partitionByCurrency(songIncomeList, finCurrency);
   const expenseParts     = partitionByCurrency(expenseList, finCurrency);
   const totalPaid        = songIncomeParts.same.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome  = songIncomeParts.same.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExp         = expenseParts.same.reduce((s, t) => s + t.amount, 0);
   const totalClipExp     = clipExpenseList.filter((t) => expenseParts.same.includes(t)).reduce((s, t) => s + t.amount, 0);
-  const balance          = collectibleBalance(agreedPrice, totalPaid, cancelledIncome);
+  // Actual payment truth — never nets out cancelled ("בוטל") income (Finance
+  // Semantics Unification audit, 2026-09-22).
+  const balance          = actualBalanceAgainstAgreedPrice(agreedPrice, totalPaid);
   const profit           = totalPaid - totalExp;
   const otherPaidTotals  = sumByCurrency(songIncomeParts.other.filter((t) => PAID_STATUSES.has(t.payment_status)), (t) => t.amount);
   const otherExpTotals   = sumByCurrency(expenseParts.other, (t) => t.amount);

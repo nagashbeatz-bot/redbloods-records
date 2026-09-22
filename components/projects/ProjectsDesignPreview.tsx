@@ -13,7 +13,7 @@ import StatusDropdown from "@/components/ui/StatusDropdown";
 import ProjectTypeDropdown from "@/components/ui/ProjectTypeDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency } from "@/lib/finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
@@ -459,10 +459,11 @@ export default function ProjectsDesignPreview() {
 
   const kpi = useMemo(() => {
     const active = projects.filter(p => !p.isHidden);
-    const knownIds = new Set(active.map(p => p.id));
+    const statusById = new Map(active.map(p => [p.id, p.status]));
+    // COLLECTION INTENT — "still expected to collect". See lib/payment-status.ts module doc.
     const totalExpected = Object.entries(financeSummary)
-      .filter(([id, f]) => knownIds.has(id) && !f.financeException)
-      .reduce((s, [, f]) => s + Math.max(0, collectibleBalance(f.agreed, f.paid, f.cancelled)), 0);
+      .filter(([id, f]) => statusById.has(id) && !f.financeException)
+      .reduce((s, [id, f]) => s + collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)), 0);
     const now = new Date();
     return {
       // "סה״כ פרויקטים" counts what is still ON THE TABLE — every visible project
@@ -493,7 +494,7 @@ export default function ProjectsDesignPreview() {
         id: p.id, name: p.name, artist: p.artist ?? "",
         agreed: financeSummary[p.id]?.agreed ?? 0,
         paid:   financeSummary[p.id]?.paid   ?? 0,
-        remaining: Math.max(0, collectibleBalance(financeSummary[p.id]?.agreed ?? 0, financeSummary[p.id]?.paid ?? 0, financeSummary[p.id]?.cancelled ?? 0)),
+        remaining: collectibleAmount(financeSummary[p.id]?.agreed ?? 0, financeSummary[p.id]?.paid ?? 0, financeSummary[p.id]?.cancelled ?? 0, p.status),
         deadline: p.deadline ? new Date(p.deadline).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : null,
       }))
       .filter(p => p.remaining > 0)

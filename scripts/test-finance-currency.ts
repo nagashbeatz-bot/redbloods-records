@@ -19,7 +19,7 @@ import {
   formatOtherAmount, partitionByCurrency, sameCurrency, sumByCurrency, totalOf, addToTotals,
   orderCurrencies, RECEIVED_STATUSES,
 } from "../lib/finance";
-import { collectibleBalance } from "../lib/payment-status";
+import { actualBalanceAgainstAgreedPrice } from "../lib/payment-status";
 import { isSongIncome } from "../lib/clip-finance";
 
 let pass = 0, fail = 0;
@@ -189,7 +189,8 @@ console.log("5. R5: project money is compared only in the project's own currency
   const paid = song.filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const cancelled = song.filter((t) => isCancelledStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   check("paid counts ₪ song income only", paid, 1500);
-  check("balance = 3000 − 1500 − 400", collectibleBalance(agreed, paid, cancelled), 1100);
+  check("cancelled classification finds the ₪400 cancelled row", cancelled, 400);
+  check("actual balance = 3000 − 1500 (cancelled never subtracted — Finance Semantics Unification, 2026-09-22)", actualBalanceAgainstAgreedPrice(agreed, paid), 1500);
   check("$ rows kept aside, not dropped", other.map((t) => `${t.type}:${t.currency}:${t.amount}`), ["income:$:999", "expense:$:388"]);
   const before = projectTx.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   check("(old behaviour would have counted the $ 999)", before, 2499);
@@ -207,7 +208,7 @@ console.log("5. R5: project money is compared only in the project's own currency
     const oldPaid = list.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
     const newPaid = partitionByCurrency(list, "₪").same.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
     if (oldPaid !== newPaid || partitionByCurrency(list, "₪").other.length !== 0) unchanged = false;
-    if (collectibleBalance(r.agreed, oldPaid, 0) !== collectibleBalance(r.agreed, newPaid, 0)) unchanged = false;
+    if (actualBalanceAgainstAgreedPrice(r.agreed, oldPaid) !== actualBalanceAgainstAgreedPrice(r.agreed, newPaid)) unchanged = false;
   }
   check("4 priced ₪ projects: R5 leaves every paid/balance figure unchanged", unchanged, true);
 }

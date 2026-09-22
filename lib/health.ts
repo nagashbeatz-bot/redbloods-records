@@ -1,5 +1,5 @@
 import type { Project } from "./types";
-import { collectibleBalance } from "./payment-status";
+import { actualOutstandingAgainstAgreedPrice } from "./payment-status";
 
 export type IssuePriority = "high" | "medium";
 
@@ -149,7 +149,11 @@ export function checkFinanceHealth(
     const fin = map.get(p.id);
     if (!fin || fin.agreedPrice <= 0) continue; // no agreed price → nothing to check
 
-    const balance = collectibleBalance(fin.agreedPrice, fin.totalPaid, fin.cancelledIncome);
+    // Actual payment truth — agreedPrice vs totalPaid only. Cancelled/paused/
+    // formally-cancelled projects are already skipped above, so an individually
+    // cancelled transaction on one of THESE (active) projects must never make
+    // debt disappear (Finance Semantics Unification audit, 2026-09-22).
+    const balance = actualOutstandingAgainstAgreedPrice(fin.agreedPrice, fin.totalPaid);
     const profit  = fin.totalPaid - fin.totalExpenses;
     const inMix   = MIX_STATUSES.has(p.status);
     const active  = ACTIVE_STATUSES.has(p.status);

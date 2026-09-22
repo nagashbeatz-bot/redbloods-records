@@ -502,7 +502,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
           moneyEv(c, `${r.projectId}:cancelled`, "בוטל", r.cancelled, r.currency, { table: "transactions", field: "amount (income: בוטל)" }),
           moneyEv(c, `${r.projectId}:balance`, "יתרה", r.balance, r.currency, src),
         ],
-        rules: [{ ruleId: "receivable.balance", description: "יתרה = מחיר מוסכם − התקבל − בוטל, רק בתנועות באותו מטבע של המחיר", threshold: null, observed: money(r.balance, r.currency) }],
+        rules: [{ ruleId: "receivable.balance", description: "יתרה = מחיר מוסכם − התקבל (רק שולם/התקבל), רק בתנועות באותו מטבע של המחיר. בוטל אינו כסף שהתקבל ואינו משפיע על היתרה.", threshold: null, observed: money(r.balance, r.currency) }],
         coverageKeys: ["receivables"],
         missing: [`יתרה ידועה רק ל-${rec.withPrice} מתוך ${rec.considered} פרויקטים (אלו עם מחיר מוסכם). לשאר אין מידע.`],
         tierCtx: { status: r.projectStatus }, sort: r.balance,

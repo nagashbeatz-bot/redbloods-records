@@ -8,7 +8,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } fr
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
-import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency } from "@/lib/finance";
 import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
@@ -860,7 +860,13 @@ export default function DashboardDesignPreview() {
     return items.slice(0, 7);
   }, [overdueProjects, calToday, tasksList, incomeDueToday, proposalsList, projects, privacyHidden]);
 
-  // ── Expected income = outstanding balance (agreed − paid), same as Projects ──
+  // ── Expected income — COLLECTION INTENT (what we still plan to actively
+  // collect), NOT raw payment truth. See lib/payment-status.ts module doc:
+  // resolved intentionally during the Finance Semantics Unification audit
+  // (2026-09-22) — this widget's own label ("תשלומים צפויים" / expected
+  // payments) is a forecast, so a formally-cancelled project's explicit
+  // "cancel the balance" write-off correctly reduces it; an individually
+  // cancelled transaction on a non-cancelled project never does. ──
   const expectedIncome = useMemo(() => {
     const items = projects
       .filter(p => !p.isHidden)
@@ -870,7 +876,7 @@ export default function DashboardDesignPreview() {
         const agreed    = financeSummary[p.id]?.agreed    ?? 0;
         const paid      = financeSummary[p.id]?.paid      ?? 0;
         const cancelled = financeSummary[p.id]?.cancelled ?? 0;
-        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: Math.max(0, collectibleBalance(agreed, paid, cancelled)) };
+        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: collectibleAmount(agreed, paid, cancelled, p.status) };
       })
       .filter(p => p.remaining > 0)
       .sort((a, b) => b.remaining - a.remaining);
