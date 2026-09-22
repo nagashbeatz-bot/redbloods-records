@@ -91,6 +91,7 @@ function buildLabelArtists(raw: PartnerEyesRaw, coo: CooResult, asOf: string): P
       artistsWithEntries: [...entriesByArtist.values()].filter((v) => v.length > 0).length,
       totalEntries: raw.artistBalanceEntries?.length ?? 0,
     },
+    ledgerEntries: (raw.artistBalanceEntries ?? []).map((e) => ({ id: e.id, artistId: e.artistId, entryType: e.entryType, amount: e.amount, entryDate: e.entryDate })),
   } : null;
   if (raw.artistBalanceEntries === null) {
     warnings.push("artist_balance_entries לא נקרא (label_artists לא זמין, או שהקריאה נכשלה).");

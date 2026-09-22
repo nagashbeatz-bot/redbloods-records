@@ -135,12 +135,16 @@ export interface LabelArtistSummary {
   /** null when this artist has zero ledger rows — never a fake all-zero totals object. */
   balanceTotals: LabelArtistBalanceTotals | null;
 }
+/** One artist_balance_entries row, individually identifiable (Phase D.1 — for change detection; the same rows already power balanceTotals). No description/note (private free text). */
+export interface LabelArtistBalanceEntry { id: string; artistId: string; entryType: string; amount: number; entryDate: string }
 export interface LabelArtistsFact {
   total: number;
   byStatus: Record<string, number>;
   items: LabelArtistSummary[];
   /** artist_balance_entries is an independent, manually-maintained ledger — see the domain's warnings. */
   balanceCoverage: { artistsWithEntries: number; totalEntries: number };
+  /** Phase D.1 — the individual ledger rows behind balanceTotals, for row-level change detection. Same read, no new query. */
+  ledgerEntries: LabelArtistBalanceEntry[];
 }
 
 export interface ClipSummary { id: string; title: string; status: string; projectId: string | null; artistName: string; createdAt: string | null; updatedAt: string | null }

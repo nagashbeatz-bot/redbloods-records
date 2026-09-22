@@ -236,6 +236,10 @@ export interface VictorWorkFact {
   createdAt: string | null;
   updatedAt: string | null;
   returnedDate: string | null;
+  /** Additive (Partner Phase D.1) — files_sent[].uploadedAt values, for nested-artifact change detection. Same array `computeVictorBall` already uses via `reviews`/`uploads` on the raw input — never a new query. */
+  uploads: string[];
+  /** Additive (Partner Phase D.1) — SENT (non-draft, sentAt present) version reviews only, with their version key. Never used for ball semantics (see lib/coo/victor-ball.ts — untouched). */
+  reviewEvents: Array<{ versionKey: string; sentAt: string }>;
 }
 export interface VictorFact {
   totalWorks: number;
@@ -462,6 +466,14 @@ export interface RawVictorWork {
   reviews: Array<{ sentAt: string | null; draft: boolean }>;
   /** vendor_project_work.linked_task_id — the auto-created "מעקב ויקטור" task. */
   linkedTaskId: string | null;
+  /**
+   * Additive (Partner Phase D.1, change-readiness for nested artifacts) — the SAME
+   * version_reviews entries as `reviews`, but with the version key preserved (Object.values()
+   * above discards it). Never used by computeVictorBall (which still takes the untouched
+   * `reviews` field) — purely so a future consumer can identify WHICH version review changed,
+   * not just that some review changed. Optional so existing fixtures never need to change.
+   */
+  reviewEvents?: Array<{ versionKey: string; sentAt: string | null; draft: boolean }>;
   /** Additive (Partner Phase C.3, change-readiness) — already fetched by getVictorWork()'s select("*"), not read by any Phase 1a signal/case/priority/brief logic. Optional so existing fixtures never need to change. */
   createdAt?: string | null;
   updatedAt?: string | null;

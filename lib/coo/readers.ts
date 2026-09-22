@@ -74,6 +74,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
           uploads: (w.filesSent ?? []).map((f) => f.uploadedAt).filter((u): u is string => !!u),
           filesWithoutTimestamp: (w.filesSent ?? []).filter((f) => !f.uploadedAt).length,
           reviews: Object.values(w.versionReviews ?? {}).map((r) => ({ sentAt: r.sentAt ?? null, draft: r.draft === true })),
+          reviewEvents: Object.entries(w.versionReviews ?? {}).map(([versionKey, r]) => ({ versionKey, sentAt: r.sentAt ?? null, draft: r.draft === true })),
           linkedTaskId: w.linkedTaskId,
           createdAt: w.createdAt || null, updatedAt: w.updatedAt || null, returnedDate: w.returnedDate || null,
         })),

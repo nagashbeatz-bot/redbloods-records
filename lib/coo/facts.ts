@@ -168,6 +168,10 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         lastUploadAt: b.lastUploadAt, lastNotesSentAt: b.lastNotesSentAt, ball: b.ball, linkedTaskId: w.linkedTaskId,
         waitingOwnerDays: b.ball.holder === "owner" && b.lastUploadAt ? diffDays(ilYmd(new Date(b.lastUploadAt)), today) : null,
         createdAt: w.createdAt ?? null, updatedAt: w.updatedAt ?? null, returnedDate: w.returnedDate ?? null,
+        uploads: w.uploads,
+        reviewEvents: (w.reviewEvents ?? [])
+          .filter((r): r is { versionKey: string; sentAt: string; draft: boolean } => !r.draft && !!r.sentAt)
+          .map((r) => ({ versionKey: r.versionKey, sentAt: r.sentAt })),
       };
     };
     const active = activeRaw.map(mapV);
