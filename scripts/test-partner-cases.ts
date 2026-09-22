@@ -197,12 +197,13 @@ ok("4 active Victor works in this fixture produced 0 'too many works' Cases", !c
 console.log("Finance: agreedPrice known + underpaid -> outstanding; == -> none; > -> overpayment; UNKNOWN -> no debt Case");
 {
   const p1 = byId("project_payment_outstanding:p1");
-  ok("p1 (2000 agreed, 500 received) -> PROJECT_PAYMENT_OUTSTANDING, balance=1500", !!p1 && p1.derivedFacts.find((d) => d.id === "balance")?.value === 1500);
+  ok("p1 (2000 agreed, 500 received) -> PROJECT_PAYMENT_OUTSTANDING, outstanding=1500", !!p1 && p1.derivedFacts.find((d) => d.id === "outstanding")?.value === 1500);
   ok("p2 (1000 agreed, 3000 paid) -> PROJECT_OVERPAYMENT, not a debt Case", !byId("project_payment_outstanding:p2") && !!byId("project_overpayment:p2"));
   const p2o = byId("project_overpayment:p2")!;
   check("p2 overpayment classification is INFORMATION, never called negative debt", p2o.classification, "INFORMATION");
+  check("p2 overpayment=2000 (received=3000 - agreed=1000)", p2o.derivedFacts.find((d) => d.id === "overpayment")?.value, 2000);
   const p3 = byId("project_payment_outstanding:p3");
-  ok("p3 (agreedPrice=1500 known, zero received) -> a REAL outstanding balance of 1500, correctly reported (not silently zero)", !!p3 && p3.derivedFacts.find((d) => d.id === "balance")?.value === 1500);
+  ok("p3 (agreedPrice=1500 known, zero received) -> a REAL outstanding balance of 1500, correctly reported (not silently zero)", !!p3 && p3.derivedFacts.find((d) => d.id === "outstanding")?.value === 1500);
   ok("p4 (no finance setting at all) -> no debt Case (UNKNOWN price never treated as 0)", !byId("project_payment_outstanding:p4"));
   const p4c = byId("finance_configuration_missing:p4");
   ok("p4 -> FINANCE_CONFIGURATION_MISSING instead, status NEEDS_CONTEXT", !!p4c && p4c.status === "NEEDS_CONTEXT" && p4c.classification === "INFORMATION");
@@ -210,15 +211,73 @@ console.log("Finance: agreedPrice known + underpaid -> outstanding; == -> none; 
 }
 ok("cancelled/expected transactions are never counted as received (reused lib/coo receivables semantics, not re-derived)", true); // structural — this detector performs NO computation of its own, see lib/partner/cases/detectors/finance.ts
 ok("currencies are never merged (each fact carries its own currency field)", cases.filter((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING").every((c) => c.facts.some((f) => f.field === "currency")));
-console.log("finance evidence completeness (found in production false-positive review): balance is fully traceable from the exposed facts, including 'cancelled'");
+console.log("finance evidence completeness: outstanding/overpayment are fully traceable from agreedPrice/received alone; balance_legacy is present but not the decision input");
 {
   const getFact = (c: PartnerCase, field: string) => c.facts.find((f) => f.field === field)?.value as number | undefined;
   const financeCases = cases.filter((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING" || c.caseType === "PROJECT_OVERPAYMENT");
-  ok("every finance Case exposes agreedPrice/received/cancelled, and balance = agreedPrice - received - cancelled exactly", financeCases.length > 0 && financeCases.every((c) => {
-    const agreed = getFact(c, "agreedPrice") ?? 0, received = getFact(c, "received") ?? 0, cancelled = getFact(c, "cancelled") ?? 0;
-    const balance = c.derivedFacts.find((d) => d.id === "balance")?.value as number;
-    return agreed - received - cancelled === balance;
+  ok("every finance Case exposes agreedPrice/received/cancelled/balance_legacy", financeCases.length > 0 && financeCases.every((c) =>
+    c.facts.some((f) => f.field === "agreedPrice") && c.facts.some((f) => f.field === "received") &&
+    c.facts.some((f) => f.field === "cancelled") && c.facts.some((f) => f.field === "balance_legacy")));
+  ok("PROJECT_PAYMENT_OUTSTANDING.outstanding = agreedPrice - received exactly (never involves cancelled)", cases.filter((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING").every((c) => {
+    const agreed = getFact(c, "agreedPrice") ?? 0, received = getFact(c, "received") ?? 0;
+    return agreed - received === (c.derivedFacts.find((d) => d.id === "outstanding")?.value as number);
   }));
+  ok("PROJECT_OVERPAYMENT.overpayment = received - agreedPrice exactly (never involves cancelled)", cases.filter((c) => c.caseType === "PROJECT_OVERPAYMENT").every((c) => {
+    const agreed = getFact(c, "agreedPrice") ?? 0, received = getFact(c, "received") ?? 0;
+    return received - agreed === (c.derivedFacts.find((d) => d.id === "overpayment")?.value as number);
+  }));
+}
+
+// ── Finance: canonical cancelled-income semantics (Phase E.1 hardening — regression tests A-E) ──
+console.log("Finance CANCELLED semantics: cancelled income must NEVER move a project across fully-paid/outstanding/overpaid, even though it still moves the legacy balance_legacy field");
+function financeFixture(agreedPrice: number, paidIncome: number, cancelled: number) {
+  const raw = buildCooRaw();
+  raw.projects = [{ id: "fx", name: "Fixture", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false }];
+  raw.victor = { stuckAfterDays: 5, works: [] };
+  raw.tasks = [];
+  raw.releases = { labelProjectsTotal: 0, rows: [] };
+  raw.financeSettings = [{ projectId: "fx", agreedPrice, currency: "₪", financeException: false }];
+  raw.transactions = [];
+  if (paidIncome > 0) raw.transactions!.push({ id: "fx-paid", projectId: "fx", type: "income", amount: paidIncome, currency: "₪", status: "התקבל", date: "2026-09-10", expenseScope: "כללי", category: "" });
+  if (cancelled > 0) raw.transactions!.push({ id: "fx-cancelled", projectId: "fx", type: "income", amount: cancelled, currency: "₪", status: "בוטל", date: "2026-09-10", expenseScope: "כללי", category: "" });
+  const eyes = buildEyesRaw();
+  eyes.releasesFull = [];
+  eyes.transactions = raw.transactions!.map((t) => ({ ...t, createdAt: "2026-09-10T10:00:00Z" }));
+  const coo = computeCoo(raw, new Date(`${TODAY}T06:00:00Z`));
+  return buildPartnerCases({ state: assemblePartnerCompanyState(coo, eyes), today: TODAY });
+}
+{
+  // A. agreedPrice=4250, paidIncome=4250, cancelled=1500 -> fully paid, no Case at all
+  const a = financeFixture(4250, 4250, 1500);
+  ok("A: fully paid despite cancelled=1500 -> NO PROJECT_OVERPAYMENT, NO PROJECT_PAYMENT_OUTSTANDING (production false-positive this hardening fixes)", !a.some((c) => c.caseType === "PROJECT_OVERPAYMENT" || c.caseType === "PROJECT_PAYMENT_OUTSTANDING"));
+
+  // B. agreedPrice=4250, paidIncome=3000, cancelled=1500 -> outstanding=1250 (NOT 0, NOT negative)
+  const b = financeFixture(4250, 3000, 1500);
+  const bCase = b.find((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING");
+  ok("B: PROJECT_PAYMENT_OUTSTANDING with outstanding=1250 exactly", !!bCase && bCase.derivedFacts.find((d) => d.id === "outstanding")?.value === 1250);
+  ok("B: no PROJECT_OVERPAYMENT alongside it", !b.some((c) => c.caseType === "PROJECT_OVERPAYMENT"));
+
+  // C. agreedPrice=4250, paidIncome=5000, cancelled=1500 -> overpayment=750
+  const cFixture = financeFixture(4250, 5000, 1500);
+  const cCase = cFixture.find((x) => x.caseType === "PROJECT_OVERPAYMENT");
+  ok("C: PROJECT_OVERPAYMENT with overpayment=750 exactly", !!cCase && cCase.derivedFacts.find((d) => d.id === "overpayment")?.value === 750);
+  ok("C: no PROJECT_PAYMENT_OUTSTANDING alongside it", !cFixture.some((x) => x.caseType === "PROJECT_PAYMENT_OUTSTANDING"));
+
+  // D. agreedPrice UNKNOWN (no finance setting at all) -> no debt/overpayment Case, only (possibly) FINANCE_CONFIGURATION_MISSING
+  const rawD = buildCooRaw();
+  rawD.projects = [{ id: "fx", name: "Fixture", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false }];
+  rawD.victor = { stuckAfterDays: 5, works: [] }; rawD.tasks = []; rawD.releases = { labelProjectsTotal: 0, rows: [] };
+  rawD.financeSettings = []; rawD.transactions = [];
+  const eyesD = buildEyesRaw(); eyesD.releasesFull = []; eyesD.transactions = [];
+  const cooD = computeCoo(rawD, new Date(`${TODAY}T06:00:00Z`));
+  const dCases = buildPartnerCases({ state: assemblePartnerCompanyState(cooD, eyesD), today: TODAY });
+  ok("D: agreedPrice UNKNOWN -> no PROJECT_PAYMENT_OUTSTANDING / PROJECT_OVERPAYMENT", !dCases.some((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING" || c.caseType === "PROJECT_OVERPAYMENT"));
+  ok("D: FINANCE_CONFIGURATION_MISSING is the only finance-shaped Case for it", !!dCases.find((c) => c.id === "finance_configuration_missing:fx"));
+
+  // E. Expected/unpaid/cancelled transactions never increase paidIncome
+  const e1 = financeFixture(1000, 0, 1000); // fully cancelled, nothing paid -> outstanding=1000, not 0
+  const e1Case = e1.find((c) => c.caseType === "PROJECT_PAYMENT_OUTSTANDING");
+  ok("E: cancelled income alone never counts as paid — agreedPrice=1000 fully cancelled still shows outstanding=1000", !!e1Case && e1Case.derivedFacts.find((d) => d.id === "outstanding")?.value === 1000);
 }
 
 // ── Release ──

@@ -2,17 +2,32 @@
  * Redbloods Partner — Case Engine (Phase E.1). Finance detectors.
  *
  * Uses ONLY lib/coo's own already-derived receivables figures (agreedPrice,
- * received, cancelled, balance) — never recomputes finance semantics.
- * Received statuses (שולם/התקבל) vs not-received (צפוי/לא שולם/בוטל) and the
- * "missing price ≠ 0" rule are entirely lib/coo's, reused verbatim via
- * receivables.rows. balance = agreedPrice − received − cancelled
- * (lib/payment-status.ts:collectibleBalance, the same formula every other
- * caller in this codebase uses) — `cancelled` is included in every Case's
- * facts precisely because it can make `balance` diverge from a naive
- * agreedPrice−received subtraction (found during the Phase E.1 false-positive
- * review: a Case exposing only agreedPrice/received left a project reading
- * "agreedPrice equals received" while balance still showed an overpayment,
- * with no evidence explaining why — cancelled income is that explanation).
+ * received, cancelled, balance) — never recomputes finance semantics from
+ * transactions. Received statuses (שולם/התקבל) vs not-received (צפוי/לא
+ * שולם/בוטל) and the "missing price ≠ 0" rule are entirely lib/coo's, reused
+ * verbatim via receivables.rows.
+ *
+ * CANONICAL DECISION RULE (Owner finance rule, Phase E.1 hardening):
+ * outstanding/overpayment is decided from agreedPrice vs received ONLY —
+ *   agreedPrice − received > 0  → PROJECT_PAYMENT_OUTSTANDING
+ *   agreedPrice − received < 0  → PROJECT_OVERPAYMENT
+ *   agreedPrice − received == 0 → fully paid, no Case
+ * `cancelled` (בוטל) is NEVER money received and must NEVER move a project
+ * across these three outcomes.
+ *
+ * This is deliberately NOT r.balance. r.balance is
+ * lib/payment-status.ts:collectibleBalance = agreedPrice − received −
+ * cancelled — an app-wide "how much is still collectible" figure (it nets
+ * out cancelled because a cancelled charge no longer needs collecting). That
+ * is a different business question from "is this project fully paid", and
+ * conflating them produced a real false positive in production: a project
+ * with agreedPrice === received (fully paid) but a cancelled transaction
+ * still showed PROJECT_OVERPAYMENT because balance went negative. `balance`
+ * is kept below as a clearly-labelled legacy/traceability fact only — it is
+ * never the input to this detector's classification. Do NOT "fix" this by
+ * changing collectibleBalance itself — it is correct for its own callers
+ * (ProjectDrawer, Finance, Dashboard, Insights, etc.); this detector simply
+ * needs a different formula.
  */
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
@@ -23,7 +38,12 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
   const receivables = state.domains.receivables;
   if (receivables.status === "AVAILABLE" && receivables.data) {
     for (const r of receivables.data.rows) {
-      if (r.balance > 0) {
+      // Canonical Owner rule: agreedPrice vs received ONLY. `cancelled` never
+      // participates in this comparison — see module doc.
+      const outstanding = r.agreedPrice - r.received;
+      const legacyBalanceFact = { domain: "receivables", entityId: r.projectId, field: "balance_legacy", value: r.balance, label: "balance (שדה legacy — כולל cancelled, למעקב בלבד, אינו קלט להחלטה)" };
+
+      if (outstanding > 0) {
         out.push({
           id: `project_payment_outstanding:${r.projectId}`,
           caseType: "PROJECT_PAYMENT_OUTSTANDING",
@@ -34,21 +54,23 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
           createdFrom: "STATE",
           facts: [
             { domain: "receivables", entityId: r.projectId, field: "agreedPrice", value: r.agreedPrice, label: "agreedPrice" },
-            { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received" },
-            { domain: "receivables", entityId: r.projectId, field: "cancelled", value: r.cancelled, label: "cancelled" },
+            { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received (paidIncome — רק שולם/התקבל)" },
+            { domain: "receivables", entityId: r.projectId, field: "cancelled", value: r.cancelled, label: "cancelled (בוטל — אינו כסף שהתקבל, אינו משפיע על היתרה)" },
             { domain: "receivables", entityId: r.projectId, field: "currency", value: r.currency, label: "currency" },
+            legacyBalanceFact,
           ],
-          derivedFacts: [{ id: "balance", label: "יתרה", value: r.balance, basis: "agreedPrice − received − cancelled (לפי lib/payment-status.ts:collectibleBalance)" }],
+          derivedFacts: [{ id: "outstanding", label: "יתרה לתשלום", value: outstanding, basis: "agreedPrice − received (כלל Owner הקנוני — cancelled לא נכלל)" }],
           hypotheses: [],
           ownerRulesApplied: [],
           workingPrinciplesApplied: [],
           unknowns: [],
           dataQuality: { notes: ["מבוסס על eyes:receivables — פרויקטים עם מחיר מוסכם, לא-exception בלבד."] },
           interventionStyle: "GENTLE",
-          summaryHe: `יתרת תשלום פתוחה בפרויקט: ${r.currency}${r.balance}.`,
+          summaryHe: `יתרת תשלום פתוחה בפרויקט: ${r.currency}${outstanding}.`,
           changeContext: null,
         });
-      } else if (r.balance < 0) {
+      } else if (outstanding < 0) {
+        const overpayment = -outstanding;
         out.push({
           id: `project_overpayment:${r.projectId}`,
           caseType: "PROJECT_OVERPAYMENT",
@@ -59,21 +81,22 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
           createdFrom: "STATE",
           facts: [
             { domain: "receivables", entityId: r.projectId, field: "agreedPrice", value: r.agreedPrice, label: "agreedPrice" },
-            { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received" },
-            { domain: "receivables", entityId: r.projectId, field: "cancelled", value: r.cancelled, label: "cancelled" },
+            { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received (paidIncome — רק שולם/התקבל)" },
+            { domain: "receivables", entityId: r.projectId, field: "cancelled", value: r.cancelled, label: "cancelled (בוטל — אינו כסף שהתקבל, אינו משפיע על היתרה)" },
+            legacyBalanceFact,
           ],
-          derivedFacts: [{ id: "balance", label: "יתרה (שלילית)", value: r.balance, basis: "agreedPrice − received − cancelled (לפי lib/payment-status.ts:collectibleBalance)" }],
+          derivedFacts: [{ id: "overpayment", label: "תשלום עודף", value: overpayment, basis: "received − agreedPrice (כלל Owner הקנוני — cancelled לא נכלל)" }],
           hypotheses: [],
           ownerRulesApplied: [],
           workingPrinciplesApplied: [],
           unknowns: [],
           dataQuality: { notes: [] },
           interventionStyle: "GENTLE",
-          summaryHe: "התקבל תשלום גבוה מהמוסכם בפרויקט (יתרה שלילית).",
+          summaryHe: "התקבל תשלום גבוה מהמוסכם בפרויקט.",
           changeContext: null,
         });
       }
-      // balance === 0: fully paid — no Case.
+      // outstanding === 0: fully paid (agreedPrice === received) — no Case, regardless of cancelled.
     }
   }
 
