@@ -16,9 +16,11 @@ import type { Coverage, RelationQuality } from "../eyes/types";
 import type {
   DeadlineFact, ExpectedIncomeFact, ProposalFact, ReleaseFact, StevenWorkFact, TaskFact, VictorWorkFact,
 } from "../../coo/types";
-import type { ClientSummary, ClipSummary, LabelArtistSummary, SessionSummary } from "../eyes/types";
+import type { ClientSummary, ClipSummary, LabelArtistBalanceTotals, LabelArtistSummary, ShowSummary, SessionSummary } from "../eyes/types";
 
 export const PROJECT_DOSSIER_SCHEMA_VERSION = "project-dossier-v1";
+export const CLIENT_DOSSIER_SCHEMA_VERSION = "client-dossier-v1";
+export const LABEL_ARTIST_DOSSIER_SCHEMA_VERSION = "label-artist-dossier-v1";
 
 export type DossierEntityType =
   | "project" | "client" | "proposal" | "session" | "release" | "labelArtist"
@@ -250,3 +252,144 @@ export interface ProjectDossier {
 export type ProjectDossierResult =
   | { ok: true; dossier: ProjectDossier }
   | { ok: false; reason: "NOT_FOUND_IN_EYES_SCOPE"; projectId: string; note: string };
+
+// ════════════════════════════════════════════════════════════════════════════
+// Shared building blocks (Phase C.2) — reused by both Client and Label Artist Dossiers
+// ════════════════════════════════════════════════════════════════════════════
+
+/** A lightweight project reference sourced from state.projects.index — works for BOTH open and closed projects uniformly (unlike full ProjectFact, which only exists for open ones). Use buildProjectDossier() for full project detail. */
+export interface ProjectRefSummary { projectId: string; name: string; status: string; businessType: string }
+
+export interface FinanceByCurrencySummary { currency: string; agreedPriceSum: number; receivedSum: number; balanceSum: number; projectCount: number }
+
+/**
+ * Finance aggregated across SEVERAL projects that relate to an entity (a Client
+ * or Label Artist) — never a single canonical "entity revenue" figure, because
+ * the project↔entity relation itself may be weak (TEXT_MATCH). relationQuality
+ * says which set of projects this was built from; a TEXT_MATCH-derived total is
+ * never presented with the same confidence as an ID-derived one.
+ */
+export interface AggregatedFinanceContext {
+  byCurrency: FinanceByCurrencySummary[];
+  /** Projects in this bucket with configStatus other than CONFIGURED (missing agreedPrice, exception, etc.) — counted, never coerced into the sums as 0. */
+  projectsWithUnknownFinance: number;
+  relationQuality: RelationQuality;
+  note: string;
+}
+
+export interface SessionsBucket { count: number; firstSessionDate: string | null; latestSessionDate: string | null; items: SessionSummary[] }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Client Dossier (Phase C.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface ClientIdentity { clientId: string; name: string; type: string; status: string; createdAt: string | null }
+
+export interface ClientProposalsSection {
+  items: ProposalFact[];
+  relation: EntityRelation;
+  /**
+   * Phase C.2 finding: proposals.client_id is a REAL FK in the DB (proven by
+   * lib/coo/readers.ts's own `clients(name)` embedded-select, which only works
+   * against a real foreign key) — but lib/coo's ProposalFact/RawProposal never
+   * retains it, only the denormalized clientName text. Not fixed this block
+   * (lib/coo change, not pre-approved) — this is a documented known gap.
+   */
+  scopeDescription: string;
+}
+
+export interface ClientDossier {
+  dossierSchemaVersion: string;
+  clientId: string;
+  identity: ClientIdentity;
+  /** Projects whose artist text matches ONLY this client (TEXT_MATCH, never ID — no client_id exists on projects). */
+  matchedProjects: ProjectRefSummary[];
+  /** Projects whose artist text matches this client AND at least one other client with the same name — never narrowed to one. */
+  ambiguousProjectCandidates: ProjectRefSummary[];
+  proposals: ClientProposalsSection;
+  /** Derived from matchedProjects only (never ambiguousProjectCandidates) — relationQuality is always TEXT_MATCH. */
+  finance: AggregatedFinanceContext;
+  /** Derived from matchedProjects' sessions only. */
+  sessions: SessionsBucket;
+  /** shows.artist_client_id — the client performed. */
+  performerShows: { items: ShowSummary[]; relation: EntityRelation };
+  /** shows.booker_client_id. */
+  bookerShows: { items: ShowSummary[]; relation: EntityRelation };
+  /** shows.dj_client_id. */
+  djShows: { items: ShowSummary[]; relation: EntityRelation };
+  dataQuality: DossierDataQuality;
+  provenance: DossierProvenance;
+}
+
+export type ClientDossierResult =
+  | { ok: true; dossier: ClientDossier }
+  | { ok: false; reason: "NOT_FOUND_IN_EYES_SCOPE"; clientId: string; note: string };
+
+// ════════════════════════════════════════════════════════════════════════════
+// Label Artist Dossier (Phase C.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface LabelArtistIdentity { artistId: string; name: string; status: string; createdAt: string | null; updatedAt: string | null }
+
+/** idLinked and textMatched are mutually exclusive — a project already ID-linked never also appears in textMatched. */
+export interface LabelArtistProjectsSection {
+  idLinked: ProjectRefSummary[];
+  textMatched: ProjectRefSummary[];
+  /** Projects whose text ambiguously matches this artist AND at least one other label artist (and carry no release ID resolving it). */
+  ambiguousTextMatched: ProjectRefSummary[];
+}
+
+export interface LabelArtistReleasesSection {
+  /** Every ACTIVE-stage release row (lib/coo scope) for this artist's ID-linked projects. */
+  rows: ReleaseFact[];
+  /** NOT a lifetime count — see scopeNote. Only what Partner Eyes' active-stage-only release scope can see right now. */
+  visibleReleaseCount: number;
+  firstVisibleReleaseTargetDate: string | null;
+  latestVisibleReleaseTargetDate: string | null;
+  scopeNote: string;
+}
+
+export interface LabelArtistSessionsSection {
+  /** Sessions of projects reached via the STRONG (ID, release.label_artist_id → release.project_id) path. */
+  viaIdLinkedProjects: SessionsBucket;
+  /** Sessions of projects reached only via the WEAK (TEXT_MATCH, projects.artist = label_artists.name) path. */
+  viaTextMatchedProjects: SessionsBucket;
+  note: string;
+}
+
+export interface LabelArtistFinanceSection {
+  viaIdLinkedProjects: AggregatedFinanceContext;
+  viaTextMatchedProjects: AggregatedFinanceContext;
+}
+
+export interface LabelArtistBalanceLedgerSection {
+  hasEntries: boolean;
+  entryCount: number;
+  /** null when hasEntries is false — never a fake all-zero totals object. Same formula as lib/artist-balance-store.ts:computeArtistBalanceTotals(). */
+  totals: LabelArtistBalanceTotals | null;
+  note: string;
+}
+
+export interface LabelArtistShowsSection {
+  status: "NO_DIRECT_RELATION_MODELED";
+  note: string;
+}
+
+export interface LabelArtistDossier {
+  dossierSchemaVersion: string;
+  artistId: string;
+  identity: LabelArtistIdentity;
+  projects: LabelArtistProjectsSection;
+  releases: LabelArtistReleasesSection;
+  sessions: LabelArtistSessionsSection;
+  finance: LabelArtistFinanceSection;
+  balanceLedger: LabelArtistBalanceLedgerSection;
+  /** v1: shows have no label_artist_id, and no reliable path from artist → client → show is modeled (would be a 2-hop text guess) — see §22. */
+  shows: LabelArtistShowsSection;
+  dataQuality: DossierDataQuality;
+  provenance: DossierProvenance;
+}
+
+export type LabelArtistDossierResult =
+  | { ok: true; dossier: LabelArtistDossier }
+  | { ok: false; reason: "NOT_FOUND_IN_EYES_SCOPE"; artistId: string; note: string };

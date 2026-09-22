@@ -1,12 +1,13 @@
 /**
- * Golden tests for Redbloods Partner Project Dossier v1 (Phase C.1).
+ * Golden tests for Redbloods Partner Entity Dossiers — Project (Phase C.1),
+ * Client + Label Artist (Phase C.2).
  *
  * Run with:   npx tsx scripts/test-partner-dossiers.ts
  *
  * Pure module: no Supabase, no network, no LLM. Builds a CooRawInput +
  * PartnerEyesRaw fixture, runs it through the REAL computeCoo() and
- * assemblePartnerCompanyState() (same engines production uses), then
- * through buildProjectDossier()/buildAllProjectDossiers() — never a mock.
+ * assemblePartnerCompanyState() (same engines production uses), then through
+ * the dossier builders — never a mock.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,6 +16,8 @@ import type { CooRawInput } from "../lib/coo/types";
 import { assemblePartnerCompanyState } from "../lib/partner/eyes/company-state";
 import type { PartnerEyesRaw } from "../lib/partner/eyes/types";
 import { buildAllProjectDossiers, buildProjectDossier } from "../lib/partner/dossiers/project";
+import { buildAllClientDossiers, buildClientDossier } from "../lib/partner/dossiers/client";
+import { buildAllLabelArtistDossiers, buildLabelArtistDossier } from "../lib/partner/dossiers/labelArtist";
 
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
@@ -42,6 +45,8 @@ function buildCooRaw(): CooRawInput {
       { id: "p3", name: "פרויקט לייבל בקונפליקט", artist: "אמן קונפליקט", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לייבל", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
       { id: "p4", name: "פרויקט לקוח כפול", artist: "לקוח כפול", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
       { id: "p-closed", name: "פרויקט שהושלם", artist: "אמן שהושלם", status: "הושלם", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: "2026-01-01T10:00:00Z", isHidden: false },
+      // pure TEXT_MATCH label artist scenario — no release row at all, so no ID path and no conflict
+      { id: "p5", name: "פרויקט לייבל טקסט בלבד", artist: "אמן טקסט בלבד", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לייבל", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
     ],
     tasks: [
       { id: "t1", title: "משימה על p1", status: "פתוח", dueDate: "2026-09-25", relatedType: "project", relatedId: "p1", createdAt: "2026-09-10T09:00:00Z" },
@@ -68,13 +73,18 @@ function buildCooRaw(): CooRawInput {
       { id: "se1-past", projectId: "p1", date: "2026-09-10", startTime: "18:00", endTime: "20:00", status: "בוצע", sessionType: "סשן" },
       { id: "se1-future", projectId: "p1", date: "2026-09-25", startTime: "18:00", endTime: "20:00", status: "מתוכנן", sessionType: "סשן" },
       { id: "se-closed", projectId: "p-closed", date: "2025-12-01", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
+      // ID-linked (via release.label_artist_id) project session — for Label Artist Dossier's "sessions inherit project relation path" test
+      { id: "se-p2", projectId: "p2", date: "2026-09-15", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
+      { id: "se-p5", projectId: "p5", date: "2026-09-16", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
     ],
     transactions: [
       { id: "tx1", projectId: "p1", type: "income", amount: 500, currency: "₪", status: "התקבל", date: "2026-09-10", expenseScope: "כללי", category: "" },
+      { id: "tx2", projectId: "p2", type: "income", amount: 1000, currency: "₪", status: "התקבל", date: "2026-09-11", expenseScope: "כללי", category: "" },
     ],
     financeSettings: [
       { projectId: "p1", agreedPrice: 2000, currency: "₪", financeException: false },
-      // p2/p3/p4/p-closed deliberately have NO finance setting
+      { projectId: "p2", agreedPrice: 1000, currency: "₪", financeException: false },
+      // p3/p4/p-closed deliberately have NO finance setting
     ],
     orphanFinanceKeyCount: 0,
     releases: {
@@ -91,22 +101,29 @@ function buildCooRaw(): CooRawInput {
 function buildEyesRaw(): PartnerEyesRaw {
   return structuredClone<PartnerEyesRaw>({
     sources: [
-      { source: "clients", status: "ok", rowCount: 4 }, { source: "label_artists", status: "ok", rowCount: 3 },
-      { source: "clip_productions", status: "ok", rowCount: 2 }, { source: "artist_balance_entries", status: "ok", rowCount: 0 },
-      { source: "sessions_eyes", status: "ok", rowCount: 3 }, { source: "shows_eyes", status: "ok", rowCount: 0 },
+      { source: "clients", status: "ok", rowCount: 5 }, { source: "label_artists", status: "ok", rowCount: 3 },
+      { source: "clip_productions", status: "ok", rowCount: 2 }, { source: "artist_balance_entries", status: "ok", rowCount: 3 },
+      { source: "sessions_eyes", status: "ok", rowCount: 4 }, { source: "shows_eyes", status: "ok", rowCount: 2 },
     ],
     clients: [
-      { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל" },
-      { id: "c2", name: "לקוח רגיל", type: "לקוח", status: "פעיל" },
-      { id: "c3", name: "לקוח כפול", type: "לקוח", status: "פעיל" },
-      { id: "c4", name: "לקוח כפול", type: "לקוח", status: "פעיל" }, // same name as c3 → AMBIGUOUS for p4
+      { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
+      { id: "c2", name: "לקוח רגיל", type: "לקוח", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
+      { id: "c3", name: "לקוח כפול", type: "לקוח", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
+      { id: "c4", name: "לקוח כפול", type: "לקוח", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" }, // same name as c3 → AMBIGUOUS for p4
+      { id: "c5", name: "תקליטן בדיקה", type: "איש צוות", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" }, // DJ-only client — never appears as a project artist match
     ],
     labelArtists: [
-      { id: "la1", name: "אמן לייבל בדיקה", status: "פעיל" }, // ID target for p2, agrees with p2's artist text
-      { id: "la2", name: "אמן אחר לגמרי", status: "פעיל" },   // ID target for p3 — does NOT match p3's artist text
-      { id: "la3", name: "אמן קונפליקט", status: "פעיל" },     // TEXT_MATCH candidate for p3 — conflicts with la2
+      { id: "la1", name: "אמן לייבל בדיקה", status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" }, // ID target for p2, agrees with p2's artist text
+      { id: "la2", name: "אמן אחר לגמרי", status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" },   // ID target for p3 — does NOT match p3's artist text
+      { id: "la3", name: "אמן קונפליקט", status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" },     // TEXT_MATCH candidate for p3 — conflicts with la2
+      { id: "la4", name: "אמן טקסט בלבד", status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" },   // pure TEXT_MATCH for p5 — no release row exists at all, no ID path, no conflict
     ],
-    artistBalanceCounts: {},
+    artistBalanceEntries: [
+      { id: "be1", artistId: "la1", entryType: "הכנסות", amount: 800, entryDate: "2026-08-01" },
+      { id: "be2", artistId: "la1", entryType: "תשלומים", amount: 300, entryDate: "2026-08-05" },
+      { id: "be3", artistId: "la1", entryType: "הוצאות", amount: 50, entryDate: "2026-08-10" },
+      // la2/la3 deliberately have NO ledger entries
+    ],
     clips: [
       { id: "clip1", title: "קליפ מקושר p1", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
       { id: "clip-unlinked", title: "קליפ ללא פרויקט", status: "בתהליך", projectId: null, artistName: "אמן בדיקה" },
@@ -115,8 +132,15 @@ function buildEyesRaw(): PartnerEyesRaw {
       { id: "se1-past", projectId: "p1", showId: null, date: "2026-09-10", startTime: "18:00", endTime: "20:00", status: "בוצע", sessionType: "סשן" },
       { id: "se1-future", projectId: "p1", showId: null, date: "2026-09-25", startTime: "18:00", endTime: "20:00", status: "מתוכנן", sessionType: "סשן" },
       { id: "se-closed", projectId: "p-closed", showId: null, date: "2025-12-01", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
+      { id: "se-p2", projectId: "p2", showId: null, date: "2026-09-15", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
+      { id: "se-p5", projectId: "p5", showId: null, date: "2026-09-16", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
     ],
-    shows: [],
+    // sh-artist: c1 performs (artist_client_id) — Client Dossier's ID-relation show test.
+    // sh-dj: c5 is DJ (dj_client_id) — separate ID relation, distinct client.
+    shows: [
+      { id: "sh-artist", name: "הופעה עם אמן מזוהה", status: "בוצע", paymentStatus: "שולם", date: "2026-08-15", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
+      { id: "sh-dj", name: "הופעה עם תקליטן", status: "מתוכנן", paymentStatus: "לא שולם", date: "2026-10-05", djClientId: "c5", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
+    ],
   });
 }
 
@@ -195,7 +219,7 @@ ok("p1 (no release, no label-artist name match): status NONE, no fake relation f
 
 console.log("finance: exact semantics preserved, never recomputed");
 check("received statuses only (p1: 500 from a 'התקבל' row)", d1?.finance.receivedIncome, 500);
-check("agreedPrice missing (p2, no finance setting, not cancelled) → UNKNOWN, never 0", (() => { const r2 = buildProjectDossier(P, "p2"); return r2.ok ? [r2.dossier.finance.configStatus, r2.dossier.finance.agreedPrice] : null; })(), ["UNKNOWN", null]);
+check("agreedPrice missing (p3, no finance setting, not cancelled) → UNKNOWN, never 0", (() => { const r3 = buildProjectDossier(P, "p3"); return r3.ok ? [r3.dossier.finance.configStatus, r3.dossier.finance.agreedPrice] : null; })(), ["UNKNOWN", null]);
 check("paidIncome < agreedPrice → DEBT (p1: 500 < 2000)", d1?.finance.balanceKind, "DEBT");
 {
   // paidIncome >= agreedPrice → NO_DEBT / OVERPAYMENT, never a negative "debt"
@@ -238,8 +262,138 @@ console.log("performance: buildAllProjectDossiers does not recompute PartnerComp
   const t0 = Date.now();
   const all = buildAllProjectDossiers(P);
   const elapsedMs = Date.now() - t0;
-  check("builds a dossier for every visible project in the index (5 in this fixture)", all.size, 5);
+  check("builds a dossier for every visible project in the index (6 in this fixture)", all.size, 6);
   ok("well under a second for 5 in-memory dossiers (no I/O)", elapsedMs < 1000);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Client Dossier (Phase C.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+console.log("Client Dossier: build by ID");
+const rc1 = buildClientDossier(P, "c1");
+ok("c1 builds successfully", rc1.ok);
+const dc1 = rc1.ok ? rc1.dossier : null;
+check("dossierSchemaVersion is set", dc1?.dossierSchemaVersion, "client-dossier-v1");
+check("identity.name matches the fixture", dc1?.identity.name, "אמן בדיקה");
+
+console.log("Client Dossier: unknown client returns SCOPED not_found");
+const rcNotFound = buildClientDossier(P, "does-not-exist");
+ok("returns ok:false with reason NOT_FOUND_IN_EYES_SCOPE", !rcNotFound.ok && rcNotFound.reason === "NOT_FOUND_IN_EYES_SCOPE");
+
+console.log("Client Dossier: project relation via name is TEXT_MATCH only, never ID");
+check("c1's matched project is p1", dc1?.matchedProjects.map((p) => p.projectId), ["p1"]);
+check("finance.relationQuality is TEXT_MATCH (derived from a name-matched project, not a canonical figure)", dc1?.finance.relationQuality, "TEXT_MATCH");
+ok("no client dossier's project-facing relation is ever ID (structurally guaranteed — matchedProjects carries no quality field at all; only the show relations below are ID)", true);
+
+console.log("Client Dossier: ambiguous project match stays ambiguous — never narrowed to one");
+const rc3 = buildClientDossier(P, "c3");
+const rc4 = buildClientDossier(P, "c4");
+ok("c3: p4 appears in ambiguousProjectCandidates, NOT matchedProjects", rc3.ok && rc3.dossier.matchedProjects.length === 0 && rc3.dossier.ambiguousProjectCandidates.map((p) => p.projectId).includes("p4"));
+ok("c4: same p4 appears in ITS ambiguousProjectCandidates too — both clients see the ambiguity, neither claims it", rc4.ok && rc4.dossier.matchedProjects.length === 0 && rc4.dossier.ambiguousProjectCandidates.map((p) => p.projectId).includes("p4"));
+
+console.log("Client Dossier: proposal relation uses the actual available key (clientName text — client_id gap documented)");
+check("c1's proposals include pr1 (clientName = 'אמן בדיקה')", dc1?.proposals.items.map((p) => p.id), ["pr1"]);
+check("relation quality is TEXT_MATCH (client_id exists in the DB but lib/coo doesn't expose it yet)", dc1?.proposals.relation.quality, "TEXT_MATCH");
+ok("scopeDescription documents the real client_id gap found this block", dc1?.proposals.scopeDescription.includes("client_id") ?? false);
+
+console.log("Client Dossier: DJ/performer/booker show relations are real ID relations (Phase C.2 finding beyond what was asked)");
+check("c1 (performer on sh-artist) appears in performerShows via artist_client_id", dc1?.performerShows.items.map((s) => s.id), ["sh-artist"]);
+check("performerShows relation quality is ID", dc1?.performerShows.relation.quality, "ID");
+const rc5 = buildClientDossier(P, "c5");
+ok("c5 (DJ on sh-dj) appears in djShows via dj_client_id, quality ID", rc5.ok && rc5.dossier.djShows.items.map((s) => s.id).includes("sh-dj") && rc5.dossier.djShows.relation.quality === "ID");
+ok("c5 has zero matched/ambiguous projects — a DJ-only client is never guessed into a project by name", rc5.ok && rc5.dossier.matchedProjects.length === 0 && rc5.dossier.ambiguousProjectCandidates.length === 0);
+
+console.log("Client Dossier: finance aggregates keep currency separation, no profitability inference");
+check("c1's finance byCurrency has exactly one ₪ bucket (2000 agreed, 500 received)", dc1?.finance.byCurrency.map((b) => [b.currency, b.agreedPriceSum, b.receivedSum]), [["₪", 2000, 500]]);
+ok("dataQuality.weakRelations documents that this revenue view is TEXT_MATCH-derived, not canonical", dc1?.dataQuality.weakRelations.some((w) => w.includes("TEXT_MATCH")) ?? false);
+ok("no profitability/loyalty/churn/seriousness field exists anywhere on the dossier", !/profitability|loyalty|churn|seriousness|score/i.test(JSON.stringify(dc1)));
+
+console.log("Client Dossier: buildAllClientDossiers stays in-memory, no query per client");
+{
+  const t0 = Date.now();
+  const all = buildAllClientDossiers(P);
+  ok("builds a dossier for every client in the fixture (5)", all.size === 5);
+  ok("fast (in-memory, no I/O)", Date.now() - t0 < 1000);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Label Artist Dossier (Phase C.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+console.log("Label Artist Dossier: build by ID");
+const ra1 = buildLabelArtistDossier(P, "la1");
+ok("la1 builds successfully", ra1.ok);
+const da1 = ra1.ok ? ra1.dossier : null;
+check("dossierSchemaVersion is set", da1?.dossierSchemaVersion, "label-artist-dossier-v1");
+
+console.log("Label Artist Dossier: unknown artist returns SCOPED not_found");
+const raNotFound = buildLabelArtistDossier(P, "does-not-exist");
+ok("returns ok:false with reason NOT_FOUND_IN_EYES_SCOPE", !raNotFound.ok && raNotFound.reason === "NOT_FOUND_IN_EYES_SCOPE");
+
+console.log("Label Artist Dossier: release.label_artist_id creates the ID path to the project (release.project_id)");
+check("la1's idLinked projects = [p2]", da1?.projects.idLinked.map((p) => p.projectId), ["p2"]);
+check("…and la1 has NO textMatched projects (p2 is already ID-linked, never duplicated)", da1?.projects.textMatched, []);
+
+console.log("Label Artist Dossier: name-only project match remains TEXT_MATCH (no release row at all)");
+const ra4 = buildLabelArtistDossier(P, "la4");
+ok("la4 (p5, no release row exists) is TEXT_MATCH only", ra4.ok && ra4.dossier.projects.textMatched.map((p) => p.projectId).includes("p5") && ra4.dossier.projects.idLinked.length === 0);
+
+console.log("Label Artist Dossier: ID / name disagreement creates a conflict, never resolved by picking one");
+const ra2 = buildLabelArtistDossier(P, "la2");
+const ra3 = buildLabelArtistDossier(P, "la3");
+ok("la2 (release.label_artist_id for p3) carries the LABEL_ARTIST_ID_NAME_MISMATCH conflict", ra2.ok && ra2.dossier.dataQuality.conflicts.some((c) => c.code === "LABEL_ARTIST_ID_NAME_MISMATCH"));
+ok("la3 (text-matches p3 but isn't the ID target) carries the SAME conflict, from its own side too", ra3.ok && ra3.dossier.dataQuality.conflicts.some((c) => c.code === "LABEL_ARTIST_ID_NAME_MISMATCH"));
+ok("la2 legitimately keeps p3 as idLinked (that IS what release.label_artist_id says — the conflict flags the disagreement, it doesn't erase the real ID fact)", ra2.ok && ra2.dossier.projects.idLinked.some((p) => p.projectId === "p3"));
+ok("…but la3 (the text-only candidate) never claims p3 as its own idLinked or textMatched — it only sees it via the conflict", ra3.ok && !ra3.dossier.projects.idLinked.some((p) => p.projectId === "p3") && !ra3.dossier.projects.textMatched.some((p) => p.projectId === "p3"));
+
+console.log("Label Artist Dossier: sessions inherit the project relation path — never described as a direct FK");
+check("la1's ID-path sessions include se-p2", da1?.sessions.viaIdLinkedProjects.items.map((s) => s.id), ["se-p2"]);
+check("la1's TEXT-path sessions are empty (p2 is ID-linked, not text-matched)", da1?.sessions.viaTextMatchedProjects.items, []);
+ok("la4's TEXT-path sessions include se-p5 (via its only text-matched project)", ra4.ok && ra4.dossier.sessions.viaTextMatchedProjects.items.map((s) => s.id).includes("se-p5"));
+ok("la4's ID-path sessions are empty (no ID-linked project at all)", ra4.ok && ra4.dossier.sessions.viaIdLinkedProjects.count === 0);
+
+console.log("Label Artist Dossier: finance context inherits project relation quality");
+check("la1's ID-path finance is real (p2: 1000 agreed, 1000 received)", da1?.finance.viaIdLinkedProjects.byCurrency.map((b) => [b.currency, b.agreedPriceSum, b.receivedSum]), [["₪", 1000, 1000]]);
+check("…relationQuality is ID", da1?.finance.viaIdLinkedProjects.relationQuality, "ID");
+check("la4's TEXT-path relationQuality is TEXT_MATCH", ra4.ok ? ra4.dossier.finance.viaTextMatchedProjects.relationQuality : null, "TEXT_MATCH");
+
+console.log("Label Artist Dossier: release count is scope-honest, never a lifetime count");
+check("la1's visibleReleaseCount is 1 (active-stage only)", da1?.releases.visibleReleaseCount, 1);
+ok("scopeNote explicitly says this is NOT a lifetime count", da1?.releases.scopeNote.includes("NOT a lifetime") ?? false);
+
+console.log("Label Artist Dossier: show relation is never invented");
+check("shows section is always the static NO_DIRECT_RELATION_MODELED", da1?.shows.status, "NO_DIRECT_RELATION_MODELED");
+
+console.log("Label Artist Dossier: balance ledger relationship is correct, reuses the canonical formula");
+check("la1 has entries and a computed balance (800 income - 300 payments - 50 expenses = 450)", [da1?.balanceLedger.hasEntries, da1?.balanceLedger.entryCount, da1?.balanceLedger.totals?.currentBalance], [true, 3, 450]);
+check("la2 has zero entries → hasEntries false, totals null (never a fake all-zero object)", [ra2.ok ? ra2.dossier.balanceLedger.hasEntries : null, ra2.ok ? ra2.dossier.balanceLedger.totals : "x"], [false, null]);
+
+console.log("Label Artist Dossier: buildAllLabelArtistDossiers stays in-memory");
+{
+  const t0 = Date.now();
+  const all = buildAllLabelArtistDossiers(P);
+  ok("builds a dossier for every label artist in the fixture (4)", all.size === 4);
+  ok("fast (in-memory, no I/O)", Date.now() - t0 < 1000);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Cross-dossier consistency (Phase C.2 §41)
+// ════════════════════════════════════════════════════════════════════════════
+
+console.log("cross-dossier consistency: Project ↔ Client and Project ↔ Label Artist agree from both sides");
+{
+  const p1d = buildProjectDossier(P, "p1");
+  ok("Project p1 says its client is c1 (MATCHED, TEXT_MATCH) — Client c1 says its matched project is p1: same basis", p1d.ok && p1d.dossier.client.status === "MATCHED" && p1d.dossier.client.candidates[0].id === "c1" && p1d.dossier.client.relation?.basis === "projects.artist = clients.name" && dc1?.matchedProjects.some((p) => p.projectId === "p1") === true);
+
+  const p4d = buildProjectDossier(P, "p4");
+  ok("Project p4 says its client is AMBIGUOUS (c3, c4) — both Client c3 and c4 say p4 is ambiguous FOR THEM too", p4d.ok && p4d.dossier.client.status === "AMBIGUOUS" && p4d.dossier.client.candidates.map((c) => c.id).sort().join() === "c3,c4" && rc3.ok && rc4.ok && rc3.dossier.ambiguousProjectCandidates.some((p) => p.projectId === "p4") && rc4.dossier.ambiguousProjectCandidates.some((p) => p.projectId === "p4"));
+
+  const p2d = buildProjectDossier(P, "p2");
+  ok("Project p2 says its labelArtist is ID-linked to la1 — Label Artist la1 says p2 is its idLinked project", p2d.ok && p2d.dossier.labelArtist.status === "ID" && p2d.dossier.labelArtist.idCandidate?.id === "la1" && da1?.projects.idLinked.some((p) => p.projectId === "p2") === true);
+
+  const p3d = buildProjectDossier(P, "p3");
+  ok("Project p3 reports a CONFLICT — both la2 and la3's dossiers report the SAME conflict code independently", p3d.ok && p3d.dossier.labelArtist.status === "CONFLICT" && p3d.dossier.labelArtist.conflict?.code === "LABEL_ARTIST_ID_NAME_MISMATCH" && ra2.ok && ra3.ok && ra2.dossier.dataQuality.conflicts[0].code === "LABEL_ARTIST_ID_NAME_MISMATCH" && ra3.dossier.dataQuality.conflicts[0].code === "LABEL_ARTIST_ID_NAME_MISMATCH");
 }
 
 console.log("isolation (static checks on lib/partner/dossiers)");

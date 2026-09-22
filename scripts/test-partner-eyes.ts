@@ -92,13 +92,17 @@ function buildEyesRaw(): PartnerEyesRaw {
       { source: "shows_eyes", status: "ok", rowCount: 2 },
     ],
     clients: [
-      { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל" },
-      { id: "c2", name: "לקוח כללי", type: "לקוח", status: "פעיל" },
+      { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
+      { id: "c2", name: "לקוח כללי", type: "לקוח", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
     ],
     labelArtists: [
-      { id: "la1", name: "אמן לייבל בדיקה", status: "פעיל" },
+      { id: "la1", name: "אמן לייבל בדיקה", status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
     ],
-    artistBalanceCounts: { la1: 3 },
+    artistBalanceEntries: [
+      { id: "be1", artistId: "la1", entryType: "הכנסות", amount: 500, entryDate: "2026-08-01" },
+      { id: "be2", artistId: "la1", entryType: "תשלומים", amount: 200, entryDate: "2026-08-05" },
+      { id: "be3", artistId: "la1", entryType: "הוצאות", amount: 50, entryDate: "2026-08-10" },
+    ],
     clips: [
       { id: "clip1", title: "קליפ עם פרויקט", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
       { id: "clip2", title: "קליפ ישן (שם בלבד)", status: "בתהליך", projectId: null, artistName: "אמן לייבל בדיקה" },
@@ -111,8 +115,8 @@ function buildEyesRaw(): PartnerEyesRaw {
     ],
     // full history: 2 shows, only 1 of which (sh1) is in COO's operational subset (upcoming+doneUnpaid)
     shows: [
-      { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null },
-      { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר" },
+      { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
+      { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
     ],
   });
 }
@@ -279,7 +283,7 @@ const eyesSrc = Object.fromEntries(eyesFiles.map((f) => [path.basename(f), fs.re
 ok("no LLM / AI provider anywhere in lib/partner/eyes", Object.values(eyesSrc).every((s) => !/openai|anthropic|groq|gpt-|claude-/i.test(s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""))));
 ok("no DB write verb anywhere in lib/partner/eyes", Object.values(eyesSrc).every((s) => !/\.(insert|update|upsert|delete|rpc)\(/.test(s)));
 ok("no push / notification / email import", Object.values(eyesSrc).every((s) => !/lib\/push|web-push|nodemailer|notifications/.test(s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""))));
-ok("only readers.ts / build.ts are server-only (all other eyes modules are pure)", Object.entries(eyesSrc).filter(([, s]) => s.includes('import "server-only"')).map(([f]) => f).sort().join() === "build.ts,readers.ts");
+ok("only readers.ts / build.ts actually IMPORT \"server-only\" as a statement (all other eyes modules are pure — a comment explaining why not is fine)", Object.entries(eyesSrc).filter(([, s]) => /^\s*import\s+"server-only"\s*;/m.test(s)).map(([f]) => f).sort().join() === "build.ts,readers.ts");
 ok("the pure eyes modules import no store / supabase", Object.entries(eyesSrc).filter(([f]) => !["readers.ts", "build.ts"].includes(f)).every(([, s]) => !/lib\/supabase|-store"/.test(s)));
 ok("no portal file imports anything from lib/partner", (() => {
   const portalDirs = ["app/api/red-artists", "app/api/supplier", "app/api/vendor/victor", "app/api/label/artists", "app/api/beats", "app/api/notifications", "components/team", "components/red-artists", "components/label", "lib/red-artists", "app/team", "app/red-artists", "app/dj-cleantone", "app/label"];

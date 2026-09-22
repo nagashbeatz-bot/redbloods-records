@@ -13,15 +13,29 @@ import type { CooResult } from "../../coo/pipeline";
 import { adaptCooCompanyState } from "./coo-adapter";
 import { classifyRelationQuality, coverageFromCounts, coverageFromStatus, reliabilityFrom, statusFromSource } from "./coverage";
 import type {
-  ClientsFact, ClipsFact, LabelArtistsFact, PartnerCompanyState, PartnerDomainState, PartnerEyesRaw, PartnerRelation,
-  SessionsFact, ShowsEyesFact,
+  ClientsFact, ClipsFact, LabelArtistBalanceTotals, LabelArtistsFact, PartnerCompanyState, PartnerDomainState, PartnerEyesRaw,
+  PartnerRelation, RawBalanceEntry, SessionsFact, ShowsEyesFact,
 } from "./types";
 
-const EYES_SCHEMA_VERSION = "partner-eyes-v0.2"; // Phase B.2: agent_alerts removed; sessions/shows are now full-history
+const EYES_SCHEMA_VERSION = "partner-eyes-v0.3"; // Phase C.2: clients/labelArtists createdAt, shows artist/booker client ids, balance ledger totals
 const NEW_READER = "lib/partner/eyes/readers.ts:readPartnerEyesRaw";
 
 function sourceOf(raw: PartnerEyesRaw, name: string) {
   return raw.sources.find((s) => s.source === name);
+}
+
+/**
+ * Mirrors lib/artist-balance-store.ts:computeArtistBalanceTotals() EXACTLY —
+ * same 5 Hebrew entry types, same formula. Duplicated (not imported) because
+ * that file has `import "server-only"`; do not let the two definitions drift.
+ * The table has no currency column — this is one implicit ledger, not
+ * currency-aware (see the domain's warnings).
+ */
+const BALANCE_ENTRY_TYPES = ["הכנסות", "הכנסות צפויות", "תשלומים", "הוצאות", "הוצאות צפויות"] as const;
+function computeBalanceTotals(entries: RawBalanceEntry[]): LabelArtistBalanceTotals {
+  const sum = (type: (typeof BALANCE_ENTRY_TYPES)[number]) => entries.filter((e) => e.entryType === type).reduce((acc, e) => acc + e.amount, 0);
+  const income = sum("הכנסות"), expectedIncome = sum("הכנסות צפויות"), payments = sum("תשלומים"), expenses = sum("הוצאות"), expectedExpenses = sum("הוצאות צפויות");
+  return { income, expectedIncome, payments, expenses, expectedExpenses, currentBalance: income - payments - expenses };
 }
 
 function buildClients(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<ClientsFact> {
@@ -33,7 +47,7 @@ function buildClients(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Cli
   const data: ClientsFact | null = raw.clients ? {
     total: raw.clients.length,
     byType: raw.clients.reduce<Record<string, number>>((acc, c) => { acc[c.type] = (acc[c.type] ?? 0) + 1; return acc; }, {}),
-    items: raw.clients.map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status })),
+    items: raw.clients.map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status, createdAt: c.createdAt })),
   } : null;
   return {
     domain: "clients", status, coverage, reliability: reliabilityFrom(coverage, relations[0].quality),
@@ -57,23 +71,33 @@ function buildLabelArtists(raw: PartnerEyesRaw, coo: CooResult, asOf: string): P
       notes: releaseRows ? `זמין בפועל (Phase B.2): ${releasesWithArtist} מתוך ${releaseRows.length} שורות release (הפעילות) נושאות label_artist_id — ראה domain 'releases'.` : "אמין כשקיים, אך רק לפרויקטים עם שורת release פעילה.",
     },
   ];
-  const balanceCounts = raw.artistBalanceCounts ?? {};
+  const entriesByArtist = new Map<string, RawBalanceEntry[]>();
+  for (const e of raw.artistBalanceEntries ?? []) {
+    const list = entriesByArtist.get(e.artistId);
+    if (list) list.push(e); else entriesByArtist.set(e.artistId, [e]);
+  }
   const warnings: string[] = [
     "היחס ל-ID (label_artist_id) קיים רק לתת-קבוצת הפרויקטים שיש להם שורת release פעילה (ראה domain 'releases') — לרוב אמני הלייבל עדיין רק TEXT_MATCH דרך projects.artist.",
   ];
   const data: LabelArtistsFact | null = raw.labelArtists ? {
     total: raw.labelArtists.length,
     byStatus: raw.labelArtists.reduce<Record<string, number>>((acc, a) => { acc[a.status] = (acc[a.status] ?? 0) + 1; return acc; }, {}),
-    items: raw.labelArtists.map((a) => ({ id: a.id, name: a.name, status: a.status, balanceEntries: balanceCounts[a.id] ?? 0 })),
+    items: raw.labelArtists.map((a) => {
+      const entries = entriesByArtist.get(a.id) ?? [];
+      return { id: a.id, name: a.name, status: a.status, createdAt: a.createdAt, updatedAt: a.updatedAt, balanceEntries: entries.length, balanceTotals: entries.length ? computeBalanceTotals(entries) : null };
+    }),
     balanceCoverage: {
-      artistsWithEntries: raw.labelArtists.filter((a) => (balanceCounts[a.id] ?? 0) > 0).length,
-      totalEntries: Object.values(balanceCounts).reduce((s, n) => s + n, 0),
+      artistsWithEntries: [...entriesByArtist.values()].filter((v) => v.length > 0).length,
+      totalEntries: raw.artistBalanceEntries?.length ?? 0,
     },
   } : null;
-  if (raw.artistBalanceCounts === null) {
+  if (raw.artistBalanceEntries === null) {
     warnings.push("artist_balance_entries לא נקרא (label_artists לא זמין, או שהקריאה נכשלה).");
   } else {
-    warnings.push("artist_balance_entries הוא ledger עצמאי ומעודכן ידנית (backfill חד-פעמי + רישומים ידניים, all-time — אין cycle/date filter בקריאה) — לא מסונכרן עם transactions/Finance. אל תניח שהוא עדכני.");
+    warnings.push(
+      "artist_balance_entries הוא ledger עצמאי ומעודכן ידנית (backfill חד-פעמי + רישומים ידניים, all-time — אין cycle/date filter בקריאה) — לא מסונכרן עם transactions/Finance. אל תניח שהוא עדכני.",
+      "balanceTotals מחושב באותה נוסחה בדיוק כמו lib/artist-balance-store.ts:computeArtistBalanceTotals() (income − payments − expenses) — לא לוגיקה חדשה. הטבלה ללא עמודת מטבע — מוצג כ-ledger אחד ללא הנחת מטבע.",
+    );
   }
   return {
     domain: "labelArtists", status, coverage, reliability: reliabilityFrom(coverage, "TEXT_MATCH"),
@@ -168,10 +192,23 @@ function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerD
   const status = statusFromSource(sourceOf(raw, "shows_eyes"));
   const coverage = coverageFromStatus(status);
   const withDj = raw.shows ? raw.shows.filter((s) => s.djClientId !== null).length : null;
+  const withArtist = raw.shows ? raw.shows.filter((s) => s.artistClientId !== null).length : null;
+  const withBooker = raw.shows ? raw.shows.filter((s) => s.bookerClientId !== null).length : null;
+  const relCov = (n: number | null) => n == null || raw.shows == null ? undefined : coverageFromCounts(n, raw.shows.length);
   const relations: PartnerRelation[] = [
     {
+      toDomain: "external", quality: "ID", via: "shows.artist_client_id",
+      coverage: relCov(withArtist),
+      notes: raw.shows ? `${withArtist} מתוך ${raw.shows.length} הופעות עם artist_client_id (המבצע/ת — נחשף לראשונה ב-Phase C.2) — null אינו הופך ל-relation מומצא` : undefined,
+    },
+    {
+      toDomain: "external", quality: "ID", via: "shows.booker_client_id",
+      coverage: relCov(withBooker),
+      notes: raw.shows ? `${withBooker} מתוך ${raw.shows.length} הופעות עם booker_client_id (נחשף לראשונה ב-Phase C.2)` : undefined,
+    },
+    {
       toDomain: "external", quality: "ID", via: "shows.dj_client_id",
-      coverage: withDj == null || raw.shows == null ? undefined : coverageFromCounts(withDj, raw.shows.length),
+      coverage: relCov(withDj),
       notes: raw.shows ? `${withDj} מתוך ${raw.shows.length} הופעות (כל ההיסטוריה) עם dj_client_id — null אינו הופך ל-relation מומצא` : undefined,
     },
   ];
@@ -179,13 +216,17 @@ function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerD
   const cooDoneUnpaid = coo.state.shows?.doneUnpaid.length ?? null;
   const warnings: string[] = [
     `lib/coo רואה subset תפעולי בלבד: upcoming=${cooUpcoming ?? "?"}, doneUnpaid=${cooDoneUnpaid ?? "?"}. Partner Eyes כאן קורא היסטוריה מלאה דרך אותו listShows() בדיוק — קריאה שנייה, לא query חדש מבחינת צורה.`,
+    "shows.artist_client_id ו-booker_client_id (Phase C.2) הם ID relations אמיתיים ל-clients — נפרדים מ-dj_client_id. שלושתם יכולים להצביע על clients שונים על אותה הופעה.",
   ];
   const data: ShowsEyesFact | null = raw.shows ? {
     total: raw.shows.length,
     withDjClientId: withDj ?? 0,
     byStatus: raw.shows.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}),
     cooVisible: { upcoming: cooUpcoming, doneUnpaid: cooDoneUnpaid, note: "מה ש-lib/coo רואה בפועל (subset תפעולי) — cross-reference בלבד" },
-    items: raw.shows.map((s) => ({ id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date, djClientId: s.djClientId, djConfirmationStatus: s.djConfirmationStatus })),
+    items: raw.shows.map((s) => ({
+      id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date,
+      djClientId: s.djClientId, djConfirmationStatus: s.djConfirmationStatus, artistClientId: s.artistClientId, bookerClientId: s.bookerClientId,
+    })),
   } : null;
   return {
     domain: "shows", status, coverage, reliability: reliabilityFrom(coverage, "ID"),

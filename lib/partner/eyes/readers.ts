@@ -34,8 +34,8 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
   };
 
   const [clients, labelArtists, clips, sessions, shows] = await Promise.all([
-    track("clients", async () => (await listClients()).map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status })), (v) => v.length),
-    track("label_artists", async () => (await listLabelArtists()).map((a) => ({ id: a.id, name: a.name, status: a.status })), (v) => v.length),
+    track("clients", async () => (await listClients()).map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status, createdAt: c.created_at ?? null })), (v) => v.length),
+    track("label_artists", async () => (await listLabelArtists()).map((a) => ({ id: a.id, name: a.name, status: a.status, createdAt: a.createdAt, updatedAt: a.updatedAt })), (v) => v.length),
     track("clip_productions", async () => {
       const { data, error } = await supabase
         .from("red_films_productions")
@@ -55,26 +55,29 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
       id: s.id, projectId: s.projectId, showId: s.showId, date: s.date, startTime: s.startTime, endTime: s.endTime, status: s.status, sessionType: s.sessionType,
     })), (v) => v.length),
     // Full history — calls the SAME listShows() lib/coo uses, a second time (lib/coo's own
-    // operational-subset read is unchanged). Read-only.
+    // operational-subset read is unchanged). Read-only. artistClientId/bookerClientId are
+    // additive (Phase C.2) — already fetched by listShows()'s select("*"), same as djClientId.
     track("shows_eyes", async () => (await listShows()).map((s) => ({
       id: s.id, name: s.name, status: s.status as string, paymentStatus: s.payment_status as string, date: s.date,
       djClientId: s.dj_client_id ?? null, djConfirmationStatus: (s.dj_confirmation_status as string | null) ?? null,
+      artistClientId: s.artist_client_id ?? null, bookerClientId: s.booker_client_id ?? null,
     })), (v) => v.length),
   ]);
 
-  // Bulk artist_id-only select, counted in JS — one query, no per-artist round trips.
-  let artistBalanceCounts: Record<string, number> | null = null;
+  // Full entry rows (id/artist_id/entry_type/amount/entry_date only — no description/note
+  // free text) — one bulk query, same table as before, wider columns (Phase C.2: previously
+  // only counted rows; now enough to compute LabelArtistBalanceTotals, mirroring
+  // lib/artist-balance-store.ts:computeArtistBalanceTotals()).
+  let artistBalanceEntries: PartnerEyesRaw["artistBalanceEntries"] = null;
   if (labelArtists) {
-    artistBalanceCounts = await track("artist_balance_entries", async () => {
-      const { data, error } = await supabase.from("artist_balance_entries").select("artist_id");
+    artistBalanceEntries = await track("artist_balance_entries", async () => {
+      const { data, error } = await supabase.from("artist_balance_entries").select("id, artist_id, entry_type, amount, entry_date");
       if (error) throw new Error(error.message);
-      const counts: Record<string, number> = {};
-      for (const row of data ?? []) {
-        const id = row.artist_id as string;
-        counts[id] = (counts[id] ?? 0) + 1;
-      }
-      return counts;
-    }, (v) => Object.keys(v).length);
+      return (data ?? []).map((row) => ({
+        id: row.id as string, artistId: row.artist_id as string, entryType: row.entry_type as string,
+        amount: Number(row.amount) || 0, entryDate: row.entry_date as string,
+      }));
+    }, (v) => v.length);
   } else {
     results["artist_balance_entries"] = { ok: false, count: null, error: "label_artists unavailable" };
   }
@@ -84,5 +87,5 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     source: n, status: results[n].ok ? "ok" : "failed", rowCount: results[n].count, ...(results[n].error ? { error: results[n].error } : {}),
   }));
 
-  return { sources, clients, labelArtists, clips, artistBalanceCounts, sessions, shows };
+  return { sources, clients, labelArtists, clips, artistBalanceEntries, sessions, shows };
 }

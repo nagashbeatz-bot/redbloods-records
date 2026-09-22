@@ -105,14 +105,30 @@ export interface PartnerDomainState<T> {
 
 // ── New (Partner-only) domain summary shapes ─────────────────────────────────
 
-export interface ClientSummary { id: string; name: string; type: string; status: string }
+export interface ClientSummary { id: string; name: string; type: string; status: string; createdAt: string | null }
 export interface ClientsFact {
   total: number;
   byType: Record<string, number>;
   items: ClientSummary[];
 }
 
-export interface LabelArtistSummary { id: string; name: string; status: string; balanceEntries: number }
+/**
+ * Mirrors lib/artist-balance-store.ts:computeArtistBalanceTotals() exactly (same
+ * 5 entry types, same formula: currentBalance = income - payments - expenses).
+ * Duplicated rather than imported — that file has `import "server-only"` (same
+ * reasoning as splitArtistNames in lib/partner/dossiers/relations.ts). The
+ * table has NO currency column (see the domain's warnings) — treat as one
+ * implicit ledger, never assumed to be ₪ without evidence.
+ */
+export interface LabelArtistBalanceTotals {
+  income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number; currentBalance: number;
+}
+export interface LabelArtistSummary {
+  id: string; name: string; status: string; createdAt: string | null; updatedAt: string | null;
+  balanceEntries: number;
+  /** null when this artist has zero ledger rows — never a fake all-zero totals object. */
+  balanceTotals: LabelArtistBalanceTotals | null;
+}
 export interface LabelArtistsFact {
   total: number;
   byStatus: Record<string, number>;
@@ -155,6 +171,9 @@ export interface SessionsFact {
 export interface ShowSummary {
   id: string; name: string; status: string; paymentStatus: string; dateYmd: string | null;
   djClientId: string | null; djConfirmationStatus: string | null;
+  /** Phase C.2 — already fetched by listShows()'s select("*"), previously dropped like djClientId once was. */
+  artistClientId: string | null;
+  bookerClientId: string | null;
 }
 export interface ShowsEyesFact {
   total: number;
@@ -167,10 +186,15 @@ export interface ShowsEyesFact {
 
 // ── Raw input for the NEW Partner-only readers (nothing lib/coo already reads, or lib/coo reads a narrower subset) ──
 
-export interface RawClient { id: string; name: string; type: string; status: string }
-export interface RawLabelArtist { id: string; name: string; status: string }
+export interface RawClient { id: string; name: string; type: string; status: string; createdAt: string | null }
+export interface RawLabelArtist { id: string; name: string; status: string; createdAt: string | null; updatedAt: string | null }
 export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string }
-export interface RawShowEyes { id: string; name: string; status: string; paymentStatus: string; date: string | null; djClientId: string | null; djConfirmationStatus: string | null }
+export interface RawShowEyes {
+  id: string; name: string; status: string; paymentStatus: string; date: string | null;
+  djClientId: string | null; djConfirmationStatus: string | null; artistClientId: string | null; bookerClientId: string | null;
+}
+/** One artist_balance_entries row — just enough to compute LabelArtistBalanceTotals; no description/note (private free text) retained. */
+export interface RawBalanceEntry { id: string; artistId: string; entryType: string; amount: number; entryDate: string }
 /** Mirrors lib/sessions-store.ts's SessionRow — kept as its own local type (not imported) so this pure types.ts file never references a store module, even for a type-only import. */
 export interface RawSessionEyes { id: string; projectId: string | null; showId: string | null; date: string; startTime: string | null; endTime: string | null; status: string; sessionType: string }
 
@@ -178,13 +202,13 @@ export interface PartnerEyesRaw {
   sources: SourceStatus[];
   clients: RawClient[] | null;
   labelArtists: RawLabelArtist[] | null;
-  /** label_artists.id -> row count in artist_balance_entries. null = the read failed or labelArtists is null. */
-  artistBalanceCounts: Record<string, number> | null;
   clips: RawClip[] | null;
   /** Full session history (lib/sessions-store.ts:listAllSessions()) — separate from COO's forward window. */
   sessions: RawSessionEyes[] | null;
   /** Full show history (lib/shows-store.ts:listShows(), called a second time) — separate from COO's operational subset. */
   shows: RawShowEyes[] | null;
+  /** All artist_balance_entries rows (id/artist_id/entry_type/amount/entry_date only). null = labelArtists unavailable or the read failed. */
+  artistBalanceEntries: RawBalanceEntry[] | null;
 }
 
 // ── The snapshot ──────────────────────────────────────────────────────────────
