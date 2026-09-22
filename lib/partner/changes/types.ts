@@ -82,7 +82,13 @@ export type ChangeDiagnosticCode =
   | "INCOMPATIBLE_SCHEMA"
   | "FIRST_OBSERVATION"
   | "NO_BASELINE"
-  | "MISSING_STABLE_ID";
+  | "MISSING_STABLE_ID"
+  // Phase D.2/D.3 runtime-only codes (emitted by lib/partner/baseline's lifecycle, never by
+  // this pure engine itself — kept in the same enum so ChangeAwarenessRunResult can return one
+  // combined diagnostics list without a second parallel type).
+  | "BASELINE_LOAD_FAILED"
+  | "BASELINE_SAVE_FAILED"
+  | "CURRENT_BUILD_INVALID";
 
 export interface ChangeDiagnostic {
   code: ChangeDiagnosticCode;
