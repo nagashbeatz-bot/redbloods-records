@@ -5,30 +5,23 @@
  * Mirrors lib/coo/pipeline.ts's own pure/impure split: this file has no
  * "server-only" import and no Supabase; lib/partner/eyes/build.ts is the
  * thin server-only shell that fetches both inputs once and calls this.
+ *
+ * Agent Alerts is NOT built here (Owner decision, Phase B.2) — see
+ * lib/partner/eyes/types.ts's module doc for the full statement.
  */
 import type { CooResult } from "../../coo/pipeline";
 import { adaptCooCompanyState } from "./coo-adapter";
 import { classifyRelationQuality, coverageFromCounts, coverageFromStatus, reliabilityFrom, statusFromSource } from "./coverage";
 import type {
-  AgentAlertsFact, ClientsFact, ClipsFact, LabelArtistsFact, PartnerCompanyState, PartnerDomainState, PartnerEyesRaw, PartnerRelation,
+  ClientsFact, ClipsFact, LabelArtistsFact, PartnerCompanyState, PartnerDomainState, PartnerEyesRaw, PartnerRelation,
+  SessionsFact, ShowsEyesFact,
 } from "./types";
 
-const EYES_SCHEMA_VERSION = "partner-eyes-v0.1"; // bumped: agentAlerts moved off the COO-adapted shape (Phase B.1)
+const EYES_SCHEMA_VERSION = "partner-eyes-v0.2"; // Phase B.2: agent_alerts removed; sessions/shows are now full-history
 const NEW_READER = "lib/partner/eyes/readers.ts:readPartnerEyesRaw";
 
 function sourceOf(raw: PartnerEyesRaw, name: string) {
   return raw.sources.find((s) => s.source === name);
-}
-
-/** Whole days between two ISO timestamps (b - a), floored. Pure: both instants are passed in, never Date.now(). */
-function daysBetweenIso(aIso: string, bIso: string): number {
-  return Math.floor((new Date(bIso).getTime() - new Date(aIso).getTime()) / 86_400_000);
-}
-function median(nums: number[]): number | null {
-  if (nums.length === 0) return null;
-  const s = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
 }
 
 function buildClients(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<ClientsFact> {
@@ -44,6 +37,8 @@ function buildClients(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Cli
   } : null;
   return {
     domain: "clients", status, coverage, reliability: reliabilityFrom(coverage, relations[0].quality),
+    scopeDescription: "all clients — listClients() has no filter (no deleted/hidden semantics on this table)",
+    currentOperationalCount: null, totalHistoricalCount: null,
     provenance: { source: "supabase:clients", reader: NEW_READER, fetchedAt: asOf },
     relations, warnings: [], data,
   };
@@ -52,21 +47,20 @@ function buildClients(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Cli
 function buildLabelArtists(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<LabelArtistsFact> {
   const status = statusFromSource(sourceOf(raw, "label_artists"));
   const coverage = coverageFromStatus(status);
-  const releasesCov = coo.state.coverage.find((c) => c.key === "releases");
+  const releaseRows = coo.state.releases?.rows ?? null;
+  const releasesWithArtist = releaseRows ? releaseRows.filter((r) => r.labelArtistId !== null).length : null;
   const relations: PartnerRelation[] = [
     { toDomain: "projects", quality: "TEXT_MATCH", via: "projects.artist = label_artists.name", notes: "היחס העיקרי — התאמת שם, לא ID." },
     {
       toDomain: "projects", quality: "ID", via: "project_release_details.label_artist_id",
-      coverage: releasesCov ? coverageFromCounts(releasesCov.usable, releasesCov.total) : undefined,
-      notes: "אמין כשקיים, אך רק לפרויקטים עם שורת release (ראה domain 'releases'); לא נחשף עדיין ל-Partner בפועל — ראה warnings.",
+      coverage: releasesWithArtist == null || releaseRows == null ? undefined : coverageFromCounts(releasesWithArtist, releaseRows.length),
+      notes: releaseRows ? `זמין בפועל (Phase B.2): ${releasesWithArtist} מתוך ${releaseRows.length} שורות release (הפעילות) נושאות label_artist_id — ראה domain 'releases'.` : "אמין כשקיים, אך רק לפרויקטים עם שורת release פעילה.",
     },
   ];
   const balanceCounts = raw.artistBalanceCounts ?? {};
-  const warnings: string[] = [];
-  if (releasesCov) {
-    warnings.push(`יחס ה-ID (label_artist_id) קיים לכל היותר ל-${releasesCov.usable ?? "?"} מתוך ${releasesCov.total ?? "?"} פרויקטי לייבל שיש להם שורת release — לרוב הפרויקטים עדיין רק TEXT_MATCH.`);
-  }
-  warnings.push("תיקון (Phase B.1): lib/coo ReleaseFact לא שומר בפועל label_artist_id (ראה domain 'releases') — יחס ה-ID כאן מתאר את מה שקיים ב-DB/store, לא משהו ש-Partner כבר קורא בפועל.");
+  const warnings: string[] = [
+    "היחס ל-ID (label_artist_id) קיים רק לתת-קבוצת הפרויקטים שיש להם שורת release פעילה (ראה domain 'releases') — לרוב אמני הלייבל עדיין רק TEXT_MATCH דרך projects.artist.",
+  ];
   const data: LabelArtistsFact | null = raw.labelArtists ? {
     total: raw.labelArtists.length,
     byStatus: raw.labelArtists.reduce<Record<string, number>>((acc, a) => { acc[a.status] = (acc[a.status] ?? 0) + 1; return acc; }, {}),
@@ -79,22 +73,21 @@ function buildLabelArtists(raw: PartnerEyesRaw, coo: CooResult, asOf: string): P
   if (raw.artistBalanceCounts === null) {
     warnings.push("artist_balance_entries לא נקרא (label_artists לא זמין, או שהקריאה נכשלה).");
   } else {
-    warnings.push("artist_balance_entries הוא ledger עצמאי ומעודכן ידנית (backfill חד-פעמי + רישומים ידניים) — לא מסונכרן עם transactions/Finance. אל תניח שהוא עדכני.");
+    warnings.push("artist_balance_entries הוא ledger עצמאי ומעודכן ידנית (backfill חד-פעמי + רישומים ידניים, all-time — אין cycle/date filter בקריאה) — לא מסונכרן עם transactions/Finance. אל תניח שהוא עדכני.");
   }
   return {
     domain: "labelArtists", status, coverage, reliability: reliabilityFrom(coverage, "TEXT_MATCH"),
+    scopeDescription: "all label artists — listLabelArtists() has no filter",
+    currentOperationalCount: null, totalHistoricalCount: null,
     provenance: { source: "supabase:label_artists + artist_balance_entries", reader: NEW_READER, fetchedAt: asOf },
     relations, warnings, data,
   };
 }
 
 /**
- * Phase B.1 correction: quality and coverage are two different questions.
+ * Phase B.1 fix, kept: quality and coverage are two different questions.
  *   quality  — when project_id IS present, is it a real id? (yes, always — so ID whenever any row has it)
- *   coverage — how many of the fetched rows actually have it? (PARTIAL here: measured 10/12 in production)
- * The earlier version of this function downgraded quality to TEXT_MATCH purely because coverage
- * was partial — that understated a real relation. Fixed: quality=ID stays ID; the exact split lives
- * in relation.coverage + a warning, never folded back into a weaker quality label.
+ *   coverage — how many of the fetched rows actually have it?
  */
 function buildClips(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<ClipsFact> {
   const status = statusFromSource(sourceOf(raw, "clip_productions"));
@@ -112,7 +105,7 @@ function buildClips(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Clips
   ];
   const warnings: string[] = [];
   if (raw.clips) {
-    warnings.push(`${withProjectId}/${total} clip productions carry project_id → relation quality ID, coverage ${idCoverage} (לא הורד ל-TEXT_MATCH בגלל כיסוי חלקי — ראה Phase B.1 §2/§6).`);
+    warnings.push(`${withProjectId}/${total} clip productions carry project_id → relation quality ID, coverage ${idCoverage} (לא הורד ל-TEXT_MATCH בגלל כיסוי חלקי).`);
   }
   const data: ClipsFact | null = raw.clips ? {
     total, withProjectId, withoutProjectId: total - withProjectId,
@@ -120,53 +113,85 @@ function buildClips(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Clips
   } : null;
   return {
     domain: "clips", status, coverage, reliability: reliabilityFrom(coverage, idQuality),
+    scopeDescription: "all clip (קליפ) productions, INCLUDING cancelled — no status filter beyond production_type=\"קליפ\" (deliberately broader than listArtistClips(), which excludes cancelled)",
+    currentOperationalCount: null, totalHistoricalCount: null,
     provenance: { source: "supabase:red_films_productions (production_type=\"קליפ\")", reader: NEW_READER, fetchedAt: asOf },
     relations, warnings, data,
   };
 }
 
 /**
- * Agent Alerts — Partner-only, Phase B.1. lib/coo's own read is status="new" only
- * (readCooRaw), then the brief further narrows to allowlisted-type + recent
- * (COO_CONFIG.alerts). This reader sees every status, every type, no age cutoff —
- * but still does NO reasoning: an old/resolved row is a historical fact, not "current".
+ * Sessions — Phase B.2, full history (approved). lib/coo only ever reads a
+ * forward window (sessionWindowDays); this reads every session ever recorded
+ * via lib/sessions-store.ts's listAllSessions() — a separate read, lib/coo's
+ * own window-limited behavior is completely unchanged.
  */
-function buildAgentAlerts(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<AgentAlertsFact> {
-  const status = statusFromSource(sourceOf(raw, "agent_alerts_eyes"));
+function buildSessions(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<SessionsFact> {
+  const status = statusFromSource(sourceOf(raw, "sessions_eyes"));
   const coverage = coverageFromStatus(status);
-  const withRelatedProject = raw.alerts ? raw.alerts.filter((a) => a.relatedProjectId !== null).length : null;
+  const withProject = raw.sessions ? raw.sessions.filter((s) => s.projectId !== null).length : null;
   const relations: PartnerRelation[] = [
     {
-      toDomain: "projects", quality: "ID", via: "agent_alerts.related_project_id",
-      coverage: raw.alerts ? coverageFromCounts(withRelatedProject, raw.alerts.length) : undefined,
-      notes: raw.alerts ? `${withRelatedProject} מתוך ${raw.alerts.length} alerts (כל הסטטוסים) עם related_project_id` : undefined,
+      toDomain: "projects", quality: "ID", via: "sessions.project_id",
+      coverage: withProject == null || raw.sessions == null ? undefined : coverageFromCounts(withProject, raw.sessions.length),
+      notes: raw.sessions ? `${withProject} מתוך ${raw.sessions.length} סשנים (כל ההיסטוריה) מקושרים לפרויקט` : undefined,
     },
   ];
-  const brief = coo.state.alerts; // lib/coo's own narrow view (status=new → allowlisted+recent), for cross-reference only
-  const cooCov = coo.state.coverage.find((c) => c.key === "alerts");
+  const cooCount = coo.state.sessions?.length ?? null;
   const warnings: string[] = [
-    `COO (הבריף) רואה subset מכוון בלבד: status="new" בלבד ברמת ה-read, ואז מסונן ל-allowTypes/maxAgeDays. Partner Eyes כאן קורא את כל agent_alerts בלי סינון סטטוס/סוג/גיל — 2 reads שונים ב-DB, לא אותו נתון.`,
+    `lib/coo רואה רק חלון קדימה (sessionWindowDays בקונפיג שלו) — ${cooCount ?? "?"} סשנים כרגע באותה קריאה. Partner Eyes כאן קורא את כל ההיסטוריה בנפרד (listAllSessions()), לא אותו read.`,
+    "אין הסקת attendance/reliability מ-status — 'בוצע'/'בוטל' וכו' הם ערכים שמורים בלבד.",
   ];
-  if (cooCov) warnings.push(`COO מציג בפועל ${cooCov.usable ?? "?"} alerts (מתוך ${cooCov.total ?? "?"} שנקראו בסינון status="new").`);
-  warnings.push("Alert ישן/סגור מופיע כאן כרשומה היסטורית בלבד — אין כאן שום קביעה שהוא 'current issue'. אין resolve/delete/mutation.");
-
-  let data: AgentAlertsFact | null = null;
-  if (raw.alerts) {
-    const ages = raw.alerts.map((a) => daysBetweenIso(a.createdAt, asOf));
-    data = {
-      total: raw.alerts.length,
-      byStatus: raw.alerts.reduce<Record<string, number>>((acc, a) => { acc[a.status] = (acc[a.status] ?? 0) + 1; return acc; }, {}),
-      byType: raw.alerts.reduce<Record<string, number>>((acc, a) => { acc[a.type] = (acc[a.type] ?? 0) + 1; return acc; }, {}),
-      withEntityKey: raw.alerts.filter((a) => a.hasEntityKey).length,
-      withRelatedProject: withRelatedProject ?? 0,
-      ageStats: { median: median(ages), oldest: ages.length ? Math.max(...ages) : null },
-      cooVisible: { shownByBrief: brief?.shown.length ?? null, note: "מה שה-Dashboard/brief בפועל מציג — subset, לא total" },
-      items: raw.alerts.map((a) => ({ ...a, ageDays: daysBetweenIso(a.createdAt, asOf) })),
-    };
-  }
+  const data: SessionsFact | null = raw.sessions ? {
+    total: raw.sessions.length,
+    withProject: withProject ?? 0,
+    byStatus: raw.sessions.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}),
+    byType: raw.sessions.reduce<Record<string, number>>((acc, s) => { acc[s.sessionType] = (acc[s.sessionType] ?? 0) + 1; return acc; }, {}),
+    cooVisible: { count: cooCount, note: "מה ש-lib/coo רואה בפועל בחלון הקדימה שלו — cross-reference בלבד" },
+    items: raw.sessions.map((s) => ({ id: s.id, projectId: s.projectId, showId: s.showId, dateYmd: s.date, status: s.status, sessionType: s.sessionType })),
+  } : null;
   return {
-    domain: "agentAlerts", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
-    provenance: { source: "supabase:agent_alerts (Partner-only broad read)", reader: NEW_READER, fetchedAt: asOf },
+    domain: "sessions", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all session history, no date window (lib/sessions-store.ts:listAllSessions())",
+    currentOperationalCount: cooCount, totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:sessions (Partner-only full-history read)", reader: NEW_READER, fetchedAt: asOf },
+    relations, warnings, data,
+  };
+}
+
+/**
+ * Shows — Phase B.2, full history (approved, reuses listShows() — the exact
+ * function lib/coo already calls — a second time; lib/coo's own operational
+ * subset, upcoming+doneUnpaid, is completely unchanged).
+ */
+function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<ShowsEyesFact> {
+  const status = statusFromSource(sourceOf(raw, "shows_eyes"));
+  const coverage = coverageFromStatus(status);
+  const withDj = raw.shows ? raw.shows.filter((s) => s.djClientId !== null).length : null;
+  const relations: PartnerRelation[] = [
+    {
+      toDomain: "external", quality: "ID", via: "shows.dj_client_id",
+      coverage: withDj == null || raw.shows == null ? undefined : coverageFromCounts(withDj, raw.shows.length),
+      notes: raw.shows ? `${withDj} מתוך ${raw.shows.length} הופעות (כל ההיסטוריה) עם dj_client_id — null אינו הופך ל-relation מומצא` : undefined,
+    },
+  ];
+  const cooUpcoming = coo.state.shows?.upcoming.length ?? null;
+  const cooDoneUnpaid = coo.state.shows?.doneUnpaid.length ?? null;
+  const warnings: string[] = [
+    `lib/coo רואה subset תפעולי בלבד: upcoming=${cooUpcoming ?? "?"}, doneUnpaid=${cooDoneUnpaid ?? "?"}. Partner Eyes כאן קורא היסטוריה מלאה דרך אותו listShows() בדיוק — קריאה שנייה, לא query חדש מבחינת צורה.`,
+  ];
+  const data: ShowsEyesFact | null = raw.shows ? {
+    total: raw.shows.length,
+    withDjClientId: withDj ?? 0,
+    byStatus: raw.shows.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}),
+    cooVisible: { upcoming: cooUpcoming, doneUnpaid: cooDoneUnpaid, note: "מה ש-lib/coo רואה בפועל (subset תפעולי) — cross-reference בלבד" },
+    items: raw.shows.map((s) => ({ id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date, djClientId: s.djClientId, djConfirmationStatus: s.djConfirmationStatus })),
+  } : null;
+  return {
+    domain: "shows", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all show history (lib/shows-store.ts:listShows(), called again for Partner — no filter)",
+    currentOperationalCount: (cooUpcoming ?? 0) + (cooDoneUnpaid ?? 0), totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:shows (Partner-only full-history read)", reader: NEW_READER, fetchedAt: asOf },
     relations, warnings, data,
   };
 }
@@ -174,6 +199,8 @@ function buildAgentAlerts(raw: PartnerEyesRaw, coo: CooResult, asOf: string): Pa
 function buildSuppliers(asOf: string): PartnerDomainState<null> {
   return {
     domain: "suppliers", status: "UNAVAILABLE", coverage: "NONE", reliability: "UNKNOWN",
+    scopeDescription: "N/A — no dedicated suppliers/vendors table exists",
+    currentOperationalCount: null, totalHistoricalCount: null,
     provenance: { source: "N/A", reader: "manual re-audit — Partner Phase B report", fetchedAt: asOf },
     relations: [],
     warnings: [
@@ -199,7 +226,8 @@ export function assemblePartnerCompanyState(coo: CooResult, raw: PartnerEyesRaw)
       clients: buildClients(raw, asOf),
       labelArtists: buildLabelArtists(raw, coo, asOf),
       clips: buildClips(raw, asOf),
-      agentAlerts: buildAgentAlerts(raw, coo, asOf),
+      sessions: buildSessions(raw, coo, asOf),
+      shows: buildShows(raw, coo, asOf),
       suppliers: buildSuppliers(asOf),
     },
     cooSources: coo.state.sources,

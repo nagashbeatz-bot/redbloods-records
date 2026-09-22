@@ -1,14 +1,22 @@
 /**
- * Redbloods Partner — Eyes / Company State (Phase B). Shared types.
+ * Redbloods Partner — Eyes / Company State (Phase B / B.1 / B.2). Shared types.
  *
  * This is a SNAPSHOT, not reasoning: no signals, no cases, no recommendations.
- * Every domain below answers four questions and nothing else:
+ * Every domain below answers five questions and nothing else:
  *   - what do we see (data)
+ *   - what EXACTLY is the scope of what we see (scopeDescription — current
+ *     operational state vs. full history vs. a named subset; Phase B.2)
  *   - do we actually have it (status / coverage)
  *   - how much should it be trusted (reliability / relation quality)
  *   - what don't we know (warnings)
  *
  * "No data" is never silently read as zero or as "fine" — see DataStatus.
+ * A subset is never silently read as complete — see Coverage + scopeDescription.
+ *
+ * Owner decision (Phase B.2): agent_alerts is intentionally OUT of Redbloods
+ * Partner. Not a domain, not an Eyes source, not Fact/Signal/Case/Priority
+ * evidence. The agent_alerts system itself is completely untouched — this is
+ * a decision about what Partner looks at, not a change to that system.
  */
 import type { CompanyState, SourceStatus } from "../../coo/types";
 
@@ -23,9 +31,11 @@ export type DataStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE" | "UNKNOWN";
 
 /**
  * Of the real-world set this domain describes, how much does the data actually cover?
- * Distinct from DataStatus: a domain can be AVAILABLE with only PARTIAL coverage
- * (e.g. finance settings exist for some projects, not all — see lib/coo's own
- * CoverageEntry, which this reuses for COO-backed domains).
+ *   FULL    — evidence the reader covers the domain as scopeDescription defines it (e.g. "all transactions" and the reader truly has no filter).
+ *   PARTIAL — known to exclude part of the domain (a status/date/visibility filter, a forward-only window, per-row detail limited to a subset, etc.) — see scopeDescription for exactly what's missing.
+ *   NONE    — no usable rows.
+ *   FAILED  — the reader/query failed; not the same as NONE.
+ * Distinct from DataStatus: a domain can be AVAILABLE with only PARTIAL coverage.
  */
 export type Coverage = "FULL" | "PARTIAL" | "NONE" | "FAILED";
 
@@ -45,7 +55,7 @@ export type RelationQuality = "ID" | "COMPOSITE" | "TEXT_MATCH" | "NONE" | "UNKN
 export type PartnerDomainKey =
   | "projects" | "clients" | "proposals" | "finance" | "receivables"
   | "sessions" | "releases" | "shows" | "victor" | "steven" | "tasks"
-  | "agentAlerts" | "labelArtists" | "clips" | "suppliers";
+  | "labelArtists" | "clips" | "suppliers";
 
 export interface PartnerDomainProvenance {
   /** e.g. "supabase:clients" or "lib/coo:projects" (a COO-adapted domain). */
@@ -77,6 +87,16 @@ export interface PartnerDomainState<T> {
   status: DataStatus;
   coverage: Coverage;
   reliability: Reliability;
+  /**
+   * Exactly what this domain's data represents (Phase B.2) — e.g. "all projects (visible,
+   * is_hidden=false) — hidden projects excluded", "open tasks only (status=פתוח) — no closed/
+   * cancelled history", "full history, no date window". Never left to be inferred from `coverage` alone.
+   */
+  scopeDescription: string;
+  /** Rows actually detailed in `data` right now (the "current"/operational subset, when that's narrower than history). null when not meaningfully distinct from totalHistoricalCount. */
+  currentOperationalCount?: number | null;
+  /** True count across all history/status, when reliably known even if `data` only details a subset (e.g. Victor/Steven totalWorks). null when not known/not applicable. */
+  totalHistoricalCount?: number | null;
   provenance: PartnerDomainProvenance;
   relations: PartnerRelation[];
   warnings: string[];
@@ -110,25 +130,39 @@ export interface ClipsFact {
 }
 
 /**
- * agent_alerts, Phase B.1: lib/coo's own read is intentionally narrow (status="new"
- * only, then allowlisted-type + max-age for the brief) — correct for a morning brief,
- * too narrow for Eyes. This is the BROAD picture: every status, every type, no age cutoff.
- * Still no reasoning: an old/resolved alert here is a historical row, never "current".
+ * Sessions, Phase B.2: lib/coo only ever reads a forward window (sessionWindowDays).
+ * This is the FULL history — every session ever recorded, via lib/sessions-store.ts's
+ * listAllSessions() (a separate read from COO's; COO's own window-limited behavior is
+ * completely unchanged). Still no reasoning: a "בוטל"/"בוצע" status here is a stored fact,
+ * never evidence about an artist's reliability.
  */
-export interface AlertSummary {
-  id: string; type: string; severity: string; status: string;
-  hasEntityKey: boolean; relatedProjectId: string | null; createdAt: string; ageDays: number | null;
-}
-export interface AgentAlertsFact {
+export interface SessionSummary { id: string; projectId: string | null; showId: string | null; dateYmd: string; status: string; sessionType: string }
+export interface SessionsFact {
   total: number;
+  withProject: number;
   byStatus: Record<string, number>;
   byType: Record<string, number>;
-  withEntityKey: number;
-  withRelatedProject: number;
-  ageStats: { median: number | null; oldest: number | null };
-  /** What lib/coo's own brief-oriented read actually shows — a cross-reference, not a second source of truth. */
-  cooVisible: { shownByBrief: number | null; note: string };
-  items: AlertSummary[];
+  /** What lib/coo's own forward-window read would show — a cross-reference, not a second source of truth. */
+  cooVisible: { count: number | null; note: string };
+  items: SessionSummary[];
+}
+
+/**
+ * Shows, Phase B.2: lib/coo's state.shows only carries `upcoming` + `doneUnpaid` (an
+ * operational subset for the brief). This is FULL show history via the SAME listShows()
+ * function lib/coo already calls (reused function, a second call — not a new query shape).
+ */
+export interface ShowSummary {
+  id: string; name: string; status: string; paymentStatus: string; dateYmd: string | null;
+  djClientId: string | null; djConfirmationStatus: string | null;
+}
+export interface ShowsEyesFact {
+  total: number;
+  withDjClientId: number;
+  byStatus: Record<string, number>;
+  /** What lib/coo's own operational subset (upcoming + doneUnpaid) actually shows — cross-reference only. */
+  cooVisible: { upcoming: number | null; doneUnpaid: number | null; note: string };
+  items: ShowSummary[];
 }
 
 // ── Raw input for the NEW Partner-only readers (nothing lib/coo already reads, or lib/coo reads a narrower subset) ──
@@ -136,9 +170,9 @@ export interface AgentAlertsFact {
 export interface RawClient { id: string; name: string; type: string; status: string }
 export interface RawLabelArtist { id: string; name: string; status: string }
 export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string }
-export interface RawAlertEyes {
-  id: string; type: string; severity: string; status: string; hasEntityKey: boolean; relatedProjectId: string | null; createdAt: string;
-}
+export interface RawShowEyes { id: string; name: string; status: string; paymentStatus: string; date: string | null; djClientId: string | null; djConfirmationStatus: string | null }
+/** Mirrors lib/sessions-store.ts's SessionRow — kept as its own local type (not imported) so this pure types.ts file never references a store module, even for a type-only import. */
+export interface RawSessionEyes { id: string; projectId: string | null; showId: string | null; date: string; startTime: string | null; endTime: string | null; status: string; sessionType: string }
 
 export interface PartnerEyesRaw {
   sources: SourceStatus[];
@@ -147,8 +181,10 @@ export interface PartnerEyesRaw {
   /** label_artists.id -> row count in artist_balance_entries. null = the read failed or labelArtists is null. */
   artistBalanceCounts: Record<string, number> | null;
   clips: RawClip[] | null;
-  /** ALL agent_alerts rows regardless of status — see AgentAlertsFact. */
-  alerts: RawAlertEyes[] | null;
+  /** Full session history (lib/sessions-store.ts:listAllSessions()) — separate from COO's forward window. */
+  sessions: RawSessionEyes[] | null;
+  /** Full show history (lib/shows-store.ts:listShows(), called a second time) — separate from COO's operational subset. */
+  shows: RawShowEyes[] | null;
 }
 
 // ── The snapshot ──────────────────────────────────────────────────────────────
@@ -166,14 +202,14 @@ export interface PartnerCompanyState {
     proposals: PartnerDomainState<CompanyState["proposals"]>;
     finance: PartnerDomainState<CompanyState["finance"]>;
     receivables: PartnerDomainState<CompanyState["receivables"]>;
-    sessions: PartnerDomainState<CompanyState["sessions"]>;
+    /** Partner-only, full history (Phase B.2) — see SessionsFact. */
+    sessions: PartnerDomainState<SessionsFact>;
     releases: PartnerDomainState<CompanyState["releases"]>;
-    shows: PartnerDomainState<CompanyState["shows"]>;
+    /** Partner-only, full history (Phase B.2) — see ShowsEyesFact. */
+    shows: PartnerDomainState<ShowsEyesFact>;
     victor: PartnerDomainState<CompanyState["team"]["victor"]>;
     steven: PartnerDomainState<CompanyState["team"]["steven"]>;
     tasks: PartnerDomainState<CompanyState["tasks"]>;
-    /** Partner-only broad read (Phase B.1) — see AgentAlertsFact for why this is NOT adapted from lib/coo's state.alerts. */
-    agentAlerts: PartnerDomainState<AgentAlertsFact>;
     labelArtists: PartnerDomainState<LabelArtistsFact>;
     clips: PartnerDomainState<ClipsFact>;
     suppliers: PartnerDomainState<null>;

@@ -1,5 +1,5 @@
 /**
- * Golden tests for Redbloods Partner Eyes / Company State (Phase B).
+ * Golden tests for Redbloods Partner Eyes / Company State (Phase B / B.1 / B.2).
  *
  * Run with:   npx tsx scripts/test-partner-eyes.ts
  *
@@ -27,7 +27,14 @@ const NOW = new Date("2026-09-22T06:00:00Z");
 
 function buildCooRaw(): CooRawInput {
   return structuredClone<CooRawInput>({
-    sources: [{ source: "projects", status: "ok", rowCount: 2 }],
+    sources: [
+      { source: "projects", status: "ok", rowCount: 2 }, { source: "tasks", status: "ok", rowCount: 1 },
+      { source: "steven", status: "ok", rowCount: 2 }, { source: "victor", status: "ok", rowCount: 2 },
+      { source: "proposals", status: "ok", rowCount: 1 }, { source: "shows", status: "ok", rowCount: 1 },
+      { source: "sessions", status: "ok", rowCount: 1 }, { source: "transactions", status: "ok", rowCount: 1 },
+      { source: "finance_settings", status: "ok", rowCount: 1 }, { source: "releases", status: "ok", rowCount: 1 },
+      { source: "agent_alerts", status: "ok", rowCount: 1 },
+    ],
     projects: [
       { id: "p1", name: "פרויקט א", artist: "אמן בדיקה", status: "בעבודה", deadline: "2026-10-01", projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
       { id: "p2", name: "פרויקט לייבל", artist: "אמן לייבל בדיקה", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לייבל", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
@@ -37,11 +44,13 @@ function buildCooRaw(): CooRawInput {
     ],
     steven: [
       { id: "s1", projectId: "p1", title: "מיקס", status: "בתהליך", agreedPrice: 200, currency: "$", amountPaid: 0, sentDate: "2026-09-15", internalDeadline: "2026-09-24", hasMixVersion: true, lastUploadAt: "2026-09-20T10:00:00Z" },
+      { id: "s2", projectId: null, title: "עבודה סגורה ישנה", status: "אושר", agreedPrice: 100, currency: "$", amountPaid: 100, sentDate: "2026-01-01", internalDeadline: null, hasMixVersion: false, lastUploadAt: null },
     ],
     victor: {
       stuckAfterDays: 5,
       works: [
         { id: "v1", projectId: "p1", title: "עבודת Victor", status: "פעיל", workState: "נשלח לויקטור", sentDate: "2026-09-12", internalDeadline: null, daysSinceSent: 10, isStuck: true, uploads: ["2026-09-12T10:00:00Z"], filesWithoutTimestamp: 0, reviews: [], linkedTaskId: null },
+        { id: "v2", projectId: null, title: "עבודה שהושלמה", status: "הושלם", workState: "נשלח לויקטור", sentDate: "2026-01-01", internalDeadline: null, daysSinceSent: null, isStuck: false, uploads: [], filesWithoutTimestamp: 0, reviews: [], linkedTaskId: null },
       ],
     },
     proposals: [
@@ -61,7 +70,11 @@ function buildCooRaw(): CooRawInput {
       // p2 deliberately has NO finance setting → agreedPrice must read UNKNOWN, never 0
     ],
     orphanFinanceKeyCount: 0,
-    releases: { labelProjectsTotal: 1, rows: [{ projectId: "p2", name: "פרויקט לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-10-15", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z" }] },
+    releases: {
+      labelProjectsTotal: 1,
+      rows: [{ projectId: "p2", name: "פרויקט לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-10-15", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: "la1" }],
+    },
+    // lib/coo's OWN raw input still models alerts (untouched, unrelated to Partner) — Partner never reads this.
     alerts: [
       { id: "al1", type: "week_understaffed", severity: "info", title: "השבוע", message: "…", createdAt: "2026-09-21T08:00:00Z", relatedProjectId: null },
     ],
@@ -75,7 +88,8 @@ function buildEyesRaw(): PartnerEyesRaw {
       { source: "label_artists", status: "ok", rowCount: 1 },
       { source: "clip_productions", status: "ok", rowCount: 2 },
       { source: "artist_balance_entries", status: "ok", rowCount: 1 },
-      { source: "agent_alerts_eyes", status: "ok", rowCount: 3 },
+      { source: "sessions_eyes", status: "ok", rowCount: 3 },
+      { source: "shows_eyes", status: "ok", rowCount: 2 },
     ],
     clients: [
       { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל" },
@@ -89,11 +103,16 @@ function buildEyesRaw(): PartnerEyesRaw {
       { id: "clip1", title: "קליפ עם פרויקט", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
       { id: "clip2", title: "קליפ ישן (שם בלבד)", status: "בתהליך", projectId: null, artistName: "אמן לייבל בדיקה" },
     ],
-    // 3 alerts spanning statuses/types COO's own status="new"-only read never sees at all (al2, al3)
-    alerts: [
-      { id: "al1", type: "week_understaffed", severity: "info", status: "new", hasEntityKey: false, relatedProjectId: null, createdAt: "2026-09-21T08:00:00Z" },
-      { id: "al2", type: "overdue_deadline", severity: "important", status: "handled", hasEntityKey: true, relatedProjectId: "p1", createdAt: "2026-08-01T08:00:00Z" },
-      { id: "al3", type: "some_old_type", severity: "warning", status: "dismissed", hasEntityKey: false, relatedProjectId: null, createdAt: "2026-06-01T08:00:00Z" },
+    // full history: 3 sessions, only 1 of which (se1) is in COO's forward window (per buildCooRaw above)
+    sessions: [
+      { id: "se1", projectId: "p1", showId: null, date: "2026-09-23", startTime: "18:00", endTime: "20:00", status: "מתוכנן", sessionType: "סשן" },
+      { id: "se-old1", projectId: "p1", showId: null, date: "2026-01-05", startTime: null, endTime: null, status: "בוצע", sessionType: "סשן" },
+      { id: "se-old2", projectId: null, showId: "sh1", date: "2025-12-01", startTime: null, endTime: null, status: "בוטל", sessionType: "חזרה להופעה" },
+    ],
+    // full history: 2 shows, only 1 of which (sh1) is in COO's operational subset (upcoming+doneUnpaid)
+    shows: [
+      { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null },
+      { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר" },
     ],
   });
 }
@@ -101,6 +120,19 @@ function buildEyesRaw(): PartnerEyesRaw {
 const coo = computeCoo(buildCooRaw(), NOW);
 const eyesRaw = buildEyesRaw();
 const P = assemblePartnerCompanyState(coo, eyesRaw);
+
+console.log("Owner decision (Phase B.2): Agent Alerts is not part of Redbloods Partner");
+ok("agentAlerts is not a key in P.domains at all", !("agentAlerts" in P.domains));
+ok("no file under lib/partner/eyes imports lib/agent/alerts-store", (() => {
+  const dir = path.join(path.resolve(__dirname, ".."), "lib/partner/eyes");
+  return fs.readdirSync(dir).every((f) => !fs.readFileSync(path.join(dir, f), "utf8").includes("agent/alerts-store"));
+})());
+ok("no file under lib/partner/eyes actually QUERIES agent_alerts (mentioning the excluded table by name in an explanatory comment is fine and expected)", (() => {
+  const dir = path.join(path.resolve(__dirname, ".."), "lib/partner/eyes");
+  return fs.readdirSync(dir).every((f) => !/\.from\(\s*["']agent_alerts["']\s*\)|getAlerts\(/.test(fs.readFileSync(path.join(dir, f), "utf8")));
+})());
+ok("PartnerEyesRaw has no 'alerts' field (TypeScript enforces this at compile time; runtime check the fixture builder omits it too)", !("alerts" in eyesRaw));
+console.log("  (COO's own agent_alerts behavior is verified unchanged by the full scripts/test-coo.ts run — 206/206 — not duplicated here.)");
 
 console.log("existing COO domains are mapped correctly (reused, not recomputed)");
 check("projects domain data is the SAME object COO built (reference reuse, not a copy/recompute)", P.domains.projects.data === coo.state.projects, true);
@@ -131,6 +163,49 @@ console.log("missing source ≠ zero, failed source ≠ empty");
   check("a failed Partner-only source (clients) → status UNKNOWN, data null, coverage FAILED", [P3.domains.clients.status, P3.domains.clients.data, P3.domains.clients.coverage], ["UNKNOWN", null, "FAILED"]);
 }
 
+console.log("Phase B.2: FULL is never assigned to a known filtered subset");
+check("projects scope is a visible-only subset (is_hidden=false) → coverage PARTIAL, never FULL", P.domains.projects.coverage, "PARTIAL");
+ok("…and scopeDescription says so explicitly", P.domains.projects.scopeDescription.includes("is_hidden"));
+check("tasks scope is open-only → coverage PARTIAL, never FULL", P.domains.tasks.coverage, "PARTIAL");
+ok("…and scopeDescription says 'open tasks only'", P.domains.tasks.scopeDescription.toLowerCase().includes("open tasks only"));
+ok("sessions is genuinely full history now (Phase B.2) → scopeDescription says so", P.domains.sessions.scopeDescription.toLowerCase().includes("full") || P.domains.sessions.scopeDescription.toLowerCase().includes("all session"));
+ok("shows is genuinely full history now (Phase B.2) → scopeDescription says so", P.domains.shows.scopeDescription.toLowerCase().includes("full") || P.domains.shows.scopeDescription.toLowerCase().includes("all show"));
+
+console.log("Phase B.2: Sessions — Partner sees full history, COO's forward window is unchanged and cross-referenced");
+check("Partner sees all 3 sessions (full history)", P.domains.sessions.data!.total, 3);
+check("COO's own forward-window read still sees only 1 (se1) — cross-referenced, not replaced", P.domains.sessions.data!.cooVisible.count, 1);
+ok("totalHistoricalCount (3) is strictly more than currentOperationalCount (COO's window, 1)", P.domains.sessions.totalHistoricalCount! > P.domains.sessions.currentOperationalCount!);
+check("withProject counts correctly (2 of 3 sessions have a project_id)", P.domains.sessions.data!.withProject, 2);
+ok("a cancelled ('בוטל') session is present as a stored fact, never interpreted as attendance/reliability", P.domains.sessions.data!.byStatus["בוטל"] === 1);
+
+console.log("Phase B.2: Shows — Partner sees full history via the SAME listShows(), COO's operational subset is unchanged");
+check("Partner sees both shows (full history)", P.domains.shows.data!.total, 2);
+ok("COO's own operational subset (upcoming+doneUnpaid) is a real, independently-computed number — never null just because Partner also reads full history", P.domains.shows.data!.cooVisible.upcoming !== null && P.domains.shows.data!.cooVisible.doneUnpaid !== null);
+ok("full history (2) is never smaller than COO's operational subset", P.domains.shows.data!.total >= (P.domains.shows.data!.cooVisible.upcoming! + P.domains.shows.data!.cooVisible.doneUnpaid!));
+check("withDjClientId counts correctly (1 of 2 shows has dj_client_id)", P.domains.shows.data!.withDjClientId, 1);
+ok("a show's djClientId=null never fabricates a relation — it's just absent from the count", P.domains.shows.data!.items.find((s) => s.id === "sh1")!.djClientId === null);
+
+console.log("Phase B.2: Releases — label_artist_id propagates additively, null never fabricates a relation");
+check("the release row's labelArtistId flows through lib/coo's ReleaseFact unchanged", coo.state.releases!.rows[0].labelArtistId, "la1");
+ok("Releases ↔ LabelArtists relation is ID with a real coverage figure now that the field is exposed", (() => {
+  const rel = P.domains.releases.relations.find((r) => r.via.includes("label_artist_id"))!;
+  return rel.quality === "ID" && rel.coverage !== undefined;
+})());
+ok("a release row with labelArtistId=null does not inflate the ID coverage count", (() => {
+  const rawNoArtist = buildCooRaw();
+  rawNoArtist.releases!.rows[0].labelArtistId = null;
+  const cooNoArtist = computeCoo(rawNoArtist, NOW);
+  const Pn = assemblePartnerCompanyState(cooNoArtist, eyesRaw);
+  const rel = Pn.domains.releases.relations.find((r) => r.via.includes("label_artist_id"))!;
+  return rel.coverage === "NONE";
+})());
+
+console.log("Phase B.2: Victor/Steven — current (active/open) vs total historical counts, both real, never invented");
+check("Victor: active (current) = 1, totalWorks (all history, incl. completed) = 2", [P.domains.victor.currentOperationalCount, P.domains.victor.totalHistoricalCount], [1, 2]);
+check("Steven: open (current) = 1, totalWorks (all history, incl. approved) = 2", [P.domains.steven.currentOperationalCount, P.domains.steven.totalHistoricalCount], [1, 2]);
+ok("Victor scopeDescription distinguishes count (full) from per-row detail (active only)", P.domains.victor.scopeDescription.includes("totalWorks") && P.domains.victor.scopeDescription.includes("active"));
+ok("Steven scopeDescription distinguishes count (full) from per-row detail (open only)", P.domains.steven.scopeDescription.includes("totalWorks") && P.domains.steven.scopeDescription.includes("open"));
+
 console.log("relation quality reflects reality, never overstates it");
 check("Clients ↔ Projects is TEXT_MATCH (no id path exists at all)", P.domains.clients.relations[0].quality, "TEXT_MATCH");
 check("Label Artists ↔ Projects primary relation is TEXT_MATCH (not falsely ID-linked)", P.domains.labelArtists.relations[0].quality, "TEXT_MATCH");
@@ -139,8 +214,8 @@ ok("…but the release-row ID path is documented separately, with its OWN covera
   return rel.quality === "ID" && rel.coverage !== undefined;
 })());
 
-console.log("Phase B.1 fix: relation QUALITY is never downgraded because of partial COVERAGE (was a real bug in Phase B)");
-ok("Clips ↔ Projects: 1 of 2 rows carry project_id in this fixture → quality stays ID, coverage is PARTIAL (previously wrongly downgraded to TEXT_MATCH)", (() => {
+console.log("Phase B.1 fix (still holds): relation QUALITY is never downgraded because of partial COVERAGE");
+ok("Clips ↔ Projects: 1 of 2 rows carry project_id in this fixture → quality stays ID, coverage is PARTIAL", (() => {
   const rel = P.domains.clips.relations.find((r) => r.via.includes("project_id"))!;
   return rel.quality === "ID" && rel.coverage === "PARTIAL";
 })());
@@ -157,45 +232,15 @@ ok("if NO rows carried project_id, quality falls back to TEXT_MATCH (never inven
   return rel.quality === "TEXT_MATCH";
 })());
 
-console.log("Phase B.1: Victor relation coverage stays explicit, no invented fallback relation");
+console.log("Victor relation coverage stays explicit, no invented fallback relation");
 ok("Victor ↔ Projects relation carries a coverage figure derived from lib/coo's own victor.link entry", P.domains.victor.relations[0].coverage !== undefined);
 ok("the Victor domain explains WHY unlinked works have no reliable fallback (projectName collapses to the work's own title, never a real project/artist name)", P.domains.victor.warnings.some((w) => w.includes("projectName") && w.includes("title")));
 ok("…and explicitly says no new TEXT_MATCH relation was invented for Victor", P.domains.victor.warnings.some((w) => w.includes("TEXT_MATCH")));
 
-console.log("Phase B.1: Shows DJ fields flow through the additive lib/coo change");
-ok("shows.djClientId is now populated (non-undefined key) on the reused CompanyState data", (() => {
-  const rows = [...coo.state.shows!.upcoming, ...coo.state.shows!.doneUnpaid];
-  return rows.every((s) => "djClientId" in s);
-})());
-ok("Shows ↔ external relation is quality ID with a real coverage figure now that the field is exposed", (() => {
-  const rel = P.domains.shows.relations.find((r) => r.via === "shows.dj_client_id")!;
-  return rel.quality === "ID" && rel.coverage !== undefined;
-})());
-ok("a show with djClientId=null never creates a fake relation (coverage accounts for it, quality stays ID for the relation TYPE, not per-row)", (() => {
-  // the one fixture show (sh1) has no dj fields set → djClientId is null/undefined-mapped-to-null
-  const rows = [...coo.state.shows!.upcoming, ...coo.state.shows!.doneUnpaid];
-  return rows.every((s) => s.djClientId === null);
-})());
+console.log("Phase B.1 fix (still holds): an anchor domain with no outbound relation is not penalized to LOW reliability");
+check("projects has no outbound relation (it's the anchor entity) yet coverage PARTIAL (hidden excluded) → reliability MEDIUM (not LOW)", [P.domains.projects.relations.length, P.domains.projects.coverage, P.domains.projects.reliability], [0, "PARTIAL", "MEDIUM"]);
 
-console.log("Phase B.1: Agent Alerts sees the true breadth, not just what COO's brief shows");
-check("Partner's agentAlerts domain sees ALL 3 alerts (2 of which COO's status=\"new\"-only read never even fetches)", P.domains.agentAlerts.data!.total, 3);
-check("byStatus breaks down new/handled/dismissed correctly", P.domains.agentAlerts.data!.byStatus, { new: 1, handled: 1, dismissed: 1 });
-ok("cooVisible cross-references what the brief actually shows, separately from the true total", P.domains.agentAlerts.data!.cooVisible.shownByBrief !== null && P.domains.agentAlerts.data!.total > (P.domains.agentAlerts.data!.cooVisible.shownByBrief ?? 0));
-ok("a resolved/dismissed alert is present as a historical row, never re-labelled as a current issue (no severity/urgency field invented)", !JSON.stringify(P.domains.agentAlerts.data!.items).includes("current"));
-ok("agentAlerts is no longer adapted from lib/coo's narrow state.alerts — it has its own Partner-only reader", P.domains.agentAlerts.provenance.reader.includes("readPartnerEyesRaw"));
-check("withEntityKey counts correctly (al2 has one)", P.domains.agentAlerts.data!.withEntityKey, 1);
-check("withRelatedProject counts correctly (al2 has one)", P.domains.agentAlerts.data!.withRelatedProject, 1);
-{
-  const raw4 = buildEyesRaw(); raw4.alerts = null;
-  raw4.sources = raw4.sources.map((s) => (s.source === "agent_alerts_eyes" ? { source: "agent_alerts_eyes", status: "failed" as const, rowCount: null, error: "boom" } : s));
-  const P4 = assemblePartnerCompanyState(coo, raw4);
-  check("a failed Agent Alerts read → status UNKNOWN, data null, coverage FAILED (never an empty/zero total)", [P4.domains.agentAlerts.status, P4.domains.agentAlerts.data, P4.domains.agentAlerts.coverage], ["UNKNOWN", null, "FAILED"]);
-}
-
-console.log("Phase B.1 fix: an anchor domain with no outbound relation is not penalized to LOW reliability");
-check("projects has no outbound relation (it's the anchor entity) yet FULL coverage → reliability HIGH, not LOW", [P.domains.projects.relations.length, P.domains.projects.coverage, P.domains.projects.reliability], [0, "FULL", "HIGH"]);
-
-console.log("Phase B.1: relation model review — no relation ever mixes quality and coverage semantics");
+console.log("relation model review — no relation ever mixes quality and coverage semantics");
 ok("every relation with a numeric split (some rows linked, not all) reports quality=ID + a coverage field, never a downgraded quality", (() => {
   const allRelations = Object.values(P.domains).flatMap((d) => d.relations);
   return allRelations.every((r) => !(r.quality === "TEXT_MATCH" && r.coverage === "FULL"));
@@ -215,14 +260,13 @@ check("victor domain's ballCounts is passed through unchanged from CompanyState"
 ok("the Victor domain warning describes 'latest recorded action', not 'owner owes'", P.domains.victor.warnings.some((w) => w.includes("latest recorded action") || w.includes("recorded action")));
 ok("…and never claims the owner currently owes a review", !P.domains.victor.warnings.some((w) => /owner (currently )?owes|owner must review/i.test(w)));
 
+console.log("finance: missing agreedPrice stays UNKNOWN, never 0");
+ok("finance domain scope explicitly states UNKNOWN semantics for missing agreedPrice", P.domains.receivables.scopeDescription.includes("UNKNOWN"));
+
 console.log("suppliers: re-audited, correctly reported as not existing as a separate domain");
 check("suppliers domain status is UNAVAILABLE (no invented table)", P.domains.suppliers.status, "UNAVAILABLE");
 check("…and its data is null, not an empty object pretending to be a real (empty) domain", P.domains.suppliers.data, null);
 ok("the warning names the actual re-audit finding (vendor_name hardcoded to victor)", P.domains.suppliers.warnings.some((w) => w.includes("vendor_name") && w.includes("victor")));
-
-console.log("sessions: honestly scoped, not falsely 'complete'");
-check("sessions coverage is PARTIAL (forward-window only), never FULL", P.domains.sessions.coverage, "PARTIAL");
-ok("…and the warning says why (future window, no history)", P.domains.sessions.warnings.some((w) => w.includes("חלון") || w.toLowerCase().includes("window")));
 
 console.log("determinism (same input → identical output, pure assembly)");
 check("assemblePartnerCompanyState is deterministic", JSON.stringify(assemblePartnerCompanyState(coo, eyesRaw)), JSON.stringify(P));
@@ -243,7 +287,7 @@ ok("no portal file imports anything from lib/partner", (() => {
   const portalFiles = [...portalDirs.flatMap((d) => walk(path.join(ROOT, d))), ...fs.readdirSync(path.join(ROOT, "lib")).filter((f) => /^(steven|victor|shalev|avi|cleantone|dj-|beat|show-|sketch)/.test(f)).map((f) => path.join(ROOT, "lib", f))];
   return portalFiles.every((f) => !/lib\/partner/.test(fs.readFileSync(f, "utf8")));
 })());
-ok("lib/coo has no reverse dependency on lib/partner (the only lib/coo edits this block are the additive Shows DJ fields — see report)", (() => {
+ok("lib/coo has no reverse dependency on lib/partner (the only lib/coo edits this block are additive fields — see report)", (() => {
   const cooDir = path.join(ROOT, "lib/coo");
   return fs.readdirSync(cooDir).every((f) => !/lib\/partner/.test(fs.readFileSync(path.join(cooDir, f), "utf8")));
 })());

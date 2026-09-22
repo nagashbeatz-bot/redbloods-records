@@ -116,6 +116,8 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
           projectId: r.projectId, name: r.name, projectStatus: r.status as string, stage: r.release!.releaseStage as string,
           targetDate: r.release!.releaseTargetDate, nextAction: r.release!.nextAction, blocker: r.release!.blocker, responsible: r.release!.responsible,
           stageEnteredAt: r.release!.stageEnteredAt,
+          // Additive (Partner Phase B.2) — already returned by listLabelReleases(); no new query.
+          labelArtistId: r.release!.labelArtistId ?? null,
         })),
       };
     }, (v) => v.rows.length),

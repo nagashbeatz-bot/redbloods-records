@@ -333,7 +333,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
       .filter((r) => r.stage !== "יצא" && r.stage !== "בהשהייה")
       .map((r) => {
         const t = parseYmd(r.targetDate);
-        return { projectId: r.projectId, name: r.name, projectStatus: r.projectStatus, stage: r.stage, targetYmd: t, daysTo: t ? diffDays(today, t) : null, daysInStage: daysSinceIso(r.stageEnteredAt, now), blocker: r.blocker, nextAction: r.nextAction, responsible: r.responsible };
+        return { projectId: r.projectId, name: r.name, projectStatus: r.projectStatus, stage: r.stage, targetYmd: t, daysTo: t ? diffDays(today, t) : null, daysInStage: daysSinceIso(r.stageEnteredAt, now), blocker: r.blocker, nextAction: r.nextAction, responsible: r.responsible, labelArtistId: r.labelArtistId ?? null };
       });
     releases = { labelProjectsTotal: raw.releases.labelProjectsTotal, withReleaseRow: raw.releases.rows.length, rows };
     coverage.push(cov("releases", "פרויקטי לייבל עם שורת release", raw.releases.labelProjectsTotal, raw.releases.rows.length,

@@ -58,42 +58,57 @@ async function main() {
   console.log(`Partner Eyes snapshot — ${snapshot.capturedAt} (Israel date ${snapshot.todayIL})`);
   console.log(`eyes schema: ${snapshot.schemaVersion} | coo schema: ${snapshot.cooSchemaVersion}\n`);
 
-  // Domain / Rows / Coverage / Reliability / Relation type / Relation coverage / Warnings
-  const rows: Array<[string, string | number, string, string, string, string, string]> = [];
+  // Owner-decision check (Phase B.2): agent_alerts must never appear as a Partner domain.
+  const hasAgentAlerts = Object.prototype.hasOwnProperty.call(snapshot.domains, "agentAlerts");
+  console.log(`Agent Alerts domain present: ${hasAgentAlerts ? "YES — VIOLATION, must not appear" : "NO (correct — excluded by Owner decision)"}\n`);
+
+  // Domain / Rows / Scope / Coverage / Reliability / Relation type / Relation coverage / Warnings
+  const rows: Array<[string, string | number, string, string, string, string, string, string]> = [];
   for (const [key, d] of Object.entries(snapshot.domains)) {
     const relType = d.relations.length ? d.relations.map((r) => `${r.toDomain}:${r.quality}`).join(", ") : "—";
     const relCoverage = d.relations.length ? d.relations.map((r) => r.coverage ?? "—").join(", ") : "—";
-    rows.push([key, countOf(d.data), d.coverage, d.reliability, relType, relCoverage, String(d.warnings.length)]);
+    rows.push([key, countOf(d.data), d.scopeDescription, d.coverage, d.reliability, relType, relCoverage, String(d.warnings.length)]);
   }
-  const header = ["Domain", "Rows", "Coverage", "Reliability", "Relation type", "Relation coverage", "Warnings"];
+  const header = ["Domain", "Rows", "Scope", "Coverage", "Reliability", "Relation type", "Relation coverage", "Warnings"];
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
   const line = (cols: string[]) => cols.map((c, i) => c.padEnd(widths[i])).join("  ");
   console.log(line(header));
   console.log(widths.map((w) => "-".repeat(w)).join("  "));
   for (const r of rows) console.log(line(r.map(String)));
 
-  // ── Special call-outs (Phase B.1 §7) ──────────────────────────────────────
-  console.log("\n── Agent Alerts: raw vs COO-visible ──");
-  const aa = snapshot.domains.agentAlerts.data;
-  if (aa) {
-    console.log(`  total (all statuses, Partner Eyes): ${aa.total}`);
-    console.log(`  byStatus: ${Object.entries(aa.byStatus).map(([k, v]) => `${k}=${v}`).join(", ")}`);
-    console.log(`  shown by COO's brief (status="new" + allowlist + recent): ${aa.cooVisible.shownByBrief ?? "—"}`);
-    console.log(`  withEntityKey: ${aa.withEntityKey} | withRelatedProject: ${aa.withRelatedProject}`);
-  } else console.log("  (unavailable)");
+  console.log("\n── Current vs historical counts (where both are known) ──");
+  for (const [key, d] of Object.entries(snapshot.domains)) {
+    if (d.currentOperationalCount == null && d.totalHistoricalCount == null) continue;
+    console.log(`  ${key.padEnd(14)} current=${d.currentOperationalCount ?? "—"}  total=${d.totalHistoricalCount ?? "—"}`);
+  }
+
+  // ── Special call-outs (Phase B.1 §7 / B.2 §51) ────────────────────────────
+  console.log("\n── Sessions: full history vs COO's forward window ──");
+  const sessions = snapshot.domains.sessions.data;
+  if (sessions) console.log(`  ${sessions.total} total (all history) | COO forward-window: ${sessions.cooVisible.count ?? "—"} | withProject: ${sessions.withProject}`);
+  else console.log("  (unavailable)");
+
+  console.log("\n── Releases: label_artist_id coverage ──");
+  const relRel = snapshot.domains.releases.relations.find((r) => r.via.includes("label_artist_id"));
+  console.log(`  ${relRel?.notes ?? "—"} | coverage=${relRel?.coverage ?? "—"}`);
+
+  console.log("\n── Shows: full history + DJ id/confirmation coverage ──");
+  const shows = snapshot.domains.shows.data;
+  if (shows) console.log(`  ${shows.total} total (all history) | COO operational subset: upcoming=${shows.cooVisible.upcoming ?? "—"}, doneUnpaid=${shows.cooVisible.doneUnpaid ?? "—"} | withDjClientId: ${shows.withDjClientId}`);
+  else console.log("  (unavailable)");
+
+  console.log("\n── Tasks: scope ──");
+  console.log(`  ${snapshot.domains.tasks.scopeDescription}`);
 
   console.log("\n── Clips: real project_id coverage ──");
   const clips = snapshot.domains.clips.data;
   if (clips) console.log(`  ${clips.withProjectId}/${clips.total} carry project_id (relation quality ID, coverage measured — never downgraded for partial coverage)`);
   else console.log("  (unavailable)");
 
-  console.log("\n── Shows: DJ id/confirmation coverage ──");
-  const showsRel = snapshot.domains.shows.relations.find((r) => r.via === "shows.dj_client_id");
-  console.log(`  ${showsRel ? `${showsRel.notes ?? ""}` : "(no dj relation reported)"}`);
-
-  console.log("\n── Victor: project relation coverage ──");
+  console.log("\n── Victor: project relation coverage + current/historical split ──");
   const victorRel = snapshot.domains.victor.relations[0];
   console.log(`  ${victorRel?.notes ?? "—"} | coverage=${victorRel?.coverage ?? "—"}`);
+  console.log(`  active (current)=${snapshot.domains.victor.currentOperationalCount ?? "—"} | totalWorks (all history)=${snapshot.domains.victor.totalHistoricalCount ?? "—"}`);
 
   console.log("\nWarnings detail:");
   for (const [key, d] of Object.entries(snapshot.domains)) {

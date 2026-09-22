@@ -346,6 +346,8 @@ export interface ReleaseFact {
   blocker: string;
   nextAction: string;
   responsible: string;
+  /** Additive (Partner Phase B.2) — not read by any signal/case/priority/brief logic. null when the release row has none. */
+  labelArtistId: string | null;
 }
 export interface ReleasesFact {
   labelProjectsTotal: number;
@@ -474,6 +476,8 @@ export interface RawFinanceSetting { projectId: string; agreedPrice: number; cur
 export interface RawRelease {
   projectId: string; name: string; projectStatus: string; stage: string; targetDate: string | null;
   nextAction: string; blocker: string; responsible: string; stageEnteredAt: string | null;
+  /** Additive (Partner Phase B.2) — already fetched by listLabelReleases(), just not read by Phase 1a signals/cases. */
+  labelArtistId?: string | null;
 }
 export interface RawAlert {
   id: string; type: string; severity: string; title: string; message: string; createdAt: string; relatedProjectId: string | null;
