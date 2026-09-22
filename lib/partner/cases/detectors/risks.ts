@@ -11,6 +11,7 @@
 import { diffDays, parseYmd } from "../../../coo/dates";
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 const PROPOSAL_TERMINAL_STATUSES = new Set(["נסגר", "לא נסגר"]);
 
@@ -42,6 +43,7 @@ export function detectProposalFollowupCases(state: PartnerCompanyState, todayYmd
       classification: "ATTENTION",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "proposalsFull", entityId: p.id, field: "status", value: p.status, label: "status" },
         { domain: "proposalsFull", entityId: p.id, field: "followupYmd", value: followupYmd, label: "followupYmd" },
@@ -102,6 +104,7 @@ export function detectPaymentDueDateCases(state: PartnerCompanyState): PartnerCa
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "finance", entityId: e.txId, field: "dateYmd", value: e.dateYmd, label: "expectedIncome.dateYmd" },
         { domain: "finance", entityId: e.txId, field: "amount", value: e.amount, label: "expectedIncome.amount" },
@@ -152,6 +155,7 @@ export function detectShowClientPaymentCases(state: PartnerCompanyState): Partne
       classification: "ATTENTION",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "shows", entityId: s.id, field: "status", value: s.status, label: "status" },
         { domain: "shows", entityId: s.id, field: "paymentStatus", value: s.paymentStatus, label: "paymentStatus" },
@@ -197,6 +201,7 @@ export function detectTaskDueDateCases(state: PartnerCompanyState): PartnerCase[
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "tasks", entityId: t.id, field: "dueYmd", value: t.dueYmd, label: "dueYmd" },
         { domain: "tasks", entityId: t.id, field: "relatedType", value: t.relatedType, label: "relatedType" },
@@ -243,6 +248,7 @@ export function detectStevenInternalDeadlineCases(state: PartnerCompanyState): P
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "steven", entityId: w.id, field: "internalDeadline", value: w.internalDeadline, label: "internalDeadline" },
         { domain: "steven", entityId: w.id, field: "status", value: w.status, label: "status" },

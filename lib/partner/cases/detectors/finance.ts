@@ -34,6 +34,7 @@
  */
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCase[] {
   const out: PartnerCase[] = [];
@@ -55,6 +56,7 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
           classification: "ATTENTION",
           status: "OPEN",
           createdFrom: "STATE",
+          schemaVersion: CASE_SCHEMA_VERSION,
           facts: [
             { domain: "receivables", entityId: r.projectId, field: "agreedPrice", value: r.agreedPrice, label: "agreedPrice" },
             { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received (paidIncome — רק שולם/התקבל)" },
@@ -82,6 +84,7 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
           classification: "INFORMATION",
           status: "OPEN",
           createdFrom: "STATE",
+          schemaVersion: CASE_SCHEMA_VERSION,
           facts: [
             { domain: "receivables", entityId: r.projectId, field: "agreedPrice", value: r.agreedPrice, label: "agreedPrice" },
             { domain: "receivables", entityId: r.projectId, field: "received", value: r.received, label: "received (paidIncome — רק שולם/התקבל)" },
@@ -118,6 +121,7 @@ export function detectProjectFinanceCases(state: PartnerCompanyState): PartnerCa
         classification: "INFORMATION",
         status: "NEEDS_CONTEXT",
         createdFrom: "STATE",
+        schemaVersion: CASE_SCHEMA_VERSION,
         facts: [{ domain: "projects", entityId: p.id, field: "hasFinanceSetting", value: false, label: "hasFinanceSetting" }],
         derivedFacts: [],
         hypotheses: [],

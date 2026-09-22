@@ -75,9 +75,22 @@ export interface CaseDataQuality {
   notes: string[];
 }
 
+/**
+ * Phase F.1 (Owner instruction §19) — stamps the SHAPE of the PartnerCase
+ * interface itself (facts/derivedFacts/classification semantics), never the
+ * business condition. Bump only when this interface's fields materially
+ * change, so stored feedback (lib/partner/feedback) can tell whether its
+ * saved snapshot still describes the current Case shape. Mirrors the same
+ * `schemaVersion` pattern already used by PartnerChangeSnapshot
+ * (lib/partner/changes/types.ts:CHANGE_SNAPSHOT_SCHEMA_VERSION).
+ */
+export const CASE_SCHEMA_VERSION = "partner-case-schema-v1";
+
 export interface PartnerCase {
   /** Deterministic: `${caseType}:${subjectId}` (or a documented variant) — the SAME business condition always produces the SAME id, never a random UUID (Owner instruction §8). */
   id: string;
+  /** Always CASE_SCHEMA_VERSION at construction time — never hand-set to anything else. */
+  schemaVersion: string;
   caseType: string;
   subjectType: string;
   subjectId: string;

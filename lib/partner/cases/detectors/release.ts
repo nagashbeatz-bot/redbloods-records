@@ -15,6 +15,7 @@
 import { diffDays } from "../../../coo/dates";
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 export function detectReleaseTimingCases(state: PartnerCompanyState, todayYmd: string): PartnerCase[] {
   const domain = state.domains.releasesFull;
@@ -36,6 +37,7 @@ export function detectReleaseTimingCases(state: PartnerCompanyState, todayYmd: s
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "releasesFull", entityId: r.projectId, field: "targetYmd", value: r.targetYmd, label: "release_target_date" },
         { domain: "releasesFull", entityId: r.projectId, field: "stage", value: r.stage, label: "release_stage" },

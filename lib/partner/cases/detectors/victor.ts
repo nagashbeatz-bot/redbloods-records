@@ -11,6 +11,7 @@
 import { diffDays, parseYmd } from "../../../coo/dates";
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 export function detectVictorInternalDeadlineCases(state: PartnerCompanyState, todayYmd: string): PartnerCase[] {
   const domain = state.domains.victor;
@@ -38,6 +39,7 @@ export function detectVictorInternalDeadlineCases(state: PartnerCompanyState, to
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "victor", entityId: w.id, field: "internalDeadline", value: deadlineYmd, label: "internalDeadline" },
         { domain: "victor", entityId: w.id, field: "workState", value: w.workState, label: "workState" },
@@ -80,6 +82,7 @@ export function detectVictorUnfollowedDeliveryCases(state: PartnerCompanyState):
       classification: "ATTENTION",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "victor", entityId: w.id, field: "lastUploadAt", value: w.lastUploadAt, label: "lastUploadAt" },
         { domain: "victor", entityId: w.id, field: "ball.code", value: w.ball.code, label: "ball.code" },

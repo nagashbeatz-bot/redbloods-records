@@ -11,6 +11,7 @@
 import type { PartnerChange } from "../../changes/types";
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 const CONFIRMED_SHOW_STATUSES = new Set(["אושרה", "בוצע"]);
 
@@ -32,6 +33,7 @@ export function detectChangeDerivedCases(
       classification: "OPPORTUNITY",
       status: "OPEN",
       createdFrom: "CHANGE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [{ domain: "transactions", entityId: c.entityId, field: "receivedSemantic", value: "RECEIVED", label: "receivedSemantic" }],
       derivedFacts: [],
       hypotheses: [],
@@ -61,6 +63,7 @@ export function detectChangeDerivedCases(
       classification: confirmed ? "OPPORTUNITY" : "INFORMATION",
       status: "OPEN",
       createdFrom: "CHANGE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: show ? [{ domain: "shows", entityId: c.entityId, field: "status", value: show.status, label: "status" }] : [],
       derivedFacts: [],
       hypotheses: [],
@@ -93,6 +96,7 @@ export function detectChangeDerivedCases(
         classification: "OPPORTUNITY",
         status: "OPEN",
         createdFrom: "CHANGE",
+        schemaVersion: CASE_SCHEMA_VERSION,
         facts: [
           { domain: "proposals", entityId: c.entityId, field: "status", value: "נסגר", label: "status" },
           ...(proposal?.linkedProjectId ? [{ domain: "proposals", entityId: c.entityId, field: "linkedProjectId", value: proposal.linkedProjectId, label: "linkedProjectId" }] : []),
@@ -117,6 +121,7 @@ export function detectChangeDerivedCases(
       classification: "INFORMATION",
       status: "OPEN",
       createdFrom: "CHANGE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [{ domain: "proposals", entityId: c.entityId, field: "status", value: c.after, label: "status" }],
       derivedFacts: [],
       hypotheses: [],
@@ -154,6 +159,7 @@ export function detectChangeDerivedCases(
       classification: "INFORMATION",
       status: "OPEN",
       createdFrom: "CHANGE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "releases", entityId: c.entityId, field: "targetYmd", value: c.after, label: "release_target_date" },
         ...(release?.labelArtistId ? [{ domain: "releases", entityId: c.entityId, field: "labelArtistId", value: release.labelArtistId, label: "labelArtistId" }] : []),

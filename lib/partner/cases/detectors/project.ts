@@ -9,6 +9,7 @@
  */
 import type { PartnerCompanyState } from "../../eyes/types";
 import type { PartnerCase } from "../types";
+import { CASE_SCHEMA_VERSION } from "../types";
 
 export function detectProjectDeadlineCases(state: PartnerCompanyState, todayYmd: string): PartnerCase[] {
   const domain = state.domains.projects;
@@ -47,6 +48,7 @@ export function detectProjectDeadlineCases(state: PartnerCompanyState, todayYmd:
       classification: "RISK",
       status: "OPEN",
       createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
       facts: [
         { domain: "projects", entityId: p.id, field: "deadline", value: deadlineYmd, label: "deadline" },
         { domain: "projects", entityId: p.id, field: "status", value: p.status, label: "status" },
