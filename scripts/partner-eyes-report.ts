@@ -121,7 +121,72 @@ async function main() {
   for (const s of snapshot.cooSources) {
     console.log(`  ${s.source.padEnd(18)} ${s.status.padEnd(8)} rows=${s.rowCount ?? "—"}${s.error ? ` error=${s.error}` : ""}`);
   }
-  console.log(`\nblocked requests during this run: ${blocked.length}`);
+
+  // ── Phase C.3: Change Readiness Matrix ────────────────────────────────────
+  console.log("\n\n══ CHANGE READINESS MATRIX (Phase C.3 — data readiness only, no diffing/snapshots) ══\n");
+  const crHeader = ["Domain", "Scope", "StableId", "CreatedAt", "UpdatedAt", "BizDate", "Status", "FullHist", "Create?", "Update?", "StatusTx?", "Warn"];
+  const crRows = snapshot.changeReadiness.map((e) => [
+    e.domain, e.scope, e.stableIdField ? "YES" : "NO", e.hasCreatedAt ? "YES" : "NO", e.hasUpdatedAt ? "YES" : "NO",
+    e.businessDateField ? "YES" : "NO", e.statusField ? "YES" : "NO", e.scope === "FULL_HISTORY" ? "YES" : "NO",
+    e.supportsCreateDetection ? "YES" : "NO", e.supportsUpdateDetection ? "YES" : "NO", e.supportsStatusTransitionDetection ? "YES" : "NO",
+    String(e.warnings.length),
+  ]);
+  const crWidths = crHeader.map((h, i) => Math.max(h.length, ...crRows.map((r) => String(r[i]).length)));
+  const crLine = (cols: string[]) => cols.map((c, i) => c.padEnd(crWidths[i])).join("  ");
+  console.log(crLine(crHeader));
+  console.log(crWidths.map((w) => "-".repeat(w)).join("  "));
+  for (const r of crRows) console.log(crLine(r.map(String)));
+
+  console.log("\nChange readiness warnings detail:");
+  for (const e of snapshot.changeReadiness) {
+    if (e.warnings.length === 0) continue;
+    console.log(`\n[${e.domain}] stableId=${e.stableIdField ?? "—"} businessDate=${e.businessDateField ?? "—"} status=${e.statusField ?? "—"}`);
+    for (const w of e.warnings) console.log(`  - ${w}`);
+  }
+
+  // ── Phase C.3: Production data report (structural counts / coverage only — no private text) ──
+  console.log("\n\n══ PRODUCTION DATA REPORT (Phase C.3 §81) ══\n");
+
+  const pf = snapshot.domains.proposalsFull.data;
+  console.log("Proposals (full history):");
+  console.log(pf
+    ? `  total=${pf.total} | client_id coverage=${pf.withClientId}/${pf.total} | linked_project_id coverage=${pf.withLinkedProjectId}/${pf.total}`
+    : "  (unavailable)");
+  if (pf) console.log(`  status breakdown: ${fmtRec(pf.byStatus)}`);
+
+  const tf = snapshot.domains.transactions.data;
+  console.log("\nTransactions (full history):");
+  console.log(tf ? `  total=${tf.total} | project_id coverage=${tf.withProjectId}/${tf.total}` : "  (unavailable)");
+  if (tf) {
+    console.log(`  status breakdown: ${fmtRec(tf.byStatus)}`);
+    console.log(`  currency breakdown (counts only): ${fmtRec(tf.byCurrency)}`);
+  }
+
+  const tkf = snapshot.domains.tasksFull.data;
+  console.log("\nTasks (full history):");
+  console.log(tkf ? `  total=${tkf.total} | open (COO-visible)=${tkf.cooVisible.openCount ?? "—"}` : "  (unavailable)");
+  if (tkf) console.log(`  status breakdown: ${fmtRec(tkf.byStatus)}`);
+
+  const rf = snapshot.domains.releasesFull.data;
+  console.log("\nReleases (full history):");
+  console.log(rf
+    ? `  total=${rf.total} | label_artist_id coverage=${rf.withLabelArtistId}/${rf.total} | active-stage (COO-visible)=${rf.cooVisible.count ?? "—"}`
+    : "  (unavailable)");
+  if (rf) console.log(`  stage breakdown: ${fmtRec(rf.byStage)}`);
+
+  const victor = snapshot.domains.victor.data;
+  console.log("\nVictor:");
+  console.log(victor ? `  total=${victor.totalWorks} | active detail=${victor.active.length} | timestamps: createdAt/updatedAt/returnedDate now on each active work` : "  (unavailable)");
+
+  const steven = snapshot.domains.steven.data;
+  console.log("\nSteven:");
+  console.log(steven ? `  total=${steven.totalWorks} | open detail=${steven.open.length} | timestamps: createdAt/updatedAt now on each open work` : "  (unavailable)");
+
+  console.log(`\n\nblocked requests during this run: ${blocked.length}`);
+}
+
+function fmtRec(rec: Record<string, number>): string {
+  return Object.entries(rec).map(([k, v]) => `${k}=${v}`).join(", ") || "(none)";
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error("[partner-eyes-report] failed:", e instanceof Error ? e.message : e); process.exit(1); });

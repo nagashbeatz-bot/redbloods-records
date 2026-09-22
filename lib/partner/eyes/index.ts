@@ -11,6 +11,7 @@ export { adaptCooCompanyState } from "./coo-adapter";
 export type { CooAdaptedDomains } from "./coo-adapter";
 export { readPartnerEyesRaw } from "./readers";
 export { buildPartnerCompanyState } from "./build";
+export { buildChangeReadinessMatrix } from "./changeReadiness";
 export {
   statusFromSource, coverageFromCounts, coverageFromStatus, classifyRelationQuality, reliabilityFrom,
 } from "./coverage";

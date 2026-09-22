@@ -197,6 +197,9 @@ export interface StevenWorkFact {
   daysToInternal: number | null;
   hasMixVersion: boolean;
   lastUploadAt: string | null;
+  /** Additive (Partner Phase C.3, change-readiness) — not read by any Phase 1a signal/case/priority/brief logic. */
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 export interface StevenFact {
   totalWorks: number;
@@ -229,6 +232,10 @@ export interface VictorWorkFact {
   /** owner-ball only: days since Victor's last upload (Israel calendar days). */
   waitingOwnerDays: number | null;
   linkedTaskId: string | null;
+  /** Additive (Partner Phase C.3, change-readiness) — not read by any Phase 1a signal/case/priority/brief logic. */
+  createdAt: string | null;
+  updatedAt: string | null;
+  returnedDate: string | null;
 }
 export interface VictorFact {
   totalWorks: number;
@@ -440,6 +447,9 @@ export interface RawTask {
 export interface RawStevenWork {
   id: string; projectId: string | null; title: string; status: string; agreedPrice: number; currency: string;
   amountPaid: number; sentDate: string | null; internalDeadline: string | null; hasMixVersion: boolean; lastUploadAt: string | null;
+  /** Additive (Partner Phase C.3, change-readiness) — already fetched by listSoundEngineerWork()'s select("*"), not read by any Phase 1a signal/case/priority/brief logic. Optional so existing fixtures never need to change. */
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 export interface RawVictorWork {
   id: string; projectId: string | null; title: string; status: string; workState: string | null;
@@ -452,6 +462,10 @@ export interface RawVictorWork {
   reviews: Array<{ sentAt: string | null; draft: boolean }>;
   /** vendor_project_work.linked_task_id — the auto-created "מעקב ויקטור" task. */
   linkedTaskId: string | null;
+  /** Additive (Partner Phase C.3, change-readiness) — already fetched by getVictorWork()'s select("*"), not read by any Phase 1a signal/case/priority/brief logic. Optional so existing fixtures never need to change. */
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  returnedDate?: string | null;
 }
 export interface RawProposal {
   id: string; clientName: string; title: string; amount: number; currency: string; status: string;

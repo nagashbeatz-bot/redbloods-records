@@ -19,11 +19,14 @@ function buildIdentity(state: PartnerCompanyState, clientId: string): ClientIden
 }
 
 function buildProposals(state: PartnerCompanyState, identity: ClientIdentity): ClientProposalsSection {
-  const items = (state.domains.proposals.data ?? []).filter((p) => p.clientName === identity.name);
+  const all = state.domains.proposalsFull.data?.items ?? [];
+  const items = all.filter((p) => p.clientId === identity.clientId);
+  const legacyTextMatched = all.filter((p) => p.clientId === null && p.clientName === identity.name);
   return {
     items,
-    relation: { fromType: "client", fromId: identity.clientId, toType: "proposal", toId: items.length === 1 ? items[0].id : null, quality: "TEXT_MATCH", basis: "proposals.clientName = clients.name", source: "eyes:proposals" },
-    scopeDescription: "TEXT_MATCH only — proposals.client_id IS a real FK in the DB (proven by lib/coo/readers.ts's clients(name) embedded select), but lib/coo's ProposalFact never retains it, only the denormalized clientName text. Not propagated this block (lib/coo change, not pre-approved) — known gap. Also: lib/coo drops closed-status proposals (נסגר/לא נסגר) entirely, so this is PARTIAL history even by name.",
+    relation: { fromType: "client", fromId: identity.clientId, toType: "proposal", toId: items.length === 1 ? items[0].id : null, quality: "ID", basis: "proposals.client_id", source: "eyes:proposalsFull" },
+    legacyTextMatched,
+    scopeDescription: "Phase C.3: ID via proposals.client_id (a real FK), full history (no status filter — a closed proposal never disappears). legacyTextMatched separately holds any client_id=null row whose denormalized clientName text matches — never merged into the ID-confirmed items.",
   };
 }
 
@@ -69,7 +72,7 @@ export function buildClientDossier(state: PartnerCompanyState, clientId: string,
   const completeDomains: string[] = [];
   const partialDomains: string[] = [];
   const unknownDomains: string[] = [];
-  for (const k of ["clients", "projects", "proposals", "receivables", "sessions", "shows"] as const) {
+  for (const k of ["clients", "projects", "proposalsFull", "receivables", "sessions", "shows"] as const) {
     const c = classifyDomain(state, k);
     if (c === "complete") completeDomains.push(k);
     else if (c === "partial") partialDomains.push(k);
@@ -78,6 +81,7 @@ export function buildClientDossier(state: PartnerCompanyState, clientId: string,
   const weakRelations: string[] = [];
   if (matchedProjects.length > 0) weakRelations.push("matchedProjects (TEXT_MATCH)");
   if (ambiguousProjectCandidates.length > 0) weakRelations.push("ambiguousProjectCandidates");
+  if (base.proposals.legacyTextMatched.length > 0) weakRelations.push("proposals.legacyTextMatched (TEXT_MATCH — client_id=null legacy rows only)");
   const dataQuality: DossierDataQuality = { completeDomains, partialDomains, unknownDomains, weakRelations, conflicts: [] };
 
   const provenance = {
@@ -89,7 +93,7 @@ export function buildClientDossier(state: PartnerCompanyState, clientId: string,
       identity: "eyes:clients",
       matchedProjects: "eyes:projects.index + projects.artist (TEXT_MATCH, matched)",
       ambiguousProjectCandidates: "eyes:projects.index + projects.artist (TEXT_MATCH, ambiguous)",
-      proposals: "eyes:proposals (clientName text match)",
+      proposals: "eyes:proposalsFull (client_id, ID, full history — Phase C.3)",
       finance: "eyes:receivables, via matchedProjects",
       sessions: "eyes:sessions, via matchedProjects",
       performerShows: "eyes:shows.artist_client_id",

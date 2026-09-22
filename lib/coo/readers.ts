@@ -61,6 +61,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
       id: w.id, projectId: w.projectId, title: (w.workTitle && w.workTitle.trim()) || w.projectName || "עבודה", status: w.status as string,
       agreedPrice: w.agreedPrice, currency: w.currency, amountPaid: w.amountPaid, sentDate: w.sentDate, internalDeadline: w.internalDeadline,
       hasMixVersion: w.hasMixVersion, lastUploadAt: w.lastUploadAt,
+      createdAt: w.createdAt || null, updatedAt: w.updatedAt || null,
     })), (v) => v.length),
     track("victor", async () => {
       const [works, settings] = await Promise.all([getVictorWork(), getVictorSettings()]);
@@ -74,6 +75,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
           filesWithoutTimestamp: (w.filesSent ?? []).filter((f) => !f.uploadedAt).length,
           reviews: Object.values(w.versionReviews ?? {}).map((r) => ({ sentAt: r.sentAt ?? null, draft: r.draft === true })),
           linkedTaskId: w.linkedTaskId,
+          createdAt: w.createdAt || null, updatedAt: w.updatedAt || null, returnedDate: w.returnedDate || null,
         })),
       };
     }, (v) => v.works.length),

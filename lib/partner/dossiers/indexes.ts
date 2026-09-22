@@ -59,7 +59,10 @@ export function buildArtistProjectIndex(state: PartnerCompanyState): ArtistProje
   const ambiguousTextMatchedByArtistId = new Map<string, ProjectRefSummary[]>();
   const conflictsByArtistId = new Map<string, DossierConflict[]>();
   const labelArtists = state.domains.labelArtists.data?.items ?? [];
-  const releaseRows = state.domains.releases.data?.rows ?? [];
+  // Phase C.3: eyes:releasesFull (every stage, full history) — a released/paused row
+  // that used to be invisible to lib/coo's active-stage-only releases no longer
+  // silently drops the label-artist ID link (see Phase C.3 report).
+  const releaseRows = state.domains.releasesFull.data?.items ?? [];
   const index = state.domains.projects.data?.index ?? {};
 
   const idLinkedProjectIds = new Set<string>();

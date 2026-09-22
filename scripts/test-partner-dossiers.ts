@@ -32,7 +32,7 @@ const NOW = new Date("2026-09-22T06:00:00Z");
 function buildCooRaw(): CooRawInput {
   return structuredClone<CooRawInput>({
     sources: [
-      { source: "projects", status: "ok", rowCount: 5 }, { source: "tasks", status: "ok", rowCount: 1 },
+      { source: "projects", status: "ok", rowCount: 7 }, { source: "tasks", status: "ok", rowCount: 1 },
       { source: "steven", status: "ok", rowCount: 1 }, { source: "victor", status: "ok", rowCount: 2 },
       { source: "proposals", status: "ok", rowCount: 2 }, { source: "shows", status: "ok", rowCount: 0 },
       { source: "sessions", status: "ok", rowCount: 3 }, { source: "transactions", status: "ok", rowCount: 1 },
@@ -47,6 +47,11 @@ function buildCooRaw(): CooRawInput {
       { id: "p-closed", name: "פרויקט שהושלם", artist: "אמן שהושלם", status: "הושלם", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: "2026-01-01T10:00:00Z", isHidden: false },
       // pure TEXT_MATCH label artist scenario — no release row at all, so no ID path and no conflict
       { id: "p5", name: "פרויקט לייבל טקסט בלבד", artist: "אמן טקסט בלבד", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לייבל", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
+      // Phase C.3: la1's SECOND release, already RELEASED (יצא) — invisible to lib/coo's own
+      // active-stage-only releases read (never in buildCooRaw's `releases.rows` below), visible
+      // via eyes:releasesFull. Proves Label Artist Dossier's release/project lists are genuinely
+      // full-history now, not just active-stage.
+      { id: "p2b", name: "פרויקט לייבל שני של la1 (כבר יצא)", artist: "אמן לייבל בדיקה 2", status: "הושלם", deadline: null, projectType: "שיר", businessType: "לייבל", updatedAt: "2026-01-01T10:00:00Z", isHidden: false },
     ],
     tasks: [
       { id: "t1", title: "משימה על p1", status: "פתוח", dueDate: "2026-09-25", relatedType: "project", relatedId: "p1", createdAt: "2026-09-10T09:00:00Z" },
@@ -104,6 +109,8 @@ function buildEyesRaw(): PartnerEyesRaw {
       { source: "clients", status: "ok", rowCount: 5 }, { source: "label_artists", status: "ok", rowCount: 3 },
       { source: "clip_productions", status: "ok", rowCount: 2 }, { source: "artist_balance_entries", status: "ok", rowCount: 3 },
       { source: "sessions_eyes", status: "ok", rowCount: 4 }, { source: "shows_eyes", status: "ok", rowCount: 2 },
+      { source: "proposals_eyes", status: "ok", rowCount: 3 }, { source: "releases_eyes", status: "ok", rowCount: 3 },
+      { source: "transactions_eyes", status: "ok", rowCount: 4 }, { source: "tasks_eyes", status: "ok", rowCount: 2 },
     ],
     clients: [
       { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
@@ -141,6 +148,36 @@ function buildEyesRaw(): PartnerEyesRaw {
       { id: "sh-artist", name: "הופעה עם אמן מזוהה", status: "בוצע", paymentStatus: "שולם", date: "2026-08-15", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
       { id: "sh-dj", name: "הופעה עם תקליטן", status: "מתוכנן", paymentStatus: "לא שולם", date: "2026-10-05", djClientId: "c5", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
     ],
+    // Phase C.3 — full proposal history: pr1 (client_id → c1, ID relation, linked to p1),
+    // pr-closed (client_id=null — legacy, linked to p-closed by project only), pr-legacy-textmatch
+    // (client_id=null, clientName matches c1 by name only — Client Dossier's legacyTextMatched test).
+    proposalsFull: [
+      { id: "pr1", clientId: "c1", clientName: "אמן בדיקה", linkedProjectId: "p1", title: "הצעה p1", amount: 3000, currency: "₪", status: "נשלחה", followupDate: null, sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { id: "pr-closed", clientId: null, clientName: "אמן שהושלם", linkedProjectId: "p-closed", title: "הצעה ישנה", amount: 1000, currency: "₪", status: "נשלחה", followupDate: null, sentDate: "2026-01-01", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
+      { id: "pr-legacy-textmatch", clientId: null, clientName: "אמן בדיקה", linkedProjectId: null, title: "הצעה legacy ללא client_id", amount: 400, currency: "₪", status: "לא נסגר", followupDate: null, sentDate: null, createdAt: "2025-05-01T10:00:00Z", updatedAt: "2025-05-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full release history via project_release_details directly: p2 (la1, active
+    // stage הפקה), p3 (la2, active stage — conflict scenario, unchanged), p2b (la1's SECOND
+    // release, already יצא/released — only visible here, never in lib/coo's own active-stage read).
+    releasesFull: [
+      { projectId: "p2", labelArtistId: "la1", stage: "הפקה", targetDate: "2026-11-01", stageEnteredAt: "2026-09-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { projectId: "p3", labelArtistId: "la2", stage: "הפקה", targetDate: "2026-11-01", stageEnteredAt: "2026-09-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { projectId: "p2b", labelArtistId: "la1", stage: "יצא", targetDate: "2026-01-01", stageEnteredAt: "2025-12-01T10:00:00Z", releasedAt: "2026-01-01T10:00:00Z", createdAt: "2025-10-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full transaction row detail: tx1/tx2 match the receivables-driving fixture
+    // above; tx3 is an EXPENSE on p1 (income/expense split test); tx-general has no project_id.
+    transactions: [
+      { id: "tx1", projectId: "p1", type: "income", amount: 500, currency: "₪", status: "התקבל", date: "2026-09-10", expenseScope: "כללי", category: "", createdAt: "2026-09-10T10:00:00Z" },
+      { id: "tx2", projectId: "p2", type: "income", amount: 1000, currency: "₪", status: "התקבל", date: "2026-09-11", expenseScope: "כללי", category: "", createdAt: "2026-09-11T10:00:00Z" },
+      { id: "tx3", projectId: "p1", type: "expense", amount: 100, currency: "$", status: "שולם", date: "2026-09-12", expenseScope: "כללי", category: "מיקס", createdAt: "2026-09-12T10:00:00Z" },
+      { id: "tx-general", projectId: null, type: "expense", amount: 30, currency: "₪", status: "בוטל", date: null, expenseScope: "כללי", category: "", createdAt: "2026-09-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full task history: t1 matches lib/coo's own open-only fixture; t1-done is a
+    // CLOSED task on the SAME project (p1) — invisible to lib/coo's open-only read.
+    tasksFull: [
+      { id: "t1", title: "משימה על p1", status: "פתוח", dueDate: "2026-09-25", relatedType: "project", relatedId: "p1", createdAt: "2026-09-10T09:00:00Z", updatedAt: "2026-09-10T09:00:00Z" },
+      { id: "t1-done", title: "משימה שהושלמה על p1", status: "בוצע", dueDate: "2026-08-01", relatedType: "project", relatedId: "p1", createdAt: "2026-07-01T09:00:00Z", updatedAt: "2026-08-01T09:00:00Z" },
+    ],
   });
 }
 
@@ -170,11 +207,16 @@ check("projectType is null (never fabricated) when identity comes from the index
 check("…but proposals still resolve (proposals don't depend on the open set)", dClosed?.proposals.items.map((p) => p.id), ["pr-closed"]);
 check("…and sessions still resolve", dClosed?.sessions.count, 1);
 
+console.log("Phase C.3: Project Dossier proposals — ID via linked_project_id, full history (closed proposals included)");
+check("p1's proposal relation quality is ID (linked_project_id)", d1?.proposals.relation.quality, "ID");
+check("p1 sees pr1 (OPEN status) via proposalsFull", d1?.proposals.items.map((p) => p.id), ["pr1"]);
+ok("p-closed's proposal (pr-closed) is visible despite being a project whose own identity is INDEX_ONLY — proposals is a full-history, ID-only relation, independent of project open/closed state", dClosed?.proposals.items.some((p) => p.id === "pr-closed") ?? false);
+
 console.log("relations connect ONLY by their real key — never by name/title guessing");
 check("transactions/finance connect only by project_id (p1 has agreedPrice 2000, received 500)", [d1?.finance.agreedPrice, d1?.finance.receivedIncome], [2000, 500]);
 check("sessions connect only by project_id (p1 has exactly its 2 own sessions, not p-closed's)", d1?.sessions.count, 2);
 ok("…p-closed's session never leaks into p1's dossier", !d1?.sessions.items.some((s) => s.id === "se-closed"));
-check("release connects only by project_id (p1 has no release row at all)", d1?.release.status, "NO_ACTIVE_RELEASE_ROW");
+check("release connects only by project_id (p1 has no release row at all)", d1?.release.status, "NO_RELEASE_ROW");
 check("victor connects only by project_id (p1 has exactly 1 linked work)", d1?.victor.linkedWorks.map((w) => w.id), ["v1"]);
 check("steven connects only by project_id (p1 has exactly 1 linked work)", d1?.steven.linkedWorks.map((w) => w.id), ["s1"]);
 check("tasks connect by related_type+related_id (p1 has exactly 1)", d1?.tasks.items.map((t) => t.id), ["t1"]);
@@ -231,10 +273,21 @@ check("paidIncome < agreedPrice → DEBT (p1: 500 < 2000)", d1?.finance.balanceK
   ok("paidIncome (2500) > agreedPrice (2000) → OVERPAYMENT, not a negative debt figure", rOver.ok && rOver.dossier.finance.balanceKind === "OVERPAYMENT" && (rOver.dossier.finance.balance ?? 0) < 0);
 }
 ok("currencies are never merged (agreedPrice/receivedIncome/balance all carry the SAME currency field, no cross-currency sum exists in the type)", d1?.finance.currency === "₪");
-ok("transactionDetail is honestly NOT_AVAILABLE_IN_EYES — no per-project raw transaction list is fabricated", d1?.finance.transactionDetail === "NOT_AVAILABLE_IN_EYES");
 
-console.log("task scope is explicit — never claims full history");
+console.log("Phase C.3: transactionDetail is now real per-project row detail via eyes:transactions, ID via project_id");
+ok("transactionDetail is no longer the NOT_AVAILABLE_IN_EYES placeholder (transactions domain is available)", d1?.finance.transactionDetail !== "NOT_AVAILABLE_IN_EYES");
+{
+  const td = d1?.finance.transactionDetail;
+  ok("p1's income transactions contain exactly tx1", !!td && td !== "NOT_AVAILABLE_IN_EYES" && td.incomeTransactions.map((t) => t.id).join() === "tx1");
+  ok("p1's expense transactions contain exactly tx3 (never merged with income)", !!td && td !== "NOT_AVAILABLE_IN_EYES" && td.expenseTransactions.map((t) => t.id).join() === "tx3");
+  ok("p2's tx2 never leaks into p1's transactionDetail", !!td && td !== "NOT_AVAILABLE_IN_EYES" && !td.incomeTransactions.some((t) => t.id === "tx2") && !td.expenseTransactions.some((t) => t.id === "tx2"));
+}
+
+console.log("task scope is explicit — never claims full history for the OPEN section; history is now separate");
 check("dossier states OPEN_TASKS_ONLY, not 'all tasks'", d1?.tasks.scope, "OPEN_TASKS_ONLY");
+console.log("Phase C.3: task history section (eyes:tasksFull) — open AND closed, never claims completeness beyond what tasksFull itself has");
+ok("history.available is true (tasksFull domain read succeeded)", d1?.tasks.history.available === true);
+check("history includes BOTH t1 (open) and t1-done (closed) for p1", d1?.tasks.history.items.map((t) => t.id).sort(), ["t1", "t1-done"]);
 
 console.log("Steven ball remains UNKNOWN/UNSUPPORTED — no new inference");
 ok("steven scopeNote states BALL_LOCATION stays UNKNOWN/UNSUPPORTED", d1?.steven.scopeNote.includes("UNKNOWN") ?? false);
@@ -262,8 +315,8 @@ console.log("performance: buildAllProjectDossiers does not recompute PartnerComp
   const t0 = Date.now();
   const all = buildAllProjectDossiers(P);
   const elapsedMs = Date.now() - t0;
-  check("builds a dossier for every visible project in the index (6 in this fixture)", all.size, 6);
-  ok("well under a second for 5 in-memory dossiers (no I/O)", elapsedMs < 1000);
+  check("builds a dossier for every visible project in the index (7 in this fixture)", all.size, 7);
+  ok("well under a second for 7 in-memory dossiers (no I/O)", elapsedMs < 1000);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -292,10 +345,13 @@ const rc4 = buildClientDossier(P, "c4");
 ok("c3: p4 appears in ambiguousProjectCandidates, NOT matchedProjects", rc3.ok && rc3.dossier.matchedProjects.length === 0 && rc3.dossier.ambiguousProjectCandidates.map((p) => p.projectId).includes("p4"));
 ok("c4: same p4 appears in ITS ambiguousProjectCandidates too — both clients see the ambiguity, neither claims it", rc4.ok && rc4.dossier.matchedProjects.length === 0 && rc4.dossier.ambiguousProjectCandidates.map((p) => p.projectId).includes("p4"));
 
-console.log("Client Dossier: proposal relation uses the actual available key (clientName text — client_id gap documented)");
-check("c1's proposals include pr1 (clientName = 'אמן בדיקה')", dc1?.proposals.items.map((p) => p.id), ["pr1"]);
-check("relation quality is TEXT_MATCH (client_id exists in the DB but lib/coo doesn't expose it yet)", dc1?.proposals.relation.quality, "TEXT_MATCH");
-ok("scopeDescription documents the real client_id gap found this block", dc1?.proposals.scopeDescription.includes("client_id") ?? false);
+console.log("Phase C.3: Client Dossier proposal relation is now ID via proposals.client_id, full history");
+check("c1's ID-linked proposals include pr1 (client_id = c1)", dc1?.proposals.items.map((p) => p.id), ["pr1"]);
+check("relation quality is ID (proposals.client_id is a real FK, Phase C.3)", dc1?.proposals.relation.quality, "ID");
+ok("scopeDescription documents the ID-via-client_id relation", dc1?.proposals.scopeDescription.includes("client_id") ?? false);
+console.log("Phase C.3: legacy (client_id=null) proposals fall back to TEXT_MATCH ONLY, never merged into the ID-confirmed items");
+check("c1's legacyTextMatched holds pr-legacy-textmatch (client_id=null, clientName matches by name only)", dc1?.proposals.legacyTextMatched.map((p) => p.id), ["pr-legacy-textmatch"]);
+ok("pr-legacy-textmatch never appears in the ID-confirmed items list", !dc1?.proposals.items.some((p) => p.id === "pr-legacy-textmatch"));
 
 console.log("Client Dossier: DJ/performer/booker show relations are real ID relations (Phase C.2 finding beyond what was asked)");
 check("c1 (performer on sh-artist) appears in performerShows via artist_client_id", dc1?.performerShows.items.map((s) => s.id), ["sh-artist"]);
@@ -331,9 +387,9 @@ console.log("Label Artist Dossier: unknown artist returns SCOPED not_found");
 const raNotFound = buildLabelArtistDossier(P, "does-not-exist");
 ok("returns ok:false with reason NOT_FOUND_IN_EYES_SCOPE", !raNotFound.ok && raNotFound.reason === "NOT_FOUND_IN_EYES_SCOPE");
 
-console.log("Label Artist Dossier: release.label_artist_id creates the ID path to the project (release.project_id)");
-check("la1's idLinked projects = [p2]", da1?.projects.idLinked.map((p) => p.projectId), ["p2"]);
-check("…and la1 has NO textMatched projects (p2 is already ID-linked, never duplicated)", da1?.projects.textMatched, []);
+console.log("Label Artist Dossier: release.label_artist_id creates the ID path to the project (release.project_id) — Phase C.3: now sees BOTH of la1's releases (active p2 AND already-released p2b), not just the active one");
+check("la1's idLinked projects = [p2, p2b] (full history, eyes:releasesFull)", da1?.projects.idLinked.map((p) => p.projectId).sort(), ["p2", "p2b"]);
+check("…and la1 has NO textMatched projects (both are already ID-linked, never duplicated)", da1?.projects.textMatched, []);
 
 console.log("Label Artist Dossier: name-only project match remains TEXT_MATCH (no release row at all)");
 const ra4 = buildLabelArtistDossier(P, "la4");
@@ -358,9 +414,10 @@ check("la1's ID-path finance is real (p2: 1000 agreed, 1000 received)", da1?.fin
 check("…relationQuality is ID", da1?.finance.viaIdLinkedProjects.relationQuality, "ID");
 check("la4's TEXT-path relationQuality is TEXT_MATCH", ra4.ok ? ra4.dossier.finance.viaTextMatchedProjects.relationQuality : null, "TEXT_MATCH");
 
-console.log("Label Artist Dossier: release count is scope-honest, never a lifetime count");
-check("la1's visibleReleaseCount is 1 (active-stage only)", da1?.releases.visibleReleaseCount, 1);
-ok("scopeNote explicitly says this is NOT a lifetime count", da1?.releases.scopeNote.includes("NOT a lifetime") ?? false);
+console.log("Phase C.3: Label Artist Dossier release count is now genuinely a lifetime count (eyes:releasesFull)");
+check("la1's visibleReleaseCount is 2 (active p2 + already-released p2b — both visible now)", da1?.releases.visibleReleaseCount, 2);
+ok("scopeNote explicitly documents that this is now a lifetime count (Phase C.3)", da1?.releases.scopeNote.includes("Phase C.3") ?? false);
+check("la1's release rows include the RELEASED (יצא) one — invisible before Phase C.3", da1?.releases.rows.map((r) => r.stage).sort(), ["הפקה", "יצא"]);
 
 console.log("Label Artist Dossier: show relation is never invented");
 check("shows section is always the static NO_DIRECT_RELATION_MODELED", da1?.shows.status, "NO_DIRECT_RELATION_MODELED");

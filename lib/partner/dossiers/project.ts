@@ -58,11 +58,11 @@ function buildClient(state: PartnerCompanyState, identity: ProjectIdentity): Pro
 }
 
 function buildProposals(state: PartnerCompanyState, projectId: string): ProjectProposalsSection {
-  const all = state.domains.proposals.data ?? [];
+  const all = state.domains.proposalsFull.data?.items ?? [];
   const items = all.filter((p) => p.linkedProjectId === projectId);
   return {
     items,
-    relation: { fromType: "project", fromId: projectId, toType: "proposal", toId: items.length === 1 ? items[0].id : null, quality: "ID", basis: "proposals.linked_project_id", source: "eyes:proposals" },
+    relation: { fromType: "project", fromId: projectId, toType: "proposal", toId: items.length === 1 ? items[0].id : null, quality: "ID", basis: "proposals.linked_project_id", source: "eyes:proposalsFull" },
   };
 }
 
@@ -92,7 +92,15 @@ function buildFinance(state: PartnerCompanyState, identity: ProjectIdentity): Pr
     configStatus = "UNKNOWN";
   }
 
-  return { configStatus, agreedPrice, currency, receivedIncome, balance, balanceKind, expectedOverdueItems, transactionDetail: "NOT_AVAILABLE_IN_EYES" };
+  const txItems = state.domains.transactions.data?.items ?? null;
+  const transactionDetail: ProjectFinanceSection["transactionDetail"] = txItems
+    ? {
+        incomeTransactions: txItems.filter((t) => t.projectId === identity.projectId && t.type === "income"),
+        expenseTransactions: txItems.filter((t) => t.projectId === identity.projectId && t.type === "expense"),
+      }
+    : "NOT_AVAILABLE_IN_EYES";
+
+  return { configStatus, agreedPrice, currency, receivedIncome, balance, balanceKind, expectedOverdueItems, transactionDetail };
 }
 
 function buildSessions(state: PartnerCompanyState, projectId: string): ProjectSessionsSection {
@@ -113,19 +121,19 @@ function buildSessions(state: PartnerCompanyState, projectId: string): ProjectSe
 }
 
 function buildRelease(state: PartnerCompanyState, projectId: string): ProjectReleaseSection {
-  const releasesData = state.domains.releases.data;
-  const notes: string[] = ["scope: active release-stage rows only — excludes יצא/released and בהשהייה/on-hold (see eyes:releases)."];
+  const releasesData = state.domains.releasesFull.data;
+  const notes: string[] = ["scope: full history — every stage, no project-visibility/business-type filter (Phase C.3, eyes:releasesFull)."];
   if (!releasesData) {
-    return { status: "UNKNOWN", rows: [], relation: null, notes: ["releases domain unavailable in this PartnerCompanyState snapshot."] };
+    return { status: "UNKNOWN", rows: [], relation: null, notes: ["releasesFull domain unavailable in this PartnerCompanyState snapshot."] };
   }
-  const rows = releasesData.rows.filter((r) => r.projectId === projectId);
+  const rows = releasesData.items.filter((r) => r.projectId === projectId);
   if (rows.length === 0) {
-    notes.push("No ACTIVE release row for this project — may mean no release record exists, OR it's already released/on-hold and therefore outside Partner Eyes' current scope.");
-    return { status: "NO_ACTIVE_RELEASE_ROW", rows: [], relation: null, notes };
+    notes.push("No release row exists for this project (project_id is the release's own primary key, 1:1) — full history, so this is a genuine absence, not a scope gap.");
+    return { status: "NO_RELEASE_ROW", rows: [], relation: null, notes };
   }
   return {
     status: "FOUND", rows, notes,
-    relation: { fromType: "project", fromId: projectId, toType: "release", toId: rows.length === 1 ? rows[0].projectId : null, quality: "ID", basis: "project_release_details.project_id", source: "eyes:releases" },
+    relation: { fromType: "project", fromId: projectId, toType: "release", toId: rows.length === 1 ? rows[0].projectId : null, quality: "ID", basis: "project_release_details.project_id", source: "eyes:releasesFull" },
   };
 }
 
@@ -141,12 +149,12 @@ function buildLabelArtist(state: PartnerCompanyState, identity: ProjectIdentity,
   let conflict: DossierConflict | null = null;
 
   if (idCandidate) {
-    relations.push({ fromType: "release", fromId: identity.projectId, toType: "labelArtist", toId: idCandidate.id, quality: "ID", basis: "project_release_details.label_artist_id", source: "eyes:releases" });
+    relations.push({ fromType: "release", fromId: identity.projectId, toType: "labelArtist", toId: idCandidate.id, quality: "ID", basis: "project_release_details.label_artist_id", source: "eyes:releasesFull" });
     if (textCandidates.length > 0 && !textCandidates.some((c) => c.id === idCandidate.id)) {
       status = "CONFLICT";
       conflict = {
         code: "LABEL_ARTIST_ID_NAME_MISMATCH",
-        sources: ["eyes:releases.labelArtistId", "eyes:labelArtists (projects.artist name match)"],
+        sources: ["eyes:releasesFull.labelArtistId", "eyes:labelArtists (projects.artist name match)"],
         description: `release.label_artist_id resolves to "${idCandidate.name}" (${idCandidate.id}), but projects.artist text-matches ${textCandidates.map((c) => `"${c.name}" (${c.id})`).join(", ")} — different entities.`,
       };
     } else {
@@ -157,7 +165,7 @@ function buildLabelArtist(state: PartnerCompanyState, identity: ProjectIdentity,
     relations.push({ fromType: "project", fromId: identity.projectId, toType: "labelArtist", toId: textCandidates[0].id, quality: "TEXT_MATCH", basis: "projects.artist = label_artists.name", source: "eyes:labelArtists" });
   } else if (textCandidates.length > 1) {
     status = "AMBIGUOUS_TEXT_MATCH";
-  } else if (!state.domains.releases.data && !state.domains.labelArtists.data) {
+  } else if (!state.domains.releasesFull.data && !state.domains.labelArtists.data) {
     status = "UNKNOWN";
   } else {
     status = "NONE";
@@ -188,9 +196,14 @@ function buildSteven(state: PartnerCompanyState, projectId: string): ProjectStev
 
 function buildTasks(state: PartnerCompanyState, projectId: string): ProjectTasksSection {
   const items = (state.domains.tasks.data?.items ?? []).filter((t) => t.projectId === projectId);
+  const fullData = state.domains.tasksFull.data;
+  const historyItems = fullData
+    ? fullData.items.filter((t) => t.relatedType === "project" && t.relatedId === projectId)
+    : [];
   return {
     scope: "OPEN_TASKS_ONLY", items, count: items.length,
     relation: { fromType: "project", fromId: projectId, toType: "task", toId: null, quality: "ID", basis: "tasks.related_type=\"project\" AND tasks.related_id", source: "eyes:tasks" },
+    history: { available: fullData !== null, items: historyItems },
   };
 }
 
@@ -232,7 +245,8 @@ function buildDataQuality(state: PartnerCompanyState, dossier: Omit<ProjectDossi
   const partialDomains: string[] = [];
   const unknownDomains: string[] = [];
   const keys: Array<keyof PartnerCompanyState["domains"]> = [
-    "projects", "clients", "proposals", "finance", "receivables", "sessions", "releases", "labelArtists", "victor", "steven", "tasks", "clips",
+    "projects", "clients", "proposalsFull", "finance", "receivables", "transactions", "sessions", "releasesFull",
+    "labelArtists", "victor", "steven", "tasks", "tasksFull", "clips",
   ];
   for (const k of keys) {
     const c = classifyDomain(state, k);
@@ -293,14 +307,14 @@ export function buildProjectDossier(state: PartnerCompanyState, projectId: strin
     sectionSources: {
       identity: identity.identitySource === "OPEN_SET" ? "eyes:projects (open set)" : "eyes:projects (index only — closed project)",
       client: "eyes:clients + projects.artist (TEXT_MATCH)",
-      proposals: "eyes:proposals",
-      finance: "eyes:receivables + eyes:finance",
+      proposals: "eyes:proposalsFull (full history, Phase C.3)",
+      finance: "eyes:receivables + eyes:finance + eyes:transactions (row detail, Phase C.3)",
       sessions: "eyes:sessions",
-      release: "eyes:releases",
-      labelArtist: "eyes:releases.labelArtistId + eyes:labelArtists",
+      release: "eyes:releasesFull (full history, Phase C.3)",
+      labelArtist: "eyes:releasesFull.labelArtistId + eyes:labelArtists",
       victor: "eyes:victor",
       steven: "eyes:steven",
-      tasks: "eyes:tasks",
+      tasks: "eyes:tasks (open) + eyes:tasksFull (history, Phase C.3)",
       clips: "eyes:clips",
       shows: "not modeled in v1",
       externalSound: "not in Partner Eyes",

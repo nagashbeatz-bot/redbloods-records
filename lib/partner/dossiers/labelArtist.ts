@@ -22,7 +22,7 @@ function buildIdentity(state: PartnerCompanyState, artistId: string): LabelArtis
 }
 
 function buildReleases(state: PartnerCompanyState, artistId: string): LabelArtistReleasesSection {
-  const allRows = state.domains.releases.data?.rows ?? [];
+  const allRows = state.domains.releasesFull.data?.items ?? [];
   const rows = allRows.filter((r) => r.labelArtistId === artistId);
   const dates = rows.map((r) => r.targetYmd).filter((d): d is string => !!d).sort();
   return {
@@ -30,7 +30,7 @@ function buildReleases(state: PartnerCompanyState, artistId: string): LabelArtis
     visibleReleaseCount: rows.length,
     firstVisibleReleaseTargetDate: dates[0] ?? null,
     latestVisibleReleaseTargetDate: dates[dates.length - 1] ?? null,
-    scopeNote: "NOT a lifetime release count. lib/coo's releases.rows only carries ACTIVE-stage rows (excludes יצא/released and בהשהייה/on-hold) — a released or paused row for this artist, if any, is invisible to Partner Eyes right now.",
+    scopeNote: "Phase C.3: genuinely a lifetime release count now — sourced from eyes:releasesFull (project_release_details directly), every stage, no visibility/business-type filter. Before Phase C.3 this only counted ACTIVE-stage rows.",
   };
 }
 
@@ -91,7 +91,7 @@ export function buildLabelArtistDossier(state: PartnerCompanyState, artistId: st
   const completeDomains: string[] = [];
   const partialDomains: string[] = [];
   const unknownDomains: string[] = [];
-  for (const k of ["labelArtists", "projects", "releases", "receivables", "sessions"] as const) {
+  for (const k of ["labelArtists", "projects", "releasesFull", "receivables", "sessions"] as const) {
     const c = classifyDomain(state, k);
     if (c === "complete") completeDomains.push(k);
     else if (c === "partial") partialDomains.push(k);
@@ -109,9 +109,9 @@ export function buildLabelArtistDossier(state: PartnerCompanyState, artistId: st
     dossierSchemaVersion: LABEL_ARTIST_DOSSIER_SCHEMA_VERSION,
     sectionSources: {
       identity: "eyes:labelArtists",
-      "projects.idLinked": "eyes:releases.labelArtistId -> release.projectId (ID)",
+      "projects.idLinked": "eyes:releasesFull.labelArtistId -> release.projectId (ID)",
       "projects.textMatched": "eyes:projects.index + label_artists.name (TEXT_MATCH)",
-      releases: "eyes:releases (labelArtistId filter)",
+      releases: "eyes:releasesFull (labelArtistId filter, full history — Phase C.3)",
       sessions: "eyes:sessions, via idLinked/textMatched projects",
       finance: "eyes:receivables, via idLinked/textMatched projects",
       balanceLedger: "eyes:labelArtists (artist_balance_entries)",

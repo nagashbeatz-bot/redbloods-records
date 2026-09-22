@@ -63,8 +63,10 @@ async function main() {
   console.log(`  clients with >=1 ambiguous candidate: ${withAmbiguous}/${clients.length} (total ambiguous links: ${clients.reduce((s, c) => s + c.ambiguousProjectCandidates.length, 0)})\n`);
 
   const withProposals = clients.filter((c) => c.proposals.items.length > 0).length;
-  console.log(`Proposals visible (clientName text match, non-closed only — see scope gap below):`);
-  console.log(`  clients with >=1 visible proposal: ${withProposals}/${clients.length} (total: ${clients.reduce((s, c) => s + c.proposals.items.length, 0)})\n`);
+  const withLegacyTextMatch = clients.filter((c) => c.proposals.legacyTextMatched.length > 0).length;
+  console.log(`Proposals (Phase C.3 — ID via client_id, full history, eyes:proposalsFull):`);
+  console.log(`  clients with >=1 ID-linked proposal: ${withProposals}/${clients.length} (total: ${clients.reduce((s, c) => s + c.proposals.items.length, 0)})`);
+  console.log(`  clients with >=1 legacy TEXT_MATCH-only proposal (client_id=null rows): ${withLegacyTextMatch}/${clients.length} (total: ${clients.reduce((s, c) => s + c.proposals.legacyTextMatched.length, 0)})\n`);
 
   const perf = clients.filter((c) => c.performerShows.items.length > 0).length;
   const booker = clients.filter((c) => c.bookerShows.items.length > 0).length;
@@ -90,8 +92,8 @@ async function main() {
   console.log(`  TEXT_MATCH-only:                     ${textMatched}/${artists.length} artists, ${artists.reduce((s, a) => s + a.projects.textMatched.length, 0)} projects`);
   console.log(`  ambiguous TEXT_MATCH:                ${ambiguousText}/${artists.length} artists, ${artists.reduce((s, a) => s + a.projects.ambiguousTextMatched.length, 0)} projects\n`);
 
-  console.log(`Releases (active-stage scope only — never a lifetime count):`);
-  console.log(`  total visible release rows across all artists: ${artists.reduce((s, a) => s + a.releases.visibleReleaseCount, 0)}\n`);
+  console.log(`Releases (Phase C.3 — genuinely lifetime count now, eyes:releasesFull, every stage):`);
+  console.log(`  total release rows across all artists: ${artists.reduce((s, a) => s + a.releases.visibleReleaseCount, 0)}\n`);
 
   console.log(`Show relation coverage:`);
   console.log(`  ${artists.length}/${artists.length} artists: NO_DIRECT_RELATION_MODELED (no label_artist_id on shows — see report)\n`);

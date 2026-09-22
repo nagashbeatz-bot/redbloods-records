@@ -11,13 +11,14 @@
  */
 import type { CooResult } from "../../coo/pipeline";
 import { adaptCooCompanyState } from "./coo-adapter";
+import { buildChangeReadinessMatrix } from "./changeReadiness";
 import { classifyRelationQuality, coverageFromCounts, coverageFromStatus, reliabilityFrom, statusFromSource } from "./coverage";
 import type {
   ClientsFact, ClipsFact, LabelArtistBalanceTotals, LabelArtistsFact, PartnerCompanyState, PartnerDomainState, PartnerEyesRaw,
-  PartnerRelation, RawBalanceEntry, SessionsFact, ShowsEyesFact,
+  PartnerRelation, ProposalsFullFact, RawBalanceEntry, ReleasesFullFact, SessionsFact, ShowsEyesFact, TasksFullFact, TransactionsFact,
 } from "./types";
 
-const EYES_SCHEMA_VERSION = "partner-eyes-v0.3"; // Phase C.2: clients/labelArtists createdAt, shows artist/booker client ids, balance ledger totals
+const EYES_SCHEMA_VERSION = "partner-eyes-v0.4"; // Phase C.3: proposalsFull/releasesFull/transactions/tasksFull domains + changeReadiness matrix
 const NEW_READER = "lib/partner/eyes/readers.ts:readPartnerEyesRaw";
 
 function sourceOf(raw: PartnerEyesRaw, name: string) {
@@ -237,6 +238,180 @@ function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerD
   };
 }
 
+/**
+ * Proposals — Phase C.3, full history (approved, §36-41). proposals.client_id
+ * is a real FK (confirmed against the live schema and app/api/proposals/
+ * route.ts's own .eq("client_id", ...) usage) — the PRIMARY relation here.
+ * lib/coo's own "proposals" domain (status-filtered, clientName only) is
+ * completely unchanged — this is an additive sibling, same pattern as
+ * Sessions/Shows in Phase B.2.
+ */
+function buildProposalsFull(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<ProposalsFullFact> {
+  const status = statusFromSource(sourceOf(raw, "proposals_eyes"));
+  const coverage = coverageFromStatus(status);
+  const withClientId = raw.proposalsFull ? raw.proposalsFull.filter((p) => p.clientId !== null).length : null;
+  const withLinkedProjectId = raw.proposalsFull ? raw.proposalsFull.filter((p) => p.linkedProjectId !== null).length : null;
+  const relations: PartnerRelation[] = [
+    {
+      toDomain: "clients", quality: "ID", via: "proposals.client_id",
+      coverage: withClientId == null || raw.proposalsFull == null ? undefined : coverageFromCounts(withClientId, raw.proposalsFull.length),
+      notes: raw.proposalsFull ? `${withClientId} מתוך ${raw.proposalsFull.length} הצעות (כל ההיסטוריה) נושאות client_id — שורות legacy בלבד עשויות להיות ללא` : undefined,
+    },
+    {
+      toDomain: "projects", quality: "ID", via: "proposals.linked_project_id",
+      coverage: withLinkedProjectId == null || raw.proposalsFull == null ? undefined : coverageFromCounts(withLinkedProjectId, raw.proposalsFull.length),
+      notes: raw.proposalsFull ? `${withLinkedProjectId} מתוך ${raw.proposalsFull.length} הצעות מקושרות לפרויקט` : undefined,
+    },
+  ];
+  const cooCount = coo.state.proposals?.length ?? null;
+  const warnings: string[] = [
+    `lib/coo רואה subset מסונן סטטוס בלבד (מוריד נסגר/לא נסגר) — ${cooCount ?? "?"} הצעות כרגע באותה קריאה. Partner Eyes כאן קורא את כל ההיסטוריה בנפרד (proposals, ללא סינון סטטוס), לא אותו read.`,
+    "client_id הוא FK אמיתי (Phase C.3 finding) — clientName הוא fallback תצוגה בלבד לשורות legacy נדירות ללא client_id, לא ה-relation העיקרי.",
+  ];
+  const data: ProposalsFullFact | null = raw.proposalsFull ? {
+    total: raw.proposalsFull.length,
+    byStatus: raw.proposalsFull.reduce<Record<string, number>>((acc, p) => { acc[p.status] = (acc[p.status] ?? 0) + 1; return acc; }, {}),
+    withClientId: withClientId ?? 0,
+    withLinkedProjectId: withLinkedProjectId ?? 0,
+    cooVisible: { count: cooCount, note: "מה ש-lib/coo רואה בפועל (מסונן סטטוס, ללא נסגר/לא נסגר) — cross-reference בלבד" },
+    items: raw.proposalsFull.map((p) => ({
+      id: p.id, clientId: p.clientId, clientName: p.clientName, linkedProjectId: p.linkedProjectId, title: p.title,
+      amount: p.amount, currency: p.currency, status: p.status, followupYmd: p.followupDate, sentYmd: p.sentDate,
+      createdAt: p.createdAt, updatedAt: p.updatedAt,
+    })),
+  } : null;
+  return {
+    domain: "proposalsFull", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all proposals, full history, no status filter (Partner-only read — separate from lib/coo's own status-filtered proposals domain, which is unchanged)",
+    currentOperationalCount: cooCount, totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:proposals (Partner-only full-history read)", reader: NEW_READER, fetchedAt: asOf },
+    relations, warnings, data,
+  };
+}
+
+/**
+ * Releases — Phase C.3, full history (approved, §52-54). Reads
+ * project_release_details directly (project_id IS the primary key), with no
+ * project-visibility/business-type/stage filter (unlike lib/coo's
+ * listLabelReleases(), which stays completely unchanged).
+ */
+function buildReleasesFull(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<ReleasesFullFact> {
+  const status = statusFromSource(sourceOf(raw, "releases_eyes"));
+  const coverage = coverageFromStatus(status);
+  const withLabelArtistId = raw.releasesFull ? raw.releasesFull.filter((r) => r.labelArtistId !== null).length : null;
+  const relations: PartnerRelation[] = [
+    { toDomain: "projects", quality: "ID", via: "project_release_details.project_id", coverage: raw.releasesFull ? "FULL" : undefined, notes: "project_id הוא ה-primary key של הטבלה — כל שורה מקושרת." },
+    {
+      toDomain: "labelArtists", quality: "ID", via: "project_release_details.label_artist_id",
+      coverage: withLabelArtistId == null || raw.releasesFull == null ? undefined : coverageFromCounts(withLabelArtistId, raw.releasesFull.length),
+      notes: raw.releasesFull ? `${withLabelArtistId} מתוך ${raw.releasesFull.length} שורות release (כל ההיסטוריה, כל stage) נושאות label_artist_id` : undefined,
+    },
+  ];
+  const cooCount = coo.state.releases?.rows.length ?? null;
+  const warnings: string[] = [
+    `lib/coo רואה subset פעיל בלבד (מוציא יצא/בהשהייה, פרויקטי לייבל נראים בלבד) — ${cooCount ?? "?"} שורות כרגע באותה קריאה. Partner Eyes כאן קורא ישירות מ-project_release_details, ללא סינון stage/visibility/business_type.`,
+  ];
+  const data: ReleasesFullFact | null = raw.releasesFull ? {
+    total: raw.releasesFull.length,
+    byStage: raw.releasesFull.reduce<Record<string, number>>((acc, r) => { acc[r.stage] = (acc[r.stage] ?? 0) + 1; return acc; }, {}),
+    withLabelArtistId: withLabelArtistId ?? 0,
+    cooVisible: { count: cooCount, note: "מה ש-lib/coo רואה בפועל (active-stage, visible label projects בלבד) — cross-reference בלבד" },
+    items: raw.releasesFull.map((r) => ({
+      projectId: r.projectId, labelArtistId: r.labelArtistId, stage: r.stage, targetYmd: r.targetDate,
+      stageEnteredAt: r.stageEnteredAt, releasedAt: r.releasedAt, createdAt: r.createdAt, updatedAt: r.updatedAt,
+    })),
+  } : null;
+  return {
+    domain: "releasesFull", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all project_release_details rows, every stage, no project-visibility/business-type filter (Partner-only read — separate from lib/coo's own active-stage/visible-label-only releases domain, which is unchanged)",
+    currentOperationalCount: cooCount, totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:project_release_details (Partner-only full-history read)", reader: NEW_READER, fetchedAt: asOf },
+    relations, warnings, data,
+  };
+}
+
+/**
+ * Transactions — Phase C.3, per-row detail (approved, §42-46). lib/coo's
+ * "finance" domain (FinanceFact) is an aggregate built from this same table;
+ * this is the first per-row Partner read. Finance semantics (received/not
+ * received, UNKNOWN vs 0, no FX) are NOT recomputed here — this is raw row
+ * exposure only, no derived balance logic.
+ */
+function buildTransactions(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<TransactionsFact> {
+  const status = statusFromSource(sourceOf(raw, "transactions_eyes"));
+  const coverage = coverageFromStatus(status);
+  const withProjectId = raw.transactions ? raw.transactions.filter((t) => t.projectId !== null).length : null;
+  const relations: PartnerRelation[] = [
+    {
+      toDomain: "projects", quality: "ID", via: "transactions.project_id",
+      coverage: withProjectId == null || raw.transactions == null ? undefined : coverageFromCounts(withProjectId, raw.transactions.length),
+      notes: raw.transactions ? `${withProjectId} מתוך ${raw.transactions.length} תנועות (כל ההיסטוריה) מקושרות לפרויקט — השאר scope="general" או orphan` : undefined,
+    },
+  ];
+  const warnings: string[] = [
+    "חשיפת שורות גולמיות בלבד — לא מחשב מחדש יתרה/received/UNKNOWN. הסמנטיקה הפיננסית (lib/coo:finance/receivables) נשארת מקור האמת היחיד לחישובים.",
+    "אין updated_at בטבלת transactions (נבדק מול הסכימה בפועל) — עדכון שדה בתנועה קיימת אינו ניתן לזיהוי מ-created_at בלבד.",
+  ];
+  const data: TransactionsFact | null = raw.transactions ? {
+    total: raw.transactions.length,
+    withProjectId: withProjectId ?? 0,
+    byStatus: raw.transactions.reduce<Record<string, number>>((acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; }, {}),
+    byType: raw.transactions.reduce<Record<string, number>>((acc, t) => { acc[t.type] = (acc[t.type] ?? 0) + 1; return acc; }, {}),
+    byCurrency: raw.transactions.reduce<Record<string, number>>((acc, t) => { const c = t.currency ?? "?"; acc[c] = (acc[c] ?? 0) + 1; return acc; }, {}),
+    items: raw.transactions.map((t) => ({
+      id: t.id, projectId: t.projectId, type: t.type, amount: t.amount, currency: t.currency ?? "?", status: t.status,
+      dateYmd: t.date, expenseScope: t.expenseScope, category: t.category ?? "", createdAt: t.createdAt,
+    })),
+  } : null;
+  return {
+    domain: "transactions", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all transaction rows, full history, every status/currency/scope (Partner-only per-row read — lib/coo's own aggregated finance domain is unchanged)",
+    currentOperationalCount: null, totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:transactions (Partner-only full-history read)", reader: NEW_READER, fetchedAt: asOf },
+    relations, warnings, data,
+  };
+}
+
+/**
+ * Tasks — Phase C.3, full history (approved, §49-51). Reuses the SAME
+ * lib/tasks-store.ts:listTasks() lib/coo's own open-only read already calls,
+ * with no status filter — not a new query shape, a second call. lib/coo's
+ * own "tasks" domain (open-only) is completely unchanged.
+ */
+function buildTasksFull(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerDomainState<TasksFullFact> {
+  const status = statusFromSource(sourceOf(raw, "tasks_eyes"));
+  const coverage = coverageFromStatus(status);
+  const linkedToProject = raw.tasksFull ? raw.tasksFull.filter((t) => t.relatedType === "project" && t.relatedId !== null).length : null;
+  const relations: PartnerRelation[] = [
+    {
+      toDomain: "projects", quality: "ID", via: "tasks.related_type=\"project\" AND tasks.related_id",
+      coverage: linkedToProject == null || raw.tasksFull == null ? undefined : coverageFromCounts(linkedToProject, raw.tasksFull.length),
+      notes: raw.tasksFull ? `${linkedToProject} מתוך ${raw.tasksFull.length} משימות (כל ההיסטוריה) מקושרות לפרויקט` : undefined,
+    },
+  ];
+  const cooOpenCount = coo.state.tasks?.openCount ?? null;
+  const warnings: string[] = [
+    `lib/coo רואה open בלבד (status="פתוח") — ${cooOpenCount ?? "?"} משימות פתוחות כרגע באותה קריאה. Partner Eyes כאן קורא listTasks() ללא פילטר סטטוס — אותו store, קריאה שנייה.`,
+  ];
+  const data: TasksFullFact | null = raw.tasksFull ? {
+    total: raw.tasksFull.length,
+    byStatus: raw.tasksFull.reduce<Record<string, number>>((acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; }, {}),
+    linkedToProject: linkedToProject ?? 0,
+    cooVisible: { openCount: cooOpenCount, note: "מה ש-lib/coo רואה בפועל (open בלבד) — cross-reference בלבד" },
+    items: raw.tasksFull.map((t) => ({
+      id: t.id, title: t.title, status: t.status, dueYmd: t.dueDate, relatedType: t.relatedType, relatedId: t.relatedId,
+      createdAt: t.createdAt, updatedAt: t.updatedAt,
+    })),
+  } : null;
+  return {
+    domain: "tasksFull", status, coverage, reliability: reliabilityFrom(coverage, "ID"),
+    scopeDescription: "all tasks, full history, every status (Partner-only read — separate from lib/coo's own open-only tasks domain, which is unchanged)",
+    currentOperationalCount: cooOpenCount, totalHistoricalCount: data?.total ?? null,
+    provenance: { source: "supabase:tasks (Partner-only full-history read, listTasks() with no filter)", reader: NEW_READER, fetchedAt: asOf },
+    relations, warnings, data,
+  };
+}
+
 function buildSuppliers(asOf: string): PartnerDomainState<null> {
   return {
     domain: "suppliers", status: "UNAVAILABLE", coverage: "NONE", reliability: "UNKNOWN",
@@ -257,20 +432,26 @@ function buildSuppliers(asOf: string): PartnerDomainState<null> {
 export function assemblePartnerCompanyState(coo: CooResult, raw: PartnerEyesRaw): PartnerCompanyState {
   const asOf = coo.state.meta.asOf;
   const cooDomains = adaptCooCompanyState(coo);
+  const domains = {
+    ...cooDomains,
+    clients: buildClients(raw, asOf),
+    labelArtists: buildLabelArtists(raw, coo, asOf),
+    clips: buildClips(raw, asOf),
+    sessions: buildSessions(raw, coo, asOf),
+    shows: buildShows(raw, coo, asOf),
+    suppliers: buildSuppliers(asOf),
+    proposalsFull: buildProposalsFull(raw, coo, asOf),
+    releasesFull: buildReleasesFull(raw, coo, asOf),
+    transactions: buildTransactions(raw, asOf),
+    tasksFull: buildTasksFull(raw, coo, asOf),
+  };
   return {
     capturedAt: asOf,
     todayIL: coo.state.meta.todayIL,
     schemaVersion: EYES_SCHEMA_VERSION,
     cooSchemaVersion: coo.state.meta.schemaVersion,
-    domains: {
-      ...cooDomains,
-      clients: buildClients(raw, asOf),
-      labelArtists: buildLabelArtists(raw, coo, asOf),
-      clips: buildClips(raw, asOf),
-      sessions: buildSessions(raw, coo, asOf),
-      shows: buildShows(raw, coo, asOf),
-      suppliers: buildSuppliers(asOf),
-    },
+    domains,
+    changeReadiness: buildChangeReadinessMatrix(domains),
     cooSources: coo.state.sources,
   };
 }

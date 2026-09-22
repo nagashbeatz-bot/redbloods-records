@@ -143,6 +143,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         uiStatus: uiStatusOfSteven(w.status, w.hasMixVersion), agreedPrice: w.agreedPrice, currency: normalizeCurrency(w.currency),
         amountPaid: w.amountPaid, sentDate: parseYmd(w.sentDate), internalDeadline: ymd, daysToInternal: ymd ? diffDays(today, ymd) : null,
         hasMixVersion: w.hasMixVersion, lastUploadAt: w.lastUploadAt,
+        createdAt: w.createdAt ?? null, updatedAt: w.updatedAt ?? null,
       };
     };
     const all = raw.steven.map(mapWork);
@@ -166,6 +167,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         sentDate: parseYmd(w.sentDate), daysSinceSent: w.daysSinceSent, internalDeadline: parseYmd(w.internalDeadline), isStuck: w.isStuck,
         lastUploadAt: b.lastUploadAt, lastNotesSentAt: b.lastNotesSentAt, ball: b.ball, linkedTaskId: w.linkedTaskId,
         waitingOwnerDays: b.ball.holder === "owner" && b.lastUploadAt ? diffDays(ilYmd(new Date(b.lastUploadAt)), today) : null,
+        createdAt: w.createdAt ?? null, updatedAt: w.updatedAt ?? null, returnedDate: w.returnedDate ?? null,
       };
     };
     const active = activeRaw.map(mapV);

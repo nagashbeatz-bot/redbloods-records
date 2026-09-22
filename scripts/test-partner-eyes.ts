@@ -90,6 +90,10 @@ function buildEyesRaw(): PartnerEyesRaw {
       { source: "artist_balance_entries", status: "ok", rowCount: 1 },
       { source: "sessions_eyes", status: "ok", rowCount: 3 },
       { source: "shows_eyes", status: "ok", rowCount: 2 },
+      { source: "proposals_eyes", status: "ok", rowCount: 3 },
+      { source: "releases_eyes", status: "ok", rowCount: 2 },
+      { source: "transactions_eyes", status: "ok", rowCount: 3 },
+      { source: "tasks_eyes", status: "ok", rowCount: 2 },
     ],
     clients: [
       { id: "c1", name: "אמן בדיקה", type: "אמן", status: "פעיל", createdAt: "2026-01-01T10:00:00Z" },
@@ -117,6 +121,35 @@ function buildEyesRaw(): PartnerEyesRaw {
     shows: [
       { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
       { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
+    ],
+    // Phase C.3 — full proposal history (independent of lib/coo's OWN proposals fixture above, which
+    // has a single CLOSED row and is unrelated to this one — see the "COO's own status-filtered read"
+    // assertions below, which use lib/coo's fixture, not this one): pr-open (client_id, OPEN status),
+    // pr-legacy-closed (client_id present, CLOSED status — would be invisible to a status-filtered read,
+    // visible here), pr-no-client-id (legacy row, client_id=null, falls back to clientName TEXT_MATCH only).
+    proposalsFull: [
+      { id: "pr-open", clientId: "c1", clientName: "אמן בדיקה", linkedProjectId: "p1", title: "הצעה", amount: 3000, currency: "₪", status: "נשלחה", followupDate: null, sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { id: "pr-legacy-closed", clientId: "c1", clientName: "אמן בדיקה", linkedProjectId: null, title: "הצעה ישנה שנסגרה", amount: 1500, currency: "₪", status: "נסגר", followupDate: null, sentDate: "2026-01-01", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-05T10:00:00Z" },
+      { id: "pr-no-client-id", clientId: null, clientName: "לקוח כללי", linkedProjectId: null, title: "הצעה legacy", amount: 500, currency: "₪", status: "לא נסגר", followupDate: null, sentDate: null, createdAt: "2025-06-01T10:00:00Z", updatedAt: "2025-06-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full release history: r-p2 (active stage — also visible in lib/coo's own releases
+    // fixture, cross-reference), r-p-released (יצא/released — invisible to lib/coo's active-stage-only read).
+    releasesFull: [
+      { projectId: "p2", labelArtistId: "la1", stage: "הפקה", targetDate: "2026-10-15", stageEnteredAt: "2026-09-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { projectId: "p-released", labelArtistId: null, stage: "יצא", targetDate: "2026-01-01", stageEnteredAt: "2025-12-01T10:00:00Z", releasedAt: "2026-01-01T10:00:00Z", createdAt: "2025-10-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full transaction row detail: tx1 (project-linked, income, received — also in lib/coo's
+    // aggregated fixture), tx2 (expense, ₪, different status), tx-general (no project_id — general scope).
+    transactions: [
+      { id: "tx1", projectId: "p1", type: "income", amount: 1000, currency: "₪", status: "התקבל", date: "2026-09-10", expenseScope: "כללי", category: "", createdAt: "2026-09-10T10:00:00Z" },
+      { id: "tx2", projectId: "p1", type: "expense", amount: 200, currency: "$", status: "שולם", date: "2026-09-11", expenseScope: "כללי", category: "מיקס", createdAt: "2026-09-11T10:00:00Z" },
+      { id: "tx-general", projectId: null, type: "expense", amount: 50, currency: "₪", status: "בוטל", date: null, expenseScope: "כללי", category: "", createdAt: "2026-09-01T10:00:00Z" },
+    ],
+    // Phase C.3 — full task history: t1 (open — also in lib/coo's own open-only fixture, cross-reference),
+    // t-done (בוצע — invisible to lib/coo's open-only read).
+    tasksFull: [
+      { id: "t1", title: "משימה", status: "פתוח", dueDate: "2026-09-25", relatedType: "project", relatedId: "p1", createdAt: "2026-09-10T09:00:00Z", updatedAt: "2026-09-10T09:00:00Z" },
+      { id: "t-done", title: "משימה שהושלמה", status: "בוצע", dueDate: "2026-08-01", relatedType: "project", relatedId: "p1", createdAt: "2026-07-01T09:00:00Z", updatedAt: "2026-08-01T09:00:00Z" },
     ],
   });
 }
@@ -266,6 +299,73 @@ ok("…and never claims the owner currently owes a review", !P.domains.victor.wa
 
 console.log("finance: missing agreedPrice stays UNKNOWN, never 0");
 ok("finance domain scope explicitly states UNKNOWN semantics for missing agreedPrice", P.domains.receivables.scopeDescription.includes("UNKNOWN"));
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase C.3 — Change-Awareness data readiness: proposalsFull / releasesFull /
+// transactions / tasksFull, plus the Change Readiness Matrix.
+// ════════════════════════════════════════════════════════════════════════════
+
+console.log("Phase C.3: Proposals — full history, ID via client_id, lib/coo's own domain unchanged");
+check("proposalsFull sees all 3 proposals (open + closed + legacy)", P.domains.proposalsFull.data!.total, 3);
+ok("a CLOSED proposal (pr-legacy-closed) is visible here", P.domains.proposalsFull.data!.items.some((p) => p.id === "pr-legacy-closed"));
+ok("an OPEN proposal (pr-open) is visible here too", P.domains.proposalsFull.data!.items.some((p) => p.id === "pr-open"));
+check("client_id propagates onto the item (pr-open → c1)", P.domains.proposalsFull.data!.items.find((p) => p.id === "pr-open")!.clientId, "c1");
+ok("the legacy row without client_id does NOT fake an id — clientId stays null", P.domains.proposalsFull.data!.items.find((p) => p.id === "pr-no-client-id")!.clientId === null);
+check("client_id coverage counts correctly (2 of 3 rows carry it)", P.domains.proposalsFull.data!.withClientId, 2);
+check("linked_project_id propagates (pr-open → p1)", P.domains.proposalsFull.data!.items.find((p) => p.id === "pr-open")!.linkedProjectId, "p1");
+ok("relation to clients is ID via client_id, never TEXT_MATCH as the primary path", P.domains.proposalsFull.relations.find((r) => r.via.includes("client_id"))!.quality === "ID");
+check("lib/coo's own status-filtered proposals domain is completely untouched — still reflects only ITS OWN (separate) fixture, 0 visible (its one row is status='נסגר')", P.domains.proposals.data!.length, 0);
+
+console.log("Phase C.3: Releases — full history via project_release_details, lib/coo's own active-stage-only domain unchanged");
+check("releasesFull sees both rows (active stage + released/יצא)", P.domains.releasesFull.data!.total, 2);
+ok("an active-stage row (p2) is visible", P.domains.releasesFull.data!.items.some((r) => r.projectId === "p2" && r.stage === "הפקה"));
+ok("a RELEASED (יצא) row is visible here — invisible to lib/coo's own active-stage-only releases domain", P.domains.releasesFull.data!.items.some((r) => r.projectId === "p-released" && r.stage === "יצא"));
+check("project_id preserved on every item", P.domains.releasesFull.data!.items.map((r) => r.projectId).sort(), ["p-released", "p2"]);
+check("label_artist_id preserved where present (p2 → la1)", P.domains.releasesFull.data!.items.find((r) => r.projectId === "p2")!.labelArtistId, "la1");
+ok("lib/coo's own releases domain (active-stage only) is untouched — still shows only p2, not p-released", coo.state.releases!.rows.every((r) => r.projectId !== "p-released"));
+
+console.log("Phase C.3: Transactions — per-row detail, statuses/currencies preserved, no FX, cancelled never silently counted");
+check("transactions sees all 3 rows", P.domains.transactions.data!.total, 3);
+check("project_id relation is ID, coverage reflects 2 of 3 rows linked (tx-general has none)", (() => {
+  const rel = P.domains.transactions.relations.find((r) => r.via.includes("project_id"))!;
+  return [rel.quality, rel.coverage];
+})(), ["ID", "PARTIAL"]);
+ok("missing project_id stays unlinked, never guessed (tx-general.projectId === null)", P.domains.transactions.data!.items.find((t) => t.id === "tx-general")!.projectId === null);
+check("statuses preserved verbatim per row (not re-derived)", P.domains.transactions.data!.items.map((t) => t.status).sort(), ["בוטל", "התקבל", "שולם"]);
+check("currencies preserved verbatim, never merged/converted (₪ and $ both present)", Object.keys(P.domains.transactions.data!.byCurrency).sort(), ["$", "₪"]);
+ok("a cancelled (בוטל) row is present as a stored fact only — this domain does no received/balance computation at all", P.domains.transactions.data!.items.some((t) => t.status === "בוטל"));
+ok("warnings explicitly say this never recomputes finance semantics", P.domains.transactions.warnings.some((w) => w.includes("לא מחשב מחדש")));
+
+console.log("Phase C.3: Tasks — full history, lib/coo's own open-only domain unchanged");
+check("tasksFull sees both tasks (open + done)", P.domains.tasksFull.data!.total, 2);
+ok("an open task (t1) is visible", P.domains.tasksFull.data!.items.some((t) => t.id === "t1" && t.status === "פתוח"));
+ok("a DONE task (t-done) is visible here — invisible to lib/coo's own open-only tasks domain", P.domains.tasksFull.data!.items.some((t) => t.id === "t-done" && t.status === "בוצע"));
+check("lib/coo's own tasks domain stays open-only — still just 1 (t1)", coo.state.tasks!.openCount, 1);
+ok("lib/coo's own tasks domain never sees t-done", !coo.state.tasks!.items.some((t) => t.id === "t-done"));
+
+console.log("Phase C.3: Change Readiness Matrix — facts only, never guessed");
+ok("changeReadiness has one entry per domain key on PartnerCompanyState.domains", P.changeReadiness.length === Object.keys(P.domains).length);
+{
+  const propFull = P.changeReadiness.find((e) => e.domain === "proposalsFull")!;
+  ok("proposalsFull: stable id + full history + createdAt/updatedAt → supports create/update/status-transition detection", propFull.scope === "FULL_HISTORY" && propFull.supportsCreateDetection && propFull.supportsUpdateDetection && propFull.supportsStatusTransitionDetection);
+}
+{
+  const tx = P.changeReadiness.find((e) => e.domain === "transactions")!;
+  ok("transactions: has a stable id and full history, but NO updated_at (confirmed against the live schema) → update/status-transition detection is honestly false", tx.scope === "FULL_HISTORY" && tx.hasUpdatedAt === false && tx.supportsUpdateDetection === false && tx.supportsStatusTransitionDetection === false);
+  ok("…yet create detection still holds (a NEW row is still detectable by a new id appearing)", tx.supportsCreateDetection === true);
+}
+{
+  const tasksOld = P.changeReadiness.find((e) => e.domain === "tasks")!;
+  ok("tasks (lib/coo's own, open-only): scope is a CURRENT_SUBSET, never claimed as full history", tasksOld.scope === "CURRENT_SUBSET");
+}
+{
+  const suppliers = P.changeReadiness.find((e) => e.domain === "suppliers")!;
+  ok("suppliers: NOT_APPLICABLE, no stable id fabricated, nothing claims to support detection", suppliers.scope === "NOT_APPLICABLE" && suppliers.stableIdField === null && !suppliers.supportsCreateDetection && !suppliers.supportsUpdateDetection && !suppliers.supportsStatusTransitionDetection);
+}
+{
+  const clients = P.changeReadiness.find((e) => e.domain === "clients")!;
+  ok("clients: has createdAt but explicitly NO updatedAt (confirmed against the live schema) — never pretends otherwise", clients.hasCreatedAt === true && clients.hasUpdatedAt === false);
+}
 
 console.log("suppliers: re-audited, correctly reported as not existing as a separate domain");
 check("suppliers domain status is UNAVAILABLE (no invented table)", P.domains.suppliers.status, "UNAVAILABLE");

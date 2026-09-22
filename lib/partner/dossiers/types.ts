@@ -14,9 +14,12 @@
  */
 import type { Coverage, RelationQuality } from "../eyes/types";
 import type {
-  DeadlineFact, ExpectedIncomeFact, ProposalFact, ReleaseFact, StevenWorkFact, TaskFact, VictorWorkFact,
+  DeadlineFact, ExpectedIncomeFact, StevenWorkFact, TaskFact, VictorWorkFact,
 } from "../../coo/types";
-import type { ClientSummary, ClipSummary, LabelArtistBalanceTotals, LabelArtistSummary, ShowSummary, SessionSummary } from "../eyes/types";
+import type {
+  ClientSummary, ClipSummary, LabelArtistBalanceTotals, LabelArtistSummary, ShowSummary, SessionSummary,
+  ProposalSummary, ReleaseSummary, TaskSummary, TransactionSummary,
+} from "../eyes/types";
 
 export const PROJECT_DOSSIER_SCHEMA_VERSION = "project-dossier-v1";
 export const CLIENT_DOSSIER_SCHEMA_VERSION = "client-dossier-v1";
@@ -79,10 +82,11 @@ export interface ProjectClientSection {
   notes: string[];
 }
 
-// ── Proposals (ID via linked_project_id) ─────────────────────────────────────
+// ── Proposals (ID via linked_project_id, full history — Phase C.3) ──────────
 
 export interface ProjectProposalsSection {
-  items: ProposalFact[];
+  /** Sourced from eyes:proposalsFull (full history, no status filter) — a closed proposal never disappears. */
+  items: ProposalSummary[];
   relation: EntityRelation;
 }
 
@@ -104,12 +108,12 @@ export interface ProjectFinanceSection {
   /** DERIVED — expected income rows overdue for this project (subset only; see transactionDetail). */
   expectedOverdueItems: ExpectedIncomeFact[];
   /**
-   * Honest gap: PartnerCompanyState carries no per-project transaction list —
-   * only aggregated company-wide totals (finance) and derived per-project
-   * balance (receivables). A full income/expense breakdown per project would
-   * need a new read, not done in this block.
+   * Phase C.3: per-project transaction row detail, sourced from eyes:transactions
+   * (full history, ID via project_id). "NOT_AVAILABLE_IN_EYES" only when the
+   * transactions domain itself failed to read this snapshot — never a silent
+   * empty split.
    */
-  transactionDetail: "NOT_AVAILABLE_IN_EYES";
+  transactionDetail: { incomeTransactions: TransactionSummary[]; expenseTransactions: TransactionSummary[] } | "NOT_AVAILABLE_IN_EYES";
 }
 
 // ── Sessions (ID via project_id, full history per Phase B.2) ────────────────
@@ -128,16 +132,18 @@ export interface ProjectSessionsSection {
 // ── Release + Label Artist ────────────────────────────────────────────────────
 
 /**
- * lib/coo's releases.rows only carries ACTIVE-stage rows (excludes יצא/released
- * and בהשהייה/on-hold — see Phase B.2). So "no active release row" is NOT the
- * same claim as "this project never had a release" — Partner Eyes literally
- * cannot see released/paused rows right now.
+ * Phase C.3: sourced from eyes:releasesFull — every project_release_details
+ * row, every stage, no visibility/business-type filter (replaces the earlier
+ * active-stage-only read). "NO_RELEASE_ROW" now honestly means no release
+ * record exists at all for this project (1:1, project_id is the release's PK)
+ * — not "might be released/paused and therefore invisible", which was the
+ * pre-Phase-C.3 caveat.
  */
-export type ReleaseLookupStatus = "FOUND" | "NO_ACTIVE_RELEASE_ROW" | "UNKNOWN";
+export type ReleaseLookupStatus = "FOUND" | "NO_RELEASE_ROW" | "UNKNOWN";
 
 export interface ProjectReleaseSection {
   status: ReleaseLookupStatus;
-  rows: ReleaseFact[];
+  rows: ReleaseSummary[];
   relation: EntityRelation | null;
   notes: string[];
 }
@@ -170,13 +176,21 @@ export interface ProjectStevenSection {
   scopeNote: string;
 }
 
-// ── Tasks (related_type="project" AND related_id=projectId; OPEN ONLY) ──────
+// ── Tasks (related_type="project" AND related_id=projectId) ────────────────
 
 export interface ProjectTasksSection {
+  /** UNCHANGED from Phase C.1 — lib/coo's own open-only TaskFact detail (dueYmd/daysOverdue/age etc.). */
   scope: "OPEN_TASKS_ONLY";
   items: TaskFact[];
   count: number;
   relation: EntityRelation;
+  /**
+   * Phase C.3 addition — full task history (every status) for this project,
+   * sourced from eyes:tasksFull. `available: false` only when the tasksFull
+   * domain itself failed to read this snapshot; a project with zero tasks
+   * ever still reports available: true, items: [].
+   */
+  history: { available: boolean; items: TaskSummary[] };
 }
 
 // ── Clips (ID via project_id; unlinked name-only candidates kept separate) ──
@@ -286,15 +300,15 @@ export interface SessionsBucket { count: number; firstSessionDate: string | null
 export interface ClientIdentity { clientId: string; name: string; type: string; status: string; createdAt: string | null }
 
 export interface ClientProposalsSection {
-  items: ProposalFact[];
+  /** ID-linked via proposals.client_id (eyes:proposalsFull) — the primary relation, Phase C.3. */
+  items: ProposalSummary[];
   relation: EntityRelation;
   /**
-   * Phase C.2 finding: proposals.client_id is a REAL FK in the DB (proven by
-   * lib/coo/readers.ts's own `clients(name)` embedded-select, which only works
-   * against a real foreign key) — but lib/coo's ProposalFact/RawProposal never
-   * retains it, only the denormalized clientName text. Not fixed this block
-   * (lib/coo change, not pre-approved) — this is a documented known gap.
+   * Legacy rows only: proposals with client_id=null whose denormalized
+   * clientName text happens to match this client's name. Never merged into
+   * `items` — a name match is never presented with ID confidence.
    */
+  legacyTextMatched: ProposalSummary[];
   scopeDescription: string;
 }
 
@@ -340,9 +354,9 @@ export interface LabelArtistProjectsSection {
 }
 
 export interface LabelArtistReleasesSection {
-  /** Every ACTIVE-stage release row (lib/coo scope) for this artist's ID-linked projects. */
-  rows: ReleaseFact[];
-  /** NOT a lifetime count — see scopeNote. Only what Partner Eyes' active-stage-only release scope can see right now. */
+  /** Phase C.3: every release row (any stage) for this artist, sourced from eyes:releasesFull. */
+  rows: ReleaseSummary[];
+  /** Phase C.3: genuinely a lifetime count now (releasesFull has no stage filter) — see scopeNote. */
   visibleReleaseCount: number;
   firstVisibleReleaseTargetDate: string | null;
   latestVisibleReleaseTargetDate: string | null;

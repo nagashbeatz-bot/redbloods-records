@@ -67,7 +67,17 @@ async function main() {
 
   console.log("Finance:");
   console.log(`  configStatus: ${fmt(count(dossiers.map((d) => d.finance.configStatus)))}`);
-  console.log(`  balanceKind:  ${fmt(count(dossiers.map((d) => d.finance.balanceKind)))}\n`);
+  console.log(`  balanceKind:  ${fmt(count(dossiers.map((d) => d.finance.balanceKind)))}`);
+  const withTxDetail = dossiers.filter((d) => d.finance.transactionDetail !== "NOT_AVAILABLE_IN_EYES").length;
+  console.log(`  transactionDetail available (Phase C.3): ${withTxDetail}/${dossiers.length}\n`);
+
+  console.log("Proposals (Phase C.3 — full history via eyes:proposalsFull):");
+  const withProposals = dossiers.filter((d) => d.proposals.items.length > 0).length;
+  console.log(`  dossiers with >=1 linked proposal: ${withProposals}/${dossiers.length} (total: ${dossiers.reduce((s, d) => s + d.proposals.items.length, 0)})\n`);
+
+  console.log("Tasks — full history (Phase C.3):");
+  const withTaskHistory = dossiers.filter((d) => d.tasks.history.items.length > 0).length;
+  console.log(`  dossiers with >=1 historical task: ${withTaskHistory}/${dossiers.length} (total: ${dossiers.reduce((s, d) => s + d.tasks.history.items.length, 0)}, vs open-only: ${dossiers.reduce((s, d) => s + d.tasks.count, 0)})\n`);
 
   console.log("Sessions:");
   const withSessions = dossiers.filter((d) => d.sessions.count > 0).length;
