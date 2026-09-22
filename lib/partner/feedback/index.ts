@@ -9,3 +9,4 @@ export { buildCaseFeedbackSnapshot, fingerprintCaseEvidence } from "./snapshot";
 export { deriveFeedbackEffectLevel } from "./effect";
 export { summarizePartnerFeedback, resolveCaseTypeForGrouping, type CaseTypeFeedbackSummary, type FeedbackDimensionCounts } from "./summarize";
 export { deriveLearningSignals, buildLearningProposals } from "./learning";
+export { targetsMatch, validateSupersession, resolveCurrentRevisions, findRevisionBranches } from "./revisions";

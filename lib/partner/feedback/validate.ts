@@ -5,6 +5,7 @@
  * crash — Owner instruction §38 test #2/#3).
  */
 import { CASE_SCHEMA_VERSION } from "../cases/types";
+import { FEEDBACK_SCHEMA_VERSION } from "./types";
 import type { PartnerFeedback } from "./types";
 
 export interface FeedbackValidationResult {
@@ -29,6 +30,8 @@ export function validatePartnerFeedback(feedback: PartnerFeedback, knownCaseType
 
   if (!feedback.id || typeof feedback.id !== "string") errors.push("id is required");
   if (!feedback.createdAt || Number.isNaN(Date.parse(feedback.createdAt))) errors.push("createdAt must be a valid ISO timestamp");
+  if (!feedback.schemaVersion || typeof feedback.schemaVersion !== "string") errors.push("schemaVersion is required (FEEDBACK_SCHEMA_VERSION at construction time)");
+  else if (feedback.schemaVersion !== FEEDBACK_SCHEMA_VERSION) warnings.push(`schemaVersion (${feedback.schemaVersion}) does not match the current FEEDBACK_SCHEMA_VERSION (${FEEDBACK_SCHEMA_VERSION}) — the feedback record shape may have changed since this was recorded (distinct from a caseSnapshot.caseSchemaVersion mismatch)`);
 
   const t = feedback.target;
   switch (t.scope) {

@@ -129,8 +129,21 @@ export interface PartnerCaseFeedbackSnapshot {
 
 // ── The feedback record itself (§5) ──
 
+/**
+ * Stamps the SHAPE of the PartnerFeedback record itself (dimensions/
+ * caseSnapshot/provenance shape) — a DIFFERENT thing from
+ * PartnerCaseFeedbackSnapshot.caseSchemaVersion, which stamps the Case's own
+ * shape at capture time. A feedback record's evolving JSONB structure
+ * (dimensions/case_snapshot/provenance) needs its own version so a future
+ * reader never conflates "the Case shape changed" with "the feedback record
+ * shape changed" (Schema Hardening, 2026-09-22).
+ */
+export const FEEDBACK_SCHEMA_VERSION = "partner-feedback-schema-v1";
+
 export interface PartnerFeedback {
   id: string;
+  /** Always FEEDBACK_SCHEMA_VERSION at construction time — never hand-set to anything else. Distinct from caseSnapshot.caseSchemaVersion. */
+  schemaVersion: string;
   createdAt: string;
   target: FeedbackTarget;
   dimensions: PartnerFeedbackDimensions;
@@ -138,7 +151,7 @@ export interface PartnerFeedback {
   note: string | null;
   /** REQUIRED for CASE_INSTANCE and HYPOTHESIS scope (there is a concrete Case to snapshot); null otherwise. */
   caseSnapshot: PartnerCaseFeedbackSnapshot | null;
-  /** Append-only revision lineage (§23): a NEW record referencing the PRIOR one it supersedes. The prior record is never deleted/mutated. */
+  /** Append-only revision lineage (§23): a NEW record referencing the PRIOR one it supersedes. The prior record is never deleted/mutated. At most one direct successor per row — enforced at the DB layer by a UNIQUE index on supersedes_id, and re-checked in application code by revisions.ts:findRevisionBranches. */
   supersedesId: string | null;
   provenance: { source: "owner_manual" };
 }

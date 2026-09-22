@@ -15,6 +15,8 @@ import { CASE_SCHEMA_VERSION, type PartnerCase } from "../lib/partner/cases/type
 import {
   validatePartnerFeedback, buildCaseFeedbackSnapshot, fingerprintCaseEvidence, deriveFeedbackEffectLevel,
   summarizePartnerFeedback, deriveLearningSignals, buildLearningProposals, emptyFeedbackDimensions,
+  targetsMatch, validateSupersession, resolveCurrentRevisions, findRevisionBranches,
+  FEEDBACK_SCHEMA_VERSION,
   type PartnerFeedback, type FeedbackTarget, type PartnerFeedbackDimensions,
 } from "../lib/partner/feedback";
 
@@ -56,6 +58,7 @@ function makeCase(overrides: Partial<PartnerCase> = {}): PartnerCase {
 function makeFeedback(overrides: Partial<PartnerFeedback> & { target: FeedbackTarget }): PartnerFeedback {
   return {
     id: `fb-${Math.random().toString(36).slice(2)}`,
+    schemaVersion: FEEDBACK_SCHEMA_VERSION,
     createdAt: `${TODAY}T10:00:00Z`,
     dimensions: emptyFeedbackDimensions(),
     note: null,
@@ -353,6 +356,91 @@ console.log("Schema-version mismatch on a stored snapshot is a warning, never a 
   const staleFb = makeFeedback({ target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType }, dimensions: withDims({ importance: "NOT_IMPORTANT" }), caseSnapshot: { ...snapshot, caseSchemaVersion: "partner-case-schema-v0-old" } });
   const result = validatePartnerFeedback(staleFb, KNOWN_CASE_TYPES);
   ok("still valid, with a warning naming the version mismatch", result.valid && result.warnings.some((w) => w.includes("caseSchemaVersion")));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Schema Hardening (2026-09-22) — feedback_schema_version, append-only
+// revisions (no branching, target consistency), current-vs-history.
+// ══════════════════════════════════════════════════════════════════════════
+
+console.log("Schema Hardening: feedback.schemaVersion is required and distinct from caseSnapshot.caseSchemaVersion");
+{
+  const c = makeCase();
+  const fb = makeFeedback({ target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType }, dimensions: withDims({ importance: "NOT_IMPORTANT" }), caseSnapshot: buildCaseFeedbackSnapshot(c, TODAY) });
+  check("schemaVersion is FEEDBACK_SCHEMA_VERSION by default", fb.schemaVersion, FEEDBACK_SCHEMA_VERSION);
+  ok("distinct constant from CASE_SCHEMA_VERSION (two different things — TS itself proves this at compile time, since the literal types have no overlap)", (FEEDBACK_SCHEMA_VERSION as string) !== (CASE_SCHEMA_VERSION as string));
+
+  const missingVersion = { ...fb, schemaVersion: "" };
+  const result = validatePartnerFeedback(missingVersion, KNOWN_CASE_TYPES);
+  ok("empty schemaVersion is a hard error", !result.valid && result.errors.some((e) => e.includes("schemaVersion")));
+
+  const staleVersion = { ...fb, schemaVersion: "partner-feedback-schema-v0-old" };
+  const staleResult = validatePartnerFeedback(staleVersion, KNOWN_CASE_TYPES);
+  ok("stale schemaVersion is a warning, not a hard error", staleResult.valid && staleResult.warnings.some((w) => w.includes("FEEDBACK_SCHEMA_VERSION")));
+}
+
+console.log("Schema Hardening §2-3: append-only revisions — a change of mind is a NEW record, never an UPDATE; at most one direct successor per row");
+{
+  const c = makeCase();
+  const original = makeFeedback({ id: "rev-orig", target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType }, dimensions: withDims({ importance: "NOT_IMPORTANT" }), caseSnapshot: buildCaseFeedbackSnapshot(c, TODAY) });
+  const revisionA = makeFeedback({ id: "rev-a", target: original.target, dimensions: withDims({ importance: "IMPORTANT" }), caseSnapshot: original.caseSnapshot, supersedesId: "rev-orig" });
+  const revisionB = makeFeedback({ id: "rev-b", target: original.target, dimensions: withDims({ accuracy: "INCORRECT" }), caseSnapshot: original.caseSnapshot, supersedesId: "rev-orig" }); // BOTH A and B supersede orig -> branch
+
+  const checkA = validateSupersession(revisionA, original);
+  ok("revisionA is a structurally valid supersession", checkA.valid);
+
+  const history = [original, revisionA, revisionB];
+  const branches = findRevisionBranches(history);
+  ok("branching (two records superseding the same row) is detected", branches.length === 1 && branches[0].supersedesId === "rev-orig" && branches[0].branchIds.length === 2);
+  ok("original is never mutated by the presence of revisions — structural (no update function exists in this module at all)", original.dimensions.importance === "NOT_IMPORTANT");
+}
+
+console.log("Schema Hardening §4: a revision must target the SAME logical thing it supersedes — task X can never supersede project Y");
+{
+  const taskCase = makeCase({ id: "task_due_date_passed:t1", caseType: "TASK_DUE_DATE_PASSED", subjectType: "task", subjectId: "t1" });
+  const projectCase = makeCase({ id: "project_deadline_passed:p1", caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: "p1" });
+  const taskFeedback = makeFeedback({ id: "task-fb", target: { scope: "CASE_INSTANCE", caseId: taskCase.id, caseType: taskCase.caseType }, dimensions: withDims({ importance: "NOT_IMPORTANT" }), caseSnapshot: buildCaseFeedbackSnapshot(taskCase, TODAY) });
+  const projectFeedback = makeFeedback({ id: "project-fb", target: { scope: "CASE_INSTANCE", caseId: projectCase.id, caseType: projectCase.caseType }, dimensions: withDims({ importance: "IMPORTANT" }), caseSnapshot: buildCaseFeedbackSnapshot(projectCase, TODAY), supersedesId: "task-fb" });
+
+  ok("targetsMatch is false across task X vs project Y", !targetsMatch(taskFeedback.target, projectFeedback.target));
+  const crossCheck = validateSupersession(projectFeedback, taskFeedback);
+  ok("cross-target supersession is rejected with a specific error", !crossCheck.valid && crossCheck.errors.some((e) => e.includes("does not match the prior record's target")));
+
+  // Same caseType at CASE_TYPE scope is a legal revision; different caseType is not.
+  const ctA = makeFeedback({ id: "ct-a", target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" }, dimensions: withDims({ importance: "NOT_IMPORTANT" }) });
+  const ctB = makeFeedback({ id: "ct-b", target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" }, dimensions: withDims({ importance: "IMPORTANT" }), supersedesId: "ct-a" });
+  ok("same CASE_TYPE revision is valid", validateSupersession(ctB, ctA).valid);
+  const ctWrong = makeFeedback({ id: "ct-wrong", target: { scope: "CASE_TYPE", caseType: "PROJECT_DEADLINE_PASSED" }, dimensions: withDims({ importance: "IMPORTANT" }), supersedesId: "ct-a" });
+  ok("different CASE_TYPE revision is rejected", !validateSupersession(ctWrong, ctA).valid);
+}
+
+console.log("Schema Hardening §12: current-vs-history — resolveCurrentRevisions never physically mutates old rows, only filters");
+{
+  const c = makeCase();
+  const v1 = makeFeedback({ id: "chain-1", target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType }, dimensions: withDims({ importance: "NOT_IMPORTANT" }), caseSnapshot: buildCaseFeedbackSnapshot(c, TODAY) });
+  const v2 = makeFeedback({ id: "chain-2", target: v1.target, dimensions: withDims({ importance: "IMPORTANT" }), caseSnapshot: v1.caseSnapshot, supersedesId: "chain-1" });
+  const v3 = makeFeedback({ id: "chain-3", target: v1.target, dimensions: withDims({ accuracy: "CORRECT" }), caseSnapshot: v1.caseSnapshot, supersedesId: "chain-2" });
+  const unrelated = makeFeedback({ id: "unrelated-1", target: { scope: "CASE_TYPE", caseType: "PROJECT_DEADLINE_PASSED" }, dimensions: withDims({ importance: "IMPORTANT" }) });
+
+  const history = [v1, v2, v3, unrelated];
+  const current = resolveCurrentRevisions(history);
+  check("only the latest of the 3-chain (chain-3) plus the unrelated record are current", current.map((f) => f.id).sort(), ["chain-3", "unrelated-1"]);
+  check("full history is untouched — all 4 records still present when read directly", history.length, 4);
+  ok("v1/v2 objects themselves are byte-identical before/after resolveCurrentRevisions (no mutation)", JSON.stringify(v1) === JSON.stringify(history[0]) && JSON.stringify(v2) === JSON.stringify(history[1]));
+
+  // Order independence, same as summarize/learning.
+  const shuffled = [unrelated, v3, v1, v2];
+  const currentShuffled = resolveCurrentRevisions(shuffled);
+  check("resolveCurrentRevisions is order-independent", current.map((f) => f.id).sort(), currentShuffled.map((f) => f.id).sort());
+}
+
+console.log("Schema Hardening §9-10: no UPDATE/DELETE capability exists anywhere in lib/partner/feedback (static check)");
+{
+  const dir = path.resolve(__dirname, "../lib/partner/feedback");
+  const files = fs.readdirSync(dir).map((f) => path.join(dir, f));
+  const src = Object.fromEntries(files.map((f) => [f, fs.readFileSync(f, "utf8")]));
+  ok("no function named update/delete/mutate a feedback record", Object.values(src).every((s) => !/export function (update|delete|mutate)PartnerFeedback/i.test(s)));
+  ok("no Supabase/DB import anywhere (still a pure module)", Object.values(src).every((s) => !/@\/lib\/supabase|from ["']\.\.\/\.\.\/\.\.\/supabase["']/.test(s)));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

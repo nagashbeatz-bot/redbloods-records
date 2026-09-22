@@ -47,6 +47,7 @@ async function main() {
   const {
     buildCaseFeedbackSnapshot, validatePartnerFeedback, summarizePartnerFeedback,
     deriveLearningSignals, buildLearningProposals, emptyFeedbackDimensions,
+    FEEDBACK_SCHEMA_VERSION, validateSupersession, resolveCurrentRevisions, findRevisionBranches,
   } = await import("../lib/partner/feedback");
   type PartnerFeedback = import("../lib/partner/feedback").PartnerFeedback;
 
@@ -98,19 +99,19 @@ async function main() {
   };
 
   sim("mark one Task Case NOT_IMPORTANT", "TASK_DUE_DATE_PASSED", (c) => ({
-    id: "sim-1", createdAt: `${state.todayIL}T09:00:00Z`,
+    id: "sim-1", schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T09:00:00Z`,
     target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType },
     dimensions: { ...emptyFeedbackDimensions(), importance: "NOT_IMPORTANT" },
     note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, `${state.todayIL}T09:00:00Z`), supersedesId: null, provenance: { source: "owner_manual" },
   }));
   sim("mark one Victor follow-up THERE_IS_CONTEXT", "DELIVERY_WITHOUT_RECORDED_FOLLOWUP", (c) => ({
-    id: "sim-2", createdAt: `${state.todayIL}T09:00:00Z`,
+    id: "sim-2", schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T09:00:00Z`,
     target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType },
     dimensions: { ...emptyFeedbackDimensions(), context: { value: "HAS_MISSING_CONTEXT", contextCode: "HANDLED_OUTSIDE_REDBLOODS" } },
     note: "בדקתי את זה מחוץ למערכת מול Victor ישירות.", caseSnapshot: buildCaseFeedbackSnapshot(c, `${state.todayIL}T09:00:00Z`), supersedesId: null, provenance: { source: "owner_manual" },
   }));
   sim("mark one project deadline IMPORTANT", "PROJECT_DEADLINE_PASSED", (c) => ({
-    id: "sim-3", createdAt: `${state.todayIL}T09:00:00Z`,
+    id: "sim-3", schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T09:00:00Z`,
     target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType },
     dimensions: { ...emptyFeedbackDimensions(), importance: "IMPORTANT" },
     note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, `${state.todayIL}T09:00:00Z`), supersedesId: null, provenance: { source: "owner_manual" },
@@ -118,7 +119,7 @@ async function main() {
   sim("mark one hypothetical inference DO_NOT_INFER", "DELIVERY_WITHOUT_RECORDED_FOLLOWUP", (c) => {
     const hypothesisId = c.hypotheses[0]?.id ?? "may_be_pending_review";
     return {
-      id: "sim-4", createdAt: `${state.todayIL}T09:00:00Z`,
+      id: "sim-4", schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T09:00:00Z`,
       target: { scope: "HYPOTHESIS", caseId: c.id, caseType: c.caseType, hypothesisId },
       dimensions: { ...emptyFeedbackDimensions(), inference: { value: "DO_NOT_INFER", hypothesisId } },
       note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, `${state.todayIL}T09:00:00Z`), supersedesId: null, provenance: { source: "owner_manual" },
@@ -129,7 +130,7 @@ async function main() {
   const additionalTaskCases = cases.filter((c) => c.caseType === "TASK_DUE_DATE_PASSED").slice(1, 4);
   additionalTaskCases.forEach((c, i) => {
     feedback.push({
-      id: `sim-extra-${i}`, createdAt: `${state.todayIL}T09:00:00Z`,
+      id: `sim-extra-${i}`, schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T09:00:00Z`,
       target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType },
       dimensions: { ...emptyFeedbackDimensions(), importance: "NOT_IMPORTANT" },
       note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, `${state.todayIL}T09:00:00Z`), supersedesId: null, provenance: { source: "owner_manual" },
@@ -158,6 +159,42 @@ async function main() {
   const proposals = buildLearningProposals(signals);
   if (proposals.length === 0) console.log("  (none this run — no repeated pattern reached sampleSize>=2)");
   for (const p of proposals) console.log(`  [${p.status}] ${p.evidenceSummary}`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Schema Hardening demo — append-only revision model. "sim-1" (task marked
+  // NOT_IMPORTANT) is revised: the Owner changes their mind to IMPORTANT.
+  // This NEVER updates sim-1 — it appends a new record superseding it.
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n── Append-only revision model demo ──");
+  const sim1 = feedback.find((f) => f.id === "sim-1");
+  if (sim1) {
+    const revision = {
+      id: "sim-1-rev1", schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: `${state.todayIL}T11:00:00Z`,
+      target: sim1.target, dimensions: { ...emptyFeedbackDimensions(), importance: "IMPORTANT" as const },
+      note: "בדיקה נוספת — בכל זאת חשוב.", caseSnapshot: sim1.caseSnapshot, supersedesId: sim1.id,
+      provenance: { source: "owner_manual" as const },
+    };
+    const supersessionCheck = validateSupersession(revision, sim1);
+    console.log(`  revision valid supersession of sim-1: ${supersessionCheck.valid}`);
+    const withRevision = [...feedback, revision];
+    const current = resolveCurrentRevisions(withRevision);
+    console.log(`  history length=${withRevision.length}, current (non-superseded) length=${current.length} — sim-1 itself is NOT in current, sim-1-rev1 IS`);
+    console.log(`  sim-1 present in current: ${current.some((f) => f.id === "sim-1")} (expected false — it was never deleted, only superseded)`);
+    console.log(`  sim-1-rev1 present in current: ${current.some((f) => f.id === "sim-1-rev1")} (expected true)`);
+
+    // Mismatched-target revision must be rejected (Owner instruction §4).
+    const otherCaseFeedback = feedback.find((f) => f.id !== "sim-1" && f.target.scope === "CASE_INSTANCE");
+    if (otherCaseFeedback) {
+      const badRevision = { ...revision, id: "bad-rev", supersedesId: otherCaseFeedback.id };
+      const badCheck = validateSupersession(badRevision, sim1);
+      console.log(`  mismatched-target revision (claims to supersede sim-1 but supersedesId points elsewhere) correctly rejected: valid=${badCheck.valid}`);
+    }
+
+    const branches = findRevisionBranches(withRevision);
+    console.log(`  branch check: ${branches.length} branch(es) found (expected 0 — at most one direct successor per row)`);
+  } else {
+    console.log("  [skip] no sim-1 feedback to demonstrate a revision on this run");
+  }
 
   console.log(`\nblocked requests during this run: ${blocked.length} (must be 0 — this script must never write)`);
   console.log("partner_change_baseline: never read, never touched by this script (STATE-only build — no CHANGE cases requested).");
