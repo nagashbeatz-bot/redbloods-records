@@ -184,6 +184,8 @@ export interface ShowSummary {
   /** Phase C.2 — already fetched by listShows()'s select("*"), previously dropped like djClientId once was. */
   artistClientId: string | null;
   bookerClientId: string | null;
+  /** Phase E.2 — client's gross owed amount (show_price). See RawShowEyes. */
+  price: number;
 }
 export interface ShowsEyesFact {
   total: number;
@@ -297,6 +299,8 @@ export interface RawClip { id: string; title: string; status: string; projectId:
 export interface RawShowEyes {
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
   djClientId: string | null; djConfirmationStatus: string | null; artistClientId: string | null; bookerClientId: string | null;
+  /** Additive (Partner Phase E.2) — show_price, already fetched by listShows()'s select("*"), same as djClientId/artistClientId. Client's gross owed amount (see lib/shows-types.ts — separate from dj_fee/artist_fee, which stay unexposed to Partner). */
+  price: number;
 }
 /** One artist_balance_entries row — just enough to compute LabelArtistBalanceTotals; no description/note (private free text) retained. */
 export interface RawBalanceEntry { id: string; artistId: string; entryType: string; amount: number; entryDate: string }

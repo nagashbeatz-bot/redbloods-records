@@ -66,6 +66,7 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
       id: s.id, name: s.name, status: s.status as string, paymentStatus: s.payment_status as string, date: s.date,
       djClientId: s.dj_client_id ?? null, djConfirmationStatus: (s.dj_confirmation_status as string | null) ?? null,
       artistClientId: s.artist_client_id ?? null, bookerClientId: s.booker_client_id ?? null,
+      price: s.show_price ?? 0,
     })), (v) => v.length),
     // Phase C.3 — full proposal history, no status filter (separate from lib/coo's own
     // status-filtered read of the same table). client_id is a real FK (confirmed against the

@@ -74,9 +74,41 @@ export function detectChangeDerivedCases(
     });
   }
 
-  // ── PROPOSAL_STATUS_CHANGED — pure fact, no won/lost inference (§25) ──
+  // ── PROPOSAL_STATUS_CHANGED / PROPOSAL_CLOSED_WON (Phase E.2) ──
+  // "נסגר" definitely means a won/converted deal — the ONLY code path that ever
+  // sets it is app/api/proposals/[id]/convert/route.ts, which creates a real
+  // project and stamps linked_project_id in the SAME write (audited, not
+  // guessed). Every other status transition stays the pure, no-inference
+  // PROPOSAL_STATUS_CHANGED Case (§25) — one Case per change, never both.
+  const proposalsById = new Map((state.domains.proposalsFull.data?.items ?? []).map((p) => [p.id, p]));
   for (const c of changes) {
     if (c.domain !== "proposals" || c.field !== "status") continue;
+    if (c.after === "נסגר") {
+      const proposal = proposalsById.get(c.entityId);
+      out.push({
+        id: `proposal_closed_won:${c.entityId}`,
+        caseType: "PROPOSAL_CLOSED_WON",
+        subjectType: "proposal",
+        subjectId: c.entityId,
+        classification: "OPPORTUNITY",
+        status: "OPEN",
+        createdFrom: "CHANGE",
+        facts: [
+          { domain: "proposals", entityId: c.entityId, field: "status", value: "נסגר", label: "status" },
+          ...(proposal?.linkedProjectId ? [{ domain: "proposals", entityId: c.entityId, field: "linkedProjectId", value: proposal.linkedProjectId, label: "linkedProjectId" }] : []),
+        ],
+        derivedFacts: [],
+        hypotheses: [],
+        ownerRulesApplied: [],
+        workingPrinciplesApplied: [],
+        unknowns: proposal?.linkedProjectId ? [] : ["ההצעה סומנה 'נסגר' ללא linked_project_id רשום — ייתכן שסומן ידנית ולא דרך זרימת ההמרה הסטנדרטית."],
+        dataQuality: { notes: ["'נסגר' מאומת כ-won/converted רק דרך app/api/proposals/[id]/convert/route.ts — נתיב הקוד היחיד שכותב סטטוס זה."] },
+        interventionStyle: "GENTLE",
+        summaryHe: "הצעת מחיר נסגרה בהצלחה.",
+        changeContext,
+      });
+      continue;
+    }
     out.push({
       id: `proposal_status_changed:${c.entityId}`,
       caseType: "PROPOSAL_STATUS_CHANGED",
@@ -99,8 +131,21 @@ export function detectChangeDerivedCases(
   }
 
   // ── RELEASE_TARGET_DATE_CHANGED — informational only, never re-derives risk here (§20) ──
+  // Phase E.2: direction (earlier/later) is objective string-date comparison,
+  // never framed as risk from a delay alone (Owner instruction §11). Owner
+  // Rule PROTECT_LABEL_RELEASES is attached only when the release's own
+  // labelArtistId is ID-confirmed (project_release_details.label_artist_id) —
+  // releasesFull carries rows for every project with a release stage, not
+  // only label ones, so an unconditional attach would have been a false
+  // attribution (Owner instruction §12, audited and fixed here).
+  const releasesById = new Map((state.domains.releasesFull.data?.items ?? []).map((r) => [r.projectId, r]));
   for (const c of changes) {
     if (c.domain !== "releases" || c.field !== "targetYmd") continue;
+    const before = typeof c.before === "string" ? c.before : null;
+    const after = typeof c.after === "string" ? c.after : null;
+    const direction = before && after ? (after > before ? "MOVED_LATER" : after < before ? "MOVED_EARLIER" : "UNCHANGED") : "UNKNOWN";
+    const release = releasesById.get(c.entityId);
+    const labelConfirmed = !!release?.labelArtistId;
     out.push({
       id: `release_target_date_changed:${c.entityId}`,
       caseType: "RELEASE_TARGET_DATE_CHANGED",
@@ -109,12 +154,15 @@ export function detectChangeDerivedCases(
       classification: "INFORMATION",
       status: "OPEN",
       createdFrom: "CHANGE",
-      facts: [{ domain: "releases", entityId: c.entityId, field: "targetYmd", value: c.after, label: "release_target_date" }],
-      derivedFacts: [],
+      facts: [
+        { domain: "releases", entityId: c.entityId, field: "targetYmd", value: c.after, label: "release_target_date" },
+        ...(release?.labelArtistId ? [{ domain: "releases", entityId: c.entityId, field: "labelArtistId", value: release.labelArtistId, label: "labelArtistId" }] : []),
+      ],
+      derivedFacts: [{ id: "direction", label: "כיוון השינוי", value: direction, basis: before && after ? `before=${before} vs after=${after}` : "תאריך before/after לא זמין כמחרוזת" }],
       hypotheses: [],
-      ownerRulesApplied: ["PROTECT_LABEL_RELEASES"],
+      ownerRulesApplied: labelConfirmed ? ["PROTECT_LABEL_RELEASES"] : [],
       workingPrinciplesApplied: [],
-      unknowns: [],
+      unknowns: labelConfirmed ? [] : ["labelArtistId אינו מאומת עבור release זה — ייתכן שאינו ריליס לייבל."],
       dataQuality: { notes: [] },
       interventionStyle: "GENTLE",
       summaryHe: "תאריך היעד לריליס השתנה.",

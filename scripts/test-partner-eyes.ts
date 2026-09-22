@@ -119,8 +119,8 @@ function buildEyesRaw(): PartnerEyesRaw {
     ],
     // full history: 2 shows, only 1 of which (sh1) is in COO's operational subset (upcoming+doneUnpaid)
     shows: [
-      { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
-      { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
+      { id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null, price: 1000 },
+      { id: "sh-old", name: "הופעה ישנה שולמה במלואה", status: "בוצע", paymentStatus: "שולם", date: "2025-01-01", djClientId: "c2", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null, price: 1000 },
     ],
     // Phase C.3 — full proposal history (independent of lib/coo's OWN proposals fixture above, which
     // has a single CLOSED row and is unrelated to this one — see the "COO's own status-filtered read"

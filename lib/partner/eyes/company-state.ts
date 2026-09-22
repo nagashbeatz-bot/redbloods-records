@@ -228,6 +228,7 @@ function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerD
     items: raw.shows.map((s) => ({
       id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date,
       djClientId: s.djClientId, djConfirmationStatus: s.djConfirmationStatus, artistClientId: s.artistClientId, bookerClientId: s.bookerClientId,
+      price: s.price,
     })),
   } : null;
   return {

@@ -145,8 +145,8 @@ function buildEyesRaw(): PartnerEyesRaw {
     // sh-artist: c1 performs (artist_client_id) — Client Dossier's ID-relation show test.
     // sh-dj: c5 is DJ (dj_client_id) — separate ID relation, distinct client.
     shows: [
-      { id: "sh-artist", name: "הופעה עם אמן מזוהה", status: "בוצע", paymentStatus: "שולם", date: "2026-08-15", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null },
-      { id: "sh-dj", name: "הופעה עם תקליטן", status: "מתוכנן", paymentStatus: "לא שולם", date: "2026-10-05", djClientId: "c5", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null },
+      { id: "sh-artist", name: "הופעה עם אמן מזוהה", status: "בוצע", paymentStatus: "שולם", date: "2026-08-15", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null, price: 1000 },
+      { id: "sh-dj", name: "הופעה עם תקליטן", status: "מתוכנן", paymentStatus: "לא שולם", date: "2026-10-05", djClientId: "c5", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null, price: 1000 },
     ],
     // Phase C.3 — full proposal history: pr1 (client_id → c1, ID relation, linked to p1),
     // pr-closed (client_id=null — legacy, linked to p-closed by project only), pr-legacy-textmatch

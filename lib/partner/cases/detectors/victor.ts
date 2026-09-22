@@ -23,6 +23,13 @@ export function detectVictorInternalDeadlineCases(state: PartnerCompanyState, to
     if (deadlineYmd >= todayYmd) continue; // future or today — not yet passed
     const daysLate = diffDays(deadlineYmd, todayYmd);
 
+    // Phase E.2 context (§14): objective delivery-vs-deadline combination, no
+    // blame wording. "unknown" when there is no recorded upload at all — never
+    // guessed as "not delivered" (could have been handled outside Redbloods).
+    const uploadYmds = w.uploads.map((u) => parseYmd(u)).filter((y): y is string => y !== null);
+    const deliveryAfterDeadline: boolean | "unknown" =
+      uploadYmds.length === 0 ? "unknown" : uploadYmds.some((y) => y > deadlineYmd);
+
     out.push({
       id: `missed_internal_deadline:${w.id}`,
       caseType: "MISSED_INTERNAL_DEADLINE",
@@ -38,6 +45,7 @@ export function detectVictorInternalDeadlineCases(state: PartnerCompanyState, to
       ],
       derivedFacts: [
         { id: "days_late", label: "ימים באיחור", value: daysLate, basis: `${todayYmd} − ${deadlineYmd}` },
+        { id: "delivery_after_deadline", label: "האם קיימת עדות למסירה אחרי הדדליין", value: deliveryAfterDeadline, basis: uploadYmds.length === 0 ? "אין uploads רשומים כלל" : `uploads: ${uploadYmds.join(", ")}` },
       ],
       hypotheses: [],
       ownerRulesApplied: ["INTERNAL_DEADLINES_MATTER"],
@@ -75,8 +83,14 @@ export function detectVictorUnfollowedDeliveryCases(state: PartnerCompanyState):
       facts: [
         { domain: "victor", entityId: w.id, field: "lastUploadAt", value: w.lastUploadAt, label: "lastUploadAt" },
         { domain: "victor", entityId: w.id, field: "ball.code", value: w.ball.code, label: "ball.code" },
+        { domain: "victor", entityId: w.id, field: "projectId", value: w.projectId, label: "projectId" },
       ],
-      derivedFacts: [],
+      // Phase E.2 context (§15) — calibration context, never age-based severity.
+      derivedFacts: [
+        { id: "days_since_delivery", label: "ימים מאז המסירה", value: w.waitingOwnerDays, basis: "today − lastUploadAt (Israel calendar days)" },
+        { id: "has_any_historical_review", label: "האם היה אי-פעם review מתועד", value: w.reviewEvents.length > 0, basis: `reviewEvents.length = ${w.reviewEvents.length}` },
+        { id: "project_linked", label: "מקושר לפרויקט", value: w.projectId !== null, basis: "projectId" },
+      ],
       hypotheses: [
         { id: "may_be_pending_review", statement: "ייתכן שהמסירה עדיין ממתינה לבדיקת הבעלים.", evidenceIds: [] },
       ],

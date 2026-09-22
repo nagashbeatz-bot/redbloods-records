@@ -21,6 +21,24 @@ export function detectProjectDeadlineCases(state: PartnerCompanyState, todayYmd:
     if (deadlineYmd >= todayYmd) continue;
     const daysLate = p.deadline.daysTo !== null ? -p.deadline.daysTo : null;
 
+    // Phase E.2 context (§13) — a proxy only, never a conclusion. If the
+    // project was updated more recently than the deadline itself passed
+    // (daysSinceUpdate < daysLate), SOME update happened after the deadline —
+    // this does not say WHAT changed, and is never converted into severity.
+    const derivedFacts: PartnerCase["derivedFacts"] = daysLate !== null
+      ? [{ id: "days_late", label: "ימים באיחור", value: daysLate, basis: `${todayYmd} − ${deadlineYmd}` }]
+      : [];
+    if (p.daysSinceUpdate !== null) {
+      derivedFacts.push({ id: "days_since_update", label: "ימים מאז עדכון אחרון", value: p.daysSinceUpdate, basis: "today − updated_at" });
+      if (daysLate !== null) {
+        derivedFacts.push({
+          id: "activity_after_deadline", label: "עדות לעדכון אחרי הדדליין",
+          value: p.daysSinceUpdate < daysLate,
+          basis: `daysSinceUpdate (${p.daysSinceUpdate}) < daysLate (${daysLate}) — פרוקסי בלבד, לא טענה על מה השתנה`,
+        });
+      }
+    }
+
     out.push({
       id: `project_deadline_passed:${p.id}`,
       caseType: "PROJECT_DEADLINE_PASSED",
@@ -33,7 +51,7 @@ export function detectProjectDeadlineCases(state: PartnerCompanyState, todayYmd:
         { domain: "projects", entityId: p.id, field: "deadline", value: deadlineYmd, label: "deadline" },
         { domain: "projects", entityId: p.id, field: "status", value: p.status, label: "status" },
       ],
-      derivedFacts: daysLate !== null ? [{ id: "days_late", label: "ימים באיחור", value: daysLate, basis: `${todayYmd} − ${deadlineYmd}` }] : [],
+      derivedFacts,
       hypotheses: [],
       ownerRulesApplied: [],
       workingPrinciplesApplied: [],

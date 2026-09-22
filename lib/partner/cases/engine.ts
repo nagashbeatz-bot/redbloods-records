@@ -17,6 +17,10 @@ import { detectProjectFinanceCases } from "./detectors/finance";
 import { detectReleaseTimingCases } from "./detectors/release";
 import { detectProjectDeadlineCases } from "./detectors/project";
 import { detectChangeDerivedCases } from "./detectors/changeDerived";
+import {
+  detectProposalFollowupCases, detectPaymentDueDateCases, detectShowClientPaymentCases,
+  detectTaskDueDateCases, detectStevenInternalDeadlineCases,
+} from "./detectors/risks";
 import type { PartnerChange } from "../changes/types";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { PartnerCase } from "./types";
@@ -42,6 +46,11 @@ export function buildPartnerCases(input: BuildPartnerCasesInput): PartnerCase[] 
     ...detectProjectFinanceCases(input.state),
     ...detectReleaseTimingCases(input.state, input.today),
     ...detectProjectDeadlineCases(input.state, input.today),
+    ...detectProposalFollowupCases(input.state, input.today),
+    ...detectPaymentDueDateCases(input.state),
+    ...detectShowClientPaymentCases(input.state),
+    ...detectTaskDueDateCases(input.state),
+    ...detectStevenInternalDeadlineCases(input.state),
   ];
   if (input.changes && input.changes.length > 0) {
     cases.push(...detectChangeDerivedCases(input.state, input.changes, input.changeContext ?? null));

@@ -131,12 +131,19 @@ async function main() {
     { caseType: "FINANCE_CONFIGURATION_MISSING", source: "STATE", classification: "INFORMATION", statusNote: "status=NEEDS_CONTEXT" },
     { caseType: "RELEASE_TARGET_DATE_PASSED", source: "STATE", classification: "RISK" },
     { caseType: "PROJECT_DEADLINE_PASSED", source: "STATE", classification: "RISK" },
+    // Phase E.2 (2026-09-22):
+    { caseType: "PROPOSAL_FOLLOWUP_DUE", source: "STATE", classification: "ATTENTION" },
+    { caseType: "PAYMENT_DUE_DATE_PASSED", source: "STATE", classification: "RISK" },
+    { caseType: "SHOW_CLIENT_PAYMENT_OUTSTANDING", source: "STATE", classification: "ATTENTION" },
+    { caseType: "TASK_DUE_DATE_PASSED", source: "STATE", classification: "RISK" },
+    { caseType: "STEVEN_INTERNAL_DEADLINE_PASSED", source: "STATE", classification: "RISK" },
     { caseType: "MONEY_RECEIVED", source: "CHANGE", classification: "OPPORTUNITY" },
     { caseType: "NEW_SHOW_RECORDED", source: "CHANGE", classification: "OPPORTUNITY or INFORMATION (depends on show status: אושרה/בוצע → OPPORTUNITY, else INFORMATION)" },
     { caseType: "PROPOSAL_STATUS_CHANGED", source: "CHANGE", classification: "INFORMATION" },
+    { caseType: "PROPOSAL_CLOSED_WON", source: "CHANGE", classification: "OPPORTUNITY" },
     { caseType: "RELEASE_TARGET_DATE_CHANGED", source: "CHANGE", classification: "INFORMATION" },
   ];
-  console.log(`  Exact catalog size: ${CATALOG.length} (${CATALOG.filter((c) => c.source === "STATE").length} STATE + ${CATALOG.filter((c) => c.source === "CHANGE").length} CHANGE) — corrects prior inconsistent "5 STATE + 4 CHANGE" wording`);
+  console.log(`  Exact catalog size: ${CATALOG.length} (${CATALOG.filter((c) => c.source === "STATE").length} STATE + ${CATALOG.filter((c) => c.source === "CHANGE").length} CHANGE) — Phase E.1 was 7 STATE + 4 CHANGE = 11; Phase E.2 adds 5 STATE + 1 CHANGE = 6 more`);
   for (const entry of CATALOG) {
     const seenCount = cases.filter((c) => c.caseType === entry.caseType).length;
     console.log(`  ${entry.caseType} | source=${entry.source} | classification=${entry.classification}${entry.statusNote ? ` | ${entry.statusNote}` : ""} | seen this run=${seenCount}`);
@@ -152,9 +159,48 @@ async function main() {
   // severity escalation exists to disable), never claimed as "applied".
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n── Owner Rule traceability (§49) ──");
-  console.log(`  INTERNAL_DEADLINES_MATTER applied to ${ruleUse["INTERNAL_DEADLINES_MATTER"] ?? 0} Case(s) (MISSED_INTERNAL_DEADLINE only)`);
-  console.log(`  PROTECT_LABEL_RELEASES applied to ${ruleUse["PROTECT_LABEL_RELEASES"] ?? 0} Case(s) (RELEASE_TARGET_DATE_PASSED + RELEASE_TARGET_DATE_CHANGED)`);
-  console.log(`  STALE_IS_NOT_AUTOMATICALLY_URGENT: NOT present in any ownerRulesApplied array in the E.1 catalog (structural default only — never claimed "applied" in code)`);
+  console.log(`  INTERNAL_DEADLINES_MATTER applied to ${ruleUse["INTERNAL_DEADLINES_MATTER"] ?? 0} Case(s) (MISSED_INTERNAL_DEADLINE, STEVEN_INTERNAL_DEADLINE_PASSED)`);
+  console.log(`  PROTECT_LABEL_RELEASES applied to ${ruleUse["PROTECT_LABEL_RELEASES"] ?? 0} Case(s) (RELEASE_TARGET_DATE_PASSED + RELEASE_TARGET_DATE_CHANGED, now gated on labelArtistId being ID-confirmed — Phase E.2 fix)`);
+  console.log(`  STALE_IS_NOT_AUTOMATICALLY_URGENT: NOT present in any ownerRulesApplied array in the catalog (structural default only — never claimed "applied" in code)`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Phase E.2 calibration — one section per new Case type (§54). Counts,
+  // age/date distribution, subject status breakdown, relation quality,
+  // unknown count. No private names.
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n── Phase E.2 calibration ──");
+  {
+    const followup = cases.filter((c) => c.caseType === "PROPOSAL_FOLLOWUP_DUE");
+    const daysPast = followup.map((c) => c.derivedFacts.find((d) => d.id === "days_past")?.value as number).filter((n) => typeof n === "number").sort((a, b) => a - b);
+    console.log(`  PROPOSAL_FOLLOWUP_DUE: count=${followup.length} | newest=${daysPast[0] ?? "(none)"} oldest=${daysPast[daysPast.length - 1] ?? "(none)"} median=${daysPast.length ? daysPast[Math.floor(daysPast.length / 2)] : "(none)"} | relationQuality=weak-none (0 expected — this catalog is ID-only) | unknowns=${followup.reduce((s, c) => s + c.unknowns.length, 0)}`);
+  }
+  {
+    const pd = cases.filter((c) => c.caseType === "PAYMENT_DUE_DATE_PASSED");
+    const daysOverdue = pd.map((c) => c.derivedFacts.find((d) => d.id === "days_overdue")?.value as number).filter((n) => typeof n === "number").sort((a, b) => a - b);
+    console.log(`  PAYMENT_DUE_DATE_PASSED: count=${pd.length} | newest=${daysOverdue[0] ?? "(none)"} oldest=${daysOverdue[daysOverdue.length - 1] ?? "(none)"} median=${daysOverdue.length ? daysOverdue[Math.floor(daysOverdue.length / 2)] : "(none)"} | unknowns=${pd.reduce((s, c) => s + c.unknowns.length, 0)}`);
+  }
+  {
+    const show = cases.filter((c) => c.caseType === "SHOW_CLIENT_PAYMENT_OUTSTANDING");
+    const byPaymentStatus: Record<string, number> = {};
+    for (const c of show) { const ps = c.facts.find((f) => f.field === "paymentStatus")?.value; if (typeof ps === "string") byPaymentStatus[ps] = (byPaymentStatus[ps] ?? 0) + 1; }
+    console.log(`  SHOW_CLIENT_PAYMENT_OUTSTANDING: count=${show.length} | paymentStatus breakdown: ${fmt(byPaymentStatus)} | unknowns=${show.reduce((s, c) => s + c.unknowns.length, 0)} (DJ/artist payout unknown by design — see report)`);
+  }
+  {
+    const task = cases.filter((c) => c.caseType === "TASK_DUE_DATE_PASSED");
+    const daysOverdue = task.map((c) => c.derivedFacts.find((d) => d.id === "days_overdue")?.value as number).filter((n) => typeof n === "number").sort((a, b) => a - b);
+    const byRelatedType: Record<string, number> = {};
+    for (const c of task) { const rt = c.facts.find((f) => f.field === "relatedType")?.value; if (typeof rt === "string") byRelatedType[rt] = (byRelatedType[rt] ?? 0) + 1; }
+    console.log(`  TASK_DUE_DATE_PASSED: count=${task.length} | newest=${daysOverdue[0] ?? "(none)"} oldest=${daysOverdue[daysOverdue.length - 1] ?? "(none)"} median=${daysOverdue.length ? daysOverdue[Math.floor(daysOverdue.length / 2)] : "(none)"} | by relatedType: ${fmt(byRelatedType)}`);
+  }
+  {
+    const steven = cases.filter((c) => c.caseType === "STEVEN_INTERNAL_DEADLINE_PASSED");
+    const daysLate = steven.map((c) => c.derivedFacts.find((d) => d.id === "days_late")?.value as number).filter((n) => typeof n === "number").sort((a, b) => a - b);
+    console.log(`  STEVEN_INTERNAL_DEADLINE_PASSED: count=${steven.length} | newest=${daysLate[0] ?? "(none)"} oldest=${daysLate[daysLate.length - 1] ?? "(none)"} median=${daysLate.length ? daysLate[Math.floor(daysLate.length / 2)] : "(none)"} | unknowns=${steven.reduce((s, c) => s + c.unknowns.length, 0)} (ball unknown by design)`);
+  }
+  {
+    const won = cases.filter((c) => c.caseType === "PROPOSAL_CLOSED_WON");
+    console.log(`  PROPOSAL_CLOSED_WON (CHANGE-derived — 0 expected unless a change comparison ran this session): count=${won.length}`);
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // Finance false-positive check (§62, the exact bug this hardening block

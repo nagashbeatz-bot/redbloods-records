@@ -84,7 +84,7 @@ function buildEyesRaw(): PartnerEyesRaw {
     artistBalanceEntries: [{ id: "be1", artistId: "la1", entryType: "הכנסות", amount: 500, entryDate: "2026-08-01" }],
     clips: [{ id: "clip1", title: "קליפ", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" }],
     sessions: [{ id: "se1", projectId: "p1", showId: null, date: "2026-09-23", startTime: "18:00", endTime: "20:00", status: "מתוכנן", sessionType: "סשן" }],
-    shows: [{ id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "לא שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null }],
+    shows: [{ id: "sh1", name: "הופעה", status: "בוצע", paymentStatus: "לא שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: "c1", bookerClientId: null, price: 1000 }],
     proposalsFull: [{ id: "pr1", clientId: "c1", clientName: "אמן בדיקה", linkedProjectId: "p1", title: "הצעה", amount: 3000, currency: "₪", status: "נסגר", followupDate: null, sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" }],
     releasesFull: [{ projectId: "p2", labelArtistId: "la1", stage: "הפקה", targetDate: "2026-10-15", stageEnteredAt: "2026-09-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" }],
     transactions: [{ id: "tx1", projectId: "p1", type: "income", amount: 1000, currency: "₪", status: "צפוי", date: "2026-09-10", expenseScope: "כללי", category: "", createdAt: "2026-09-10T10:00:00Z" }],

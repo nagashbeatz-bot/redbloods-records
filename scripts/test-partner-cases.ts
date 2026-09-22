@@ -131,6 +131,10 @@ console.log("no fabricated Cases from empty domains");
 {
   const emptyCooRaw = buildCooRaw();
   emptyCooRaw.projects = []; emptyCooRaw.victor = { stuckAfterDays: 5, works: [] }; emptyCooRaw.transactions = []; emptyCooRaw.financeSettings = []; emptyCooRaw.releases = { labelProjectsTotal: 0, rows: [] };
+  // t1 is the base fixture's Victor auto-followup task (linkedTaskId="t1" on v1) — with victor
+  // cleared above, the cross-reference that sets TaskFact.derivedFrom would break, making t1 look
+  // like a standalone overdue task to detectTaskDueDateCases. Clear it too for a genuinely empty scenario.
+  emptyCooRaw.tasks = [];
   const emptyEyes = buildEyesRaw(); emptyEyes.releasesFull = []; emptyEyes.transactions = [];
   const emptyCoo = computeCoo(emptyCooRaw, new Date(`${TODAY}T06:00:00Z`));
   const emptyState = assemblePartnerCompanyState(emptyCoo, emptyEyes);
@@ -334,7 +338,7 @@ console.log("Change Cases: became-received -> MONEY_RECEIVED; unrelated field ch
 console.log("Change Cases: new show -> safe OPPORTUNITY/INFORMATION Case, never overstated as 'booked' from existence alone");
 {
   const stateWithShow = structuredClone(state);
-  stateWithShow.domains.shows.data = { total: 1, withDjClientId: 0, byStatus: {}, cooVisible: { upcoming: 0, doneUnpaid: 0, note: "" }, items: [{ id: "sh1", name: "הופעה", status: "ליד חדש", paymentStatus: "לא שולם", dateYmd: null, djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null }] };
+  stateWithShow.domains.shows.data = { total: 1, withDjClientId: 0, byStatus: {}, cooVisible: { upcoming: 0, doneUnpaid: 0, note: "" }, items: [{ id: "sh1", name: "הופעה", status: "ליד חדש", paymentStatus: "לא שולם", dateYmd: null, djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null, price: 1000 }] };
   const leadChange: PartnerChange[] = [{ id: "c3", domain: "shows", entityType: "show", entityId: "sh1", kind: "ENTITY_APPEARED", field: null, before: null, after: null, observedBetween: { from: null, to: TODAY }, sourceOccurredAt: null, epistemicType: "FACT", evidence: [] }];
   const leadCases = buildPartnerCases({ state: stateWithShow, today: TODAY, changes: leadChange, changeContext: { previousCapturedAt: null, currentCapturedAt: TODAY } });
   const leadShowCase = leadCases.find((c) => c.id === "new_show_recorded:sh1");
@@ -346,13 +350,24 @@ console.log("Change Cases: new show -> safe OPPORTUNITY/INFORMATION Case, never 
   check("a CONFIRMED ('אושרה') new show is classified OPPORTUNITY", confirmedCases.find((c) => c.id === "new_show_recorded:sh1")?.classification, "OPPORTUNITY");
 }
 
-console.log("Change Cases: proposal status changed -> INFORMATION Case, no won/lost inference");
+console.log("Change Cases: proposal status changed (non-נסגר) -> INFORMATION Case, no won/lost inference");
 {
-  const proposalChange: PartnerChange[] = [{ id: "c4", domain: "proposals", entityType: "proposal", entityId: "pr1", kind: "STATUS_CHANGED", field: "status", before: "נשלחה", after: "נסגר", observedBetween: { from: null, to: TODAY }, sourceOccurredAt: null, epistemicType: "FACT", evidence: [] }];
+  const proposalChange: PartnerChange[] = [{ id: "c4", domain: "proposals", entityType: "proposal", entityId: "pr1", kind: "STATUS_CHANGED", field: "status", before: "נשלחה", after: "צריך פולואפ", observedBetween: { from: null, to: TODAY }, sourceOccurredAt: null, epistemicType: "FACT", evidence: [] }];
   const propCases = buildPartnerCases({ state, today: TODAY, changes: proposalChange, changeContext: { previousCapturedAt: null, currentCapturedAt: TODAY } });
   const propCase = propCases.find((c) => c.id === "proposal_status_changed:pr1");
   check("status change recorded as INFORMATION", propCase?.classification, "INFORMATION");
   ok("no won/lost/success/quality inference anywhere in the Case's human-facing text or evidence", !propCase!.summaryHe.match(/won|lost|success|quality|זכה|הפסיד/i) && propCase!.facts.every((f) => !/won|lost|success|quality/i.test(String(f.value))));
+  ok("no PROPOSAL_CLOSED_WON alongside it (only fires specifically for after==='נסגר')", !propCases.some((c) => c.caseType === "PROPOSAL_CLOSED_WON"));
+}
+
+console.log("Change Cases: proposal status changed TO נסגר -> PROPOSAL_CLOSED_WON, OPPORTUNITY, never generic PROPOSAL_STATUS_CHANGED for the same change");
+{
+  const wonChange: PartnerChange[] = [{ id: "c4b", domain: "proposals", entityType: "proposal", entityId: "pr1", kind: "STATUS_CHANGED", field: "status", before: "ממתין לתשובה", after: "נסגר", observedBetween: { from: null, to: TODAY }, sourceOccurredAt: null, epistemicType: "FACT", evidence: [] }];
+  const wonCases = buildPartnerCases({ state, today: TODAY, changes: wonChange, changeContext: { previousCapturedAt: null, currentCapturedAt: TODAY } });
+  const wonCase = wonCases.find((c) => c.id === "proposal_closed_won:pr1");
+  ok("PROPOSAL_CLOSED_WON fires", !!wonCase && wonCase.classification === "OPPORTUNITY" && wonCase.createdFrom === "CHANGE");
+  ok("no duplicate generic PROPOSAL_STATUS_CHANGED for the same underlying change", !wonCases.some((c) => c.id === "proposal_status_changed:pr1"));
+  ok("no explicit sale/won wording beyond the neutral summary (no 'מכירה'/'victory' framing)", !wonCase!.summaryHe.match(/מכירה|victory|win\b/i));
 }
 
 console.log("no duplicate Case per the same underlying change");
@@ -377,13 +392,225 @@ console.log("STALE_IS_NOT_AUTOMATICALLY_URGENT: age alone never escalates classi
   ok("no 'urgent'/'emergency'/'critical' wording appears anywhere", !JSON.stringify(oldCase).match(/urgent|emergency|critical|דחוף/i));
 }
 
+console.log("Phase E.2: the same staleness rule holds for every new age/date-based detector (proposal followup, payment due date, task due date, Steven deadline)");
+{
+  const veryOld = "2026-01-01"; // ~8-9 months before TODAY, vs a few days for the "normal" fixtures below
+  const cooPatch: Partial<CooRawInput> = {
+    projects: [{ id: "so1", name: "פרויקט ישן", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false }],
+    victor: { stuckAfterDays: 5, works: [] },
+    tasks: [
+      { id: "so-task-recent", title: "משימה", status: "פתוח", dueDate: "2026-09-15", relatedType: "client", relatedId: "c1", createdAt: "2026-09-01T09:00:00Z" },
+      { id: "so-task-old", title: "משימה", status: "פתוח", dueDate: veryOld, relatedType: "client", relatedId: "c1", createdAt: "2026-01-01T09:00:00Z" },
+    ] as CooRawInput["tasks"],
+    steven: [
+      { id: "so-sw-recent", projectId: "so1", title: "מיקס", status: "פעיל", uiStatus: "פעיל", agreedPrice: 0, currency: "₪", amountPaid: 0, sentDate: "2026-09-01", internalDeadline: "2026-09-15", hasMixVersion: false, lastUploadAt: null },
+      { id: "so-sw-old", projectId: "so1", title: "מיקס", status: "פעיל", uiStatus: "פעיל", agreedPrice: 0, currency: "₪", amountPaid: 0, sentDate: "2026-01-01", internalDeadline: veryOld, hasMixVersion: false, lastUploadAt: null },
+    ] as unknown as CooRawInput["steven"],
+    releases: { labelProjectsTotal: 0, rows: [] }, financeSettings: [], transactions: [],
+  };
+  const eyesPatch: Partial<PartnerEyesRaw> = {
+    transactions: [], shows: [], releasesFull: [],
+    proposalsFull: [
+      { id: "so-pr-recent", clientId: "c1", clientName: "לקוח", linkedProjectId: null, title: "הצעה", amount: 1000, currency: "₪", status: "ממתין לתשובה", followupDate: "2026-09-15", sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+      { id: "so-pr-old", clientId: "c1", clientName: "לקוח", linkedProjectId: null, title: "הצעה", amount: 1000, currency: "₪", status: "ממתין לתשובה", followupDate: veryOld, sentDate: "2026-01-01", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
+    ],
+  };
+  const st = scenarioState(cooPatch, eyesPatch);
+  const soCases = buildPartnerCases({ state: st, today: TODAY });
+  const soById = (id: string) => soCases.find((c) => c.id === id);
+  const pairs: Array<[string, string]> = [
+    ["proposal_followup_due:so-pr-recent", "proposal_followup_due:so-pr-old"],
+    ["task_due_date_passed:so-task-recent", "task_due_date_passed:so-task-old"],
+    ["steven_internal_deadline_passed:so-sw-recent", "steven_internal_deadline_passed:so-sw-old"],
+  ];
+  for (const [recentId, oldId] of pairs) {
+    const recent = soById(recentId), old = soById(oldId);
+    ok(`${oldId}: same classification as the recent one despite being ~8 months late (no age-based escalation)`, !!recent && !!old && recent.classification === old.classification);
+    ok(`${oldId}: no urgent/emergency/critical wording despite the large age gap`, !!old && !JSON.stringify(old).match(/urgent|emergency|critical|דחוף/i));
+  }
+}
+
 // ── Victor auto-task dedupe ──
 console.log("Victor auto-followup task never produces an independent duplicate Case on top of the deadline Case");
 {
-  // v1 already has linkedTaskId="t1", and t1's own due_date is the SAME underlying business fact
-  // (the Victor internal deadline) — the E.1 catalog has NO task-based detector at all, so this
-  // is structurally guaranteed; asserted explicitly so a future task detector can't silently break it.
+  // v1 has linkedTaskId="t1", and t1's own due_date is the SAME underlying business fact (the
+  // Victor internal deadline). Phase E.2's detectTaskDueDateCases skips any task whose
+  // TaskFact.derivedFrom is set (the COO's own cross-reference from linkedTaskId) — t1 must NOT
+  // also produce TASK_DUE_DATE_PASSED.
   ok("exactly one Case exists for v1 (MISSED_INTERNAL_DEADLINE only, no second Case from t1)", cases.filter((c) => c.subjectId === "v1" || c.subjectId === "t1").length === 1);
+  ok("no TASK_DUE_DATE_PASSED Case for t1 specifically", !byId("task_due_date_passed:t1"));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Phase E.2 — new objective-risk detectors (Proposals, Payment due dates,
+// Shows, Tasks, Steven). Each scenario builds its own minimal state (never
+// disturbing the shared `state`/`cases` above) via the SAME real
+// computeCoo()+assemblePartnerCompanyState() pipeline.
+// ══════════════════════════════════════════════════════════════════════════
+
+function scenarioState(cooPatch: Partial<CooRawInput>, eyesPatch: Partial<PartnerEyesRaw>): PartnerCompanyState {
+  const raw = buildCooRaw();
+  Object.assign(raw, cooPatch);
+  const eyes = buildEyesRaw();
+  Object.assign(eyes, eyesPatch);
+  const coo = computeCoo(raw, new Date(`${TODAY}T06:00:00Z`));
+  return assemblePartnerCompanyState(coo, eyes);
+}
+
+// ── PROPOSAL_FOLLOWUP_DUE ──
+console.log("Proposal follow-up: non-terminal + past follow-up date -> Case; future -> none; terminal -> none; missing date -> none");
+{
+  const proposalsFull = [
+    { id: "pr-due", clientId: "c1", clientName: "לקוח א", linkedProjectId: null, title: "הצעה", amount: 3000, currency: "₪", status: "ממתין לתשובה", followupDate: "2026-09-15", sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+    { id: "pr-future", clientId: "c1", clientName: "לקוח א", linkedProjectId: null, title: "הצעה", amount: 3000, currency: "₪", status: "ממתין לתשובה", followupDate: "2026-12-01", sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+    { id: "pr-terminal-closed", clientId: "c1", clientName: "לקוח א", linkedProjectId: "p1", title: "הצעה", amount: 3000, currency: "₪", status: "נסגר", followupDate: "2026-09-01", sentDate: "2026-08-01", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+    { id: "pr-terminal-lost", clientId: "c1", clientName: "לקוח א", linkedProjectId: null, title: "הצעה", amount: 3000, currency: "₪", status: "לא נסגר", followupDate: "2026-09-01", sentDate: "2026-08-01", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+    { id: "pr-nodate", clientId: "c1", clientName: "לקוח א", linkedProjectId: null, title: "הצעה", amount: 3000, currency: "₪", status: "ממתין לתשובה", followupDate: null, sentDate: "2026-09-01", createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+    { id: "pr-comeback", clientId: "c1", clientName: "לקוח א", linkedProjectId: null, title: "הצעה", amount: 3000, currency: "₪", status: "לחזור בעתיד", followupDate: "2026-09-10", sentDate: "2026-08-01", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" },
+  ];
+  const st = scenarioState({}, { proposalsFull });
+  const pCases = buildPartnerCases({ state: st, today: TODAY });
+  const pById = (id: string) => pCases.find((c) => c.id === id);
+  ok("pr-due (ממתין לתשובה, followup 2026-09-15 < today) -> PROPOSAL_FOLLOWUP_DUE, ATTENTION", !!pById("proposal_followup_due:pr-due") && pById("proposal_followup_due:pr-due")!.classification === "ATTENTION");
+  ok("pr-future (followup in the future) -> no Case", !pById("proposal_followup_due:pr-future"));
+  ok("pr-terminal-closed (status=נסגר, terminal) -> no Case despite a past followup date", !pById("proposal_followup_due:pr-terminal-closed"));
+  ok("pr-terminal-lost (status=לא נסגר, terminal) -> no Case", !pById("proposal_followup_due:pr-terminal-lost"));
+  ok("pr-nodate (no followup date) -> no Case", !pById("proposal_followup_due:pr-nodate"));
+  ok("pr-comeback (לחזור בעתיד, non-terminal, past followup) -> Case (conservative: only נסגר/לא נסגר are terminal, per production-proven set)", !!pById("proposal_followup_due:pr-comeback"));
+  ok("no client-blame wording anywhere ('מתעלם'/ignoring)", !pCases.some((c) => /מתעלם|ignoring/i.test(c.summaryHe)));
+}
+
+// ── PAYMENT_DUE_DATE_PASSED ──
+console.log("Payment due date: real outstanding + overdue expected row -> Case; fully paid despite a stale overdue row -> none; future date -> none; overpaid -> none; missing agreedPrice -> none");
+{
+  const cooPatch: Partial<CooRawInput> = {
+    projects: [
+      { id: "pd1", name: "יתרה עם תאריך שעבר", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false },
+      { id: "pd2", name: "שולם במלואו למרות שורת צפוי ישנה", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false },
+      { id: "pd3", name: "תאריך צפוי עתידי", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false },
+      { id: "pd4", name: "ללא מחיר מוסכם", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false },
+    ] as CooRawInput["projects"],
+    victor: { stuckAfterDays: 5, works: [] }, tasks: [], releases: { labelProjectsTotal: 0, rows: [] },
+    financeSettings: [
+      { projectId: "pd1", agreedPrice: 2000, currency: "₪", financeException: false },
+      { projectId: "pd2", agreedPrice: 1500, currency: "₪", financeException: false },
+      { projectId: "pd3", agreedPrice: 2000, currency: "₪", financeException: false },
+      // pd4 deliberately unpriced
+    ],
+    transactions: [
+      // pd1: 500 received, 500 more expected with a PAST date -> real outstanding (1500) + overdue date -> Case
+      { id: "pd1-paid", projectId: "pd1", type: "income", amount: 500, currency: "₪", status: "התקבל", date: "2026-09-01", expenseScope: "כללי", category: "" },
+      { id: "pd1-exp", projectId: "pd1", type: "income", amount: 500, currency: "₪", status: "צפוי", date: "2026-09-05", expenseScope: "כללי", category: "" },
+      // pd2: fully paid via a DIFFERENT transaction, but still carries a stale overdue "צפוי" row -> no Case (actual outstanding is 0)
+      { id: "pd2-paid", projectId: "pd2", type: "income", amount: 1500, currency: "₪", status: "התקבל", date: "2026-09-01", expenseScope: "כללי", category: "" },
+      { id: "pd2-exp", projectId: "pd2", type: "income", amount: 200, currency: "₪", status: "צפוי", date: "2026-09-05", expenseScope: "כללי", category: "" },
+      // pd3: real outstanding, but the expected row's date is in the FUTURE -> no Case yet
+      { id: "pd3-exp", projectId: "pd3", type: "income", amount: 500, currency: "₪", status: "צפוי", date: "2026-12-01", expenseScope: "כללי", category: "" },
+      // pd4: no agreedPrice at all, even with an overdue expected row -> no Case (UNKNOWN, never 0)
+      { id: "pd4-exp", projectId: "pd4", type: "income", amount: 500, currency: "₪", status: "צפוי", date: "2026-09-05", expenseScope: "כללי", category: "" },
+    ],
+  };
+  const st = scenarioState(cooPatch, { transactions: [], releasesFull: [] });
+  const pdCases = buildPartnerCases({ state: st, today: TODAY });
+  const pdById = (id: string) => pdCases.find((c) => c.id === id);
+  const pd1 = pdById("payment_due_date_passed:pd1");
+  ok("pd1: real outstanding + overdue expected date -> PAYMENT_DUE_DATE_PASSED, RISK", !!pd1 && pd1.classification === "RISK");
+  check("pd1 actual_outstanding derived fact = 1500", pd1?.derivedFacts.find((d) => d.id === "actual_outstanding")?.value, 1500);
+  ok("pd2: fully paid (actual outstanding 0) despite a stale overdue 'צפוי' row -> no Case", !pdById("payment_due_date_passed:pd2"));
+  ok("pd3: expected date is in the future -> no Case", !pdById("payment_due_date_passed:pd3"));
+  ok("pd4: agreedPrice missing entirely -> no Case (UNKNOWN never treated as debt)", !pdById("payment_due_date_passed:pd4"));
+  ok("PROJECT_PAYMENT_OUTSTANDING (debt exists) and PAYMENT_DUE_DATE_PASSED (a date passed) can coexist for pd1 without merging facts", !!pdById("project_payment_outstanding:pd1") && !!pd1);
+}
+
+// ── SHOW_CLIENT_PAYMENT_OUTSTANDING ──
+console.log("Show client payment: happened + unpaid -> Case; paid -> none; cancelled -> none; not yet happened -> none; no price -> none");
+{
+  const shows = [
+    { id: "sh-unpaid", name: "הופעה", status: "בוצע", paymentStatus: "לא שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null, price: 2000 },
+    { id: "sh-paid", name: "הופעה", status: "בוצע", paymentStatus: "שולם", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null, price: 2000 },
+    { id: "sh-cancelled-pay", name: "הופעה", status: "בוצע", paymentStatus: "בוטל", date: "2026-09-01", djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null, price: 2000 },
+    { id: "sh-not-happened", name: "הופעה", status: "אושרה", paymentStatus: "לא שולם", date: "2026-12-01", djClientId: null, djConfirmationStatus: null, artistClientId: null, bookerClientId: null, price: 2000 },
+    { id: "sh-no-price", name: "הופעה", status: "בוצע", paymentStatus: "לא שולם", date: "2026-09-01", djClientId: "dj1", djConfirmationStatus: "אושר", artistClientId: null, bookerClientId: null, price: 0 },
+  ];
+  const st = scenarioState({}, { shows });
+  const shCases = buildPartnerCases({ state: st, today: TODAY });
+  const shById = (id: string) => shCases.find((c) => c.id === id);
+  const unpaid = shById("show_client_payment_outstanding:sh-unpaid");
+  ok("sh-unpaid: happened + not paid + priced -> Case, ATTENTION", !!unpaid && unpaid.classification === "ATTENTION");
+  ok("sh-paid: client already paid -> no Case", !shById("show_client_payment_outstanding:sh-paid"));
+  ok("sh-cancelled-pay: payment status is בוטל -> no Case", !shById("show_client_payment_outstanding:sh-cancelled-pay"));
+  ok("sh-not-happened: status is not בוצע -> no Case", !shById("show_client_payment_outstanding:sh-not-happened"));
+  ok("sh-no-price: price=0 -> no Case (nothing objective to claim)", !shById("show_client_payment_outstanding:sh-no-price"));
+  ok("DJ fields present (djClientId/djConfirmationStatus) never affect the client-payment Case (structural — the detector never reads them)", !!shById("show_client_payment_outstanding:sh-unpaid"));
+}
+
+// ── TASK_DUE_DATE_PASSED ──
+// NOTE on "completed -> none": lib/coo/readers.ts calls listTasks({status:"פתוח"}) —
+// "open-only" is enforced by the READER's own query, before computeCoo ever sees a
+// row (unlike ProjectFact.active, which IS computed inside facts.ts from p.status).
+// A CooRawInput fixture built directly (bypassing the reader, as every test here
+// does) cannot exercise that reader-level filter — so it is not re-tested at this
+// layer; asserting it here would test something this layer structurally can't see.
+console.log("Task due date: open + overdue + standalone -> Case; future -> none; Victor-derived auto-task -> deduped");
+{
+  const cooPatch: Partial<CooRawInput> = {
+    tasks: [
+      { id: "tk-standalone", title: "משימה עצמאית", status: "פתוח", dueDate: "2026-09-10", relatedType: "client", relatedId: "c1", createdAt: "2026-09-01T09:00:00Z" },
+      { id: "tk-future", title: "משימה עתידית", status: "פתוח", dueDate: "2026-12-01", relatedType: "client", relatedId: "c1", createdAt: "2026-09-01T09:00:00Z" },
+    ] as CooRawInput["tasks"],
+    victor: { stuckAfterDays: 5, works: [] }, projects: [], releases: { labelProjectsTotal: 0, rows: [] }, financeSettings: [], transactions: [],
+  };
+  const st = scenarioState(cooPatch, { transactions: [], releasesFull: [] });
+  const tkCases = buildPartnerCases({ state: st, today: TODAY });
+  const tkById = (id: string) => tkCases.find((c) => c.id === id);
+  const standalone = tkById("task_due_date_passed:tk-standalone");
+  ok("tk-standalone: open + overdue + no Victor link -> Case, RISK", !!standalone && standalone.classification === "RISK");
+  ok("tk-future: due date in the future -> no Case", !tkById("task_due_date_passed:tk-future"));
+  // t1 (shared main state) IS Victor-derived (derivedFrom set) and must never duplicate MISSED_INTERNAL_DEADLINE.
+  ok("t1 (Victor auto-followup task, shared main state) -> no TASK_DUE_DATE_PASSED (dedup, re-asserted here)", !byId("task_due_date_passed:t1"));
+}
+
+// ── STEVEN_INTERNAL_DEADLINE_PASSED ──
+console.log("Steven internal deadline: open + passed -> Case; future -> none; no deadline -> none");
+{
+  const cooPatch: Partial<CooRawInput> = {
+    steven: [
+      { id: "sw-late", projectId: "p1", title: "מיקס", status: "פעיל", uiStatus: "פעיל", agreedPrice: 0, currency: "₪", amountPaid: 0, sentDate: "2026-09-01", internalDeadline: "2026-09-10", hasMixVersion: false, lastUploadAt: null },
+      { id: "sw-future", projectId: "p2", title: "מיקס", status: "פעיל", uiStatus: "פעיל", agreedPrice: 0, currency: "₪", amountPaid: 0, sentDate: "2026-09-01", internalDeadline: "2026-12-01", hasMixVersion: false, lastUploadAt: null },
+      { id: "sw-nodeadline", projectId: "p3", title: "מיקס", status: "פעיל", uiStatus: "פעיל", agreedPrice: 0, currency: "₪", amountPaid: 0, sentDate: "2026-09-01", internalDeadline: null, hasMixVersion: false, lastUploadAt: null },
+    ] as unknown as CooRawInput["steven"],
+  };
+  const st = scenarioState(cooPatch, {});
+  const swCases = buildPartnerCases({ state: st, today: TODAY });
+  const swById = (id: string) => swCases.find((c) => c.id === id);
+  const late = swById("steven_internal_deadline_passed:sw-late");
+  ok("sw-late: open + internalDeadline passed -> Case, RISK, INTERNAL_DEADLINES_MATTER applied", !!late && late.classification === "RISK" && late.ownerRulesApplied.includes("INTERNAL_DEADLINES_MATTER"));
+  ok("sw-future: deadline in the future -> no Case", !swById("steven_internal_deadline_passed:sw-future"));
+  ok("sw-nodeadline: no internalDeadline -> no Case", !swById("steven_internal_deadline_passed:sw-nodeadline"));
+  ok("no 'Steven owes'/'owner owes' claim anywhere in the Case (only the passed deadline)", !!late && !/owes|חייב/i.test(late.summaryHe) && late.unknowns.length > 0);
+}
+
+// ── RELEASE PROTECT_LABEL_RELEASES gating (Phase E.2 fix) ──
+console.log("PROTECT_LABEL_RELEASES is attached ONLY when labelArtistId is ID-confirmed — never from an ambiguous/missing relation");
+{
+  const cooPatch: Partial<CooRawInput> = {
+    projects: [{ id: "rp1", name: "פרויקט עם release אך ללא labelArtistId", artist: "א", status: "בעבודה", deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: TODAY, isHidden: false }],
+    victor: { stuckAfterDays: 5, works: [] }, tasks: [], financeSettings: [], transactions: [],
+    releases: { labelProjectsTotal: 0, rows: [] },
+  };
+  const eyesPatch: Partial<PartnerEyesRaw> = {
+    transactions: [], shows: [], proposalsFull: [],
+    releasesFull: [{ projectId: "rp1", labelArtistId: null, stage: "הפקה", targetDate: "2026-09-01", stageEnteredAt: "2026-08-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" }],
+  };
+  const st = scenarioState(cooPatch, eyesPatch);
+  const rpCases = buildPartnerCases({ state: st, today: TODAY });
+  const rp1 = rpCases.find((c) => c.id === "release_target_date_passed:rp1");
+  ok("Case still fires (objective passed-date fact stands regardless of label confirmation)", !!rp1);
+  check("PROTECT_LABEL_RELEASES is NOT attached when labelArtistId is null", rp1?.ownerRulesApplied, []);
+  ok("unknowns explains why (labelArtistId not confirmed)", !!rp1 && rp1.unknowns.length > 0);
+
+  // Control: the shared main state's p5 DOES have labelArtistId="la1" -> rule stays attached (no regression).
+  check("p5 (shared main state, labelArtistId confirmed) still gets PROTECT_LABEL_RELEASES", byId("release_target_date_passed:p5")?.ownerRulesApplied, ["PROTECT_LABEL_RELEASES"]);
 }
 
 // ── Explainability ──
@@ -423,6 +650,11 @@ console.log("no Push/Cron/UI/unapproved-scoring vocabulary anywhere");
 ok("no cron/push import", Object.values(casesSrc).every((s) => !/node-cron|lib\/push|web-push/.test(s)));
 ok("no numeric risk/confidence/health score field anywhere", Object.values(casesSrc).every((s) => !/riskScore|confidenceScore|healthScore|\bscore\s*:\s*number/.test(s)));
 ok("no P0/P1/P2/P3 COO priority tier vocabulary used as actual code (a comment explaining the exclusion is fine)", Object.values(casesSrc).every((s) => !/\bP0\b|\bP1\b|\bP2\b|\bP3\b/.test(stripComments(s))));
+
+console.log("Phase E.2 §51-52: no client/artist scoring vocabulary anywhere in the Case layer (static check)");
+ok("no HIGH_VALUE_CLIENT / REPEAT_CLIENT / GROWING_CLIENT / UPSELL_CLIENT / BAD_CLIENT anywhere", Object.values(casesSrc).every((s) => !/HIGH_VALUE_CLIENT|REPEAT_CLIENT|GROWING_CLIENT|UPSELL_CLIENT|BAD_CLIENT/.test(s)));
+ok("no INVEST_MORE / INVEST_LESS / STRONG_ARTIST / WEAK_ARTIST anywhere", Object.values(casesSrc).every((s) => !/INVEST_MORE|INVEST_LESS|STRONG_ARTIST|WEAK_ARTIST/.test(s)));
+ok("no caseType in the live catalog resembles client/artist scoring", cases.every((c) => !/CLIENT_(VALUE|SCORE)|ARTIST_(VALUE|SCORE|INVEST)/.test(c.caseType)));
 
 console.log("no portal file imports lib/partner/cases");
 ok("isolation holds", (() => {
