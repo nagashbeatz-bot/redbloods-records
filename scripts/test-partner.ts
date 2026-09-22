@@ -124,15 +124,17 @@ ok("GENTLE_CHALLENGE_BY_DEFAULT explicitly says the Partner does not block the o
 })());
 
 console.log("engine constraints (static checks)");
-ok("no LLM / AI provider anywhere in lib/partner", (() => {
+ok("no LLM / AI provider anywhere in lib/partner (Charter files only — eyes/ has its own static checks in test-partner-eyes.ts)", (() => {
   const fs = require("node:fs"); const path = require("node:path");
   const dir = path.join(__dirname, "..", "lib", "partner");
-  return fs.readdirSync(dir).every((f: string) => !/openai|anthropic|groq|gpt-|claude-/i.test(fs.readFileSync(path.join(dir, f), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")));
+  const files = fs.readdirSync(dir).filter((f: string) => fs.statSync(path.join(dir, f)).isFile());
+  return files.every((f: string) => !/openai|anthropic|groq|gpt-|claude-/i.test(fs.readFileSync(path.join(dir, f), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")));
 })());
-ok("no external HTTP / DB write verb / Supabase import anywhere in lib/partner", (() => {
+ok("no external HTTP / DB write verb / Supabase import anywhere in lib/partner Charter files", (() => {
   const fs = require("node:fs"); const path = require("node:path");
   const dir = path.join(__dirname, "..", "lib", "partner");
-  return fs.readdirSync(dir).every((f: string) => {
+  const files = fs.readdirSync(dir).filter((f: string) => fs.statSync(path.join(dir, f)).isFile());
+  return files.every((f: string) => {
     const src = fs.readFileSync(path.join(dir, f), "utf8");
     return !/\bfetch\(|axios|XMLHttpRequest|\.(insert|update|upsert|delete|rpc)\(|lib\/supabase|-store"/.test(src);
   });
