@@ -83,6 +83,8 @@ function makeSignal(
     tierCtx: TierCtx; sort: number; klass?: keyof CooConfig["sortClass"];
     /** Ambiguous evidence: the tier never goes above this, and we say why. */
     cap?: { tier: Tier; reason: string };
+    hypotheses?: string[];
+    detail?: Rich;
   },
 ): Signal {
   const rule = (c.cfg.tiers as Record<string, TierRule>)[p.type];
@@ -96,6 +98,8 @@ function makeSignal(
     id: `${p.type}:${p.key}`, type: p.type, entity: p.entity, role: p.role, tier, tierReasons: reasons, title: p.title, short: p.short,
     evidence: p.evidence, rules: p.rules, coverageKeys: p.coverageKeys, lowCoverage: !!p.lowCoverage, missing: p.missing ?? [], sort: p.sort,
     sortClass: c.cfg.sortClass[p.klass ?? c.cfg.signalClass[p.type]],
+    ...(p.hypotheses && p.hypotheses.length ? { hypotheses: p.hypotheses } : {}),
+    ...(p.detail && p.detail.length ? { detail: p.detail } : {}),
   };
 }
 
@@ -183,6 +187,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
     const byProject = new Map<string, typeof state.tasks.items>();
     for (const t of state.tasks.items) {
       if (!t.projectId || t.daysOverdue === null || t.daysOverdue <= 0) continue;
+      if (t.derivedFrom) continue; // auto "מעקב ויקטור" task = the same business fact as the Victor internal deadline (H2)
       if (cfg.closedProjectStatuses.includes(idx[t.projectId]?.status ?? "")) continue;
       const list = byProject.get(t.projectId) ?? [];
       list.push(t); byProject.set(t.projectId, list);
@@ -208,7 +213,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
       const t = state.tasks;
       out.push(makeSignal(c, {
         type: "TASKS_BACKLOG", key: "all", entity: COMPANY_TASKS, role: "notice",
-        title: rich(`${t.overdueCount} משימות פתוחות באיחור מתוך ${t.openCount} פתוחות`),
+        title: rich(`${t.overdueCount} משימות פתוחות באיחור מתוך ${t.openCount} פתוחות${t.autoVictor.overdue > 0 ? `, מתוכן ${t.autoVictor.overdue} משימות מעקב אוטומטיות של Victor` : ""}`),
         short: rich(`${t.overdueCount} משימות באיחור`),
         evidence: [
           ev(c, "tasks:overdue", "משימות פתוחות באיחור", t.overdueCount, String(t.overdueCount), "count", { table: "tasks", field: "due_date" }),
@@ -217,11 +222,15 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
           ev(c, "tasks:age_8_30", "באיחור 8–30 ימים", t.ageBuckets.d8_30, String(t.ageBuckets.d8_30), "count", { table: "tasks", field: "due_date" }),
           ev(c, "tasks:age_31", "באיחור 31+ ימים", t.ageBuckets.d31plus, String(t.ageBuckets.d31plus), "count", { table: "tasks", field: "due_date" }),
           ev(c, "tasks:linked", "מהן מקושרות לפרויקט", t.linkedToProject, String(t.linkedToProject), "count", { table: "tasks", field: "related_id" }),
+          ev(c, "tasks:auto_victor", "מתוכן: משימות מעקב אוטומטיות של Victor (אותו דדליין פנימי)", t.autoVictor.overdue, String(t.autoVictor.overdue), "count", { table: "vendor_project_work", field: "linked_task_id" }),
+          ev(c, "tasks:age_median", "גיל משימה — חציון (ימים מאז יצירה)", t.age.median, String(t.age.median), "days", { table: "tasks", field: "created_at" }),
+          ev(c, "tasks:age_oldest", "גיל משימה — הוותיקה (ימים מאז יצירה)", t.age.oldest, String(t.age.oldest), "days", { table: "tasks", field: "created_at" }),
+          ev(c, "tasks:created_on_due", "נוצרו ביום היעד שלהן (סגנון תזכורת)", t.createdOnDueDate, String(t.createdOnDueDate), "count", { table: "tasks", field: "created_at / due_date" }),
         ],
         rules: [{ ruleId: "tasks.backlog", description: "אגרגט: משימות פתוחות שתאריך היעד שלהן עבר (שורה אחת, לא אזהרה לכל משימה)", threshold: null, observed: `${t.overdueCount} מתוך ${t.openCount}` }],
         coverageKeys: ["tasks.link"],
-        missing: ["הרבה משימות באיחור לא אומרות בהכרח דחיפות — ייתכן שהן פשוט לא נסגרו. אין תאריך יצירה מהימן."],
-        tierCtx: { count: t.overdueCount }, sort: t.overdueCount,
+        missing: ["הרבה משימות באיחור לא אומרות בהכרח דחיפות — ייתכן שהן פשוט לא נסגרו. גיל משימה נמדד לפי created_at (מתי נוצרה), האיחור לפי due_date — שני מדדים נפרדים; updated_at לא משמש למדידת משך חיים."],
+        tierCtx: { count: t.overdueCount - t.autoVictor.overdue }, sort: t.overdueCount,
       }));
     }
   }
@@ -332,75 +341,89 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
   }
 
   // ── 5. Victor ───────────────────────────────────────────────────────────────
-  // No "stuck" verdict from a day count: 19 of 24 active works are older than the portal's 5 days, so it
-  // does not separate anything. Victor is a managerial BACKLOG notice (facts only); P0/P1 need stronger
-  // evidence: a passed internal deadline, the owner's turn, or a dependency of a project with a reliable deadline.
+  // WHO HOLDS THE BALL comes only from timestamps (victor-ball.ts): Victor's last upload vs the owner's last notes.
+  // Ball with the owner ⇒ no "Victor late / overdue / waiting delivery" on the same deadline. Deliveries waiting for the owner are ONE
+  // managerial notice (never 14 cards); per project they are only a supporting signal (see section 10b). No "stuck" verdict from a day count.
   const vi = state.team.victor;
   if (vi) {
-    if (vi.waitingOwner.length > 0) {
-      out.push(makeSignal(c, {
-        type: "VICTOR_WAITING_OWNER", key: "team", entity: TEAM_VICTOR, role: "primary",
-        title: rich(`${vi.waitingOwner.length} עבודות של Victor חזרו וממתינות לבדיקתך`),
-        short: rich(`${vi.waitingOwner.length} עבודות של Victor ממתינות לך`),
-        evidence: [
-          ev(c, "victor:waiting", "עבודות שממתינות לבדיקה", vi.waitingOwner.length, String(vi.waitingOwner.length), "count", { table: "vendor_project_work", field: "work_state" }),
-          ...vi.waitingOwner.slice(0, 5).map((w) => ev(c, `vwork:${w.id}`, `עבודה (${w.workState ?? "?"})`, w.title, w.title, "text", { table: "vendor_project_work", id: w.id, field: "title" }, { untrusted: true })),
-        ],
-        rules: [{ ruleId: "victor.waiting_owner", description: "עבודה פעילה במצב שהכדור בו אצל הבעלים", threshold: `victorOwnerBallStates = ${cfg.victorOwnerBallStates.join(", ")}`, observed: String(vi.waitingOwner.length) }],
-        coverageKeys: ["victor.link"], missing: ["אין מידע כמה זמן העבודות ממתינות אצלך."],
-        tierCtx: {}, sort: vi.waitingOwner.length,
-      }));
-    }
     for (const w of vi.active) {
       if (!w.internalDeadline) continue;
       const d = diffDays(c.today, w.internalDeadline);
       if (d > cfg.dueSoonDays) continue;
-      // when the state says the ball is with the owner, VICTOR_WAITING_OWNER covers it — never blame Victor for it
-      if (w.workState !== null && cfg.victorOwnerBallStates.includes(w.workState)) continue;
+      if (w.ball.holder === "owner") continue; // Victor already delivered; the owner's review is what is pending
       const od = -d;
       let ctx: TierCtx = d < 0 ? { daysOverdue: od, daysTo: d } : { daysTo: d };
       const notes: string[] = [];
       if (d < 0 && od >= cfg.staleDeadlineDays) {
         const fresh = w.daysSinceSent !== null && w.daysSinceSent <= cfg.liveness.updatedWithinDays;
         if (!fresh) {
-          staleInternal.push({ who: "Victor", id: w.id, title: w.title, ymd: w.internalDeadline, od, note: `${w.workState ?? "מצב לא ידוע"}${w.daysSinceSent !== null ? ` · נשלח לפני ${w.daysSinceSent} ימים` : ""}` });
+          staleInternal.push({ who: "Victor", id: w.id, title: w.title, ymd: w.internalDeadline, od, note: `הכדור: ${w.ball.holder === "victor" ? "אצל Victor" : "לא ידוע"}${w.daysSinceSent !== null ? ` · נשלח לפני ${w.daysSinceSent} ימים` : ""}` });
           continue;
         }
         ctx = {};
         notes.push(`הדדליין הפנימי ישן (${od} ימים) אבל העבודה נשלחה לאחרונה — גיל הדדליין לא מעלה את הדרגה.`);
       }
-      const cap = w.workState === null ? { tier: "P2" as Tier, reason: "מצב העבודה לא ידוע — אין evidence שהכדור אצל Victor" } : undefined;
-      if (cap) notes.push("מצב העבודה (work_state) ריק — לא ידוע אם הכדור אצל Victor.");
+      const unknownBall = w.ball.holder === "unknown";
+      const cap = unknownBall ? { tier: "P2" as Tier, reason: `לא ידוע אצל מי הכדור (${w.ball.basis})` } : undefined;
+      if (unknownBall) notes.push(`לא ניתן לקבוע אצל מי הכדור: ${w.ball.basis}.`);
       out.push(makeSignal(c, {
         type: "VICTOR_WORK_DEADLINE", key: w.id, entity: w.projectId ? projectEntity(state, w.projectId) : TEAM_VICTOR, role: "primary",
         title: rich(d < 0 ? `עבודת Victor "${w.title}": הדדליין הפנימי עבר לפני ${od} ${daysWord(od)}` : d === 0 ? `עבודת Victor "${w.title}": דדליין פנימי היום` : `עבודת Victor "${w.title}": דדליין פנימי בעוד ${d} ${daysWord(d)}`),
         short: rich(d < 0 ? `דדליין פנימי של Victor עבר (${od} ${daysWord(od)})` : `דדליין פנימי של Victor בעוד ${d} ${daysWord(d)}`),
         evidence: [
           ev(c, `${w.id}:vdeadline`, "דדליין פנימי (Victor)", w.internalDeadline, fullDate(w.internalDeadline), "date", { table: "vendor_project_work", id: w.id, field: "internal_deadline" }),
-          ev(c, `${w.id}:vstate2`, "מצב העבודה (הכדור אצל Victor)", w.workState, w.workState ?? "לא ידוע", "status", { table: "vendor_project_work", id: w.id, field: "work_state" }),
-          ev(c, `${w.id}:vsent`, "ימים מאז שנשלחה", w.daysSinceSent, String(w.daysSinceSent), "days", { table: "vendor_project_work", id: w.id, field: "sent_date" }),
+          ev(c, `${w.id}:vball`, "הפעולה האחרונה המתועדת", w.ball.holder, `${w.ball.holder === "victor" ? "הערות שלך ל-Victor" : "לא ידוע"} — ${w.ball.basis}`, "status", { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt / version_reviews[].sentAt" }),
+          ev(c, `${w.id}:vtask`, "נעקב גם כמשימה (אותו דדליין)", w.linkedTaskId !== null, w.linkedTaskId ? "כן" : "לא", "flag", { table: "vendor_project_work", id: w.id, field: "linked_task_id" }),
         ],
-        rules: [{ ruleId: "victor.work_deadline", description: "עבודה פעילה של Victor, כשהכדור אצלו, עם דדליין פנימי קרוב או שעבר. P1 רק בתוך 14 ימים מהדדליין; ישן מ-30 ימים נחשב מידע לעדכון", threshold: `dueSoonDays = ${cfg.dueSoonDays}, staleDeadlineDays = ${cfg.staleDeadlineDays}`, observed: `${d} ימים` }],
+        rules: [{ ruleId: "victor.work_deadline", description: "עבודה פעילה של Victor שהפעולה האחרונה המתועדת בה היא הערות שלך אליו (לפי חותמות העלאה/הערות), עם דדליין פנימי קרוב או שעבר. P1 רק בתוך 14 ימים מהדדליין; ישן מ-30 ימים נחשב מידע לעדכון", threshold: `dueSoonDays = ${cfg.dueSoonDays}, staleDeadlineDays = ${cfg.staleDeadlineDays}`, observed: `${d} ימים` }],
         coverageKeys: ["victor.link"], missing: notes, cap,
         tierCtx: ctx, sort: d < 0 ? 300 + od : 200 - d, klass: d < 0 ? "liveOverdue" : "deadlineNear",
       }));
     }
-    // dependency: Victor has active work on a project whose deadline is reliable (not stale) and near or just passed
+    // dependency: Victor HOLDS the ball on active work of a project whose deadline is reliable (not stale) and near or just passed
     const depByProject = new Map<string, typeof vi.active>();
     for (const w of vi.active) {
-      if (!w.projectId) continue;
+      if (!w.projectId || w.ball.holder !== "victor") continue;
       if (!out.some((x) => (x.type === "PROJECT_DUE_SOON" || x.type === "PROJECT_OVERDUE") && x.entity.id === w.projectId)) continue;
       depByProject.set(w.projectId, [...(depByProject.get(w.projectId) ?? []), w]);
     }
     for (const [pid, list] of depByProject) {
       out.push(makeSignal(c, {
         type: "VICTOR_DEPENDENCY", key: pid, entity: projectEntity(state, pid), role: "supporting",
-        title: rich(`${list.length === 1 ? "עבודה פעילה" : `${list.length} עבודות פעילות`} אצל Victor על פרויקט עם דדליין אמין`),
-        short: rich(`${list.length === 1 ? "עבודה" : `${list.length} עבודות`} פעילות אצל Victor על הפרויקט`),
-        evidence: list.slice(0, 5).map((w) => ev(c, `vdep:${w.id}`, `עבודה אצל Victor (${w.workState ?? "?"})`, w.title, w.title, "text", { table: "vendor_project_work", id: w.id, field: "project_id" }, { untrusted: true })),
-        rules: [{ ruleId: "victor.dependency", description: "עבודה פעילה אצל Victor שמקושרת (project_id) לפרויקט עם דדליין קרוב/שעבר שאינו ישן", threshold: `staleDeadlineDays = ${cfg.staleDeadlineDays}`, observed: `${list.length} עבודות` }],
+        title: rich(`${list.length === 1 ? "עבודה פעילה" : `${list.length} עבודות פעילות`} אצל Victor (אחרי ההערות האחרונות שלך עדיין לא הועלתה גרסה) על פרויקט עם דדליין אמין`),
+        short: rich(`${list.length === 1 ? "עבודה" : `${list.length} עבודות`} אצל Victor על הפרויקט (אחרי ההערות שלך אין העלאה)`),
+        evidence: list.slice(0, 5).flatMap((w) => [
+          ev(c, `vdep:${w.id}`, "עבודה אצל Victor", w.title, w.title, "text", { table: "vendor_project_work", id: w.id, field: "project_id" }, { untrusted: true }),
+          ev(c, `vdep:${w.id}:ball`, "הפעולה האחרונה המתועדת", w.ball.holder, `הערות שלך ל-Victor — ${w.ball.basis}`, "status", { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt / version_reviews[].sentAt" }),
+        ]),
+        rules: [{ ruleId: "victor.dependency", description: "עבודה פעילה שהכדור בה אצל Victor (לפי חותמות), מקושרת (project_id) לפרויקט עם דדליין קרוב/שעבר שאינו ישן", threshold: `staleDeadlineDays = ${cfg.staleDeadlineDays}`, observed: `${list.length} עבודות` }],
         coverageKeys: ["victor.link"], missing: ["אין מידע אם העבודה של Victor היא זו שמעכבת את הפרויקט."],
         tierCtx: {}, sort: list.length,
+      }));
+    }
+    // deliveries whose latest RECORDED action is Victor's upload, with no recorded owner follow-up after it: ONE managerial notice.
+    // The fact is about the record; "still waiting for your review" is only a labelled hypothesis (8 of 14 have no owner notes at all).
+    const q = vi.ownerQueue;
+    if (q.count > 0) {
+      out.push(makeSignal(c, {
+        type: "VICTOR_DELIVERIES_WAITING_OWNER", key: "team", entity: TEAM_VICTOR, role: "notice",
+        title: rich(`${q.count} ${q.count === 1 ? "מסירה" : "מסירות"} מ-Victor ללא follow-up מתועד אחריה${q.count === 1 ? "" : "ן"}`),
+        detail: rich([q.oldCount > 0 ? `${q.oldCount} מהן לפני ${q.oldDays}+ ימים` : null, q.median !== null ? `חציון ${q.median} ימים` : null, q.oldest !== null ? `הוותיקה ${q.oldest} ימים` : null].filter(Boolean).join(" · ")),
+        short: rich(`${q.count} מסירות של Victor ללא follow-up מתועד`),
+        evidence: [
+          ev(c, "vq:count", "עבודות שהפעולה האחרונה המתועדת בהן היא העלאה של Victor, ואין אחריה follow-up מתועד שלך", q.count, String(q.count), "count", { table: "vendor_project_work", field: "files_sent[].uploadedAt / version_reviews[].sentAt" }),
+          ev(c, "vq:old", `מהן: העלאה אחרונה לפני ${q.oldDays}+ ימים`, q.oldCount, String(q.oldCount), "count", { table: "vendor_project_work", field: "files_sent[].uploadedAt" }),
+          ev(c, "vq:median", "חציון ימים מההעלאה האחרונה", q.median, String(q.median), "days", { table: "vendor_project_work", field: "files_sent[].uploadedAt" }),
+          ev(c, "vq:oldest", "הוותיקה (ימים מההעלאה האחרונה)", q.oldest, String(q.oldest), "days", { table: "vendor_project_work", field: "files_sent[].uploadedAt" }),
+          ev(c, "vq:no_notes", "מתוכן: בלי אף הערה מתועדת שלך", q.noNotes, String(q.noNotes), "count", { table: "vendor_project_work", field: "version_reviews[].sentAt" }),
+          ev(c, "vq:balls", "התפלגות כל העבודות הפעילות לפי הפעולה האחרונה המתועדת", `owner=${vi.ballCounts.owner};victor=${vi.ballCounts.victor};unknown=${vi.ballCounts.unknown}`, `העלאה של Victor ${vi.ballCounts.owner} · הערות שלך ${vi.ballCounts.victor} · לא ידוע ${vi.ballCounts.unknown}`, "text", { table: "vendor_project_work", field: "files_sent[].uploadedAt / version_reviews[].sentAt" }),
+          ...q.items.map((w) => ev(c, `vq:w:${w.id}`, w.title, w.lastUploadAt, `העלאה אחרונה ${w.lastUploadAt ? fullDate(ilYmd(new Date(w.lastUploadAt))) : "?"} · לפני ${w.waitingOwnerDays ?? "?"} ימים · ${w.lastNotesSentAt ? "יש הערות מתועדות שלך לפניה" : "אין אף הערה מתועדת שלך"} · ${w.projectId ? "מקושר לפרויקט" : "ללא פרויקט"}`, "text", { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt" }, { untrusted: true })),
+        ],
+        rules: [{ ruleId: "victor.ball_owner", description: "הפעולה האחרונה המתועדת היא העלאה של Victor: היא מאוחרת מההערות האחרונות שנשלחו לו (או שלא נשלחו הערות אחריה) — השוואה לפי חותמת זמן מלאה", threshold: `tieSeconds = ${cfg.victorBall.tieSeconds}; ownerWaitingOldDays = ${cfg.victorBall.ownerWaitingOldDays}`, observed: `${q.count} מתוך ${vi.active.length} פעילות` }],
+        coverageKeys: ["victor.link"],
+        missing: [`זו עובדה על מה שמתועד במערכת בלבד (העלאות של Victor והערות שנשלחו דרך האפליקציה). ${q.noNotes > 0 ? `ב-${q.noNotes} מהעבודות אין אף הערה מתועדת שלך — ייתכן שטופלו או אושרו מחוץ ל-Redbloods. ` : ""}סטטוס האישור של הגרסה (version_reviews.status) אינו נרשם, ולכן אין ראיה שהבדיקה עדיין תלויה בך.`],
+        hypotheses: ["ייתכן שחלק מהן עדיין ממתינות לבדיקה שלך."],
+        tierCtx: {}, sort: q.count,
       }));
     }
     if (vi.active.length >= cfg.victorActiveWatch) {
@@ -418,7 +441,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
         ],
         rules: [{ ruleId: "victor.backlog", description: "מספר עבודות פעילות אצל Victor מעל סף המעקב — מידע ניהולי בלבד", threshold: `victorActiveWatch = ${cfg.victorActiveWatch}`, observed: `${vi.active.length} פעילות` }],
         coverageKeys: ["victor.link"],
-        missing: ["אין ל-Victor דדליין או מצב 'חזר' שמאפשרים לומר שהוא מאחר — לכן זו תמונת עומס בלבד, לא אזהרה.", "רוב העבודות לא משויכות לפרויקט — הן מוצגות ברמת הצוות בלבד."],
+        missing: ["אין ל-Victor דדליין פנימי ברוב העבודות — לכן זו תמונת עומס בלבד, לא אזהרה.", "רוב העבודות לא משויכות לפרויקט — הן מוצגות ברמת הצוות בלבד."],
         tierCtx: {}, sort: vi.active.length,
       }));
     }
@@ -601,6 +624,33 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
       missing: ["מוכנות הריליס האמיתית לא ידועה: אין מידע על קליפ, הפצה או קבצים סופיים."],
       tierCtx: { daysTo: r.daysTo ?? undefined, past, blocker: hasBlocker }, sort: past ? 400 + -(r.daysTo as number) : 300 - (r.daysTo ?? 99),
     }));
+  }
+
+  // ── 10b. Victor deliveries waiting for the owner — PER PROJECT (supporting only) ─
+  // Never creates a case on its own and never P0: it is attached only when the project ALREADY has a primary signal from another reason,
+  // or has a release inside the window. With a release ≤ 14 days it reads as a real dependency (P1).
+  if (state.team.victor) {
+    const byProject = new Map<string, typeof state.team.victor.active>();
+    for (const w of state.team.victor.ownerQueue.items) if (w.projectId) byProject.set(w.projectId, [...(byProject.get(w.projectId) ?? []), w]);
+    for (const [pid, list] of byProject) {
+      const rel = (state.releases?.rows ?? []).find((r) => r.projectId === pid);
+      const relDays = rel && rel.daysTo !== null && rel.daysTo >= 0 && rel.daysTo <= cfg.releaseWindowDays ? rel.daysTo : null;
+      const hasOtherPrimary = out.some((x) => x.entity.type === "project" && x.entity.id === pid && x.role === "primary");
+      if (!hasOtherPrimary && relDays === null) continue;
+      out.push(makeSignal(c, {
+        type: "VICTOR_WAITING_OWNER", key: pid, entity: projectEntity(state, pid), role: "supporting",
+        title: rich(`${list.length === 1 ? "מסירה של Victor" : `${list.length} מסירות של Victor`} ללא follow-up מתועד שלך`),
+        short: rich(`Victor מסר לפני ${Math.max(...list.map((w) => w.waitingOwnerDays ?? 0))} ימים — אין follow-up מתועד שלך`),
+        evidence: list.slice(0, 5).flatMap((w) => [
+          ev(c, `vwo:${w.id}`, "מסירה של Victor", w.title, w.title, "text", { table: "vendor_project_work", id: w.id, field: "project_id" }, { untrusted: true }),
+          ev(c, `vwo:${w.id}:ball`, "הפעולה האחרונה המתועדת", "victor_upload", `העלאה של Victor — ${w.ball.basis}`, "status", { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt / version_reviews[].sentAt" }),
+          ev(c, `vwo:${w.id}:days`, "ימים מההעלאה האחרונה", w.waitingOwnerDays, String(w.waitingOwnerDays), "days", { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt" }),
+        ]),
+        rules: [{ ruleId: "victor.waiting_owner_project", description: "מסירה של Victor שהיא הפעולה האחרונה המתועדת (ללא follow-up מתועד שלך), על פרויקט שכבר יש בו Case מסיבה אחרת או שיש לו ריליס בחלון", threshold: "release ≤ 14 ימים → P1", observed: relDays === null ? "ללא ריליס בחלון" : `ריליס בעוד ${relDays} ימים` }],
+        coverageKeys: ["victor.link"], missing: ["אישור/הערות שנעשו מחוץ לאפליקציה לא נראים — לא ידוע אם הבדיקה עדיין תלויה בך."],
+        tierCtx: relDays === null ? {} : { daysTo: relDays }, sort: list.length, klass: "dependency",
+      }));
+    }
   }
 
   // ── 11. existing agent_alerts (secondary source, notices only) ───────────────

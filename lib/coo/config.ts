@@ -34,7 +34,7 @@ export interface TierRule {
 }
 
 export const COO_CONFIG = {
-  version: "1a-provisional-3",
+  version: "1a-provisional-4",
   provisional: true,
 
   // ── project statuses ──
@@ -72,11 +72,16 @@ export const COO_CONFIG = {
   // (not imported: that module pulls in portal code; scripts/test-coo.ts asserts they stay equal).
   stevenClosedStatuses: ["אושר", "בוטל"] as string[],
 
+  // ── Victor: who holds the ball comes ONLY from timestamps (see victor-ball.ts), never from work_state ──
+  victorBall: {
+    tieSeconds: 60,            // upload/notes closer than this cannot be ordered → unknown (PROVISIONAL)
+    ownerWaitingOldDays: 10,   // "waiting for the owner 10+ days" line in the brief
+  },
+
   // ── statuses whose "ball is with the owner" (meaning to be confirmed with the owner) ──
   stevenOwnerBallStatuses: ["חזר"] as string[],
   // Steven statuses that say the work is still in his hands (used when an older mix version exists and we must decide if it was delivered).
   stevenBallWithHimStatuses: ["בתהליך"] as string[],
-  victorOwnerBallStates: ["חזר מויקטור", "דורש בדיקה"] as string[],
 
   // ── existing agent_alerts: secondary source only ──
   alerts: {
@@ -101,7 +106,10 @@ export const COO_CONFIG = {
     STEVEN_WAITING_OWNER:       { base: "P1" },
     // Victor: managerial info only (P2). P0/P1 need stronger evidence than a day count.
     VICTOR_WORKLOAD:            { base: "P2" },
-    VICTOR_WAITING_OWNER:       { base: "P1" },
+    // Deliveries waiting for the owner: one managerial notice (never a card). Per project it is only a SUPPORTING signal
+    // on a project that already has a case, or has a release in the window; it never creates a case and never P0.
+    VICTOR_DELIVERIES_WAITING_OWNER: { base: "P2" },
+    VICTOR_WAITING_OWNER:       { base: "P2", escalate: [{ when: { daysToLte: 14 }, to: "P1" }] },
     // P1 only while relatively fresh (1–14 days), the work is active and the ball is with Victor. Never P0.
     VICTOR_WORK_DEADLINE:       { base: "P2", escalate: [{ when: { daysOverdueGte: 1 }, to: "P1" }], demote: [{ when: { daysOverdueGte: 15 }, by: 1 }] },
     VICTOR_DEPENDENCY:          { base: "P1" },
@@ -124,7 +132,7 @@ export const COO_CONFIG = {
     PROJECT_OVERDUE: "other", PROJECT_DUE_SOON: "deadlineNear", STALE_PROJECT_DEADLINE: "other", STALE_INTERNAL_DEADLINE: "other",
     TASK_OVERDUE: "other", TASKS_BACKLOG: "other",
     STEVEN_WORKLOAD: "other", STEVEN_WORK_DEADLINE: "deadlineNear", STEVEN_UNPAID_APPROVED: "financial", STEVEN_WAITING_OWNER: "dependency",
-    VICTOR_WORKLOAD: "other", VICTOR_WAITING_OWNER: "dependency", VICTOR_WORK_DEADLINE: "deadlineNear", VICTOR_DEPENDENCY: "dependency",
+    VICTOR_WORKLOAD: "other", VICTOR_DELIVERIES_WAITING_OWNER: "dependency", VICTOR_WAITING_OWNER: "dependency", VICTOR_WORK_DEADLINE: "deadlineNear", VICTOR_DEPENDENCY: "dependency",
     PROPOSAL_FOLLOWUP_DUE: "dependency",
     PROJECT_PAYMENT_BALANCE: "financial", BALANCE_NO_DUE_DATE: "financial", EXPECTED_INCOME_OVERDUE: "financial",
     SHOW_UNPAID_UPCOMING: "financial", SHOW_DONE_UNPAID: "financial", NO_UPCOMING_SHOWS: "other",

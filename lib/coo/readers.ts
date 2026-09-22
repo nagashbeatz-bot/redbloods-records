@@ -55,6 +55,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
     })), (v) => v.length),
     track("tasks", async () => (await listTasks({ status: "פתוח" })).map((t) => ({
       id: t.id, title: t.title, status: t.status as string, dueDate: t.due_date, relatedType: t.related_type as string, relatedId: t.related_id ?? null,
+      createdAt: t.created_at ?? null,
     })), (v) => v.length),
     track("steven", async () => (await listSoundEngineerWork(cfg.stevenEngineerName)).map((w) => ({
       id: w.id, projectId: w.projectId, title: (w.workTitle && w.workTitle.trim()) || w.projectName || "עבודה", status: w.status as string,
@@ -68,6 +69,11 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
         works: works.map((w) => ({
           id: w.id, projectId: w.projectId, title: (w.title && w.title.trim()) || w.projectName || "עבודה", status: w.status as string,
           workState: (w.workState as string | null) ?? null, sentDate: w.sentDate, internalDeadline: w.internalDeadline, daysSinceSent: w.daysSinceSent, isStuck: w.isStuck,
+          // delivery evidence: Victor's uploads (files_sent) and the owner's notes (version_reviews) — both already returned by getVictorWork
+          uploads: (w.filesSent ?? []).map((f) => f.uploadedAt).filter((u): u is string => !!u),
+          filesWithoutTimestamp: (w.filesSent ?? []).filter((f) => !f.uploadedAt).length,
+          reviews: Object.values(w.versionReviews ?? {}).map((r) => ({ sentAt: r.sentAt ?? null, draft: r.draft === true })),
+          linkedTaskId: w.linkedTaskId,
         })),
       };
     }, (v) => v.works.length),

@@ -58,8 +58,9 @@ export function projectLiveness(state: CompanyState, p: ProjectFact, cfg: CooCon
     });
   }
 
-  // tasks carry no reliable created/updated date, so "recent" means: due ahead, or due within the last N days.
-  const recentTasks = (state.tasks?.items ?? []).filter((t) => t.projectId === p.id && t.daysOverdue !== null && t.daysOverdue <= cfg.liveness.taskRecentDays);
+  // "recent" here means the task's DUE date is ahead or within the last N days (created_at is task age, updated_at moves on any edit — neither is activity).
+  // a task auto-created from a Victor internal deadline is that deadline again, not independent evidence (H2)
+  const recentTasks = (state.tasks?.items ?? []).filter((t) => t.projectId === p.id && !t.derivedFrom && t.daysOverdue !== null && t.daysOverdue <= cfg.liveness.taskRecentDays);
   if (recentTasks.length > 0) {
     signs.push({
       kind: "task_recent", text: `${recentTasks.length} משימות פתוחות מקושרות עם יעד עדכני`,

@@ -109,7 +109,7 @@ async function main() {
   p(`Victor: ${brief.team.victor ? rt(brief.team.victor) : "אין מידע"}`);
   const vc = state.team.victor;
   if (vc && raw.victor) {
-    p(`  עבודות סה"כ ${vc.totalWorks}; פעילות ${vc.active.length}; (עובדה גולמית של הפורטל, לא בשימוש ב-COO: "תקועות" מעל ${vc.stuckAfterDays} ימים = ${vc.stuckCount}); מקושרות לפרויקט ${vc.linkedActive}; ממתינות לבעלים ${vc.waitingOwner.length}`);
+    p(`  עבודות סה"כ ${vc.totalWorks}; פעילות ${vc.active.length}; (עובדה גולמית של הפורטל, לא בשימוש ב-COO: "תקועות" מעל ${vc.stuckAfterDays} ימים = ${vc.stuckCount}); מקושרות לפרויקט ${vc.linkedActive}; הכדור לפי חותמות: אצל הבעלים ${vc.ballCounts.owner}, אצל Victor ${vc.ballCounts.victor}, לא ידוע ${vc.ballCounts.unknown}`);
     const ds = vc.active.map((w) => w.daysSinceSent).filter((d): d is number => d != null).sort((a, b) => a - b);
     const bucket = (lo: number, hi: number) => ds.filter((d) => d >= lo && d <= hi).length;
     p(`  התפלגות ימים-מאז-שליחה (פעילות): 0-${vc.stuckAfterDays}: ${bucket(0, vc.stuckAfterDays)} · ${vc.stuckAfterDays + 1}-14: ${bucket(vc.stuckAfterDays + 1, 14)} · 15-30: ${bucket(15, 30)} · 31-60: ${bucket(31, 60)} · 61+: ${ds.filter((d) => d > 60).length} · ללא תאריך שליחה: ${vc.active.length - ds.length}`);

@@ -21,6 +21,7 @@ import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, 
 import { isSongIncome } from "../clip-finance";
 import { collectibleBalance } from "../payment-status";
 import { totalsRich, richText } from "./rich";
+import { computeVictorBall } from "./victor-ball";
 
 const SCHEMA_VERSION = "coo-state-1";
 
@@ -85,6 +86,9 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
   if (raw.tasks) {
     const items: TaskFact[] = [];
     let unresolved = 0;
+    // tasks auto-created from a Victor internal deadline (vendor_project_work.linked_task_id): the same fact as the work's deadline
+    const derivedTask = new Map<string, string>();
+    for (const w of raw.victor?.works ?? []) if (w.linkedTaskId) derivedTask.set(w.linkedTaskId, w.id);
     for (const t of raw.tasks) {
       const due = parseYmd(t.dueDate);
       let projectId: string | null = null;
@@ -92,7 +96,13 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
       if (t.relatedType === "project" && t.relatedId) {
         if (projectIndex[t.relatedId]) projectId = t.relatedId; else { linkUnresolved = true; unresolved++; }
       }
-      items.push({ id: t.id, title: t.title, dueYmd: due, daysOverdue: due ? diffDays(due, today) : null, relatedType: t.relatedType, projectId, linkUnresolved });
+      const createdYmd = t.createdAt && !Number.isNaN(Date.parse(t.createdAt)) ? ilYmd(new Date(t.createdAt)) : null;
+      const vw = derivedTask.get(t.id);
+      items.push({
+        id: t.id, title: t.title, dueYmd: due, daysOverdue: due ? diffDays(due, today) : null, relatedType: t.relatedType, projectId, linkUnresolved,
+        createdYmd, ageDays: createdYmd ? diffDays(createdYmd, today) : null, leadDays: createdYmd && due ? diffDays(createdYmd, due) : null,
+        derivedFrom: vw ? { type: "victor_work", id: vw } : null,
+      });
     }
     const overdue = items.filter((t) => t.daysOverdue !== null && t.daysOverdue > 0);
     tasks = {
@@ -105,6 +115,17 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         d31plus: overdue.filter((t) => (t.daysOverdue as number) > 30).length,
       },
       linkedToProject: items.filter((t) => t.projectId).length,
+      autoVictor: { open: items.filter((t) => t.derivedFrom).length, overdue: overdue.filter((t) => t.derivedFrom).length },
+      age: (() => {
+        const ages = items.map((t) => t.ageDays).filter((d): d is number => d !== null && d >= 0).sort((a, b) => a - b);
+        return {
+          median: ages.length === 0 ? null : ages.length % 2 ? ages[(ages.length - 1) / 2] : Math.round((ages[ages.length / 2 - 1] + ages[ages.length / 2]) / 2),
+          oldest: ages.length ? ages[ages.length - 1] : null,
+          d0_7: ages.filter((d) => d <= 7).length, d8_30: ages.filter((d) => d > 7 && d <= 30).length, d31plus: ages.filter((d) => d > 30).length,
+          unknown: items.length - ages.length,
+        };
+      })(),
+      createdOnDueDate: items.filter((t) => t.createdYmd !== null && t.dueYmd === t.createdYmd).length,
       items,
     };
     coverage.push(cov("tasks.link", "משימות פתוחות שמקושרות לפרויקט קיים", tasks.openCount, tasks.linkedToProject,
@@ -138,11 +159,18 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
   let victor: VictorFact | null = null;
   if (raw.victor) {
     const activeRaw = raw.victor.works.filter((w) => w.status === "פעיל");
-    const mapV = (w: (typeof activeRaw)[number]): VictorWorkFact => ({
-      id: w.id, projectId: w.projectId && projectIndex[w.projectId] ? w.projectId : null, title: w.title, workState: w.workState,
-      sentDate: parseYmd(w.sentDate), daysSinceSent: w.daysSinceSent, internalDeadline: parseYmd(w.internalDeadline), isStuck: w.isStuck,
-    });
+    const mapV = (w: (typeof activeRaw)[number]): VictorWorkFact => {
+      const b = computeVictorBall(w, cfg);
+      return {
+        id: w.id, projectId: w.projectId && projectIndex[w.projectId] ? w.projectId : null, title: w.title, workState: w.workState,
+        sentDate: parseYmd(w.sentDate), daysSinceSent: w.daysSinceSent, internalDeadline: parseYmd(w.internalDeadline), isStuck: w.isStuck,
+        lastUploadAt: b.lastUploadAt, lastNotesSentAt: b.lastNotesSentAt, ball: b.ball, linkedTaskId: w.linkedTaskId,
+        waitingOwnerDays: b.ball.holder === "owner" && b.lastUploadAt ? diffDays(ilYmd(new Date(b.lastUploadAt)), today) : null,
+      };
+    };
     const active = activeRaw.map(mapV);
+    const ownerItems = active.filter((w) => w.ball.holder === "owner").sort((a, b) => (b.waitingOwnerDays ?? 0) - (a.waitingOwnerDays ?? 0));
+    const waits = ownerItems.map((w) => w.waitingOwnerDays as number).sort((a, b) => a - b);
     // Age of the active works (days since sent) — the COO shows this instead of the portal's "stuck" label.
     const edges = cfg.victorAgeEdges;
     const ages = active.map((w) => w.daysSinceSent).filter((d): d is number => d !== null && d >= 0).sort((a, b) => a - b);
@@ -155,7 +183,14 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     victor = {
       totalWorks: raw.victor.works.length, active,
       stuckCount: active.filter((w) => w.isStuck).length,
-      waitingOwner: active.filter((w) => w.workState !== null && cfg.victorOwnerBallStates.includes(w.workState)),
+      ballCounts: { owner: ownerItems.length, victor: active.filter((w) => w.ball.holder === "victor").length, unknown: active.filter((w) => w.ball.holder === "unknown").length },
+      ownerQueue: {
+        items: ownerItems, count: ownerItems.length, oldDays: cfg.victorBall.ownerWaitingOldDays,
+        oldCount: waits.filter((d) => d >= cfg.victorBall.ownerWaitingOldDays).length,
+        median: waits.length === 0 ? null : waits.length % 2 ? waits[(waits.length - 1) / 2] : Math.round((waits[waits.length / 2 - 1] + waits[waits.length / 2]) / 2),
+        oldest: waits.length ? waits[waits.length - 1] : null,
+        noNotes: ownerItems.filter((w) => w.lastNotesSentAt === null).length,
+      },
       linkedActive: active.filter((w) => w.projectId).length,
       stuckAfterDays: raw.victor.stuckAfterDays,
       ageStats: { buckets, noDate: active.length - ages.length, median, oldest: ages.length ? ages[ages.length - 1] : null },

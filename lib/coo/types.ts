@@ -74,7 +74,7 @@ export type SignalType =
   | "PROJECT_OVERDUE" | "PROJECT_DUE_SOON" | "STALE_PROJECT_DEADLINE" | "STALE_INTERNAL_DEADLINE"
   | "TASK_OVERDUE" | "TASKS_BACKLOG"
   | "STEVEN_WORKLOAD" | "STEVEN_WORK_DEADLINE" | "STEVEN_UNPAID_APPROVED" | "STEVEN_WAITING_OWNER"
-  | "VICTOR_WORKLOAD" | "VICTOR_WAITING_OWNER" | "VICTOR_WORK_DEADLINE" | "VICTOR_DEPENDENCY"
+  | "VICTOR_WORKLOAD" | "VICTOR_DELIVERIES_WAITING_OWNER" | "VICTOR_WAITING_OWNER" | "VICTOR_WORK_DEADLINE" | "VICTOR_DEPENDENCY"
   | "PROPOSAL_FOLLOWUP_DUE"
   | "PROJECT_PAYMENT_BALANCE" | "BALANCE_NO_DUE_DATE" | "EXPECTED_INCOME_OVERDUE"
   | "SHOW_UNPAID_UPCOMING" | "SHOW_DONE_UNPAID" | "NO_UPCOMING_SHOWS"
@@ -102,6 +102,10 @@ export interface Signal {
   sort: number;
   /** Ordering class inside a tier (1 = first). From config.sortClass — live work + passed deadline first, financial later. */
   sortClass: number;
+  /** Unconfirmed readings of the facts (Epistemic Contract: HYPOTHESIS). Never presented as facts. */
+  hypotheses?: string[];
+  /** Optional second line shown under a notice title (facts only). */
+  detail?: Rich;
 }
 
 export interface ContextFact {
@@ -154,6 +158,15 @@ export interface TaskFact {
   relatedType: string;
   projectId: string | null;    // resolved ONLY through related_type="project" + related_id
   linkUnresolved: boolean;
+  /** created_at as an Israel calendar date (a FACT: when the task was created). null = unknown. */
+  createdYmd: string | null;
+  /** TASK age = days since created_at. Independent from `daysOverdue` (days since due_date). */
+  ageDays: number | null;
+  /** due_date − created_at, in days (negative would mean back-dated). */
+  leadDays: number | null;
+  /** Set when the task was auto-created from a Victor work's internal deadline (vendor_project_work.linked_task_id):
+   *  the SAME business fact as that work's deadline, never an independent piece of evidence. */
+  derivedFrom: { type: "victor_work"; id: string } | null;
 }
 export interface TasksFact {
   openCount: number;
@@ -161,6 +174,12 @@ export interface TasksFact {
   noDueCount: number;
   ageBuckets: { d1_7: number; d8_30: number; d31plus: number };
   linkedToProject: number;
+  /** open tasks that are auto-created from a Victor internal deadline (of which overdue). */
+  autoVictor: { open: number; overdue: number };
+  /** task age (days since created_at) of the open tasks — NOT the overdue age. */
+  age: { median: number | null; oldest: number | null; d0_7: number; d8_30: number; d31plus: number; unknown: number };
+  /** open tasks created on their own due date (reminder-style). */
+  createdOnDueDate: number;
   items: TaskFact[];
 }
 
@@ -186,6 +205,15 @@ export interface StevenFact {
   linkedOpen: number;
 }
 
+export interface VictorBall {
+  /** "owner" = the latest RECORDED action is Victor's delivery and there is no recorded follow-up of the owner after it.
+   *  It does NOT prove the owner still has to review it (he may have handled it outside the system). */
+  holder: "owner" | "victor" | "unknown";
+  /** machine code of the rule that decided (e.g. upload_after_notes) */
+  code: string;
+  /** human explanation with the timestamps used */
+  basis: string;
+}
 export interface VictorWorkFact {
   id: string;
   projectId: string | null;
@@ -195,12 +223,20 @@ export interface VictorWorkFact {
   daysSinceSent: number | null;
   internalDeadline: string | null;
   isStuck: boolean;
+  lastUploadAt: string | null;
+  lastNotesSentAt: string | null;
+  ball: VictorBall;
+  /** owner-ball only: days since Victor's last upload (Israel calendar days). */
+  waitingOwnerDays: number | null;
+  linkedTaskId: string | null;
 }
 export interface VictorFact {
   totalWorks: number;
   active: VictorWorkFact[];
   stuckCount: number;
-  waitingOwner: VictorWorkFact[];
+  ballCounts: { owner: number; victor: number; unknown: number };
+  /** deliveries waiting for the OWNER, oldest first. */
+  ownerQueue: { items: VictorWorkFact[]; count: number; oldDays: number; oldCount: number; median: number | null; oldest: number | null; noNotes: number };
   linkedActive: number;
   /** The portal's own "stuck" threshold. Kept as a raw fact only — the COO never uses it for priority. */
   stuckAfterDays: number;
@@ -392,6 +428,8 @@ export interface RawProject {
 }
 export interface RawTask {
   id: string; title: string; status: string; dueDate: string | null; relatedType: string; relatedId: string | null;
+  /** tasks.created_at (ISO) — reliable "when created". null = unknown. NOT updated_at. */
+  createdAt: string | null;
 }
 export interface RawStevenWork {
   id: string; projectId: string | null; title: string; status: string; agreedPrice: number; currency: string;
@@ -400,6 +438,14 @@ export interface RawStevenWork {
 export interface RawVictorWork {
   id: string; projectId: string | null; title: string; status: string; workState: string | null;
   sentDate: string | null; internalDeadline: string | null; daysSinceSent: number | null; isStuck: boolean;
+  /** files_sent[].uploadedAt (ISO) — Victor delivered a version. */
+  uploads: string[];
+  /** files_sent entries with no uploadedAt (legacy) — they may be newer than the known uploads. */
+  filesWithoutTimestamp: number;
+  /** version_reviews entries: sentAt = when the owner sent notes to Victor (null = not sent / time unknown); draft = never sent. */
+  reviews: Array<{ sentAt: string | null; draft: boolean }>;
+  /** vendor_project_work.linked_task_id — the auto-created "מעקב ויקטור" task. */
+  linkedTaskId: string | null;
 }
 export interface RawProposal {
   id: string; clientName: string; title: string; amount: number; currency: string; status: string;

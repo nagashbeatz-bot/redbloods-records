@@ -126,6 +126,7 @@ function SignalWhy({ s, hide }: { s: Signal; hide: boolean }) {
         <span style={{ fontSize: 11, color: MUTED }}>{s.role === "primary" ? "סיגנל ראשי" : s.role === "supporting" ? "סיגנל תומך" : "הערה"}</span>
       </div>
       <EvidenceTable items={s.evidence} hide={hide} />
+      {(s.hypotheses ?? []).map((h, i) => <div key={i} style={{ marginTop: 6, fontSize: 12, color: "#D6A24A" }}>השערה (לא מאושרת): {h}</div>)}
       {s.rules.length > 0 && (
         <>
           <SectionLabel>כללים שהופעלו</SectionLabel>
@@ -244,6 +245,40 @@ function CaseCard({ c, hide, open, onToggle, onOpenProject }: { c: Case; hide: b
   );
 }
 
+/** A compact line under the headline for an aggregated notice (stale metadata / deliveries waiting for the owner), expandable to the rows. */
+function NoticeLine({ label, color, bg, notices, rowPrefixes, hide }: { label: string; color: string; bg: string; notices: Signal[]; rowPrefixes: string[]; hide: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (notices.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 10, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "8px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Pill color={color} bg={bg}>{label}</Pill>
+        <span style={{ fontSize: 13, color: SUB }}>{notices.map((n, i) => <span key={n.id}>{i > 0 ? " · " : ""}<RichText parts={n.title} hide={hide} /></span>)}</span>
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+          style={{ marginInlineStart: "auto", fontSize: 12, fontWeight: 700, color: TEXT, background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>
+          {open ? "הסתר" : "הצג אילו"}
+        </button>
+      </div>
+      {notices.filter((n) => n.detail && n.detail.length > 0).map((n) => (
+        <div key={n.id + ":detail"} style={{ marginTop: 4, fontSize: 12, color: MUTED }}><RichText parts={n.detail as Rich} hide={hide} /></div>
+      ))}
+      {notices.flatMap((n) => n.hypotheses ?? []).map((h, i) => (
+        <div key={i} style={{ marginTop: 4, fontSize: 12, color: "#D6A24A" }}>השערה (לא מאושרת): {h}</div>
+      ))}
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {notices.map((n) => (
+            <ul key={n.id} style={{ margin: "0 0 6px", paddingInlineStart: 16, fontSize: 12, color: SUB, lineHeight: 1.7 }}>
+              {n.evidence.filter((e) => rowPrefixes.some((pre) => e.id.startsWith(pre))).map((e) => <li key={e.id}><b style={{ color: TEXT, fontWeight: 600 }}>{e.label}</b> — {e.display}</li>)}
+              <li style={{ color: MUTED, listStyle: "none", marginInlineStart: -16, marginTop: 4 }}>{n.missing[0]}</li>
+            </ul>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CooSection() {
   const role = useRole();
   const [hide] = usePrivacyMode();
@@ -251,7 +286,6 @@ export default function CooSection() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [openId, setOpenId] = useState<string | null>(null);
   const [more, setMore] = useState(false);
-  const [staleOpen, setStaleOpen] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState({ kind: "loading" });
@@ -306,7 +340,8 @@ export default function CooSection() {
       {state.kind === "ready" && (() => {
         const b = state.brief;
         const staleNotices = b.notices.filter((n) => n.type === "STALE_PROJECT_DEADLINE" || n.type === "STALE_INTERNAL_DEADLINE");
-        const otherNotices = b.notices.filter((n) => !staleNotices.includes(n));
+        const waitingNotices = b.notices.filter((n) => n.type === "VICTOR_DELIVERIES_WAITING_OWNER");
+        const otherNotices = b.notices.filter((n) => !staleNotices.includes(n) && !waitingNotices.includes(n));
         const hasExtra = b.money.length > 0 || otherNotices.length > 0 || b.dataQuality.length > 0 || !!b.team.steven || !!b.team.victor;
         return (
           <>
@@ -315,28 +350,9 @@ export default function CooSection() {
             </p>
             <p style={{ margin: "0 0 12px", fontSize: 12, color: MUTED, lineHeight: 1.5 }}>{b.coverageLine}</p>
 
-            {staleNotices.length > 0 && (
-              <div style={{ marginBottom: 12, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "8px 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Pill color="#6B7280" bg="rgba(107,114,128,0.14)">מידע לעדכון</Pill>
-                  <span style={{ fontSize: 13, color: SUB }}>{staleNotices.map((n, i) => <span key={n.id}>{i > 0 ? " · " : ""}<RichText parts={n.title} hide={hide} /></span>)}</span>
-                  <button type="button" onClick={() => setStaleOpen((v) => !v)} aria-expanded={staleOpen}
-                    style={{ marginInlineStart: "auto", fontSize: 12, fontWeight: 700, color: TEXT, background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}>
-                    {staleOpen ? "הסתר" : "הצג אילו"}
-                  </button>
-                </div>
-                {staleOpen && (
-                  <div style={{ marginTop: 8 }}>
-                    {staleNotices.map((n) => (
-                      <ul key={n.id} style={{ margin: "0 0 6px", paddingInlineStart: 16, fontSize: 12, color: SUB, lineHeight: 1.7 }}>
-                        {n.evidence.filter((e) => e.id.startsWith("stale:p:") || e.id.startsWith("stale:w:")).map((e) => <li key={e.id}><b style={{ color: TEXT, fontWeight: 600 }}>{e.label}</b> — {e.display}</li>)}
-                        <li style={{ color: MUTED, listStyle: "none", marginInlineStart: -16, marginTop: 4 }}>{n.missing[0]}</li>
-                      </ul>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <NoticeLine label="ללא follow-up" color="#3B82F6" bg="rgba(59,130,246,0.12)" notices={waitingNotices} rowPrefixes={["vq:w:"]} hide={hide} />
+            <NoticeLine label="מידע לעדכון" color="#6B7280" bg="rgba(107,114,128,0.14)" notices={staleNotices} rowPrefixes={["stale:p:", "stale:w:"]} hide={hide} />
+            <div style={{ marginBottom: 2 }} />
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {b.cases.map((c) => (

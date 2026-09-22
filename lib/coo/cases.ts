@@ -77,15 +77,17 @@ export function buildCases(state: CompanyState, signals: Signal[], cfg: CooConfi
       for (const w of (victor?.active ?? []).filter((x) => x.projectId === pid)) {
         connections.push({ from: entity, to: { type: "team", id: "victor", name: "Victor" }, via: "vendor_project_work.project_id", linkType: "id", asOf });
         covKeys.add("victor.link");
+        const ballText = w.ball.holder === "owner" ? `Victor מסר${w.waitingOwnerDays !== null ? ` לפני ${w.waitingOwnerDays} ימים` : ""} — אין follow-up מתועד שלך אחריו`
+          : w.ball.holder === "victor" ? "אחרי ההערות האחרונות שלך עדיין לא הועלתה גרסה" : "לא ניתן לקבוע מה הפעולה האחרונה המתועדת";
         contextFacts.push({
           id: `ctx:victor:${w.id}`, title: "עבודה פעילה אצל Victor",
-          short: rich(`אצל Victor: "${w.title}" (${w.workState ?? "ללא מצב"}${w.daysSinceSent !== null ? `, נשלח לפני ${w.daysSinceSent} ימים` : ""})`),
-          evidence: [{ id: `ev:${w.id}:vstate`, label: "מצב העבודה", value: w.workState, display: w.workState ?? "לא ידוע", kind: "status", source: { table: "vendor_project_work", id: w.id, field: "work_state" }, asOf }],
+          short: rich(`אצל Victor: "${w.title}" — ${ballText}`),
+          evidence: [{ id: `ev:${w.id}:vball`, label: "הפעולה האחרונה המתועדת", value: w.ball.holder, display: `${w.ball.holder === "owner" ? "העלאה של Victor" : w.ball.holder === "victor" ? "הערות שלך" : "לא ידוע"} — ${w.ball.basis}`, kind: "status", source: { table: "vendor_project_work", id: w.id, field: "files_sent[].uploadedAt / version_reviews[].sentAt" }, asOf }],
         });
       }
 
       // Tasks — via tasks.related_id (only the non-overdue ones are context; overdue ones are a signal)
-      const linkedOpen = (state.tasks?.items ?? []).filter((t) => t.projectId === pid);
+      const linkedOpen = (state.tasks?.items ?? []).filter((t) => t.projectId === pid && !t.derivedFrom);
       if (linkedOpen.length > 0) {
         connections.push({ from: entity, to: { type: "company", id: "tasks", name: "משימות" }, via: "tasks.related_id", linkType: "id", asOf });
         const upcoming = linkedOpen.filter((t) => t.daysOverdue !== null && t.daysOverdue <= 0);

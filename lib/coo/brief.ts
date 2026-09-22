@@ -35,6 +35,7 @@ function weekItems(state: CompanyState, cfg: CooConfig): { items: WeekItem[]; to
   for (const s of state.sessions ?? []) add("session", s.dateYmd, s.daysTo, rich(`סשן מתוכנן${s.projectName ? `: ${s.projectName}` : ""}${s.start ? ` · ${s.start.slice(0, 5)}` : ""}`), s.projectId && s.projectName ? { type: "project", id: s.projectId, name: s.projectName } : null);
   for (const s of state.shows?.upcoming ?? []) add("show", s.dateYmd, s.daysTo, rich(`הופעה: ${s.name}`), { type: "show", id: s.id, name: s.name });
   for (const t of state.tasks?.items ?? []) {
+    if (t.derivedFrom) continue; // shown as the Victor internal deadline, not twice
     if (t.dueYmd !== null && t.daysOverdue !== null && t.daysOverdue <= 0) add("task", t.dueYmd, -t.daysOverdue, rich(`משימה: ${t.title}`), t.projectId ? { type: "project", id: t.projectId, name: state.projects?.index[t.projectId]?.name ?? "" } : null);
   }
   for (const p of state.proposals ?? []) {
@@ -96,7 +97,7 @@ function teamLines(state: CompanyState, cfg: CooConfig): Brief["team"] {
     if (st.approvedUnpaid.works.length > 0) { parts.push(T(` · ${st.approvedUnpaid.works.length} מאושרות שלא שולמו: `)); parts.push(...totalsRich(st.approvedUnpaid.byCurrency)); }
     return parts;
   })() : null;
-  const viLine: Rich | null = vi ? rich(`${vi.active.length} עבודות פעילות · חציון ${vi.ageStats.median ?? "?"} ימים מאז שליחה · הוותיקה ${vi.ageStats.oldest ?? "?"} · ${vi.linkedActive} מקושרות לפרויקט · ${vi.waitingOwner.length} ממתינות לבדיקתך`) : null;
+  const viLine: Rich | null = vi ? rich(`${vi.active.length} עבודות פעילות · פעולה אחרונה מתועדת: העלאה של Victor ב-${vi.ballCounts.owner}, הערות שלך ב-${vi.ballCounts.victor}, לא ידוע ב-${vi.ballCounts.unknown} · חציון ${vi.ageStats.median ?? "?"} ימים מאז שליחה · ${vi.linkedActive} מקושרות לפרויקט`) : null;
   return { steven: stLine, victor: viLine };
 }
 
