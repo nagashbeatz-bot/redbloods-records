@@ -97,9 +97,9 @@ const FACTS: Record<keyof Domains, StaticFacts> = {
     extraWarnings: [],
   },
   clips: {
-    scope: "FULL_HISTORY", stableIdField: "red_films_productions.id", hasCreatedAt: false, hasUpdatedAt: false,
+    scope: "FULL_HISTORY", stableIdField: "red_films_productions.id", hasCreatedAt: true, hasUpdatedAt: true,
     businessDateField: null, statusField: "red_films_productions.status",
-    extraWarnings: ["createdAt/updatedAt are not currently read for clips (not selected by this domain's reader) — status-transition detection would need those columns added to the read first, even though the table likely has them."],
+    extraWarnings: [],
   },
   suppliers: {
     scope: "NOT_APPLICABLE", stableIdField: null, hasCreatedAt: false, hasUpdatedAt: false,

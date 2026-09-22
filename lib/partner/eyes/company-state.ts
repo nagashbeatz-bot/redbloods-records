@@ -134,7 +134,7 @@ function buildClips(raw: PartnerEyesRaw, asOf: string): PartnerDomainState<Clips
   }
   const data: ClipsFact | null = raw.clips ? {
     total, withProjectId, withoutProjectId: total - withProjectId,
-    items: raw.clips.map((c) => ({ id: c.id, title: c.title, status: c.status, projectId: c.projectId, artistName: c.artistName })),
+    items: raw.clips.map((c) => ({ id: c.id, title: c.title, status: c.status, projectId: c.projectId, artistName: c.artistName, createdAt: c.createdAt, updatedAt: c.updatedAt })),
   } : null;
   return {
     domain: "clips", status, coverage, reliability: reliabilityFrom(coverage, idQuality),

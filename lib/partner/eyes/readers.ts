@@ -40,7 +40,9 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     track("clip_productions", async () => {
       const { data, error } = await supabase
         .from("red_films_productions")
-        .select("id, title, status, project_id, artist_name, production_type")
+        // Phase C.3: created_at/updated_at added (additive — same bulk query, wider columns,
+        // confirmed present on the live table) so this domain can support change detection.
+        .select("id, title, status, project_id, artist_name, production_type, created_at, updated_at")
         .eq("production_type", "קליפ");
       if (error) throw new Error(error.message);
       return (data ?? []).map((r) => ({
@@ -49,6 +51,8 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
         status: (r.status as string | null) ?? "",
         projectId: (r.project_id as string | null) ?? null,
         artistName: (r.artist_name as string | null) ?? "",
+        createdAt: (r.created_at as string | null) ?? null,
+        updatedAt: (r.updated_at as string | null) ?? null,
       }));
     }, (v) => v.length),
     // Full history — no date window (separate from lib/coo's forward-window read; that behavior is unchanged).

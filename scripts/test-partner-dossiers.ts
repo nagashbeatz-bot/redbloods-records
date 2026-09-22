@@ -132,8 +132,8 @@ function buildEyesRaw(): PartnerEyesRaw {
       // la2/la3 deliberately have NO ledger entries
     ],
     clips: [
-      { id: "clip1", title: "קליפ מקושר p1", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
-      { id: "clip-unlinked", title: "קליפ ללא פרויקט", status: "בתהליך", projectId: null, artistName: "אמן בדיקה" },
+      { id: "clip1", title: "קליפ מקושר p1", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-08-05T10:00:00Z" },
+      { id: "clip-unlinked", title: "קליפ ללא פרויקט", status: "בתהליך", projectId: null, artistName: "אמן בדיקה", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
     ],
     sessions: [
       { id: "se1-past", projectId: "p1", showId: null, date: "2026-09-10", startTime: "18:00", endTime: "20:00", status: "בוצע", sessionType: "סשן" },

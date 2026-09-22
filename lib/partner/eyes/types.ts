@@ -143,7 +143,7 @@ export interface LabelArtistsFact {
   balanceCoverage: { artistsWithEntries: number; totalEntries: number };
 }
 
-export interface ClipSummary { id: string; title: string; status: string; projectId: string | null; artistName: string }
+export interface ClipSummary { id: string; title: string; status: string; projectId: string | null; artistName: string; createdAt: string | null; updatedAt: string | null }
 export interface ClipsFact {
   total: number;
   withProjectId: number;
@@ -289,7 +289,7 @@ export interface TasksFullFact {
 
 export interface RawClient { id: string; name: string; type: string; status: string; createdAt: string | null }
 export interface RawLabelArtist { id: string; name: string; status: string; createdAt: string | null; updatedAt: string | null }
-export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string }
+export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string; createdAt: string | null; updatedAt: string | null }
 export interface RawShowEyes {
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
   djClientId: string | null; djConfirmationStatus: string | null; artistClientId: string | null; bookerClientId: string | null;

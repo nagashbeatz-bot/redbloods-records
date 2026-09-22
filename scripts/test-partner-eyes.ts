@@ -108,8 +108,8 @@ function buildEyesRaw(): PartnerEyesRaw {
       { id: "be3", artistId: "la1", entryType: "הוצאות", amount: 50, entryDate: "2026-08-10" },
     ],
     clips: [
-      { id: "clip1", title: "קליפ עם פרויקט", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה" },
-      { id: "clip2", title: "קליפ ישן (שם בלבד)", status: "בתהליך", projectId: null, artistName: "אמן לייבל בדיקה" },
+      { id: "clip1", title: "קליפ עם פרויקט", status: "בתהליך", projectId: "p1", artistName: "אמן בדיקה", createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-08-05T10:00:00Z" },
+      { id: "clip2", title: "קליפ ישן (שם בלבד)", status: "בתהליך", projectId: null, artistName: "אמן לייבל בדיקה", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z" },
     ],
     // full history: 3 sessions, only 1 of which (se1) is in COO's forward window (per buildCooRaw above)
     sessions: [
@@ -259,12 +259,12 @@ ok("Clips ↔ Projects: 1 of 2 rows carry project_id in this fixture → quality
 ok("…the exact split (1/2) is in a warning, never silently rounded away", P.domains.clips.warnings.some((w) => w.includes("1/2")));
 check("Clips data counts withProjectId/withoutProjectId correctly from the fixture (1 and 1)", [P.domains.clips.data!.withProjectId, P.domains.clips.data!.withoutProjectId], [1, 1]);
 ok("if ALL rows carried project_id, coverage would read FULL (not just ID)", (() => {
-  const rawAllLinked = buildEyesRaw(); rawAllLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: "p1", artistName: "a" }];
+  const rawAllLinked = buildEyesRaw(); rawAllLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: "p1", artistName: "a", createdAt: null, updatedAt: null }];
   const rel = assemblePartnerCompanyState(coo, rawAllLinked).domains.clips.relations.find((r) => r.via.includes("project_id"))!;
   return rel.quality === "ID" && rel.coverage === "FULL";
 })());
 ok("if NO rows carried project_id, quality falls back to TEXT_MATCH (never invents an id relation from nothing)", (() => {
-  const rawNoneLinked = buildEyesRaw(); rawNoneLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: null, artistName: "a" }];
+  const rawNoneLinked = buildEyesRaw(); rawNoneLinked.clips = [{ id: "x1", title: "t", status: "s", projectId: null, artistName: "a", createdAt: null, updatedAt: null }];
   const rel = assemblePartnerCompanyState(coo, rawNoneLinked).domains.clips.relations.find((r) => r.via.includes("project_id"))!;
   return rel.quality === "TEXT_MATCH";
 })());
