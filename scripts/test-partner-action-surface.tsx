@@ -94,7 +94,10 @@ async function main() {
   check("4. …and it rests on the structured evidence (A: DEADLINE_NOT_UPDATED, B: IN_TWO_WEEKS → 2026-10-07)", action.evidence.map((e) => e.kind === "OWNER_CONTEXT" ? e.answerCode : e.kind === "RESOLVED_VALUE" ? e.value.ymd : `${e.field}=${e.value}`), ["deadline=2026-07-14", "DEADLINE_NOT_UPDATED", "IN_TWO_WEEKS", "2026-10-07"]);
   ok("4. the note is never surfaced", !JSON.stringify(r).includes("never parsed"));
   check("status label", item?.statusLabelHe, "הצעה לפעולה");
-  check("DTO carries display data only (no snapshot / hash / event ids)", Object.keys(item ?? {}).sort(), ["actionId", "actionType", "currentDeadline", "currentDeadlineHe", "explanationHe", "headlineHe", "projectId", "projectName", "reasonHe", "statusLabelHe", "suggestedDeadline", "suggestedDeadlineHe", "v"]);
+  check("DTO v2: display data + what a decision must echo (hash, head) — no snapshot body, no actor, no execution data", Object.keys(item ?? {}).sort(), ["actionId", "actionType", "changeValueOptions", "currentDeadline", "currentDeadlineHe", "explanationHe", "headEventId", "headlineHe", "minChangeDate", "projectId", "projectName", "reasonHe", "snapshotHash", "state", "statusLabelHe", "suggestedDeadline", "suggestedDeadlineHe", "v"]);
+  check("v2: SHOW state, exact live snapshot hash, empty chain head", [item?.state, item?.snapshotHash, item?.headEventId], ["SHOW", HASH, null]);
+  check("v2: change options = the date answers of WHAT_IS_NEW_PROJECT_DEADLINE (with its labels)", item?.changeValueOptions, [{ code: "IN_ONE_WEEK", labelHe: "עוד שבוע" }, { code: "IN_TWO_WEEKS", labelHe: "עוד שבועיים" }, { code: "END_OF_MONTH", labelHe: "סוף החודש" }, { code: "SPECIFIC_DATE", labelHe: "לבחור תאריך" }]);
+  check("v2: min change date = today (Israel)", item?.minChangeDate, "2026-09-23");
 
   console.log("States (5-9)");
   const empty = await buildActionSurface(deps([], { items: false }));
@@ -107,13 +110,13 @@ async function main() {
   check("7. REJECTED → SUPPRESSED, not rendered", [sup.status === "OK" ? sup.states[ACTION_ID] : null, sup.status === "OK" ? sup.response.items.length : -1], ["SUPPRESSED", 0]);
   const ap = ev("APPROVED", null);
   const awaiting = await buildActionSurface(deps([ap]));
-  check("AWAITING_EXECUTION is not treated as a fresh proposal", [awaiting.status === "OK" ? awaiting.states[ACTION_ID] : null, awaiting.status === "OK" ? awaiting.response.items.length : -1], ["AWAITING_EXECUTION", 0]);
+  check("AWAITING_EXECUTION → a calm approved card, not a fresh proposal", [awaiting.status === "OK" ? awaiting.states[ACTION_ID] : null, awaiting.status === "OK" ? awaiting.response.items.map((i) => [i.state, i.statusLabelHe, i.headEventId === ap.id]) : null], ["AWAITING_EXECUTION", [["AWAITING_EXECUTION", "אושר — ממתין לביצוע", true]]]);
   const done = await buildActionSurface(deps([ap, ev("EXECUTED", ap.id)]));
   check("8. EXECUTED → DONE, not rendered", [done.status === "OK" ? done.states[ACTION_ID] : null, done.status === "OK" ? done.response.items.length : -1], ["DONE", 0]);
   const branchDeps = deps([ap, ev("REJECTED", ap.id), ev("NOT_NOW", ap.id, { deferChoice: "TOMORROW", deferUntil: "2026-09-30T00:00:00Z" })]);
   const blocked = await buildActionSurface(branchDeps);
   check("9. branched chain → BLOCKED, not rendered, logged server-side", [blocked.status === "OK" ? blocked.states[ACTION_ID] : null, blocked.status === "OK" ? blocked.response.items.length : -1, branchDeps.logs.some((l) => l.startsWith("partner_action_surface_blocked"))], ["BLOCKED", 0, true]);
-  ok("9. BLOCKED exposes no internal chain data to the Owner payload", blocked.status === "OK" && JSON.stringify(blocked.response) === JSON.stringify({ v: 1, items: [] }));
+  ok("9. BLOCKED exposes no internal chain data to the Owner payload", blocked.status === "OK" && JSON.stringify(blocked.response) === JSON.stringify({ v: 2, items: [] }));
   const unreadable = await buildActionSurface(deps({ status: "INVALID_STORED_EVENT", errors: ["x"] }));
   check("9. unreadable chain → fail closed (not rendered)", unreadable.status === "OK" ? [unreadable.states[ACTION_ID], unreadable.response.items.length] : null, ["BLOCKED", 0]);
   const failedRead = await buildActionSurface(deps({ status: "READ_FAILED", detail: "x" }));
@@ -126,14 +129,14 @@ async function main() {
   check("a STALE derived action is never surfaced", stale.status === "OK" ? stale.response.items.length : -1, 0);
 
   console.log("Fail-closed client parsing (14)");
-  const good = { v: 1, items: [item] };
+  const good = { v: 2, items: [item] };
   check("valid payload parses", parseActionSurfaceResponse(JSON.parse(JSON.stringify(good))).ok, true);
   const bad: Array<[string, unknown]> = [
-    ["null", null], ["array", [item]], ["wrong version", { v: 2, items: [item] }], ["items not an array", { v: 1, items: {} }], ["extra top-level key", { v: 1, items: [item], debug: {} }],
-    ["missing field", { v: 1, items: [{ ...item, reasonHe: undefined }] }], ["extra field (snapshot)", { v: 1, items: [{ ...item, snapshot: {} }] }],
-    ["bad date", { v: 1, items: [{ ...item, suggestedDeadline: "07.10.2026" }] }], ["same from/to", { v: 1, items: [{ ...item, suggestedDeadline: item?.currentDeadline }] }],
-    ["wrong action type", { v: 1, items: [{ ...item, actionType: "DELETE_PROJECT" }] }], ["empty text", { v: 1, items: [{ ...item, headlineHe: "" }] }],
-    ["non-string name", { v: 1, items: [{ ...item, projectName: 42 }] }], ["wrong status label", { v: 1, items: [{ ...item, statusLabelHe: "אושר" }] }],
+    ["null", null], ["array", [item]], ["old version", { v: 1, items: [item] }], ["items not an array", { v: 2, items: {} }], ["extra top-level key", { v: 2, items: [item], debug: {} }],
+    ["missing field", { v: 2, items: [{ ...item, reasonHe: undefined }] }], ["extra field (snapshot)", { v: 2, items: [{ ...item, snapshot: {} }] }],
+    ["bad date", { v: 2, items: [{ ...item, suggestedDeadline: "07.10.2026" }] }], ["same from/to", { v: 2, items: [{ ...item, suggestedDeadline: item?.currentDeadline }] }],
+    ["wrong action type", { v: 2, items: [{ ...item, actionType: "DELETE_PROJECT" }] }], ["empty text", { v: 2, items: [{ ...item, headlineHe: "" }] }],
+    ["non-string name", { v: 2, items: [{ ...item, projectName: 42 }] }], ["wrong status label", { v: 2, items: [{ ...item, statusLabelHe: "אושר" }] }], ["bad hash", { v: 2, items: [{ ...item, snapshotHash: "abc" }] }], ["bad head", { v: 2, items: [{ ...item, headEventId: "not-a-uuid" }] }], ["unknown state", { v: 2, items: [{ ...item, state: "DONE" }] }], ["foreign change option", { v: 2, items: [{ ...item, changeValueOptions: [{ code: "NOT_KNOWN_YET", labelHe: "x" }] }] }],
   ];
   for (const [label, payload] of bad) ok(`14. malformed (${label}) → fail closed`, parseActionSurfaceResponse(JSON.parse(JSON.stringify(payload ?? null))).ok === false);
 
@@ -146,8 +149,7 @@ async function main() {
   ok("15. dates isolated LTR (bdi) so digits never reorder", (desktop.match(/<bdi dir="ltr"/g) ?? []).length === 2 && desktop.includes("14.07.2026") && desktop.includes("07.10.2026"));
   ok("current is shown before suggested (reading order)", desktop.indexOf("14.07.2026") < desktop.indexOf("07.10.2026"));
   ok("name + headline + reason rendered", desktop.includes("הדדליין של &#x27;קרוב אלייך&#x27; לא מעודכן.") && desktop.includes("ציינת שהדדליין הישן לא עודכן, ולאחר מכן בחרת יעד חדש של עוד שבועיים."));
-  ok("READ-ONLY: no buttons, no inputs, no handlers, no links", !/<button|<input|<a |onclick|href=/i.test(desktop + mobile));
-  ok("READ-ONLY: states it is display only", desktop.includes("תצוגה בלבד"));
+  ok("without decision controls (no handlers wired) the card renders no buttons / inputs / links", !/<button|<input|<a |onclick|href=/i.test(desktop + mobile));
   ok("16. mobile layout: compact padding, dates stacked with ↓", mobile.includes("padding:12px 12px 10px") && mobile.includes("flex-direction:column") && mobile.includes("↓") && !mobile.includes("←"));
   ok("17. desktop layout: wider padding, dates side by side with ←", desktop.includes("padding:14px 16px 12px") && desktop.includes("flex-direction:row") && desktop.includes("gap:12px") && desktop.includes("←"));
   ok("the current deadline is not struck through (it is still the real value)", !/line-through/.test(desktop + mobile));

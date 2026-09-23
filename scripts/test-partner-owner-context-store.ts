@@ -368,16 +368,26 @@ async function main() {
     const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.name === "node_modules" || e.name.startsWith(".") ? [] : e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
     const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes(`${path.sep}investigation${path.sep}`) && /investigation\/context-(store|persistence)/.test(fs.readFileSync(f, "utf8")));
     // F.1H: the ONE approved consumer is the server-only live Partner view (read-only context reads before an Owner decision).
-    const APPROVED_READERS = [path.join("lib", "partner", "actions", "live.ts")];
-    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved server-only live view", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f)), []);
+    // F.1J adds exactly two more: the server-only Owner binding (appendOwnerContext for "שנה תאריך") and the pure
+    // change-value core (draft builder + error type only, never the store binding).
+    const APPROVED_READERS = [path.join("lib", "partner", "actions", "live.ts"), path.join("lib", "partner", "actions", "action-service.ts"), path.join("lib", "partner", "actions", "change-value.ts")];
+    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f)), []);
     const liveSrc = fs.readFileSync(path.join(ROOT, APPROVED_READERS[0]), "utf8");
     ok("30. the live view is server-only and only READS Owner Context (no append)", /^import "server-only";/m.test(liveSrc) && !/appendOwnerContext|\.insert\(|\.update\(|\.upsert\(/.test(liveSrc));
-    // F.1I: the ONLY /api/partner route is the Owner-only, GET-only Suggested Action surface.
+    const svcSrc = fs.readFileSync(path.join(ROOT, APPROVED_READERS[1]), "utf8");
+    ok("30. the Owner binding is server-only and appends Owner Context ONLY inside changeSuggestedActionValue (requireOwner first)", /^import "server-only";/m.test(svcSrc) && (svcSrc.match(/appendOwnerContext/g) ?? []).length === 2 && /export async function changeSuggestedActionValue[\s\S]*?resolveOwnerActor\(\)[\s\S]*?appendOwnerContext/.test(svcSrc));
+    const cvSrc = fs.readFileSync(path.join(ROOT, APPROVED_READERS[2]), "utf8");
+    ok("30. the change-value core never binds a store (injected append only)", !/context-store|createOwnerContextStore|lib\/supabase|server-only/.test(cvSrc.replace(/\/\*[\s\S]*?\*\//g, "")));
+    // F.1I/F.1J: /api/partner holds exactly the GET surface + the two Owner decision POST routes.
     const partnerApi = path.join(ROOT, "app", "api", "partner");
-    const partnerRoutes = walk(partnerApi).map((f) => path.relative(partnerApi, f));
-    check("30. /api/partner holds only the read-only actions surface", partnerRoutes, [path.join("actions", "route.ts")]);
+    const partnerRoutes = walk(partnerApi).map((f) => path.relative(partnerApi, f)).sort();
+    check("30. /api/partner holds only the actions surface + the two decision routes", partnerRoutes, [path.join("actions", "change-deadline", "route.ts"), path.join("actions", "decide", "route.ts"), path.join("actions", "route.ts")].sort());
     const surfaceRoute = fs.readFileSync(path.join(partnerApi, "actions", "route.ts"), "utf8");
-    ok("30. that route is GET-only, requireOwner, and never touches Owner Context", /export async function GET\(/.test(surfaceRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(surfaceRoute) && /requireOwner\(\)/.test(surfaceRoute) && !/context-store|context-persistence|appendOwnerContext/.test(surfaceRoute));
+    ok("30. the surface route is GET-only, requireOwner, and never touches Owner Context", /export async function GET\(/.test(surfaceRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(surfaceRoute) && /requireOwner\(\)/.test(surfaceRoute) && !/context-store|context-persistence|appendOwnerContext/.test(surfaceRoute));
+    for (const r of ["decide", "change-deadline"]) {
+      const s = fs.readFileSync(path.join(partnerApi, "actions", r, "route.ts"), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+      ok(`30. ${r} route is POST-only, same-origin guarded, and never touches the Owner Context store directly`, /export async function POST\(/.test(s) && !/export (async )?function (GET|PUT|PATCH|DELETE)/.test(s) && /checkSameOriginJson\(/.test(s) && !/context-store|context-persistence|appendOwnerContext/.test(s));
+    }
 
     const { db, store } = fresh();
     const a = await store.appendOwnerContext(draft());

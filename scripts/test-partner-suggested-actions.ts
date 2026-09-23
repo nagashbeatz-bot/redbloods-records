@@ -162,10 +162,13 @@ console.log("Isolation (23-26)");
   const ROOT = path.resolve(__dirname, "..");
   const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
   // F.1I: the ONLY app/components consumers are the Owner-only READ-ONLY surface (GET route + dashboard card).
-  const READ_ONLY_SURFACE = [path.join("app", "api", "partner", "actions", "route.ts"), path.join("components", "partner", "PartnerActionsSection.tsx"), path.join("components", "partner", "PartnerActionCard.tsx")];
+  // F.1I read surface + F.1J Owner decision UI/routes are the ONLY app/components consumers of actions.
+  const READ_ONLY_SURFACE = [path.join("app", "api", "partner", "actions", "route.ts"), path.join("components", "partner", "PartnerActionCard.tsx"), path.join("components", "partner", "partner-decision-client.ts"), path.join("components", "partner", "PartnerActionsSection.tsx")];
+  const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts")];
   const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /partner\/actions/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f));
-  check("no app/ or components/ file imports actions except the approved read-only surface (no decision / execution UI)", importers.filter((f) => !READ_ONLY_SURFACE.includes(f)), []);
-  ok("the read-only surface never reaches a decision / execution / write path", READ_ONLY_SURFACE.every((f) => !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(/.test(fs.readFileSync(path.join(ROOT, f), "utf8"))));
+  check("no app/ or components/ file imports actions except the approved surface + the two Owner decision routes", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f)), []);
+  ok("the surface / UI files never reach a server write path directly (UI talks to the routes over HTTP only)", READ_ONLY_SURFACE.every((f) => !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(/.test(fs.readFileSync(path.join(ROOT, f), "utf8"))));
+  ok("no app/ or components/ file can execute an action (execution is F.1K)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f)).every((f) => !/executeApprovedAction|callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(f, "utf8"))));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

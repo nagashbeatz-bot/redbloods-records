@@ -11,6 +11,8 @@ import "server-only";
  * UI, cron, agent or background executor calls these in this phase.
  */
 import { getAuthUser, requireOwner } from "@/lib/require-auth";
+import { appendOwnerContext } from "../investigation/context-store";
+import { changeSuggestedActionValueCore, type ChangeValueResult } from "./change-value";
 import { actionEventStore } from "./event-store";
 import { livePartnerView } from "./live";
 import { decideSuggestedActionCore, executeApprovedActionCore, type ActionServiceDeps, type DecideResult, type ExecuteResult, type OwnerActor } from "./service";
@@ -36,6 +38,16 @@ export async function decideSuggestedAction(input: unknown): Promise<DecideResul
   const a = await resolveOwnerActor();
   if (!a.ok) return a.result;
   return decideSuggestedActionCore(deps, a.actor, input);
+}
+
+/**
+ * "שנה תאריך" (F.1J): NOT an Action Event — an append-only Owner Context revision of the
+ * existing WHAT_IS_NEW_PROJECT_DEADLINE answer, after explicit Owner input. Never touches the project.
+ */
+export async function changeSuggestedActionValue(input: unknown): Promise<ChangeValueResult | OwnerAuthFailure> {
+  const a = await resolveOwnerActor();
+  if (!a.ok) return a.result;
+  return changeSuggestedActionValueCore({ live: livePartnerView, appendOwnerContext, audit: deps.audit }, input);
 }
 
 export async function executeApprovedAction(input: unknown): Promise<ExecuteResult | OwnerAuthFailure> {
