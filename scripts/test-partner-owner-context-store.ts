@@ -367,7 +367,11 @@ async function main() {
     const ROOT = path.resolve(__dirname, "..");
     const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.name === "node_modules" || e.name.startsWith(".") ? [] : e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
     const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes(`${path.sep}investigation${path.sep}`) && /investigation\/context-(store|persistence)/.test(fs.readFileSync(f, "utf8")));
-    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI)", importers.map((f) => path.relative(ROOT, f)), []);
+    // F.1H: the ONE approved consumer is the server-only live Partner view (read-only context reads before an Owner decision).
+    const APPROVED_READERS = [path.join("lib", "partner", "actions", "live.ts")];
+    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved server-only live view", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f)), []);
+    const liveSrc = fs.readFileSync(path.join(ROOT, APPROVED_READERS[0]), "utf8");
+    ok("30. the live view is server-only and only READS Owner Context (no append)", /^import "server-only";/m.test(liveSrc) && !/appendOwnerContext|\.insert\(|\.update\(|\.upsert\(/.test(liveSrc));
     ok("30. no /api/partner route exists", !fs.existsSync(path.join(ROOT, "app", "api", "partner")));
 
     const { db, store } = fresh();
