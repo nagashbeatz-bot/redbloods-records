@@ -372,7 +372,12 @@ async function main() {
     check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved server-only live view", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f)), []);
     const liveSrc = fs.readFileSync(path.join(ROOT, APPROVED_READERS[0]), "utf8");
     ok("30. the live view is server-only and only READS Owner Context (no append)", /^import "server-only";/m.test(liveSrc) && !/appendOwnerContext|\.insert\(|\.update\(|\.upsert\(/.test(liveSrc));
-    ok("30. no /api/partner route exists", !fs.existsSync(path.join(ROOT, "app", "api", "partner")));
+    // F.1I: the ONLY /api/partner route is the Owner-only, GET-only Suggested Action surface.
+    const partnerApi = path.join(ROOT, "app", "api", "partner");
+    const partnerRoutes = walk(partnerApi).map((f) => path.relative(partnerApi, f));
+    check("30. /api/partner holds only the read-only actions surface", partnerRoutes, [path.join("actions", "route.ts")]);
+    const surfaceRoute = fs.readFileSync(path.join(partnerApi, "actions", "route.ts"), "utf8");
+    ok("30. that route is GET-only, requireOwner, and never touches Owner Context", /export async function GET\(/.test(surfaceRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(surfaceRoute) && /requireOwner\(\)/.test(surfaceRoute) && !/context-store|context-persistence|appendOwnerContext/.test(surfaceRoute));
 
     const { db, store } = fresh();
     const a = await store.appendOwnerContext(draft());

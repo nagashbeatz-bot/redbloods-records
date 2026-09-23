@@ -395,7 +395,8 @@ ok("lib/coo has no reverse dependency on lib/partner (the only lib/coo edits thi
   const cooDir = path.join(ROOT, "lib/coo");
   return fs.readdirSync(cooDir).every((f) => !/lib\/partner/.test(fs.readFileSync(path.join(cooDir, f), "utf8")));
 })());
-ok("no new API route added under app/api for Partner in this block", !fs.existsSync(path.join(ROOT, "app/api/partner")));
+// F.1I: the only /api/partner route is the Owner-only read-only actions surface — and it does not expose eyes.
+ok("no API route added under app/api for eyes (the only /api/partner route is the F.1I actions surface, which does not import lib/partner/eyes)", (() => { const dir = path.join(ROOT, "app/api/partner"); if (!fs.existsSync(dir)) return true; const list = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? list(path.join(d, e.name)) : [path.relative(dir, path.join(d, e.name)).split(path.sep).join("/")]); const files = list(dir); return files.length === 1 && files[0] === "actions/route.ts" && !fs.readFileSync(path.join(dir, "actions/route.ts"), "utf8").includes("lib/partner/eyes"); })());
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

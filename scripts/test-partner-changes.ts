@@ -395,7 +395,8 @@ ok("no portal file imports lib/partner/changes", (() => {
   const portalFiles = [...portalDirs.flatMap((d) => walk(path.join(ROOT, d))), ...fs.readdirSync(path.join(ROOT, "lib")).filter((f) => /^(steven|victor|shalev|avi|cleantone|dj-|beat|show-|sketch)/.test(f)).map((f) => path.join(ROOT, "lib", f))];
   return portalFiles.every((f) => !/lib\/partner\/changes/.test(fs.readFileSync(f, "utf8")));
 })());
-ok("no new API route added under app/api for changes in this block", !fs.existsSync(path.join(path.resolve(__dirname, ".."), "app/api/partner")));
+// F.1I: the only /api/partner route is the Owner-only read-only actions surface — and it does not expose changes.
+ok("no API route added under app/api for changes (the only /api/partner route is the F.1I actions surface, which does not import lib/partner/changes)", (() => { const dir = path.join(path.resolve(__dirname, ".."), "app/api/partner"); if (!fs.existsSync(dir)) return true; const list = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? list(path.join(d, e.name)) : [path.relative(dir, path.join(d, e.name)).split(path.sep).join("/")]); const files = list(dir); return files.length === 1 && files[0] === "actions/route.ts" && !fs.readFileSync(path.join(dir, "actions/route.ts"), "utf8").includes("lib/partner/changes"); })());
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

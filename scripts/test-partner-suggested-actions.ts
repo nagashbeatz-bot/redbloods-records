@@ -161,7 +161,11 @@ console.log("Isolation (23-26)");
   ok("no clock / randomness in derivation", Object.values(src).every((s) => !/Date\.now\(|new Date\(\)|Math\.random/.test(s)));
   const ROOT = path.resolve(__dirname, "..");
   const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
-  check("no app/ or components/ file imports actions (no UI, no route)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /partner\/actions/.test(fs.readFileSync(f, "utf8"))), []);
+  // F.1I: the ONLY app/components consumers are the Owner-only READ-ONLY surface (GET route + dashboard card).
+  const READ_ONLY_SURFACE = [path.join("app", "api", "partner", "actions", "route.ts"), path.join("components", "partner", "PartnerActionsSection.tsx"), path.join("components", "partner", "PartnerActionCard.tsx")];
+  const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /partner\/actions/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f));
+  check("no app/ or components/ file imports actions except the approved read-only surface (no decision / execution UI)", importers.filter((f) => !READ_ONLY_SURFACE.includes(f)), []);
+  ok("the read-only surface never reaches a decision / execution / write path", READ_ONLY_SURFACE.every((f) => !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(/.test(fs.readFileSync(path.join(ROOT, f), "utf8"))));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

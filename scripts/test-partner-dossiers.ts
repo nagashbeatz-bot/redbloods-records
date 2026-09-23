@@ -470,7 +470,8 @@ ok("no portal file imports lib/partner/dossiers", (() => {
   const portalFiles = [...portalDirs.flatMap((d) => walk(path.join(ROOT, d))), ...fs.readdirSync(path.join(ROOT, "lib")).filter((f) => /^(steven|victor|shalev|avi|cleantone|dj-|beat|show-|sketch)/.test(f)).map((f) => path.join(ROOT, "lib", f))];
   return portalFiles.every((f) => !/lib\/partner\/dossiers/.test(fs.readFileSync(f, "utf8")));
 })());
-ok("no new API route added under app/api for dossiers in this block", !fs.existsSync(path.join(ROOT, "app/api/partner")));
+// F.1I: the only /api/partner route is the Owner-only read-only actions surface — and it does not expose dossiers.
+ok("no API route added under app/api for dossiers (the only /api/partner route is the F.1I actions surface, which does not import lib/partner/dossiers)", (() => { const dir = path.join(ROOT, "app/api/partner"); if (!fs.existsSync(dir)) return true; const list = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? list(path.join(d, e.name)) : [path.relative(dir, path.join(d, e.name)).split(path.sep).join("/")]); const files = list(dir); return files.length === 1 && files[0] === "actions/route.ts" && !fs.readFileSync(path.join(dir, "actions/route.ts"), "utf8").includes("lib/partner/dossiers"); })());
 
 console.log("determinism (same input → identical output)");
 check("buildProjectDossier is deterministic", JSON.stringify(buildProjectDossier(P, "p1")), JSON.stringify(r1));

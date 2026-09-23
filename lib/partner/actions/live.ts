@@ -12,7 +12,7 @@ import type { PartnerCase } from "../cases/types";
 import { comparePartnerChangeSnapshots } from "../changes/compare";
 import { buildPartnerChangeSnapshot } from "../changes/snapshot";
 import { buildPartnerCompanyState } from "../eyes/build";
-import { getContextsForCase } from "../investigation/context-store";
+import { getContextsForCase, listOwnerContexts } from "../investigation/context-store";
 import type { PersistedOwnerContext } from "../investigation/context-row";
 import { deriveCaseDecisionState } from "../investigation/decision-state";
 import type { ActionLiveView, LiveActionLookup, LiveCaseView } from "./service";
@@ -46,6 +46,29 @@ async function caseContexts(caseId: string): Promise<{ ok: true; contexts: Persi
 function deriveFor(c: PartnerCase, contexts: PersistedOwnerContext[], labels: Map<string, string>): PartnerSuggestedAction[] {
   const ds = deriveCaseDecisionState(c, contexts);
   return deriveSuggestedActions({ case: c, decisionState: ds, subjectLabelHe: c.subjectType === "project" ? labels.get(c.subjectId) ?? null : null }).actions;
+}
+
+export interface LiveProposal { action: PartnerSuggestedAction; caseRef: PartnerCase; subjectLabelHe: string | null }
+export type LiveProposalList = { status: "OK"; items: LiveProposal[] } | { status: "READ_FAILED"; detail: string };
+
+/**
+ * Every Suggested Action derivable right now (any status), across all live Cases that have Owner Context.
+ * ONE full Owner Context read, grouped by Case. Read-only (F.1I surface).
+ */
+export async function listLiveProposals(): Promise<LiveProposalList> {
+  let live: LiveCases;
+  try { live = await buildLiveCases(); } catch (e) { return { status: "READ_FAILED", detail: `live Partner state unreadable: ${(e as Error).message}` }; }
+  const h = await listOwnerContexts();
+  if (h.status !== "OK" && h.status !== "NO_CONTEXT") return { status: "READ_FAILED", detail: h.status === "READ_FAILED" ? h.error.message : `owner context unreadable (${h.status})` };
+  const all = h.status === "OK" ? h.contexts : [];
+  const items: LiveProposal[] = [];
+  for (const c of live.cases) {
+    const ctx = all.filter((x) => x.caseId === c.id);
+    if (!ctx.length) continue;
+    const label = c.subjectType === "project" ? live.labels.get(c.subjectId) ?? null : null;
+    for (const action of deriveFor(c, ctx, live.labels)) items.push({ action, caseRef: c, subjectLabelHe: label });
+  }
+  return { status: "OK", items };
 }
 
 export const livePartnerView: ActionLiveView = {

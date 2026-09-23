@@ -65,6 +65,9 @@ async function main() {
   const chain = await actionEventStore.getActionChain(ACTION_ID);
   const events = chain.status === "OK" ? chain.chain : [];
   const surfacing = resolveActionSurfacing({ actionId: ACTION_ID, current: { status: found.action.status, snapshotHash: hash }, events, now: new Date() });
+  // F.1I: exactly what GET /api/partner/actions serves (same binding, read-only).
+  const { getOwnerActionSurface } = await import("../lib/partner/actions/surface-server");
+  const surface = await getOwnerActionSurface();
   const after = await safety();
 
   console.log(JSON.stringify({
@@ -79,6 +82,7 @@ async function main() {
     chainRead: chain.status,
     chainLength: events.length,
     surfacing: surfacing.state,
+    surfaceRoutePayload: surface.status === "OK" ? surface.response : surface,
     before,
     after,
     blockedWrites: blocked,
