@@ -440,7 +440,8 @@ console.log("Schema Hardening §9-10: no UPDATE/DELETE capability exists anywher
   const files = fs.readdirSync(dir).map((f) => path.join(dir, f));
   const src = Object.fromEntries(files.map((f) => [f, fs.readFileSync(f, "utf8")]));
   ok("no function named update/delete/mutate a feedback record", Object.values(src).every((s) => !/export function (update|delete|mutate)PartnerFeedback/i.test(s)));
-  ok("no Supabase/DB import anywhere (still a pure module)", Object.values(src).every((s) => !/@\/lib\/supabase|from ["']\.\.\/\.\.\/\.\.\/supabase["']/.test(s)));
+  // F.1B: store.ts is the single, server-only persistence binding; every other file stays pure.
+  ok("no Supabase/DB import outside store.ts (the pure model stays pure)", Object.entries(src).filter(([f]) => path.basename(f) !== "store.ts").every(([, s]) => !/@\/lib\/supabase|from ["']\.\.\/\.\.\/\.\.\/supabase["']/.test(s)));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
