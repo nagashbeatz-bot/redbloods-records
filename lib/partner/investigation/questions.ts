@@ -18,10 +18,11 @@
  */
 import type { PartnerCase } from "../cases/types";
 import { fingerprintCaseFacts } from "../feedback/snapshot";
+import { formatYmdHe } from "./answer-value";
 import {
   INVESTIGATION_OWNER_RULE, INVESTIGATION_SCHEMA_VERSION,
   type InvestigationAnswerOption, type InvestigationDecision, type InvestigationQuestionType,
-  type NoQuestionReason, type PartnerInvestigationQuestion,
+  type NoQuestionReason, type PartnerInvestigationQuestion, type PartnerOwnerContext, type QuestionOrigin,
 } from "./types";
 
 // ── answer options (the OTHER option is appended to every list) ──
@@ -71,6 +72,14 @@ export const ANSWER_OPTIONS: Record<InvestigationQuestionType, readonly Investig
     { code: "WAITING_ON_CLIENT_OR_ARTIST", labelHe: "ממתין ללקוח/אמן", derivedHe: `העבודה ממתינה ללקוח או לאמן ${byOwner}.` },
     { code: "SCOPE_CHANGED", labelHe: "היקף העבודה השתנה", derivedHe: `היקף העבודה השתנה אחרי קביעת הדדליין ${byOwner}.` },
     { code: "INTENTIONALLY_EXTENDED", labelHe: "הוארך בכוונה", derivedHe: `הדדליין הוארך בכוונה ${byOwner}.`, remainingUnknownHe: "דדליין מעודכן — לא ידוע." },
+  ],
+  // F.1E v2 follow-up. Relative answers are resolved to a concrete date by the server at answer time (answer-value.ts).
+  WHAT_IS_NEW_PROJECT_DEADLINE: [
+    { code: "IN_ONE_WEEK", labelHe: "עוד שבוע", derivedHe: `נקבע דדליין חדש לפרויקט ${byOwner}.` },
+    { code: "IN_TWO_WEEKS", labelHe: "עוד שבועיים", derivedHe: `נקבע דדליין חדש לפרויקט ${byOwner}.` },
+    { code: "END_OF_MONTH", labelHe: "סוף החודש", derivedHe: `נקבע דדליין חדש לפרויקט ${byOwner}.` },
+    { code: "SPECIFIC_DATE", labelHe: "לבחור תאריך", derivedHe: `נקבע דדליין חדש לפרויקט ${byOwner}.` },
+    { code: "NOT_KNOWN_YET", labelHe: "עדיין לא יודע", derivedHe: `עדיין לא נקבע דדליין חדש ${byOwner}.`, remainingUnknownHe: "מהו הדדליין החדש — לא ידוע." },
   ],
   WHY_RELEASE_TARGET_PASSED: [
     { code: "TARGET_NOT_UPDATED", labelHe: "היעד פשוט לא עודכן", derivedHe: `תאריך היעד השמור אינו משקף את התכנון הנוכחי ${byOwner}.`, hypothesisHe: "ייתכן שיש פער בתחזוקת תאריכי יעד של ריליסים." },
@@ -123,7 +132,7 @@ export function questionIdFor(caseId: string, type: InvestigationQuestionType): 
   return `${caseId}::${type}`;
 }
 
-function makeQuestion(c: PartnerCase, type: InvestigationQuestionType, questionTextHe: string, reasonHe: string, refs: string[]): PartnerInvestigationQuestion {
+function makeQuestion(c: PartnerCase, type: InvestigationQuestionType, questionTextHe: string, reasonHe: string, refs: string[], origin: QuestionOrigin = { kind: "CASE" }): PartnerInvestigationQuestion {
   return {
     id: questionIdFor(c.id, type),
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
@@ -132,6 +141,7 @@ function makeQuestion(c: PartnerCase, type: InvestigationQuestionType, questionT
     subjectType: c.subjectType,
     subjectId: c.subjectId,
     questionType: type,
+    origin,
     caseFactsFingerprint: fingerprintCaseFacts(c),
     questionTextHe,
     reasonHe,
@@ -254,4 +264,80 @@ export function decideInvestigations(cases: readonly PartnerCase[]): Investigati
 /** Just the questions, sorted by id. */
 export function buildInvestigationQuestions(cases: readonly PartnerCase[]): PartnerInvestigationQuestion[] {
   return decideInvestigations(cases).flatMap((d) => (d.question ? [d.question] : [])).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// ── Follow-up questions (F.1E v2) — triggered by one exact Owner Context, never by the Case alone ──
+
+export interface FollowUpRule {
+  /** The answered question that may trigger the follow-up. */
+  fromQuestionType: InvestigationQuestionType;
+  /** Answers that trigger it. Anything else (incl. OTHER) does not — other causes may need tailored flows later. */
+  fromAnswerCodes: readonly string[];
+  followUp: InvestigationQuestionType;
+}
+
+/**
+ * v1 (Owner decision 2026-09-23): a new-deadline question follows only
+ * DEADLINE_NOT_UPDATED and INTENTIONALLY_DELAYED — in both, the stored deadline
+ * no longer represents the plan (NOT_KNOWN_YET is a valid answer).
+ * DEADLINE_NO_LONGER_RELEVANT, CLIENT_DELAY, ARTIST_DELAY, QUALITY_WORK_CONTINUED,
+ * EXTERNAL_DEPENDENCY, PROJECT_WAS_PAUSED and OTHER deliberately do not.
+ */
+export const FOLLOW_UP_RULES: readonly FollowUpRule[] = [
+  { fromQuestionType: "WHY_DEADLINE_STILL_ACTIVE", fromAnswerCodes: ["DEADLINE_NOT_UPDATED", "INTENTIONALLY_DELAYED"], followUp: "WHAT_IS_NEW_PROJECT_DEADLINE" },
+];
+
+/** Question types that exist only as follow-ups (always carry a trigger; never generated from a Case alone). */
+export const FOLLOW_UP_QUESTION_TYPES: ReadonlySet<InvestigationQuestionType> = new Set(FOLLOW_UP_RULES.map((r) => r.followUp));
+
+export function isFollowUpQuestionType(t: InvestigationQuestionType): boolean {
+  return FOLLOW_UP_QUESTION_TYPES.has(t);
+}
+
+/** True when an answer (questionType, answerCode) triggers `followUp` under FOLLOW_UP_RULES. */
+export function triggersFollowUp(questionType: string, answerCode: string, followUp: InvestigationQuestionType): boolean {
+  return FOLLOW_UP_RULES.some((r) => r.followUp === followUp && r.fromQuestionType === questionType && r.fromAnswerCodes.includes(answerCode));
+}
+
+function followUpText(c: PartnerCase, type: InvestigationQuestionType): { text: string; reason: string; refs: string[] } {
+  // Only one follow-up type exists in v1.
+  void type;
+  const deadline = fact(c, "deadline");
+  const shown = typeof deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? ` (${formatYmdHe(deadline)})` : "";
+  return {
+    text: `הדדליין השמור${shown} כבר לא משקף את התכנון. מה הדדליין החדש לפרויקט?`,
+    reason: "הבעלים ציין שהדדליין השמור אינו משקף את התכנון — הדדליין החדש אינו ידוע.",
+    refs: ["deadline", "status"],
+  };
+}
+
+/**
+ * Follow-up questions for ONE Case, from the Owner Contexts that currently
+ * apply to it (the caller passes APPLICABLE contexts — see
+ * context-applicability.ts). Deterministic.
+ *
+ * `existingFollowUpTriggers` (questionId → triggerContextId) lets an
+ * already-answered, still-applicable follow-up keep pointing at its ORIGINAL
+ * trigger, so the question and its answer stay in the same slot even after a
+ * note-only revision of the trigger (semantic continuity).
+ */
+export function buildFollowUpQuestions(
+  c: PartnerCase,
+  applicableContexts: readonly PartnerOwnerContext[],
+  existingFollowUpTriggers: Readonly<Record<string, string>> = {},
+): PartnerInvestigationQuestion[] {
+  const out: PartnerInvestigationQuestion[] = [];
+  for (const rule of FOLLOW_UP_RULES) {
+    const trigger = applicableContexts
+      .filter((x) => x.caseId === c.id && x.questionType === rule.fromQuestionType && rule.fromAnswerCodes.includes(x.answerCode))
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+    if (!trigger) continue;
+    const qid = questionIdFor(c.id, rule.followUp);
+    const triggerContextId = existingFollowUpTriggers[qid] ?? trigger.id;
+    const { text, reason, refs } = followUpText(c, rule.followUp);
+    out.push(makeQuestion(c, rule.followUp, text, reason, refs, {
+      kind: "OWNER_CONTEXT", triggerContextId, triggerQuestionId: trigger.questionId, triggerAnswerCode: trigger.answerCode,
+    }));
+  }
+  return out.sort((a, b) => a.id.localeCompare(b.id));
 }

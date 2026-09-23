@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CASE_SCHEMA_VERSION, type PartnerCase } from "../lib/partner/cases/types";
 import { fingerprintCaseFacts } from "../lib/partner/feedback";
-import { decideInvestigation, buildAttentionQueue, interpretCase, deriveContextLearningSignals, type PartnerInvestigationQuestion } from "../lib/partner/investigation";
+import { decideInvestigation, buildAttentionQueue, interpretCase, deriveContextLearningSignals, buildFollowUpQuestions, triggersFollowUp, resolveAnswerValue, validateAnswerValue, classifyOwnerContexts, applicableContexts, type PartnerInvestigationQuestion } from "../lib/partner/investigation";
 import {
   createOwnerContextStore, buildOwnerContextDraft, analyzeOwnerContextGraph, OwnerContextStoreError, CONTEXT_PAGE_SIZE,
   type ContextDbResponse, type ContextSelectQuery, type OwnerContextTableClient, type OwnerContextDraft,
@@ -51,8 +51,9 @@ class FakeContextDb {
   log: string[] = [];
   tables = new Set<string>();
   insertPayloads: Row[] = [];
-  opts: { failSelect?: boolean; throwOnSelect?: boolean; failInsert?: boolean; hideSuccessorPrecheck?: boolean } = {};
-  clockMs = Date.parse("2026-09-24T09:00:00.000Z");
+  opts: { failSelect?: boolean; throwOnSelect?: boolean; failInsert?: boolean; hideRowIdsOnRead?: Set<string> } = {};
+  /** DB now(): starts at the real Context A's created_at (2026-09-23T09:10:08.684Z). */
+  clockMs = Date.parse("2026-09-23T09:10:08.000Z");
   freezeClock = false;
   private idSeq = 0;
   forceNextIds: string[] = [];
@@ -71,6 +72,14 @@ class FakeContextDb {
     if (row.question_id !== `${row.case_id}::${row.question_type}`) return { data: null, error: { code: "23514", message: "violates check constraint partner_owner_context_question_id_derived_chk" } };
     if (!FMT.test(row.question_type) || !FMT.test(row.answer_code)) return { data: null, error: { code: "23514", message: "violates format check" } };
     if (typeof row.provenance !== "object" || row.provenance === null || !("source" in (row.provenance as object))) return { data: null, error: { code: "23514", message: "violates provenance check" } };
+    if (row.trigger_context_id !== null && row.trigger_context_id === id) return { data: null, error: { code: "23514", message: "violates check constraint partner_owner_context_trigger_not_self_chk" } };
+    if (row.context_schema_version === "partner-owner-context-schema-v1" && (row.answer_value !== null || row.trigger_context_id !== null)) return { data: null, error: { code: "23514", message: "violates check constraint partner_owner_context_v1_shape_chk" } };
+    const av = row.answer_value as Record<string, unknown> | null;
+    if (av !== null && (typeof av !== "object" || av.kind !== "DATE" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(String(av.ymd)) || typeof av.resolution !== "object")) return { data: null, error: { code: "23514", message: "violates check constraint partner_owner_context_answer_value_chk" } };
+    if (row.trigger_context_id !== null && !this.rows.some((x) => x.id === row.trigger_context_id)) return { data: null, error: { code: "23503", message: 'insert violates foreign key constraint "partner_owner_context_trigger_fk"' } };
+    if (row.supersedes_id === null && this.rows.some((x) => x.supersedes_id === null && x.question_id === row.question_id && (x.trigger_context_id ?? "") === (row.trigger_context_id ?? ""))) {
+      return { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "partner_owner_context_one_root_per_slot_idx"' } };
+    }
     if (row.supersedes_id !== null && !this.rows.some((x) => x.id === row.supersedes_id && x.question_id === row.question_id)) {
       return { data: null, error: { code: "23503", message: 'insert violates foreign key constraint "partner_owner_context_supersedes_same_question_fk"' } };
     }
@@ -94,8 +103,7 @@ class FakeContextDb {
             let range: [number, number] | null = null;
             const run = (): ContextDbResponse<unknown[]> => {
               if (db.opts.failSelect) return { data: null, error: { code: "57014", message: "statement timeout" } };
-              if (db.opts.hideSuccessorPrecheck && columns === "id" && filters.some(([c]) => c === "supersedes_id")) return { data: [], error: null };
-              let out = db.rows.filter((r) => filters.every(([c, v]) => r[c] === v));
+              let out = db.rows.filter((r) => filters.every(([c, v]) => r[c] === v) && !db.opts.hideRowIdsOnRead?.has(String(r.id)));
               out = [...out].sort((a, b) => {
                 for (const [c, asc] of orders) {
                   const av = c === "created_at" ? Date.parse(String(a[c])) : String(a[c]), bv = c === "created_at" ? Date.parse(String(b[c])) : String(b[c]);
@@ -147,7 +155,8 @@ const C3 = projectDeadlineCase();
 const Q3 = questionFor(C3);
 const draft = (patch: Partial<OwnerContextDraft> = {}, q: PartnerInvestigationQuestion = Q3): OwnerContextDraft =>
   ({ ...buildOwnerContextDraft(q, CASE_SCHEMA_VERSION, { answerCode: "DEADLINE_NOT_UPDATED" }), ...patch });
-const fresh = () => { const db = new FakeContextDb(); return { db, store: createOwnerContextStore(db.client()) }; };
+const SERVER_NOW = new Date("2026-09-23T12:00:00.000Z"); // 15:00 in Israel → Israel date 2026-09-23
+const fresh = () => { const db = new FakeContextDb(); return { db, store: createOwnerContextStore(db.client(), { now: () => SERVER_NOW }) }; };
 const ids = (r: { status: string; contexts?: PersistedOwnerContext[] }) => (r.status === "OK" && r.contexts ? r.contexts.map((c) => c.id) : r.status);
 
 async function main() {
@@ -158,13 +167,13 @@ async function main() {
     const r = await store.appendOwnerContext(draft());
     check("one row", db.rows.length, 1);
     check("4. id from DB", r.id, "9f3c2a10-0000-4000-8000-00000000abcd");
-    check("5. answeredAt = DB created_at (normalized ISO)", r.answeredAt, "2026-09-24T09:00:00.000Z");
+    check("5. answeredAt = DB created_at (normalized ISO)", r.answeredAt, "2026-09-23T09:10:08.000Z");
     check("6. context_schema_version stamped", [db.rows[0].context_schema_version, r.schemaVersion], [OWNER_CONTEXT_SCHEMA_VERSION, OWNER_CONTEXT_SCHEMA_VERSION]);
     check("INSERT never carries id / created_at / schema from the caller", ["id", "created_at"].filter((k) => k in db.insertPayloads[0]), []);
     check("row columns (explicit mapping)", Object.keys(db.rows[0]).sort(), OWNER_CONTEXT_COLUMNS.split(",").sort());
     ok("domain record has no snake_case keys", Object.keys(r).every((k) => !k.includes("_")));
     check("identity round-trip", [r.questionId, r.questionType, r.caseId, r.caseType, r.subjectType, r.subjectId, r.answerCode, r.scope], [Q3.id, "WHY_DEADLINE_STILL_ACTIVE", C3.id, "PROJECT_DEADLINE_PASSED", "project", C3.subjectId, "DEADLINE_NOT_UPDATED", "CASE_INSTANCE"]);
-    for (const k of ["id", "createdAt", "answeredAt", "schemaVersion", "contextSchemaVersion"]) {
+    for (const k of ["id", "createdAt", "answeredAt", "schemaVersion", "contextSchemaVersion", "answerValue"]) {
       const f = fresh();
       await expectErr(`caller-supplied ${k} rejected`, () => f.store.appendOwnerContext({ ...draft(), [k]: "x" } as OwnerContextDraft), "VALIDATION_FAILED");
       ok(`   ${k}: zero DB calls`, f.db.log.length === 0);
@@ -231,10 +240,10 @@ async function main() {
     const e14 = await expectErr("14. revision whose Case type drifts", () => store.appendOwnerContext(draft({ supersedesId: b.id, caseType: "RELEASE_TARGET_DATE_PASSED" })), "REVISION_TARGET_MISMATCH");
     ok("   diff names caseType", !!e14 && e14.details.some((d) => d.startsWith("caseType")));
     await expectErr("15. branch — second successor of the same row (pre-check)", () => store.appendOwnerContext(draft({ supersedesId: a.id })), "REVISION_BRANCH_CONFLICT");
-    db.opts.hideSuccessorPrecheck = true;
+    db.opts.hideRowIdsOnRead = new Set([b.id]); // the app's read misses the concurrent successor
     const race = await expectErr("15. race reaching the DB partial UNIQUE index", () => store.appendOwnerContext(draft({ supersedesId: a.id })), "REVISION_BRANCH_CONFLICT");
     ok("   DB detail kept", !!race && race.details.some((d) => d.includes("23505")));
-    db.opts.hideSuccessorPrecheck = false;
+    db.opts.hideRowIdsOnRead = undefined;
     await expectErr("supersedesId that does not exist", () => store.appendOwnerContext(draft({ supersedesId: uid(999) })), "SUPERSEDED_NOT_FOUND");
     check("only the 2 valid rows exist", db.rows.length, 2);
   }
@@ -243,7 +252,7 @@ async function main() {
   {
     const { db, store } = fresh();
     await store.appendOwnerContext(draft());
-    db.seedRaw({ ...db.rows[0], id: uid(50), context_schema_version: "partner-owner-context-schema-v2" });
+    db.seedRaw({ ...db.rows[0], id: uid(50), context_schema_version: "partner-owner-context-schema-v3" });
     const r = await store.listOwnerContexts();
     check("16. unsupported schema → INVALID_STORED_ROWS / UNSUPPORTED_CONTEXT_SCHEMA", r.status === "INVALID_STORED_ROWS" ? r.rejected.map((x) => [x.id, x.code]) : r.status, [[uid(50), "UNSUPPORTED_CONTEXT_SCHEMA"]]);
     const bad = (patch: Row) => { const m = mapOwnerContextRow({ ...db.rows[0], ...patch }); return m.ok ? "ok" : m.code; };
@@ -304,7 +313,7 @@ async function main() {
     const g = await store.resolveCurrentOwnerContexts({ questionId: Q3.id });
     check("15/24. branch in stored history → INVALID_REVISION_GRAPH", g.status === "INVALID_REVISION_GRAPH" ? g.diagnostics.map((d) => d.kind) : g.status, ["BRANCH"]);
     check("history read itself still works", (await store.getContextsForQuestion(Q3.id)).status, "OK");
-    const mk = (id: string, sup: string | null, q = "c:1::WHY_DEADLINE_STILL_ACTIVE"): PersistedOwnerContext => ({ id, schemaVersion: OWNER_CONTEXT_SCHEMA_VERSION, questionId: q, questionType: "WHY_DEADLINE_STILL_ACTIVE", caseId: q.split("::")[0], caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: "1", answerCode: "OTHER", questionTextHe: "q", caseFactsFingerprint: "f", note: null, answeredAt: "2026-09-24T09:00:00.000Z", scope: "CASE_INSTANCE", provenance: { source: "owner_manual" }, caseSchemaVersion: CASE_SCHEMA_VERSION, supersedesId: sup });
+    const mk = (id: string, sup: string | null, q = "c:1::WHY_DEADLINE_STILL_ACTIVE"): PersistedOwnerContext => ({ id, schemaVersion: OWNER_CONTEXT_SCHEMA_VERSION, questionId: q, questionType: "WHY_DEADLINE_STILL_ACTIVE", caseId: q.split("::")[0], caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: "1", answerCode: "OTHER", questionTextHe: "q", caseFactsFingerprint: "f", note: null, answeredAt: "2026-09-24T09:00:00.000Z", scope: "CASE_INSTANCE", provenance: { source: "owner_manual" }, caseSchemaVersion: CASE_SCHEMA_VERSION, supersedesId: sup, answerValue: null, triggerContextId: null });
     check("CYCLE detected", analyzeOwnerContextGraph([mk("a", "b"), mk("b", "a")]).map((d) => d.kind), ["CYCLE"]);
     check("SELF_SUPERSESSION detected", analyzeOwnerContextGraph([mk("a", "a")]).map((d) => d.kind), ["SELF_SUPERSESSION"]);
     check("DANGLING_SUPERSEDES detected", analyzeOwnerContextGraph([mk("a", "zzz")]).map((d) => d.kind), ["DANGLING_SUPERSEDES"]);
@@ -366,8 +375,197 @@ async function main() {
     await store.appendOwnerContext(draft({ supersedesId: a.id, answerCode: "CLIENT_DELAY" }));
     await store.listOwnerContexts(); await store.getContextsForQuestion(Q3.id); await store.getContextsForCase(C3.id);
     await store.getContextsForSubject("project", "1"); await store.getContextsForCaseType("X"); await store.getCurrentContextForQuestion(Q3.id);
-    check("every DB verb issued", [...new Set(db.log.map((l) => l.split(":")[0]))].sort(), ["eq", "from", "insert", "insert.select", "maybeSingle", "order", "range", "select", "single"]);
+    check("every DB verb issued (appends validate against one full history read)", [...new Set(db.log.map((l) => l.split(":")[0]))].sort(), ["eq", "from", "insert", "insert.select", "order", "range", "select", "single"]);
     check("only table ever touched: partner_owner_context", [...db.tables], ["partner_owner_context"]);
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // F.1E v2 — structured answer values, follow-ups, trigger continuity
+  // Canonical fixture = the real production Context A (fe35603a…).
+  // ════════════════════════════════════════════════════════════════════
+  const A_ID = "fe35603a-79e6-45eb-92df-2567933e220f";
+  const OWNER_Q_TEXT = "הדדליין של הפרויקט עבר, אבל הפרויקט עדיין פעיל והייתה עליו פעילות לאחרונה. למה הדדליין הישן עדיין מוגדר?";
+  const rowA: Row = {
+    id: A_ID, created_at: "2026-09-23T09:10:08.684+00:00", context_schema_version: "partner-owner-context-schema-v1",
+    question_id: Q3.id, question_type: "WHY_DEADLINE_STILL_ACTIVE", question_text: OWNER_Q_TEXT,
+    case_id: C3.id, case_type: "PROJECT_DEADLINE_PASSED", case_schema_version: CASE_SCHEMA_VERSION, case_facts_fingerprint: "cc7d8bca34c49059",
+    subject_type: "project", subject_id: C3.subjectId, answer_code: "DEADLINE_NOT_UPDATED",
+    note: "לא הספקתי לעדכן את הדדליין בזמן, והפרויקט המשיך להתקדם בלי שעידכנתי תאריך חדש.", scope: "CASE_INSTANCE",
+    provenance: { source: "owner_manual" }, supersedes_id: null, answer_value: null, trigger_context_id: null,
+  };
+  const withA = () => { const f = fresh(); f.db.seedRaw(rowA); return f; };
+  type Store = ReturnType<typeof fresh>["store"];
+  const currentOf = async (store: Store) => { const r = await store.resolveCurrentOwnerContexts(); return r.status === "OK" ? r.contexts : []; };
+  const followUpFor = async (store: Store) => buildFollowUpQuestions(C3, await currentOf(store))[0];
+
+  console.log("v2-A. Fixture sanity + v1 compatibility");
+  {
+    check("C3 fixture facts fingerprint = the real production fingerprint", fingerprintCaseFacts(C3), "cc7d8bca34c49059");
+    const m = mapOwnerContextRow(rowA);
+    check("1. the real v1 row stays valid; value + trigger read as null", m.ok ? [m.value.schemaVersion, m.value.answerValue, m.value.triggerContextId, m.value.answerCode] : m, ["partner-owner-context-schema-v1", null, null, "DEADLINE_NOT_UPDATED"]);
+    const bad = mapOwnerContextRow({ ...rowA, answer_value: { kind: "DATE", ymd: "2026-10-07", resolution: { method: "EXPLICIT", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" } } });
+    check("2. a v1 row with answer_value → INVALID_STORED_ROW", bad.ok ? "ok" : bad.code, "INVALID_STORED_ROW");
+    const { db, store } = fresh();
+    const other = projectDeadlineCase("p-v2root");
+    const r = await store.appendOwnerContext(buildOwnerContextDraft(questionFor(other), CASE_SCHEMA_VERSION, { answerCode: "CLIENT_DELAY" }));
+    check("3. v2 code-only root context (spec NONE) → value null, trigger null, schema v2", [r.schemaVersion, r.answerValue, r.triggerContextId, db.rows[0].answer_value], ["partner-owner-context-schema-v2", null, null, null]);
+  }
+
+  console.log("v2-B. Follow-up rules (Owner decision)");
+  {
+    ok("1. DEADLINE_NOT_UPDATED triggers WHAT_IS_NEW_PROJECT_DEADLINE", triggersFollowUp("WHY_DEADLINE_STILL_ACTIVE", "DEADLINE_NOT_UPDATED", "WHAT_IS_NEW_PROJECT_DEADLINE"));
+    ok("2. INTENTIONALLY_DELAYED triggers it", triggersFollowUp("WHY_DEADLINE_STILL_ACTIVE", "INTENTIONALLY_DELAYED", "WHAT_IS_NEW_PROJECT_DEADLINE"));
+    ok("3. DEADLINE_NO_LONGER_RELEVANT does NOT", !triggersFollowUp("WHY_DEADLINE_STILL_ACTIVE", "DEADLINE_NO_LONGER_RELEVANT", "WHAT_IS_NEW_PROJECT_DEADLINE"));
+    ok("4. other causes do NOT trigger it in v1", ["CLIENT_DELAY", "ARTIST_DELAY", "QUALITY_WORK_CONTINUED", "EXTERNAL_DEPENDENCY", "PROJECT_WAS_PAUSED", "OTHER"].every((c) => !triggersFollowUp("WHY_DEADLINE_STILL_ACTIVE", c, "WHAT_IS_NEW_PROJECT_DEADLINE")));
+    ok("a Case alone never yields a follow-up question type", decideInvestigation(C3).question?.questionType === "WHY_DEADLINE_STILL_ACTIVE" && decideInvestigation(C3).question?.origin.kind === "CASE");
+    const { store } = withA();
+    const fq = await followUpFor(store);
+    check("follow-up question identity (questionId = caseId::type — unchanged rule)", [fq.id, fq.questionType], [`${C3.id}::WHAT_IS_NEW_PROJECT_DEADLINE`, "WHAT_IS_NEW_PROJECT_DEADLINE"]);
+    check("10. origin points at the EXACT triggering context", fq.origin, { kind: "OWNER_CONTEXT", triggerContextId: A_ID, triggerQuestionId: Q3.id, triggerAnswerCode: "DEADLINE_NOT_UPDATED" });
+    check("wording grounded in the stored deadline", fq.questionTextHe, "הדדליין השמור (14.07.2026) כבר לא משקף את התכנון. מה הדדליין החדש לפרויקט?");
+    check("answers", fq.answerOptions.map((o) => o.code), ["IN_ONE_WEEK", "IN_TWO_WEEKS", "END_OF_MONTH", "SPECIFIC_DATE", "NOT_KNOWN_YET", "OTHER"]);
+    const noTrigger = buildFollowUpQuestions(C3, [{ ...(await currentOf(store))[0], answerCode: "DEADLINE_NO_LONGER_RELEVANT" }]);
+    check("no follow-up from DEADLINE_NO_LONGER_RELEVANT", noTrigger, []);
+  }
+
+  console.log("v2-C. Date resolver (server-side, Asia/Jerusalem)");
+  {
+    const r = resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "IN_TWO_WEEKS", { anchorYmd: "2026-09-23" });
+    check("5. 2026-09-23 + PLUS_14_DAYS = 2026-10-07", r, { ok: true, value: { kind: "DATE", ymd: "2026-10-07", resolution: { method: "RELATIVE", rule: "PLUS_14_DAYS", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" } } });
+    const ymdOf = (x: ReturnType<typeof resolveAnswerValue>) => (x.ok && x.value ? x.value.ymd : "REJECTED");
+    check("IN_ONE_WEEK → 2026-09-30", ymdOf(resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "IN_ONE_WEEK", { anchorYmd: "2026-09-23" })), "2026-09-30");
+    check("END_OF_MONTH → 2026-09-30 / Feb 2026 → 02-28 / Feb 2028 → 02-29", ["2026-09-23", "2026-02-10", "2028-02-10"].map((a) => ymdOf(resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "END_OF_MONTH", { anchorYmd: a }))), ["2026-09-30", "2026-02-28", "2028-02-29"]);
+    const exp = resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "SPECIFIC_DATE", { anchorYmd: "2026-09-23", explicitYmd: "2026-11-15" });
+    check("7. explicit valid date accepted", exp.ok ? exp.value : exp, { kind: "DATE", ymd: "2026-11-15", resolution: { method: "EXPLICIT", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" } });
+    ok("8. explicit date before the answer date rejected", !resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "SPECIFIC_DATE", { anchorYmd: "2026-09-23", explicitYmd: "2026-09-22" }).ok);
+    ok("9. same-day explicit date accepted", resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "SPECIFIC_DATE", { anchorYmd: "2026-09-23", explicitYmd: "2026-09-23" }).ok);
+    ok("impossible calendar date (2026-02-30) rejected", !resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "SPECIFIC_DATE", { anchorYmd: "2026-01-01", explicitYmd: "2026-02-30" }).ok);
+    check("NOT_KNOWN_YET → no value", resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "NOT_KNOWN_YET", { anchorYmd: "2026-09-23" }), { ok: true, value: null });
+    ok("6. a caller-supplied date for a relative answer is rejected", !resolveAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "IN_TWO_WEEKS", { anchorYmd: "2026-09-23", explicitYmd: "2026-10-07" }).ok);
+    ok("a date on a code-only answer is rejected", !resolveAnswerValue("WHY_DEADLINE_STILL_ACTIVE", "DEADLINE_NOT_UPDATED", { anchorYmd: "2026-09-23", explicitYmd: "2026-10-07" }).ok);
+    const spoof = { kind: "DATE", ymd: "2026-10-08", resolution: { method: "RELATIVE", rule: "PLUS_14_DAYS", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" } };
+    ok("6. a spoofed resolved ymd fails re-verification", validateAnswerValue("WHAT_IS_NEW_PROJECT_DEADLINE", "IN_TWO_WEEKS", spoof).length > 0);
+    ok("no browser locale: the resolver has no clock / locale of its own", !/new Date\(\)|Date\.now|toLocale/.test(fs.readFileSync(path.resolve(__dirname, "../lib/partner/investigation/answer-value.ts"), "utf8")));
+  }
+
+  console.log("v2-D. Real flow: A → follow-up → B (IN_TWO_WEEKS, answered 2026-09-23)");
+  let realB: PersistedOwnerContext | null = null;
+  {
+    const { db, store } = withA();
+    const fq = await followUpFor(store);
+    const B = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-23" }));
+    realB = B;
+    check("B: schema v2, exact trigger, DATE 2026-10-07", [B.schemaVersion, B.triggerContextId, B.answerValue?.ymd, B.answerValue?.resolution], ["partner-owner-context-schema-v2", A_ID, "2026-10-07", { method: "RELATIVE", rule: "PLUS_14_DAYS", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" }]);
+    check("B row stored with answer_value + trigger_context_id", [db.rows[1].trigger_context_id, (db.rows[1].answer_value as { ymd: string }).ymd], [A_ID, "2026-10-07"]);
+    check("A untouched", JSON.stringify(db.rows[0]), JSON.stringify(rowA));
+    const cur = await store.resolveCurrentOwnerContexts({ caseId: C3.id });
+    check("A and B both CURRENT_APPLICABLE", cur.status === "OK" ? cur.contexts.map((c) => c.id) : cur.status, [A_ID, B.id]);
+    const i = interpretCase(C3, fq, cur.status === "OK" ? cur.contexts : []);
+    check("interpretation states the Owner's decision; the project fact is unchanged", [i.derivedFromContext.map((d) => d.statementHe), i.facts.find((f) => f.field === "deadline")?.value, i.unknownsRemaining], [["נקבע דדליין חדש לפרויקט (לפי הבעלים).", "הדדליין החדש שנבחר: 07.10.2026 (לפי הבעלים)."], "2026-07-14", []]);
+    ok("17. no Action is executed / modeled", !fs.readdirSync(path.resolve(__dirname, "../lib/partner/investigation")).some((f) => /action/i.test(f)));
+  }
+
+  console.log("v2-E. Store validation for follow-ups / values / root slots");
+  {
+    const { store } = withA();
+    const fq = await followUpFor(store);
+    await expectErr("6. caller-supplied answerValue rejected", () => store.appendOwnerContext({ ...buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS" }), answerValue: { kind: "DATE", ymd: "2030-01-01" } } as unknown as OwnerContextDraft), "VALIDATION_FAILED");
+    await expectErr("6. caller-supplied date on a relative answer rejected", () => store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", explicitDateYmd: "2026-10-07" })), "INVALID_ANSWER_VALUE");
+    await expectErr("11. follow-up without trigger rejected", () => store.appendOwnerContext({ ...buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS" }), triggerContextId: null }), "INVALID_TRIGGER");
+    await expectErr("12. Case question with a trigger rejected", () => store.appendOwnerContext({ ...draft({ answerCode: "CLIENT_DELAY" }, questionFor(projectDeadlineCase("p-x"))), triggerContextId: A_ID }), "INVALID_TRIGGER");
+    await expectErr("unknown trigger rejected", () => store.appendOwnerContext({ ...buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS" }), triggerContextId: uid(4040) }), "INVALID_TRIGGER");
+    const otherCase = projectDeadlineCase("p-other");
+    const otherFq = buildFollowUpQuestions(otherCase, [{ ...(await currentOf(store))[0], caseId: otherCase.id }])[0];
+    await expectErr("trigger about another Case rejected", () => store.appendOwnerContext(buildOwnerContextDraft(otherFq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS" })), "INVALID_TRIGGER");
+    await expectErr("answer date in the future rejected", () => store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-24" })), "INVALID_ANSWER_VALUE");
+    await expectErr("answer date before the trigger was answered rejected", () => store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-22" })), "INVALID_ANSWER_VALUE");
+    await expectErr("8. SPECIFIC_DATE before the answer date rejected", () => store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "SPECIFIC_DATE", explicitDateYmd: "2026-09-20" })), "INVALID_ANSWER_VALUE");
+    const same = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "SPECIFIC_DATE", explicitDateYmd: "2026-09-23" }));
+    check("9. same-day SPECIFIC_DATE accepted (server date 2026-09-23)", [same.answerValue?.ymd, same.answerValue?.resolution.method], ["2026-09-23", "EXPLICIT"]);
+    await expectErr("second independent answer to the same question → use a revision", () => store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS" })), "ANSWER_EXISTS_USE_REVISION");
+    await expectErr("…also for Case questions (the F.1E gap, closed)", () => store.appendOwnerContext(draft({ answerCode: "CLIENT_DELAY" })), "ANSWER_EXISTS_USE_REVISION");
+    const { db: db2, store: s2 } = withA();
+    const fq2 = await followUpFor(s2);
+    await s2.appendOwnerContext(buildOwnerContextDraft(fq2, CASE_SCHEMA_VERSION, { answerCode: "NOT_KNOWN_YET", note: "IN_TWO_WEEKS 2026-12-31" }));
+    check("16. note never parsed: NOT_KNOWN_YET + a date-looking note → value null", db2.rows[1].answer_value, null);
+    db2.opts.hideRowIdsOnRead = new Set([String(db2.rows[1].id)]);
+    const race = await expectErr("root-slot race reaching the DB unique index → ANSWER_EXISTS_USE_REVISION", () => s2.appendOwnerContext(buildOwnerContextDraft(fq2, CASE_SCHEMA_VERSION, { answerCode: "IN_ONE_WEEK" })), "ANSWER_EXISTS_USE_REVISION");
+    ok("   DB detail kept", !!race && race.details.some((d) => d.includes("23505")));
+  }
+
+  console.log("v2-F. Revisions of B + trigger continuity");
+  {
+    const { store } = withA();
+    const fq = await followUpFor(store);
+    const B = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-23" }));
+    const B2 = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_ONE_WEEK", supersedesId: B.id }));
+    check("revision of B keeps the same trigger; value re-resolved by the server (2026-09-23 + 7)", [B2.triggerContextId, B2.answerValue?.ymd], [A_ID, "2026-09-30"]);
+  }
+  {
+    // 5/6/9/13: note-only revision of A keeps B applicable; B keeps pointing at A.
+    const { db, store } = withA();
+    const fq = await followUpFor(store);
+    const B = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-23" }));
+    const A2 = await store.appendOwnerContext({ ...buildOwnerContextDraft(Q3, CASE_SCHEMA_VERSION, { answerCode: "DEADLINE_NOT_UPDATED", note: "הוספתי הקשר: הלקוח לא לחץ.", supersedesId: A_ID }), questionText: OWNER_Q_TEXT, caseFactsFingerprint: "cc7d8bca34c49059" });
+    const hist = await store.listOwnerContexts();
+    const cls = classifyOwnerContexts(hist.status === "OK" ? hist.contexts : []);
+    check("5/6. note-only trigger revision → B still CURRENT_APPLICABLE (continuity via A2)", [cls.get(B.id)?.status, cls.get(B.id)?.effectiveTriggerId, cls.get(A_ID)?.status], ["CURRENT_APPLICABLE", A2.id, "SUPERSEDED"]);
+    check("9. B still points at the ORIGINAL trigger A", db.rows.find((r) => r.id === B.id)?.trigger_context_id, A_ID);
+    const cur = await store.getCurrentContextForQuestion(fq.id);
+    check("the new-deadline question is NOT re-asked: current answer is B", cur.status === "CURRENT" ? cur.context.id : cur.status, B.id);
+    const regenerated = buildFollowUpQuestions(C3, await currentOf(store), { [fq.id]: A_ID })[0];
+    check("regenerated follow-up keeps B's slot (original trigger A)", regenerated.origin.kind === "OWNER_CONTEXT" ? regenerated.origin.triggerContextId : null, A_ID);
+    await expectErr("13. revising B while changing its trigger to A2 is rejected", () => store.appendOwnerContext({ ...buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_ONE_WEEK", supersedesId: B.id }), triggerContextId: A2.id }), "REVISION_TARGET_MISMATCH");
+  }
+  {
+    // 7/14/15/10: trigger revised to DEADLINE_NO_LONGER_RELEVANT → B stays in history, not applicable.
+    const { store } = withA();
+    const fq = await followUpFor(store);
+    const B = await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-23" }));
+    await store.appendOwnerContext({ ...buildOwnerContextDraft(Q3, CASE_SCHEMA_VERSION, { answerCode: "DEADLINE_NO_LONGER_RELEVANT", supersedesId: A_ID }), questionText: OWNER_Q_TEXT });
+    const cur = await store.getCurrentContextForQuestion(fq.id);
+    check("7/15. answer changed → B NOT_APPLICABLE with explicit reasons", cur.status === "NOT_APPLICABLE" ? [cur.context.id, cur.applicability.reasons] : cur.status, [B.id, ["TRIGGER_ANSWER_CHANGED", "TRIGGER_NO_LONGER_SATISFIES_RULE"]]);
+    const byQ = await store.getContextsForQuestion(fq.id);
+    check("14. B remains in history, untouched", byQ.status === "OK" ? byQ.contexts.map((c) => [c.id, c.triggerContextId, c.answerValue?.ymd]) : byQ.status, [[B.id, A_ID, "2026-10-07"]]);
+    const all = await store.listOwnerContexts();
+    ok("10. Action eligibility input (applicableContexts) excludes B", all.status === "OK" && !applicableContexts(all.contexts).some((c) => c.id === B.id));
+    const rc = await store.resolveCurrentOwnerContexts({ caseId: C3.id });
+    ok("resolveCurrent reports B under notApplicable, not as current", rc.status === "OK" && !rc.contexts.some((c) => c.id === B.id) && rc.notApplicable.some((x) => x.context.id === B.id));
+    check("no follow-up question is generated from the revised answer", buildFollowUpQuestions(C3, rc.status === "OK" ? rc.contexts : []), []);
+  }
+  {
+    // 8 + re-trigger: facts changed on the trigger revision → B not applicable; a new answer lives in a new slot.
+    const { store } = withA();
+    const fq = await followUpFor(store);
+    await store.appendOwnerContext(buildOwnerContextDraft(fq, CASE_SCHEMA_VERSION, { answerCode: "IN_TWO_WEEKS", answeredOnYmd: "2026-09-23" }));
+    const A2 = await store.appendOwnerContext({ ...buildOwnerContextDraft(Q3, CASE_SCHEMA_VERSION, { answerCode: "DEADLINE_NOT_UPDATED", supersedesId: A_ID }), questionText: OWNER_Q_TEXT, caseFactsFingerprint: "0000000000000000" });
+    const cur = await store.getCurrentContextForQuestion(fq.id);
+    check("8. trigger facts changed → B NOT_APPLICABLE (TRIGGER_FACTS_CHANGED)", cur.status === "NOT_APPLICABLE" ? cur.applicability.reasons : cur.status, ["TRIGGER_FACTS_CHANGED"]);
+    const fqNew = buildFollowUpQuestions(C3, await currentOf(store))[0];
+    check("re-triggered follow-up points at A2 (new slot, same questionId)", [fqNew.id, fqNew.origin.kind === "OWNER_CONTEXT" ? fqNew.origin.triggerContextId : null], [fq.id, A2.id]);
+    const Bn = await store.appendOwnerContext(buildOwnerContextDraft(fqNew, CASE_SCHEMA_VERSION, { answerCode: "END_OF_MONTH" }));
+    const cur2 = await store.getCurrentContextForQuestion(fq.id);
+    check("new answer in the new slot is current; B stays history", [cur2.status === "CURRENT" ? cur2.context.id : cur2.status, Bn.answerValue?.ymd], [Bn.id, "2026-09-30"]);
+  }
+
+  console.log("v2-G. Read-side validation of v2 rows");
+  {
+    const base: Row = { ...rowA, id: uid(900), context_schema_version: "partner-owner-context-schema-v2", question_id: `${C3.id}::WHAT_IS_NEW_PROJECT_DEADLINE`, question_type: "WHAT_IS_NEW_PROJECT_DEADLINE", answer_code: "IN_TWO_WEEKS", trigger_context_id: A_ID, answer_value: { kind: "DATE", ymd: "2026-10-07", resolution: { method: "RELATIVE", rule: "PLUS_14_DAYS", anchorYmd: "2026-09-23", timeZone: "Asia/Jerusalem" } } };
+    const res = (patch: Row) => { const m = mapOwnerContextRow({ ...base, ...patch }); return m.ok ? "ok" : m.code; };
+    check("valid v2 follow-up row", res({}), "ok");
+    check("v2 follow-up without trigger → INVALID", res({ trigger_context_id: null }), "INVALID_STORED_ROW");
+    check("v2 value that does not match its resolution → INVALID", res({ answer_value: { ...(base.answer_value as object), ymd: "2026-10-08" } }), "INVALID_STORED_ROW");
+    check("v2 relative answer without a value → INVALID", res({ answer_value: null }), "INVALID_STORED_ROW");
+    check("v2 code-only answer carrying a value → INVALID", res({ answer_code: "NOT_KNOWN_YET" }), "INVALID_STORED_ROW");
+    check("v2 value with an unknown key → INVALID", res({ answer_value: { ...(base.answer_value as object), extra: 1 } }), "INVALID_STORED_ROW");
+  }
+
+  console.log("v2-H. Safety");
+  {
+    const src = ["answer-value.ts", "context-applicability.ts", "questions.ts", "context-row.ts", "context-persistence.ts"].map((f) => fs.readFileSync(path.resolve(__dirname, "../lib/partner/investigation", f), "utf8")).join("\n");
+    ok("18. no production client in the v2 code paths under test (fake only)", !/lib\/supabase/.test(src));
+    ok("no project/business-table write anywhere (no deadline change)", !/from\(\s*["'](projects|tasks|partner_feedback)["']/.test(src));
+    ok("realB came from the fake store (DB-generated fake id)", realB !== null && realB.id.startsWith("00000000-0000-4000-8000-"));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

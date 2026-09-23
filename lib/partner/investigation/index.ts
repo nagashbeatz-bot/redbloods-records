@@ -16,3 +16,6 @@ export {
   type AttentionFactor, type AttentionFactorCode, type AttentionBand, type AttentionItem, type AttentionQueue,
   type AttentionState, type QuestionAnswerState, type DeferralReason,
 } from "./queue";
+export { FOLLOW_UP_RULES, FOLLOW_UP_QUESTION_TYPES, buildFollowUpQuestions, isFollowUpQuestionType, triggersFollowUp, type FollowUpRule } from "./questions";
+export { VALUE_SPEC, valueSpecFor, resolveAnswerValue, validateAnswerValue, applyRelativeRule, endOfMonthYmd, formatYmdHe, isValidYmd, type AnswerValueSpec, type ResolveResult } from "./answer-value";
+export { classifyOwnerContexts, applicableContexts, triggerSupportsFollowUp, triggerStillSupports, type ContextApplicability, type ContextApplicabilityStatus, type NotApplicableReason } from "./context-applicability";

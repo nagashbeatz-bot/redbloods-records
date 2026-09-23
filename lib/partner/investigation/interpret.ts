@@ -16,7 +16,9 @@
  */
 import type { PartnerCase } from "../cases/types";
 import type { PartnerFeedback } from "../feedback/types";
+import { ilYmd } from "../../coo/dates";
 import { answerOptionsFor } from "./questions";
+import { formatYmdHe, resolveAnswerValue, validateAnswerValue } from "./answer-value";
 import {
   INVESTIGATION_SCHEMA_VERSION,
   type InterpretationHypothesis, type InterpretationStatement, type InvestigationQuestionType,
@@ -28,6 +30,8 @@ import {
 
 export interface OwnerContextInput {
   answerCode: string;
+  /** Only for an explicit-date answer (SPECIFIC_DATE). Relative answers are resolved here, never supplied. */
+  explicitDateYmd?: string | null;
   note?: string | null;
   /** Passed in, never read from a clock here (deterministic, testable). */
   answeredAt: string;
@@ -37,6 +41,11 @@ export interface OwnerContextValidation { valid: boolean; errors: string[] }
 
 /** Builds the context record for a question. Throws on an answer code the question does not offer — never coerces to OTHER. */
 export function buildOwnerContext(question: PartnerInvestigationQuestion, input: OwnerContextInput): PartnerOwnerContext {
+  // Same resolver the store uses; the anchor is the Israel calendar date of answeredAt (never a browser locale).
+  const resolved = Number.isNaN(Date.parse(input.answeredAt))
+    ? { ok: false as const, errors: ["answeredAt must be a valid ISO timestamp"] }
+    : resolveAnswerValue(question.questionType, input.answerCode, { anchorYmd: ilYmd(new Date(input.answeredAt)), explicitYmd: input.explicitDateYmd ?? null });
+  if (!resolved.ok) throw new Error(`invalid owner context: ${resolved.errors.join("; ")}`);
   const ctx: PartnerOwnerContext = {
     id: `${question.id}@${input.answeredAt}`,
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
@@ -47,6 +56,8 @@ export function buildOwnerContext(question: PartnerInvestigationQuestion, input:
     subjectType: question.subjectType,
     subjectId: question.subjectId,
     answerCode: input.answerCode,
+    answerValue: resolved.value,
+    triggerContextId: question.origin.kind === "OWNER_CONTEXT" ? question.origin.triggerContextId : null,
     questionTextHe: question.questionTextHe,
     caseFactsFingerprint: question.caseFactsFingerprint,
     note: input.note ?? null,
@@ -70,6 +81,9 @@ export function validateOwnerContext(ctx: PartnerOwnerContext, question: Partner
   if (ctx.note !== null && typeof ctx.note !== "string") errors.push("note must be a string or null");
   if (ctx.scope !== "CASE_INSTANCE") errors.push("v1 owner context is CASE_INSTANCE-scoped only");
   if (ctx.provenance?.source !== "owner_manual") errors.push("provenance.source must be owner_manual");
+  const expectedTrigger = question.origin.kind === "OWNER_CONTEXT" ? question.origin.triggerContextId : null;
+  if (ctx.triggerContextId !== expectedTrigger) errors.push("triggerContextId does not match the question's origin");
+  if (question.answerOptions.some((o) => o.code === ctx.answerCode)) errors.push(...validateAnswerValue(question.questionType, ctx.answerCode, ctx.answerValue));
   return { valid: errors.length === 0, errors };
 }
 
@@ -128,6 +142,10 @@ export function interpretCase(
   if (!option) throw new Error(`owner context answer "${ctx.answerCode}" is not an option of ${question.id}`);
   const basis = `owner_context:${ctx.id}`;
   const derivedFromContext: InterpretationStatement[] = option.derivedHe ? [{ id: `${question.questionType}:${option.code}`, statementHe: option.derivedHe, basis }] : [];
+  // A structured value is stated as what the Owner decided — never promoted to a fact about the business data (the project's stored deadline is unchanged).
+  if (ctx.answerValue?.kind === "DATE") {
+    derivedFromContext.push({ id: `${question.questionType}:${option.code}:value`, statementHe: `${VALUE_STATEMENT_HE[question.questionType] ?? "התאריך שנבחר"}: ${formatYmdHe(ctx.answerValue.ymd)} (לפי הבעלים).`, basis });
+  }
   const hypotheses = option.hypothesisHe
     ? [...caseHypotheses, { id: `${question.questionType}:${option.code}:hypothesis`, statementHe: option.hypothesisHe, epistemicStatus: "HYPOTHESIS" as const, basis }]
     : caseHypotheses;
@@ -136,11 +154,16 @@ export function interpretCase(
 
   return {
     ...base, questionId: question.id,
-    ownerContext: { answerCode: option.code, labelHe: option.labelHe, note: ctx.note },
+    ownerContext: { answerCode: option.code, labelHe: option.labelHe, answerValue: ctx.answerValue, note: ctx.note },
     derivedFromContext, hypotheses, unknownsRemaining,
     investigationStatus: "ANSWERED",
   };
 }
+
+/** How a DATE value is stated per question type (display only). */
+const VALUE_STATEMENT_HE: Partial<Record<InvestigationQuestionType, string>> = {
+  WHAT_IS_NEW_PROJECT_DEADLINE: "הדדליין החדש שנבחר",
+};
 
 /** Which detector-level unknowns a question type answers (matched on the detectors' own fixed wording). */
 const ANSWERS_UNKNOWN: Partial<Record<InvestigationQuestionType, RegExp>> = {

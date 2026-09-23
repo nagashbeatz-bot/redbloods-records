@@ -30,7 +30,34 @@ export type InvestigationQuestionType =
   | "WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM"
   | "IS_MISSING_FINANCE_CONFIG_INTENTIONAL"
   | "WHY_INTERNAL_DEADLINE_PASSED"
-  | "WHY_RELEASE_TARGET_PASSED";
+  | "WHY_RELEASE_TARGET_PASSED"
+  // F.1E v2 — a FOLLOW-UP question: never generated from a Case alone, only from a specific Owner Context (see FOLLOW_UP_RULES).
+  | "WHAT_IS_NEW_PROJECT_DEADLINE";
+
+/**
+ * Why a question exists (F.1E v2). CASE: generated from the Case/state alone.
+ * OWNER_CONTEXT: a follow-up triggered by one exact prior Owner Context row —
+ * the causal link is explicit, never re-derived by inference.
+ */
+export type QuestionOrigin =
+  | { kind: "CASE" }
+  | { kind: "OWNER_CONTEXT"; triggerContextId: string; triggerQuestionId: string; triggerAnswerCode: string };
+
+/**
+ * A structured value carried by an answer (F.1E v2). Resolved ONCE, at
+ * answer time, on the server (Asia/Jerusalem calendar) — a relative answer
+ * ("in two weeks") is never left for later reinterpretation. The resolution
+ * records how the value was obtained so any reader can re-verify it.
+ * Only DATE exists in v2; a new kind is a deliberate, versioned change.
+ */
+export type OwnerContextAnswerValue = {
+  kind: "DATE";
+  /** YYYY-MM-DD */
+  ymd: string;
+  resolution:
+    | { method: "RELATIVE"; rule: "PLUS_7_DAYS" | "PLUS_14_DAYS" | "END_OF_MONTH"; anchorYmd: string; timeZone: "Asia/Jerusalem" }
+    | { method: "EXPLICIT"; anchorYmd: string; timeZone: "Asia/Jerusalem" };
+};
 
 /**
  * One structured answer. `derivedHe` / `hypothesisHe` / `remainingUnknownHe`
@@ -55,6 +82,8 @@ export interface PartnerInvestigationQuestion {
   subjectType: string;
   subjectId: string;
   questionType: InvestigationQuestionType;
+  /** Why this question exists (Case, or one exact Owner Context for a follow-up). */
+  origin: QuestionOrigin;
   /** feedback/snapshot.ts:fingerprintCaseFacts — direct facts only (no daily-churning derived values). Lets a later reader tell whether an answer still describes the same situation. */
   caseFactsFingerprint: string;
   /** Short, specific, fact-grounded, non-accusatory Hebrew. */
@@ -101,6 +130,10 @@ export interface PartnerOwnerContext {
   subjectType: string;
   subjectId: string;
   answerCode: string;
+  /** Structured value of the answer (v2), resolved at answer time. null for code-only answers and for every v1 context. */
+  answerValue: OwnerContextAnswerValue | null;
+  /** null = answers a question generated from the Case; otherwise the exact Owner Context that triggered this follow-up (never rewritten). */
+  triggerContextId: string | null;
   /** The exact wording the Owner answered (traceability — wording may evolve between versions). */
   questionTextHe: string;
   /** Copied from the question at answer time. If the Case's current facts fingerprint differs, the answer may no longer describe the situation (F.1D attention queue). */
@@ -136,7 +169,7 @@ export interface PartnerCaseInterpretation {
   /** Copied from the Case unchanged — Owner Context never rewrites a fact. */
   facts: CaseEvidence[];
   derivedFacts: CaseDerivedFact[];
-  ownerContext: { answerCode: string; labelHe: string; note: string | null } | null;
+  ownerContext: { answerCode: string; labelHe: string; answerValue: OwnerContextAnswerValue | null; note: string | null } | null;
   /** Deterministic restatements of what the Owner's structured answer establishes (OWNER_CONTEXT-derived, not system facts). */
   derivedFromContext: InterpretationStatement[];
   /** The Case's own hypotheses + any answer-specific hypothesis. All labelled HYPOTHESIS. */

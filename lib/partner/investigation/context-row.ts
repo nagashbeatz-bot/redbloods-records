@@ -11,19 +11,25 @@
  * the wording the Owner actually answered and is never regenerated on read.
  * `note` is carried verbatim; nothing here inspects it.
  */
-import { ANSWER_OPTIONS, answerOptionsFor } from "./questions";
+import { ANSWER_OPTIONS, answerOptionsFor, isFollowUpQuestionType } from "./questions";
+import { validateAnswerValue } from "./answer-value";
 import type { InvestigationQuestionType, PartnerOwnerContext } from "./types";
 
 export const PARTNER_OWNER_CONTEXT_TABLE = "partner_owner_context";
 
 /** Stamps the SHAPE of a persisted Owner Context record (distinct from the Case's own schema version). */
-export const OWNER_CONTEXT_SCHEMA_VERSION = "partner-owner-context-schema-v1";
-export const SUPPORTED_OWNER_CONTEXT_SCHEMA_VERSIONS: readonly string[] = [OWNER_CONTEXT_SCHEMA_VERSION];
+export const OWNER_CONTEXT_SCHEMA_VERSION_V1 = "partner-owner-context-schema-v1";
+/** v2 (F.1E v2): answer_value + trigger_context_id. Every NEW row is written as v2 (root or follow-up). */
+export const OWNER_CONTEXT_SCHEMA_VERSION_V2 = "partner-owner-context-schema-v2";
+/** The version the store stamps on writes. */
+export const OWNER_CONTEXT_SCHEMA_VERSION = OWNER_CONTEXT_SCHEMA_VERSION_V2;
+export const SUPPORTED_OWNER_CONTEXT_SCHEMA_VERSIONS: readonly string[] = [OWNER_CONTEXT_SCHEMA_VERSION_V1, OWNER_CONTEXT_SCHEMA_VERSION_V2];
 
 /**
- * A persisted Owner Context: the pure PartnerOwnerContext (unchanged, so the
- * attention queue and interpretation consume it as-is) plus the two fields
- * only persistence knows about. `id` / `answeredAt` are the DB's id /
+ * A persisted Owner Context: the pure PartnerOwnerContext (incl. the domain
+ * fields answerValue + triggerContextId, so the attention queue and
+ * interpretation consume it as-is) plus the two fields only persistence
+ * knows about. `id` / `answeredAt` are the DB's id /
  * created_at; `schemaVersion` is the stored context_schema_version.
  */
 export interface PersistedOwnerContext extends PartnerOwnerContext {
@@ -50,13 +56,15 @@ export interface OwnerContextRow {
   scope: string;
   provenance: unknown;
   supersedes_id: string | null;
+  answer_value: unknown;
+  trigger_context_id: string | null;
 }
 
 /** What an INSERT sends: never id / created_at — the DB defaults (gen_random_uuid(), now()) are authoritative. */
 export type OwnerContextInsertRow = Omit<OwnerContextRow, "id" | "created_at">;
 
 export const OWNER_CONTEXT_COLUMNS =
-  "id,created_at,context_schema_version,question_id,question_type,question_text,case_id,case_type,case_schema_version,case_facts_fingerprint,subject_type,subject_id,answer_code,note,scope,provenance,supersedes_id";
+  "id,created_at,context_schema_version,question_id,question_type,question_text,case_id,case_type,case_schema_version,case_facts_fingerprint,subject_type,subject_id,answer_code,note,scope,provenance,supersedes_id,answer_value,trigger_context_id";
 
 export type ContextRowParseResult =
   | { ok: true; value: PersistedOwnerContext }
@@ -108,6 +116,18 @@ export function mapOwnerContextRow(raw: unknown): ContextRowParseResult {
   if (raw.scope !== "CASE_INSTANCE") errors.push(`scope ${JSON.stringify(raw.scope)} is not supported (CASE_INSTANCE only)`);
   if (raw.note !== null && typeof raw.note !== "string") errors.push("note: must be a string or null");
   if (raw.supersedes_id !== null && !isUuid(raw.supersedes_id)) errors.push("supersedes_id: must be a uuid or null");
+  if (raw.trigger_context_id !== null && !isUuid(raw.trigger_context_id)) errors.push("trigger_context_id: must be a uuid or null");
+  if (raw.trigger_context_id !== null && raw.trigger_context_id === raw.id) errors.push("trigger_context_id: a context cannot trigger itself");
+  if (version === OWNER_CONTEXT_SCHEMA_VERSION_V1) {
+    if (raw.answer_value !== null) errors.push("v1 context must have answer_value = null");
+    if (raw.trigger_context_id !== null) errors.push("v1 context must have trigger_context_id = null");
+  }
+  if (isKnownQuestionType(raw.question_type)) {
+    const followUp = isFollowUpQuestionType(raw.question_type);
+    if (followUp && raw.trigger_context_id === null) errors.push(`${raw.question_type} is a follow-up question — trigger_context_id is required`);
+    if (!followUp && raw.trigger_context_id !== null) errors.push(`${raw.question_type} is generated from the Case — trigger_context_id must be null`);
+    if (typeof raw.answer_code === "string") errors.push(...validateAnswerValue(raw.question_type, raw.answer_code, raw.answer_value));
+  }
   const provenance = parseContextProvenance(raw.provenance, errors);
 
   if (errors.length || !provenance) return { ok: false, code: "INVALID_STORED_ROW", errors };
@@ -123,6 +143,8 @@ export function mapOwnerContextRow(raw: unknown): ContextRowParseResult {
       subjectType: raw.subject_type as string,
       subjectId: raw.subject_id as string,
       answerCode: raw.answer_code as string,
+      answerValue: (raw.answer_value ?? null) as PersistedOwnerContext["answerValue"],
+      triggerContextId: raw.trigger_context_id as string | null,
       questionTextHe: raw.question_text as string,
       caseFactsFingerprint: raw.case_facts_fingerprint as string,
       note: raw.note as string | null,

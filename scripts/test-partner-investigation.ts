@@ -211,7 +211,7 @@ console.log("11. DEADLINE_NOT_UPDATED → derived stale-planning interpretation"
   const question = q(c);
   const i = interpretCase(c, question, [buildOwnerContext(question, { answerCode: "DEADLINE_NOT_UPDATED", answeredAt: "2026-09-23T12:00:00.000Z" })]);
   check("status ANSWERED", i.investigationStatus, "ANSWERED");
-  check("owner context", i.ownerContext, { answerCode: "DEADLINE_NOT_UPDATED", labelHe: "הדדליין פשוט לא עודכן", note: null });
+  check("owner context (code-only answer: answerValue null)", i.ownerContext, { answerCode: "DEADLINE_NOT_UPDATED", labelHe: "הדדליין פשוט לא עודכן", answerValue: null, note: null });
   check("derived", i.derivedFromContext.map((d) => d.statementHe), ["הדדליין השמור אינו משקף את התכנון הנוכחי (לפי הבעלים)."]);
   check("hypothesis (process issue) stays HYPOTHESIS", i.hypotheses.map((h) => [h.statementHe, h.epistemicStatus]), [["ייתכן שזה מצביע על פער בתהליך תחזוקת הדדליינים של פרויקטים.", "HYPOTHESIS"]]);
   check("remaining unknown", i.unknownsRemaining, ["מהו הדדליין הנכון כעת — לא ידוע."]);
@@ -309,7 +309,8 @@ console.log("18. No automatic Charter mutation / isolation (static + runtime)");
   // every other file in the module must stay pure (their own isolation is tested in test-partner-owner-context-store.ts).
   const src = Object.fromEntries(fs.readdirSync(dir).filter((f) => !["context-store.ts", "context-persistence.ts"].includes(f)).map((f) => [f, fs.readFileSync(path.join(dir, f), "utf8")]));
   ok("no Supabase / server-only / store import (pure module)", Object.values(src).every((s) => !/lib\/supabase|@supabase\/|^\s*import\s+"server-only"|feedback\/store|feedback\/persistence|-store"/m.test(s)));
-  ok("no DB verbs", Object.values(src).every((s) => !/\.(insert|update|upsert|delete|rpc)\(/.test(s)));
+  // DB query-builder verbs only (a local Set/Map .delete() is not a DB call).
+  ok("no DB verbs", Object.values(src).every((s) => !/\.(insert|update|upsert|rpc)\(|\)\s*\.delete\(/.test(s)));
   ok("no Charter / baseline / detector import", Object.values(src).every((s) => !/from "\.\.\/charter"|partner\/baseline|cases\/(engine|detectors)/.test(s)));
   ok("no Push / Cron / Agent Alerts / Mai / LLM", Object.values(src).every((s) => !/web-push|lib\/push|node-cron|agent_alerts|alerts-store|from "openai"|lib\/mai/.test(s)));
   ok("no Date.now() / random (deterministic)", Object.values(src).every((s) => !/Date\.now\(|new Date\(\)|Math\.random/.test(s)));

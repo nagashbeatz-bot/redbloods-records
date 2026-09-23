@@ -1,5 +1,5 @@
 /**
- * Redbloods Partner — Owner Context persistence core (Phase F.1E).
+ * Redbloods Partner — Owner Context persistence core (Phase F.1E + v2).
  * Append-only store over public.partner_owner_context.
  *
  * Same proven shape as the feedback persistence core (Phase F.1B):
@@ -11,25 +11,38 @@
  *     no update / delete / upsert path. A changed answer is a NEW row with
  *     supersedesId pointing at the prior one;
  *   - appends THROW a typed OwnerContextStoreError; reads RETURN a
- *     discriminated result (OK / NO_CONTEXT / READ_FAILED /
- *     INVALID_STORED_ROWS, plus INVALID_REVISION_GRAPH for current-answer
- *     resolution). A DB failure is never an empty history.
+ *     discriminated result. A DB failure is never an empty history.
+ *
+ * v2 (structured answers + follow-ups):
+ *   - the caller picks an answer CODE (plus a date only for an explicit-date
+ *     answer); the store resolves the value on the server from the
+ *     Asia/Jerusalem calendar — a caller can never supply a resolved value;
+ *   - a follow-up answer carries the exact Owner Context that triggered it
+ *     (triggerContextId, never rewritten). A revision keeps question, Case,
+ *     subject AND trigger. One live chain per slot (questionId, trigger):
+ *     a second root is rejected (ANSWER_EXISTS_USE_REVISION) — also enforced
+ *     by the DB's one-root-per-slot unique index;
+ *   - "current" means CURRENT_APPLICABLE (context-applicability.ts): a
+ *     follow-up whose trigger no longer supports it stays in history but is
+ *     not returned as current.
  *
  * Provider- and UI-independent by design: structured domain records in and
- * out, no chat text, no AI, no browser concept. Any future caller (Partner
- * UI, backend job, a conversational layer) uses the same primitives; none of
- * them becomes the source of truth — this table is.
+ * out, no chat text, no AI, no browser concept. The table is the source of
+ * truth for any caller (UI, backend job, a future conversational layer).
  *
  * Read ordering (every read): created_at ASC, then id ASC — in SQL and again
- * in application code. Reads page through the table so a PostgREST max-rows
- * cap can never silently truncate history.
+ * in application code. Reads page through the table.
  */
+import { ilYmd } from "../../coo/dates";
 import { redactSecrets } from "../feedback/persistence";
+import { isValidYmd, resolveAnswerValue } from "./answer-value";
+import { classifyOwnerContexts, triggerSupportsFollowUp, type ContextApplicability } from "./context-applicability";
 import {
   OWNER_CONTEXT_COLUMNS, OWNER_CONTEXT_SCHEMA_VERSION, PARTNER_OWNER_CONTEXT_TABLE,
   deriveQuestionId, isAnswerCodeValidFor, isKnownQuestionType, mapOwnerContextRow, parseContextProvenance,
   type OwnerContextInsertRow, type PersistedOwnerContext,
 } from "./context-row";
+import { isFollowUpQuestionType, triggersFollowUp } from "./questions";
 import type { InvestigationQuestionType, PartnerInvestigationQuestion } from "./types";
 
 // ── injected client: minimal Supabase-shaped surface (select + insert ONLY) ──
@@ -54,15 +67,19 @@ export interface OwnerContextTableClient {
 // ── typed errors ──
 
 export type OwnerContextStoreErrorCode =
-  | "VALIDATION_FAILED"            // draft rejected before any DB call
+  | "VALIDATION_FAILED"            // draft rejected before any DB write
   | "INVALID_QUESTION_IDENTITY"    // questionId ≠ caseId::questionType, or unknown questionType
   | "INVALID_ANSWER_CODE"          // answerCode not offered by that questionType
+  | "INVALID_ANSWER_VALUE"         // value / explicit date / anchor rejected by the question's value spec
+  | "INVALID_TRIGGER"              // follow-up without trigger, root with trigger, wrong / non-current / other-Case trigger
+  | "ANSWER_EXISTS_USE_REVISION"   // a live answer already exists for this question — supersede it instead
   | "SUPERSEDED_NOT_FOUND"
-  | "REVISION_TARGET_MISMATCH"     // revision of a different question / Case / subject
+  | "REVISION_TARGET_MISMATCH"     // revision of a different question / Case / subject / trigger
   | "REVISION_BRANCH_CONFLICT"     // the superseded row already has a successor (pre-check OR DB unique index)
   | "DUPLICATE_CONTEXT_ID"
   | "UNSUPPORTED_CONTEXT_SCHEMA"
   | "INVALID_STORED_ROW"
+  | "INVALID_REVISION_GRAPH"
   | "INVALID_QUERY"
   | "READ_FAILED"
   | "WRITE_FAILED";
@@ -97,11 +114,20 @@ export type OwnerContextHistoryResult =
   /** Fail-closed: any unreadable row → no partial history. */
   | { status: "INVALID_STORED_ROWS"; rejected: RejectedContextRow[] };
 
-export type ContextGraphDiagnosticKind = "BRANCH" | "SELF_SUPERSESSION" | "DANGLING_SUPERSEDES" | "TARGET_MISMATCH" | "CYCLE";
+export type ContextGraphDiagnosticKind =
+  | "BRANCH" | "SELF_SUPERSESSION" | "DANGLING_SUPERSEDES" | "TARGET_MISMATCH" | "CYCLE"
+  | "TRIGGER_MISMATCH" | "DANGLING_TRIGGER" | "TRIGGER_CASE_MISMATCH" | "DUPLICATE_ROOT";
 export interface ContextGraphDiagnostic { kind: ContextGraphDiagnosticKind; contextIds: string[]; message: string }
 
 export type CurrentOwnerContextsResult =
-  | { status: "OK"; contexts: PersistedOwnerContext[]; historyCount: number }
+  | {
+      status: "OK";
+      /** CURRENT_APPLICABLE only — what downstream logic may consume. */
+      contexts: PersistedOwnerContext[];
+      /** Terminal but no longer supported by their trigger — history, not current. */
+      notApplicable: Array<{ context: PersistedOwnerContext; applicability: ContextApplicability }>;
+      historyCount: number;
+    }
   | { status: "NO_CONTEXT"; contexts: [] }
   | { status: "READ_FAILED"; error: OwnerContextStoreError }
   | { status: "INVALID_STORED_ROWS"; rejected: RejectedContextRow[] }
@@ -110,7 +136,12 @@ export type CurrentOwnerContextsResult =
 
 export type CurrentContextForQuestionResult =
   | { status: "CURRENT"; context: PersistedOwnerContext; historyCount: number }
-  | Exclude<CurrentOwnerContextsResult, { status: "OK" }>;
+  /** The question's latest answer exists in history but its trigger no longer supports it. */
+  | { status: "NOT_APPLICABLE"; context: PersistedOwnerContext; applicability: ContextApplicability }
+  | { status: "NO_CONTEXT"; contexts: [] }
+  | { status: "READ_FAILED"; error: OwnerContextStoreError }
+  | { status: "INVALID_STORED_ROWS"; rejected: RejectedContextRow[] }
+  | { status: "INVALID_REVISION_GRAPH"; diagnostics: ContextGraphDiagnostic[] };
 
 export type OwnerContextFilter =
   | { questionId: string }
@@ -127,12 +158,16 @@ export function compareContextOrder(a: PersistedOwnerContext, b: PersistedOwnerC
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** A revision may only supersede a row about the SAME question, Case and subject. */
-export function sameContextTarget(a: Pick<PersistedOwnerContext, "questionId" | "caseId" | "caseType" | "subjectType" | "subjectId">, b: typeof a): boolean {
-  return a.questionId === b.questionId && a.caseId === b.caseId && a.caseType === b.caseType && a.subjectType === b.subjectType && a.subjectId === b.subjectId;
+type Target = Pick<PersistedOwnerContext, "questionId" | "caseId" | "caseType" | "subjectType" | "subjectId" | "triggerContextId">;
+/** A revision may only supersede a row about the SAME question, Case, subject and trigger. */
+export function sameContextTarget(a: Target, b: Target): boolean {
+  return a.questionId === b.questionId && a.caseId === b.caseId && a.caseType === b.caseType
+    && a.subjectType === b.subjectType && a.subjectId === b.subjectId && a.triggerContextId === b.triggerContextId;
 }
 
-/** Full-graph integrity check — must run on the COMPLETE history (a subset can hide a successor). */
+const slotKey = (c: Pick<PersistedOwnerContext, "questionId" | "triggerContextId">) => `${c.questionId}|${c.triggerContextId ?? ""}`;
+
+/** Full-graph integrity check — must run on the COMPLETE history (a subset can hide a successor or a trigger). */
 export function analyzeOwnerContextGraph(history: readonly PersistedOwnerContext[]): ContextGraphDiagnostic[] {
   const diagnostics: ContextGraphDiagnostic[] = [];
   const byId = new Map(history.map((c) => [c.id, c]));
@@ -141,12 +176,25 @@ export function analyzeOwnerContextGraph(history: readonly PersistedOwnerContext
   for (const [prior, ids] of [...successors.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (ids.length > 1) diagnostics.push({ kind: "BRANCH", contextIds: [prior, ...[...ids].sort()], message: `${prior} has ${ids.length} direct successors` });
   }
+  const roots = new Map<string, string[]>();
+  for (const c of history) if (c.supersedesId === null) roots.set(slotKey(c), [...(roots.get(slotKey(c)) ?? []), c.id]);
+  for (const [slot, ids] of [...roots.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (ids.length > 1) diagnostics.push({ kind: "DUPLICATE_ROOT", contextIds: [...ids].sort(), message: `${ids.length} independent answers for the same slot ${slot}` });
+  }
   for (const c of history) {
+    if (c.triggerContextId !== null) {
+      const t = byId.get(c.triggerContextId);
+      if (!t) diagnostics.push({ kind: "DANGLING_TRIGGER", contextIds: [c.id, c.triggerContextId], message: `${c.id} is triggered by ${c.triggerContextId}, which is not in the history` });
+      else if (t.caseId !== c.caseId || t.caseType !== c.caseType || t.subjectType !== c.subjectType || t.subjectId !== c.subjectId) {
+        diagnostics.push({ kind: "TRIGGER_CASE_MISMATCH", contextIds: [t.id, c.id], message: `${c.id} is triggered by a context about another Case/subject` });
+      }
+    }
     if (c.supersedesId === null) continue;
     if (c.supersedesId === c.id) { diagnostics.push({ kind: "SELF_SUPERSESSION", contextIds: [c.id], message: `${c.id} supersedes itself` }); continue; }
     const prior = byId.get(c.supersedesId);
     if (!prior) { diagnostics.push({ kind: "DANGLING_SUPERSEDES", contextIds: [c.id, c.supersedesId], message: `${c.id} supersedes ${c.supersedesId}, which is not in the history` }); continue; }
-    if (!sameContextTarget(c, prior)) diagnostics.push({ kind: "TARGET_MISMATCH", contextIds: [prior.id, c.id], message: `${c.id} supersedes ${prior.id} across different questions/Cases/subjects` });
+    if (prior.triggerContextId !== c.triggerContextId) diagnostics.push({ kind: "TRIGGER_MISMATCH", contextIds: [prior.id, c.id], message: `${c.id} revises ${prior.id} but changes its trigger` });
+    else if (!sameContextTarget(c, prior)) diagnostics.push({ kind: "TARGET_MISMATCH", contextIds: [prior.id, c.id], message: `${c.id} supersedes ${prior.id} across different questions/Cases/subjects` });
   }
   const reported = new Set<string>();
   for (const start of history) {
@@ -161,7 +209,7 @@ export function analyzeOwnerContextGraph(history: readonly PersistedOwnerContext
   return diagnostics.sort((a, b) => a.kind.localeCompare(b.kind) || a.contextIds.join().localeCompare(b.contextIds.join()));
 }
 
-/** Terminal row of each revision chain (never referenced as someone's supersedesId). Assumes a valid graph — callers check first. */
+/** Terminal row of each revision chain. Assumes a valid graph — callers check first. */
 export function terminalContexts(history: readonly PersistedOwnerContext[]): PersistedOwnerContext[] {
   const superseded = new Set(history.map((c) => c.supersedesId).filter((id): id is string => id !== null));
   return history.filter((c) => !superseded.has(c.id)).sort(compareContextOrder);
@@ -178,9 +226,10 @@ function matchesFilter(c: PersistedOwnerContext, f: OwnerContextFilter | undefin
 // ── append input ──
 
 /**
- * What a caller hands the store. No id, no createdAt/answeredAt, no schema
- * version: the DB assigns id + created_at, the store stamps
- * OWNER_CONTEXT_SCHEMA_VERSION. Passing any of them is VALIDATION_FAILED.
+ * What a caller hands the store. No id / createdAt / answeredAt / schema
+ * version / resolved answerValue: the DB assigns id + created_at, the store
+ * stamps the schema version and resolves the value. Supplying any of them is
+ * VALIDATION_FAILED.
  */
 export interface OwnerContextDraft {
   questionId: string;
@@ -194,6 +243,15 @@ export interface OwnerContextDraft {
   subjectType: string;
   subjectId: string;
   answerCode: string;
+  /** Only for an explicit-date answer (e.g. SPECIFIC_DATE): YYYY-MM-DD. Must be null everywhere else. */
+  explicitDateYmd: string | null;
+  /**
+   * The Israel calendar date the Owner actually answered. null = today (server clock). An explicit date is only for
+   * an answer captured outside the system: never in the future, never before the trigger's own answer date.
+   */
+  answeredOnYmd: string | null;
+  /** null for a Case question; the exact triggering Owner Context for a follow-up (from question.origin). */
+  triggerContextId: string | null;
   note: string | null;
   scope: "CASE_INSTANCE";
   provenance: { source: "owner_manual" };
@@ -204,7 +262,7 @@ export interface OwnerContextDraft {
 export function buildOwnerContextDraft(
   question: PartnerInvestigationQuestion,
   caseSchemaVersion: string,
-  input: { answerCode: string; note?: string | null; supersedesId?: string | null },
+  input: { answerCode: string; note?: string | null; supersedesId?: string | null; explicitDateYmd?: string | null; answeredOnYmd?: string | null },
 ): OwnerContextDraft {
   return {
     questionId: question.id,
@@ -217,6 +275,9 @@ export function buildOwnerContextDraft(
     subjectType: question.subjectType,
     subjectId: question.subjectId,
     answerCode: input.answerCode,
+    explicitDateYmd: input.explicitDateYmd ?? null,
+    answeredOnYmd: input.answeredOnYmd ?? null,
+    triggerContextId: question.origin.kind === "OWNER_CONTEXT" ? question.origin.triggerContextId : null,
     note: input.note ?? null,
     scope: "CASE_INSTANCE",
     provenance: { source: "owner_manual" },
@@ -224,12 +285,20 @@ export function buildOwnerContextDraft(
   };
 }
 
-const DRAFT_KEYS = ["questionId", "questionType", "questionText", "caseId", "caseType", "caseSchemaVersion", "caseFactsFingerprint", "subjectType", "subjectId", "answerCode", "note", "scope", "provenance", "supersedesId"];
-const STORE_ASSIGNED_KEYS = ["id", "createdAt", "answeredAt", "schemaVersion", "contextSchemaVersion"];
+const DRAFT_KEYS = ["questionId", "questionType", "questionText", "caseId", "caseType", "caseSchemaVersion", "caseFactsFingerprint", "subjectType", "subjectId", "answerCode", "explicitDateYmd", "answeredOnYmd", "triggerContextId", "note", "scope", "provenance", "supersedesId"];
+const STORE_ASSIGNED_KEYS = ["id", "createdAt", "answeredAt", "schemaVersion", "contextSchemaVersion", "answerValue"];
 const LOWER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const uuidOrNull = (v: unknown) => v === null || (typeof v === "string" && LOWER_UUID_RE.test(v));
 
-/** Runtime validation of a draft into an insert row. Never coerces. */
-function validateDraft(input: unknown): OwnerContextInsertRow {
+interface ValidatedDraft {
+  base: Omit<OwnerContextInsertRow, "answer_value">;
+  questionType: InvestigationQuestionType;
+  explicitDateYmd: string | null;
+  answeredOnYmd: string | null;
+}
+
+/** Shape / identity / answer-code validation of a draft. Never coerces. No DB access. */
+function validateDraftShape(input: unknown): ValidatedDraft {
   if (typeof input !== "object" || input === null || Array.isArray(input)) throw new OwnerContextStoreError("VALIDATION_FAILED", "owner context draft must be an object");
   const raw = input as Record<string, unknown>;
   const errors: string[] = [];
@@ -240,35 +309,47 @@ function validateDraft(input: unknown): OwnerContextInsertRow {
   for (const k of ["questionId", "questionText", "caseId", "caseType", "caseSchemaVersion", "caseFactsFingerprint", "subjectType", "subjectId", "answerCode"]) {
     if (typeof raw[k] !== "string" || (raw[k] as string).length === 0) errors.push(`${k}: must be a non-empty string`);
   }
+  for (const k of ["explicitDateYmd", "answeredOnYmd", "triggerContextId", "note", "supersedesId"]) if (!(k in raw)) errors.push(`${k}: required (null when absent)`);
   if (raw.note !== null && typeof raw.note !== "string") errors.push("note: must be a string or null");
   if (raw.scope !== "CASE_INSTANCE") errors.push(`scope ${JSON.stringify(raw.scope)} is not supported (CASE_INSTANCE only — never broadened automatically)`);
-  if (raw.supersedesId !== null && (typeof raw.supersedesId !== "string" || !LOWER_UUID_RE.test(raw.supersedesId))) errors.push("supersedesId: must be a lowercase uuid or null");
+  if (!uuidOrNull(raw.supersedesId)) errors.push("supersedesId: must be a lowercase uuid or null");
+  if (!uuidOrNull(raw.triggerContextId)) errors.push("triggerContextId: must be a lowercase uuid or null");
+  if (raw.explicitDateYmd !== null && typeof raw.explicitDateYmd !== "string") errors.push("explicitDateYmd: must be a YYYY-MM-DD string or null");
+  if (raw.answeredOnYmd !== null && !isValidYmd(raw.answeredOnYmd)) errors.push("answeredOnYmd: must be a real YYYY-MM-DD date or null");
   const provenance = parseContextProvenance(raw.provenance, errors);
   if (errors.length || !provenance) throw new OwnerContextStoreError("VALIDATION_FAILED", "owner context draft failed runtime validation", errors);
 
-  // Question identity: known type + deterministic id.
   if (!isKnownQuestionType(raw.questionType)) throw new OwnerContextStoreError("INVALID_QUESTION_IDENTITY", `questionType ${JSON.stringify(raw.questionType)} is not in the investigation taxonomy`);
   const expectedId = deriveQuestionId(raw.caseId as string, raw.questionType);
   if (raw.questionId !== expectedId) throw new OwnerContextStoreError("INVALID_QUESTION_IDENTITY", "questionId must equal caseId::questionType", [`expected ${expectedId}`, `got ${String(raw.questionId)}`]);
-  // Answer semantics: the DB only checks format.
   if (!isAnswerCodeValidFor(raw.questionType, raw.answerCode)) throw new OwnerContextStoreError("INVALID_ANSWER_CODE", `answerCode ${JSON.stringify(raw.answerCode)} is not an answer of ${raw.questionType} (use OTHER + note)`);
 
+  const followUp = isFollowUpQuestionType(raw.questionType);
+  if (followUp && raw.triggerContextId === null) throw new OwnerContextStoreError("INVALID_TRIGGER", `${raw.questionType} is a follow-up question — triggerContextId is required`);
+  if (!followUp && raw.triggerContextId !== null) throw new OwnerContextStoreError("INVALID_TRIGGER", `${raw.questionType} is generated from the Case — triggerContextId must be null`);
+
   return {
-    context_schema_version: OWNER_CONTEXT_SCHEMA_VERSION,
-    question_id: raw.questionId as string,
-    question_type: raw.questionType,
-    question_text: raw.questionText as string,
-    case_id: raw.caseId as string,
-    case_type: raw.caseType as string,
-    case_schema_version: raw.caseSchemaVersion as string,
-    case_facts_fingerprint: raw.caseFactsFingerprint as string,
-    subject_type: raw.subjectType as string,
-    subject_id: raw.subjectId as string,
-    answer_code: raw.answerCode as string,
-    note: raw.note as string | null,
-    scope: "CASE_INSTANCE",
-    provenance,
-    supersedes_id: raw.supersedesId as string | null,
+    questionType: raw.questionType,
+    explicitDateYmd: raw.explicitDateYmd as string | null,
+    answeredOnYmd: raw.answeredOnYmd as string | null,
+    base: {
+      context_schema_version: OWNER_CONTEXT_SCHEMA_VERSION,
+      question_id: raw.questionId as string,
+      question_type: raw.questionType,
+      question_text: raw.questionText as string,
+      case_id: raw.caseId as string,
+      case_type: raw.caseType as string,
+      case_schema_version: raw.caseSchemaVersion as string,
+      case_facts_fingerprint: raw.caseFactsFingerprint as string,
+      subject_type: raw.subjectType as string,
+      subject_id: raw.subjectId as string,
+      answer_code: raw.answerCode as string,
+      note: raw.note as string | null,
+      scope: "CASE_INSTANCE",
+      provenance,
+      supersedes_id: raw.supersedesId as string | null,
+      trigger_context_id: raw.triggerContextId as string | null,
+    },
   };
 }
 
@@ -284,16 +365,22 @@ export interface OwnerContextStore {
   /** Exact match on the indexed subject_type + subject_id columns. No fuzzy matching, no JSON scan. */
   getContextsForSubject(subjectType: string, subjectId: string): Promise<OwnerContextHistoryResult>;
   getContextsForCaseType(caseType: string): Promise<OwnerContextHistoryResult>;
-  /** Current answers = terminal rows of valid revision chains, resolved over the FULL history, then filtered. */
+  /** CURRENT_APPLICABLE answers, resolved over the FULL history (graph + applicability), then filtered. */
   resolveCurrentOwnerContexts(filter?: OwnerContextFilter): Promise<CurrentOwnerContextsResult>;
-  /** The current answer to one question (the queue's read). */
+  /** The current applicable answer to one question (the queue's read). */
   getCurrentContextForQuestion(questionId: string): Promise<CurrentContextForQuestionResult>;
+}
+
+export interface OwnerContextStoreOptions {
+  /** Server clock. Injected for tests; the Israel calendar date is derived from it (lib/coo/dates ilYmd). */
+  now?: () => Date;
 }
 
 export const CONTEXT_PAGE_SIZE = 1000;
 
-export function createOwnerContextStore(client: OwnerContextTableClient): OwnerContextStore {
+export function createOwnerContextStore(client: OwnerContextTableClient, options: OwnerContextStoreOptions = {}): OwnerContextStore {
   const table = () => client.from(PARTNER_OWNER_CONTEXT_TABLE);
+  const now = options.now ?? (() => new Date());
 
   async function readHistory(filters: ReadonlyArray<readonly [string, string]>): Promise<OwnerContextHistoryResult> {
     const rows: unknown[] = [];
@@ -334,62 +421,101 @@ export function createOwnerContextStore(client: OwnerContextTableClient): OwnerC
     else { requireKey("subjectType", f.subjectType); requireKey("subjectId", f.subjectId); }
   };
 
-  async function loadPrior(id: string): Promise<PersistedOwnerContext> {
-    let res: ContextDbResponse<unknown>;
-    try { res = await table().select(OWNER_CONTEXT_COLUMNS).eq("id", id).maybeSingle(); } catch (e) {
-      throw new OwnerContextStoreError("READ_FAILED", `could not load superseded context: ${describeDbError(e)}`);
-    }
-    if (res.error) throw new OwnerContextStoreError("READ_FAILED", `could not load superseded context: ${describeDbError(res.error)}`);
-    if (res.data === null) throw new OwnerContextStoreError("SUPERSEDED_NOT_FOUND", `supersedesId ${id} does not exist`);
-    const m = mapOwnerContextRow(res.data);
-    if (!m.ok) throw new OwnerContextStoreError(m.code, `superseded context ${id} is not readable`, m.errors);
-    return m.value;
-  }
-
-  async function assertNoSuccessor(priorId: string): Promise<void> {
-    let res: ContextDbResponse<unknown[]>;
-    try { res = await table().select("id").eq("supersedes_id", priorId).range(0, 0); } catch (e) {
-      throw new OwnerContextStoreError("READ_FAILED", `could not check existing revisions: ${describeDbError(e)}`);
-    }
-    if (res.error) throw new OwnerContextStoreError("READ_FAILED", `could not check existing revisions: ${describeDbError(res.error)}`);
-    if (res.data && res.data.length > 0) throw new OwnerContextStoreError("REVISION_BRANCH_CONFLICT", `context ${priorId} already has a successor — revise the current (terminal) answer instead`);
+  /** The full, valid history — the basis for every append check and every "current" read. */
+  async function validHistory(): Promise<{ ok: true; history: PersistedOwnerContext[] } | { ok: false; result: Exclude<CurrentOwnerContextsResult, { status: "OK" }> }> {
+    const h = await readHistory([]);
+    if (h.status === "NO_CONTEXT") return { ok: true, history: [] };
+    if (h.status !== "OK") return { ok: false, result: h };
+    const diagnostics = analyzeOwnerContextGraph(h.contexts);
+    if (diagnostics.length) return { ok: false, result: { status: "INVALID_REVISION_GRAPH", diagnostics } };
+    return { ok: true, history: h.contexts };
   }
 
   async function resolveCurrent(filter?: OwnerContextFilter): Promise<CurrentOwnerContextsResult> {
     validateFilter(filter);
-    const history = await readHistory([]);
-    if (history.status !== "OK") return history;
-    const diagnostics = analyzeOwnerContextGraph(history.contexts);
-    if (diagnostics.length) return { status: "INVALID_REVISION_GRAPH", diagnostics };
-    const current = terminalContexts(history.contexts).filter((c) => matchesFilter(c, filter));
-    if (!current.length) return { status: "NO_CONTEXT", contexts: [] };
-    return { status: "OK", contexts: current, historyCount: history.contexts.length };
+    const v = await validHistory();
+    if (!v.ok) return v.result;
+    if (!v.history.length) return { status: "NO_CONTEXT", contexts: [] };
+    const cls = classifyOwnerContexts(v.history);
+    const inScope = v.history.filter((c) => matchesFilter(c, filter));
+    const contexts = inScope.filter((c) => cls.get(c.id)?.status === "CURRENT_APPLICABLE").sort(compareContextOrder);
+    const notApplicable = inScope.filter((c) => cls.get(c.id)?.status === "NOT_APPLICABLE_TRIGGER_SUPERSEDED").sort(compareContextOrder).map((c) => ({ context: c, applicability: cls.get(c.id)! }));
+    if (!contexts.length && !notApplicable.length) return { status: "NO_CONTEXT", contexts: [] };
+    return { status: "OK", contexts, notApplicable, historyCount: v.history.length };
   }
 
   return {
     async appendOwnerContext(draft) {
-      const row = validateDraft(draft);
+      const d = validateDraftShape(draft);
 
-      // No createdAt comparison: the DB's now() on this INSERT is the chronology.
-      if (row.supersedes_id !== null) {
-        const prior = await loadPrior(row.supersedes_id);
-        const next = { questionId: row.question_id, caseId: row.case_id, caseType: row.case_type, subjectType: row.subject_type, subjectId: row.subject_id };
-        if (!sameContextTarget(next, prior)) {
-          const diffs = (["questionId", "caseId", "caseType", "subjectType", "subjectId"] as const).filter((k) => next[k] !== prior[k]).map((k) => `${k}: prior=${prior[k]} revision=${next[k]}`);
-          throw new OwnerContextStoreError("REVISION_TARGET_MISMATCH", `a revision must answer the SAME question about the SAME Case and subject as ${prior.id}`, diffs);
+      // All relational checks run against ONE full, graph-valid read of the history.
+      const v = await validHistory();
+      if (!v.ok) {
+        const r = v.result;
+        if (r.status === "READ_FAILED") throw r.error;
+        if (r.status === "INVALID_STORED_ROWS") throw new OwnerContextStoreError("INVALID_STORED_ROW", "existing history is not readable — refusing to append", r.rejected.map((x) => `${x.id}: ${x.code}`));
+        throw new OwnerContextStoreError("INVALID_REVISION_GRAPH", "existing history has an invalid revision graph — refusing to append", r.status === "INVALID_REVISION_GRAPH" ? r.diagnostics.map((x) => `${x.kind}: ${x.message}`) : []);
+      }
+      const history = v.history;
+      const byId = new Map(history.map((c) => [c.id, c]));
+      const cls = classifyOwnerContexts(history);
+      const row = d.base;
+
+      // Anchor date: the server's Israel calendar; an explicit earlier date only for an answer captured outside the system.
+      const todayIl = ilYmd(now());
+      const anchorYmd = d.answeredOnYmd ?? todayIl;
+      if (anchorYmd > todayIl) throw new OwnerContextStoreError("INVALID_ANSWER_VALUE", `answeredOnYmd ${anchorYmd} is in the future (today ${todayIl}, Asia/Jerusalem)`);
+
+      // Trigger (follow-ups): exact row, same Case/subject, triggering answer, and still effectively current.
+      if (row.trigger_context_id !== null) {
+        const t = byId.get(row.trigger_context_id);
+        if (!t) throw new OwnerContextStoreError("INVALID_TRIGGER", `trigger context ${row.trigger_context_id} does not exist`);
+        if (t.caseId !== row.case_id || t.caseType !== row.case_type || t.subjectType !== row.subject_type || t.subjectId !== row.subject_id) {
+          throw new OwnerContextStoreError("INVALID_TRIGGER", "the trigger context is about a different Case/subject");
         }
-        await assertNoSuccessor(prior.id);
+        if (!triggersFollowUp(t.questionType, t.answerCode, d.questionType)) {
+          throw new OwnerContextStoreError("INVALID_TRIGGER", `${t.questionType}:${t.answerCode} does not trigger ${d.questionType}`);
+        }
+        // Effectively current: the trigger's chain still supports this follow-up — the same rule applicability uses for the child.
+        const support = triggerSupportsFollowUp(history, t.id, d.questionType);
+        if (!support.ok) throw new OwnerContextStoreError("INVALID_TRIGGER", "the trigger is no longer current / no longer supports this follow-up", support.reasons);
+        if (anchorYmd < ilYmd(new Date(t.answeredAt))) throw new OwnerContextStoreError("INVALID_ANSWER_VALUE", `answeredOnYmd ${anchorYmd} is before the trigger was answered (${ilYmd(new Date(t.answeredAt))})`);
       }
 
+      // Structured value: resolved here, never supplied by the caller.
+      const resolved = resolveAnswerValue(d.questionType, row.answer_code, { anchorYmd, explicitYmd: d.explicitDateYmd });
+      if (!resolved.ok) throw new OwnerContextStoreError("INVALID_ANSWER_VALUE", "answer value rejected", resolved.errors);
+
+      if (row.supersedes_id !== null) {
+        // Revision: same question + Case + subject + trigger; no branch.
+        const prior = byId.get(row.supersedes_id);
+        if (!prior) throw new OwnerContextStoreError("SUPERSEDED_NOT_FOUND", `supersedesId ${row.supersedes_id} does not exist`);
+        const next: Target = { questionId: row.question_id, caseId: row.case_id, caseType: row.case_type, subjectType: row.subject_type, subjectId: row.subject_id, triggerContextId: row.trigger_context_id };
+        if (!sameContextTarget(next, prior)) {
+          const diffs = (["questionId", "caseId", "caseType", "subjectType", "subjectId", "triggerContextId"] as const).filter((k) => next[k] !== prior[k]).map((k) => `${k}: prior=${prior[k]} revision=${next[k]}`);
+          throw new OwnerContextStoreError("REVISION_TARGET_MISMATCH", `a revision must answer the SAME question about the SAME Case, subject and trigger as ${prior.id}`, diffs);
+        }
+        if (history.some((c) => c.supersedesId === prior.id)) throw new OwnerContextStoreError("REVISION_BRANCH_CONFLICT", `context ${prior.id} already has a successor — revise the current (terminal) answer instead`);
+      } else {
+        // New root: nothing already answers this slot, and no other live answer to this question applies.
+        const sameSlot = history.find((c) => c.questionId === row.question_id && c.triggerContextId === row.trigger_context_id);
+        if (sameSlot) throw new OwnerContextStoreError("ANSWER_EXISTS_USE_REVISION", `question ${row.question_id} is already answered in this slot — supersede the current answer instead`, [sameSlot.id]);
+        const liveOther = history.find((c) => c.questionId === row.question_id && cls.get(c.id)?.status === "CURRENT_APPLICABLE");
+        if (liveOther) throw new OwnerContextStoreError("ANSWER_EXISTS_USE_REVISION", `question ${row.question_id} already has a current applicable answer — supersede it instead`, [liveOther.id]);
+      }
+
+      const insert: OwnerContextInsertRow = { ...row, answer_value: resolved.value };
       let res: ContextDbResponse<unknown>;
-      try { res = await table().insert(row).select(OWNER_CONTEXT_COLUMNS).single(); } catch (e) {
+      try { res = await table().insert(insert).select(OWNER_CONTEXT_COLUMNS).single(); } catch (e) {
         throw new OwnerContextStoreError("WRITE_FAILED", `partner_owner_context insert threw: ${describeDbError(e)}`);
       }
       if (res.error) {
         const detail = describeDbError(res.error);
         const text = `${res.error.message ?? ""} ${res.error.details ?? ""}`;
+        if (res.error.code === "23505" && /one_root_per_slot/i.test(text)) throw new OwnerContextStoreError("ANSWER_EXISTS_USE_REVISION", "another answer for this slot was written concurrently (DB unique index)", [detail]);
         if (res.error.code === "23505" && /supersedes/i.test(text)) throw new OwnerContextStoreError("REVISION_BRANCH_CONFLICT", `context ${row.supersedes_id} already has a successor (DB unique index)`, [detail]);
         if (res.error.code === "23505") throw new OwnerContextStoreError("DUPLICATE_CONTEXT_ID", "DB-generated context id collided", [detail]);
+        if (res.error.code === "23503" && /trigger/i.test(text)) throw new OwnerContextStoreError("INVALID_TRIGGER", `trigger context ${String(row.trigger_context_id)} does not exist (DB foreign key)`, [detail]);
         if (res.error.code === "23503") throw new OwnerContextStoreError("SUPERSEDED_NOT_FOUND", `supersedesId ${String(row.supersedes_id)} does not exist for this question (DB composite foreign key)`, [detail]);
         throw new OwnerContextStoreError("WRITE_FAILED", "partner_owner_context insert failed", [detail]);
       }
@@ -408,9 +534,9 @@ export function createOwnerContextStore(client: OwnerContextTableClient): OwnerC
     async getCurrentContextForQuestion(questionId) {
       const r = await resolveCurrent({ questionId: requireKey("questionId", questionId) });
       if (r.status !== "OK") return r;
-      // A valid graph has at most one terminal row per question (branches are diagnosed above).
-      return { status: "CURRENT", context: r.contexts[r.contexts.length - 1], historyCount: r.historyCount };
+      if (r.contexts.length) return { status: "CURRENT", context: r.contexts[r.contexts.length - 1], historyCount: r.historyCount };
+      const last = r.notApplicable[r.notApplicable.length - 1];
+      return { status: "NOT_APPLICABLE", context: last.context, applicability: last.applicability };
     },
   };
 }
-
