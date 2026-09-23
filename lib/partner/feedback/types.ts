@@ -30,9 +30,9 @@ export interface FeedbackTarget {
   caseId?: string;
   /** CASE_TYPE, RULE_APPLICATION — and always ALSO copied from the snapshot for CASE_INSTANCE/HYPOTHESIS so grouping never needs a snapshot lookup. */
   caseType?: string;
-  /** SUBJECT. */
+  /** SUBJECT — and, for Case-derived feedback (CASE_INSTANCE/HYPOTHESIS), REQUIRED and equal to caseSnapshot.subjectType so the row is discoverable by subject (F.1B hardening). Carrying it does NOT make the feedback SUBJECT-scoped — `scope` alone says what was targeted. */
   subjectType?: string;
-  /** SUBJECT. */
+  /** Same rule as subjectType: SUBJECT scope, plus REQUIRED (= caseSnapshot.subjectId) for CASE_INSTANCE/HYPOTHESIS. */
   subjectId?: string;
   /** RULE_APPLICATION — a Charter id (lib/partner/charter.ts), never validated as owner-approved here (that stays lib/partner's own job). */
   ownerRuleId?: string;
@@ -155,6 +155,16 @@ export interface PartnerFeedback {
   supersedesId: string | null;
   provenance: { source: "owner_manual" };
 }
+
+/**
+ * What a caller hands the persistence layer to create a NEW record (F.1B
+ * hardening). No `id`, no `createdAt`, no `schemaVersion`: the database
+ * assigns id (gen_random_uuid()) and created_at (now()) — persisted
+ * chronology never depends on a caller clock — and the store stamps
+ * FEEDBACK_SCHEMA_VERSION. PartnerFeedback stays the fully-materialized,
+ * persisted record.
+ */
+export type PartnerFeedbackDraft = Omit<PartnerFeedback, "id" | "createdAt" | "schemaVersion">;
 
 // ── Per-record effect classification (§13) — computed, never stored as an
 // opinion; a PURE function of one record's own scope + dimensions. ──

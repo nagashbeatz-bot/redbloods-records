@@ -1,16 +1,17 @@
 /**
  * Store tests for Redbloods Partner — Structured Owner Feedback persistence
- * (Phase F.1B).
+ * (Phase F.1B + F.1B hardening).
  *
  * Run with:   npx tsx scripts/test-partner-feedback-store.ts
  *
  * NEVER touches production: every write-path test drives the real
  * persistence core (lib/partner/feedback/persistence.ts) against an
  * in-memory fake that mimics PostgREST + the verified partner_feedback
- * constraints (PK, self-FK on supersedes_id, partial UNIQUE on
- * supersedes_id, target_scope CHECK, jsonb round-trip, "+00:00" timestamps,
- * range paging). store.ts itself is only inspected statically (it imports
- * "server-only" + the real service-role client).
+ * table: id DEFAULT gen_random_uuid(), created_at DEFAULT now(), PK,
+ * self-FK on supersedes_id, partial UNIQUE on supersedes_id, target_scope
+ * CHECK, jsonb round-trip, "+00:00" timestamps, range paging. store.ts itself
+ * is only inspected statically (it imports "server-only" + the real
+ * service-role client).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -24,7 +25,7 @@ import {
   createPartnerFeedbackStore, analyzeFeedbackRevisionGraph, redactSecrets, PartnerFeedbackStoreError, PAGE_SIZE,
   type AppendPartnerFeedbackInput, type FeedbackDbResponse, type FeedbackSelectQuery, type FeedbackTableClient,
 } from "../lib/partner/feedback/persistence";
-import { PARTNER_FEEDBACK_COLUMNS, mapFeedbackRow, type PartnerFeedbackRow } from "../lib/partner/feedback/row";
+import { PARTNER_FEEDBACK_COLUMNS, mapFeedbackRow, type PartnerFeedbackInsertRow } from "../lib/partner/feedback/row";
 
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
@@ -49,30 +50,39 @@ async function expectStoreError(name: string, fn: () => Promise<unknown>, code: 
 type Row = Record<string, unknown>;
 interface FakeOptions { failSelect?: boolean; throwOnSelect?: boolean; failInsert?: boolean; hideSuccessorPrecheck?: boolean }
 
+const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const DB_CLOCK_START = Date.parse("2026-09-23T10:00:00.000Z");
+
 class FakeFeedbackDb {
   rows: Row[] = [];
   log: string[] = [];
   tables = new Set<string>();
+  insertPayloads: Row[] = [];
   opts: FakeOptions = {};
-
-  /** Mimic Postgres: jsonb round-trip + timestamptz rendered as "+00:00" with microseconds. */
-  private store(row: Row): Row {
-    const clone = JSON.parse(JSON.stringify(row)) as Row;
-    clone.created_at = new Date(String(row.created_at)).toISOString().replace("Z", "000+00:00");
-    return clone;
-  }
+  /** DB clock (now()): advances 1s per INSERT unless frozen. */
+  clockMs = DB_CLOCK_START;
+  freezeClock = false;
+  /** DB id sequence (gen_random_uuid() stand-in); forceNextIds lets a test pick the DB's next ids. */
+  private idSeq = 0;
+  forceNextIds: string[] = [];
 
   seedRaw(row: Row) { this.rows.push(JSON.parse(JSON.stringify(row))); }
 
-  private insertRow(row: PartnerFeedbackRow): FeedbackDbResponse<unknown> {
+  private insertRow(row: PartnerFeedbackInsertRow): FeedbackDbResponse<unknown> {
+    this.insertPayloads.push(JSON.parse(JSON.stringify(row)));
     if (this.opts.failInsert) return { data: null, error: { code: "08006", message: "connection failure apikey=eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig sb_secret_ABCdef123" } };
-    if (this.rows.some((r) => r.id === row.id)) return { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "partner_feedback_pkey"' } };
+    // Column DEFAULTs — only applied when the INSERT omits the column (as PostgREST does).
+    const id = "id" in row ? (row as Row).id : (this.forceNextIds.shift() ?? uid(++this.idSeq));
+    if (!this.freezeClock && this.rows.length) this.clockMs += 1000;
+    const createdAt = "created_at" in row ? (row as Row).created_at : new Date(this.clockMs).toISOString().replace("Z", "123+00:00");
+    const full: Row = { ...(row as unknown as Row), id, created_at: createdAt };
+    if (this.rows.some((r) => r.id === id)) return { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "partner_feedback_pkey"' } };
     if (!["CASE_INSTANCE", "CASE_TYPE", "SUBJECT", "RULE_APPLICATION", "HYPOTHESIS", "THRESHOLD_PROPOSAL"].includes(row.target_scope)) return { data: null, error: { code: "23514", message: "violates check constraint" } };
     if (row.supersedes_id !== null && !this.rows.some((r) => r.id === row.supersedes_id)) return { data: null, error: { code: "23503", message: "violates foreign key constraint" } };
     if (row.supersedes_id !== null && this.rows.some((r) => r.supersedes_id === row.supersedes_id)) {
       return { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "partner_feedback_supersedes_unique_idx"', details: `Key (supersedes_id)=(${row.supersedes_id}) already exists.` } };
     }
-    const stored = this.store(row as unknown as Row);
+    const stored = JSON.parse(JSON.stringify(full)) as Row;
     this.rows.push(stored);
     return { data: JSON.parse(JSON.stringify(stored)), error: null };
   }
@@ -134,7 +144,8 @@ class FakeFeedbackDb {
 // ── fixtures ──
 
 const KNOWN = ["TASK_DUE_DATE_PASSED", "PROJECT_DEADLINE_PASSED", "PROJECT_PAYMENT_OUTSTANDING"];
-const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+/** A caller-side clock deliberately far from the DB clock — proves nothing persisted depends on it. */
+const CALLER_CLOCK = "2031-01-01T00:00:00.000Z";
 
 function makeCase(overrides: Partial<PartnerCase> = {}): PartnerCase {
   return {
@@ -148,21 +159,34 @@ function makeCase(overrides: Partial<PartnerCase> = {}): PartnerCase {
     ...overrides,
   };
 }
+const projectCase = (pid: string) => makeCase({ id: `project_deadline_passed:${pid}`, caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: pid });
 
 function dims(patch: Partial<PartnerFeedbackDimensions> = {}): PartnerFeedbackDimensions {
   return { ...emptyFeedbackDimensions(), ...patch };
 }
 
-function caseInput(n: number, patch: Partial<AppendPartnerFeedbackInput> = {}, c: PartnerCase = makeCase()): AppendPartnerFeedbackInput {
-  const createdAt = `2026-09-23T10:00:${String(n % 60).padStart(2, "0")}.000Z`;
+/** A CASE_INSTANCE draft for Case `c` — target carries Case + subject identity copied from the Case (as the future UI must). */
+function caseDraft(c: PartnerCase = makeCase(), patch: Partial<AppendPartnerFeedbackInput> = {}): AppendPartnerFeedbackInput {
   return {
-    id: uid(n), createdAt,
-    target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType },
+    target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType, subjectType: c.subjectType, subjectId: c.subjectId },
     dimensions: dims({ accuracy: "CORRECT", importance: "NOT_IMPORTANT" }),
-    note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, createdAt), supersedesId: null,
+    note: null, caseSnapshot: buildCaseFeedbackSnapshot(c, CALLER_CLOCK), supersedesId: null,
     provenance: { source: "owner_manual" },
     ...patch,
   };
+}
+function hypothesisDraft(c: PartnerCase = makeCase(), patch: Partial<AppendPartnerFeedbackInput> = {}): AppendPartnerFeedbackInput {
+  return caseDraft(c, {
+    target: { scope: "HYPOTHESIS", caseId: c.id, caseType: c.caseType, subjectType: c.subjectType, subjectId: c.subjectId, hypothesisId: "h1" },
+    dimensions: dims({ inference: { value: "DO_NOT_INFER", hypothesisId: "h1" } }),
+    ...patch,
+  });
+}
+function subjectDraft(subjectType: string, subjectId: string, patch: Partial<AppendPartnerFeedbackInput> = {}): AppendPartnerFeedbackInput {
+  return { ...caseDraft(), target: { scope: "SUBJECT", subjectType, subjectId }, caseSnapshot: null, dimensions: dims({ context: { value: "HAS_MISSING_CONTEXT", contextCode: "FRIEND_CLIENT" } }), ...patch };
+}
+function caseTypeDraft(caseType: string): AppendPartnerFeedbackInput {
+  return { ...caseDraft(), target: { scope: "CASE_TYPE", caseType }, caseSnapshot: null };
 }
 
 function fresh(opts: FakeOptions = {}) {
@@ -170,6 +194,8 @@ function fresh(opts: FakeOptions = {}) {
   db.opts = opts;
   return { db, store: createPartnerFeedbackStore(db.client()) };
 }
+const O = { knownCaseTypes: KNOWN };
+const ids = (r: { status: string; feedback?: PartnerFeedback[] }) => r.status === "OK" && r.feedback ? r.feedback.map((f) => f.id) : r.status;
 
 const WRITE_VERBS = /\b(update|delete|upsert|rpc)\b/;
 
@@ -178,62 +204,49 @@ async function main() {
   console.log("1. Valid feedback inserts");
   {
     const { db, store } = fresh();
-    const r = await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
+    const r = await store.appendPartnerFeedback(caseDraft(), O);
     check("one row stored", db.rows.length, 1);
-    check("returned record id", r.feedback.id, uid(1));
-    check("createdAt normalized back to canonical ISO (same instant as input)", r.feedback.createdAt, "2026-09-23T10:00:01.000Z");
     check("dimensions round-trip", r.feedback.dimensions, dims({ accuracy: "CORRECT", importance: "NOT_IMPORTANT" }));
     check("no warnings for a known caseType", r.warnings, []);
     const row = db.rows[0];
     check("DB row uses snake_case columns (explicit mapping)", Object.keys(row).sort(), PARTNER_FEEDBACK_COLUMNS.split(",").sort());
-    check("target columns mapped", [row.target_scope, row.case_id, row.case_type, row.subject_id], ["CASE_INSTANCE", "task_due_date_passed:t1", "TASK_DUE_DATE_PASSED", null]);
+    check("target columns mapped", [row.target_scope, row.case_id, row.case_type, row.subject_type, row.subject_id], ["CASE_INSTANCE", "task_due_date_passed:t1", "TASK_DUE_DATE_PASSED", "task", "t1"]);
     ok("domain record exposes no snake_case keys", Object.keys(r.feedback).every((k) => !k.includes("_")));
   }
 
   // 2 ──
   console.log("2. Invalid feedback rejected BEFORE any DB call");
   {
+    const c = makeCase();
     const cases: Array<[string, AppendPartnerFeedbackInput]> = [
-      ["no signal at all", caseInput(2, { dimensions: dims() })],
-      ["CASE_INSTANCE without snapshot", caseInput(2, { caseSnapshot: null })],
-      ["snapshot caseId ≠ target caseId", caseInput(2, { target: { scope: "CASE_INSTANCE", caseId: "other:x", caseType: "TASK_DUE_DATE_PASSED" } })],
-      ["CASE_INSTANCE missing caseType", caseInput(2, { target: { scope: "CASE_INSTANCE", caseId: "task_due_date_passed:t1" } })],
-      ["DO_NOT_INFER without hypothesisId", caseInput(2, { dimensions: dims({ inference: { value: "DO_NOT_INFER", hypothesisId: null } }) })],
-      ["unknown accuracy enum", caseInput(2, { dimensions: { ...dims(), accuracy: "MAYBE" as never } })],
-      ["unknown dimension key", caseInput(2, { dimensions: { ...dims({ accuracy: "CORRECT" }), mood: "x" } as never })],
-      ["non-uuid id", caseInput(2, { id: "fb-1" })],
-      ["uppercase uuid id (never silently lower-cased)", caseInput(2, { id: "ABCDEF00-0000-4000-8000-000000000002" })],
-      ["bad createdAt", caseInput(2, { createdAt: "yesterday" })],
-      ["unknown provenance source", caseInput(2, { provenance: { source: "ai_inferred" } as never })],
-      ["unknown scope", caseInput(2, { target: { scope: "EVERYTHING" as never, caseId: "x" } })],
-      ["CASE_TYPE carrying a snapshot", caseInput(2, { target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" } })],
-      ["self-supersession", caseInput(2, { supersedesId: uid(2) })],
-      ["stale schemaVersion passed in", { ...caseInput(2), schemaVersion: "partner-feedback-schema-v0" } as AppendPartnerFeedbackInput],
-      ["extra top-level key", { ...caseInput(2), applyNow: true } as AppendPartnerFeedbackInput],
+      ["no signal at all", caseDraft(c, { dimensions: dims() })],
+      ["CASE_INSTANCE without snapshot", caseDraft(c, { caseSnapshot: null })],
+      ["DO_NOT_INFER without hypothesisId", caseDraft(c, { dimensions: dims({ inference: { value: "DO_NOT_INFER", hypothesisId: null } }) })],
+      ["unknown accuracy enum", caseDraft(c, { dimensions: { ...dims(), accuracy: "MAYBE" as never } })],
+      ["unknown dimension key", caseDraft(c, { dimensions: { ...dims({ accuracy: "CORRECT" }), mood: "x" } as never })],
+      ["unknown provenance source", caseDraft(c, { provenance: { source: "ai_inferred" } as never })],
+      ["unknown scope", caseDraft(c, { target: { scope: "EVERYTHING" as never, caseId: "x" } })],
+      ["CASE_TYPE carrying a snapshot", caseDraft(c, { target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" } })],
+      ["uppercase supersedesId (never silently lower-cased)", caseDraft(c, { supersedesId: "ABCDEF00-0000-4000-8000-000000000002" })],
+      ["schemaVersion passed in", { ...caseDraft(c), schemaVersion: FEEDBACK_SCHEMA_VERSION } as AppendPartnerFeedbackInput],
+      ["extra top-level key", { ...caseDraft(c), applyNow: true } as AppendPartnerFeedbackInput],
     ];
     for (const [name, input] of cases) {
       const { db, store } = fresh();
-      await expectStoreError(name, () => store.appendPartnerFeedback(input, { knownCaseTypes: KNOWN }), "VALIDATION_FAILED");
+      await expectStoreError(name, () => store.appendPartnerFeedback(input, O), "VALIDATION_FAILED");
       ok(`   ${name}: zero DB calls`, db.log.length === 0 && db.rows.length === 0);
     }
   }
 
-  // 3 ──
-  console.log("3. FEEDBACK_SCHEMA_VERSION stamped by the store");
+  // 3 + 4 ──
+  console.log("3/4. FEEDBACK_SCHEMA_VERSION stamped by the store; provenance preserved");
   {
     const { db, store } = fresh();
-    const input = caseInput(3);
-    ok("input carries no schemaVersion", !("schemaVersion" in input));
-    const r = await store.appendPartnerFeedback(input, { knownCaseTypes: KNOWN });
+    const input = caseDraft();
+    ok("draft carries no schemaVersion", !("schemaVersion" in input));
+    const r = await store.appendPartnerFeedback(input, O);
     check("row.feedback_schema_version", db.rows[0].feedback_schema_version, FEEDBACK_SCHEMA_VERSION);
     check("record.schemaVersion", r.feedback.schemaVersion, FEEDBACK_SCHEMA_VERSION);
-  }
-
-  // 4 ──
-  console.log("4. Provenance preserved");
-  {
-    const { db, store } = fresh();
-    const r = await store.appendPartnerFeedback(caseInput(4), { knownCaseTypes: KNOWN });
     check("row.provenance", db.rows[0].provenance, { source: "owner_manual" });
     check("record.provenance", r.feedback.provenance, { source: "owner_manual" });
   }
@@ -243,16 +256,15 @@ async function main() {
   {
     const { db, store } = fresh();
     const c = makeCase();
-    const input = caseInput(5, {}, c);
-    const r = await store.appendPartnerFeedback(input, { knownCaseTypes: KNOWN });
+    const input = caseDraft(c);
+    const r = await store.appendPartnerFeedback(input, O);
     const snap = db.rows[0].case_snapshot as Record<string, unknown>;
     check("stored snapshot keys = the 10 compact fields", Object.keys(snap).sort(), ["capturedAt", "caseId", "caseSchemaVersion", "caseType", "classification", "createdFrom", "evidenceFingerprint", "status", "subjectId", "subjectType"]);
     check("snapshot round-trips exactly", r.feedback.caseSnapshot, input.caseSnapshot);
     ok("no facts / derivedFacts / hypotheses / summaryHe anywhere in the stored row", !/"facts"|"derivedFacts"|"hypotheses"|"summaryHe"|"dataQuality"/.test(JSON.stringify(db.rows[0])));
-
     const { db: db2, store: store2 } = fresh();
-    const full = { ...c, capturedAt: input.createdAt, caseSchemaVersion: c.schemaVersion, evidenceFingerprint: "x", caseId: c.id };
-    await expectStoreError("full PartnerCase passed as caseSnapshot", () => store2.appendPartnerFeedback(caseInput(6, { caseSnapshot: full as never }), { knownCaseTypes: KNOWN }), "VALIDATION_FAILED");
+    const full = { ...c, capturedAt: CALLER_CLOCK, caseSchemaVersion: c.schemaVersion, evidenceFingerprint: "x", caseId: c.id };
+    await expectStoreError("full PartnerCase passed as caseSnapshot", () => store2.appendPartnerFeedback(caseDraft(c, { caseSnapshot: full as never }), O), "VALIDATION_FAILED");
     ok("   …and nothing reached the DB", db2.log.length === 0);
   }
 
@@ -260,27 +272,29 @@ async function main() {
   console.log("7. Valid revision insert succeeds (append-only)");
   {
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
     const before = JSON.stringify(db.rows[0]);
-    const r = await store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1), dimensions: dims({ accuracy: "CORRECT", importance: "IMPORTANT" }) }), { knownCaseTypes: KNOWN });
+    const b = await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id, dimensions: dims({ accuracy: "CORRECT", importance: "IMPORTANT" }) }), O);
     check("two rows now", db.rows.length, 2);
-    check("revision points at prior", r.feedback.supersedesId, uid(1));
+    check("revision points at the prior's DB-assigned id", b.feedback.supersedesId, a.feedback.id);
     ok("prior row is byte-identical (never updated)", JSON.stringify(db.rows[0]) === before);
-    const r3 = await store.appendPartnerFeedback(caseInput(3, { supersedesId: uid(2), dimensions: dims({ accuracy: "INCORRECT" }) }), { knownCaseTypes: KNOWN });
-    check("revision of the revision (chain of 3)", r3.feedback.supersedesId, uid(2));
+    const c3 = await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: b.feedback.id, dimensions: dims({ accuracy: "INCORRECT" }) }), O);
+    check("revision of the revision (chain of 3)", c3.feedback.supersedesId, b.feedback.id);
   }
 
   // 8 ──
   console.log("8. Revision target mismatch rejected");
   {
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
     const other = makeCase({ id: "task_due_date_passed:t2", subjectId: "t2" });
-    await expectStoreError("revision about a different case", () => store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1) }, other), { knownCaseTypes: KNOWN }), "REVISION_TARGET_MISMATCH");
-    await expectStoreError("revision that changes scope (CASE_INSTANCE → CASE_TYPE)", () => store.appendPartnerFeedback(caseInput(3, { supersedesId: uid(1), target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" }, caseSnapshot: null }), { knownCaseTypes: KNOWN }), "REVISION_TARGET_MISMATCH");
-    await store.appendPartnerFeedback({ ...caseInput(10), target: { scope: "SUBJECT", subjectType: "project", subjectId: "p1" }, caseSnapshot: null }, { knownCaseTypes: KNOWN });
-    await expectStoreError("SUBJECT revision about another project", () => store.appendPartnerFeedback({ ...caseInput(11), target: { scope: "SUBJECT", subjectType: "project", subjectId: "p2" }, caseSnapshot: null, supersedesId: uid(10) }, { knownCaseTypes: KNOWN }), "REVISION_TARGET_MISMATCH");
-    await expectStoreError("supersedesId that does not exist", () => store.appendPartnerFeedback(caseInput(12, { supersedesId: uid(999) }), { knownCaseTypes: KNOWN }), "SUPERSEDED_NOT_FOUND");
+    await expectStoreError("revision about a different case", () => store.appendPartnerFeedback(caseDraft(other, { supersedesId: a.feedback.id }), O), "REVISION_TARGET_MISMATCH");
+    await expectStoreError("revision that changes scope (CASE_INSTANCE → CASE_TYPE)", () => store.appendPartnerFeedback({ ...caseTypeDraft("TASK_DUE_DATE_PASSED"), supersedesId: a.feedback.id }, O), "REVISION_TARGET_MISMATCH");
+    const drift = makeCase({ subjectId: "t9" }); // same caseId, consistently different subject on target + snapshot
+    await expectStoreError("revision whose subject drifts (same caseId, different subject)", () => store.appendPartnerFeedback(caseDraft(drift, { supersedesId: a.feedback.id }), O), "REVISION_TARGET_MISMATCH");
+    const s = await store.appendPartnerFeedback(subjectDraft("project", "p1"), O);
+    await expectStoreError("SUBJECT revision about another project", () => store.appendPartnerFeedback(subjectDraft("project", "p2", { supersedesId: s.feedback.id }), O), "REVISION_TARGET_MISMATCH");
+    await expectStoreError("supersedesId that does not exist", () => store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: uid(999) }), O), "SUPERSEDED_NOT_FOUND");
     check("only the 2 valid rows exist", db.rows.length, 2);
   }
 
@@ -288,28 +302,27 @@ async function main() {
   console.log("9. Branch revision rejected (pre-check AND DB unique index)");
   {
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1) }), { knownCaseTypes: KNOWN });
-    await expectStoreError("second successor of the same row (application pre-check)", () => store.appendPartnerFeedback(caseInput(3, { supersedesId: uid(1) }), { knownCaseTypes: KNOWN }), "REVISION_BRANCH_CONFLICT");
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
+    await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id }), O);
+    await expectStoreError("second successor of the same row (application pre-check)", () => store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id }), O), "REVISION_BRANCH_CONFLICT");
     db.opts.hideSuccessorPrecheck = true; // simulate losing a race: pre-check sees nothing, DB unique index fires
-    const e = await expectStoreError("race: DB partial UNIQUE violation surfaced, not swallowed", () => store.appendPartnerFeedback(caseInput(4, { supersedesId: uid(1) }), { knownCaseTypes: KNOWN }), "REVISION_BRANCH_CONFLICT");
+    const e = await expectStoreError("race: DB partial UNIQUE violation surfaced, not swallowed", () => store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id }), O), "REVISION_BRANCH_CONFLICT");
     ok("   DB detail preserved in error.details", !!e && e.details.some((d) => d.includes("23505")));
     check("still exactly 2 rows", db.rows.length, 2);
     db.opts.hideSuccessorPrecheck = false;
-    await expectStoreError("duplicate primary key", () => store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN }), "DUPLICATE_FEEDBACK_ID");
+    db.forceNextIds = [a.feedback.id];
+    await expectStoreError("DB-generated id collision surfaced", () => store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:t5", subjectId: "t5" })), O), "DUPLICATE_FEEDBACK_ID");
   }
 
   // 10 ──
   console.log("10. Unsupported / invalid stored rows rejected on read (fail-closed)");
   {
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
+    await store.appendPartnerFeedback(caseDraft(), O);
     db.seedRaw({ ...db.rows[0], id: uid(50), feedback_schema_version: "partner-feedback-schema-v2" });
     const r = await store.listPartnerFeedback();
     check("status", r.status, "INVALID_STORED_ROWS");
-    if (r.status === "INVALID_STORED_ROWS") {
-      check("rejected row + code", r.rejected.map((x) => [x.id, x.code]), [[uid(50), "UNSUPPORTED_FEEDBACK_SCHEMA"]]);
-    }
+    if (r.status === "INVALID_STORED_ROWS") check("rejected row + code", r.rejected.map((x) => [x.id, x.code]), [[uid(50), "UNSUPPORTED_FEEDBACK_SCHEMA"]]);
     ok("mapFeedbackRow: v2 row never parsed as v1", !mapFeedbackRow({ ...db.rows[0], feedback_schema_version: "partner-feedback-schema-v2" }).ok);
     const bad = mapFeedbackRow({ ...db.rows[0], dimensions: { ...(db.rows[0].dimensions as object), accuracy: "SORT_OF" } });
     check("bad jsonb dimensions → INVALID_STORED_ROW", bad.ok ? "ok" : bad.code, "INVALID_STORED_ROW");
@@ -317,14 +330,18 @@ async function main() {
     check("bad provenance → INVALID_STORED_ROW", bad2.ok ? "ok" : bad2.code, "INVALID_STORED_ROW");
     const bad3 = mapFeedbackRow({ ...db.rows[0], case_snapshot: { ...(db.rows[0].case_snapshot as object), facts: [] } });
     check("snapshot with extra keys → INVALID_STORED_ROW", bad3.ok ? "ok" : bad3.code, "INVALID_STORED_ROW");
+    const bad4 = mapFeedbackRow({ ...db.rows[0], subject_id: "t2" });
+    check("stored subject_id contradicting case_snapshot → INVALID_STORED_ROW", bad4.ok ? "ok" : bad4.code, "INVALID_STORED_ROW");
+    const bad5 = mapFeedbackRow({ ...db.rows[0], subject_type: null, subject_id: null });
+    check("stored CASE_INSTANCE row without subject columns → INVALID_STORED_ROW", bad5.ok ? "ok" : bad5.code, "INVALID_STORED_ROW");
     const { db: dbS, store: storeS } = fresh();
-    await storeS.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
+    await storeS.appendPartnerFeedback(caseDraft(), O);
     dbS.seedRaw({ ...dbS.rows[0], id: uid(51), feedback_schema_version: "partner-feedback-schema-v2", supersedes_id: null });
-    await expectStoreError("revising an unsupported-schema row", () => storeS.appendPartnerFeedback(caseInput(2, { supersedesId: uid(51) }), { knownCaseTypes: KNOWN }), "UNSUPPORTED_FEEDBACK_SCHEMA");
+    await expectStoreError("revising an unsupported-schema row", () => storeS.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: uid(51) }), O), "UNSUPPORTED_FEEDBACK_SCHEMA");
   }
 
   // 11 ──
-  console.log("11. Read DB failure ≠ empty history");
+  console.log("11. Read DB failure ≠ empty history; write failure never silent");
   {
     const { store } = fresh();
     check("empty table → NO_FEEDBACK", (await store.listPartnerFeedback()).status, "NO_FEEDBACK");
@@ -333,98 +350,204 @@ async function main() {
     check("DB error → READ_FAILED", r.status, "READ_FAILED");
     ok("   READ_FAILED carries no feedback array", !("feedback" in r));
     check("getFeedbackForCase on DB error → READ_FAILED", (await s2.getFeedbackForCase("x")).status, "READ_FAILED");
+    check("getFeedbackForSubject on DB error → READ_FAILED", (await s2.getFeedbackForSubject("project", "p1")).status, "READ_FAILED");
     check("resolveCurrentFeedbackRevision on DB error → READ_FAILED", (await s2.resolveCurrentFeedbackRevision()).status, "READ_FAILED");
     const { store: s3 } = fresh({ throwOnSelect: true });
     const r3 = await s3.listPartnerFeedback();
     check("network throw → READ_FAILED", r3.status, "READ_FAILED");
     ok("   secrets redacted from the error message", r3.status === "READ_FAILED" && !/sb_secret_zzz/.test(r3.error.message) && /redacted/.test(r3.error.message));
     const { db: dbW, store: sW } = fresh({ failInsert: true });
-    const e = await expectStoreError("insert failure is thrown, never silent", () => sW.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN }), "WRITE_FAILED");
+    const e = await expectStoreError("insert failure is thrown, never silent", () => sW.appendPartnerFeedback(caseDraft(), O), "WRITE_FAILED");
     const allText = e ? [e.message, ...e.details].join(" ") : "";
     ok("   write error exposes no JWT / secret key", !/eyJhbGci|sb_secret_ABC/.test(allText) && /redacted/.test(allText));
     check("   nothing stored", dbW.rows.length, 0);
     await expectStoreError("empty caseId is an INVALID_QUERY, not an empty result", () => fresh().store.getFeedbackForCase(""), "INVALID_QUERY");
   }
 
-  // 12 ──
-  console.log("12. Deterministic ordering: created_at ASC, then id ASC");
+  // ── HARDENING: subject identity (§13 tests 1–8) ──
+  console.log("H1. CASE_INSTANCE feedback persists subject_type / subject_id");
   {
     const { db, store } = fresh();
-    // Insert out of order; two rows share a created_at.
-    await store.appendPartnerFeedback(caseInput(30, { createdAt: "2026-09-23T12:00:00.000Z" }, makeCase({ id: "task_due_date_passed:a", subjectId: "a" })), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(20, { createdAt: "2026-09-23T11:00:00.000Z" }, makeCase({ id: "task_due_date_passed:b", subjectId: "b" })), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(10, { createdAt: "2026-09-23T12:00:00.000Z" }, makeCase({ id: "task_due_date_passed:c", subjectId: "c" })), { knownCaseTypes: KNOWN });
-    const r = await store.listPartnerFeedback();
-    check("order", r.status === "OK" ? r.feedback.map((f) => f.id) : r.status, [uid(20), uid(10), uid(30)]);
+    const r = await store.appendPartnerFeedback(caseDraft(projectCase("project123")), O);
+    check("row subject columns", [db.rows[0].subject_type, db.rows[0].subject_id], ["project", "project123"]);
+    check("row target_scope unchanged", db.rows[0].target_scope, "CASE_INSTANCE");
+    check("snapshot carries the same subject (traceability)", [(db.rows[0].case_snapshot as Row).subjectType, (db.rows[0].case_snapshot as Row).subjectId], ["project", "project123"]);
+    check("record target carries subject", [r.feedback.target.subjectType, r.feedback.target.subjectId], ["project", "project123"]);
+  }
+
+  console.log("H2. HYPOTHESIS feedback tied to a Case persists subject identity");
+  {
+    const { db, store } = fresh();
+    const r = await store.appendPartnerFeedback(hypothesisDraft(projectCase("project123")), O);
+    check("row", [db.rows[0].target_scope, db.rows[0].hypothesis_id, db.rows[0].subject_type, db.rows[0].subject_id], ["HYPOTHESIS", "h1", "project", "project123"]);
+    check("record scope stays HYPOTHESIS", r.feedback.target.scope, "HYPOTHESIS");
+  }
+
+  console.log("H3-H5/H8. getFeedbackForSubject: finds Case-derived AND explicit SUBJECT feedback, scopes untouched, unrelated never returned");
+  {
+    const { store } = fresh();
+    const inst = await store.appendPartnerFeedback(caseDraft(projectCase("project123"), { dimensions: dims({ context: { value: "HAS_MISSING_CONTEXT", contextCode: "FRIEND_CLIENT" } }) }), O);
+    const hyp = await store.appendPartnerFeedback(hypothesisDraft(projectCase("project123")), O);
+    const subj = await store.appendPartnerFeedback(subjectDraft("project", "project123"), O);
+    const rule = await store.appendPartnerFeedback({ ...caseDraft(), target: { scope: "RULE_APPLICATION", ownerRuleId: "rule-x", caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: "project123" }, caseSnapshot: null }, O);
+    await store.appendPartnerFeedback(caseDraft(projectCase("project1234")), O);          // prefix-similar id
+    await store.appendPartnerFeedback(caseDraft(projectCase("other")), O);                // other project
+    await store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:project123", subjectId: "project123" })), O); // same id, other subjectType
+    await store.appendPartnerFeedback(caseTypeDraft("PROJECT_DEADLINE_PASSED"), O);       // no subject at all
+
+    const r = await store.getFeedbackForSubject("project", "project123");
+    check("H3/H4. exactly the 4 rows about project:project123", ids(r), [inst, hyp, subj, rule].map((x) => x.feedback.id));
+    if (r.status === "OK") {
+      check("H5. each keeps its own scope (not merged, not broadened)", r.feedback.map((f) => f.target.scope), ["CASE_INSTANCE", "HYPOTHESIS", "SUBJECT", "RULE_APPLICATION"]);
+      check("H5. CASE_INSTANCE row still carries its caseId", r.feedback[0].target.caseId, "project_deadline_passed:project123");
+    }
+    check("H8. unrelated subject never returned", ids(await store.getFeedbackForSubject("project", "nope")), "NO_FEEDBACK");
+    check("H8. prefix never matches", ids(await store.getFeedbackForSubject("project", "project12")), "NO_FEEDBACK");
+    const t = await store.getFeedbackForSubject("task", "project123");
+    check("H8. same id under another subjectType is a different subject", t.status === "OK" ? t.feedback.map((f) => f.target.subjectType) : t.status, ["task"]);
+
+    // Discovery ≠ broadening: the explicit SUBJECT row is not part of any Case's history, and the Case row isn't a SUBJECT row.
+    check("H5. getFeedbackForCase does NOT pull in the SUBJECT-scoped row", ids(await store.getFeedbackForCase("project_deadline_passed:project123")), [inst.feedback.id, hyp.feedback.id]);
+    const cur = await store.resolveCurrentFeedbackRevision({ subjectType: "project", subjectId: "project123" });
+    check("H5. current-by-subject: same 4 rows, same scopes", cur.status === "OK" ? cur.feedback.map((f) => f.target.scope) : cur.status, ["CASE_INSTANCE", "HYPOTHESIS", "SUBJECT", "RULE_APPLICATION"]);
+    const src = fs.readFileSync(path.resolve(__dirname, "../lib/partner/feedback/persistence.ts"), "utf8");
+    ok("H6(§6). subject queries use first-class columns only — no JSON path over case_snapshot", /\["subject_type", requireKey/.test(src) && !/case_snapshot->|case_snapshot\.|\.contains\(|\.filter\(\s*["']case_snapshot/.test(src));
+    // §8: learning still groups by caseType only — subject discovery adds no subject-wide signal.
+    if (r.status === "OK") ok("§8. learning signals are keyed by caseType, never by subject", deriveLearningSignals(r.feedback).every((s) => !s.id.includes("project123")));
+  }
+
+  console.log("H6. Snapshot subject vs target subject mismatch → typed rejection before DB");
+  {
+    const c = projectCase("project123");
+    const variants: Array<[string, AppendPartnerFeedbackInput]> = [
+      ["target.subjectId ≠ snapshot.subjectId", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType, subjectType: "project", subjectId: "project999" } })],
+      ["target.subjectType ≠ snapshot.subjectType", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType, subjectType: "task", subjectId: "project123" } })],
+      ["target.caseId ≠ snapshot.caseId", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: "other:1", caseType: c.caseType, subjectType: "project", subjectId: "project123" } })],
+      ["target.caseType ≠ snapshot.caseType", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: "TASK_DUE_DATE_PASSED", subjectType: "project", subjectId: "project123" } })],
+      ["HYPOTHESIS subject mismatch", hypothesisDraft(c, { target: { scope: "HYPOTHESIS", caseId: c.id, caseType: c.caseType, subjectType: "project", subjectId: "x", hypothesisId: "h1" } })],
+    ];
+    for (const [name, input] of variants) {
+      const { db, store } = fresh();
+      await expectStoreError(name, () => store.appendPartnerFeedback(input, O), "SUBJECT_IDENTITY_MISMATCH");
+      ok(`   ${name}: zero DB calls`, db.log.length === 0);
+    }
+  }
+
+  console.log("H7. Case-derived feedback missing subject identity → typed rejection before DB (never filled from snapshot)");
+  {
+    const c = projectCase("project123");
+    const variants: Array<[string, AppendPartnerFeedbackInput]> = [
+      ["CASE_INSTANCE without subjectType/subjectId", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType } })],
+      ["CASE_INSTANCE without subjectId", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, caseType: c.caseType, subjectType: "project" } })],
+      ["CASE_INSTANCE without caseType", caseDraft(c, { target: { scope: "CASE_INSTANCE", caseId: c.id, subjectType: "project", subjectId: "project123" } })],
+      ["HYPOTHESIS without subject", hypothesisDraft(c, { target: { scope: "HYPOTHESIS", caseId: c.id, caseType: c.caseType, hypothesisId: "h1" } })],
+    ];
+    for (const [name, input] of variants) {
+      const { db, store } = fresh();
+      await expectStoreError(name, () => store.appendPartnerFeedback(input, O), "SUBJECT_IDENTITY_MISSING");
+      ok(`   ${name}: zero DB calls`, db.log.length === 0);
+    }
+  }
+
+  // ── HARDENING: DB-generated id + created_at (§14 tests 9–13) ──
+  console.log("H9. Append input cannot set persisted id / createdAt");
+  {
+    for (const [name, extra] of [["createdAt", { createdAt: "2020-01-01T00:00:00.000Z" }], ["id", { id: uid(77) }], ["id + createdAt", { id: uid(77), createdAt: "2020-01-01T00:00:00.000Z" }]] as const) {
+      const { db, store } = fresh();
+      const e = await expectStoreError(`draft with ${name}`, () => store.appendPartnerFeedback({ ...caseDraft(), ...extra } as AppendPartnerFeedbackInput, O), "VALIDATION_FAILED");
+      ok(`   ${name}: explained, not silently dropped`, !!e && e.details.some((d) => d.includes("assigned by the database")));
+      ok(`   ${name}: zero DB calls`, db.log.length === 0);
+    }
+    const { db, store } = fresh();
+    await store.appendPartnerFeedback(caseDraft(), O);
+    check("INSERT payload never contains id / created_at (DB defaults apply)", ["id", "created_at"].filter((k) => k in db.insertPayloads[0]), []);
+  }
+
+  console.log("H10/H11. Returned id + createdAt come from the DB response");
+  {
+    const { db, store } = fresh();
+    db.forceNextIds = ["9f3c2a10-0000-4000-8000-00000000abcd"];
+    const r = await store.appendPartnerFeedback(caseDraft(), O);
+    check("H11. id = the DB-generated one", r.feedback.id, "9f3c2a10-0000-4000-8000-00000000abcd");
+    check("H10. createdAt = DB now() (normalized ISO), not the caller clock", r.feedback.createdAt, "2026-09-23T10:00:00.000Z");
+    ok("H10. caller clock survives only inside the snapshot (traceability)", r.feedback.caseSnapshot?.capturedAt === CALLER_CLOCK && r.feedback.createdAt !== CALLER_CLOCK);
+  }
+
+  console.log("H12. A revision receives its own, later DB timestamp (no app-side time check)");
+  {
+    const { store } = fresh();
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
+    const b = await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id, dimensions: dims({ accuracy: "INCORRECT" }) }), O);
+    ok("revision createdAt > prior createdAt (both DB-assigned)", Date.parse(b.feedback.createdAt) > Date.parse(a.feedback.createdAt));
+    check("revision id ≠ prior id", b.feedback.id !== a.feedback.id, true);
+    const src = fs.readFileSync(path.resolve(__dirname, "../lib/partner/feedback/persistence.ts"), "utf8");
+    ok("no application-side createdAt comparison before insert", !/createdAt\s*[<>]=?\s*\w*\.?createdAt|Date\.parse\([^)]*createdAt\)\s*[<>]/.test(src.slice(src.indexOf("async appendPartnerFeedback"))));
+  }
+
+  console.log("H13. Deterministic ordering still works: created_at ASC, then id ASC");
+  {
+    const { db, store } = fresh();
+    db.freezeClock = true; // two inserts in the same DB instant → tie broken by id
+    db.forceNextIds = ["cccccccc-0000-4000-8000-000000000000", "aaaaaaaa-0000-4000-8000-000000000000"];
+    await store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:a", subjectId: "a" })), O);
+    await store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:b", subjectId: "b" })), O);
+    db.freezeClock = false;
+    db.forceNextIds = ["bbbbbbbb-0000-4000-8000-000000000000"];
+    await store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:c", subjectId: "c" })), O);
+    const expected = ["aaaaaaaa-0000-4000-8000-000000000000", "cccccccc-0000-4000-8000-000000000000", "bbbbbbbb-0000-4000-8000-000000000000"];
+    check("tie on created_at → id ASC; later created_at last", ids(await store.listPartnerFeedback()), expected);
     db.rows.reverse();
-    const r2 = await store.listPartnerFeedback();
-    check("same order regardless of physical row order", r2.status === "OK" ? r2.feedback.map((f) => f.id) : r2.status, [uid(20), uid(10), uid(30)]);
+    check("same order regardless of physical row order", ids(await store.listPartnerFeedback()), expected);
     ok("SQL ordering requested (created_at, id)", db.log.join(",").includes("order,order,range"));
 
-    const { db: dbP, store: storeP } = fresh();
     const { db: dbT, store: storeT } = fresh();
-    await storeT.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
-    for (let i = 0; i < PAGE_SIZE + 5; i++) dbP.seedRaw({ ...dbT.rows[0], id: uid(100000 + i), case_id: `task_due_date_passed:p${i}`, case_snapshot: { ...(dbT.rows[0].case_snapshot as object), caseId: `task_due_date_passed:p${i}` } });
+    await storeT.appendPartnerFeedback(caseDraft(), O);
+    const { db: dbP, store: storeP } = fresh();
+    for (let i = 0; i < PAGE_SIZE + 5; i++) dbP.seedRaw({ ...dbT.rows[0], id: uid(100000 + i), case_id: `task_due_date_passed:p${i}`, subject_id: `p${i}`, case_snapshot: { ...(dbT.rows[0].case_snapshot as object), caseId: `task_due_date_passed:p${i}`, subjectId: `p${i}` } });
     const rp = await storeP.listPartnerFeedback();
     check(`paging: ${PAGE_SIZE + 5} rows all returned (no silent max-rows truncation)`, rp.status === "OK" ? rp.feedback.length : rp.status, PAGE_SIZE + 5);
   }
 
   // 13–16 ──
-  console.log("13-16. get by case / subject / case type, resolve current revision");
+  console.log("13-16. get by case / case type, resolve current revision, learning compatibility");
   {
     const { store } = fresh();
     const c1 = makeCase();
-    const c2 = makeCase({ id: "project_deadline_passed:p1", caseType: "PROJECT_DEADLINE_PASSED", subjectType: "project", subjectId: "p1" });
-    await store.appendPartnerFeedback(caseInput(1, {}, c1), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1), dimensions: dims({ accuracy: "INCORRECT" }) }, c1), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(3, {}, c2), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback({ ...caseInput(4), target: { scope: "SUBJECT", subjectType: "project", subjectId: "p1" }, caseSnapshot: null }, { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback({ ...caseInput(5), target: { scope: "SUBJECT", subjectType: "project", subjectId: "p10" }, caseSnapshot: null }, { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback({ ...caseInput(6), target: { scope: "SUBJECT", subjectType: "task", subjectId: "p1" }, caseSnapshot: null }, { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback({ ...caseInput(7), target: { scope: "CASE_TYPE", caseType: "TASK_DUE_DATE_PASSED" }, caseSnapshot: null }, { knownCaseTypes: KNOWN });
+    const a = await store.appendPartnerFeedback(caseDraft(c1), O);
+    const b = await store.appendPartnerFeedback(caseDraft(c1, { supersedesId: a.feedback.id, dimensions: dims({ accuracy: "INCORRECT" }) }), O);
+    const p = await store.appendPartnerFeedback(caseDraft(projectCase("p1")), O);
+    const s = await store.appendPartnerFeedback(subjectDraft("project", "p1"), O);
+    const t = await store.appendPartnerFeedback(caseTypeDraft("TASK_DUE_DATE_PASSED"), O);
 
-    const byCase = await store.getFeedbackForCase(c1.id);
-    check("13. getFeedbackForCase returns FULL history (superseded row included)", byCase.status === "OK" ? byCase.feedback.map((f) => f.id) : byCase.status, [uid(1), uid(2)]);
+    check("13. getFeedbackForCase returns FULL history (superseded row included)", ids(await store.getFeedbackForCase(c1.id)), [a.feedback.id, b.feedback.id]);
     check("13. unknown case → NO_FEEDBACK", (await store.getFeedbackForCase("nope:1")).status, "NO_FEEDBACK");
-
-    const bySubj = await store.getFeedbackForSubject("project", "p1");
-    check("14. getFeedbackForSubject exact (not p10, not task/p1)", bySubj.status === "OK" ? bySubj.feedback.map((f) => f.id) : bySubj.status, [uid(4)]);
-    check("14. prefix never matches", (await store.getFeedbackForSubject("project", "p")).status, "NO_FEEDBACK");
-
-    const byType = await store.getFeedbackForCaseType("TASK_DUE_DATE_PASSED");
-    check("15. getFeedbackForCaseType returns all historical rows of that type", byType.status === "OK" ? byType.feedback.map((f) => f.id) : byType.status, [uid(1), uid(2), uid(7)]);
-
-    const cur = await store.resolveCurrentFeedbackRevision({ caseId: c1.id });
-    check("16. current for case = terminal row only", cur.status === "OK" ? cur.feedback.map((f) => f.id) : cur.status, [uid(2)]);
-    const curType = await store.resolveCurrentFeedbackRevision({ caseType: "TASK_DUE_DATE_PASSED" });
-    check("16. current for case type", curType.status === "OK" ? curType.feedback.map((f) => f.id) : curType.status, [uid(2), uid(7)]);
+    check("15. getFeedbackForCaseType returns all historical rows of that type", ids(await store.getFeedbackForCaseType("TASK_DUE_DATE_PASSED")), [a.feedback.id, b.feedback.id, t.feedback.id]);
+    check("16. current for case = terminal row only", ids(await store.resolveCurrentFeedbackRevision({ caseId: c1.id })), [b.feedback.id]);
+    check("16. current for case type", ids(await store.resolveCurrentFeedbackRevision({ caseType: "TASK_DUE_DATE_PASSED" })), [b.feedback.id, t.feedback.id]);
     const curAll = await store.resolveCurrentFeedbackRevision();
-    check("16. current overall excludes superseded", curAll.status === "OK" ? curAll.feedback.map((f) => f.id) : curAll.status, [uid(2), uid(3), uid(4), uid(5), uid(6), uid(7)]);
+    check("16. current overall excludes superseded", ids(curAll), [b.feedback.id, p.feedback.id, s.feedback.id, t.feedback.id]);
     check("16. subject filter on current", (await store.resolveCurrentFeedbackRevision({ subjectType: "project", subjectId: "nope" })).status, "NO_FEEDBACK");
-
-    // Learning layer stays compatible with persisted records — computed on demand, never applied.
     if (curAll.status === "OK") {
       const summary = summarizePartnerFeedback(curAll.feedback);
       const signals = deriveLearningSignals(curAll.feedback);
       const proposals = buildLearningProposals(signals);
       ok("27. summarize/deriveLearningSignals/buildLearningProposals accept persisted records", summary.length > 0 && signals.length > 0 && Array.isArray(proposals));
-      ok("27. every proposal stays PROPOSED", proposals.every((p) => p.status === "PROPOSED"));
+      ok("27. every proposal stays PROPOSED", proposals.every((x) => x.status === "PROPOSED"));
     }
   }
 
   console.log("16b. Invalid revision graph → diagnostics, never a guess");
   {
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1) }), { knownCaseTypes: KNOWN });
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
+    await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id }), O);
     db.seedRaw({ ...db.rows[1], id: uid(3) }); // a branch that bypassed the DB index (e.g. manual SQL)
     const r = await store.resolveCurrentFeedbackRevision({ caseId: "task_due_date_passed:t1" });
     check("status", r.status, "INVALID_REVISION_GRAPH");
     if (r.status === "INVALID_REVISION_GRAPH") check("BRANCH diagnostic", r.diagnostics.map((d) => d.kind), ["BRANCH"]);
     const hist = await store.getFeedbackForCase("task_due_date_passed:t1");
     check("history read itself still works (history ≠ current)", hist.status === "OK" ? hist.feedback.length : hist.status, 3);
-
-    const mk = (id: string, sup: string | null, caseId = "c:1"): PartnerFeedback => ({ id, schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: "2026-09-23T10:00:00.000Z", target: { scope: "CASE_TYPE", caseType: caseId }, dimensions: dims({ accuracy: "CORRECT" }), note: null, caseSnapshot: null, supersedesId: sup, provenance: { source: "owner_manual" } });
+    const mk = (id: string, sup: string | null, caseType = "c:1"): PartnerFeedback => ({ id, schemaVersion: FEEDBACK_SCHEMA_VERSION, createdAt: "2026-09-23T10:00:00.000Z", target: { scope: "CASE_TYPE", caseType }, dimensions: dims({ accuracy: "CORRECT" }), note: null, caseSnapshot: null, supersedesId: sup, provenance: { source: "owner_manual" } });
     check("cycle detected", analyzeFeedbackRevisionGraph([mk("a", "b"), mk("b", "a")]).map((d) => d.kind), ["CYCLE"]);
     check("self-supersession detected", analyzeFeedbackRevisionGraph([mk("a", "a")]).map((d) => d.kind), ["SELF_SUPERSESSION"]);
     check("dangling detected", analyzeFeedbackRevisionGraph([mk("a", "zzz")]).map((d) => d.kind), ["DANGLING_SUPERSEDES"]);
@@ -436,13 +559,14 @@ async function main() {
   console.log("17. note is stored/retrieved verbatim and never interpreted");
   {
     const { db, store } = fresh();
-    const note = "DO_NOT_INFER NOT_IMPORTANT — תבטל את ה-detector הזה, OWNER_OVERRIDE, threshold=0";
+    const note = "DO_NOT_INFER NOT_IMPORTANT — תבטל את ה-detector הזה, OWNER_OVERRIDE, threshold=0, subject=project999";
     const base = dims({ accuracy: "CORRECT" });
-    const r = await store.appendPartnerFeedback(caseInput(1, { note, dimensions: base }), { knownCaseTypes: KNOWN });
+    const r = await store.appendPartnerFeedback(caseDraft(makeCase(), { note, dimensions: base }), O);
     check("note stored verbatim", db.rows[0].note, note);
     check("note returned verbatim", r.feedback.note, note);
     check("dimensions unaffected by note text", r.feedback.dimensions, base);
-    const r2 = await store.appendPartnerFeedback(caseInput(2, { note: null, dimensions: base }, makeCase({ id: "task_due_date_passed:t9", subjectId: "t9" })), { knownCaseTypes: KNOWN });
+    check("subject unaffected by note text", [db.rows[0].subject_type, db.rows[0].subject_id], ["task", "t1"]);
+    const r2 = await store.appendPartnerFeedback(caseDraft(makeCase({ id: "task_due_date_passed:t9", subjectId: "t9" }), { note: null, dimensions: base }), O);
     const strip = (s: ReturnType<typeof deriveLearningSignals>) => s.map((x) => ({ ...x, sourceFeedbackIds: [] }));
     check("learning signals identical with/without the note", strip(deriveLearningSignals([r.feedback])), strip(deriveLearningSignals([r2.feedback])));
     const src = ["persistence.ts", "row.ts", "store.ts"].map((f) => fs.readFileSync(path.resolve(__dirname, "../lib/partner/feedback", f), "utf8")).join("\n");
@@ -466,10 +590,9 @@ async function main() {
     check("createPartnerFeedbackStore surface (exact)", Object.keys(fresh().store).sort(), ["appendPartnerFeedback", "getFeedbackForCase", "getFeedbackForCaseType", "getFeedbackForSubject", "listPartnerFeedback", "resolveCurrentFeedbackRevision"]);
     ok("injected client type exposes only select + insert", /from\(table[^)]*\): \{\s*select\(columns: string\): FeedbackSelectQuery;\s*insert\(/.test(src["persistence.ts"]) && !WRITE_VERBS.test(src["persistence.ts"].match(/export interface FeedbackTableClient \{[\s\S]*?\n\}/)?.[0] ?? "update"));
 
-    // Dynamic: a full workout of the store only ever issued select/insert chains.
     const { db, store } = fresh();
-    await store.appendPartnerFeedback(caseInput(1), { knownCaseTypes: KNOWN });
-    await store.appendPartnerFeedback(caseInput(2, { supersedesId: uid(1) }), { knownCaseTypes: KNOWN });
+    const a = await store.appendPartnerFeedback(caseDraft(), O);
+    await store.appendPartnerFeedback(caseDraft(makeCase(), { supersedesId: a.feedback.id }), O);
     await store.listPartnerFeedback(); await store.getFeedbackForCase("x"); await store.getFeedbackForSubject("a", "b");
     await store.getFeedbackForCaseType("T"); await store.resolveCurrentFeedbackRevision();
     const verbs = [...new Set(db.log.map((l) => l.split(":")[0]))].sort();

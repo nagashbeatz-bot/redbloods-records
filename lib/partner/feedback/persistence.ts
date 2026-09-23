@@ -32,11 +32,11 @@
  */
 import { validatePartnerFeedback } from "./validate";
 import { findRevisionBranches, resolveCurrentRevisions, targetsMatch } from "./revisions";
-import { FEEDBACK_SCHEMA_VERSION, type PartnerFeedback } from "./types";
+import { FEEDBACK_SCHEMA_VERSION, type PartnerFeedback, type PartnerFeedbackDraft } from "./types";
 import {
-  PARTNER_FEEDBACK_COLUMNS, PARTNER_FEEDBACK_TABLE, feedbackToRow, mapFeedbackRow,
-  parseCaseSnapshot, parseFeedbackDimensions, parseFeedbackTarget, parseProvenance,
-  type PartnerFeedbackRow,
+  CASE_DERIVED_SCOPES, PARTNER_FEEDBACK_COLUMNS, PARTNER_FEEDBACK_TABLE, draftToInsertRow, mapFeedbackRow,
+  parseCaseSnapshot, parseFeedbackDimensions, parseFeedbackTarget, parseProvenance, snapshotIdentityIssues,
+  type PartnerFeedbackInsertRow,
 } from "./row";
 
 // ── injected client: a minimal Supabase-shaped surface (select + insert ONLY) ──
@@ -54,7 +54,7 @@ export interface FeedbackSelectQuery extends PromiseLike<FeedbackDbResponse<unkn
 export interface FeedbackTableClient {
   from(table: typeof PARTNER_FEEDBACK_TABLE): {
     select(columns: string): FeedbackSelectQuery;
-    insert(row: PartnerFeedbackRow): { select(columns: string): { single(): PromiseLike<FeedbackDbResponse<unknown>> } };
+    insert(row: PartnerFeedbackInsertRow): { select(columns: string): { single(): PromiseLike<FeedbackDbResponse<unknown>> } };
   };
 }
 
@@ -62,6 +62,8 @@ export interface FeedbackTableClient {
 
 export type PartnerFeedbackStoreErrorCode =
   | "VALIDATION_FAILED"            // input rejected before any DB call
+  | "SUBJECT_IDENTITY_MISSING"     // Case-derived feedback without caseId/caseType/subjectType/subjectId on its target
+  | "SUBJECT_IDENTITY_MISMATCH"    // Case-derived target identity contradicts its caseSnapshot
   | "SUPERSEDED_NOT_FOUND"         // supersedesId points at no stored row
   | "REVISION_TARGET_MISMATCH"     // revision refers to a different logical target than the row it supersedes
   | "REVISION_BRANCH_CONFLICT"     // the superseded row already has a direct successor (pre-check OR DB unique index)
@@ -177,8 +179,14 @@ function matchesFilter(f: PartnerFeedback, filter: CurrentFeedbackFilter | undef
 
 // ── append input ──
 
-/** A PartnerFeedback minus schemaVersion — the store stamps FEEDBACK_SCHEMA_VERSION itself. `id` must be a lowercase uuid (it becomes the row's primary key verbatim). */
-export type AppendPartnerFeedbackInput = Omit<PartnerFeedback, "schemaVersion">;
+/**
+ * A draft: no `id`, no `createdAt`, no `schemaVersion`. The DB assigns id
+ * (gen_random_uuid()) and created_at (now()); the store stamps
+ * FEEDBACK_SCHEMA_VERSION. A caller can therefore never choose a persisted
+ * id or a persisted chronology — passing any of the three is a
+ * VALIDATION_FAILED, never silently dropped.
+ */
+export type AppendPartnerFeedbackInput = PartnerFeedbackDraft;
 
 export interface AppendPartnerFeedbackOptions {
   /** The current Case Engine catalog, passed to validatePartnerFeedback (unknown caseType → warning, not error). */
@@ -186,31 +194,39 @@ export interface AppendPartnerFeedbackOptions {
 }
 
 export interface AppendPartnerFeedbackResult {
+  /** Fully materialized from the DB's own response — id and createdAt are the database's. */
   feedback: PartnerFeedback;
   /** Non-fatal validatePartnerFeedback warnings (e.g. caseType not in the current catalog). */
   warnings: string[];
 }
 
-const INPUT_KEYS = ["id", "createdAt", "target", "dimensions", "note", "caseSnapshot", "supersedesId", "provenance", "schemaVersion"];
+const DRAFT_KEYS = ["target", "dimensions", "note", "caseSnapshot", "supersedesId", "provenance"];
+const DB_ASSIGNED_KEYS = ["id", "createdAt", "schemaVersion"];
 const LOWER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const SNAPSHOT_SCOPES = new Set(["CASE_INSTANCE", "HYPOTHESIS"]);
 
-/** Runtime validation of an append input into a stamped PartnerFeedback. Never coerces — any deviation is an error. */
-function buildValidatedFeedback(input: unknown, knownCaseTypes: readonly string[]): { feedback: PartnerFeedback; warnings: string[] } {
+/**
+ * validatePartnerFeedback() checks a materialized record, which includes
+ * presence checks on id/createdAt. A draft has neither YET, so it is
+ * validated with these fixed, clearly-fake placeholders. They satisfy only
+ * those two presence checks and are never persisted or returned — the
+ * INSERT row is built from the draft alone (draftToInsertRow).
+ */
+const VALIDATION_PLACEHOLDER_ID = "pending-db-assigned-id";
+const VALIDATION_PLACEHOLDER_CREATED_AT = "1970-01-01T00:00:00.000Z";
+
+/** Runtime validation of an append draft. Never coerces — any deviation is an error. */
+function buildValidatedDraft(input: unknown, knownCaseTypes: readonly string[]): { draft: PartnerFeedbackDraft; warnings: string[] } {
   const errors: string[] = [];
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new PartnerFeedbackStoreError("VALIDATION_FAILED", "feedback input must be an object");
   }
   const raw = input as Record<string, unknown>;
-  for (const k of Object.keys(raw)) if (!INPUT_KEYS.includes(k)) errors.push(`unknown key "${k}"`);
-  if (raw.schemaVersion !== undefined && raw.schemaVersion !== FEEDBACK_SCHEMA_VERSION) {
-    errors.push(`schemaVersion ${JSON.stringify(raw.schemaVersion)} is not the current FEEDBACK_SCHEMA_VERSION — the store stamps it; never pass a different one`);
+  for (const k of Object.keys(raw)) {
+    if (DB_ASSIGNED_KEYS.includes(k)) errors.push(`"${k}" is assigned by the database/store and cannot be supplied by a caller`);
+    else if (!DRAFT_KEYS.includes(k)) errors.push(`unknown key "${k}"`);
   }
-  if (typeof raw.id !== "string" || !LOWER_UUID_RE.test(raw.id)) errors.push("id: must be a lowercase uuid");
-  if (typeof raw.createdAt !== "string" || Number.isNaN(Date.parse(raw.createdAt))) errors.push("createdAt: must be a valid ISO timestamp");
   if (raw.note !== null && typeof raw.note !== "string") errors.push("note: must be a string or null");
   if (raw.supersedesId !== null && (typeof raw.supersedesId !== "string" || !LOWER_UUID_RE.test(raw.supersedesId))) errors.push("supersedesId: must be a lowercase uuid or null");
-  if (raw.supersedesId !== null && raw.supersedesId === raw.id) errors.push("supersedesId: a record cannot supersede itself");
   if (!("caseSnapshot" in raw)) errors.push("caseSnapshot: required (null when the scope has no Case)");
 
   const target = parseFeedbackTarget(raw.target, errors);
@@ -222,10 +238,12 @@ function buildValidatedFeedback(input: unknown, knownCaseTypes: readonly string[
     throw new PartnerFeedbackStoreError("VALIDATION_FAILED", "feedback input failed runtime validation", errors);
   }
 
-  const feedback: PartnerFeedback = {
-    id: raw.id as string,
-    schemaVersion: FEEDBACK_SCHEMA_VERSION,
-    createdAt: raw.createdAt as string,
+  // Case-derived subject identity: present on the target AND equal to the snapshot — reported, never filled in.
+  const identity = snapshotIdentityIssues(target, caseSnapshot);
+  if (identity.mismatch.length) throw new PartnerFeedbackStoreError("SUBJECT_IDENTITY_MISMATCH", "Case-derived target identity contradicts caseSnapshot", identity.mismatch);
+  if (identity.missing.length) throw new PartnerFeedbackStoreError("SUBJECT_IDENTITY_MISSING", "Case-derived feedback must carry its Case + subject identity on the target", identity.missing);
+
+  const draft: PartnerFeedbackDraft = {
     target,
     dimensions,
     note: raw.note as string | null,
@@ -234,20 +252,18 @@ function buildValidatedFeedback(input: unknown, knownCaseTypes: readonly string[
     provenance,
   };
 
-  const v = validatePartnerFeedback(feedback, knownCaseTypes);
+  const v = validatePartnerFeedback(
+    { ...draft, id: VALIDATION_PLACEHOLDER_ID, createdAt: VALIDATION_PLACEHOLDER_CREATED_AT, schemaVersion: FEEDBACK_SCHEMA_VERSION },
+    knownCaseTypes,
+  );
   const scopeErrors: string[] = [];
-  if (SNAPSHOT_SCOPES.has(target.scope)) {
-    if (caseSnapshot && target.caseId && caseSnapshot.caseId !== target.caseId) scopeErrors.push("caseSnapshot.caseId does not match target.caseId");
-    // types.ts: caseType is "always ALSO copied from the snapshot for CASE_INSTANCE/HYPOTHESIS" — enforced here so getFeedbackForCaseType never misses a row.
-    if (!target.caseType) scopeErrors.push(`${target.scope} target requires caseType (copied from caseSnapshot.caseType)`);
-    else if (caseSnapshot && caseSnapshot.caseType !== target.caseType) scopeErrors.push("target.caseType does not match caseSnapshot.caseType");
-  } else if (caseSnapshot !== null) {
+  if (!CASE_DERIVED_SCOPES.has(target.scope) && caseSnapshot !== null) {
     scopeErrors.push(`${target.scope} target must not carry a caseSnapshot (only CASE_INSTANCE/HYPOTHESIS snapshot a Case)`);
   }
   if (!v.valid || scopeErrors.length) {
     throw new PartnerFeedbackStoreError("VALIDATION_FAILED", "feedback failed validation", [...v.errors, ...scopeErrors]);
   }
-  return { feedback, warnings: v.warnings };
+  return { draft, warnings: v.warnings };
 }
 
 // ── the store ──
@@ -258,7 +274,12 @@ export interface PartnerFeedbackStore {
   listPartnerFeedback(): Promise<FeedbackHistoryResult>;
   /** Full history for one Case (every row with case_id = caseId, including superseded ones). */
   getFeedbackForCase(caseId: string): Promise<FeedbackHistoryResult>;
-  /** Exact subject_type + subject_id column match. No fuzzy matching; does not look inside case_snapshot. */
+  /**
+   * Every row whose first-class subject_type + subject_id columns match exactly — explicit SUBJECT-scoped
+   * feedback AND Case-derived (CASE_INSTANCE/HYPOTHESIS) feedback about a Case on that subject, plus any
+   * other scope whose target names the subject. Each row keeps its own target scope: discovery never turns
+   * instance feedback into subject-wide feedback. Indexed columns only — case_snapshot JSON is never queried.
+   */
   getFeedbackForSubject(subjectType: string, subjectId: string): Promise<FeedbackHistoryResult>;
   /** Full history for one CaseType (exact case_type column match). */
   getFeedbackForCaseType(caseType: string): Promise<FeedbackHistoryResult>;
@@ -332,18 +353,23 @@ export function createPartnerFeedbackStore(client: FeedbackTableClient): Partner
 
   return {
     async appendPartnerFeedback(input, options) {
-      const { feedback, warnings } = buildValidatedFeedback(input, options.knownCaseTypes);
+      const { draft, warnings } = buildValidatedDraft(input, options.knownCaseTypes);
 
-      if (feedback.supersedesId !== null) {
-        const prior = await loadPrior(feedback.supersedesId);
-        if (!targetsMatch(feedback.target, prior.target)) {
-          throw new PartnerFeedbackStoreError("REVISION_TARGET_MISMATCH", `revision ${feedback.id} does not refer to the same logical target as ${prior.id}`, [`prior: ${JSON.stringify(prior.target)}`, `revision: ${JSON.stringify(feedback.target)}`]);
+      // No createdAt comparison against the prior row: the DB's now() on this INSERT is the chronology's source of truth.
+      if (draft.supersedesId !== null) {
+        const prior = await loadPrior(draft.supersedesId);
+        if (!targetsMatch(draft.target, prior.target)) {
+          throw new PartnerFeedbackStoreError("REVISION_TARGET_MISMATCH", `revision does not refer to the same logical target as ${prior.id}`, [`prior: ${JSON.stringify(prior.target)}`, `revision: ${JSON.stringify(draft.target)}`]);
+        }
+        // targetsMatch compares caseId for Case-derived scopes; the persisted subject identity must not drift across a revision either.
+        if (CASE_DERIVED_SCOPES.has(draft.target.scope) && (draft.target.subjectType !== prior.target.subjectType || draft.target.subjectId !== prior.target.subjectId)) {
+          throw new PartnerFeedbackStoreError("REVISION_TARGET_MISMATCH", `revision subject (${draft.target.subjectType}:${draft.target.subjectId}) differs from ${prior.id}'s (${prior.target.subjectType}:${prior.target.subjectId})`);
         }
         await assertNoSuccessor(prior.id);
       }
 
       let res: FeedbackDbResponse<unknown>;
-      try { res = await table().insert(feedbackToRow(feedback)).select(PARTNER_FEEDBACK_COLUMNS).single(); } catch (e) {
+      try { res = await table().insert(draftToInsertRow(draft, FEEDBACK_SCHEMA_VERSION)).select(PARTNER_FEEDBACK_COLUMNS).single(); } catch (e) {
         throw new PartnerFeedbackStoreError("WRITE_FAILED", `partner_feedback insert threw: ${describeDbError(e)}`);
       }
       if (res.error) {
@@ -351,14 +377,14 @@ export function createPartnerFeedbackStore(client: FeedbackTableClient): Partner
         const text = `${res.error.message ?? ""} ${res.error.details ?? ""}`;
         if (res.error.code === "23505" && /supersedes/i.test(text)) {
           // Lost a race with another revision of the same row — the DB's partial UNIQUE index caught it. Surfaced, never swallowed.
-          throw new PartnerFeedbackStoreError("REVISION_BRANCH_CONFLICT", `feedback ${feedback.supersedesId} already has a successor (DB unique index)`, [detail]);
+          throw new PartnerFeedbackStoreError("REVISION_BRANCH_CONFLICT", `feedback ${draft.supersedesId} already has a successor (DB unique index)`, [detail]);
         }
-        if (res.error.code === "23505") throw new PartnerFeedbackStoreError("DUPLICATE_FEEDBACK_ID", `feedback id ${feedback.id} already exists`, [detail]);
-        if (res.error.code === "23503") throw new PartnerFeedbackStoreError("SUPERSEDED_NOT_FOUND", `supersedesId ${String(feedback.supersedesId)} does not exist (DB foreign key)`, [detail]);
+        if (res.error.code === "23505") throw new PartnerFeedbackStoreError("DUPLICATE_FEEDBACK_ID", "DB-generated feedback id collided (primary key)", [detail]);
+        if (res.error.code === "23503") throw new PartnerFeedbackStoreError("SUPERSEDED_NOT_FOUND", `supersedesId ${String(draft.supersedesId)} does not exist (DB foreign key)`, [detail]);
         throw new PartnerFeedbackStoreError("WRITE_FAILED", "partner_feedback insert failed", [detail]);
       }
       const m = mapFeedbackRow(res.data);
-      if (!m.ok) throw new PartnerFeedbackStoreError(m.code, `row ${feedback.id} was inserted but its read-back failed validation`, m.errors);
+      if (!m.ok) throw new PartnerFeedbackStoreError(m.code, "row was inserted but its read-back failed validation", m.errors);
       return { feedback: m.value, warnings };
     },
 

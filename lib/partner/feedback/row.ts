@@ -17,7 +17,7 @@ import {
   FEEDBACK_SCHEMA_VERSION,
   type AccuracyFeedback, type ContextValue, type FeedbackTarget, type FeedbackTargetScope, type ImportanceFeedback,
   type InferenceValue, type OverrideValue, type PartnerCaseFeedbackSnapshot, type PartnerFeedback,
-  type PartnerFeedbackDimensions, type RemindDirection, type TimingReaction,
+  type PartnerFeedbackDimensions, type PartnerFeedbackDraft, type RemindDirection, type TimingReaction,
 } from "./types";
 
 export const PARTNER_FEEDBACK_TABLE = "partner_feedback";
@@ -44,6 +44,9 @@ export interface PartnerFeedbackRow {
   provenance: unknown;
   supersedes_id: string | null;
 }
+
+/** What an INSERT sends: never `id` / `created_at` — the DB defaults (gen_random_uuid(), now()) are authoritative. */
+export type PartnerFeedbackInsertRow = Omit<PartnerFeedbackRow, "id" | "created_at">;
 
 export const PARTNER_FEEDBACK_COLUMNS =
   "id,created_at,feedback_schema_version,target_scope,case_id,case_type,subject_type,subject_id,owner_rule_id,hypothesis_id,proposal_id,dimensions,note,case_snapshot,provenance,supersedes_id";
@@ -204,14 +207,36 @@ export function parseFeedbackTarget(raw: unknown, errors: string[]): FeedbackTar
   return errors.length > before ? null : target;
 }
 
-// ── domain → row (write path; input already validated by persistence.ts) ──
+// ── Case-derived subject identity (F.1B hardening) ──
 
-export function feedbackToRow(f: PartnerFeedback): PartnerFeedbackRow {
+/** Scopes whose feedback originates from one concrete Case and therefore carries a caseSnapshot. */
+export const CASE_DERIVED_SCOPES: ReadonlySet<FeedbackTargetScope> = new Set<FeedbackTargetScope>(["CASE_INSTANCE", "HYPOTHESIS"]);
+
+export interface SnapshotIdentityIssues { missing: string[]; mismatch: string[] }
+
+/**
+ * For Case-derived feedback the first-class target columns (case_id,
+ * case_type, subject_type, subject_id) must be PRESENT and must EQUAL the
+ * compact snapshot's identity. Never fills one side from the other — a
+ * missing or contradictory value is reported, not repaired. Used on the
+ * write path (reject before INSERT) and the read path (reject stored rows).
+ */
+export function snapshotIdentityIssues(target: FeedbackTarget, snapshot: PartnerCaseFeedbackSnapshot | null): SnapshotIdentityIssues {
+  const issues: SnapshotIdentityIssues = { missing: [], mismatch: [] };
+  if (!CASE_DERIVED_SCOPES.has(target.scope) || !snapshot) return issues;
+  for (const k of ["caseId", "caseType", "subjectType", "subjectId"] as const) {
+    if (!target[k]) issues.missing.push(`${target.scope} target requires ${k} (must equal caseSnapshot.${k})`);
+    else if (target[k] !== snapshot[k]) issues.mismatch.push(`target.${k} (${target[k]}) does not match caseSnapshot.${k} (${snapshot[k]})`);
+  }
+  return issues;
+}
+
+// ── draft → insert row (write path; draft already validated by persistence.ts) ──
+
+export function draftToInsertRow(f: PartnerFeedbackDraft, feedbackSchemaVersion: string): PartnerFeedbackInsertRow {
   const t = f.target;
   return {
-    id: f.id,
-    created_at: f.createdAt,
-    feedback_schema_version: f.schemaVersion,
+    feedback_schema_version: feedbackSchemaVersion,
     target_scope: t.scope,
     case_id: t.caseId ?? null,
     case_type: t.caseType ?? null,
@@ -257,6 +282,11 @@ export function mapFeedbackRow(raw: unknown): RowParseResult<PartnerFeedback> {
   const dimensions = parseFeedbackDimensions(raw.dimensions, errors);
   const caseSnapshot = raw.case_snapshot === null ? null : parseCaseSnapshot(raw.case_snapshot, errors);
   const provenance = parseProvenance(raw.provenance, errors);
+
+  if (target && caseSnapshot) {
+    const idIssues = snapshotIdentityIssues(target, caseSnapshot);
+    errors.push(...idIssues.missing, ...idIssues.mismatch);
+  }
 
   if (errors.length || !target || !dimensions || !provenance) return { ok: false, code: "INVALID_STORED_ROW", errors };
   return {
