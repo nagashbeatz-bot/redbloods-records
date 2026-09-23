@@ -39,8 +39,32 @@ export function PartnerFinanceBrief({ brief, isMobile }: { brief: FinanceBriefDt
               </li>
             ))}
           </ol>
-        ) : (
+        ) : brief.calmHe ? (
           <p data-finance-calm style={{ margin: "8px 0 0", fontSize: 13, color: SUB }}>{brief.calmHe}</p>
+        ) : null}
+        {(brief.rehab.items.length > 0 || brief.rehab.questions.length > 0) && (
+          <div data-finance-rehab role="region" aria-label="צריך ממך" style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
+            <h4 style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: SUB }}>צריך ממך</h4>
+            {brief.rehab.items.length > 0 && (
+              <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 5 }}>
+                {brief.rehab.items.map((it) => (
+                  <li key={it.textHe} data-rehab-item={it.issueType} data-epistemic={it.epistemic} style={{ fontSize: 12.5, color: TEXT, lineHeight: 1.55 }}>
+                    {TAG[it.epistemic] && <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginInlineEnd: 6 }}>{TAG[it.epistemic]}</span>}
+                    {it.textHe}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {brief.rehab.questions.map((q) => (
+              <div key={q.textHe} data-rehab-question={q.questionType} style={{ marginTop: 8, padding: "8px 10px", borderRadius: 9, background: "rgba(255,255,255,0.03)", border: `1px dashed ${BORDER}` }}>
+                <p style={{ margin: 0, fontSize: 12.5, color: TEXT, lineHeight: 1.55 }}>{q.textHe}</p>
+                <p style={{ margin: "3px 0 6px", fontSize: 11.5, color: MUTED }}>{q.whyHe}</p>
+                <div aria-label="אפשרויות (לעיון בלבד — עדיין אי אפשר לענות כאן)" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {q.options.map((o) => <span key={o} data-rehab-option style={{ fontSize: 11.5, color: SUB, padding: "2px 8px", borderRadius: 99, border: `1px solid ${BORDER}` }}>{o}</span>)}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -66,6 +66,23 @@ async function main() {
     signals: s.signals.map((x) => ({ code: x.code, epistemic: x.epistemic, count: x.count, amounts: x.amounts, review: x.review })),
     opportunities: s.opportunities.map((o) => ({ kind: o.kind, code: o.code, count: o.count, amount: o.amount })),
     proposalPipeline: s.proposalPipeline,
+    // F2.5–F2.7 integrity / rehabilitation (read-only)
+    integrity: (() => {
+      const i = r.integrity;
+      const byType: Record<string, Record<string, number>> = {};
+      for (const x of i.issues) { const t = (byType[x.issueType] ??= {}); t[`${x.severityBand}/${x.epistemicStatus}/${x.period}`] = (t[`${x.severityBand}/${x.epistemicStatus}/${x.period}`] ?? 0) + 1; }
+      return {
+        trust: i.trust, coverageReasonsHe: i.coverageReasonsHe, issuesByType: byType,
+        projectPriceProfile: i.projects.reduce((m: Record<string, number>, p) => { const k = `${p.business}/${p.price}`; m[k] = (m[k] ?? 0) + 1; return m; }, {}),
+        completedNoIncome: i.issues.filter((x) => x.issueType === "COMPLETED_WORK_NO_INCOME").map((x) => ({ project: x.subjectLabel, reasons: x.reasonCodes, period: x.period, severity: x.severityBand })),
+        orphanQueue: i.orphanQueue.map((o) => ({ amount: o.amount, currency: o.currency, txRows: o.txRowsForId })),
+        expenseClassification: i.expenseClassification.reduce((m: Record<string, number>, e) => { m[e.category] = (m[e.category] ?? 0) + 1; return m; }, {}),
+        dueDateQueue: i.dueDateQueue.map((q) => ({ amount: q.amount, currency: q.currency, project: q.projectName })),
+        overdueReasonGaps: i.overdueReasonGaps.length,
+        questionsTotal: i.questions.length,
+        top: i.top,
+      };
+    })(),
     brief: r.brief,
     before, after, unchanged: JSON.stringify(before) === JSON.stringify(after),
     blockedWrites: blocked,

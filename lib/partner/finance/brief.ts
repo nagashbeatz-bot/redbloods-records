@@ -6,6 +6,7 @@
  * an idea is never phrased as money that will arrive. Factual language only (no good / bad).
  */
 import type { CurrencyTotals, FinanceSignal, PartnerFinanceState, Receivable } from "./types";
+import type { IssueType, PartnerFinanceIntegrityState } from "./integrity";
 import { FINANCE_BRIEF_DTO_VERSION, FINANCE_BRIEF_MAX_ITEMS, type FinanceBriefDto, type FinanceBriefFamily, type FinanceBriefItemDto } from "./dto";
 
 /** Fixed priority (lower = more important). */
@@ -39,7 +40,21 @@ const monthHe = (key: string) => `${HE_MONTHS[Number(key.slice(5, 7)) - 1]} ${ke
 const sumTotals = (list: { amount: number; currency: string }[]) => list.reduce((m, x) => { m[x.currency] = Math.round(((m[x.currency] ?? 0) + x.amount) * 100) / 100; return m; }, {} as CurrencyTotals);
 const count = (n: number, one: string, many: (n: number) => string) => (n === 1 ? one : many(n));
 
-export function buildFinanceBrief(state: PartnerFinanceState): FinanceBriefDto {
+/**
+ * Main-brief families that a "צריך ממך" item already covers (never say the same thing twice):
+ * the rehab line is the actionable ask, so the main line is dropped when both would appear.
+ */
+export const COVERED_BY_REHAB: Partial<Record<IssueType, FinanceBriefFamily>> = {
+  COMPLETED_WORK_NO_INCOME: "FINANCIAL_DATA_BLOCKER",
+  RECEIVABLE_DUE_DATE_MISSING: "COLLECTION_NO_DATE",
+  RECURRING_EXPENSE_MISSING_THIS_PERIOD: "MISSING_EXPECTED_RECORD",
+  EXPENSE_EXPECTED_BUT_NOT_FOUND: "MISSING_EXPECTED_RECORD",
+  OVERDUE_RECEIVABLE_REASON_UNKNOWN: "OVERDUE_COLLECTION",
+  INCOME_EXPECTED_BUT_NOT_RECORDED: "OVERDUE_COLLECTION",
+  RECURRING_EXPENSE_CANDIDATE: "RECURRING_EXPENSE_REVIEW",
+};
+
+export function buildFinanceBrief(state: PartnerFinanceState, integrity: PartnerFinanceIntegrityState | null = null): FinanceBriefDto {
   const { realized, pacing, coverage, month } = state;
   const sig = (c: FinanceSignal["code"]) => state.signals.find((s) => s.code === c);
   const active = (r: Receivable) => r.collection.state !== "SETTLED" && r.collection.state !== "NOT_COLLECTIBLE" && r.collection.state !== "NEEDS_REVIEW";
@@ -111,8 +126,10 @@ export function buildFinanceBrief(state: PartnerFinanceState): FinanceBriefDto {
   if (cand) candidates.push({ family: "RECURRING_EXPENSE_REVIEW", epistemic: "HYPOTHESIS", textHe: `ראיתי הוצאה של ${fmtMoney(cand.amount, cand.currency)}${cand.category ? ` (${cand.category})` : ""} כמה חודשים ברצף. ייתכן שזו הוצאה קבועה.` });
 
   // select: dedupe by family, rank, ≤3 preferred, ≤5 only for material families
+  const rehabItems = integrity ? integrity.top.items : [];
+  const covered = new Set(rehabItems.map((i) => COVERED_BY_REHAB[i.issueType]).filter((x): x is FinanceBriefFamily => !!x));
   const byFamily = new Map<FinanceBriefFamily, FinanceBriefItemDto>();
-  for (const c of candidates) if (!byFamily.has(c.family)) byFamily.set(c.family, c);
+  for (const c of candidates) if (!byFamily.has(c.family) && !covered.has(c.family)) byFamily.set(c.family, c);
   const ranked = [...byFamily.values()].sort((a, b) => FAMILY_RANK[a.family] - FAMILY_RANK[b.family]);
   const items = ranked.filter((c, i) => i < PREFERRED_ITEMS || FAMILY_RANK[c.family] <= EXTRA_SLOT_MAX_RANK).slice(0, FINANCE_BRIEF_MAX_ITEMS);
 
@@ -147,6 +164,10 @@ export function buildFinanceBrief(state: PartnerFinanceState): FinanceBriefDto {
       lineHe, positionLineHe, otherCurrencyLineHe: otherText ? `בנפרד (לא נכלל ביעד): נטו ${otherText}.` : null,
     },
     items,
-    calmHe: items.length ? null : CALM_HE,
+    rehab: {
+      items: rehabItems.map((i) => ({ issueType: i.issueType, epistemic: i.epistemic, textHe: i.textHe })),
+      questions: (integrity ? integrity.top.questions : []).map((q) => ({ questionType: q.questionType, textHe: q.textHe, whyHe: q.whyItMattersHe, options: q.options.map((o) => o.labelHe) })),
+    },
+    calmHe: items.length || rehabItems.length ? null : CALM_HE,
   };
 }

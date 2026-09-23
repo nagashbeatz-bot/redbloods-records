@@ -35,6 +35,8 @@ export const FINANCE_PREFERRED_ILS = 30000;
 export const RECORDING_POLICY_START = "2026-09-23";
 /** Items due within this many days before the policy start still count as current operations. */
 export const LEGACY_CURRENT_WINDOW_DAYS = 30;
+/** Recurring-candidate amount similarity (+/-10%). */
+export const RECURRING_AMOUNT_TOLERANCE = 0.1;
 const ILS = "₪";
 const COMPLETED = "הושלם";
 const CANCELLED_PROJECT = "בוטל";
@@ -71,7 +73,9 @@ interface Tx { row: FinanceTxRow; amount: number; currency: string; type: "incom
 export const EXPENSE_PAID_STATUS = "שולם";
 /** An expense carrying an income-only status is invalid finance data (never counted anywhere). */
 export const isInvalidExpenseStatus = (type: string | null, status: string | null) => type === "expense" && status === "התקבל";
-function validateTx(row: FinanceTxRow): Tx | null {
+/** Exported for the integrity layer: the SAME validation / canonical received-or-paid rule (no second copy). */
+export type ValidatedTx = Tx;
+export function validateTx(row: FinanceTxRow): Tx | null {
   const amount = num(row.amount);
   if (amount === null || amount < 0) return null;
   if (row.type !== "income" && row.type !== "expense") return null;
@@ -312,18 +316,29 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date): PartnerFinanceSta
     if (sid.startsWith("victor_salary_")) classification[t.row.id] = "KNOWN_RECURRING";
     else if (engineerLinked.has(t.row.id) || showPayoutTx.has(t.row.id) || (t.row.expenseScope ?? "") === "קליפ" || (t.row.expenseScope ?? "") === "הופעה" || (sid !== "" && !sid.startsWith("victor_salary_"))) classification[t.row.id] = "KNOWN_ONE_TIME";
   }
+  // Recurring candidates (HYPOTHESIS only): same explicit category (exact, trimmed; free text is never read or
+  // fuzzy-merged), same currency, reasonably similar amount (within RECURRING_AMOUNT_TOLERANCE of the cluster's
+  // smallest amount), present in >= 3 distinct months. Rows without a category are never grouped.
   const groups = new Map<string, Tx[]>();
-  for (const t of expenseTx.filter((x) => !classification[x.row.id] && x.received && x.date)) {
-    const k = `${t.row.category ?? ""}|${t.amount}|${t.currency}`;
+  for (const t of expenseTx.filter((x) => !classification[x.row.id] && x.received && x.date && (x.row.category ?? "").trim() !== "")) {
+    const k = `${(t.row.category ?? "").trim()}|${t.currency}`;
     groups.set(k, [...(groups.get(k) ?? []), t]);
   }
   const candidates: RecurringCandidate[] = [];
   for (const [k, list] of groups) {
-    const months = [...new Set(list.map((t) => t.date!.slice(0, 7)))].sort();
-    if (months.length >= 3) {
-      for (const t of list) classification[t.row.id] = "RECURRING_CANDIDATE";
-      const [category, amount, currency] = k.split("|");
-      candidates.push({ key: k, category, amount: Number(amount), currency, months, epistemic: "HYPOTHESIS", evidence: list.map((t) => txEv(t, "REPEATED_EXPENSE_PATTERN")) });
+    const [category, currency] = k.split("|");
+    const sorted = [...list].sort((x, y) => x.amount - y.amount || (x.row.id < y.row.id ? -1 : 1));
+    let i = 0;
+    while (i < sorted.length) {
+      const anchor = sorted[i].amount;
+      const cluster = sorted.filter((t, j) => j >= i && t.amount <= anchor * (1 + RECURRING_AMOUNT_TOLERANCE));
+      i += cluster.length;
+      const months = [...new Set(cluster.map((t) => t.date!.slice(0, 7)))].sort();
+      if (months.length < 3) continue;
+      for (const t of cluster) classification[t.row.id] = "RECURRING_CANDIDATE";
+      const amounts = cluster.map((t) => t.amount).sort((x, y) => x - y);
+      const median = amounts[Math.floor((amounts.length - 1) / 2)];
+      candidates.push({ key: `${category}|${median}|${currency}`, category, amount: median, currency, months, epistemic: "HYPOTHESIS", evidence: cluster.map((t) => txEv(t, "REPEATED_EXPENSE_PATTERN")) });
     }
   }
   for (const t of expenseTx) classification[t.row.id] ??= "UNKNOWN_CLASSIFICATION";
