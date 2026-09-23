@@ -36,7 +36,7 @@ export type ActionOutcomeState = (typeof ACTION_OUTCOME_STATES)[number];
 
 /** Live canonical read of the executed field (projects.deadline + updated_at). */
 export type LiveDeadlineRead =
-  | { status: "FOUND"; deadline: string | null; updatedAt: string | null }
+  | { status: "FOUND"; deadline: string | null; updatedAt: string | null; /** F.1M: the live project name (display only). */ name?: string | null }
   | { status: "NOT_FOUND" }
   | { status: "READ_FAILED"; detail: string };
 
@@ -46,6 +46,8 @@ export interface PartnerActionOutcome {
   actionId: string;
   actionType: string;
   subject: { type: "project"; id: string } | null;
+  /** F.1M: the CURRENT project name from the live read (display only; null when not read / not found). */
+  subjectLabel: string | null;
   approvalEventId: string | null;
   executedEventId: string | null;
   snapshotHash: string | null;
@@ -74,7 +76,7 @@ const heDate = (ymd: string | null) => (ymd && YMD.test(ymd) ? `${ymd.slice(8, 1
 
 function base(actionId: string, evaluatedAt: Date): PartnerActionOutcome {
   return {
-    schemaVersion: ACTION_OUTCOME_SCHEMA_VERSION, state: "INVARIANT_VIOLATION", actionId, actionType: "UNKNOWN", subject: null,
+    schemaVersion: ACTION_OUTCOME_SCHEMA_VERSION, state: "INVARIANT_VIOLATION", actionId, actionType: "UNKNOWN", subject: null, subjectLabel: null,
     approvalEventId: null, executedEventId: null, snapshotHash: null, executed: null, expectedValue: null, current: null,
     evaluatedAt: evaluatedAt.toISOString(), evidence: [], reasons: [], summaryHe: "",
   };
@@ -153,14 +155,15 @@ function outcomeFromLive(v: Extract<ExecutedChain, { ok: true }>, live: LiveDead
   if (live.status === "READ_FAILED") return { ...o, state: "READ_FAILED", evidence: [history], reasons: [`live project read failed: ${live.detail}`], summaryHe: "לא הצלחתי לקרוא את המצב הנוכחי — לא נקבע דבר." };
   if (live.status === "NOT_FOUND") return { ...o, state: "TARGET_NOT_FOUND", evidence: [history, `project ${v.projectId} not found in projects`], reasons: ["TARGET_NOT_FOUND"], summaryHe: "הפרויקט שעליו בוצעה הפעולה לא נמצא." };
   const current = { value: live.deadline, updatedAt: live.updatedAt };
+  const subjectLabel = typeof live.name === "string" && live.name.trim() ? live.name.trim() : null;
   const liveLine = `live projects.deadline = ${live.deadline ?? "null"} (updated_at ${live.updatedAt ?? "unknown"}) at ${evaluatedAt.toISOString()}`;
   if (live.deadline === v.to) {
-    return { ...o, state: "APPLIED_AS_EXPECTED", current, evidence: [history, liveLine], reasons: [], summaryHe: "השינוי שבוצע עדיין תואם למצב הנוכחי." };
+    return { ...o, state: "APPLIED_AS_EXPECTED", current, subjectLabel, evidence: [history, liveLine], reasons: [], summaryHe: "השינוי שבוצע עדיין תואם למצב הנוכחי." };
   }
   const reasons = [`LIVE_VALUE_DIFFERS: expected ${v.to}, current ${live.deadline ?? "null"}`];
   if (live.updatedAt && Date.parse(live.updatedAt) > Date.parse(v.executed.createdAt)) reasons.push(`project updated after execution (${live.updatedAt} > ${v.executed.createdAt})`);
   return {
-    ...o, state: "LIVE_STATE_CHANGED_AFTER_EXECUTION", current, evidence: [history, liveLine], reasons,
+    ...o, state: "LIVE_STATE_CHANGED_AFTER_EXECUTION", current, subjectLabel, evidence: [history, liveLine], reasons,
     summaryHe: `הדדליין השתנה מאז הביצוע: בוצע ${heDate(v.to)}, כעת ${live.deadline ? heDate(live.deadline) : "ללא דדליין"}.`,
   };
 }

@@ -191,6 +191,8 @@ const CHROME = ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Pro
 const SCENARIO = String.raw`
 const srv = { surface: null, gets: 0, posts: [], queue: [], release: null };
 window.fetch = async (url, init) => {
+  // F.1M: the section also reads the recent Outcomes (read-only GET) — served explicitly, never counted as a POST.
+  if (url === "/api/partner/outcomes" && (!init || !init.method || init.method === "GET")) { srv.outcomeGets = (srv.outcomeGets || 0) + 1; return new Response(JSON.stringify({ v: 1, items: [] }), { status: 200, headers: { "content-type": "application/json" } }); }
   if (url === "/api/partner/actions" && (!init || !init.method || init.method === "GET")) { srv.gets++; return new Response(JSON.stringify(srv.surface), { status: 200, headers: { "content-type": "application/json" } }); }
   srv.posts.push({ url, method: init.method, credentials: init.credentials, contentType: init.headers["Content-Type"], body: JSON.parse(init.body) });
   const next = srv.queue.shift();

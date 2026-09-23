@@ -14,11 +14,14 @@
  *   body, same requestId). No automatic retries, no optimistic changes: the server
  *   result is shown, then the surface is re-fetched — the persisted chain is authoritative.
  * - While submitting every control is disabled (and a ref blocks double clicks).
+ * - F.1M: also fetches GET /api/partner/outcomes (recent executed Actions + current derived Outcome) —
+ *   read-only cards below the proposals, parsed strictly, re-fetched together with the surface.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/use-role";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { parseActionSurfaceResponse, type ChangeValueAnswerCode, type PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
+import { parseRecentOutcomesResponse, type PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
 import { PartnerActionsView, type CardControls } from "./PartnerActionCard";
 import {
   buildApproveAttempt, buildChangeAttempt, buildExecuteAttempt, buildNotNowAttempt, interpretDecisionResponse, interpretExecuteResponse, phaseForOutcome,
@@ -48,11 +51,12 @@ const newRequestId = () => (typeof crypto !== "undefined" && "randomUUID" in cry
 export default function PartnerActionsSection({ isMobile }: { isMobile: boolean }) {
   const role = useRole();
   const [items, setItems] = useState<PartnerActionCardDto[]>([]);
+  const [outcomes, setOutcomes] = useState<PartnerOutcomeCardDto[]>([]);
   const [ui, setUi] = useState<UiState>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);
   const submitting = useRef(false);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const loadActions = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch("/api/partner/actions", { cache: "no-store", signal });
       if (!res.ok) { setItems([]); return; }
@@ -63,6 +67,21 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
       if ((e as { name?: string }).name !== "AbortError") setItems([]);
     }
   }, []);
+
+  // F.1M: read-only recent Outcomes. Any failure / malformed payload → nothing shown (fail closed).
+  const loadOutcomes = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/partner/outcomes", { cache: "no-store", signal });
+      if (!res.ok) { setOutcomes([]); return; }
+      const parsed = parseRecentOutcomesResponse(await res.json());
+      if (!parsed.ok) { console.warn("[partner-outcomes] malformed payload — not rendered"); setOutcomes([]); return; }
+      setOutcomes(parsed.items);
+    } catch (e) {
+      if ((e as { name?: string }).name !== "AbortError") setOutcomes([]);
+    }
+  }, []);
+
+  const load = useCallback(async (signal?: AbortSignal) => { await Promise.all([loadActions(signal), loadOutcomes(signal)]); }, [loadActions, loadOutcomes]);
 
   useEffect(() => {
     if (role !== "owner") return;
@@ -128,5 +147,5 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     };
   };
 
-  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} />;
+  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} outcomes={outcomes} />;
 }

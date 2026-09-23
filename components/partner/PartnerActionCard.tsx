@@ -11,7 +11,9 @@
  */
 import type { ReactNode } from "react";
 import type { ChangeValueAnswerCode, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
+import type { PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
 import { NOT_NOW_CHOICES, type DecisionPhase, type NotNowChoice } from "./partner-decision-client";
+import { PartnerOutcomesList } from "./PartnerOutcomeCard";
 
 const CARD = "#181818";
 const BORDER = "rgba(255,255,255,0.07)";
@@ -178,9 +180,12 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
   );
 }
 
-/** The whole Partner block. Renders nothing when there is nothing to show and no pending notice. */
-export function PartnerActionsView({ items, isMobile, controlsFor, notice }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null }) {
-  if (!items.length && !notice) return null;
+/**
+ * The whole Partner block: current proposals / decision state first, then (F.1M) the recent executed
+ * Actions with their current Outcome (read-only). Renders nothing when there is nothing to show.
+ */
+export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [] }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeCardDto[] }) {
+  if (!items.length && !notice && !outcomes.length) return null;
   const fresh = items.filter((i) => i.state === "SHOW").length;
   return (
     <section dir="rtl" lang="he" aria-label="Partner — הצעות לפעולה" data-partner-actions
@@ -188,6 +193,9 @@ export function PartnerActionsView({ items, isMobile, controlsFor, notice }: { i
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: items.length ? 10 : 4 }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: ACCENT }} />
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: TEXT }}>Partner</h2>
+        {items.length === 0 && outcomes.length > 0 && (
+          <span style={{ display: "inline-flex", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99, color: "#4ADE80", background: "rgba(34,197,94,0.12)" }}>בוצע</span>
+        )}
         {items.length > 0 && (
           <span style={{ display: "inline-flex", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99, color: ACCENT, background: "rgba(96,165,250,0.12)" }}>
             {fresh > 0 ? "הצעה לפעולה" : items[0].statusLabelHe}{items.length > 1 ? ` · ${items.length}` : ""}
@@ -198,6 +206,7 @@ export function PartnerActionsView({ items, isMobile, controlsFor, notice }: { i
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items.map((it) => <PartnerActionCard key={it.actionId} item={it} isMobile={isMobile} controls={controlsFor?.(it)} />)}
       </div>
+      <PartnerOutcomesList items={outcomes} isMobile={isMobile} />
     </section>
   );
 }

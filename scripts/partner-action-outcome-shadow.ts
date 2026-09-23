@@ -1,5 +1,5 @@
 /**
- * Partner derived Action Outcome — READ-ONLY production shadow verification (Phase F.1L).
+ * Partner derived Action Outcome — READ-ONLY production shadow verification (Phase F.1L; F.1M recent-outcomes payload).
  *
  *   NODE_OPTIONS=--conditions=react-server npx tsx scripts/partner-action-outcome-shadow.ts
  *
@@ -51,11 +51,13 @@ async function main() {
   };
 
   const before = await safety();
-  const { listExecutedActionOutcomes } = await import("../lib/partner/actions/outcome-server");
+  const { listExecutedActionOutcomes, getRecentOutcomesSurface } = await import("../lib/partner/actions/outcome-server");
   const { actionEventStore } = await import("../lib/partner/actions/event-store");
   const { listLiveProposals } = await import("../lib/partner/actions/live");
   const { getOwnerActionSurface } = await import("../lib/partner/actions/surface-server");
   const outcomes = await listExecutedActionOutcomes();
+  // F.1M: exactly what GET /api/partner/outcomes serves (same binding, read-only).
+  const recentOutcomes = await getRecentOutcomesSurface();
   const chain = await actionEventStore.getActionChain(FIRST_ACTION_ID);
   const proposals = await listLiveProposals();
   const surface = await getOwnerActionSurface();
@@ -63,6 +65,7 @@ async function main() {
 
   console.log(JSON.stringify({
     outcomes,
+    recentOutcomes,
     firstActionChain: chain.status === "OK" ? chain.chain.map((e) => ({ id: e.id, type: e.eventType, supersedes: e.supersedesEventId, createdAt: e.createdAt, hash: e.snapshotHash })) : chain,
     oldProposalDerivable: proposals.status === "OK" ? proposals.items.some((i) => i.action.id === FIRST_ACTION_ID) : proposals,
     livePartnerProposals: proposals.status === "OK" ? proposals.items.map((i) => ({ id: i.action.id, status: i.action.status })) : proposals,

@@ -274,14 +274,14 @@ async function main() {
     ok("15. no Owner Context write", ![OUT, SRV].some((s) => /appendOwnerContext|context-store|context-persistence/.test(s)));
     ok("16. no Feedback write", ![OUT, SRV].some((s) => /feedback\/|partner_feedback|appendFeedback/.test(s)));
     ok("17. no baseline write", ![OUT, SRV].some((s) => /savePartnerBaseline|baseline\/|partner_change_baseline/.test(s)));
-    ok("18. no project mutation (the only project access is one SELECT of deadline, updated_at by id)", ![OUT, SRV].some((s) => /\.update\(|\.upsert\(|\.delete\(|\.insert\(/.test(s)) && (SRV.match(/\.from\(/g) ?? []).length === 1 && /supabase\.from\("projects"\)\.select\("deadline,updated_at"\)\.eq\("id", projectId\)\.maybeSingle\(\)/.test(SRV));
+    ok("18. no project mutation (the only project access is one SELECT of deadline, updated_at, name by id)", ![OUT, SRV].some((s) => /\.update\(|\.upsert\(|\.delete\(|\.insert\(/.test(s)) && (SRV.match(/\.from\(/g) ?? []).length === 1 && /supabase\.from\("projects"\)\.select\("deadline,updated_at,name"\)\.eq\("id", projectId\)\.maybeSingle\(\)/.test(SRV));
     ok("19. no RPC execution", ![OUT, SRV].some((s) => /\.rpc\(|partner_execute_update_project_deadline|EXECUTE_RPC/.test(s)));
     ok("20. no Push / Cron / Agent Alerts", ![OUT, SRV].some((s) => /web-push|lib\/push|node-cron|cron|agent_alerts|alerts-store|lib\/agent\//i.test(s)));
     ok("23. current value = live canonical projects.deadline, never the snapshot", /current = \{ value: live\.deadline, updatedAt: live\.updatedAt \}/.test(OUT) && /live\.deadline === v\.to/.test(OUT));
     ok("store addition is read-only (getEventsByType → readRows SELECT)", /async getEventsByType\(eventType\) \{[\s\S]{0,400}readRows\("event_type", eventType\)/.test(rd("lib/partner/actions/event-persistence.ts")));
     const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
     const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && /from "[^"]*(actions\/outcome|\.\/outcome)(-server)?"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f).replace(/\\/g, "/"));
-    check("no route / UI / cron / agent consumes the Outcome yet (only its own server binding imports the core)", importers, ["lib/partner/actions/outcome-server.ts"]);
+    check("F.1M: the Outcome is consumed ONLY by its read-only chain (DTO, recent-outcomes core, server binding) and the Owner-only GET route — no cron / agent / write path", importers.sort(), ["app/api/partner/outcomes/route.ts", "lib/partner/actions/outcome-dto.ts", "lib/partner/actions/outcome-server.ts", "lib/partner/actions/recent-outcomes.ts"]);
     ok("no Outcome event type was invented (event types unchanged)", /ACTION_EVENT_TYPES = \["APPROVED", "NOT_NOW", "REJECTED", "EXECUTED", "STALE_AT_EXECUTION"\] as const/.test(rd("lib/partner/actions/events.ts")));
   }
 

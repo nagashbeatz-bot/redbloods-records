@@ -166,7 +166,14 @@ console.log("Isolation (23-26)");
   const READ_ONLY_SURFACE = [path.join("app", "api", "partner", "actions", "route.ts"), path.join("components", "partner", "PartnerActionCard.tsx"), path.join("components", "partner", "partner-decision-client.ts"), path.join("components", "partner", "PartnerActionsSection.tsx")];
   const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts"), path.join("app", "api", "partner", "actions", "execute", "route.ts")];
   const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /partner\/actions/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f));
-  check("no app/ or components/ file imports actions except the approved surface + the two Owner decision routes", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f)), []);
+  // F.1M: the read-only recent Outcomes GET route + its presentational card are the only other consumers.
+  const OUTCOMES_READ_ONLY = [path.join("app", "api", "partner", "outcomes", "route.ts"), path.join("components", "partner", "PartnerOutcomeCard.tsx")];
+  check("no app/ or components/ file imports actions except the approved surface + the Owner decision routes + the F.1M read-only outcomes route/card", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f) && !OUTCOMES_READ_ONLY.includes(f)), []);
+  ok("F.1M: the outcomes route/card never reach a write / decision / execution path and import only outcome-server / outcome-dto", OUTCOMES_READ_ONLY.every((f) => {
+    const s = fs.readFileSync(path.join(ROOT, f), "utf8");
+    return !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(|onClick|<button/.test(s)
+      && [...s.matchAll(/from "([^"]*partner\/actions[^"]*)"/g)].every((m) => /actions\/(outcome-server|outcome-dto)$/.test(m[1]));
+  }));
   ok("the surface / UI files never reach a server write path directly (UI talks to the routes over HTTP only)", READ_ONLY_SURFACE.every((f) => !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(/.test(fs.readFileSync(path.join(ROOT, f), "utf8"))));
   // F.1K: the ONLY app/components file that can execute is the execute route, and only through executeApprovedAction.
   const EXECUTE_ROUTE = path.join("app", "api", "partner", "actions", "execute", "route.ts");

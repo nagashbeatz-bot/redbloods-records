@@ -381,7 +381,9 @@ async function main() {
     // F.1I/F.1J: /api/partner holds exactly the GET surface + the two Owner decision POST routes.
     const partnerApi = path.join(ROOT, "app", "api", "partner");
     const partnerRoutes = walk(partnerApi).map((f) => path.relative(partnerApi, f)).sort();
-    check("30. /api/partner holds only the actions surface + the three Owner routes (decide / change-deadline / execute)", partnerRoutes, [path.join("actions", "change-deadline", "route.ts"), path.join("actions", "decide", "route.ts"), path.join("actions", "execute", "route.ts"), path.join("actions", "route.ts")].sort());
+    check("30. /api/partner holds only the actions surface + the three Owner routes (decide / change-deadline / execute) + the F.1M outcomes GET", partnerRoutes, [path.join("actions", "change-deadline", "route.ts"), path.join("actions", "decide", "route.ts"), path.join("actions", "execute", "route.ts"), path.join("actions", "route.ts"), path.join("outcomes", "route.ts")].sort());
+    const outcomesRoute = fs.readFileSync(path.join(partnerApi, "outcomes", "route.ts"), "utf8");
+    ok("30. F.1M outcomes route is GET-only, requireOwner, imports only the read-only outcome binding, never touches Owner Context", /export async function GET\(/.test(outcomesRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(outcomesRoute) && /requireOwner\(\)/.test(outcomesRoute) && !/context-store|context-persistence|appendOwnerContext/.test(outcomesRoute) && JSON.stringify([...outcomesRoute.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]).sort()) === JSON.stringify(["@/lib/partner/actions/outcome-server", "@/lib/require-auth", "next/server"]));
     const surfaceRoute = fs.readFileSync(path.join(partnerApi, "actions", "route.ts"), "utf8");
     ok("30. the surface route is GET-only, requireOwner, and never touches Owner Context", /export async function GET\(/.test(surfaceRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(surfaceRoute) && /requireOwner\(\)/.test(surfaceRoute) && !/context-store|context-persistence|appendOwnerContext/.test(surfaceRoute));
     for (const r of ["decide", "change-deadline", "execute"]) {
