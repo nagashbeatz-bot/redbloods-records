@@ -16,12 +16,15 @@
  * - While submitting every control is disabled (and a ref blocks double clicks).
  * - F.1M: also fetches GET /api/partner/outcomes (recent executed Actions + current derived Outcome) —
  *   read-only cards below the proposals, parsed strictly, re-fetched together with the surface.
+ * - Finance Brain V1: also fetches GET /api/partner/finance (read-only "כסף" brief), parsed strictly;
+ *   any failure / malformed payload → the block is not rendered (fail closed).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/use-role";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { parseActionSurfaceResponse, type ChangeValueAnswerCode, type PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
 import { parseRecentOutcomesResponse, type PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
+import { parseFinanceBriefResponse, type FinanceBriefDto } from "@/lib/partner/finance/dto";
 import { PartnerActionsView, type CardControls } from "./PartnerActionCard";
 import {
   buildApproveAttempt, buildChangeAttempt, buildExecuteAttempt, buildNotNowAttempt, interpretDecisionResponse, interpretExecuteResponse, phaseForOutcome,
@@ -52,6 +55,7 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
   const role = useRole();
   const [items, setItems] = useState<PartnerActionCardDto[]>([]);
   const [outcomes, setOutcomes] = useState<PartnerOutcomeCardDto[]>([]);
+  const [finance, setFinance] = useState<FinanceBriefDto | null>(null);
   const [ui, setUi] = useState<UiState>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -81,7 +85,20 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     }
   }, []);
 
-  const load = useCallback(async (signal?: AbortSignal) => { await Promise.all([loadActions(signal), loadOutcomes(signal)]); }, [loadActions, loadOutcomes]);
+  // Finance Brain V1: read-only brief. Any failure / malformed payload → nothing shown (fail closed).
+  const loadFinance = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/partner/finance", { cache: "no-store", signal });
+      if (!res.ok) { setFinance(null); return; }
+      const parsed = parseFinanceBriefResponse(await res.json());
+      if (!parsed.ok) { console.warn("[partner-finance] malformed payload — not rendered"); setFinance(null); return; }
+      setFinance(parsed.brief);
+    } catch (e) {
+      if ((e as { name?: string }).name !== "AbortError") setFinance(null);
+    }
+  }, []);
+
+  const load = useCallback(async (signal?: AbortSignal) => { await Promise.all([loadActions(signal), loadOutcomes(signal), loadFinance(signal)]); }, [loadActions, loadOutcomes, loadFinance]);
 
   useEffect(() => {
     if (role !== "owner") return;
@@ -147,5 +164,5 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     };
   };
 
-  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} outcomes={outcomes} />;
+  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} outcomes={outcomes} finance={finance} />;
 }

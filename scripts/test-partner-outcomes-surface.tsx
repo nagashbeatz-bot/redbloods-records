@@ -315,7 +315,7 @@ async function main() {
     ok("F.1M cards are read-only: no button, no handler, no hook, no fetch", !/<button|onClick|onChange|useState|useEffect|fetch\(/.test(strip(CARD)));
     const SECTION = rd("components/partner/PartnerActionsSection.tsx");
     ok("the section reads outcomes with a GET only and parses them strictly", /fetch\("\/api\/partner\/outcomes", \{ cache: "no-store", signal \}\)/.test(SECTION) && /parseRecentOutcomesResponse\(await res\.json\(\)\)/.test(SECTION) && !/\/api\/partner\/outcomes"[^)]*method/.test(SECTION));
-    ok("outcomes are re-fetched together with the surface (one load for both)", /const load = useCallback\(async \(signal\?: AbortSignal\) => \{ await Promise\.all\(\[loadActions\(signal\), loadOutcomes\(signal\)\]\); \}/.test(SECTION));
+    ok("outcomes are re-fetched together with the surface (one load for all Partner reads: actions + outcomes + F2 finance)", /const load = useCallback\(async \(signal\?: AbortSignal\) => \{ await Promise\.all\(\[loadActions\(signal\), loadOutcomes\(signal\), loadFinance\(signal\)\]\); \}/.test(SECTION));
   }
 
   console.log("UI: RTL / mobile / desktop / placement (27-29)");
