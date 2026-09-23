@@ -12,12 +12,29 @@
  *   - a BAND (NOW / SOON / BACKGROUND) from a short, ordered rule list,
  *   - an ordering inside the band that compares named factors in a fixed
  *     order (lexicographic), then recency of ACTIVITY, then questionId.
+ *
+ * Selection optimizes DECISION VALUE, never a quota (F.1D correction):
+ *   - maxRecommended is a CEILING. Fewer is returned when fewer are
+ *     decision-useful; nothing is added to "reach 5".
+ *   - RECOMMENDATION FLOOR: only bands listed in policy.recommendationFloor
+ *     (default: NOW) are proactively recommended. SOON / BACKGROUND never
+ *     fill spare capacity.
+ *   - No question-type cap. Type diversity never outranks business evidence.
+ *   - One representative per anchor (its strongest question); a weaker
+ *     question on the same anchor is never substituted.
+ *   - EQUIVALENCE: candidates with the same band and the same named
+ *     ordering factors are business-equivalent. Activity recency / questionId
+ *     only make the listing reproducible — they are never a reason. At the
+ *     ceiling an equivalence class is taken ALL-OR-NONE: if the whole class
+ *     does not fit, none of it is recommended and selection stops there (a
+ *     weaker class never jumps ahead). No recommendation ever depends on an
+ *     arbitrary id order.
  * Age of a Case (days late / overdue / since delivery) is NEVER a priority
  * input — Owner Rule STALE_IS_NOT_AUTOMATICALLY_URGENT. It is recorded as a
  * NOTE only.
  *
- * AttentionPolicy is a working PRODUCT policy (budget, per-subject and
- * per-type caps, windows) — not an Owner Rule, not in the Charter, and
+ * AttentionPolicy is a working PRODUCT policy (ceiling, floor, per-anchor
+ * cap, windows) — not an Owner Rule, not in the Charter, and
  * changeable by passing a different policy.
  */
 import type { PartnerCase } from "../cases/types";
@@ -27,12 +44,12 @@ import { resolveCurrentContexts } from "./interpret";
 import type { InvestigationQuestionType, PartnerInvestigationQuestion, PartnerOwnerContext } from "./types";
 
 export interface AttentionPolicy {
-  /** Max questions recommended in one review/session. */
+  /** CEILING (not a target) on questions recommended in one review/session. */
   maxRecommended: number;
   /** Max recommended questions per attention anchor (a project, or a standalone subject). */
   maxPerAnchor: number;
-  /** Max recommended questions of the same question type — keeps a batch from being "5 of the same thing". */
-  maxPerQuestionType: number;
+  /** Bands eligible for PROACTIVE recommendation. Default ["NOW"]. Adding "SOON" is a documented policy change, never automatic. */
+  recommendationFloor: readonly AttentionBand[];
   /** A linked project updated within this many days counts as RECENT_ACTIVITY. */
   recentActivityDays: number;
   /** A delivery younger than this is TOO_EARLY_TO_ASK whether it was reviewed. */
@@ -42,7 +59,7 @@ export interface AttentionPolicy {
 export const DEFAULT_ATTENTION_POLICY: AttentionPolicy = {
   maxRecommended: 5,
   maxPerAnchor: 1,
-  maxPerQuestionType: 2,
+  recommendationFloor: ["NOW"],
   recentActivityDays: 7,
   deliveryGraceDays: 2,
 };
@@ -93,7 +110,13 @@ export type AttentionBand = "NOW" | "SOON" | "BACKGROUND";
 /** UNANSWERED: no current Owner Context. ANSWERED: current context exists and the Case's facts are unchanged. ANSWERED_EVIDENCE_CHANGED: answered, but the Case's facts changed since — eligible again. */
 export type QuestionAnswerState = "UNANSWERED" | "ANSWERED" | "ANSWERED_EVIDENCE_CHANGED";
 export type AttentionState = "RECOMMENDED" | "NOT_CURRENTLY_RECOMMENDED" | "ANSWERED_NOT_RESURFACED";
-export type DeferralReason = "ANCHOR_ALREADY_REPRESENTED" | "QUESTION_TYPE_CAP" | "BUDGET_FULL" | "BACKGROUND_BAND";
+/** Evidence-based only. There is deliberately no question-type reason. */
+export type DeferralReason = "ANCHOR_ALREADY_REPRESENTED" | "MAX_RECOMMENDED_REACHED" | "LOWER_PRIORITY_BAND";
+/**
+ * TIE_WITH_EQUIVALENT_CANDIDATES — other eligible candidates carry exactly the same evidence; the listed order among them has no business meaning.
+ * EQUIVALENT_CLASS_EXCEEDS_REMAINING_CAPACITY — this item's equivalence class did not fit whole under the ceiling, so none of it was recommended (no arbitrary pick).
+ */
+export type AttentionDiagnostic = "TIE_WITH_EQUIVALENT_CANDIDATES" | "EQUIVALENT_CLASS_EXCEEDS_REMAINING_CAPACITY";
 
 export interface AttentionItem {
   question: PartnerInvestigationQuestion;
@@ -104,8 +127,15 @@ export interface AttentionItem {
   answerState: QuestionAnswerState;
   attentionState: AttentionState;
   deferralReason: DeferralReason | null;
-  /** When deferred for ANCHOR_ALREADY_REPRESENTED: the recommended question that represents this anchor. */
+  /** When deferred for ANCHOR_ALREADY_REPRESENTED: the question that represents this anchor (its strongest). */
   representedBy: string | null;
+  /** Band + named ordering factors. Items with the same key are business-equivalent. */
+  equivalenceKey: string;
+  /** Other eligible candidates with the same equivalenceKey (question ids). */
+  equivalentTo: string[];
+  diagnostics: AttentionDiagnostic[];
+  /** Evidence-based explanation codes: WHY_RECOMMENDED (RAISES factors + floor) or WHY_DEFERRED. Never a questionId / ordering artifact. */
+  explanation: string[];
   /** 1-based position in the full deterministic ordering (all bands). */
   rank: number;
 }
@@ -235,37 +265,69 @@ export function buildAttentionQueue(input: AttentionInput): AttentionQueue {
     return a.question.id < b.question.id ? -1 : a.question.id > b.question.id ? 1 : 0;
   });
 
-  // Each anchor's representatives = its best `maxPerAnchor` eligible questions (by the ordering above).
-  // A lower-value question on the same anchor is NEVER substituted when a representative is capped by
-  // type/budget — the anchor then simply waits for a later batch (its best question comes first).
-  const eligible = (a: (typeof assessed)[number]) => a.answerState !== "ANSWERED" && a.band !== "BACKGROUND";
+  const eqKey = (a: (typeof assessed)[number]) => `${a.band}|${ORDER_FACTORS.filter((code) => a.factors.some((f) => f.code === code)).join("+") || "none"}`;
+
+  // Each anchor's representatives = its best `maxPerAnchor` unanswered questions (by the ordering above).
+  // A lower-value question on the same anchor is NEVER substituted — if the representative is not
+  // recommended in this batch, the anchor simply waits (its best question comes first).
   const representatives = new Map<string, string[]>();
   for (const a of assessed) {
-    if (!eligible(a)) continue;
+    if (a.answerState === "ANSWERED") continue;
     const reps = representatives.get(a.anchor) ?? [];
     if (reps.length < policy.maxPerAnchor) { reps.push(a.question.id); representatives.set(a.anchor, reps); }
   }
 
-  const recommended: AttentionItem[] = [], backlog: AttentionItem[] = [], answered: AttentionItem[] = [];
-  const perType = new Map<string, number>();
+  const items: AttentionItem[] = assessed.map((a, i) => ({
+    question: a.question, anchor: a.anchor, band: a.band, factors: a.factors, answerState: a.answerState,
+    attentionState: "NOT_CURRENTLY_RECOMMENDED", deferralReason: null, representedBy: null,
+    equivalenceKey: eqKey(a), equivalentTo: [], diagnostics: [], explanation: [], rank: i + 1,
+  }));
+  const raises = (it: AttentionItem) => it.factors.filter((f) => f.effect === "RAISES").map((f) => f.code);
 
-  assessed.forEach((a, i) => {
-    const item: AttentionItem = {
-      question: a.question, anchor: a.anchor, band: a.band, factors: a.factors, answerState: a.answerState,
-      attentionState: "NOT_CURRENTLY_RECOMMENDED", deferralReason: null, representedBy: null, rank: i + 1,
-    };
-    if (a.answerState === "ANSWERED") { item.attentionState = "ANSWERED_NOT_RESURFACED"; answered.push(item); return; }
-    if (a.band === "BACKGROUND") { item.deferralReason = "BACKGROUND_BAND"; backlog.push(item); return; }
-    const reps = representatives.get(a.anchor) ?? [];
-    if (!reps.includes(a.question.id)) {
-      item.deferralReason = "ANCHOR_ALREADY_REPRESENTED"; item.representedBy = reps[0] ?? null; backlog.push(item); return;
+  const recommended: AttentionItem[] = [], backlog: AttentionItem[] = [], answered: AttentionItem[] = [];
+  const candidates: AttentionItem[] = [];
+  for (const it of items) {
+    if (it.answerState === "ANSWERED") { it.attentionState = "ANSWERED_NOT_RESURFACED"; it.explanation = ["ANSWERED_UNCHANGED"]; answered.push(it); continue; }
+    const reps = representatives.get(it.anchor) ?? [];
+    if (!reps.includes(it.question.id)) {
+      it.deferralReason = "ANCHOR_ALREADY_REPRESENTED"; it.representedBy = reps[0] ?? null;
+      it.explanation = ["ANCHOR_ALREADY_REPRESENTED"];
+      backlog.push(it); continue;
     }
-    if ((perType.get(a.question.questionType) ?? 0) >= policy.maxPerQuestionType) { item.deferralReason = "QUESTION_TYPE_CAP"; backlog.push(item); return; }
-    if (recommended.length >= policy.maxRecommended) { item.deferralReason = "BUDGET_FULL"; backlog.push(item); return; }
-    item.attentionState = "RECOMMENDED";
-    recommended.push(item);
-    perType.set(a.question.questionType, (perType.get(a.question.questionType) ?? 0) + 1);
-  });
+    if (!policy.recommendationFloor.includes(it.band)) {
+      it.deferralReason = "LOWER_PRIORITY_BAND"; it.explanation = ["LOWER_PRIORITY_BAND", `BAND_${it.band}_BELOW_FLOOR`];
+      backlog.push(it); continue;
+    }
+    candidates.push(it);
+  }
+
+  // Equivalence classes among candidates (already in rank order, so a class is contiguous).
+  const classes: AttentionItem[][] = [];
+  for (const it of candidates) {
+    const last = classes[classes.length - 1];
+    if (last && last[0].equivalenceKey === it.equivalenceKey) last.push(it); else classes.push([it]);
+  }
+  for (const cls of classes) if (cls.length > 1) for (const it of cls) {
+    it.equivalentTo = cls.filter((x) => x !== it).map((x) => x.question.id);
+    it.diagnostics.push("TIE_WITH_EQUIVALENT_CANDIDATES");
+  }
+
+  let full = false;
+  for (const cls of classes) {
+    if (!full && cls.length <= policy.maxRecommended - recommended.length) {
+      for (const it of cls) {
+        it.attentionState = "RECOMMENDED";
+        it.explanation = [...raises(it), `WITHIN_RECOMMENDATION_FLOOR_${it.band}`];
+        recommended.push(it);
+      }
+      continue;
+    }
+    // Ceiling reached, or this class does not fit whole: stop — no weaker class jumps ahead, no arbitrary pick.
+    if (!full && recommended.length < policy.maxRecommended) for (const it of cls) it.diagnostics.push("EQUIVALENT_CLASS_EXCEEDS_REMAINING_CAPACITY");
+    full = true;
+    for (const it of cls) { it.deferralReason = "MAX_RECOMMENDED_REACHED"; it.explanation = ["MAX_RECOMMENDED_REACHED", ...raises(it)]; backlog.push(it); }
+  }
+  backlog.sort((a, b) => a.rank - b.rank);
 
   return { policy, recommended, backlog, answered };
 }

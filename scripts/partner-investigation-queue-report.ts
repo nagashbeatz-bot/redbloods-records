@@ -77,15 +77,21 @@ async function main() {
   console.log(`all by classification: ${fmt(count(all.map((i) => caseOf.get(i.question.caseId)!.classification)))}`);
   console.log(`recommended by classification: ${fmt(count(queue.recommended.map((i) => caseOf.get(i.question.caseId)!.classification)))}`);
 
-  console.log("\n── Recommended (in order) ──");
+  console.log(`diagnostics: ${fmt(count(all.flatMap((i) => i.diagnostics)))}`);
+
+  console.log("\n── Recommended (in order) — WHY_RECOMMENDED ──");
   for (const i of queue.recommended) {
     console.log(`#${i.rank} [${i.band}] ${i.question.id}`);
-    console.log(`   anchor=${i.anchor}`);
-    console.log(`   raises: ${i.factors.filter((f) => f.effect === "RAISES").map((f) => `${f.code} (${f.basis})`).join("; ") || "(none)"}`);
-    console.log(`   notes:  ${i.factors.filter((f) => f.effect !== "RAISES").map((f) => f.code).join(", ")}`);
+    console.log(`   anchor=${i.anchor} | equivalence=${i.equivalenceKey}${i.diagnostics.length ? ` | ${i.diagnostics.join(",")}` : ""}`);
+    console.log(`   WHY_RECOMMENDED: ${i.explanation.join(", ")}`);
+    console.log(`   evidence: ${i.factors.filter((f) => f.effect === "RAISES").map((f) => `${f.code} (${f.basis})`).join("; ") || "(none)"}`);
     console.log(`   Q: ${i.question.questionTextHe}`);
-    const sup = queue.backlog.filter((b) => b.anchor === i.anchor);
-    for (const s of sup) console.log(`   same anchor, deferred: ${s.question.id} [${s.band}] (${s.deferralReason})`);
+    for (const s of queue.backlog.filter((b) => b.anchor === i.anchor)) console.log(`   same anchor, deferred: ${s.question.id} [${s.band}] (${s.deferralReason})`);
+  }
+
+  console.log("\n── Strong (NOW) items not recommended — WHY_DEFERRED ──");
+  for (const i of queue.backlog.filter((b) => b.band === "NOW")) {
+    console.log(`#${i.rank} ${i.question.id} | ${i.explanation.join(", ")}${i.representedBy ? ` | represented by ${i.representedBy}` : ""}${i.diagnostics.length ? ` | ${i.diagnostics.join(",")}` : ""}`);
   }
 
   const fbAfter = await fbCount();
