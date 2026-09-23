@@ -57,6 +57,17 @@ export function fingerprintCaseEvidence(c: PartnerCase): string {
   }));
 }
 
+/**
+ * Fingerprints ONLY the Case's direct facts (field reads such as a deadline
+ * date, a status, a lastUploadAt) — deliberately excluding derivedFacts,
+ * which churn daily ("days late" grows by one every day without anything
+ * having happened). Used by the investigation layer to tell whether an
+ * Owner answer still describes the same underlying situation (F.1D).
+ */
+export function fingerprintCaseFacts(c: PartnerCase): string {
+  return stableHash(stableStringify(c.facts));
+}
+
 /** Builds the minimal, immutable snapshot a CASE_INSTANCE/HYPOTHESIS-scoped feedback record must carry. `capturedAt` is normally the feedback's own createdAt — passed in, never Date.now() read here (deterministic, testable). */
 export function buildCaseFeedbackSnapshot(c: PartnerCase, capturedAt: string): PartnerCaseFeedbackSnapshot {
   return {

@@ -10,3 +10,9 @@ export {
   deriveContextLearningSignals, buildContextLearningProposals, answerLabelHe,
   type OwnerContextInput, type OwnerContextValidation,
 } from "./interpret";
+export {
+  DEFAULT_ATTENTION_POLICY, buildAttentionQueue,
+  type AttentionPolicy, type AttentionInput, type AttentionProjectInfo, type AttentionReleaseInfo,
+  type AttentionFactor, type AttentionFactorCode, type AttentionBand, type AttentionItem, type AttentionQueue,
+  type AttentionState, type QuestionAnswerState, type DeferralReason,
+} from "./queue";

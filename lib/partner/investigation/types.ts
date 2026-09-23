@@ -55,6 +55,8 @@ export interface PartnerInvestigationQuestion {
   subjectType: string;
   subjectId: string;
   questionType: InvestigationQuestionType;
+  /** feedback/snapshot.ts:fingerprintCaseFacts — direct facts only (no daily-churning derived values). Lets a later reader tell whether an answer still describes the same situation. */
+  caseFactsFingerprint: string;
   /** Short, specific, fact-grounded, non-accusatory Hebrew. */
   questionTextHe: string;
   /** The specific business unknown this question targets — why the Partner asks. */
@@ -99,6 +101,10 @@ export interface PartnerOwnerContext {
   subjectType: string;
   subjectId: string;
   answerCode: string;
+  /** The exact wording the Owner answered (traceability — wording may evolve between versions). */
+  questionTextHe: string;
+  /** Copied from the question at answer time. If the Case's current facts fingerprint differs, the answer may no longer describe the situation (F.1D attention queue). */
+  caseFactsFingerprint: string;
   /** Stored/displayed only. No code parses it. */
   note: string | null;
   answeredAt: string;

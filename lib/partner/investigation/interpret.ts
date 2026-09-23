@@ -47,6 +47,8 @@ export function buildOwnerContext(question: PartnerInvestigationQuestion, input:
     subjectType: question.subjectType,
     subjectId: question.subjectId,
     answerCode: input.answerCode,
+    questionTextHe: question.questionTextHe,
+    caseFactsFingerprint: question.caseFactsFingerprint,
     note: input.note ?? null,
     answeredAt: input.answeredAt,
     scope: "CASE_INSTANCE",

@@ -17,6 +17,7 @@
  * Partner), so it never asks "why is Steven late?".
  */
 import type { PartnerCase } from "../cases/types";
+import { fingerprintCaseFacts } from "../feedback/snapshot";
 import {
   INVESTIGATION_OWNER_RULE, INVESTIGATION_SCHEMA_VERSION,
   type InvestigationAnswerOption, type InvestigationDecision, type InvestigationQuestionType,
@@ -131,6 +132,7 @@ function makeQuestion(c: PartnerCase, type: InvestigationQuestionType, questionT
     subjectType: c.subjectType,
     subjectId: c.subjectId,
     questionType: type,
+    caseFactsFingerprint: fingerprintCaseFacts(c),
     questionTextHe,
     reasonHe,
     factsReferenced: presentRefs(c, refs),

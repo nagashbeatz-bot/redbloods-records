@@ -5,7 +5,7 @@
  */
 export * from "./types";
 export { validatePartnerFeedback, type FeedbackValidationResult } from "./validate";
-export { buildCaseFeedbackSnapshot, fingerprintCaseEvidence } from "./snapshot";
+export { buildCaseFeedbackSnapshot, fingerprintCaseEvidence, fingerprintCaseFacts } from "./snapshot";
 export { deriveFeedbackEffectLevel } from "./effect";
 export { summarizePartnerFeedback, resolveCaseTypeForGrouping, type CaseTypeFeedbackSummary, type FeedbackDimensionCounts } from "./summarize";
 export { deriveLearningSignals, buildLearningProposals } from "./learning";
