@@ -120,7 +120,7 @@ function productionMirror(): FinanceRaw {
   };
 }
 const PRODUCTION_BRIEF: FinanceBriefDto = {
-  v: 3, month: "2026-09", asOfDate: "2026-09-23", coverage: "PARTIAL",
+  v: 4, month: "2026-09", asOfDate: "2026-09-23", coverage: "PARTIAL",
   coverageNoteHe: "הנתונים עדיין חלקיים, אז הנטו כאן הוא לפי מה שרשום במערכת. ברוב הפרויקטים אין מחיר מוסכם במערכת, ולכן אי אפשר לחשב גבייה מלאה. יש נתוני מחיר ישנים שדורשים בירור.",
   summary: {
     basisHe: "לפי הנתונים הרשומים כרגע", recordedNetIls: 2200, floorIls: 20000, preferredIls: 30000, gapToFloor: 17800, gapToPreferred: 27800, daysRemaining: 7,
@@ -136,7 +136,7 @@ const PRODUCTION_BRIEF: FinanceBriefDto = {
     { family: "MISSING_EXPECTED_RECORD", epistemic: "FACT", textHe: "משכורת Victor עבור אוגוסט 2026 מסומנת כשולמה, אבל אין לה רישום בכספים." },
   ],
   // F2.5: without an integrity state the "צריך ממך" section is empty (the main brief is unchanged).
-  rehab: { items: [], questions: [], questionsNoteHe: null },
+  rehab: { items: [], questions: [], questionsNoteHe: null, actionNoteHe: null },
   calmHe: null,
 };
 

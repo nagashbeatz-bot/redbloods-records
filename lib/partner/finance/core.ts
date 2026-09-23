@@ -129,7 +129,14 @@ export function targetPosition(netIls: number): TargetPosition {
 
 // ── the Finance Brain ──
 
-export function buildFinanceBrain(raw: FinanceRaw, now: Date): PartnerFinanceState {
+/**
+ * F2.11 Owner overlay: receivables the Owner declared commercially closed (by receivable id → answer code).
+ * Only the collection view changes (NOT_COLLECTIBLE + ownerClosure); realized money never depends on it.
+ * Built by view.ts from the Owner's ACTIVE answers evaluated against the un-overlaid facts.
+ */
+export interface FinanceOwnerOverlay { ownerClosedReceivables?: ReadonlyMap<string, string> }
+
+export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOwnerOverlay = {}): PartnerFinanceState {
   const month = monthWindow(now);
   const today = month.today;
   const policyStart = RECORDING_POLICY_START;
@@ -183,9 +190,10 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date): PartnerFinanceSta
   const credits: ProjectCredit[] = [];
   const expected: ExpectedItem[] = [];
   const currencyMismatchEv: Evidence[] = [];
-  const pushReceivable = (r: Omit<Receivable, "collection" | "legacy" | "reasonKnown" | "reason" | "client"> & { createdAt: string | null; notCollectible?: boolean; needsReview?: boolean }) => {
+  const pushReceivable = (r: Omit<Receivable, "collection" | "legacy" | "ownerClosure" | "reasonKnown" | "reason" | "client"> & { createdAt: string | null; notCollectible?: boolean; needsReview?: boolean }) => {
     const client = clientOf(r.projectId);
-    const collection = resolveCollection({ amount: r.amount, currency: r.currency, dueDate: r.dueDate, today, vip: client.vip, notCollectible: r.notCollectible, needsReview: r.needsReview });
+    const closedBy = overlay.ownerClosedReceivables?.get(r.id) ?? null;
+    const collection = resolveCollection({ amount: r.amount, currency: r.currency, dueDate: r.dueDate, today, vip: client.vip, notCollectible: r.notCollectible || closedBy !== null, needsReview: r.needsReview });
     const p = r.projectId ? projectById.get(r.projectId) : null;
     // A balance with no date on a still-open project is part of a live deal; on a completed/older one it needs review.
     const legacy: LegacyClass = r.source !== "EXPECTED_TX" && !r.dueDate
@@ -193,10 +201,11 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date): PartnerFinanceSta
       : legacyOf({ dueDate: r.dueDate, createdAt: r.createdAt, amount: r.amount, policyStart });
     const { createdAt: _c, notCollectible: _n, needsReview: _r, ...rest } = r;
     void _c; void _n; void _r;
-    receivables.push({ ...rest, client, collection, legacy, reasonKnown: false, reason: "UNKNOWN" });
+    receivables.push({ ...rest, client, collection, legacy, ownerClosure: closedBy ? { basis: "OWNER_DECISION", answerCode: closedBy, reconciliation: "CANONICAL_DATA_NOT_RECONCILED" } : null, reasonKnown: false, reason: "UNKNOWN" });
   };
   const openIncome = (t: Tx) => t.type === "income" && !t.received && !t.cancelled;
   for (const t of txs.filter(openIncome)) {
+    if (overlay.ownerClosedReceivables?.has(`EXPECTED_TX:${t.row.id}`)) continue; // Owner-closed: not expected income
     expected.push({ class: t.date ? "DATED_EXPECTED" : "UNDATED_EXPECTED", amount: t.amount, currency: t.currency, date: t.date, certainty: "CONTRACTUAL_RECORD", projectId: t.row.projectId, evidence: [txEv(t, "EXPECTED_INCOME_RECORD")] });
   }
 

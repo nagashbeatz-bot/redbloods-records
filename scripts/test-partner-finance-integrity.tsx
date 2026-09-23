@@ -204,11 +204,11 @@ async function main() {
       { issueType: "RECEIVABLE_DUE_DATE_MISSING", epistemic: "FACT", textHe: "יש יתרה של ₪1,600 בלי תאריך גבייה. צריך לקבוע תאריך גבייה." },
       { issueType: "COMPLETED_WORK_NO_INCOME", epistemic: "FACT", textHe: "8 פרויקטים שהסתיימו עם הוצאה מתועדת, אבל אני לא רואה בהם הכנסה. צריך בירור." },
     ]);
-    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", 3], ["FINANCE_RECEIVABLE_TIMING", 6]]);
+    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", 3], ["FINANCE_RECEIVABLE_TIMING", 7]]);
     check("65. main brief keeps money status, no duplicates of 'צריך ממך'", prod.brief.items.map((i) => i.family), ["UPCOMING_COLLECTION", "COMMITTED_EXPENSE", "REVENUE_OPPORTUNITY"]);
     ok("65/66. main ≤5, rehab ≤3, questions ≤2", prod.brief.items.length <= FINANCE_BRIEF_MAX_ITEMS && prod.brief.rehab.items.length <= 3 && prod.brief.rehab.questions.length <= 2);
     check("F2 numbers unchanged (₪ in 2,700 / out 500 / net 2,200; position 3,100)", [prod.state.realized.ils, prod.state.pacing.knownMonthEndPositionIls], [{ cashIn: 2700, cashOut: 500, net: 2200 }, 3100]);
-    check("F2 brief without an integrity state is unchanged (rehab empty)", [buildFinanceBrief(prod.state).items.map((i) => i.family), buildFinanceBrief(prod.state).rehab], [["FINANCIAL_DATA_BLOCKER", "UPCOMING_COLLECTION", "COLLECTION_NO_DATE", "COMMITTED_EXPENSE", "MISSING_EXPECTED_RECORD"], { items: [], questions: [], questionsNoteHe: null }]);
+    check("F2 brief without an integrity state is unchanged (rehab empty)", [buildFinanceBrief(prod.state).items.map((i) => i.family), buildFinanceBrief(prod.state).rehab], [["FINANCIAL_DATA_BLOCKER", "UPCOMING_COLLECTION", "COLLECTION_NO_DATE", "COMMITTED_EXPENSE", "MISSING_EXPECTED_RECORD"], { items: [], questions: [], questionsNoteHe: null, actionNoteHe: null }]);
     const allText = [...prod.integrity.issues.map((i) => i.recommendedOwnerQuestion?.textHe ?? ""), ...prod.integrity.questions.map((q) => q.textHe + q.whyItMattersHe), ...prod.brief.rehab.items.map((i) => i.textHe), ...prod.brief.items.map((i) => i.textHe)].join(" ");
     ok("67. no blame wording anywhere", !BLAME.test(allText));
     ok("coverage reasons are given as reasons (no percentage score)", prod.integrity.coverageReasonsHe.length > 0 && !/%|אחוז|ציון/.test(prod.integrity.coverageReasonsHe.join(" ")));
@@ -273,7 +273,7 @@ async function main() {
     ok("62. mobile stacked summary", /data-finance-summary="true" style="display:flex;flex-direction:column/.test(m));
     ok("without answer controls the options stay plain text (display only)", d.includes("לעיון בלבד") && !d.includes("data-finance-answer="));
     check("63. loading / error → nothing rendered (fail closed)", renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={null} />), "");
-    const noRehab: FinanceBriefDto = { ...prod, rehab: { items: [], questions: [], questionsNoteHe: null } };
+    const noRehab: FinanceBriefDto = { ...prod, rehab: { items: [], questions: [], questionsNoteHe: null, actionNoteHe: null } };
     ok("no 'צריך ממך' block when there is nothing to ask", !renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={noRehab} />).includes("צריך ממך"));
   }
 

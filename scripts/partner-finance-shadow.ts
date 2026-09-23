@@ -85,6 +85,8 @@ async function main() {
         ownerAnswers: i.ownerAnswers,
       };
     })(),
+    // F2.11–F2.15: Finance Action readiness (read-only; nothing is proposed for execution)
+    financeActions: r.actions.map((a) => ({ actionType: a.actionType, subject: a.subject.id, readiness: a.readiness, missing: a.missing, facts: a.facts, executable: a.executable, executorStatus: a.executorStatus, duplicateCandidate: a.readiness === "ALREADY_RECORDED" })),
     brief: r.brief,
     before, after, unchanged: JSON.stringify(before) === JSON.stringify(after),
     blockedWrites: blocked,

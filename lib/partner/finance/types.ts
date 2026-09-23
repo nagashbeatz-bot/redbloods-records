@@ -121,6 +121,12 @@ export interface Receivable {
   client: { attribution: "TEXT_MATCH" | "AMBIGUOUS" | "NONE"; vip: boolean };
   collection: CollectionInfo;
   legacy: LegacyClass;
+  /**
+   * F2.11: the Owner declared this calculated balance commercially closed (e.g. project cancelled, nothing further
+   * owed). OWNER_DECISION overlay — the receivable is NOT_COLLECTIBLE for Partner, while canonical project /
+   * price / transaction data still imply it (CANONICAL_DATA_NOT_RECONCILED). null for every other receivable.
+   */
+  ownerClosure: { basis: "OWNER_DECISION"; answerCode: string; reconciliation: "CANONICAL_DATA_NOT_RECONCILED" } | null;
   /** No reason model exists yet — Partner does not know why a payment is late. */
   reasonKnown: false;
   reason: "UNKNOWN";

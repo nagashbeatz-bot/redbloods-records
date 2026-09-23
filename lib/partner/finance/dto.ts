@@ -10,8 +10,10 @@
  * earlier answer's label. Options carry their codes. Display-only questions carry `answer: null`.
  * `questionsNoteHe` explains when questions are hidden (Owner answers could not be read — never re-ask blindly).
  * Item epistemic OWNER_DECISION = what the Owner said (Owner Context), never a financial fact.
+ * v4 (F2.11–F2.15): exact-date questions carry `exactDateRule` (collection = not before today, payment = not
+ * after today); `rehab.actionNoteHe` = one business-language line about the most important finance repair.
  */
-export const FINANCE_BRIEF_DTO_VERSION = 3;
+export const FINANCE_BRIEF_DTO_VERSION = 4;
 export const FINANCE_BRIEF_MAX_ITEMS = 5;
 export const FINANCE_REHAB_MAX_ITEMS = 3;
 export const FINANCE_REHAB_MAX_QUESTIONS = 2;
@@ -33,6 +35,8 @@ export interface FinanceQuestionAnswerDto {
   fingerprint: string;
   /** The option code that needs an explicit date (EXACT_DATE), if any. */
   exactDateCode: string | null;
+  /** Which side of today the exact date must be on (null iff exactDateCode is null). */
+  exactDateRule: "NOT_BEFORE_TODAY" | "NOT_AFTER_TODAY" | null;
   /** The facts changed since an earlier answer — shown as "ענית בעבר: …"; a new answer supersedes it. */
   previousAnswerHe: string | null;
 }
@@ -66,7 +70,7 @@ export interface FinanceBriefDto {
   summary: FinanceBriefSummaryDto;
   items: FinanceBriefItemDto[];
   /** "צריך ממך" — rehabilitation items (≤3) and Owner questions (≤2). */
-  rehab: { items: FinanceRehabItemDto[]; questions: FinanceRehabQuestionDto[]; questionsNoteHe: string | null };
+  rehab: { items: FinanceRehabItemDto[]; questions: FinanceRehabQuestionDto[]; questionsNoteHe: string | null; actionNoteHe: string | null };
   /** Only when nothing (main or rehab) needs the Owner. */
   calmHe: string | null;
 }
@@ -94,10 +98,11 @@ function validQuestion(q: unknown): boolean {
   }
   const a = q.answer;
   if (a === null) return true;
-  if (!isObj(a) || !exactKeys(a, ["questionId", "fingerprint", "exactDateCode", "previousAnswerHe"])) return false;
+  if (!isObj(a) || !exactKeys(a, ["questionId", "fingerprint", "exactDateCode", "exactDateRule", "previousAnswerHe"])) return false;
   if (typeof a.questionId !== "string" || !FINANCE_QUESTION_ID_RE.test(a.questionId) || !a.questionId.endsWith(`::${q.questionType}`)) return false;
   if (typeof a.fingerprint !== "string" || !HEX64_RE.test(a.fingerprint)) return false;
   if (a.exactDateCode !== null && !(typeof a.exactDateCode === "string" && codes.has(a.exactDateCode))) return false;
+  if ((a.exactDateCode === null) !== (a.exactDateRule === null) || (a.exactDateRule !== null && a.exactDateRule !== "NOT_BEFORE_TODAY" && a.exactDateRule !== "NOT_AFTER_TODAY")) return false;
   return strOrNull(a.previousAnswerHe, 200);
 }
 
@@ -121,7 +126,7 @@ export function parseFinanceBriefResponse(json: unknown): { ok: true; brief: Fin
     seen.add(it.family as string);
   }
   const r = json.rehab;
-  if (!isObj(r) || !exactKeys(r, ["items", "questions", "questionsNoteHe"]) || !Array.isArray(r.items) || !Array.isArray(r.questions) || !strOrNull(r.questionsNoteHe, 300)) return { ok: false };
+  if (!isObj(r) || !exactKeys(r, ["items", "questions", "questionsNoteHe", "actionNoteHe"]) || !Array.isArray(r.items) || !Array.isArray(r.questions) || !strOrNull(r.questionsNoteHe, 300) || !strOrNull(r.actionNoteHe, 300)) return { ok: false };
   if (r.items.length > FINANCE_REHAB_MAX_ITEMS || r.questions.length > FINANCE_REHAB_MAX_QUESTIONS) return { ok: false };
   const seenIssue = new Set<string>();
   for (const it of r.items) {

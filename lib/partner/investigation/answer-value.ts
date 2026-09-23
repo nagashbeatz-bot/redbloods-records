@@ -22,7 +22,7 @@ type RelativeRule = "PLUS_7_DAYS" | "PLUS_14_DAYS" | "END_OF_MONTH";
 export type AnswerValueSpec =
   | { kind: "NONE" }
   | { kind: "DATE_RELATIVE"; rule: RelativeRule }
-  | { kind: "DATE_EXPLICIT"; notBeforeAnchor: boolean };
+  | { kind: "DATE_EXPLICIT"; notBeforeAnchor: boolean; notAfterAnchor?: boolean };
 
 const NONE: AnswerValueSpec = { kind: "NONE" };
 
@@ -37,6 +37,10 @@ export const VALUE_SPEC: Partial<Record<InvestigationQuestionType, Record<string
   // F2.8–F2.10: an exact collection date the Owner states (never in the past). Every other timing answer is code-only (a period, no date).
   FINANCE_RECEIVABLE_TIMING: {
     EXACT_DATE: { kind: "DATE_EXPLICIT", notBeforeAnchor: true },
+  },
+  // F2.11: a payment that already happened — a real date, never after the answer date.
+  FINANCE_PAYMENT_DATE: {
+    EXACT_DATE: { kind: "DATE_EXPLICIT", notBeforeAnchor: false, notAfterAnchor: true },
   },
 };
 
@@ -87,6 +91,7 @@ export function resolveAnswerValue(
   }
   if (!isValidYmd(explicit)) return { ok: false, errors: [`${questionType}:${answerCode} requires a real calendar date YYYY-MM-DD (got ${JSON.stringify(explicit)})`] };
   if (spec.notBeforeAnchor && explicit < input.anchorYmd) return { ok: false, errors: [`${explicit} is earlier than the answer date ${input.anchorYmd} — a new deadline cannot be in the past`] };
+  if (spec.notAfterAnchor && explicit > input.anchorYmd) return { ok: false, errors: [`${explicit} is later than the answer date ${input.anchorYmd} — a payment date cannot be in the future`] };
   return { ok: true, value: { kind: "DATE", ymd: explicit, resolution: { method: "EXPLICIT", anchorYmd: input.anchorYmd, timeZone: COO_TZ as "Asia/Jerusalem" } } };
 }
 
@@ -120,6 +125,7 @@ export function validateAnswerValue(questionType: InvestigationQuestionType, ans
     for (const k of Object.keys(r)) if (!["method", "anchorYmd", "timeZone"].includes(k)) errors.push(`answer_value.resolution: unknown key "${k}"`);
     if (r.method !== "EXPLICIT") errors.push(`${answerCode} must be EXPLICIT`);
     if (!errors.length && spec.notBeforeAnchor && (raw.ymd as string) < (r.anchorYmd as string)) errors.push(`answer_value.ymd is earlier than its anchor ${String(r.anchorYmd)}`);
+    if (!errors.length && spec.notAfterAnchor && (raw.ymd as string) > (r.anchorYmd as string)) errors.push(`answer_value.ymd is later than its anchor ${String(r.anchorYmd)}`);
   }
   return errors;
 }

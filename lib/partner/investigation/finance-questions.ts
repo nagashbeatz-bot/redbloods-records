@@ -19,6 +19,8 @@ export const FINANCE_QUESTION_TYPES = [
   "FINANCE_ORPHAN_SETTING_MEANING",
   "FINANCE_EXPENSE_RECURRENCE",
   "FINANCE_OVERDUE_REASON",
+  // F2.11: the ONE missing fact for recording a payment the Owner confirmed (e.g. Victor paid, not in Finance).
+  "FINANCE_PAYMENT_DATE",
 ] as const;
 export type FinanceQuestionType = (typeof FINANCE_QUESTION_TYPES)[number];
 
@@ -36,7 +38,11 @@ export const FINANCE_ANSWER_OPTIONS: Record<FinanceQuestionType, readonly Financ
     { code: "BY_MONTH_END", labelHe: "עד סוף החודש" },
     { code: "NEXT_MONTH", labelHe: "בחודש הבא" },
     { code: "EXACT_DATE", labelHe: "יש תאריך מדויק" },
-    { code: "NOT_EXPECTED", labelHe: "לא צפוי להתקבל" },
+    // NOT_EXPECTED = not expected CURRENTLY (the balance stays a receivable). It is NOT a cancellation.
+    { code: "NOT_EXPECTED", labelHe: "לא צפוי להתקבל כרגע" },
+    // F2.11: the deal was cancelled / commercially closed — nothing further is owed. OWNER_DECISION only: the
+    // calculated balance leaves collection, canonical project / price / transactions are NOT changed.
+    { code: "PROJECT_CANCELLED_NO_FURTHER_PAYMENT", labelHe: "הפרויקט בוטל — אין יתרה נוספת לגבייה" },
     { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
   FINANCE_COMPLETED_PROJECT_INCOME_STATUS: [
@@ -65,10 +71,20 @@ export const FINANCE_ANSWER_OPTIONS: Record<FinanceQuestionType, readonly Financ
     { code: "OTHER", labelHe: "אחר" },
     { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
+  // An exact past date only — never an approximation (no "סוף החודש", no "בערך").
+  FINANCE_PAYMENT_DATE: [
+    { code: "EXACT_DATE", labelHe: "יש תאריך מדויק" },
+    { code: "UNKNOWN", labelHe: "לא זוכר" },
+  ],
 };
 
+/** Answers that commercially CLOSE a receivable (Owner decision; canonical data is not reconciled by it). */
+export const FINANCE_RECEIVABLE_CLOSING_ANSWERS: Partial<Record<FinanceQuestionType, readonly string[]>> = { FINANCE_RECEIVABLE_TIMING: ["PROJECT_CANCELLED_NO_FURTHER_PAYMENT"] };
+
 /** The only finance answer that carries a value (an explicit calendar date, never in the past). */
-export const FINANCE_EXACT_DATE_ANSWERS: Partial<Record<FinanceQuestionType, string>> = { FINANCE_RECEIVABLE_TIMING: "EXACT_DATE" };
+export const FINANCE_EXACT_DATE_ANSWERS: Partial<Record<FinanceQuestionType, string>> = { FINANCE_RECEIVABLE_TIMING: "EXACT_DATE", FINANCE_PAYMENT_DATE: "EXACT_DATE" };
+/** Which side of the answer date an exact date must be on (collection = today or later; payment = today or earlier). */
+export const FINANCE_EXACT_DATE_RULE: Partial<Record<FinanceQuestionType, "NOT_BEFORE_TODAY" | "NOT_AFTER_TODAY">> = { FINANCE_RECEIVABLE_TIMING: "NOT_BEFORE_TODAY", FINANCE_PAYMENT_DATE: "NOT_AFTER_TODAY" };
 
 export const isFinanceQuestionType = (t: unknown): t is FinanceQuestionType =>
   typeof t === "string" && (FINANCE_QUESTION_TYPES as readonly string[]).includes(t);

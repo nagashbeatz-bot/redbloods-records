@@ -29,13 +29,14 @@ export interface FinanceAnswerControls {
   /** The question whose exact-date picker is open, and the picked date. */
   exactFor: string | null;
   exactYmd: string;
-  minExactYmd: string;
+  /** Today (Israel) — the bound for exact dates (collection: not before; payment: not after). */
+  todayYmd: string;
   onAnswer(q: FinanceRehabQuestionDto, answerCode: string): void;
   onOpenExact(q: FinanceRehabQuestionDto): void;
   onExactYmd(v: string): void;
   onConfirmExact(q: FinanceRehabQuestionDto): void;
   onCancelExact(): void;
-  renderDatePicker(args: { value: string; onChange(v: string): void; min: string; ariaLabel: string; disabled: boolean }): ReactNode;
+  renderDatePicker(args: { value: string; onChange(v: string): void; min: string | undefined; max: string | undefined; ariaLabel: string; disabled: boolean }): ReactNode;
 }
 
 const optBtn = (disabled: boolean, primary = false) => ({
@@ -72,7 +73,12 @@ function QuestionCard({ q, controls }: { q: FinanceRehabQuestionDto; controls?: 
       )}
       {exactOpen && (
         <div data-finance-exact-date style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-          {controls!.renderDatePicker({ value: controls!.exactYmd, onChange: controls!.onExactYmd, min: controls!.minExactYmd, ariaLabel: "תאריך הגבייה הצפוי", disabled: busy })}
+          {controls!.renderDatePicker({
+            value: controls!.exactYmd, onChange: controls!.onExactYmd, disabled: busy,
+            min: a!.exactDateRule === "NOT_BEFORE_TODAY" ? controls!.todayYmd : undefined,
+            max: a!.exactDateRule === "NOT_AFTER_TODAY" ? controls!.todayYmd : undefined,
+            ariaLabel: a!.exactDateRule === "NOT_AFTER_TODAY" ? "תאריך התשלום" : "תאריך הגבייה הצפוי",
+          })}
           <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>זה נשמר כתשובה שלך ל-Partner — שום רישום בכספים לא משתנה.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button type="button" data-finance-exact-confirm disabled={busy || !controls!.exactYmd} onClick={() => controls!.onConfirmExact(q)} style={optBtn(busy || !controls!.exactYmd, true)}>שמור תאריך</button>
@@ -88,7 +94,7 @@ function QuestionCard({ q, controls }: { q: FinanceRehabQuestionDto; controls?: 
 
 export function PartnerFinanceBrief({ brief, isMobile, answerControls, notice }: { brief: FinanceBriefDto; isMobile: boolean; answerControls?: FinanceAnswerControls; notice?: string | null }) {
   const partial = brief.coverage === "PARTIAL";
-  const hasRehab = brief.rehab.items.length > 0 || brief.rehab.questions.length > 0 || !!brief.rehab.questionsNoteHe || !!notice;
+  const hasRehab = brief.rehab.items.length > 0 || brief.rehab.questions.length > 0 || !!brief.rehab.questionsNoteHe || !!brief.rehab.actionNoteHe || !!notice;
   return (
     <div data-partner-finance role="region" aria-label="Partner — כסף" style={{ marginTop: 10 }}>
       <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>כסף</h3>
@@ -129,6 +135,7 @@ export function PartnerFinanceBrief({ brief, isMobile, answerControls, notice }:
                 ))}
               </ol>
             )}
+            {brief.rehab.actionNoteHe && <p data-finance-action-note style={{ margin: "8px 0 0", fontSize: 12, color: SUB, lineHeight: 1.55 }}>{brief.rehab.actionNoteHe}</p>}
             {brief.rehab.questionsNoteHe && <p data-finance-questions-note style={{ margin: "8px 0 0", fontSize: 11.5, color: MUTED }}>{brief.rehab.questionsNoteHe}</p>}
             {brief.rehab.questions.map((q) => <QuestionCard key={q.answer?.questionId ?? q.textHe} q={q} controls={answerControls} />)}
           </div>

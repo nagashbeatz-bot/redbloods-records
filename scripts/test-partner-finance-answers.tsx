@@ -21,6 +21,7 @@ import { buildFinanceBrain } from "../lib/partner/finance/core";
 import { buildFinanceBrief, QUESTIONS_UNAVAILABLE_HE } from "../lib/partner/finance/brief";
 import { buildFinanceIntegrity, INTEGRITY_SCHEMA_VERSION, RESOLVING_ANSWERS, type OwnerQuestion } from "../lib/partner/finance/integrity";
 import { financeAnswersFromContexts, financeCaseId, financeQuestionFingerprint, type FinanceOwnerAnswer } from "../lib/partner/finance/owner-answers";
+import { deriveFinanceView } from "../lib/partner/finance/view";
 import { answerFinanceQuestionCore, createRequestLedger, validateFinanceAnswerInput, type FinanceAnswerDeps } from "../lib/partner/finance/answer";
 import { parseFinanceBriefResponse, FINANCE_BRIEF_DTO_VERSION, FINANCE_QUESTION_ID_RE, type FinanceBriefDto, type FinanceRehabQuestionDto } from "../lib/partner/finance/dto";
 import { FINANCE_ANSWER_OPTIONS, FINANCE_QUESTION_TYPES, isFinanceQuestionType } from "../lib/partner/investigation/finance-questions";
@@ -48,10 +49,10 @@ const ACTOR = "11111111-2222-4333-8444-555555555555";
 const RAW0 = productionMirror();
 const clone = (r: FinanceRaw): FinanceRaw => JSON.parse(JSON.stringify(r));
 
+/** The production composition (view.ts): overlay + readiness + injected payment-date question. */
 function derive(raw: FinanceRaw, answers: readonly FinanceOwnerAnswer[] = [], opts: { answersAvailable?: boolean } = {}) {
-  const state = buildFinanceBrain(raw, NOW);
-  const integrity = buildFinanceIntegrity(raw, state, NOW, answers);
-  return { state, integrity, brief: buildFinanceBrief(state, integrity, opts) };
+  const v = deriveFinanceView(raw, NOW, answers);
+  return { state: v.state, integrity: v.integrity, actions: v.actions, brief: buildFinanceBrief(v.state, v.integrity, { ...opts, actionNoteHe: v.actionNoteHe }) };
 }
 /** The money view that Owner answers must NEVER change. */
 const money = (d: ReturnType<typeof derive>) => JSON.stringify({ realized: d.state.realized, receivables: d.state.receivables, openExpenses: d.state.openExpenses, expected: d.state.expected, pacing: d.state.pacing, recurring: d.state.recurring, summary: d.brief.summary });
@@ -126,10 +127,10 @@ async function main() {
 
   console.log("Phase 0 / taxonomy (1-10)");
   {
-    check("1. six finance question types", [...FINANCE_QUESTION_TYPES], ["FINANCE_RECURRING_PAYMENT_STATUS", "FINANCE_RECEIVABLE_TIMING", "FINANCE_COMPLETED_PROJECT_INCOME_STATUS", "FINANCE_ORPHAN_SETTING_MEANING", "FINANCE_EXPENSE_RECURRENCE", "FINANCE_OVERDUE_REASON"]);
+    check("1. finance question types (six + F2.11 payment date)", [...FINANCE_QUESTION_TYPES], ["FINANCE_RECURRING_PAYMENT_STATUS", "FINANCE_RECEIVABLE_TIMING", "FINANCE_COMPLETED_PROJECT_INCOME_STATUS", "FINANCE_ORPHAN_SETTING_MEANING", "FINANCE_EXPENSE_RECURRENCE", "FINANCE_OVERDUE_REASON", "FINANCE_PAYMENT_DATE"]);
     const codes = (t: keyof typeof FINANCE_ANSWER_OPTIONS) => FINANCE_ANSWER_OPTIONS[t].map((o) => o.code);
     check("2. Victor / recurring payment answers", codes("FINANCE_RECURRING_PAYMENT_STATUS"), ["PAID_NEEDS_RECORDING", "NOT_PAID", "UNKNOWN"]);
-    check("3. receivable timing = collection intent windows (+ optional exact date)", codes("FINANCE_RECEIVABLE_TIMING"), ["THIS_WEEK", "BY_MONTH_END", "NEXT_MONTH", "EXACT_DATE", "NOT_EXPECTED", "UNKNOWN"]);
+    check("3. receivable timing = collection intent windows (+ optional exact date)", codes("FINANCE_RECEIVABLE_TIMING"), ["THIS_WEEK", "BY_MONTH_END", "NEXT_MONTH", "EXACT_DATE", "NOT_EXPECTED", "PROJECT_CANCELLED_NO_FURTHER_PAYMENT", "UNKNOWN"]);
     check("4. completed project answers", codes("FINANCE_COMPLETED_PROJECT_INCOME_STATUS"), ["INCOME_RECEIVED_NOT_RECORDED", "INCOME_NOT_RECEIVED", "NON_PAID_PROJECT", "OTHER", "UNKNOWN"]);
     check("5. orphan / recurrence / overdue answers", [codes("FINANCE_ORPHAN_SETTING_MEANING"), codes("FINANCE_EXPENSE_RECURRENCE"), codes("FINANCE_OVERDUE_REASON")], [["HISTORICAL_ONLY", "REAL_DEAL_NEEDS_RECOVERY", "UNKNOWN"], ["RECURRING", "ONE_TIME", "UNKNOWN"], ["WAITING_FOR_CLIENT", "PROMISED_NEW_DATE", "DISPUTE", "WAITING_FOR_DELIVERY", "OWNER_AGREED_DELAY", "OTHER", "UNKNOWN"]]);
     ok("6. finance types join the persisted taxonomy (strict row parser accepts them)", FINANCE_QUESTION_TYPES.every((t) => isKnownQuestionType(t) && Object.prototype.hasOwnProperty.call(ANSWER_OPTIONS, t)));
@@ -189,7 +190,7 @@ async function main() {
 
     // next surfaced question is the one-at-a-time completed-project question
     const nextTypes = after.integrity.top.questions.map((q) => q.questionType);
-    check("35. next ask: balance timing + ONE completed-project question (max 2, one historical project at a time)", nextTypes, ["FINANCE_RECEIVABLE_TIMING", "FINANCE_COMPLETED_PROJECT_INCOME_STATUS"]);
+    check("35. next ask: the ONE missing fact of the confirmed repair (payment date) first, then balance timing (max 2)", nextTypes, ["FINANCE_PAYMENT_DATE", "FINANCE_RECEIVABLE_TIMING"]);
 
     // receivable timing: window answer
     const qB = (await h.q("FINANCE_RECEIVABLE_TIMING"))!;
@@ -340,13 +341,19 @@ async function main() {
     const wrongCode = { ...asAnswer(qVictor, "NOT_PAID"), answerCode: "THIS_WEEK" };
     ok("80. an answer with another fingerprint / subject / foreign code is never applied", [wrongFp, wrongSubject, wrongCode].every((a) => derive(RAW0, [a]).integrity.ownerAnswers.applied === 0));
     let every = true;
-    for (const t of FINANCE_QUESTION_TYPES) {
+    // F2.11: the payment-date question is not an integrity question (tested in its own suite); a receivable-CLOSING
+    // answer legitimately changes the collection view (receivables / pacing) — realized money must still be identical.
+    const realizedOnly = (d: ReturnType<typeof derive>) => JSON.stringify({ realized: d.state.realized, openExpenses: d.state.openExpenses, summary: d.brief.summary });
+    for (const t of FINANCE_QUESTION_TYPES.filter((x) => x !== "FINANCE_PAYMENT_DATE")) {
       const fixture = t === "FINANCE_EXPENSE_RECURRENCE" ? rec : t === "FINANCE_OVERDUE_REASON" ? od : RAW0;
       const d0 = derive(fixture);
       const q = issueQ(t, d0);
-      for (const o of FINANCE_ANSWER_OPTIONS[t]) if (money(derive(fixture, [asAnswer(q, o.code, o.code === "EXACT_DATE" ? "2026-10-05" : null)])) !== money(d0)) every = false;
+      for (const o of FINANCE_ANSWER_OPTIONS[t]) {
+        const d1 = derive(fixture, [asAnswer(q, o.code, o.code === "EXACT_DATE" ? "2026-10-05" : null)]);
+        if ((o.code === "PROJECT_CANCELLED_NO_FURTHER_PAYMENT" ? realizedOnly(d1) !== realizedOnly(d0) : money(d1) !== money(d0))) every = false;
+      }
     }
-    ok("81. EVERY answer of EVERY type leaves realized / receivables / open expenses / expected / pacing identical", every);
+    ok("81. EVERY answer of EVERY type leaves realized / open expenses (and, except a closing answer, receivables / expected / pacing) identical", every);
     check("82. resolving answers are exactly the Owner-approved closers", RESOLVING_ANSWERS, { FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT"], FINANCE_ORPHAN_SETTING_MEANING: ["HISTORICAL_ONLY"], FINANCE_EXPENSE_RECURRENCE: ["ONE_TIME"] });
     ok("83. answered lines never blame", !/שכחת|טעית|אשמ|הזנחת/.test(JSON.stringify([oReal.brief, rRec.brief, oW.brief, cR.brief, uV.brief])));
     ok("84. the state object is never mutated by consuming answers", (() => { const s = buildFinanceBrain(RAW0, NOW); const j = JSON.stringify(s); buildFinanceIntegrity(RAW0, s, NOW, [asAnswer(qVictor, "NOT_PAID"), asAnswer(qBal, "THIS_WEEK")]); return JSON.stringify(s) === j; })());
@@ -355,13 +362,13 @@ async function main() {
   console.log("DTO v3 (85-92)");
   {
     const b = base.brief;
-    check("85. v3 brief parses (strict)", [b.v, FINANCE_BRIEF_DTO_VERSION, parseFinanceBriefResponse(JSON.parse(JSON.stringify(b))).ok], [3, 3, true]);
-    check("86. answerable question carries id + fingerprint + option codes; exact-date only on timing", b.rehab.questions.map((q) => [q.questionType, q.answer?.exactDateCode ?? null, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", null, 3], ["FINANCE_RECEIVABLE_TIMING", "EXACT_DATE", 6]]);
+    check("85. v4 brief parses (strict)", [b.v, FINANCE_BRIEF_DTO_VERSION, parseFinanceBriefResponse(JSON.parse(JSON.stringify(b))).ok], [4, 4, true]);
+    check("86. answerable question carries id + fingerprint + option codes; exact-date (with its rule) only on timing", b.rehab.questions.map((q) => [q.questionType, q.answer?.exactDateCode ?? null, q.answer?.exactDateRule ?? null, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", null, null, 3], ["FINANCE_RECEIVABLE_TIMING", "EXACT_DATE", "NOT_BEFORE_TODAY", 7]]);
     const q0 = b.rehab.questions[0];
     const forged = (patch: Partial<FinanceRehabQuestionDto>) => parseFinanceBriefResponse({ ...b, rehab: { ...b.rehab, questions: [{ ...q0, ...patch }] } }).ok;
     ok("87. forged fingerprint / question id / type mismatch rejected", !forged({ answer: { ...q0.answer!, fingerprint: "abc" } }) && !forged({ answer: { ...q0.answer!, questionId: "x::FINANCE_RECURRING_PAYMENT_STATUS" } }) && !forged({ questionType: "FINANCE_RECEIVABLE_TIMING" }));
     ok("88. duplicate option codes / exactDateCode not among options rejected", !forged({ options: [q0.options[0], q0.options[0]] }) && !forged({ answer: { ...q0.answer!, exactDateCode: "EXACT_DATE" } }));
-    ok("89. old v2 payload rejected (fail closed)", !parseFinanceBriefResponse({ ...b, v: 2 }).ok);
+    ok("89. old v2 / v3 payloads rejected (fail closed)", !parseFinanceBriefResponse({ ...b, v: 2 }).ok && !parseFinanceBriefResponse({ ...b, v: 3 }).ok);
     ok("90. display-only question (answer null) is valid", forged({ answer: null }));
     ok("91. the same question twice rejected", !parseFinanceBriefResponse({ ...b, rehab: { ...b.rehab, questions: [q0, q0] } }).ok);
     ok("92. DTO carries no raw evidence / context ids", !/sourceId|contextId|evidence/.test(JSON.stringify(b)));
@@ -422,16 +429,16 @@ async function main() {
     const b = base.brief;
     const noop = () => {};
     const controls = (patch: Partial<FinanceAnswerControls> = {}): FinanceAnswerControls => ({
-      busy: false, activeQuestionId: null, message: null, exactFor: null, exactYmd: "", minExactYmd: "2026-09-24",
+      busy: false, activeQuestionId: null, message: null, exactFor: null, exactYmd: "", todayYmd: "2026-09-24",
       onAnswer: noop, onOpenExact: noop, onExactYmd: noop, onConfirmExact: noop, onCancelExact: noop,
       renderDatePicker: ({ ariaLabel }) => <input data-date-picker aria-label={ariaLabel} />, ...patch,
     });
     const d = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls()} />);
-    check("109. real answer buttons for both questions (3 + 6)", (d.match(/data-finance-answer="/g) ?? []).length, 9);
+    check("109. real answer buttons for both questions (3 + 7)", (d.match(/data-finance-answer="/g) ?? []).length, 10);
     ok("110. buttons are type=button and labelled in Hebrew", /<button type="button" data-finance-answer="PAID_NEEDS_RECORDING"[^>]*>שולם — צריך לרשום בכספים<\/button>/.test(d));
     ok("111. questions marked answerable; no read-only notice", (d.match(/data-answerable="true"/g) ?? []).length === 2 && !d.includes("לעיון בלבד"));
     const busy = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ busy: true, activeQuestionId: b.rehab.questions[0].answer!.questionId })} />);
-    check("112. while saving EVERY answer button is disabled + 'שומר…'", [(busy.match(/data-finance-answer="[A-Z_]+" disabled=""/g) ?? []).length, busy.includes("שומר…")], [9, true]);
+    check("112. while saving EVERY answer button is disabled + 'שומר…'", [(busy.match(/data-finance-answer="[A-Z_]+" disabled=""/g) ?? []).length, busy.includes("שומר…")], [10, true]);
     const exact = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ exactFor: b.rehab.questions[1].answer!.questionId })} />);
     ok("113. EXACT_DATE opens a date picker; confirm disabled until a date is picked", exact.includes("data-date-picker") && /data-finance-exact-confirm="true" disabled=""/.test(exact) && exact.includes("שום רישום בכספים לא משתנה"));
     const msg = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ activeQuestionId: b.rehab.questions[0].answer!.questionId, message: "לא הצלחתי לשמור" })} />);

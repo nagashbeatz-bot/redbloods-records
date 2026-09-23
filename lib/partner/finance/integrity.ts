@@ -40,6 +40,8 @@ export const ISSUE_TYPES = [
   "RECEIVABLE_DUE_DATE_MISSING", "OVERDUE_RECEIVABLE_REASON_UNKNOWN", "ORPHAN_FINANCE_SETTING", "CURRENCY_AMBIGUOUS",
   "UNLINKED_TRANSACTION", "POSSIBLE_DUPLICATE", "POSSIBLE_OBLIGATION_OVERLAP", "LABEL_LEDGER_CURRENCY_MISSING",
   "RED_FILMS_CURRENCY_MISSING", "SHOW_FINANCE_INCOMPLETE", "PROJECT_FINANCE_COVERAGE_INCOMPLETE", "MALFORMED_FINANCE_DATA",
+  // F2.11: a calculated balance the Owner declared commercially closed; canonical data not yet reconciled.
+  "RECEIVABLE_OWNER_CLOSED",
 ] as const;
 export type IssueType = (typeof ISSUE_TYPES)[number];
 
@@ -154,6 +156,7 @@ export const QUESTION_OPTIONS: Record<QuestionType, QuestionOption[]> = {
   FINANCE_RECURRING_PAYMENT_STATUS: financeOptions("FINANCE_RECURRING_PAYMENT_STATUS"),
   FINANCE_EXPENSE_RECURRENCE: financeOptions("FINANCE_EXPENSE_RECURRENCE"),
   FINANCE_ORPHAN_SETTING_MEANING: financeOptions("FINANCE_ORPHAN_SETTING_MEANING"),
+  FINANCE_PAYMENT_DATE: financeOptions("FINANCE_PAYMENT_DATE"),
   EXPENSE_CLASSIFICATION: [
     { code: "PROJECT_COST", labelHe: "עלות פרויקט" }, { code: "TEAM_COST", labelHe: "צוות" }, { code: "LABEL_COST", labelHe: "לייבל" }, { code: "MARKETING", labelHe: "שיווק" },
     { code: "SOFTWARE", labelHe: "תוכנה / מנוי" }, { code: "GENERAL_BUSINESS", labelHe: "הוצאה כללית של העסק" }, { code: "UNKNOWN", labelHe: "לא יודע" },
@@ -237,6 +240,14 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   const dueDateQueue: Receivable[] = [];
   const overdueReasonGaps: PartnerFinanceIntegrityState["overdueReasonGaps"] = [];
   for (const r of state.receivables) {
+    if (r.ownerClosure) {
+      // F2.11: Owner decision — not a collection target. Kept visible (once) because canonical data still implies it.
+      add({
+        issueType: "RECEIVABLE_OWNER_CLOSED", severityBand: "LOW", epistemicStatus: "OWNER_DECISION", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName,
+        currency: r.currency, amount: r.amount, date: null, period: "HISTORICAL", reasonCodes: ["OWNER_DECISION_NO_FURTHER_PAYMENT", r.ownerClosure.answerCode, "CANONICAL_DATA_NOT_RECONCILED"], evidence: r.evidence, recommendedOwnerQuestion: null,
+      });
+      continue;
+    }
     if (r.collection.state === "SETTLED" || r.collection.state === "NOT_COLLECTIBLE") continue;
     const label = r.projectName ? `'${r.projectName}'` : "";
     const rEv = r.evidence;
@@ -452,6 +463,7 @@ export const REHAB_FAMILY_RANK: Record<IssueType, number> = {
   RECEIVABLE_DUE_DATE_MISSING: 4, COMPLETED_WORK_NO_INCOME: 5, MALFORMED_FINANCE_DATA: 6, PRICE_MISSING: 7, PROJECT_FINANCE_COVERAGE_INCOMPLETE: 7,
   EXPENSE_CLASSIFICATION_UNKNOWN: 8, SHOW_FINANCE_INCOMPLETE: 9, RECURRING_EXPENSE_CANDIDATE: 10, CURRENCY_AMBIGUOUS: 11, POSSIBLE_OBLIGATION_OVERLAP: 12,
   POSSIBLE_DUPLICATE: 12, UNLINKED_TRANSACTION: 13, ORPHAN_FINANCE_SETTING: 14, LABEL_LEDGER_CURRENCY_MISSING: 15, RED_FILMS_CURRENCY_MISSING: 15,
+  RECEIVABLE_OWNER_CLOSED: 4.5, // where the collection line used to be — shown as the Owner decision, never as "collect"
 };
 const SEV = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
 /** Families shown as one grouped line (never a list). */
@@ -503,6 +515,7 @@ function ownerAnsweredLine(head: RehabIssue, n: number): { textHe: string; epist
     case "RECEIVABLE_DUE_DATE_MISSING": {
       const what = `יתרה של ${money ?? "סכום לא ידוע"}${label ? ` בפרויקט '${label}'` : ""}`;
       const when: Record<string, string> = { THIS_WEEK: "צפויה להיכנס השבוע", BY_MONTH_END: "צפויה להיכנס עד סוף החודש", NEXT_MONTH: "צפויה להיכנס בחודש הבא", NOT_EXPECTED: "לא צפויה להתקבל" };
+      if (a.answerCode === "PROJECT_CANCELLED_NO_FURTHER_PAYMENT") return od(`הפרויקט${label ? ` '${label}'` : ""} בוטל ולפי מה שאמרת אין יתרה נוספת לגבייה. נתוני הפרויקט בכספים עדיין לא עודכנו.`);
       if (a.answerCode === "EXACT_DATE" && a.answerValueYmd) return od(`${what}: לפי מה שאמרת צפויה להיכנס ב־${a.answerValueYmd.slice(8, 10)}.${a.answerValueYmd.slice(5, 7)}.${a.answerValueYmd.slice(0, 4)}.`);
       if (when[a.answerCode]) return od(`${what}: לפי מה שאמרת ${when[a.answerCode]}.`);
       return unknown(`${what}: עדיין לא ידוע מתי תיכנס.`);
@@ -556,6 +569,10 @@ function ownerLine(head: RehabIssue, list: RehabIssue[]): string | null {
       return `ראיתי הוצאה דומה כמה חודשים ברצף. ייתכן שזו הוצאה קבועה.`;
     case "ORPHAN_FINANCE_SETTING":
       return `יש נתוני מחיר ישנים שדורשים בירור.`;
+    case "RECEIVABLE_OWNER_CLOSED":
+      return n === 1
+        ? `הפרויקט${head.subjectLabel ? ` '${head.subjectLabel}'` : ""} בוטל ולפי מה שאמרת אין יתרה נוספת לגבייה. נתוני הפרויקט בכספים עדיין לא עודכנו.`
+        : `${n} יתרות שלפי מה שאמרת כבר לא לגבייה. נתוני הפרויקטים בכספים עדיין לא עודכנו.`;
     default:
       return null; // currency / overlap / unlinked / ledger hygiene: kept in the state, not an Owner line by default
   }

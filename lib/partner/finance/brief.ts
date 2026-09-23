@@ -7,6 +7,7 @@
  */
 import type { CurrencyTotals, FinanceSignal, PartnerFinanceState, Receivable } from "./types";
 import type { IssueType, PartnerFinanceIntegrityState } from "./integrity";
+import { FINANCE_EXACT_DATE_RULE } from "../investigation/finance-questions";
 import { FINANCE_BRIEF_DTO_VERSION, FINANCE_BRIEF_MAX_ITEMS, type FinanceBriefDto, type FinanceBriefFamily, type FinanceBriefItemDto, type FinanceRehabQuestionDto } from "./dto";
 
 /** Fixed priority (lower = more important). */
@@ -60,7 +61,7 @@ export const COVERED_BY_REHAB: Partial<Record<IssueType, FinanceBriefFamily>> = 
  * `answersAvailable` (F2.8–F2.10): false when the Owner Context could not be read — questions are then hidden
  * (with a note) instead of being asked again as if never answered.
  */
-export function buildFinanceBrief(state: PartnerFinanceState, integrity: PartnerFinanceIntegrityState | null = null, opts: { answersAvailable?: boolean } = {}): FinanceBriefDto {
+export function buildFinanceBrief(state: PartnerFinanceState, integrity: PartnerFinanceIntegrityState | null = null, opts: { answersAvailable?: boolean; actionNoteHe?: string | null } = {}): FinanceBriefDto {
   const answersAvailable = opts.answersAvailable ?? true;
   // Gaps the Owner closed (e.g. "הפרויקט לא היה בתשלום") are not repeated by the main brief either.
   const resolved = (t: IssueType, subjectId?: string) => (integrity ? integrity.issues.filter((i) => i.issueType === t && (i.ownerResolved || (subjectId !== undefined && !!i.ownerAnswer)) && (subjectId === undefined || i.subjectId === subjectId)).length : 0);
@@ -181,10 +182,12 @@ export function buildFinanceBrief(state: PartnerFinanceState, integrity: Partner
         options: q.options.map((o) => ({ code: o.code, labelHe: o.labelHe })),
         answer: q.identity ? {
           questionId: q.identity.questionId, fingerprint: q.identity.fingerprint, exactDateCode: q.identity.exactDateCode,
+          exactDateRule: q.identity.exactDateCode ? (FINANCE_EXACT_DATE_RULE[q.questionType as keyof typeof FINANCE_EXACT_DATE_RULE] ?? null) : null,
           previousAnswerHe: q.identity.previousAnswer ? `ענית בעבר: ${q.identity.previousAnswer.labelHe}. הנתונים השתנו מאז.` : null,
         } : null,
       })) : [],
       questionsNoteHe: !answersAvailable && integrity && integrity.top.questions.length ? QUESTIONS_UNAVAILABLE_HE : null,
+      actionNoteHe: opts.actionNoteHe ?? null,
     },
     calmHe: items.length || rehabItems.length ? null : CALM_HE,
   };

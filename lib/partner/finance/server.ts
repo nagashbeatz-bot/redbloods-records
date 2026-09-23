@@ -14,9 +14,10 @@ import { supabase } from "@/lib/supabase";
 import { getVictorSalaryMonths } from "@/lib/vendor-store";
 import { ilYmd } from "@/lib/coo/dates";
 import { resolveCurrentOwnerContexts } from "../investigation/context-store";
-import { buildFinanceBrain } from "./core";
 import { buildFinanceBrief } from "./brief";
-import { buildFinanceIntegrity, type PartnerFinanceIntegrityState } from "./integrity";
+import type { PartnerFinanceIntegrityState } from "./integrity";
+import { deriveFinanceView } from "./view";
+import type { FinanceActionCandidate } from "./actions";
 import { financeAnswersFromContexts, type FinanceOwnerAnswer } from "./owner-answers";
 import { readFinanceRaw, type FinanceReadClient } from "./readers";
 import type { FinanceBriefDto } from "./dto";
@@ -40,7 +41,7 @@ async function readFinanceAnswers(): Promise<{ ok: true; answers: FinanceOwnerAn
 }
 
 export type FinanceLiveResult =
-  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null }
+  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null; actions: FinanceActionCandidate[]; actionNoteHe: string | null }
   | { status: "UNAVAILABLE"; detail: string };
 
 /** One live derivation: finance read → brain → Owner answers → integrity (answers consumed as OWNER_DECISION). */
@@ -48,23 +49,22 @@ export async function loadFinanceLive(now: Date = new Date()): Promise<FinanceLi
   try {
     // Narrowing view, not a widening: the reader core only calls select / like / range.
     const raw = await readFinanceRaw(supabase as unknown as FinanceReadClient, () => salaryMonths(now));
-    const state = buildFinanceBrain(raw, now);
     let a: Awaited<ReturnType<typeof readFinanceAnswers>>;
     try { a = await readFinanceAnswers(); } catch (e) { a = { ok: false, detail: e instanceof Error ? e.message : "owner context read failed" }; }
     const answers = a.ok ? a.answers : [];
-    // F2.5–F2.10: integrity / rehabilitation is evaluated on every read (no background worker).
-    const integrity = buildFinanceIntegrity(raw, state, now, answers);
-    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail };
+    // F2.5–F2.11: integrity / rehabilitation + the Owner overlay are evaluated on every read (no background worker).
+    const { state, integrity, actions, actionNoteHe } = deriveFinanceView(raw, now, answers);
+    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail, actions, actionNoteHe };
   } catch (e) {
     return { status: "UNAVAILABLE", detail: e instanceof Error ? e.message : "finance read failed" };
   }
 }
 
-export type FinanceBriefResult = { status: "OK"; brief: FinanceBriefDto; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState } | { status: "UNAVAILABLE"; detail: string };
+export type FinanceBriefResult = { status: "OK"; brief: FinanceBriefDto; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; actions: FinanceActionCandidate[] } | { status: "UNAVAILABLE"; detail: string };
 
 export async function getFinanceBrief(now: Date = new Date()): Promise<FinanceBriefResult> {
   const live = await loadFinanceLive(now);
   if (live.status !== "OK") return live;
   if (!live.answersAvailable) console.warn("[partner/finance] owner answers unreadable — questions hidden:", live.answersDetail);
-  return { status: "OK", brief: buildFinanceBrief(live.state, live.integrity, { answersAvailable: live.answersAvailable }), state: live.state, integrity: live.integrity };
+  return { status: "OK", brief: buildFinanceBrief(live.state, live.integrity, { answersAvailable: live.answersAvailable, actionNoteHe: live.answersAvailable ? live.actionNoteHe : null }), state: live.state, integrity: live.integrity, actions: live.actions };
 }

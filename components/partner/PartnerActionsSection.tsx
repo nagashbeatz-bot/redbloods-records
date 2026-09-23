@@ -181,14 +181,14 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     message: fin.message,
     exactFor: fin.exactFor,
     exactYmd: fin.exactYmd,
-    minExactYmd: finance?.asOfDate ?? "",
+    todayYmd: finance?.asOfDate ?? "",
     onAnswer: (q, code) => submitFinance(q, code, null),
     onOpenExact: (q) => setFin({ ...FIN_IDLE, questionId: q.answer?.questionId ?? null, exactFor: q.answer?.questionId ?? null }),
     onExactYmd: (v) => setFin((f) => ({ ...f, exactYmd: v })),
     onConfirmExact: (q) => { if (q.answer?.exactDateCode && fin.exactYmd) submitFinance(q, q.answer.exactDateCode, fin.exactYmd); },
     onCancelExact: () => setFin(FIN_IDLE),
-    renderDatePicker: ({ value, onChange, min, ariaLabel }) => (
-      <div aria-label={ariaLabel}><DatePickerInput value={value} onChange={onChange} min={min} placeholder="בחר תאריך…" /></div>
+    renderDatePicker: ({ value, onChange, min, max, ariaLabel }) => (
+      <div aria-label={ariaLabel}><DatePickerInput value={value} onChange={onChange} min={min} max={max} placeholder="בחר תאריך…" /></div>
     ),
   };
 
