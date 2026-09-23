@@ -148,6 +148,9 @@ export function comparePartnerChangeSnapshots(
     for (const id of commonIds) {
       const p = previous.transactions.entities[id], c = current.transactions.entities[id];
       if (p.status === c.status) continue;
+      // "Received" is an INCOME concept only (canonical: income שולם|התקבל). An expense turning שולם is money
+      // paid OUT — it must never be reported as money received (expense paid = שולם only).
+      if (p.type !== "income" || c.type !== "income") continue;
       const wasReceived = RECEIVED_STATUSES.has(p.status), isReceived = RECEIVED_STATUSES.has(c.status);
       if (wasReceived === isReceived) continue;
       changes.push({
@@ -155,7 +158,7 @@ export function comparePartnerChangeSnapshots(
         domain: "transactions", entityType: "transaction", entityId: id, kind: "STATUS_CHANGED", field: "receivedSemantic",
         before: wasReceived ? "RECEIVED" : "NOT_RECEIVED", after: isReceived ? "RECEIVED" : "NOT_RECEIVED",
         observedBetween: window, sourceOccurredAt: null, epistemicType: "DERIVED",
-        evidence: [`payment_status ${p.status} -> ${c.status} crosses the received/not-received line (finance semantics: שולם/התקבל = received)`],
+        evidence: [`payment_status ${p.status} -> ${c.status} crosses the received/not-received line (finance semantics: income שולם/התקבל = received)`],
       });
     }
   }

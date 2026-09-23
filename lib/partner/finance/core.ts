@@ -3,7 +3,9 @@
  * (`now` is injected).
  *
  * READ + DERIVE + EXPLAIN. Reuses the canonical finance helpers — never redefines them:
- *   received            lib/finance/classify.ts isReceivedStatus  ("שולם" | "התקבל")
+ *   income received     lib/finance/classify.ts isReceivedStatus  ("שולם" | "התקבל") — INCOME ONLY
+ *   expense paid        "שולם" ONLY (lib/finance/stats.ts, lib/coo/facts.ts); an expense marked "התקבל" is
+ *                       invalid data — never paid, never open, never money received (fails closed, flagged)
  *   cancelled           lib/finance/classify.ts isCancelledStatus ("בוטל")
  *   currency            lib/finance/currency.ts normalizeCurrency (blank = ₪; no FX anywhere)
  *   project balance     lib/payment-status.ts   actualOutstanding / overpayment / collectibleAmount
@@ -63,7 +65,12 @@ export function monthWindow(now: Date): MonthWindow {
 
 // ── input validation (fail closed: malformed rows never reach a total) ──
 
+/** `received` = income received (שולם|התקבל) OR expense fully paid (שולם only) — the canonical rule per type. */
 interface Tx { row: FinanceTxRow; amount: number; currency: string; type: "income" | "expense"; date: string | null; received: boolean; cancelled: boolean }
+/** Canonical expense-paid status (lib/finance/stats.ts, lib/coo/facts.ts). "התקבל" is an INCOME status only. */
+export const EXPENSE_PAID_STATUS = "שולם";
+/** An expense carrying an income-only status is invalid finance data (never counted anywhere). */
+export const isInvalidExpenseStatus = (type: string | null, status: string | null) => type === "expense" && status === "התקבל";
 function validateTx(row: FinanceTxRow): Tx | null {
   const amount = num(row.amount);
   if (amount === null || amount < 0) return null;
@@ -71,7 +78,9 @@ function validateTx(row: FinanceTxRow): Tx | null {
   if (row.date !== null && row.date !== undefined && row.date !== "" && !YMD.test(String(row.date).slice(0, 10))) return null;
   const date = row.date ? parseYmd(String(row.date).slice(0, 10)) : null;
   if (row.date && !date) return null;
-  return { row, amount, currency: normalizeCurrency(row.currency), type: row.type, date, received: isReceivedStatus(row.status), cancelled: isCancelledStatus(row.status) };
+  if (isInvalidExpenseStatus(row.type, row.status)) return null;
+  const received = row.type === "income" ? isReceivedStatus(row.status) : row.status === EXPENSE_PAID_STATUS;
+  return { row, amount, currency: normalizeCurrency(row.currency), type: row.type, date, received, cancelled: isCancelledStatus(row.status) };
 }
 
 interface PriceSetting { price: number | null; currency: string; exception: boolean; clipPrice: number | null; malformed: boolean }
@@ -127,7 +136,7 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date): PartnerFinanceSta
   for (const r of raw.transactions) {
     const t = validateTx(r);
     if (t) txs.push(t);
-    else { malformedTx++; malformedEv.push({ sourceType: "transaction", sourceId: r.id, reasonCode: "MALFORMED_TRANSACTION" }); }
+    else { malformedTx++; malformedEv.push({ sourceType: "transaction", sourceId: r.id, status: r.status, reasonCode: isInvalidExpenseStatus(r.type, r.status) ? "EXPENSE_WITH_INCOME_ONLY_STATUS" : "MALFORMED_TRANSACTION" }); }
   }
   const txById = new Map(txs.map((t) => [t.row.id, t]));
   const projects = raw.projects.filter((p) => !p.isHidden);

@@ -23,8 +23,12 @@ export function detectChangeDerivedCases(
   const out: PartnerCase[] = [];
 
   // ── MONEY_RECEIVED — reuses the DERIVED receivedSemantic change D.1 already computes ──
+  // Defence in depth: money RECEIVED is income only. Even if an upstream change fact is overly broad,
+  // an expense (or a transaction whose type cannot be confirmed as income) never becomes MONEY_RECEIVED.
+  const txTypeById = new Map((state.domains.transactions.data?.items ?? []).map((t) => [t.id, t.type]));
   for (const c of changes) {
     if (c.domain !== "transactions" || c.field !== "receivedSemantic" || c.after !== "RECEIVED") continue;
+    if (txTypeById.get(c.entityId) !== "income") continue;
     out.push({
       id: `money_received:${c.entityId}`,
       caseType: "MONEY_RECEIVED",
