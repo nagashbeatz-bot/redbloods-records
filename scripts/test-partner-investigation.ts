@@ -305,7 +305,9 @@ console.log("18. No automatic Charter mutation / isolation (static + runtime)");
   buildContextLearningProposals(deriveContextLearningSignals(ctxs));
   ok("CHARTER_ITEMS unchanged after interpretation + proposals", JSON.stringify(CHARTER_ITEMS) === before);
   const dir = path.resolve(__dirname, "../lib/partner/investigation");
-  const src = Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.readFileSync(path.join(dir, f), "utf8")]));
+  // F.1E: context-store.ts (server-only binding) + context-persistence.ts (append-only core) are the persistence layer;
+  // every other file in the module must stay pure (their own isolation is tested in test-partner-owner-context-store.ts).
+  const src = Object.fromEntries(fs.readdirSync(dir).filter((f) => !["context-store.ts", "context-persistence.ts"].includes(f)).map((f) => [f, fs.readFileSync(path.join(dir, f), "utf8")]));
   ok("no Supabase / server-only / store import (pure module)", Object.values(src).every((s) => !/lib\/supabase|@supabase\/|^\s*import\s+"server-only"|feedback\/store|feedback\/persistence|-store"/m.test(s)));
   ok("no DB verbs", Object.values(src).every((s) => !/\.(insert|update|upsert|delete|rpc)\(/.test(s)));
   ok("no Charter / baseline / detector import", Object.values(src).every((s) => !/from "\.\.\/charter"|partner\/baseline|cases\/(engine|detectors)/.test(s)));
