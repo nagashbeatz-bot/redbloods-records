@@ -34,6 +34,10 @@ export const VALUE_SPEC: Partial<Record<InvestigationQuestionType, Record<string
     SPECIFIC_DATE: { kind: "DATE_EXPLICIT", notBeforeAnchor: true },
     // NOT_KNOWN_YET / OTHER → code-only
   },
+  // F2.8–F2.10: an exact collection date the Owner states (never in the past). Every other timing answer is code-only (a period, no date).
+  FINANCE_RECEIVABLE_TIMING: {
+    EXACT_DATE: { kind: "DATE_EXPLICIT", notBeforeAnchor: true },
+  },
 };
 
 export function valueSpecFor(questionType: InvestigationQuestionType, answerCode: string): AnswerValueSpec {

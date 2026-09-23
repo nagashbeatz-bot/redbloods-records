@@ -15,7 +15,7 @@ import type { PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
 import { NOT_NOW_CHOICES, type DecisionPhase, type NotNowChoice } from "./partner-decision-client";
 import { PartnerOutcomesList } from "./PartnerOutcomeCard";
 import type { FinanceBriefDto } from "@/lib/partner/finance/dto";
-import { PartnerFinanceBrief } from "./PartnerFinanceBrief";
+import { PartnerFinanceBrief, type FinanceAnswerControls } from "./PartnerFinanceBrief";
 
 const CARD = "#181818";
 const BORDER = "rgba(255,255,255,0.07)";
@@ -185,9 +185,10 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
 /**
  * The whole Partner block: current proposals / decision state first, then (F.1M) the recent executed
  * Actions with their current Outcome (read-only). Finance Brain V1: the read-only "כסף" brief sits
- * between them. Renders nothing when there is nothing to show.
+ * between them (F2.8–F2.10: its "צריך ממך" questions are answerable when the section passes financeControls).
+ * Renders nothing when there is nothing to show.
  */
-export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeCardDto[]; finance?: FinanceBriefDto | null }) {
+export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null, financeControls, financeNotice = null }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeCardDto[]; finance?: FinanceBriefDto | null; financeControls?: FinanceAnswerControls; financeNotice?: string | null }) {
   if (!items.length && !notice && !outcomes.length && !finance) return null;
   const fresh = items.filter((i) => i.state === "SHOW").length;
   return (
@@ -209,7 +210,7 @@ export function PartnerActionsView({ items, isMobile, controlsFor, notice, outco
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items.map((it) => <PartnerActionCard key={it.actionId} item={it} isMobile={isMobile} controls={controlsFor?.(it)} />)}
       </div>
-      {finance && <PartnerFinanceBrief brief={finance} isMobile={isMobile} />}
+      {finance && <PartnerFinanceBrief brief={finance} isMobile={isMobile} answerControls={financeControls} notice={financeNotice} />}
       <PartnerOutcomesList items={outcomes} isMobile={isMobile} />
     </section>
   );

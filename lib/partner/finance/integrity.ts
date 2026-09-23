@@ -5,6 +5,11 @@
  * NOTICE → CLASSIFY → PRIORITIZE → ASK (read-only). Partner never repairs anything: no transaction,
  * setting, price, due date, recurring flag, Owner Context or Action Event is written anywhere here.
  *
+ * F2.8–F2.10: the Owner's ACTIVE finance answers (Owner Context, read by the server binding and passed in)
+ * are consumed as OWNER_DECISION — they change what Partner asks and how it phrases a gap, never money:
+ * realized cash in / out / net, receivables, open expenses and the month-end position are computed before
+ * and independently of any answer. An answer applies only while its fingerprint equals the live question.
+ *
  * Built on the Finance Brain V1 state (same canonical semantics — income received = שולם|התקבל,
  * expense paid = שולם only — via the exported validateTx, never a second copy). Historical gaps
  * (before 2026-09-23) are rehabilitation work; gaps after that date are stronger integrity signals.
@@ -13,6 +18,8 @@
 import { addDays, diffDays } from "../../coo/dates";
 import { fmtMoney } from "./brief";
 import { RECORDING_POLICY_START, validateTx, type ValidatedTx } from "./core";
+import { FINANCE_ANSWER_OPTIONS, FINANCE_EXACT_DATE_ANSWERS, isFinanceQuestionType, type FinanceQuestionType } from "../investigation/finance-questions";
+import { financeAnswerLabelHe, financeCaseId, financeQuestionFingerprint, financeQuestionId, type FinanceOwnerAnswer } from "./owner-answers";
 import type { CurrencyTotals, Evidence, FinanceRaw, PartnerFinanceState, Receivable } from "./types";
 
 export const INTEGRITY_SCHEMA_VERSION = "partner-finance-integrity-v1";
@@ -22,7 +29,8 @@ export const MAX_SURFACED_QUESTIONS = 2;
 export const REPLACEMENT_WINDOW_DAYS = 14;
 
 export type IntegrityState = "RELIABLE" | "PARTIAL" | "MISSING" | "AMBIGUOUS" | "NEEDS_OWNER_REVIEW";
-export type Epistemic = "FACT" | "DERIVED" | "HYPOTHESIS" | "UNKNOWN";
+/** OWNER_DECISION = what the Owner told Partner (Owner Context). Never a financial fact. */
+export type Epistemic = "FACT" | "DERIVED" | "HYPOTHESIS" | "UNKNOWN" | "OWNER_DECISION";
 export type SeverityBand = "HIGH" | "MEDIUM" | "LOW";
 export type Period = "HISTORICAL" | "POST_POLICY";
 
@@ -35,9 +43,8 @@ export const ISSUE_TYPES = [
 ] as const;
 export type IssueType = (typeof ISSUE_TYPES)[number];
 
-export type QuestionType =
-  | "COMPLETED_WORK_INCOME_STATUS" | "DUE_DATE_FOR_BALANCE" | "WHY_PAYMENT_OPEN" | "RECURRING_EXPENSE_RECORD"
-  | "IS_RECURRING_EXPENSE" | "ORPHAN_PRICE_MEANING" | "EXPENSE_CLASSIFICATION" | "PROJECT_PRICE";
+/** The six FINANCE_* types are answerable (F2.8–F2.10); EXPENSE_CLASSIFICATION / PROJECT_PRICE stay display-only. */
+export type QuestionType = FinanceQuestionType | "EXPENSE_CLASSIFICATION" | "PROJECT_PRICE";
 export interface QuestionOption { code: string; labelHe: string }
 export interface OwnerQuestion {
   questionType: QuestionType;
@@ -47,7 +54,21 @@ export interface OwnerQuestion {
   options: QuestionOption[];
   evidence: Evidence[];
   priority: number;
+  /** Set for answerable (FINANCE_*) questions once the issue is known; null for display-only questions. */
+  identity: FinanceQuestionIdentity | null;
 }
+export interface FinanceQuestionIdentity {
+  questionId: string;
+  caseId: string;
+  /** The integrity issue type that raised the question (persisted as case_type). */
+  issueType: IssueType;
+  fingerprint: string;
+  /** The answer code that carries an explicit date (EXACT_DATE), if any. */
+  exactDateCode: string | null;
+  /** The Owner's earlier answer when the facts have changed since — the new answer supersedes it. */
+  previousAnswer: { contextId: string; answerCode: string; labelHe: string; answerValueYmd: string | null } | null;
+}
+export interface IssueOwnerAnswer { contextId: string; answerCode: string; labelHe: string; answerValueYmd: string | null; answeredAt: string }
 
 export interface RehabIssue {
   id: string;
@@ -64,7 +85,14 @@ export interface RehabIssue {
   reasonCodes: string[];
   evidence: Evidence[];
   recommendedOwnerQuestion: OwnerQuestion | null;
+  /** F2.8: the Owner's active answer that matches the live question (same fingerprint), else null. */
+  ownerAnswer?: IssueOwnerAnswer | null;
+  /** F2.8: the Owner's answer closes the gap (e.g. NON_PAID_PROJECT). Kept for audit; never surfaced. */
+  ownerResolved?: boolean;
 }
+
+/** An obligation the Owner declared (e.g. "עדיין לא שולם"). OWNER_DECISION — never added to open-expense totals or forecasts. */
+export interface OwnerDeclaredObligation { subjectId: string; labelHe: string | null; amount: number | null; currency: string | null; dueDate: string | null; basis: "OWNER_DECISION"; contextId: string }
 
 export type BusinessKind = "CLIENT" | "LABEL" | "UNKNOWN";
 export interface ProjectFinanceProfile {
@@ -99,6 +127,8 @@ export interface PartnerFinanceIntegrityState {
   overdueReasonGaps: { receivableId: string; reason: "OVERDUE_REASON_UNKNOWN" }[];
   questions: OwnerQuestion[];
   top: { items: RehabOwnerItem[]; questions: OwnerQuestion[] };
+  /** F2.8–F2.10: how many active Owner answers matched a live question, and the obligations they declared. */
+  ownerAnswers: { applied: number; outdated: number; obligations: OwnerDeclaredObligation[] };
 }
 
 // ── constants ──
@@ -116,26 +146,14 @@ const EXPLICIT_CATEGORY: Record<string, ExpenseCategory> = {
   "מס": "TAX", "מיסים": "TAX", "ציוד": "EQUIPMENT", "רואה חשבון": "GENERAL_BUSINESS",
 };
 
+const financeOptions = (t: FinanceQuestionType): QuestionOption[] => FINANCE_ANSWER_OPTIONS[t].map((o) => ({ code: o.code, labelHe: o.labelHe }));
 export const QUESTION_OPTIONS: Record<QuestionType, QuestionOption[]> = {
-  COMPLETED_WORK_INCOME_STATUS: [
-    { code: "RECEIVED_NOT_RECORDED", labelHe: "ההכנסה התקבלה ולא נרשמה" }, { code: "NOT_YET_RECEIVED", labelHe: "עדיין לא התקבלה" },
-    { code: "NOT_PAID_WORK", labelHe: "הפרויקט לא היה בתשלום" }, { code: "UNKNOWN", labelHe: "לא יודע" },
-  ],
-  DUE_DATE_FOR_BALANCE: [
-    { code: "THIS_WEEK", labelHe: "השבוע" }, { code: "THIS_MONTH", labelHe: "עד סוף החודש" }, { code: "NEXT_MONTH", labelHe: "בחודש הבא" },
-    { code: "NOT_EXPECTED", labelHe: "לא צפוי להתקבל" }, { code: "UNKNOWN", labelHe: "לא יודע" },
-  ],
-  WHY_PAYMENT_OPEN: [
-    { code: "WAITING_ON_CLIENT", labelHe: "מחכה ללקוח" }, { code: "NEW_DATE_PROMISED", labelHe: "הבטיח תאריך חדש" }, { code: "DISPUTE", labelHe: "יש מחלוקת" },
-    { code: "WAITING_ON_DELIVERY", labelHe: "מחכה למסירה" }, { code: "AGREED_TO_POSTPONE", labelHe: "סיכמנו לדחות" }, { code: "OTHER", labelHe: "אחר" }, { code: "UNKNOWN", labelHe: "לא יודע" },
-  ],
-  RECURRING_EXPENSE_RECORD: [
-    { code: "PAID_NOT_RECORDED", labelHe: "שולם — צריך לרשום בכספים" }, { code: "NOT_PAID_YET", labelHe: "עדיין לא שולם" }, { code: "UNKNOWN", labelHe: "לא יודע" },
-  ],
-  IS_RECURRING_EXPENSE: [{ code: "RECURRING", labelHe: "כן, הוצאה קבועה" }, { code: "ONE_TIME", labelHe: "לא, חד-פעמית" }, { code: "UNKNOWN", labelHe: "לא יודע" }],
-  ORPHAN_PRICE_MEANING: [
-    { code: "HISTORICAL_ONLY", labelHe: "נתון היסטורי בלבד" }, { code: "REAL_DEAL", labelHe: "עסקה אמיתית שצריך לשחזר/לקשר" }, { code: "UNKNOWN", labelHe: "לא יודע כרגע" },
-  ],
+  FINANCE_COMPLETED_PROJECT_INCOME_STATUS: financeOptions("FINANCE_COMPLETED_PROJECT_INCOME_STATUS"),
+  FINANCE_RECEIVABLE_TIMING: financeOptions("FINANCE_RECEIVABLE_TIMING"),
+  FINANCE_OVERDUE_REASON: financeOptions("FINANCE_OVERDUE_REASON"),
+  FINANCE_RECURRING_PAYMENT_STATUS: financeOptions("FINANCE_RECURRING_PAYMENT_STATUS"),
+  FINANCE_EXPENSE_RECURRENCE: financeOptions("FINANCE_EXPENSE_RECURRENCE"),
+  FINANCE_ORPHAN_SETTING_MEANING: financeOptions("FINANCE_ORPHAN_SETTING_MEANING"),
   EXPENSE_CLASSIFICATION: [
     { code: "PROJECT_COST", labelHe: "עלות פרויקט" }, { code: "TEAM_COST", labelHe: "צוות" }, { code: "LABEL_COST", labelHe: "לייבל" }, { code: "MARKETING", labelHe: "שיווק" },
     { code: "SOFTWARE", labelHe: "תוכנה / מנוי" }, { code: "GENERAL_BUSINESS", labelHe: "הוצאה כללית של העסק" }, { code: "UNKNOWN", labelHe: "לא יודע" },
@@ -143,9 +161,16 @@ export const QUESTION_OPTIONS: Record<QuestionType, QuestionOption[]> = {
   PROJECT_PRICE: [{ code: "SET_PRICE", labelHe: "יש מחיר — צריך לרשום" }, { code: "NO_CHARGE", labelHe: "לא בתשלום" }, { code: "UNKNOWN", labelHe: "לא יודע" }],
 };
 
+/** Answers that close the gap entirely (the issue stays in the state for audit, but is never surfaced again). */
+export const RESOLVING_ANSWERS: Partial<Record<FinanceQuestionType, readonly string[]>> = {
+  FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT"],
+  FINANCE_ORPHAN_SETTING_MEANING: ["HISTORICAL_ONLY"],
+  FINANCE_EXPENSE_RECURRENCE: ["ONE_TIME"],
+};
+
 // ── the integrity brain ──
 
-export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceState, now: Date): PartnerFinanceIntegrityState {
+export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceState, now: Date, ownerAnswers: readonly FinanceOwnerAnswer[] = []): PartnerFinanceIntegrityState {
   void now; // the month window / today are already in `state` (same clock); kept for signature symmetry
   const today = state.month.today;
   const txs: ValidatedTx[] = raw.transactions.map(validateTx).filter((t): t is ValidatedTx => t !== null);
@@ -204,7 +229,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       currency: Object.keys(costs)[0] ?? null, amount: Object.values(costs)[0] ?? null, date: p.updatedAt ? p.updatedAt.slice(0, 10) : null, period: post ? "POST_POLICY" : "HISTORICAL",
       reasonCodes: ["COMPLETED", "NO_INCOME_TRANSACTION", paidExpense.length ? "PAID_EXPENSE_RECORDED" : "ENGINEER_WORK_ONLY", priceKnown ? "PRICE_KNOWN_RECEIVABLE_EXISTS" : "PRICE_UNKNOWN_CANNOT_CLAIM_UNPAID", `BUSINESS_${pr.business}`],
       evidence: [pEv(pr.projectId, "COMPLETED_NO_INCOME", pr.status), ...paidExpense.map((t) => ({ sourceType: "transaction" as const, sourceId: t.row.id, projectId: pr.projectId, currency: t.currency, date: t.date, status: t.row.status, reasonCode: "PAID_EXPENSE" })), ...works.map((w) => ({ sourceType: "engineer_work" as const, sourceId: w.id, projectId: pr.projectId, reasonCode: "ENGINEER_WORK" }))],
-      recommendedOwnerQuestion: question("COMPLETED_WORK_INCOME_STATUS", { type: "project", id: pr.projectId, labelHe: pr.name }, `הפרויקט '${pr.name}' הושלם ויש בו הוצאה מתועדת, אבל אני לא רואה הכנסה בפרויקט. מה קרה?`, "כל עוד זה לא ברור, הנטו והגבייה של הפרויקט לא ידועים.", [pEv(pr.projectId, "COMPLETED_NO_INCOME")], 40),
+      recommendedOwnerQuestion: question("FINANCE_COMPLETED_PROJECT_INCOME_STATUS", { type: "project", id: pr.projectId, labelHe: pr.name }, `הפרויקט '${pr.name}' הושלם ויש בו הוצאה מתועדת, אבל אני לא רואה הכנסה בפרויקט. מה קרה?`, "כל עוד זה לא ברור, הנטו והגבייה של הפרויקט לא ידועים.", [pEv(pr.projectId, "COMPLETED_NO_INCOME")], 40),
     });
   }
 
@@ -230,7 +255,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       add({
         issueType: "OVERDUE_RECEIVABLE_REASON_UNKNOWN", severityBand: periodOf(r.dueDate) === "POST_POLICY" || r.collection.important ? "HIGH" : "MEDIUM", epistemicStatus: "UNKNOWN", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName,
         currency: r.currency, amount: r.amount, date: r.dueDate, period: periodOf(r.dueDate), reasonCodes: ["OVERDUE", "OVERDUE_REASON_UNKNOWN"], evidence: rEv,
-        recommendedOwnerQuestion: question("WHY_PAYMENT_OPEN", { type: "receivable", id: r.id, labelHe: r.projectName }, `התשלום של ${fmtMoney(r.amount, r.currency)}${label ? ` על ${label}` : ""} היה אמור להיכנס עד ${ddmm(r.dueDate!)}. למה הוא עדיין פתוח?`, "בלי סיבה ידועה Partner לא יכול לדעת אם לעקוב, לחכות או לשחרר.", rEv, 20),
+        recommendedOwnerQuestion: question("FINANCE_OVERDUE_REASON", { type: "receivable", id: r.id, labelHe: r.projectName }, `התשלום של ${fmtMoney(r.amount, r.currency)}${label ? ` על ${label}` : ""} היה אמור להיכנס עד ${ddmm(r.dueDate!)}. למה הוא עדיין פתוח?`, "בלי סיבה ידועה Partner לא יכול לדעת אם לעקוב, לחכות או לשחרר.", rEv, 20),
       });
     }
     if (r.collection.state === "NO_DUE_DATE") {
@@ -238,7 +263,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       add({
         issueType: "RECEIVABLE_DUE_DATE_MISSING", severityBand: r.projectStatus === COMPLETED || r.collection.important ? "MEDIUM" : "LOW", epistemicStatus: "FACT", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName,
         currency: r.currency, amount: r.amount, date: null, period: r.legacy === "CONFIRMED_CURRENT" ? "POST_POLICY" : "HISTORICAL", reasonCodes: ["BALANCE_KNOWN", "NO_DUE_DATE", r.projectStatus === COMPLETED ? "PROJECT_COMPLETED" : "PROJECT_OPEN"], evidence: rEv,
-        recommendedOwnerQuestion: question("DUE_DATE_FOR_BALANCE", { type: "receivable", id: r.id, labelHe: r.projectName }, `יש יתרה של ${fmtMoney(r.amount, r.currency)}${label ? ` בפרויקט ${label}` : ""} בלי תאריך גבייה. מתי אמורים לגבות?`, "בלי תאריך אי אפשר לתזכר לפני המועד ולדעת מה צפוי להיכנס.", rEv, 30),
+        recommendedOwnerQuestion: question("FINANCE_RECEIVABLE_TIMING", { type: "receivable", id: r.id, labelHe: r.projectName }, `יש יתרה של ${fmtMoney(r.amount, r.currency)}${label ? ` בפרויקט ${label}` : ""} בלי תאריך גבייה. מתי אמורים לגבות?`, "בלי תאריך אי אפשר לתזכר לפני המועד ולדעת מה צפוי להיכנס.", rEv, 30),
       });
     }
   }
@@ -251,13 +276,13 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       add({
         issueType: "RECURRING_EXPENSE_MISSING_THIS_PERIOD", severityBand: "HIGH", epistemicStatus: "DERIVED", subjectType: "recurring", subjectId: `VICTOR_SALARY:${k.workMonth}`, subjectLabel: `משכורת Victor עבור ${monthHe(k.workMonth)}`,
         currency: k.currency, amount: k.amount, date: k.dueDate, period: periodOf(k.dueDate), reasonCodes: ["KNOWN_RECURRING_CONFIGURED", "NO_FINANCE_RECORD_THIS_PERIOD"], evidence: k.evidence,
-        recommendedOwnerQuestion: question("RECURRING_EXPENSE_RECORD", { type: "recurring", id: `VICTOR_SALARY:${k.workMonth}`, labelHe: "משכורת Victor" }, `משכורת Victor מוגדרת כחודשית, אבל לא מצאתי תשלום או הוצאה עבור ${monthHe(k.workMonth)}. מה המצב?`, "הוצאה קבועה שלא נרשמה משנה את הנטו של החודש.", k.evidence, 10),
+        recommendedOwnerQuestion: question("FINANCE_RECURRING_PAYMENT_STATUS", { type: "recurring", id: `VICTOR_SALARY:${k.workMonth}`, labelHe: "משכורת Victor" }, `משכורת Victor מוגדרת כחודשית, אבל לא מצאתי תשלום או הוצאה עבור ${monthHe(k.workMonth)}. מה המצב?`, "הוצאה קבועה שלא נרשמה משנה את הנטו של החודש.", k.evidence, 10),
       });
     } else if (k.state === "PAID_OUTSIDE_FINANCE") {
       add({
         issueType: "EXPENSE_EXPECTED_BUT_NOT_FOUND", severityBand: "HIGH", epistemicStatus: "FACT", subjectType: "recurring", subjectId: `VICTOR_SALARY:${k.workMonth}`, subjectLabel: `משכורת Victor עבור ${monthHe(k.workMonth)}`,
         currency: k.currency, amount: k.amount, date: k.dueDate, period: periodOf(k.dueDate), reasonCodes: ["MARKED_PAID_ON_SALARY_PAGE", "NO_FINANCE_EXPENSE_RECORD"], evidence: k.evidence,
-        recommendedOwnerQuestion: question("RECURRING_EXPENSE_RECORD", { type: "recurring", id: `VICTOR_SALARY:${k.workMonth}`, labelHe: "משכורת Victor" }, `משכורת Victor עבור ${monthHe(k.workMonth)} מסומנת כשולמה, אבל לא מצאתי לה רישום בכספים. מה נכון?`, "כל עוד אין רישום, ההוצאה לא נכנסת לנטו.", k.evidence, 10),
+        recommendedOwnerQuestion: question("FINANCE_RECURRING_PAYMENT_STATUS", { type: "recurring", id: `VICTOR_SALARY:${k.workMonth}`, labelHe: "משכורת Victor" }, `משכורת Victor עבור ${monthHe(k.workMonth)} מסומנת כשולמה, אבל לא מצאתי לה רישום בכספים. מה נכון?`, "כל עוד אין רישום, ההוצאה לא נכנסת לנטו.", k.evidence, 10),
       });
     }
   }
@@ -265,7 +290,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
     add({
       issueType: "RECURRING_EXPENSE_CANDIDATE", severityBand: "LOW", epistemicStatus: "HYPOTHESIS", subjectType: "transaction", subjectId: c.key, subjectLabel: c.category,
       currency: c.currency, amount: c.amount, date: null, period: "HISTORICAL", reasonCodes: ["SAME_CATEGORY_SAME_CURRENCY_SIMILAR_AMOUNT", `MONTHS_${c.months.length}`], evidence: c.evidence,
-      recommendedOwnerQuestion: question("IS_RECURRING_EXPENSE", { type: "expense_pattern", id: c.key, labelHe: c.category }, `ראיתי הוצאה דומה של כ־${fmtMoney(c.amount, c.currency)} (${c.category}) ב־${c.months.length} חודשים. זו הוצאה קבועה?`, "אם היא קבועה, Partner יצפה לה כל חודש ויוכל להתריע כשהיא חסרה.", c.evidence, 70),
+      recommendedOwnerQuestion: question("FINANCE_EXPENSE_RECURRENCE", { type: "expense_pattern", id: c.key, labelHe: c.category }, `ראיתי הוצאה דומה של כ־${fmtMoney(c.amount, c.currency)} (${c.category}) ב־${c.months.length} חודשים. זו הוצאה קבועה?`, "אם היא קבועה, Partner יצפה לה כל חודש ויוכל להתריע כשהיא חסרה.", c.evidence, 70),
     });
   }
 
@@ -336,7 +361,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
     const currency = typeof v.currency === "string" && v.currency.trim() ? v.currency.trim() : "₪";
     const txRowsForId = raw.transactions.filter((t) => t.projectId === s.projectId).length;
     const ev: Evidence[] = [{ sourceType: "finance_setting", sourceId: s.projectId, currency, reasonCode: "ORPHAN_PRICE_SETTING" }];
-    return { projectId: s.projectId, amount, currency, txRowsForId, question: question("ORPHAN_PRICE_MEANING", { type: "finance_setting", id: s.projectId, labelHe: null }, `מצאתי מחיר ישן${amount ? ` של ${fmtMoney(amount, currency)}` : ""} לפרויקט שכבר לא קיים. מה זה?`, "הוא לא נספר בכסף עד שיהיה ברור מה הוא מייצג.", ev, 90) };
+    return { projectId: s.projectId, amount, currency, txRowsForId, question: question("FINANCE_ORPHAN_SETTING_MEANING", { type: "finance_setting", id: s.projectId, labelHe: null }, `מצאתי מחיר ישן${amount ? ` של ${fmtMoney(amount, currency)}` : ""} לפרויקט שכבר לא קיים. מה זה?`, "הוא לא נספר בכסף עד שיהיה ברור מה הוא מייצג.", ev, 90) };
   });
   // Deterministic, evidence-first ordering (linked records, then a known amount, then id) — larger is NOT "more urgent".
   orphanQueue.sort((a, b) => b.txRowsForId - a.txRowsForId || Number(b.amount !== null) - Number(a.amount !== null) || (a.projectId < b.projectId ? -1 : 1));
@@ -344,18 +369,23 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
     add({ issueType: "ORPHAN_FINANCE_SETTING", severityBand: "LOW", epistemicStatus: "UNKNOWN", subjectType: "finance_setting", subjectId: o.projectId, subjectLabel: null, currency: o.currency, amount: o.amount, date: null, period: "HISTORICAL", reasonCodes: ["PROJECT_NO_LONGER_EXISTS", "NEEDS_OWNER_REVIEW", "EXCLUDED_FROM_MONEY"], evidence: o.question.evidence, recommendedOwnerQuestion: o.question });
   }
 
+  // ── F2.8–F2.10: consume the Owner's active answers (OWNER_DECISION — never money) ──
+  const answered = applyOwnerAnswers(issues, ownerAnswers);
+  const open = (t: IssueType) => issues.filter((i) => i.issueType === t && !i.ownerResolved);
+  const openOrphans = orphanQueue.filter((o) => !issues.some((i) => i.issueType === "ORPHAN_FINANCE_SETTING" && i.subjectId === o.projectId && i.ownerResolved));
+
   // ── trust map + coverage reasons ──
   const c = state.coverage;
   const trust: PartnerFinanceIntegrityState["trust"] = {
     realizedIncome: { state: c.realizedIncome.state, reason: c.realizedIncome.reason },
     realizedExpenses: { state: c.realizedExpenses.state, reason: c.realizedExpenses.reason },
     agreedPrices: { state: clientUnpriced.length === 0 ? "RELIABLE" : projects.some((p) => p.price === "PRICE_KNOWN") ? "PARTIAL" : "MISSING", reason: clientUnpriced.length ? `CLIENT_OR_UNKNOWN_UNPRICED_${clientUnpriced.length}` : "ALL_CLIENT_PROJECTS_PRICED" },
-    completedWorkIncome: { state: issues.some((i) => i.issueType === "COMPLETED_WORK_NO_INCOME") ? "PARTIAL" : "RELIABLE", reason: `COMPLETED_NO_INCOME_${issues.filter((i) => i.issueType === "COMPLETED_WORK_NO_INCOME").length}` },
+    completedWorkIncome: { state: open("COMPLETED_WORK_NO_INCOME").length ? "PARTIAL" : "RELIABLE", reason: `COMPLETED_NO_INCOME_${open("COMPLETED_WORK_NO_INCOME").length}` },
     receivableDueDates: { state: c.receivableDueDates.state, reason: c.receivableDueDates.reason },
     recurringExpenses: { state: c.recurringExpenses.state, reason: c.recurringExpenses.reason },
     expenseClassification: { state: expenseClassification.some((e) => e.category === "UNKNOWN") ? "PARTIAL" : "RELIABLE", reason: `UNKNOWN_${expenseClassification.filter((e) => e.category === "UNKNOWN").length}_OF_${expenseClassification.length}` },
     currencies: { state: c.currencies.state, reason: c.currencies.reason },
-    orphanPriceData: { state: orphanQueue.length ? "NEEDS_OWNER_REVIEW" : "RELIABLE", reason: `ORPHANS_${orphanQueue.length}` },
+    orphanPriceData: { state: openOrphans.length ? "NEEDS_OWNER_REVIEW" : "RELIABLE", reason: `ORPHANS_${openOrphans.length}` },
     clientAttribution: { state: c.clientAttribution.state, reason: c.clientAttribution.reason },
   };
   const coverageReasonsHe: string[] = [];
@@ -363,18 +393,55 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   if (c.recurringExpenses.state !== "RELIABLE") coverageReasonsHe.push("ההוצאות הקבועות עדיין לא מיוצגות במלואן");
   if (trust.agreedPrices.state !== "RELIABLE") coverageReasonsHe.push("לרוב הפרויקטים אין מחיר מוסכם");
   if (trust.completedWorkIncome.state !== "RELIABLE") coverageReasonsHe.push("בחלק מהפרויקטים שהסתיימו לא רשומה הכנסה");
-  if (orphanQueue.length) coverageReasonsHe.push("יש נתוני מחיר ישנים שדורשים בירור");
+  if (openOrphans.length) coverageReasonsHe.push("יש נתוני מחיר ישנים שדורשים בירור");
 
-  const questions = issues.map((i) => i.recommendedOwnerQuestion).filter((q): q is OwnerQuestion => !!q).sort((a, b) => a.priority - b.priority || (a.subject.id < b.subject.id ? -1 : 1));
+  const questions = issues.filter((i) => !i.ownerAnswer && !i.ownerResolved).map((i) => i.recommendedOwnerQuestion).filter((q): q is OwnerQuestion => !!q).sort((a, b) => a.priority - b.priority || (a.subject.id < b.subject.id ? -1 : 1));
   const top = prioritize(issues);
   return {
     schemaVersion: INTEGRITY_SCHEMA_VERSION, policyStartYmd: RECORDING_POLICY_START, trust, coverageReasonsHe, projects, issues, orphanQueue,
-    expenseClassification, dueDateQueue, overdueReasonGaps, questions, top,
+    expenseClassification, dueDateQueue, overdueReasonGaps, questions, top, ownerAnswers: answered,
   };
 }
 
+/**
+ * Attaches identity + fingerprint to every answerable question, then applies the Owner's ACTIVE answers:
+ * a matching fingerprint → the issue carries the answer (question no longer asked; resolving answers close
+ * it); a different fingerprint → the facts changed, the question is asked again and the new answer will
+ * supersede the old one. Mutates only objects built in this call. Never touches any money figure.
+ */
+function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerAnswer[]): PartnerFinanceIntegrityState["ownerAnswers"] {
+  const byQuestion = new Map(answers.map((a) => [a.questionId, a]));
+  let applied = 0, outdated = 0;
+  const obligations: OwnerDeclaredObligation[] = [];
+  for (const i of issues) {
+    i.ownerAnswer = null;
+    i.ownerResolved = false;
+    const q = i.recommendedOwnerQuestion;
+    if (!q || !isFinanceQuestionType(q.questionType)) continue;
+    const caseId = financeCaseId(i.issueType, q.subject.type, q.subject.id);
+    const questionId = financeQuestionId(caseId, q.questionType);
+    const fingerprint = financeQuestionFingerprint({ questionType: q.questionType, issueType: i.issueType, subject: q.subject, textHe: q.textHe, optionCodes: q.options.map((o) => o.code), amount: i.amount, currency: i.currency, date: i.date, evidence: q.evidence });
+    const a = byQuestion.get(questionId);
+    const label = a ? financeAnswerLabelHe(q.questionType, a.answerCode) : null;
+    const current = !!a && !!label && a.factsFingerprint === fingerprint && a.caseType === i.issueType && a.subjectType === q.subject.type && a.subjectId === q.subject.id;
+    q.identity = {
+      questionId, caseId, issueType: i.issueType, fingerprint, exactDateCode: FINANCE_EXACT_DATE_ANSWERS[q.questionType] ?? null,
+      previousAnswer: a && label && !current ? { contextId: a.contextId, answerCode: a.answerCode, labelHe: label, answerValueYmd: a.answerValueYmd } : null,
+    };
+    if (!a || !label) continue;
+    if (!current) { outdated++; continue; }
+    applied++;
+    i.ownerAnswer = { contextId: a.contextId, answerCode: a.answerCode, labelHe: label, answerValueYmd: a.answerValueYmd, answeredAt: a.answeredAt };
+    i.ownerResolved = (RESOLVING_ANSWERS[q.questionType] ?? []).includes(a.answerCode);
+    if (q.questionType === "FINANCE_RECURRING_PAYMENT_STATUS" && a.answerCode === "NOT_PAID") {
+      obligations.push({ subjectId: i.subjectId, labelHe: i.subjectLabel, amount: i.amount, currency: i.currency, dueDate: i.date, basis: "OWNER_DECISION", contextId: a.contextId });
+    }
+  }
+  return { applied, outdated, obligations };
+}
+
 function question(questionType: QuestionType, subject: OwnerQuestion["subject"], textHe: string, whyItMattersHe: string, evidence: Evidence[], priority: number): OwnerQuestion {
-  return { questionType, subject, textHe, whyItMattersHe, options: QUESTION_OPTIONS[questionType], evidence, priority };
+  return { questionType, subject, textHe, whyItMattersHe, options: QUESTION_OPTIONS[questionType], evidence, priority, identity: null };
 }
 
 // ── prioritizer: ≤ 3 Owner items (one line per family), ≤ 2 questions ──
@@ -392,7 +459,8 @@ const FAMILY_OF: Partial<Record<IssueType, string>> = { RECURRING_EXPENSE_MISSIN
 
 export function prioritize(issues: RehabIssue[]): { items: RehabOwnerItem[]; questions: OwnerQuestion[] } {
   // Only issues that would help the Owner right now; LOW historical data hygiene does not crowd the list.
-  const ordered = [...issues].sort((a, b) => REHAB_FAMILY_RANK[a.issueType] - REHAB_FAMILY_RANK[b.issueType] || SEV[a.severityBand] - SEV[b.severityBand] || (a.period === b.period ? 0 : a.period === "POST_POLICY" ? -1 : 1) || (a.id < b.id ? -1 : 1));
+  // Owner-resolved gaps are never surfaced; inside a family, still-open (unanswered) gaps lead.
+  const ordered = issues.filter((i) => !i.ownerResolved).sort((a, b) => REHAB_FAMILY_RANK[a.issueType] - REHAB_FAMILY_RANK[b.issueType] || Number(!!a.ownerAnswer) - Number(!!b.ownerAnswer) || SEV[a.severityBand] - SEV[b.severityBand] || (a.period === b.period ? 0 : a.period === "POST_POLICY" ? -1 : 1) || (a.id < b.id ? -1 : 1));
   const families = new Map<string, RehabIssue[]>();
   for (const i of ordered) {
     const f = FAMILY_OF[i.issueType] ?? i.issueType;
@@ -403,13 +471,58 @@ export function prioritize(issues: RehabIssue[]): { items: RehabOwnerItem[]; que
   for (const [, list] of families) {
     if (items.length >= MAX_REHAB_ITEMS) break;
     const head = list[0];
-    const text = ownerLine(head, list);
+    const answeredLine = head.ownerAnswer ? ownerAnsweredLine(head, list.length) : null;
+    const text = answeredLine ? answeredLine.textHe : ownerLine(head, list);
     if (!text) continue;
-    items.push({ issueType: head.issueType, epistemic: head.epistemicStatus, textHe: text });
-    const q = list.map((x) => x.recommendedOwnerQuestion).find((x): x is OwnerQuestion => !!x);
+    items.push({ issueType: head.issueType, epistemic: answeredLine ? answeredLine.epistemic : head.epistemicStatus, textHe: text });
+    const q = list.filter((x) => !x.ownerAnswer).map((x) => x.recommendedOwnerQuestion).find((x): x is OwnerQuestion => !!x);
     if (q && questions.length < MAX_SURFACED_QUESTIONS && !questions.some((x) => x.questionType === q.questionType)) questions.push(q);
   }
   return { items, questions };
+}
+
+/**
+ * The family line once the Owner answered its head gap (all gaps of the family are answered — open ones lead).
+ * Always attributed ("לפי מה שאמרת") — an Owner answer is OWNER_DECISION, never a recorded financial fact.
+ */
+function ownerAnsweredLine(head: RehabIssue, n: number): { textHe: string; epistemic: Epistemic } | null {
+  const a = head.ownerAnswer!;
+  const more = n > 1 ? ` (ועוד ${n - 1})` : "";
+  const money = head.amount !== null ? fmtMoney(head.amount, head.currency ?? "₪") : null;
+  const od = (textHe: string): { textHe: string; epistemic: Epistemic } => ({ textHe: textHe + more, epistemic: "OWNER_DECISION" });
+  const unknown = (textHe: string): { textHe: string; epistemic: Epistemic } => ({ textHe: textHe + more, epistemic: "UNKNOWN" });
+  const label = head.subjectLabel;
+  switch (head.issueType) {
+    case "EXPENSE_EXPECTED_BUT_NOT_FOUND":
+    case "RECURRING_EXPENSE_MISSING_THIS_PERIOD": {
+      const who = label ?? "הוצאה קבועה";
+      if (a.answerCode === "PAID_NEEDS_RECORDING") return od(`${who}: שולם לפי מה שאמרת, ועדיין חסר רישום בכספים.`);
+      if (a.answerCode === "NOT_PAID") return od(`${who}: לפי מה שאמרת עדיין לא שולמה${money ? ` — התחייבות פתוחה של ${money}` : ""}.`);
+      return unknown(`${who}: עדיין לא ידוע אם שולמה, ואין לה רישום בכספים.`);
+    }
+    case "RECEIVABLE_DUE_DATE_MISSING": {
+      const what = `יתרה של ${money ?? "סכום לא ידוע"}${label ? ` בפרויקט '${label}'` : ""}`;
+      const when: Record<string, string> = { THIS_WEEK: "צפויה להיכנס השבוע", BY_MONTH_END: "צפויה להיכנס עד סוף החודש", NEXT_MONTH: "צפויה להיכנס בחודש הבא", NOT_EXPECTED: "לא צפויה להתקבל" };
+      if (a.answerCode === "EXACT_DATE" && a.answerValueYmd) return od(`${what}: לפי מה שאמרת צפויה להיכנס ב־${a.answerValueYmd.slice(8, 10)}.${a.answerValueYmd.slice(5, 7)}.${a.answerValueYmd.slice(0, 4)}.`);
+      if (when[a.answerCode]) return od(`${what}: לפי מה שאמרת ${when[a.answerCode]}.`);
+      return unknown(`${what}: עדיין לא ידוע מתי תיכנס.`);
+    }
+    case "OVERDUE_RECEIVABLE_REASON_UNKNOWN":
+      if (a.answerCode === "UNKNOWN") return unknown(`תשלום של ${money ?? "סכום לא ידוע"} באיחור, והסיבה עדיין לא ידועה.`);
+      return od(`תשלום של ${money ?? "סכום לא ידוע"} באיחור — לפי מה שאמרת: ${a.labelHe}.`);
+    case "COMPLETED_WORK_NO_INCOME":
+      if (a.answerCode === "INCOME_RECEIVED_NOT_RECORDED") return od(`פרויקט '${label}': ההכנסה התקבלה לפי מה שאמרת, ועדיין חסר רישום בכספים.`);
+      if (a.answerCode === "INCOME_NOT_RECEIVED") return od(`פרויקט '${label}': לפי מה שאמרת ההכנסה עדיין לא התקבלה.`);
+      return unknown(`פרויקט '${label}': עדיין לא ברור מה קרה עם ההכנסה.`);
+    case "ORPHAN_FINANCE_SETTING":
+      if (a.answerCode === "REAL_DEAL_NEEDS_RECOVERY") return od(`מחיר ישן${money ? ` של ${money}` : ""}: לפי מה שאמרת זו עסקה אמיתית שצריך לשחזר. הוא עדיין לא נספר בכסף.`);
+      return unknown(`יש נתוני מחיר ישנים שעדיין לא ברור מה הם.`);
+    case "RECURRING_EXPENSE_CANDIDATE":
+      if (a.answerCode === "RECURRING") return od(`הוצאה של כ־${money ?? "סכום לא ידוע"}${label ? ` (${label})` : ""}: לפי מה שאמרת זו הוצאה קבועה.`);
+      return unknown(`ראיתי הוצאה דומה כמה חודשים ברצף, ועדיין לא ברור אם היא קבועה.`);
+    default:
+      return null;
+  }
 }
 
 /** Short, neutral Owner line for a family (null = not worth surfacing as a line). */

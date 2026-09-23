@@ -7,7 +7,7 @@
  */
 import type { CurrencyTotals, FinanceSignal, PartnerFinanceState, Receivable } from "./types";
 import type { IssueType, PartnerFinanceIntegrityState } from "./integrity";
-import { FINANCE_BRIEF_DTO_VERSION, FINANCE_BRIEF_MAX_ITEMS, type FinanceBriefDto, type FinanceBriefFamily, type FinanceBriefItemDto } from "./dto";
+import { FINANCE_BRIEF_DTO_VERSION, FINANCE_BRIEF_MAX_ITEMS, type FinanceBriefDto, type FinanceBriefFamily, type FinanceBriefItemDto, type FinanceRehabQuestionDto } from "./dto";
 
 /** Fixed priority (lower = more important). */
 export const FAMILY_RANK: Record<FinanceBriefFamily, number> = {
@@ -19,6 +19,8 @@ const EXTRA_SLOT_MAX_RANK = FAMILY_RANK.MISSING_EXPECTED_RECORD;
 const PREFERRED_ITEMS = 3;
 
 export const CALM_HE = "הכספים כרגע בשליטה. אין משהו שדורש ממך פעולה מיידית.";
+/** Shown instead of questions when the Owner's earlier answers cannot be read (never re-ask blindly). */
+export const QUESTIONS_UNAVAILABLE_HE = "לא הצלחתי לקרוא את התשובות הקודמות שלך, אז השאלות מוסתרות כרגע.";
 const PARTIAL_BASIS_HE = "לפי הנתונים הרשומים כרגע";
 const ILS = "₪";
 
@@ -54,7 +56,14 @@ export const COVERED_BY_REHAB: Partial<Record<IssueType, FinanceBriefFamily>> = 
   RECURRING_EXPENSE_CANDIDATE: "RECURRING_EXPENSE_REVIEW",
 };
 
-export function buildFinanceBrief(state: PartnerFinanceState, integrity: PartnerFinanceIntegrityState | null = null): FinanceBriefDto {
+/**
+ * `answersAvailable` (F2.8–F2.10): false when the Owner Context could not be read — questions are then hidden
+ * (with a note) instead of being asked again as if never answered.
+ */
+export function buildFinanceBrief(state: PartnerFinanceState, integrity: PartnerFinanceIntegrityState | null = null, opts: { answersAvailable?: boolean } = {}): FinanceBriefDto {
+  const answersAvailable = opts.answersAvailable ?? true;
+  // Gaps the Owner closed (e.g. "הפרויקט לא היה בתשלום") are not repeated by the main brief either.
+  const resolved = (t: IssueType, subjectId?: string) => (integrity ? integrity.issues.filter((i) => i.issueType === t && (i.ownerResolved || (subjectId !== undefined && !!i.ownerAnswer)) && (subjectId === undefined || i.subjectId === subjectId)).length : 0);
   const { realized, pacing, coverage, month } = state;
   const sig = (c: FinanceSignal["code"]) => state.signals.find((s) => s.code === c);
   const active = (r: Receivable) => r.collection.state !== "SETTLED" && r.collection.state !== "NOT_COLLECTIBLE" && r.collection.state !== "NEEDS_REVIEW";
@@ -62,8 +71,9 @@ export function buildFinanceBrief(state: PartnerFinanceState, integrity: Partner
 
   // 1. data blocker — completed work with a recorded cost but no recorded income
   const noIncome = sig("COMPLETED_WORK_EXPENSE_NO_INCOME");
-  if (noIncome) {
-    candidates.push({ family: "FINANCIAL_DATA_BLOCKER", epistemic: "DERIVED", textHe: count(noIncome.count,
+  const noIncomeOpen = noIncome ? noIncome.count - resolved("COMPLETED_WORK_NO_INCOME") : 0;
+  if (noIncome && noIncomeOpen > 0) {
+    candidates.push({ family: "FINANCIAL_DATA_BLOCKER", epistemic: "DERIVED", textHe: count(noIncomeOpen,
       "יש פרויקט אחד שהסתיים עם הוצאה רשומה אבל בלי הכנסה רשומה. כדאי להתחיל ממנו.",
       (n) => `יש ${n} פרויקטים שהסתיימו עם הוצאה רשומה אבל בלי הכנסה רשומה. כדאי להתחיל מהם.`) });
   }
@@ -123,7 +133,7 @@ export function buildFinanceBrief(state: PartnerFinanceState, integrity: Partner
   }
   // 8. recurring-expense review (hypothesis)
   const cand = state.recurring.candidates[0];
-  if (cand) candidates.push({ family: "RECURRING_EXPENSE_REVIEW", epistemic: "HYPOTHESIS", textHe: `ראיתי הוצאה של ${fmtMoney(cand.amount, cand.currency)}${cand.category ? ` (${cand.category})` : ""} כמה חודשים ברצף. ייתכן שזו הוצאה קבועה.` });
+  if (cand && !resolved("RECURRING_EXPENSE_CANDIDATE", cand.key)) candidates.push({ family: "RECURRING_EXPENSE_REVIEW", epistemic: "HYPOTHESIS", textHe: `ראיתי הוצאה של ${fmtMoney(cand.amount, cand.currency)}${cand.category ? ` (${cand.category})` : ""} כמה חודשים ברצף. ייתכן שזו הוצאה קבועה.` });
 
   // select: dedupe by family, rank, ≤3 preferred, ≤5 only for material families
   const rehabItems = integrity ? integrity.top.items : [];
@@ -166,7 +176,15 @@ export function buildFinanceBrief(state: PartnerFinanceState, integrity: Partner
     items,
     rehab: {
       items: rehabItems.map((i) => ({ issueType: i.issueType, epistemic: i.epistemic, textHe: i.textHe })),
-      questions: (integrity ? integrity.top.questions : []).map((q) => ({ questionType: q.questionType, textHe: q.textHe, whyHe: q.whyItMattersHe, options: q.options.map((o) => o.labelHe) })),
+      questions: answersAvailable ? (integrity ? integrity.top.questions : []).map((q): FinanceRehabQuestionDto => ({
+        questionType: q.questionType, textHe: q.textHe, whyHe: q.whyItMattersHe,
+        options: q.options.map((o) => ({ code: o.code, labelHe: o.labelHe })),
+        answer: q.identity ? {
+          questionId: q.identity.questionId, fingerprint: q.identity.fingerprint, exactDateCode: q.identity.exactDateCode,
+          previousAnswerHe: q.identity.previousAnswer ? `ענית בעבר: ${q.identity.previousAnswer.labelHe}. הנתונים השתנו מאז.` : null,
+        } : null,
+      })) : [],
+      questionsNoteHe: !answersAvailable && integrity && integrity.top.questions.length ? QUESTIONS_UNAVAILABLE_HE : null,
     },
     calmHe: items.length || rehabItems.length ? null : CALM_HE,
   };

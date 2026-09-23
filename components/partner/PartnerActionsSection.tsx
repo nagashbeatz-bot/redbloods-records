@@ -18,6 +18,10 @@
  *   read-only cards below the proposals, parsed strictly, re-fetched together with the surface.
  * - Finance Brain V1: also fetches GET /api/partner/finance (read-only "כסף" brief), parsed strictly;
  *   any failure / malformed payload → the block is not rendered (fail closed).
+ * - F2.8–F2.10: a "צריך ממך" finance question is answered ONLY by an explicit click, sent ONLY to
+ *   POST /api/partner/finance/answer with the question exactly as rendered (questionId + fingerprint) and a
+ *   fresh requestId. Every control (actions + finance) is disabled while saving; then the whole surface is
+ *   re-fetched. A changed question → "השאלה השתנתה. רעננתי את המידע." Nothing is written anywhere else.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/use-role";
@@ -26,6 +30,9 @@ import { parseActionSurfaceResponse, type ChangeValueAnswerCode, type PartnerAct
 import { parseRecentOutcomesResponse, type PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
 import { parseFinanceBriefResponse, type FinanceBriefDto } from "@/lib/partner/finance/dto";
 import { PartnerActionsView, type CardControls } from "./PartnerActionCard";
+import type { FinanceAnswerControls } from "./PartnerFinanceBrief";
+import { buildFinanceAnswerAttempt, interpretFinanceAnswerResponse } from "./partner-finance-answer-client";
+import type { FinanceRehabQuestionDto } from "@/lib/partner/finance/dto";
 import {
   buildApproveAttempt, buildChangeAttempt, buildExecuteAttempt, buildNotNowAttempt, interpretDecisionResponse, interpretExecuteResponse, phaseForOutcome,
   type DecisionAttempt, type DecisionOutcome, type DecisionPhase, type ExecuteAttempt, type NotNowChoice,
@@ -49,6 +56,9 @@ interface UiState {
 }
 const IDLE: UiState = { actionId: null, phase: "idle", panel: "none", message: null, retryAttempt: null, notNowChoice: null, customYmd: "", changeCode: null, changeYmd: "" };
 
+interface FinanceUi { questionId: string | null; busy: boolean; message: string | null; exactFor: string | null; exactYmd: string }
+const FIN_IDLE: FinanceUi = { questionId: null, busy: false, message: null, exactFor: null, exactYmd: "" };
+
 const newRequestId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "");
 
 export default function PartnerActionsSection({ isMobile }: { isMobile: boolean }) {
@@ -58,6 +68,8 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
   const [finance, setFinance] = useState<FinanceBriefDto | null>(null);
   const [ui, setUi] = useState<UiState>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);
+  const [fin, setFin] = useState<FinanceUi>(FIN_IDLE);
+  const [financeNotice, setFinanceNotice] = useState<string | null>(null);
   const submitting = useRef(false);
 
   const loadActions = useCallback(async (signal?: AbortSignal) => {
@@ -109,6 +121,7 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
 
   const submit = useCallback(async (actionId: string, attempt: Attempt | null) => {
     if (!attempt || submitting.current) return;
+    setFinanceNotice(null);
     if ("requestId" in attempt.body && !attempt.body.requestId) { setUi((u) => ({ ...u, actionId, phase: "error", message: "הדפדפן לא תומך — לא נשמר דבר.", retryAttempt: null })); return; }
     submitting.current = true;
     setNotice(null);
@@ -135,12 +148,54 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     await load();
   }, [load]);
 
+  // F2.8–F2.10: one Owner answer to one finance question. One requestId per click; no automatic retry.
+  const submitFinance = useCallback(async (q: FinanceRehabQuestionDto, answerCode: string, exactDateYmd: string | null) => {
+    if (submitting.current || !q.answer) return;
+    const questionId = q.answer.questionId;
+    const attempt = buildFinanceAnswerAttempt(q, answerCode, exactDateYmd, newRequestId());
+    if (!attempt) { setFin({ ...FIN_IDLE, questionId, message: "לא ניתן לשלוח את התשובה הזו. לא נשמר דבר." }); return; }
+    submitting.current = true;
+    setNotice(null);
+    setFinanceNotice(null);
+    setFin((f) => ({ ...f, questionId, busy: true, message: null }));
+    let status = 0, body: unknown = null;
+    try {
+      const res = await fetch(attempt.url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", cache: "no-store", body: JSON.stringify(attempt.body) });
+      status = res.status;
+      try { body = await res.json(); } catch { body = null; }
+    } catch { status = 503; body = null; }
+    const outcome = interpretFinanceAnswerResponse(status, body);
+    submitting.current = false;
+    if (outcome.ui === "error") setFin({ ...FIN_IDLE, questionId, message: outcome.messageHe });
+    else { setFin(FIN_IDLE); setFinanceNotice(outcome.messageHe); }
+    // Owner Context is authoritative: always re-fetch after any answer (the question disappears or changes).
+    await load();
+  }, [load]);
+
   if (role !== "owner") return null;
+
+  const anyBusy = ui.phase === "submitting" || fin.busy;
+  const financeControls: FinanceAnswerControls = {
+    busy: anyBusy,
+    activeQuestionId: fin.questionId,
+    message: fin.message,
+    exactFor: fin.exactFor,
+    exactYmd: fin.exactYmd,
+    minExactYmd: finance?.asOfDate ?? "",
+    onAnswer: (q, code) => submitFinance(q, code, null),
+    onOpenExact: (q) => setFin({ ...FIN_IDLE, questionId: q.answer?.questionId ?? null, exactFor: q.answer?.questionId ?? null }),
+    onExactYmd: (v) => setFin((f) => ({ ...f, exactYmd: v })),
+    onConfirmExact: (q) => { if (q.answer?.exactDateCode && fin.exactYmd) submitFinance(q, q.answer.exactDateCode, fin.exactYmd); },
+    onCancelExact: () => setFin(FIN_IDLE),
+    renderDatePicker: ({ value, onChange, min, ariaLabel }) => (
+      <div aria-label={ariaLabel}><DatePickerInput value={value} onChange={onChange} min={min} placeholder="בחר תאריך…" /></div>
+    ),
+  };
 
   const controlsFor = (item: PartnerActionCardDto): CardControls | undefined => {
     const mine = ui.actionId === item.actionId;
     const s = mine ? ui : IDLE;
-    const otherBusy = ui.phase === "submitting" && !mine;
+    const otherBusy = (ui.phase === "submitting" && !mine) || fin.busy;
     return {
       phase: otherBusy ? "submitting" : s.phase,
       panel: s.panel, message: s.message, canRetry: mine && !!ui.retryAttempt,
@@ -164,5 +219,5 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     };
   };
 
-  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} outcomes={outcomes} finance={finance} />;
+  return <PartnerActionsView items={items} isMobile={isMobile} controlsFor={controlsFor} notice={notice} outcomes={outcomes} finance={finance} financeControls={financeControls} financeNotice={financeNotice} />;
 }

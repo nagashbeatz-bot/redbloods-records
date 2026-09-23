@@ -19,13 +19,14 @@
 import type { PartnerCase } from "../cases/types";
 import { fingerprintCaseFacts } from "../feedback/snapshot";
 import { formatYmdHe } from "./answer-value";
+import { FINANCE_ANSWER_OPTIONS, isFinanceQuestionType } from "./finance-questions";
 import {
   INVESTIGATION_OWNER_RULE, INVESTIGATION_SCHEMA_VERSION,
   type InvestigationAnswerOption, type InvestigationDecision, type InvestigationQuestionType,
   type NoQuestionReason, type PartnerInvestigationQuestion, type PartnerOwnerContext, type QuestionOrigin,
 } from "./types";
 
-// ── answer options (the OTHER option is appended to every list) ──
+// ── answer options (the OTHER option is appended to every Case question list; finance lists are complete as-is) ──
 
 const OTHER: InvestigationAnswerOption = {
   code: "OTHER", labelHe: "אחר (אפשר להוסיף הערה)",
@@ -88,10 +89,12 @@ export const ANSWER_OPTIONS: Record<InvestigationQuestionType, readonly Investig
     { code: "EXTERNAL_DEPENDENCY", labelHe: "תלות בגורם חיצוני", derivedHe: `הריליס תלוי בגורם חיצוני ${byOwner}.` },
     { code: "ALREADY_RELEASED_NOT_RECORDED", labelHe: "כבר יצא, לא עודכן במערכת", derivedHe: `הריליס כבר יצא ולא עודכן במערכת ${byOwner}.`, hypothesisHe: "ייתכן שיש פער בעדכון שלב הריליס אחרי פרסום." },
   ],
+  // F2.8–F2.10: the Finance Owner questions (single source: finance-questions.ts).
+  ...FINANCE_ANSWER_OPTIONS,
 };
 
 export function answerOptionsFor(type: InvestigationQuestionType): InvestigationAnswerOption[] {
-  return [...ANSWER_OPTIONS[type], OTHER];
+  return isFinanceQuestionType(type) ? [...ANSWER_OPTIONS[type]] : [...ANSWER_OPTIONS[type], OTHER];
 }
 
 // ── Case types that are FACT-COMPLETE in v1 (§6): the condition AND its meaning are computed facts ──

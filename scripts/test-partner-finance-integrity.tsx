@@ -107,7 +107,7 @@ async function main() {
     const r = run(raw);
     check("16. orphans never count as money (cash / receivables / forecast)", [r.state.receivables.length, r.state.pacing.knownIncomingIls, r.state.expected.length], [0, 0, 0]);
     check("17. queue is evidence-first (linked records before a bigger amount) — larger is not 'more urgent'", r.integrity.orphanQueue.map((o) => [o.amount, o.txRowsForId]), [[500, 1], [9000, 0]]);
-    check("18. question shape: A/B/C, UNKNOWN epistemic, NEEDS_OWNER_REVIEW", [r.integrity.orphanQueue[0].question.questionType, r.integrity.orphanQueue[0].question.options.map((o) => o.labelHe), r.integrity.issues.filter((i) => i.issueType === "ORPHAN_FINANCE_SETTING").map((i) => [i.epistemicStatus, i.reasonCodes.includes("NEEDS_OWNER_REVIEW")])], ["ORPHAN_PRICE_MEANING", ["נתון היסטורי בלבד", "עסקה אמיתית שצריך לשחזר/לקשר", "לא יודע כרגע"], [["UNKNOWN", true], ["UNKNOWN", true]]]);
+    check("18. question shape: A/B/C, UNKNOWN epistemic, NEEDS_OWNER_REVIEW", [r.integrity.orphanQueue[0].question.questionType, r.integrity.orphanQueue[0].question.options.map((o) => o.labelHe), r.integrity.issues.filter((i) => i.issueType === "ORPHAN_FINANCE_SETTING").map((i) => [i.epistemicStatus, i.reasonCodes.includes("NEEDS_OWNER_REVIEW")])], ["FINANCE_ORPHAN_SETTING_MEANING", ["נתון היסטורי בלבד", "עסקה אמיתית שצריך לשחזר", "לא יודע כרגע"], [["UNKNOWN", true], ["UNKNOWN", true]]]);
     check("orphan trust state is NEEDS_OWNER_REVIEW", r.integrity.trust.orphanPriceData.state, "NEEDS_OWNER_REVIEW");
     ok("18. orphan question text", r.integrity.orphanQueue[1].question.textHe === "מצאתי מחיר ישן של ₪9,000 לפרויקט שכבר לא קיים. מה זה?");
   }
@@ -148,7 +148,7 @@ async function main() {
     const over = run(empty({ transactions: [tx({ type: "income", amount: 800, status: "צפוי", date: "2026-09-15" })] }));
     const oi = over.integrity.issues.find((i) => i.issueType === "OVERDUE_RECEIVABLE_REASON_UNKNOWN")!;
     check("29. overdue → reason UNKNOWN (never invented)", [oi.epistemicStatus, over.integrity.overdueReasonGaps.map((g) => g.reason)], ["UNKNOWN", ["OVERDUE_REASON_UNKNOWN"]]);
-    check("30. future-compatible reason question shape (codes + Hebrew)", QUESTION_OPTIONS.WHY_PAYMENT_OPEN.map((o) => [o.code, o.labelHe]), [["WAITING_ON_CLIENT", "מחכה ללקוח"], ["NEW_DATE_PROMISED", "הבטיח תאריך חדש"], ["DISPUTE", "יש מחלוקת"], ["WAITING_ON_DELIVERY", "מחכה למסירה"], ["AGREED_TO_POSTPONE", "סיכמנו לדחות"], ["OTHER", "אחר"], ["UNKNOWN", "לא יודע"]]);
+    check("30. future-compatible reason question shape (codes + Hebrew)", QUESTION_OPTIONS.FINANCE_OVERDUE_REASON.map((o) => [o.code, o.labelHe]), [["WAITING_FOR_CLIENT", "מחכה ללקוח"], ["PROMISED_NEW_DATE", "הבטיח תאריך חדש"], ["DISPUTE", "יש מחלוקת"], ["WAITING_FOR_DELIVERY", "מחכה למסירה"], ["OWNER_AGREED_DELAY", "סיכמתי לדחות"], ["OTHER", "אחר"], ["UNKNOWN", "לא יודע"]]);
     const pp = project();
     const expected = tx({ projectId: pp.id, scope: "project", type: "income", amount: 1200, status: "צפוי", date: "2026-09-20" });
     check("31. expected income due with no received record → signal", issuesOf(empty({ projects: [pp], transactions: [expected] }), "INCOME_EXPECTED_BUT_NOT_RECORDED").length, 1);
@@ -204,11 +204,11 @@ async function main() {
       { issueType: "RECEIVABLE_DUE_DATE_MISSING", epistemic: "FACT", textHe: "יש יתרה של ₪1,600 בלי תאריך גבייה. צריך לקבוע תאריך גבייה." },
       { issueType: "COMPLETED_WORK_NO_INCOME", epistemic: "FACT", textHe: "8 פרויקטים שהסתיימו עם הוצאה מתועדת, אבל אני לא רואה בהם הכנסה. צריך בירור." },
     ]);
-    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["RECURRING_EXPENSE_RECORD", 3], ["DUE_DATE_FOR_BALANCE", 5]]);
+    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", 3], ["FINANCE_RECEIVABLE_TIMING", 6]]);
     check("65. main brief keeps money status, no duplicates of 'צריך ממך'", prod.brief.items.map((i) => i.family), ["UPCOMING_COLLECTION", "COMMITTED_EXPENSE", "REVENUE_OPPORTUNITY"]);
     ok("65/66. main ≤5, rehab ≤3, questions ≤2", prod.brief.items.length <= FINANCE_BRIEF_MAX_ITEMS && prod.brief.rehab.items.length <= 3 && prod.brief.rehab.questions.length <= 2);
     check("F2 numbers unchanged (₪ in 2,700 / out 500 / net 2,200; position 3,100)", [prod.state.realized.ils, prod.state.pacing.knownMonthEndPositionIls], [{ cashIn: 2700, cashOut: 500, net: 2200 }, 3100]);
-    check("F2 brief without an integrity state is unchanged (rehab empty)", [buildFinanceBrief(prod.state).items.map((i) => i.family), buildFinanceBrief(prod.state).rehab], [["FINANCIAL_DATA_BLOCKER", "UPCOMING_COLLECTION", "COLLECTION_NO_DATE", "COMMITTED_EXPENSE", "MISSING_EXPECTED_RECORD"], { items: [], questions: [] }]);
+    check("F2 brief without an integrity state is unchanged (rehab empty)", [buildFinanceBrief(prod.state).items.map((i) => i.family), buildFinanceBrief(prod.state).rehab], [["FINANCIAL_DATA_BLOCKER", "UPCOMING_COLLECTION", "COLLECTION_NO_DATE", "COMMITTED_EXPENSE", "MISSING_EXPECTED_RECORD"], { items: [], questions: [], questionsNoteHe: null }]);
     const allText = [...prod.integrity.issues.map((i) => i.recommendedOwnerQuestion?.textHe ?? ""), ...prod.integrity.questions.map((q) => q.textHe + q.whyItMattersHe), ...prod.brief.rehab.items.map((i) => i.textHe), ...prod.brief.items.map((i) => i.textHe)].join(" ");
     ok("67. no blame wording anywhere", !BLAME.test(allText));
     ok("coverage reasons are given as reasons (no percentage score)", prod.integrity.coverageReasonsHe.length > 0 && !/%|אחוז|ציון/.test(prod.integrity.coverageReasonsHe.join(" ")));
@@ -249,7 +249,8 @@ async function main() {
     const src = FILES.map((f) => strip(rd(f)));
     ok("47-49. no insert / update / upsert / delete (transactions, settings)", src.every((s) => !/\.insert\(|\.update\(|\.upsert\(|\.delete\(/.test(s)));
     ok("50. no Action Event write / decision / execution", src.every((s) => !/partner_action_events|appendDecision|decideSuggestedAction|executeApprovedAction|event-store/.test(s)));
-    ok("51. no Owner Context write", src.every((s) => !/appendOwnerContext|context-store|context-persistence|partner_owner_context/.test(s)));
+    // F2.8–F2.10 (narrowed): server.ts only READS the active answers (resolveCurrentOwnerContexts); no file here writes Owner Context.
+    ok("51. no Owner Context write", src.every((s) => !/appendOwnerContext|context-persistence|partner_owner_context/.test(s)) && FILES.filter((f, i) => /context-store/.test(src[i])).join() === "lib/partner/finance/server.ts");
     ok("52. no Feedback write", src.every((s) => !/feedback\/|partner_feedback/.test(s)));
     ok("53. no baseline write", src.every((s) => !/savePartnerBaseline|baseline\/|partner_change_baseline/.test(s)));
     ok("54. no project mutation", src.every((s) => !/updateProject|projects-store|\/api\/projects/.test(s)));
@@ -257,7 +258,8 @@ async function main() {
     ok("56-58. no Push / Cron / Agent Alerts", src.every((s) => !/web-push|lib\/push|node-cron|cron|agent_alerts|alerts-store|lib\/agent\//i.test(s)));
     ok("the integrity core is pure (no supabase / server-only / clock)", !/lib\/supabase|server-only|new Date\(\)|Date\.now\(/.test(strip(rd("lib/partner/finance/integrity.ts"))));
     ok("the integrity layer reuses the Finance Brain validation (no second copy of the status rules)", /import \{ RECORDING_POLICY_START, validateTx, type ValidatedTx \} from "\.\/core";/.test(rd("lib/partner/finance/integrity.ts")) && !/isReceivedStatus|"שולם", "התקבל"/.test(strip(rd("lib/partner/finance/integrity.ts"))));
-    ok("the UI rehab section is read-only (no buttons / handlers / hooks / fetch)", !/<button|onClick|onChange|useState|useEffect|fetch\(/.test(strip(rd("components/partner/PartnerFinanceBrief.tsx"))));
+    // F2.8–F2.10: buttons exist only for answerable questions and only call the injected answerControls (no hooks / fetch here).
+    ok("the UI rehab section has no hooks / fetch (answers go through the section's controls)", !/useState|useEffect|useRef|fetch\(/.test(strip(rd("components/partner/PartnerFinanceBrief.tsx"))));
   }
 
   console.log("UI (59-63)");
@@ -269,9 +271,9 @@ async function main() {
     check("rendered counts: 3 main items, 3 rehab items, 2 questions, options as plain text (no buttons / inputs)", [(d.match(/data-finance-item=/g) ?? []).length, (d.match(/data-rehab-item=/g) ?? []).length, (d.match(/data-rehab-question=/g) ?? []).length, (d.match(/<button|<input|<a /g) ?? []).length], [3, 3, 2, 0]);
     ok("61. desktop row summary", /data-finance-summary="true" style="display:flex;flex-direction:row/.test(d));
     ok("62. mobile stacked summary", /data-finance-summary="true" style="display:flex;flex-direction:column/.test(m));
-    ok("questions are clearly not answerable here yet", d.includes("עדיין אי אפשר לענות כאן"));
+    ok("without answer controls the options stay plain text (display only)", d.includes("לעיון בלבד") && !d.includes("data-finance-answer="));
     check("63. loading / error → nothing rendered (fail closed)", renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={null} />), "");
-    const noRehab: FinanceBriefDto = { ...prod, rehab: { items: [], questions: [] } };
+    const noRehab: FinanceBriefDto = { ...prod, rehab: { items: [], questions: [], questionsNoteHe: null } };
     ok("no 'צריך ממך' block when there is nothing to ask", !renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={noRehab} />).includes("צריך ממך"));
   }
 

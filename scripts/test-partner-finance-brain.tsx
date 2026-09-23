@@ -120,7 +120,7 @@ function productionMirror(): FinanceRaw {
   };
 }
 const PRODUCTION_BRIEF: FinanceBriefDto = {
-  v: 2, month: "2026-09", asOfDate: "2026-09-23", coverage: "PARTIAL",
+  v: 3, month: "2026-09", asOfDate: "2026-09-23", coverage: "PARTIAL",
   coverageNoteHe: "הנתונים עדיין חלקיים, אז הנטו כאן הוא לפי מה שרשום במערכת. ברוב הפרויקטים אין מחיר מוסכם במערכת, ולכן אי אפשר לחשב גבייה מלאה. יש נתוני מחיר ישנים שדורשים בירור.",
   summary: {
     basisHe: "לפי הנתונים הרשומים כרגע", recordedNetIls: 2200, floorIls: 20000, preferredIls: 30000, gapToFloor: 17800, gapToPreferred: 27800, daysRemaining: 7,
@@ -136,7 +136,7 @@ const PRODUCTION_BRIEF: FinanceBriefDto = {
     { family: "MISSING_EXPECTED_RECORD", epistemic: "FACT", textHe: "משכורת Victor עבור אוגוסט 2026 מסומנת כשולמה, אבל אין לה רישום בכספים." },
   ],
   // F2.5: without an integrity state the "צריך ממך" section is empty (the main brief is unchanged).
-  rehab: { items: [], questions: [] },
+  rehab: { items: [], questions: [], questionsNoteHe: null },
   calmHe: null,
 };
 
@@ -431,7 +431,9 @@ async function main() {
     const src = FILES.map((f) => strip(rd(f)));
     ok("53/54. no DB / transaction write (no insert / update / upsert / delete)", src.every((s) => !/\.insert\(|\.update\(|\.upsert\(|\.delete\(/.test(s)));
     ok("55. no Action Event write", src.every((s) => !/partner_action_events|appendDecision|event-store|event-persistence/.test(s)));
-    ok("56. no Owner Context write", src.every((s) => !/appendOwnerContext|context-store|context-persistence|partner_owner_context/.test(s)));
+    // F2.8–F2.10 (narrowed, not removed): server.ts may READ the Owner's active answers — exactly one named import,
+    // resolveCurrentOwnerContexts — and no file here can append / persist Owner Context (answer-service.ts is the only writer).
+    ok("56. no Owner Context write", src.every((s) => !/appendOwnerContext|context-persistence|partner_owner_context/.test(s)) && FILES.filter((f, i) => /context-store/.test(src[i])).join() === "lib/partner/finance/server.ts" && /^import \{ resolveCurrentOwnerContexts \} from "\.\.\/investigation\/context-store";$/m.test(rd("lib/partner/finance/server.ts")) && (rd("lib/partner/finance/server.ts").match(/context-store/g) ?? []).length === 1);
     ok("57. no Feedback write", src.every((s) => !/feedback\/|partner_feedback/.test(s)));
     ok("58. no baseline write", src.every((s) => !/savePartnerBaseline|baseline\/|partner_change_baseline/.test(s)));
     ok("59. no project mutation", src.every((s) => !/updateProject|\/api\/projects|projects-store/.test(s)));
@@ -464,7 +466,8 @@ async function main() {
     ok("the brief re-loads with the rest of Partner (one load for all three)", /Promise\.all\(\[loadActions\(signal\), loadOutcomes\(signal\), loadFinance\(signal\)\]\)/.test(SECTION));
     const CARD = rd("components/partner/PartnerActionCard.tsx");
     ok("placement: proposals → כסף → recent outcomes", CARD.indexOf("items.map((it) => <PartnerActionCard") < CARD.indexOf("<PartnerFinanceBrief") && CARD.indexOf("<PartnerFinanceBrief") < CARD.indexOf("<PartnerOutcomesList"));
-    ok("finance card is read-only (no hooks / fetch / handlers)", !/useState|useEffect|fetch\(|onClick|<button/.test(strip(rd("components/partner/PartnerFinanceBrief.tsx"))));
+    // F2.8–F2.10: the card stays presentational (no hooks / fetch); answer buttons only call the answerControls the section passes in.
+    ok("finance card: no hooks / fetch; handlers only through answerControls", !/useState|useEffect|useRef|useCallback|fetch\(/.test(strip(rd("components/partner/PartnerFinanceBrief.tsx"))) && [...strip(rd("components/partner/PartnerFinanceBrief.tsx")).matchAll(/onClick=\{([^}]*\}?)/g)].every((m) => /controls!\./.test(m[1])));
     check("money formatting is deterministic", [fmtMoney(2200, "₪"), fmtMoney(1888, "$"), fmtMoney(-300, "₪"), fmtMoney(765.5, "₪")], ["₪2,200", "$1,888", "−₪300", "₪765.50"]);
   }
 

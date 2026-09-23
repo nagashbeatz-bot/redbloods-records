@@ -80,7 +80,9 @@ async function main() {
         dueDateQueue: i.dueDateQueue.map((q) => ({ amount: q.amount, currency: q.currency, project: q.projectName })),
         overdueReasonGaps: i.overdueReasonGaps.length,
         questionsTotal: i.questions.length,
-        top: i.top,
+        top: { items: i.top.items, questions: i.top.questions.map((q) => ({ questionType: q.questionType, subject: q.subject, identity: q.identity, options: q.options.map((o) => o.code) })) },
+        // F2.8–F2.10: Owner answers consumed (read-only here — nothing is answered by this script)
+        ownerAnswers: i.ownerAnswers,
       };
     })(),
     brief: r.brief,

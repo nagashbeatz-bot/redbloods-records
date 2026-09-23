@@ -19,6 +19,7 @@
  * Nothing here changes a Case, detector, threshold, Charter item or Owner Rule.
  */
 import type { CaseDerivedFact, CaseEvidence } from "../cases/types";
+import type { FinanceQuestionType } from "./finance-questions";
 
 export const INVESTIGATION_SCHEMA_VERSION = "partner-investigation-schema-v1";
 export const INVESTIGATION_OWNER_RULE = "INVESTIGATE_BEFORE_CONCLUDING";
@@ -32,7 +33,9 @@ export type InvestigationQuestionType =
   | "WHY_INTERNAL_DEADLINE_PASSED"
   | "WHY_RELEASE_TARGET_PASSED"
   // F.1E v2 — a FOLLOW-UP question: never generated from a Case alone, only from a specific Owner Context (see FOLLOW_UP_RULES).
-  | "WHAT_IS_NEW_PROJECT_DEADLINE";
+  | "WHAT_IS_NEW_PROJECT_DEADLINE"
+  // F2.8–F2.10 — structured Finance Owner questions (finance-questions.ts). Never generated from a Case.
+  | FinanceQuestionType;
 
 /**
  * Why a question exists (F.1E v2). CASE: generated from the Case/state alone.
