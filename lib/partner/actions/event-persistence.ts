@@ -22,9 +22,9 @@
 import { redactSecrets } from "../feedback/persistence";
 import { SHA256_HEX_RE } from "./canonical";
 import {
-  ACTION_EVENT_COLUMNS, ACTION_EVENT_SCHEMA_VERSION, EXECUTE_RPC, LOWER_UUID_RE, PARTNER_ACTION_EVENTS_TABLE, SUPPORTED_ACTION_SCHEMA_VERSION,
+  ACTION_EVENT_COLUMNS, ACTION_EVENT_SCHEMA_VERSION, ACTION_EVENT_TYPES, EXECUTE_RPC, LOWER_UUID_RE, PARTNER_ACTION_EVENTS_TABLE, SUPPORTED_ACTION_SCHEMA_VERSION,
   compareEventOrder, decisionReplayMatches, isAllowedTransition, mapActionEventRow, orderActionChain,
-  type ActionEventInsertRow, type DecisionRequestScope, type DeferChoice, type OwnerDecisionEventType, type PartnerActionEvent,
+  type ActionEventInsertRow, type ActionEventType, type DecisionRequestScope, type DeferChoice, type OwnerDecisionEventType, type PartnerActionEvent,
 } from "./events";
 import { hashActionSnapshot, type PartnerActionSnapshot } from "./snapshot";
 
@@ -93,6 +93,11 @@ export type EventReadResult =
   | { status: "READ_FAILED"; detail: string }
   | { status: "INVALID_STORED_EVENT"; errors: string[] };
 
+export type EventListReadResult =
+  | { status: "OK"; events: PartnerActionEvent[] }
+  | { status: "READ_FAILED"; detail: string }
+  | { status: "INVALID_STORED_EVENT"; errors: string[] };
+
 export type ActionChainReadResult =
   | { status: "OK"; chain: PartnerActionEvent[]; head: PartnerActionEvent | null }
   | { status: "READ_FAILED"; detail: string }
@@ -133,6 +138,8 @@ export interface ActionEventStore {
   getEventByRequestId(requestId: string): Promise<EventReadResult>;
   /** The action's whole chain, ordered along supersedes and validated as one line (fail closed). */
   getActionChain(actionId: string): Promise<ActionChainReadResult>;
+  /** F.1L (read-only): every stored event of one type, created_at order (e.g. EXECUTED for derived Outcomes). */
+  getEventsByType(eventType: ActionEventType): Promise<EventListReadResult>;
   appendDecision(input: DecisionAppendInput): Promise<DecisionAppendResult>;
   /** The approved execution RPC — the ONLY path to a business mutation. */
   callExecuteRpc(args: ExecuteRpcArgs): Promise<RpcCallResult>;
@@ -210,6 +217,12 @@ export function createActionEventStore(client: ActionEventTableClient): ActionEv
     getEventById: (id) => LOWER_UUID_RE.test(id) ? readOne("id", id) : Promise.resolve({ status: "NOT_FOUND" }),
     getEventByRequestId: (rid) => LOWER_UUID_RE.test(rid) ? readOne("request_id", rid) : Promise.resolve({ status: "NOT_FOUND" }),
     getActionChain,
+    async getEventsByType(eventType) {
+      if (!(ACTION_EVENT_TYPES as readonly string[]).includes(eventType)) return { status: "INVALID_STORED_EVENT", errors: [`unknown event type ${JSON.stringify(eventType)}`] };
+      const r = await readRows("event_type", eventType);
+      if (!r.ok) return r.result.status === "INVALID_CHAIN" ? { status: "INVALID_STORED_EVENT", errors: r.result.reasons } : r.result;
+      return { status: "OK", events: r.events };
+    },
 
     async appendDecision(i) {
       const errors = validateAppend(i);
