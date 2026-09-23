@@ -94,7 +94,7 @@ async function main() {
   check("4. …and it rests on the structured evidence (A: DEADLINE_NOT_UPDATED, B: IN_TWO_WEEKS → 2026-10-07)", action.evidence.map((e) => e.kind === "OWNER_CONTEXT" ? e.answerCode : e.kind === "RESOLVED_VALUE" ? e.value.ymd : `${e.field}=${e.value}`), ["deadline=2026-07-14", "DEADLINE_NOT_UPDATED", "IN_TWO_WEEKS", "2026-10-07"]);
   ok("4. the note is never surfaced", !JSON.stringify(r).includes("never parsed"));
   check("status label", item?.statusLabelHe, "הצעה לפעולה");
-  check("DTO v2: display data + what a decision must echo (hash, head) — no snapshot body, no actor, no execution data", Object.keys(item ?? {}).sort(), ["actionId", "actionType", "changeValueOptions", "currentDeadline", "currentDeadlineHe", "explanationHe", "headEventId", "headlineHe", "minChangeDate", "projectId", "projectName", "reasonHe", "snapshotHash", "state", "statusLabelHe", "suggestedDeadline", "suggestedDeadlineHe", "v"]);
+  check("DTO v3: display data + what a decision must echo (hash, head, approval id) — no snapshot body, no actor", Object.keys(item ?? {}).sort(), ["actionId", "actionType", "approvalEventId", "changeValueOptions", "currentDeadline", "currentDeadlineHe", "explanationHe", "headEventId", "headlineHe", "minChangeDate", "projectId", "projectName", "reasonHe", "snapshotHash", "state", "statusLabelHe", "suggestedDeadline", "suggestedDeadlineHe", "v"]);
   check("v2: SHOW state, exact live snapshot hash, empty chain head", [item?.state, item?.snapshotHash, item?.headEventId], ["SHOW", HASH, null]);
   check("v2: change options = the date answers of WHAT_IS_NEW_PROJECT_DEADLINE (with its labels)", item?.changeValueOptions, [{ code: "IN_ONE_WEEK", labelHe: "עוד שבוע" }, { code: "IN_TWO_WEEKS", labelHe: "עוד שבועיים" }, { code: "END_OF_MONTH", labelHe: "סוף החודש" }, { code: "SPECIFIC_DATE", labelHe: "לבחור תאריך" }]);
   check("v2: min change date = today (Israel)", item?.minChangeDate, "2026-09-23");
@@ -116,7 +116,7 @@ async function main() {
   const branchDeps = deps([ap, ev("REJECTED", ap.id), ev("NOT_NOW", ap.id, { deferChoice: "TOMORROW", deferUntil: "2026-09-30T00:00:00Z" })]);
   const blocked = await buildActionSurface(branchDeps);
   check("9. branched chain → BLOCKED, not rendered, logged server-side", [blocked.status === "OK" ? blocked.states[ACTION_ID] : null, blocked.status === "OK" ? blocked.response.items.length : -1, branchDeps.logs.some((l) => l.startsWith("partner_action_surface_blocked"))], ["BLOCKED", 0, true]);
-  ok("9. BLOCKED exposes no internal chain data to the Owner payload", blocked.status === "OK" && JSON.stringify(blocked.response) === JSON.stringify({ v: 2, items: [] }));
+  ok("9. BLOCKED exposes no internal chain data to the Owner payload", blocked.status === "OK" && JSON.stringify(blocked.response) === JSON.stringify({ v: 3, items: [] }));
   const unreadable = await buildActionSurface(deps({ status: "INVALID_STORED_EVENT", errors: ["x"] }));
   check("9. unreadable chain → fail closed (not rendered)", unreadable.status === "OK" ? [unreadable.states[ACTION_ID], unreadable.response.items.length] : null, ["BLOCKED", 0]);
   const failedRead = await buildActionSurface(deps({ status: "READ_FAILED", detail: "x" }));
@@ -129,14 +129,14 @@ async function main() {
   check("a STALE derived action is never surfaced", stale.status === "OK" ? stale.response.items.length : -1, 0);
 
   console.log("Fail-closed client parsing (14)");
-  const good = { v: 2, items: [item] };
+  const good = { v: 3, items: [item] };
   check("valid payload parses", parseActionSurfaceResponse(JSON.parse(JSON.stringify(good))).ok, true);
   const bad: Array<[string, unknown]> = [
-    ["null", null], ["array", [item]], ["old version", { v: 1, items: [item] }], ["items not an array", { v: 2, items: {} }], ["extra top-level key", { v: 2, items: [item], debug: {} }],
-    ["missing field", { v: 2, items: [{ ...item, reasonHe: undefined }] }], ["extra field (snapshot)", { v: 2, items: [{ ...item, snapshot: {} }] }],
-    ["bad date", { v: 2, items: [{ ...item, suggestedDeadline: "07.10.2026" }] }], ["same from/to", { v: 2, items: [{ ...item, suggestedDeadline: item?.currentDeadline }] }],
-    ["wrong action type", { v: 2, items: [{ ...item, actionType: "DELETE_PROJECT" }] }], ["empty text", { v: 2, items: [{ ...item, headlineHe: "" }] }],
-    ["non-string name", { v: 2, items: [{ ...item, projectName: 42 }] }], ["wrong status label", { v: 2, items: [{ ...item, statusLabelHe: "אושר" }] }], ["bad hash", { v: 2, items: [{ ...item, snapshotHash: "abc" }] }], ["bad head", { v: 2, items: [{ ...item, headEventId: "not-a-uuid" }] }], ["unknown state", { v: 2, items: [{ ...item, state: "DONE" }] }], ["foreign change option", { v: 2, items: [{ ...item, changeValueOptions: [{ code: "NOT_KNOWN_YET", labelHe: "x" }] }] }],
+    ["null", null], ["array", [item]], ["old version", { v: 2, items: [item] }], ["items not an array", { v: 3, items: {} }], ["extra top-level key", { v: 3, items: [item], debug: {} }],
+    ["missing field", { v: 3, items: [{ ...item, reasonHe: undefined }] }], ["extra field (snapshot)", { v: 3, items: [{ ...item, snapshot: {} }] }],
+    ["bad date", { v: 3, items: [{ ...item, suggestedDeadline: "07.10.2026" }] }], ["same from/to", { v: 3, items: [{ ...item, suggestedDeadline: item?.currentDeadline }] }],
+    ["wrong action type", { v: 3, items: [{ ...item, actionType: "DELETE_PROJECT" }] }], ["empty text", { v: 3, items: [{ ...item, headlineHe: "" }] }],
+    ["non-string name", { v: 3, items: [{ ...item, projectName: 42 }] }], ["wrong status label", { v: 3, items: [{ ...item, statusLabelHe: "אושר" }] }], ["bad hash", { v: 3, items: [{ ...item, snapshotHash: "abc" }] }], ["bad head", { v: 3, items: [{ ...item, headEventId: "not-a-uuid" }] }], ["unknown state", { v: 3, items: [{ ...item, state: "DONE" }] }], ["foreign change option", { v: 3, items: [{ ...item, changeValueOptions: [{ code: "NOT_KNOWN_YET", labelHe: "x" }] }] }],
   ];
   for (const [label, payload] of bad) ok(`14. malformed (${label}) → fail closed`, parseActionSurfaceResponse(JSON.parse(JSON.stringify(payload ?? null))).ok === false);
 

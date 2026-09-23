@@ -6,7 +6,8 @@
  * rendered as plain (escaped) text.
  *
  * SHOW card:               [אשר] [לא עכשיו] [שנה תאריך] — "אשר" only records the approval (execution is a later phase).
- * AWAITING_EXECUTION card:  a calm "approved, waiting for execution" note — no controls, never a fresh proposal.
+ * AWAITING_EXECUTION card:  "הפעולה אושרה" + the change EXACTLY as approved (persisted snapshot) + "השינוי עדיין לא בוצע."
+ *                          + a deliberate [בצע עכשיו] (F.1K). Never a fresh proposal, never looks already changed.
  */
 import type { ReactNode } from "react";
 import type { ChangeValueAnswerCode, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
@@ -39,6 +40,8 @@ export interface CardControls {
   onChangeCode(c: ChangeValueAnswerCode): void;
   onChangeYmd(v: string): void;
   onConfirmChange(): void;
+  /** F.1K: execute the APPROVED action (AWAITING_EXECUTION cards only). */
+  onExecute(): void;
   renderDatePicker(args: { value: string; onChange(v: string): void; min: string; ariaLabel: string; disabled: boolean }): ReactNode;
 }
 
@@ -84,12 +87,50 @@ function Panel({ children }: { children: ReactNode }) {
   return <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>;
 }
 
-export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerActionCardDto; isMobile: boolean; controls?: CardControls }) {
+function StatusLine({ controls, retryLabel = "נסה שוב" }: { controls: CardControls; retryLabel?: string }) {
+  const busy = controls.phase === "submitting";
+  return (
+    <div aria-live="polite" role="status" style={{ minHeight: 0 }}>
+      {busy && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: SUB }}>שומר…</p>}
+      {!busy && controls.message && (
+        <p data-decision-message={controls.phase} style={{ margin: "10px 0 0", fontSize: 12.5, color: controls.phase === "error" ? "#F59E0B" : SUB }}>
+          {controls.message}
+          {controls.canRetry && <> <button type="button" onClick={controls.onRetry} style={{ ...btn("secondary", false, false), minHeight: 28, padding: "2px 10px", fontSize: 12 }}>{retryLabel}</button></>}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** F.1K: an APPROVED action waiting for a deliberate execution — shows the persisted approved change only. */
+function AwaitingExecutionCard({ item, isMobile, controls }: { item: PartnerActionCardDto; isMobile: boolean; controls?: CardControls }) {
   const busy = controls?.phase === "submitting";
-  const awaiting = item.state === "AWAITING_EXECUTION";
   return (
     <article data-partner-action={item.actionId} data-state={item.state} aria-busy={busy || undefined}
-      style={{ background: CARD, border: `1px solid ${awaiting ? "rgba(34,197,94,0.25)" : BORDER}`, borderRadius: 14, padding: isMobile ? "12px 12px 10px" : "14px 16px 12px" }}>
+      style={{ background: CARD, border: "1px solid rgba(34,197,94,0.25)", borderRadius: 14, padding: isMobile ? "12px 12px 10px" : "14px 16px 12px" }}>
+      <p style={{ margin: "0 0 6px", fontSize: isMobile ? 15 : 16, fontWeight: 800, color: "#4ADE80" }}>הפעולה אושרה</p>
+      <p data-approved-change style={{ margin: 0, fontSize: 14, color: TEXT, lineHeight: 1.6 }}>
+        עדכון הדדליין של &apos;{item.projectName}&apos; מ־<bdi dir="ltr">{item.currentDeadlineHe}</bdi> ל־<bdi dir="ltr">{item.suggestedDeadlineHe}</bdi>
+      </p>
+      <p data-awaiting-note style={{ margin: "6px 0 0", fontSize: 12.5, fontWeight: 700, color: SUB }}>השינוי עדיין לא בוצע.</p>
+      {controls && (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            <button type="button" onClick={controls.onExecute} disabled={busy} style={btn("primary", isMobile, !!busy)}>בצע עכשיו</button>
+          </div>
+          <StatusLine controls={controls} />
+        </>
+      )}
+    </article>
+  );
+}
+
+export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerActionCardDto; isMobile: boolean; controls?: CardControls }) {
+  if (item.state === "AWAITING_EXECUTION") return <AwaitingExecutionCard item={item} isMobile={isMobile} controls={controls} />;
+  const busy = controls?.phase === "submitting";
+  return (
+    <article data-partner-action={item.actionId} data-state={item.state} aria-busy={busy || undefined}
+      style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: isMobile ? "12px 12px 10px" : "14px 16px 12px" }}>
       <p style={{ margin: "0 0 10px", fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT, lineHeight: 1.45 }}>{item.headlineHe}</p>
       <div role="group" aria-label={`מ-${item.currentDeadlineHe} ל-${item.suggestedDeadlineHe}`}
         style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 6 : 12, marginBottom: 10 }}>
@@ -100,9 +141,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
       <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 2 }}>למה</div>
       <p style={{ margin: 0, fontSize: 13.5, color: SUB, lineHeight: 1.6 }}>{item.reasonHe || item.explanationHe}</p>
 
-      {awaiting && <p data-awaiting-note style={{ margin: "12px 0 0", fontSize: 13, fontWeight: 700, color: "#4ADE80" }}>הפעולה אושרה וממתינה לביצוע.</p>}
-
-      {!awaiting && controls && (
+      {controls && (
         <>
           {controls.panel === "none" && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
@@ -132,15 +171,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
               </div>
             </Panel>
           )}
-          <div aria-live="polite" role="status" style={{ minHeight: 0 }}>
-            {busy && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: SUB }}>שומר…</p>}
-            {!busy && controls.message && (
-              <p data-decision-message={controls.phase} style={{ margin: "10px 0 0", fontSize: 12.5, color: controls.phase === "error" ? "#F59E0B" : SUB }}>
-                {controls.message}
-                {controls.canRetry && <> <button type="button" onClick={controls.onRetry} style={{ ...btn("secondary", false, false), minHeight: 28, padding: "2px 10px", fontSize: 12 }}>נסה שוב</button></>}
-              </p>
-            )}
-          </div>
+          <StatusLine controls={controls} />
         </>
       )}
     </article>

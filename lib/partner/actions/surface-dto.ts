@@ -9,12 +9,14 @@
  * executed) and the structured "change date" options. It still carries no
  * snapshot body, no event ids other than the head, no actor and no from / to
  * that a caller could submit (the server re-derives those).
+ * v3 (F.1K): an AWAITING_EXECUTION card is built from the PERSISTED APPROVED snapshot (exactly what was
+ * approved, never a newer derivation) and carries its approvalEventId — the only id "בצע עכשיו" sends.
  * The client parser is strict and fails closed: any malformed payload renders nothing.
  */
 import { formatYmdHe } from "../investigation/answer-value";
 import type { PartnerSuggestedAction } from "./types";
 
-export const ACTION_SURFACE_DTO_VERSION = 2;
+export const ACTION_SURFACE_DTO_VERSION = 3;
 export const STATUS_LABEL_HE = "הצעה לפעולה";
 export const AWAITING_LABEL_HE = "אושר — ממתין לביצוע";
 const REASON_MARKER = "\n\nהסיבה: ";
@@ -48,6 +50,8 @@ export interface PartnerActionCardDto {
   snapshotHash: string;
   /** The chain head the Owner saw (null = no decision yet) — echoed back as expectedHeadEventId. */
   headEventId: string | null;
+  /** AWAITING_EXECUTION only: the APPROVED event to execute (null on a SHOW card). */
+  approvalEventId: string | null;
   /** "שנה תאריך" choices (labels from the investigation question). */
   changeValueOptions: ChangeValueOption[];
   /** Earliest date SPECIFIC_DATE may pick (today, Israel calendar). YYYY-MM-DD. */
@@ -64,7 +68,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function toActionCardDto(
   action: PartnerSuggestedAction,
   subjectLabelHe: string | null,
-  extra: { state: ActionCardState; snapshotHash: string; headEventId: string | null; changeValueOptions: ChangeValueOption[]; minChangeDate: string },
+  extra: { state: ActionCardState; snapshotHash: string; headEventId: string | null; approvalEventId: string | null; changeValueOptions: ChangeValueOption[]; minChangeDate: string },
 ): PartnerActionCardDto {
   const name = subjectLabelHe && subjectLabelHe.trim() ? subjectLabelHe.trim() : "הפרויקט";
   const idx = action.explanationHe.indexOf(REASON_MARKER);
@@ -86,12 +90,13 @@ export function toActionCardDto(
     statusLabelHe: extra.state === "SHOW" ? STATUS_LABEL_HE : AWAITING_LABEL_HE,
     snapshotHash: extra.snapshotHash,
     headEventId: extra.headEventId,
+    approvalEventId: extra.approvalEventId,
     changeValueOptions: extra.changeValueOptions,
     minChangeDate: extra.minChangeDate,
   };
 }
 
-const KEYS: Array<keyof PartnerActionCardDto> = ["v", "state", "actionId", "actionType", "projectId", "projectName", "currentDeadline", "currentDeadlineHe", "suggestedDeadline", "suggestedDeadlineHe", "headlineHe", "reasonHe", "explanationHe", "statusLabelHe", "snapshotHash", "headEventId", "changeValueOptions", "minChangeDate"];
+const KEYS: Array<keyof PartnerActionCardDto> = ["v", "state", "actionId", "actionType", "projectId", "projectName", "currentDeadline", "currentDeadlineHe", "suggestedDeadline", "suggestedDeadlineHe", "headlineHe", "reasonHe", "explanationHe", "statusLabelHe", "snapshotHash", "headEventId", "approvalEventId", "changeValueOptions", "minChangeDate"];
 
 function parseItem(x: unknown): PartnerActionCardDto | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return null;
@@ -110,6 +115,8 @@ function parseItem(x: unknown): PartnerActionCardDto | null {
   if (typeof r.snapshotHash !== "string" || !HEX64.test(r.snapshotHash)) return null;
   if (!(r.headEventId === null || (typeof r.headEventId === "string" && UUID.test(r.headEventId)))) return null;
   if (typeof r.minChangeDate !== "string" || !YMD.test(r.minChangeDate)) return null;
+  // approvalEventId exactly on AWAITING_EXECUTION (a uuid), and there it is the chain head.
+  if (r.state === "AWAITING_EXECUTION" ? !(typeof r.approvalEventId === "string" && UUID.test(r.approvalEventId) && r.approvalEventId === r.headEventId) : r.approvalEventId !== null) return null;
   if (!Array.isArray(r.changeValueOptions) || r.changeValueOptions.length === 0 || r.changeValueOptions.length > CHANGE_VALUE_ANSWER_CODES.length) return null;
   for (const o of r.changeValueOptions) {
     if (typeof o !== "object" || o === null || Array.isArray(o)) return null;

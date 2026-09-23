@@ -164,11 +164,14 @@ console.log("Isolation (23-26)");
   // F.1I: the ONLY app/components consumers are the Owner-only READ-ONLY surface (GET route + dashboard card).
   // F.1I read surface + F.1J Owner decision UI/routes are the ONLY app/components consumers of actions.
   const READ_ONLY_SURFACE = [path.join("app", "api", "partner", "actions", "route.ts"), path.join("components", "partner", "PartnerActionCard.tsx"), path.join("components", "partner", "partner-decision-client.ts"), path.join("components", "partner", "PartnerActionsSection.tsx")];
-  const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts")];
+  const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts"), path.join("app", "api", "partner", "actions", "execute", "route.ts")];
   const importers = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /partner\/actions/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f));
   check("no app/ or components/ file imports actions except the approved surface + the two Owner decision routes", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f)), []);
   ok("the surface / UI files never reach a server write path directly (UI talks to the routes over HTTP only)", READ_ONLY_SURFACE.every((f) => !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(/.test(fs.readFileSync(path.join(ROOT, f), "utf8"))));
-  ok("no app/ or components/ file can execute an action (execution is F.1K)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f)).every((f) => !/executeApprovedAction|callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(f, "utf8"))));
+  // F.1K: the ONLY app/components file that can execute is the execute route, and only through executeApprovedAction.
+  const EXECUTE_ROUTE = path.join("app", "api", "partner", "actions", "execute", "route.ts");
+  check("F.1K: only the execute route references executeApprovedAction; none names the RPC / callExecuteRpc", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /\.(ts|tsx)$/.test(f) && /executeApprovedAction|callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f)), [EXECUTE_ROUTE]);
+  ok("F.1K: the execute route references neither callExecuteRpc nor the RPC name", !/callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(path.join(ROOT, EXECUTE_ROUTE), "utf8")));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

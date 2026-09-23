@@ -49,6 +49,7 @@ export type DecisionOutcome =
   | { ui: "approved"; messageHe: string }
   | { ui: "deferred"; messageHe: string }
   | { ui: "changed"; messageHe: string }
+  | { ui: "executed"; messageHe: string }
   | { ui: "stale"; messageHe: string }
   | { ui: "retry"; messageHe: string }
   | { ui: "error"; messageHe: string };
@@ -87,10 +88,49 @@ export function interpretDecisionResponse(kind: DecisionAttempt["kind"], httpSta
   return { ui: "error", messageHe: "משהו השתבש — לא נשמר דבר." };
 }
 
+// ── F.1K: "בצע עכשיו" (execution of an APPROVED action) ─────────────────────────────────────────
+export const EXECUTE_URL = "/api/partner/actions/execute";
+export const EXECUTE_STALE_MESSAGE_HE = "הפעולה כבר לא מתאימה למצב הנוכחי. רעננתי את המידע.";
+
+export interface ExecuteAttempt { url: typeof EXECUTE_URL; body: { approvalEventId: string; requestId: string } }
+
+/** Only from an AWAITING_EXECUTION card: the persisted approval + ONE requestId for this execution attempt. */
+export function buildExecuteAttempt(item: PartnerActionCardDto, requestId: string): ExecuteAttempt | null {
+  if (item.state !== "AWAITING_EXECUTION" || !item.approvalEventId || !requestId) return null;
+  return { url: EXECUTE_URL, body: { approvalEventId: item.approvalEventId, requestId } };
+}
+
+/**
+ * Strict mapping of the execute route. The persisted chain stays authoritative: every outcome is followed by
+ * a re-fetch of the surface. Unknown shapes fail closed to an error that claims nothing.
+ */
+export function interpretExecuteResponse(httpStatus: number, json: unknown): DecisionOutcome {
+  const r = typeof json === "object" && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>) : null;
+  const status = typeof r?.status === "string" ? r.status : null;
+  if (httpStatus === 401 || httpStatus === 403) return { ui: "error", messageHe: "אין הרשאה לבצע את הפעולה הזו." };
+  if (httpStatus === 503 || status === "RETRYABLE") return { ui: "retry", messageHe: "לא הצלחתי לבצע כרגע. אפשר לנסות שוב." };
+  if (httpStatus >= 500 || status === null || status === "INVARIANT_VIOLATION") return { ui: "error", messageHe: "משהו השתבש — הפעולה לא בוצעה." };
+  if (httpStatus === 400) return { ui: "error", messageHe: "הבקשה לא תקינה — הפעולה לא בוצעה." };
+  switch (status) {
+    case "EXECUTED": return { ui: "executed", messageHe: "הפעולה בוצעה." };
+    case "ALREADY_EXECUTED": return { ui: "executed", messageHe: "הפעולה כבר בוצעה." };
+    case "REPLAY":
+      if (r?.eventType === "EXECUTED") return { ui: "executed", messageHe: "הפעולה בוצעה." };
+      if (r?.eventType === "STALE_AT_EXECUTION") return { ui: "stale", messageHe: EXECUTE_STALE_MESSAGE_HE };
+      return { ui: "error", messageHe: "משהו השתבש — רעננתי את המידע." };
+    case "STALE_AT_EXECUTION": return { ui: "stale", messageHe: EXECUTE_STALE_MESSAGE_HE };
+    case "APPROVAL_NOT_CURRENT": return { ui: "stale", messageHe: STALE_MESSAGE_HE };
+    case "APPROVAL_NOT_FOUND": return { ui: "error", messageHe: "האישור לא נמצא — רעננתי את המידע. הפעולה לא בוצעה." };
+    case "ACTION_MISMATCH": return { ui: "error", messageHe: "משהו לא תואם — הפעולה לא בוצעה." };
+    case "REQUEST_ID_CONFLICT": return { ui: "error", messageHe: "משהו השתבש — רעננתי את המידע. הפעולה לא בוצעה." };
+    default: return { ui: "error", messageHe: "משהו השתבש — הפעולה לא בוצעה." };
+  }
+}
+
 /** UI phases of one card. */
 export type DecisionPhase = "idle" | "submitting" | "success" | "stale" | "error";
 export function phaseForOutcome(o: DecisionOutcome): DecisionPhase {
-  if (o.ui === "approved" || o.ui === "deferred" || o.ui === "changed") return "success";
+  if (o.ui === "approved" || o.ui === "deferred" || o.ui === "changed" || o.ui === "executed") return "success";
   if (o.ui === "stale") return "stale";
   return "error";
 }

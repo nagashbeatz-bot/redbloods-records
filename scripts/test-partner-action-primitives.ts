@@ -462,10 +462,17 @@ async function main() {
     // F.1J: exactly the two Owner decision routes may import the primitives' binding (the old filter also skipped
     // app/api/partner/actions/** — fixed: only lib/partner/actions itself is excluded now).
     const LIB_ACTIONS = path.join(ROOT, "lib", "partner", "actions") + path.sep;
-    const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts")];
+    const DECISION_ROUTES = [path.join("app", "api", "partner", "actions", "decide", "route.ts"), path.join("app", "api", "partner", "actions", "change-deadline", "route.ts"), path.join("app", "api", "partner", "actions", "execute", "route.ts")];
     const primitiveImporters = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && !f.startsWith(LIB_ACTIONS) && /partner\/actions\/(action-service|event-store|live|service)/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f));
-    check("no route / UI / cron / agent imports the primitives — except the two Owner decision routes", primitiveImporters.filter((f) => !DECISION_ROUTES.includes(f)), []);
-    ok("nothing outside lib/partner/actions can execute (no executeApprovedAction / callExecuteRpc / execution RPC name)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && !f.startsWith(LIB_ACTIONS)).every((f) => !/executeApprovedAction|callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(f, "utf8"))));
+    check("no route / UI / cron / agent imports the primitives — except the three Owner routes (decide / change-deadline / execute)", primitiveImporters.filter((f) => !DECISION_ROUTES.includes(f)), []);
+    // F.1K: execution is reachable from exactly one place outside lib/partner/actions — the execute route — and only via executeApprovedAction.
+    const EXECUTE_ROUTE = path.join("app", "api", "partner", "actions", "execute", "route.ts");
+    const outside = [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components")), ...walk(path.join(ROOT, "lib"))].filter((f) => /\.(ts|tsx)$/.test(f) && !f.startsWith(LIB_ACTIONS));
+    check("F.1K: outside lib/partner/actions ONLY the execute route references executeApprovedAction", outside.filter((f) => /executeApprovedAction/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f)), [EXECUTE_ROUTE]);
+    ok("F.1K: nothing outside lib/partner/actions names the RPC or calls callExecuteRpc", outside.every((f) => !/callExecuteRpc|partner_execute_update_project_deadline/.test(fs.readFileSync(f, "utf8"))));
+    const stripC = (s: string) => s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+    check("F.1K: inside lib/partner/actions the RPC name is defined ONLY in events.ts (EXECUTE_RPC)", walk(path.join(ROOT, "lib", "partner", "actions")).filter((f) => /partner_execute_update_project_deadline/.test(stripC(fs.readFileSync(f, "utf8")))).map((f) => path.basename(f)), ["events.ts"]);
+    check("F.1K: only event-persistence.ts calls the RPC (client.rpc(EXECUTE_RPC))", walk(path.join(ROOT, "lib", "partner", "actions")).filter((f) => /\.rpc\(/.test(stripC(fs.readFileSync(f, "utf8")))).map((f) => path.basename(f)), ["event-persistence.ts"]);
     ok("instrumentation / crons never reference the primitives", !fs.existsSync(path.join(ROOT, "instrumentation.ts")) || !/partner\/actions/.test(rd("instrumentation.ts")));
     const self = fs.readFileSync(__filename, "utf8");
     ok("32. this test never imports a production binding (supabase / event-store / live / action-service)", !/from\s+["'][^"']*(lib\/supabase|actions\/event-store|actions\/live|actions\/action-service)["']/.test(self));

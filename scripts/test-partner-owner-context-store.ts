@@ -381,10 +381,10 @@ async function main() {
     // F.1I/F.1J: /api/partner holds exactly the GET surface + the two Owner decision POST routes.
     const partnerApi = path.join(ROOT, "app", "api", "partner");
     const partnerRoutes = walk(partnerApi).map((f) => path.relative(partnerApi, f)).sort();
-    check("30. /api/partner holds only the actions surface + the two decision routes", partnerRoutes, [path.join("actions", "change-deadline", "route.ts"), path.join("actions", "decide", "route.ts"), path.join("actions", "route.ts")].sort());
+    check("30. /api/partner holds only the actions surface + the three Owner routes (decide / change-deadline / execute)", partnerRoutes, [path.join("actions", "change-deadline", "route.ts"), path.join("actions", "decide", "route.ts"), path.join("actions", "execute", "route.ts"), path.join("actions", "route.ts")].sort());
     const surfaceRoute = fs.readFileSync(path.join(partnerApi, "actions", "route.ts"), "utf8");
     ok("30. the surface route is GET-only, requireOwner, and never touches Owner Context", /export async function GET\(/.test(surfaceRoute) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(surfaceRoute) && /requireOwner\(\)/.test(surfaceRoute) && !/context-store|context-persistence|appendOwnerContext/.test(surfaceRoute));
-    for (const r of ["decide", "change-deadline"]) {
+    for (const r of ["decide", "change-deadline", "execute"]) {
       const s = fs.readFileSync(path.join(partnerApi, "actions", r, "route.ts"), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
       ok(`30. ${r} route is POST-only, same-origin guarded, and never touches the Owner Context store directly`, /export async function POST\(/.test(s) && !/export (async )?function (GET|PUT|PATCH|DELETE)/.test(s) && /checkSameOriginJson\(/.test(s) && !/context-store|context-persistence|appendOwnerContext/.test(s));
     }

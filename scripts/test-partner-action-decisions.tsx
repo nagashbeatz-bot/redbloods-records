@@ -129,7 +129,7 @@ function controls(over: Partial<CardControls> = {}): CardControls {
   const noop = () => {};
   return { phase: "idle", panel: "none", message: null, canRetry: false, notNowChoice: null, customYmd: "", changeCode: null, changeYmd: "",
     onApprove: noop, onOpenNotNow: noop, onOpenChange: noop, onCancel: noop, onRetry: noop, onNotNowChoice: noop, onCustomYmd: noop, onConfirmNotNow: noop,
-    onChangeCode: noop, onChangeYmd: noop, onConfirmChange: noop, renderDatePicker: ({ ariaLabel }) => <div data-date-picker={ariaLabel} />, ...over };
+    onChangeCode: noop, onChangeYmd: noop, onConfirmChange: noop, onExecute: noop, renderDatePicker: ({ ariaLabel }) => <div data-date-picker={ariaLabel} />, ...over };
 }
 
 async function main() {
@@ -166,11 +166,12 @@ async function main() {
     check("5. APPROVE never calls the execution RPC", db.rpcCalls.length, 0);
     check("21. APPROVE never touches projects (only partner_action_events)", [...db.tables], ["partner_action_events"]);
     ok("4. decide route never imports / calls executeApprovedAction or the RPC", !/executeApprovedAction|callExecuteRpc|\.rpc\(|partner_execute_update_project_deadline/.test(strip(DECIDE)));
-    ok("4. the UI never calls an execution path", ![SECTION, CARD, CLIENT].some((s) => /executeApprovedAction|\/execute|callExecuteRpc/.test(strip(s))));
+    ok("4. the UI never reaches server execution code (executeApprovedAction / RPC)", ![SECTION, CARD, CLIENT].some((s) => /executeApprovedAction|callExecuteRpc|partner_execute_update_project_deadline/.test(strip(s))));
+    ok("4. F.1K: APPROVE never leads to execution — the execute attempt is built ONLY in the explicit onExecute handler", (strip(SECTION).match(/buildExecuteAttempt\(/g) ?? []).length === 1 && /onExecute: \(\) => submit\(item\.actionId, executeAttempt\(buildExecuteAttempt\(item, newRequestId\(\)\)\)\)/.test(SECTION) && !/onApprove:[^\n]*execute/i.test(SECTION));
     const after = await surfaceItem(db.rows);
     check("6. after APPROVED the surface shows a calm AWAITING_EXECUTION card", [after?.state, after?.statusLabelHe], ["AWAITING_EXECUTION", "אושר — ממתין לביצוע"]);
     const awaitingHtml = renderToStaticMarkup(<PartnerActionsView items={[after!]} isMobile={false} controlsFor={() => controls()} />);
-    ok("6. awaiting card: 'הפעולה אושרה וממתינה לביצוע.' and NO decision / execute buttons", awaitingHtml.includes("הפעולה אושרה וממתינה לביצוע.") && !/<button/.test(awaitingHtml) && !awaitingHtml.includes("בצע"));
+    ok("6. awaiting card (F.1K): 'הפעולה אושרה' + 'השינוי עדיין לא בוצע.' + ONLY a deliberate [בצע עכשיו] — no decision buttons", awaitingHtml.includes("הפעולה אושרה") && awaitingHtml.includes("השינוי עדיין לא בוצע.") && (awaitingHtml.match(/<button/g) ?? []).length === 1 && awaitingHtml.includes(">בצע עכשיו<") && !/>אשר<|>לא עכשיו<|>שנה תאריך</.test(awaitingHtml));
     check("6. APPROVE response → approved outcome", interpretDecisionResponse("APPROVE", 200, { status: "RECORDED", eventType: "APPROVED", eventId: randomUUID(), deferUntil: null }), { ui: "approved", messageHe: "הפעולה אושרה וממתינה לביצוע." });
     check("8/9. the body echoes EXACTLY the rendered hash + head", [attempt.body.seenSnapshotHash, attempt.body.expectedHeadEventId, attempt.body.actionId, Object.keys(attempt.body).sort()], [HASH, null, ACTION_ID, ["actionId", "decision", "expectedHeadEventId", "requestId", "seenSnapshotHash"]]);
     ok("7. double click: a synchronous ref guard + every control disabled while submitting", /if \(!attempt \|\| submitting\.current\) return;/.test(SECTION) && /submitting\.current = true;/.test(SECTION));
@@ -290,7 +291,7 @@ async function main() {
     ok("27. messages live in an aria-live status region; retry is a real button", /aria-live="polite" role="status"/.test(err) && err.includes(">נסה שוב<"));
     check("28. malformed / unexpected responses fail closed", [interpretDecisionResponse("APPROVE", 200, "garbage").ui, interpretDecisionResponse("APPROVE", 200, { status: "RECORDED", eventType: "NOT_NOW" }).ui, interpretDecisionResponse("NOT_NOW", 200, { status: "RECORDED", eventType: "APPROVED" }).ui, interpretDecisionResponse("CHANGE", 200, { status: "CONTEXT_REVISED", newDeadline: "soon" }).ui, interpretDecisionResponse("APPROVE", 200, { status: "WHATEVER" }).ui], ["error", "error", "error", "error", "error"]);
     check("30. errors never claim success and say nothing was saved", [interpretDecisionResponse("APPROVE", 500, { status: "FAILED" }), interpretDecisionResponse("APPROVE", 400, { status: "INVALID_INPUT" }), phaseForOutcome({ ui: "error", messageHe: "" })], [{ ui: "error", messageHe: "משהו השתבש — לא נשמר דבר." }, { ui: "error", messageHe: "הבקשה לא תקינה — לא נשמר דבר." }, "error"]);
-    ok("30. no optimistic change: success/stale shown only after the server response, then re-fetch", /const outcome = interpretDecisionResponse\(attempt\.kind, status, body\);/.test(SECTION) && !/setItems\(\s*\(?\s*items?\s*=>/.test(SECTION));
+    ok("30. no optimistic change: success/stale shown only after the server response, then re-fetch", /const outcome = attempt\.interpret\(status, body\);/.test(SECTION) && /interpretDecisionResponse\(a\.kind, s, j\)/.test(SECTION) && !/setItems\(\s*\(?\s*items?\s*=>/.test(SECTION));
     check("auth failures surface as errors (no success)", [interpretDecisionResponse("APPROVE", 401, { status: "UNAUTHORIZED" }).ui, interpretDecisionResponse("APPROVE", 403, { status: "FORBIDDEN_ORIGIN" }).ui], ["error", "error"]);
   }
 

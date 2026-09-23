@@ -57,8 +57,12 @@ export async function buildActionSurface(deps: ActionSurfaceDeps): Promise<Actio
     const s = resolveActionSurfacing({ actionId: action.id, current: { status: action.status, snapshotHash: hash }, events: chain.chain, now });
     states[action.id] = s.state;
     if (s.state === "BLOCKED") { deps.log("partner_action_surface_blocked", { actionId: action.id, reason: "chain" }); continue; }
-    if ((s.state === "SHOW" || s.state === "AWAITING_EXECUTION") && action.status === "PROPOSED" && hash) {
-      items.push(toActionCardDto(action, subjectLabelHe, { state: s.state, snapshotHash: hash, headEventId: s.headEventId, changeValueOptions: options, minChangeDate }));
+    if (s.state === "SHOW" && action.status === "PROPOSED" && hash) {
+      items.push(toActionCardDto(action, subjectLabelHe, { state: "SHOW", snapshotHash: hash, headEventId: s.headEventId, approvalEventId: null, changeValueOptions: options, minChangeDate }));
+    } else if (s.state === "AWAITING_EXECUTION" && chain.head?.eventType === "APPROVED") {
+      // F.1K: show EXACTLY what was approved — the persisted APPROVED snapshot, never the current derivation.
+      const approved = chain.head;
+      items.push(toActionCardDto(approved.snapshot, subjectLabelHe, { state: "AWAITING_EXECUTION", snapshotHash: approved.snapshotHash, headEventId: approved.id, approvalEventId: approved.id, changeValueOptions: options, minChangeDate }));
     }
   }
   items.sort((a, b) => a.actionId.localeCompare(b.actionId));
