@@ -19,3 +19,8 @@ export {
 export { FOLLOW_UP_RULES, FOLLOW_UP_QUESTION_TYPES, buildFollowUpQuestions, isFollowUpQuestionType, triggersFollowUp, type FollowUpRule } from "./questions";
 export { VALUE_SPEC, valueSpecFor, resolveAnswerValue, validateAnswerValue, applyRelativeRule, endOfMonthYmd, formatYmdHe, isValidYmd, type AnswerValueSpec, type ResolveResult } from "./answer-value";
 export { classifyOwnerContexts, applicableContexts, triggerSupportsFollowUp, triggerStillSupports, type ContextApplicability, type ContextApplicabilityStatus, type NotApplicableReason } from "./context-applicability";
+export {
+  deriveCaseDecisionState, DECISION_STATE_SCHEMA_VERSION,
+  type PartnerCaseDecisionState, type DecisionReadiness, type DecisionUnknownCode, type SelectedBusinessValue,
+  type ResolvedUnknown, type RemainingUnknown, type DecisionSource, type DecisionOwnerContext,
+} from "./decision-state";
