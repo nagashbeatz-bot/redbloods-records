@@ -16,6 +16,8 @@ import type { PartnerMemory, PartnerEntityMemory } from "../memory/types";
 import { entityForSubject } from "../memory/core";
 import type { ActionSurfaceItemDto } from "../actions/surface-dto";
 import type { PartnerOutcomeItemDto } from "../actions/outcome-dto";
+import type { CompanyIntegrityRegister } from "../integrity/types";
+import type { EntityKnowledgeSection, KnowledgeAudience } from "../knowledge/types";
 import {
   GATEWAY_SCHEMA_VERSION, GATEWAY_TEXT_POLICY, RECENT_DAYS,
   type GText, type GatewayFreshness, type GatewaySourceName, type GatewaySourceStatus, type GatewayTool,
@@ -51,7 +53,16 @@ export interface GatewaySources {
   cases?: Avail<PartnerCase[]>;
   actions?: Avail<ActionSurfaceItemDto[]>;
   outcomes?: Avail<PartnerOutcomeItemDto[]>;
+  /** The live Company Integrity Register (CompanyReadContext) — questions, findings, learned Owner decisions. */
+  integrity?: Avail<CompanyIntegrityRegister>;
   identities: GatewayAppIdentities;
+  /** Who is asking (for knowledge enrichment). Absent = the most restrictive audience (EXTERNAL, no Owner authority). */
+  audience?: KnowledgeAudience;
+  /**
+   * partner_entity enrichment from the knowledge registry, injected by the server binding (keeps the pure Gateway
+   * cores free of the registry — no import cycle). Absent → no enrichment.
+   */
+  entityKnowledge?: (entityKey: string) => EntityKnowledgeSection[];
 }
 
 export const partner = (text: string): GText => ({ text, trust: "PARTNER" });

@@ -12,7 +12,7 @@
  */
 import { caseSubjectKey, eventFreshness, envelope, gatewayKeyForSubject, ok, partner, partnerRecord, toPatterns, type GatewaySources } from "./core";
 import { ownerClosedProjects } from "./entity-common";
-import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefResponse, type GatewayDrillDown } from "./types";
+import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefResponse, type GatewayDrillDown, type GatewaySourceName } from "./types";
 
 const CLASS_ORDER = ["RISK", "ATTENTION", "OPPORTUNITY", "INFORMATION"];
 const PER_CATEGORY: Record<BriefCategory, number> = { ACTION_READY: 2, OWNER_DECISION_NEEDED: 2, ATTENTION: 1, MONEY: 1, RECENT_OUTCOME: 1 };
@@ -30,7 +30,7 @@ const BALANCE_CASES = new Set(["PROJECT_PAYMENT_OUTSTANDING", "PAYMENT_DUE_DATE_
 const open = (key: string | null): GatewayDrillDown | null => (key ? { tool: "partner_entity", args: { key }, label: partner("פתח") } : null);
 
 export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
-  const env = envelope("partner_brief", {}, src, [["ACTIONS", src.actions], ["FINANCE", src.finance], ["CASES", src.cases], ["OUTCOMES", src.outcomes], ["MEMORY", src.memory]]);
+  const env = envelope("partner_brief", {}, src, [["ACTIONS", src.actions], ["FINANCE", src.finance], ["CASES", src.cases], ["OUTCOMES", src.outcomes], ["MEMORY", src.memory], ...(src.integrity ? [["INTEGRITY", src.integrity] as [GatewaySourceName, typeof src.integrity]] : [])]);
   const byCat: Record<BriefCategory, BriefItem[]> = { ACTION_READY: [], OWNER_DECISION_NEEDED: [], ATTENTION: [], MONEY: [], RECENT_OUTCOME: [] };
   const missing: BriefResponse["missing"] = [];
   const f = ok(src.finance);
@@ -51,6 +51,13 @@ export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
       byCat.OWNER_DECISION_NEEDED.push({ category: "OWNER_DECISION_NEEDED", headline: partnerRecord(q.textHe), epistemic: "UNKNOWN", freshness: "LIVE", source: "FINANCE", subject, drillDown: open(subject) });
     }
   } else if (f && !f.answersAvailable) missing.push({ fact: "Owner answers", whyNeeded: "questions are hidden until Owner answers can be read (never re-ask blindly)" });
+  // … and the Company Integrity definition questions surfaced right now (max 2, Owner-Context-preflighted by the register)
+  const reg = ok(src.integrity);
+  for (const q of reg?.questions ?? []) {
+    byCat.OWNER_DECISION_NEEDED.push({ category: "OWNER_DECISION_NEEDED", headline: partnerRecord(q.textHe), epistemic: "UNKNOWN", freshness: "LIVE", source: "INTEGRITY",
+      subject: q.subject.type === "label-artist" ? `label-artist:${q.subject.id}` : null, drillDown: { tool: "partner_query", args: { capability: "owner_needs" }, label: partner("מה Partner צריך ממך") } });
+  }
+  if (src.integrity && !reg) missing.push({ fact: "Company Integrity questions", whyNeeded: "the integrity register could not be read — open definition questions may exist" });
 
   // ATTENTION — live Partner Cases, minus balance cases the Owner closed
   const closed = ownerClosedProjects(src);

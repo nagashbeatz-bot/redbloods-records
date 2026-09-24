@@ -62,7 +62,8 @@ async function main() {
   // MCP adapter vs direct Gateway on the SAME request-scoped read (production data) — semantic equivalence
   const cfgR = readMcpConfig({ PARTNER_MCP_ENABLED: "true", PARTNER_MCP_BASE_URL: "https://partner-staging.example.com", PARTNER_MCP_SECRET: "x".repeat(40) });
   if (!cfgR.ok) throw new Error("config");
-  const ctx = gw.createGatewayReadContext();
+  const ctx = gw.createCompanyReadContext();
+  const AUD = { channel: "EXTERNAL", ownerAuthorized: true } as const;
   const deps = {
     config: cfgR.config,
     authenticate: async () => ({ ok: true as const, principal: { tokenId: "bench", clientId: "bench", userId: "bench", scope: "partner:read" } }),
@@ -70,6 +71,8 @@ async function main() {
       brief: async () => (await gw.getPartnerBrief(ctx)) as unknown as Record<string, unknown>,
       resolve: async (q: string) => (await gw.resolvePartnerEntity(q, ctx)) as unknown as Record<string, unknown>,
       entity: async (k: string) => (await gw.getPartnerEntity(k, ctx)) as unknown as Record<string, unknown>,
+      query: async (q: { capability: string }) => (await gw.queryPartnerKnowledge(q, { channel: "EXTERNAL", ownerAuthorized: true }, ctx)) as unknown as Record<string, unknown>,
+      capabilityIndex: () => gw.describePartnerKnowledge({ channel: "EXTERNAL", ownerAuthorized: true }),
     },
     limiter: new SlidingWindowLimiter([{ windowMs: 60_000, max: 1000 }]), audit: async () => undefined, auditRejected: async () => undefined, nowMs: () => Date.now(),
   };
@@ -79,6 +82,11 @@ async function main() {
     ["partner_entity", { key: "recurring:VICTOR_SALARY:2026-08" }, () => gw.getPartnerEntity("recurring:VICTOR_SALARY:2026-08", ctx)],
     ["partner_resolve", { query: "קלינטון" }, () => gw.resolvePartnerEntity("קלינטון", ctx)],
     ["partner_brief", {}, () => gw.getPartnerBrief(ctx)],
+    ["partner_query", { capability: "catalog" }, () => gw.queryPartnerKnowledge({ capability: "catalog" }, AUD, ctx)],
+    ["partner_query", { capability: "owner_needs" }, () => gw.queryPartnerKnowledge({ capability: "owner_needs" }, AUD, ctx)],
+    ["partner_query", { capability: "shows" }, () => gw.queryPartnerKnowledge({ capability: "shows" }, AUD, ctx)],
+    ["partner_query", { capability: "shows", mode: "recent", limit: 10 }, () => gw.queryPartnerKnowledge({ capability: "shows", mode: "recent", limit: 10 }, AUD, ctx)],
+    ["partner_query", { capability: "finance_receivables" }, () => gw.queryPartnerKnowledge({ capability: "finance_receivables" }, AUD, ctx)],
   ] as const) {
     const res = await handleMcpHttp({ method: "POST", header: (n) => (n === "authorization" ? "Bearer x" : null), bodyText: async () => JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: args } }) }, deps);
     const sc = JSON.parse(res.body!).result;
@@ -86,6 +94,8 @@ async function main() {
     eq[`${tool} ${JSON.stringify(args)}`] = JSON.stringify(sc.structuredContent) === JSON.stringify(d) && sc.content[0].text === JSON.stringify(d) && sc.content[0].text.length < cfgR.config.maxResultChars;
   }
   out.equivalence = eq;
+  const list = JSON.parse((await handleMcpHttp({ method: "POST", header: (n) => (n === "authorization" ? "Bearer x" : null), bodyText: async () => JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }, deps)).body!).result.tools as Array<{ name: string; description: string; annotations: { readOnlyHint: boolean } }>;
+  out.toolsList = { names: list.map((t) => t.name), allReadOnly: list.every((t) => t.annotations.readOnlyHint), queryDescriptionChars: list.find((t) => t.name === "partner_query")?.description.length, advertises: ["shows", "owner_needs", "finance_receivables", "integrity", "label_roster"].filter((id) => list.find((t) => t.name === "partner_query")?.description.includes(`- ${id} (`)) };
   out.blockedWrites = blocked;
   console.log(JSON.stringify(out, null, 1));
 }

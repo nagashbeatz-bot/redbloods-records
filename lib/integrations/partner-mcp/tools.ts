@@ -1,10 +1,15 @@
 /**
- * Redbloods Partner MCP connector — the EXACT three read-only tools, their input validation and the output
- * budget guard. Pure. No other tool exists: no write, answer, approve, execute, SQL, query or code tool.
+ * Redbloods Partner MCP connector — the EXACT four read-only tools, their input validation and the output
+ * budget guard. Pure. No other tool exists: no write, answer, approve, execute, SQL or code tool.
+ *
+ * partner_query is GENERIC: it carries a registered Partner capability id + typed parameters to the Partner
+ * Gateway, which validates them against the knowledge registry (lib/partner/knowledge). This adapter checks only
+ * the shape; it knows nothing about what any capability means. New registered Partner knowledge reaches Claude
+ * automatically (its id and description arrive through the capability index / the "catalog" capability).
  */
 import { parseEntityKey } from "../../partner/gateway/entity";
 
-export const TOOL_NAMES = ["partner_brief", "partner_resolve", "partner_entity"] as const;
+export const TOOL_NAMES = ["partner_brief", "partner_resolve", "partner_entity", "partner_query"] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 const COMMON =
@@ -16,7 +21,38 @@ const COMMON =
 
 const annotations = (title: string) => ({ title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
 
-export const TOOL_DEFINITIONS = [
+/** The capability index the Gateway advertises (id + title + description + modes + params). */
+export interface CapabilityIndexEntry { id: string; title: string; description: string; modes: string[]; params: string[] }
+
+const CAPABILITY_ID_RE = /^[a-z][a-z0-9_]{2,33}$/;
+const firstSentence = (s: string) => { const i = s.indexOf(". "); return (i > 0 ? s.slice(0, i + 1) : s).slice(0, 220); };
+
+function queryTool(index: readonly CapabilityIndexEntry[]) {
+  const lines = index.map((c) => `- ${c.id} (modes: ${c.modes.join("|")}${c.params.length ? `; params: ${c.params.join(", ")}` : ""}) — ${firstSentence(c.description)}`).join("\n");
+  return {
+    name: "partner_query",
+    title: "Redbloods Partner — query Partner knowledge",
+    description: `Query any registered Redbloods Partner knowledge capability: collections and domains (e.g. shows, projects, clients, proposals, session records, label roster, releases, finance, team, what Partner needs from the Owner, what Partner does not know, integrity, Owner decisions, memory). ` +
+      `Pick the capability that answers the Owner's question; call capability "catalog" for full descriptions, modes and parameters. Parameters are typed values (enum / short text / entity key from partner_resolve / YYYY-MM-DD) — never SQL, tables or filters. ` +
+      `Results are bounded and paginated (page.nextCursor). completeness PARTIAL / UNKNOWN and coverage[] say what Partner cannot see — never turn missing data into "none". ` +
+      `Available capabilities:\n${lines}\n${COMMON}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: { type: "string", pattern: "^[a-z][a-z0-9_]{2,33}$", description: "A registered capability id (see the list above, or capability \"catalog\")" },
+        mode: { type: "string", maxLength: 30, description: "One of the capability's modes (optional — default mode otherwise)" },
+        params: { type: "object", additionalProperties: { type: "string", maxLength: 120 }, maxProperties: 6, description: "The capability's typed parameters (string values)" },
+        limit: { type: "integer", minimum: 1, maximum: 50, description: "Page size (optional)" },
+        cursor: { type: "string", maxLength: 300, description: "page.nextCursor from the previous page of the SAME query" },
+      },
+      required: ["capability"],
+      additionalProperties: false,
+    },
+    annotations: annotations("Redbloods Partner — query Partner knowledge"),
+  };
+}
+
+const BASE_TOOL_DEFINITIONS = [
   {
     name: "partner_brief",
     title: "Redbloods Partner — what matters now",
@@ -42,7 +78,14 @@ export const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-export type ToolArgs = { tool: "partner_brief" } | { tool: "partner_resolve"; query: string } | { tool: "partner_entity"; key: string };
+/** The tools/list payload: the three original tools + partner_query described from the live capability index. */
+export function buildToolDefinitions(index: readonly CapabilityIndexEntry[]) {
+  return [...BASE_TOOL_DEFINITIONS, queryTool(index)];
+}
+export const TOOL_DEFINITIONS = buildToolDefinitions([]);
+
+export interface QueryArgs { capability: string; mode?: string; params?: Record<string, string>; limit?: number; cursor?: string }
+export type ToolArgs = { tool: "partner_brief" } | { tool: "partner_resolve"; query: string } | { tool: "partner_entity"; key: string } | ({ tool: "partner_query" } & QueryArgs);
 export type ArgsValidation = { ok: true; args: ToolArgs } | { ok: false; code: "UNKNOWN_TOOL" | "INVALID_ARGS"; message: string };
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -63,10 +106,45 @@ export function validateToolCall(name: unknown, rawArgs: unknown): ArgsValidatio
     if (!q || q.length > 120 || CONTROL.test(q)) return { ok: false, code: "INVALID_ARGS", message: "query must be 1–120 printable characters" };
     return { ok: true, args: { tool: "partner_resolve", query: q } };
   }
+  if (name === "partner_query") return validateQueryArgs(args);
   if (keys.length !== 1 || keys[0] !== "key" || typeof args.key !== "string") return { ok: false, code: "INVALID_ARGS", message: "partner_entity takes exactly { key: string }" };
   const key = args.key.trim();
   if (key.length > 120 || !parseEntityKey(key)) return { ok: false, code: "INVALID_ARGS", message: "key must be a Partner entity key (use partner_resolve)" };
   return { ok: true, args: { tool: "partner_entity", key } };
+}
+
+/** Shape only (the Gateway validates everything against the registry): no SQL / table / module / function can pass. */
+function validateQueryArgs(args: Record<string, unknown>): ArgsValidation {
+  const bad = (message: string): ArgsValidation => ({ ok: false, code: "INVALID_ARGS", message });
+  const extra = Object.keys(args).filter((k) => !["capability", "mode", "params", "limit", "cursor"].includes(k));
+  if (extra.length) return bad(`partner_query takes only { capability, mode?, params?, limit?, cursor? } (got ${extra.slice(0, 3).join(", ")})`);
+  if (typeof args.capability !== "string" || !CAPABILITY_ID_RE.test(args.capability)) return bad("capability must be a registered capability id (e.g. catalog)");
+  const out: QueryArgs = { capability: args.capability };
+  if (args.mode !== undefined) {
+    if (typeof args.mode !== "string" || !/^[a-z][a-z0-9_]{0,29}$/.test(args.mode)) return bad("mode must be a mode name of the capability");
+    out.mode = args.mode;
+  }
+  if (args.params !== undefined) {
+    if (!isObj(args.params)) return bad("params must be an object of string values");
+    const entries = Object.entries(args.params);
+    if (entries.length > 6) return bad("at most 6 params");
+    const params: Record<string, string> = {};
+    for (const [k, v] of entries) {
+      if (!/^[a-z][a-z0-9_]{0,29}$/.test(k)) return bad("param names are lowercase identifiers");
+      if (typeof v !== "string" || v.length > 120 || CONTROL.test(v)) return bad(`param ${k} must be a string of at most 120 printable characters`);
+      params[k] = v;
+    }
+    out.params = params;
+  }
+  if (args.limit !== undefined) {
+    if (typeof args.limit !== "number" || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50) return bad("limit must be an integer 1–50");
+    out.limit = args.limit;
+  }
+  if (args.cursor !== undefined) {
+    if (typeof args.cursor !== "string" || args.cursor.length > 300 || !/^[A-Za-z0-9_-]+$/.test(args.cursor)) return bad("cursor must be page.nextCursor from a previous page");
+    out.cursor = args.cursor;
+  }
+  return { ok: true, args: { tool: "partner_query", ...out } };
 }
 
 /**
@@ -75,8 +153,9 @@ export function validateToolCall(name: unknown, rawArgs: unknown): ArgsValidatio
  * exactly what it trimmed — Owner decisions, conflicts, actions, suggested actions, missing[] and drillDown are
  * never trimmed. If it still does not fit, only the envelope + those protected sections are returned.
  */
-const TRIMMABLE = ["relationships", "facts", "openIssues", "observations", "recentOutcomes", "candidates", "openQuestions", "items", "resolutions"];
-const PROTECTED = ["schemaVersion", "tool", "query", "asOf", "freshness", "sources", "textPolicy", "status", "entity", "ownerDecisions", "conflicts", "actionHistory", "suggestedActions", "missing", "drillDown", "patterns", "truncated", "omitted"];
+const TRIMMABLE = ["relationships", "facts", "openIssues", "observations", "recentOutcomes", "candidates", "openQuestions", "items", "resolutions", "knowledge", "summary"];
+const PROTECTED = ["schemaVersion", "knowledgeSchemaVersion", "tool", "query", "asOf", "freshness", "sources", "textPolicy", "status", "entity", "ownerDecisions", "conflicts", "actionHistory", "suggestedActions", "missing", "drillDown", "patterns", "truncated", "omitted",
+  "capability", "mode", "params", "completeness", "coverage", "page", "error"];
 
 export function guardOutput(payload: Record<string, unknown>, maxChars: number): { payload: Record<string, unknown>; text: string; guarded: boolean } {
   let text = JSON.stringify(payload);

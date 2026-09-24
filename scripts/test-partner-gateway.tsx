@@ -379,7 +379,7 @@ async function main() {
   {
     const dir = path.join(ROOT, "lib/partner/gateway");
     const files = fs.readdirSync(dir).map((f) => `lib/partner/gateway/${f}`);
-    check("gateway module files", files.sort(), ["brief.ts", "core.ts", "entity-common.ts", "entity.ts", "read-context.ts", "resolve.ts", "server.ts", "types.ts"].map((f) => `lib/partner/gateway/${f}`));
+    check("gateway module files", files.sort(), ["brief.ts", "core.ts", "entity-common.ts", "entity.ts", "keys.ts", "read-context.ts", "resolve.ts", "server.ts", "types.ts"].map((f) => `lib/partner/gateway/${f}`));
     const code = files.map((f) => [f, strip(rd(f))] as const);
     const FORBIDDEN = /action-service|decideSuggested|executeApproved|decideFinanceActionCore|executeFinanceActionCore|appendOwnerContext|answer-service|answerFinanceQuestion|appendFinanceDecision|callFinanceExecuteRpc|event-persistence|\/push|sendPush|web-push|instrumentation|cron|alerts-store|createAlert|updateAlertStatus|lib\/supabase|\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(|fetch\(|openai|ai-router|anthropic/i;
     check("50. no write / decide / execute / answer / push / cron / alert / DB / LLM capability anywhere in the Gateway", code.filter(([, s]) => FORBIDDEN.test(s.replace(/createHash\("sha1"\)\.update\(/g, ""))).map(([f]) => f), []);
@@ -393,7 +393,7 @@ async function main() {
     ].sort());
     ok("37. one read per source per request (memoized) and the SAME finance / state reused by memory + actions", /const state = once\(/.test(rc) && /const financeLive = once\(/.test(rc) && /loadPartnerMemory\(now, \{ finance: await financeLive\(\) \}\)/.test(rc) && /getOwnerActionSurface\(\{ state: s\.status === "OK" \? s\.value : undefined, finance: financeLive \}\)/.test(rc) && /buildLiveCases\(s\.value\)/.test(rc));
     const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(d, e.name)] : []);
-    check("35. no route / page / component uses the Gateway yet (no public surface, no MCP, no OAuth)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /partner\/gateway/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f)), []);
+    check("35. the ONLY route / page / component using the Gateway is the Owner-only read-only unified knowledge GET", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /partner\/gateway/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f).split(path.sep).join("/")), ["app/api/partner/knowledge/route.ts"]);
     // MCP Phase 1: the connector lives OUTSIDE the Gateway (lib/integrations/partner-mcp) — the Gateway stays transport-neutral.
     ok("the Gateway itself contains no MCP / OAuth / transport code", !code.some(([, s]) => /modelcontextprotocol|oauth|jsonrpc|partner-mcp/i.test(s)));
     const gwImporters = walk(path.join(ROOT, "lib")).filter((f) => !f.includes(`${path.sep}partner${path.sep}`) && /partner\/gateway\//.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f).replace(/\\/g, "/")).sort();

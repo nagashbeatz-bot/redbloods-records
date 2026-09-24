@@ -296,8 +296,10 @@ void (async () => {
     const diff = (p: string) => execFileSync("git", ["status", "--porcelain", "--", p], { cwd: root, encoding: "utf8" }).trim();
     check("22. Finance Brain untouched", diff("lib/partner/finance"), "");
     check("23. Agent Alerts untouched", diff("lib/agent"), "");
-    check("24. MCP / OAuth / well-known untouched", [diff("lib/integrations/partner-mcp"), diff("app/api/mcp"), diff("app/api/mcp-oauth"), diff("app/.well-known"), diff("app/mcp-oauth")], ["", "", "", "", ""]);
-    check("24. Gateway untouched", diff("lib/partner/gateway"), "");
+    check("24. MCP OAuth / consent / discovery untouched", [diff("lib/integrations/partner-mcp/oauth.ts"), diff("lib/integrations/partner-mcp/consent.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known"), diff("app/mcp-oauth")], ["", "", "", "", ""]);
+    const mcpSrc = fs.readdirSync(path.join(root, "lib/integrations/partner-mcp")).map((f) => read(`lib/integrations/partner-mcp/${f}`)).join("\n");
+    const gwSrc = fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n");
+    ok("24. no Owner answer path through MCP / the Gateway (read-only: no answer core, no Owner Context store)", !/integrity\/answer|integrity\/server|context-store|appendOwnerContext/.test(mcpSrc + gwSrc));
     check("no migration / SQL added", diff("supabase"), "");
     const files = ["lib/partner/integrity/answer.ts", "lib/partner/integrity/server.ts", "lib/partner/integrity/register.ts", "lib/partner/integrity/dto.ts", "app/api/partner/integrity/route.ts", "app/api/partner/integrity/answer/route.ts", "components/partner/PartnerIntegritySection.tsx", "components/partner/PartnerIntegrityView.tsx", "components/partner/partner-integrity-answer-client.ts"];
     const src = files.map(read).join("\n");

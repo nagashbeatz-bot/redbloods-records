@@ -15,20 +15,10 @@ import { salaryLinkedId, salaryMonthLabel } from "../../victor-salary-format";
 import { envelope, ok, partner, record, heDate, type GatewaySources } from "./core";
 import { drill, fact, finishEntity, type EntityDraft } from "./entity-common";
 import { normalizeName } from "./resolve";
+import { parseEntityKey } from "./keys";
 import { type EntityResponse, type GatewayEntityType, type GatewayFact, type GatewayRelationship } from "./types";
 
-const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const KEY_RE = new RegExp(`^(project|client|label-artist|dj|show|session|release):(${UUID})$`);
-const PERIOD_RE = /^recurring:VICTOR_SALARY:(\d{4}-(?:0[1-9]|1[0-2]))$/;
-
-export function parseEntityKey(key: string): { type: GatewayEntityType; id: string } | null {
-  const m = KEY_RE.exec(key);
-  if (m) return { type: m[1] as GatewayEntityType, id: m[2] };
-  if (key === "vendor:VICTOR" || key === "vendor:STEVEN") return { type: "vendor", id: key.slice(7) };
-  const p = PERIOD_RE.exec(key);
-  if (p) return { type: "recurring", id: p[1] };
-  return null;
-}
+export { parseEntityKey } from "./keys";
 
 const rel = (from: string, relation: GatewayRelationship["relation"], to: string | null, toLabel: string | null, quality: GatewayRelationship["quality"], source: GatewayRelationship["source"], note?: string): GatewayRelationship =>
   ({ from, relation, to, toLabel: toLabel === null ? null : record(toLabel), quality, source, ...(note ? { note: partner(note) } : {}) });
@@ -374,7 +364,7 @@ export function getPartnerEntityCore(key: string, src: GatewaySources): EntityRe
   const env = envelope("partner_entity", { key }, src, used);
   const empty = (status: EntityResponse["status"], why: string): EntityResponse => ({
     ...env, status, entity: null, facts: [], relationships: [], ownerDecisions: [], observations: [], conflicts: [], patterns: { candidates: [], confirmed: [] },
-    resolutions: [], openIssues: [], openQuestions: [], suggestedActions: [], actionHistory: [], recentOutcomes: [], missing: [{ fact: key.slice(0, 80), whyNeeded: why }], drillDown: [], truncated: {},
+    resolutions: [], openIssues: [], openQuestions: [], suggestedActions: [], actionHistory: [], recentOutcomes: [], missing: [{ fact: key.slice(0, 80), whyNeeded: why }], drillDown: [], truncated: {}, knowledge: [],
   });
   const parsed = parseEntityKey(key);
   if (!parsed) return empty("UNSUPPORTED_KEY", "not a Gateway entity key — use partner_resolve first");

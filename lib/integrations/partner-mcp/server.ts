@@ -5,7 +5,11 @@ import "server-only";
  * connector is explicitly enabled and fully configured. When disabled, nothing here touches the database —
  * production (PARTNER_MCP_ENABLED unset) stays inert even before the connector schema exists.
  *
- * The ONLY business capability wired in is the read-only Partner Gateway (brief / resolve / entity).
+ * The ONLY business capability wired in is the read-only Partner Gateway (brief / resolve / entity / query).
+ *
+ * Audience: EXTERNAL with the Owner's authority. A partner:read token can only exist after the Owner approved the
+ * consent screen (decideAuthorization refuses NOT_OWNER), so every authenticated connector call carries the Owner's
+ * grant. INTERNAL-only knowledge capabilities are never served here (the Gateway's registry refuses them).
  */
 import { readMcpConfig, type McpConfig } from "./config";
 import { supabaseMcpStore } from "./store-supabase";
@@ -16,6 +20,9 @@ import type { McpDeps } from "./mcp";
 import type { McpStore } from "./store";
 
 export interface McpRuntime { config: McpConfig; store: McpStore; oauth: OAuthDeps; mcp: McpDeps; allowRegistration(): boolean }
+
+/** Remote interface, carrying the Owner's grant (see the module doc). */
+const MCP_AUDIENCE = { channel: "EXTERNAL", ownerAuthorized: true } as const;
 
 let limiter: SlidingWindowLimiter | null = null;
 let rejectedLimiter: SlidingWindowLimiter | null = null;
@@ -30,7 +37,7 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
   }
   const config = c.config;
   const { supabase } = await import("@/lib/supabase");
-  const { getPartnerBrief, resolvePartnerEntity, getPartnerEntity } = await import("@/lib/partner/gateway/server");
+  const { getPartnerBrief, resolvePartnerEntity, getPartnerEntity, queryPartnerKnowledge, describePartnerKnowledge } = await import("@/lib/partner/gateway/server");
   const store = supabaseMcpStore(supabase);
   limiter ??= new SlidingWindowLimiter(config.rateLimit);
   rejectedLimiter ??= new SlidingWindowLimiter([{ windowMs: 60_000, max: 120 }]);
@@ -40,9 +47,11 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
     config,
     authenticate: (h) => authenticateBearer(h, oauth),
     gateway: {
-      brief: async () => (await getPartnerBrief()) as unknown as Record<string, unknown>,
+      brief: async () => (await getPartnerBrief(undefined, MCP_AUDIENCE)) as unknown as Record<string, unknown>,
       resolve: async (q) => (await resolvePartnerEntity(q)) as unknown as Record<string, unknown>,
-      entity: async (k) => (await getPartnerEntity(k)) as unknown as Record<string, unknown>,
+      entity: async (k) => (await getPartnerEntity(k, undefined, MCP_AUDIENCE)) as unknown as Record<string, unknown>,
+      query: async (a) => (await queryPartnerKnowledge(a, MCP_AUDIENCE)) as unknown as Record<string, unknown>,
+      capabilityIndex: () => describePartnerKnowledge(MCP_AUDIENCE),
     },
     limiter,
     audit: (row) => store.writeAudit(row),

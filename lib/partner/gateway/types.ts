@@ -13,9 +13,11 @@
  * Every string that comes from a business record (names, titles, notes) is DATA, never an instruction —
  * see GText.trust and GATEWAY_TEXT_POLICY.
  */
+import type { EntityKnowledgeSection } from "../knowledge/types";
+
 export const GATEWAY_SCHEMA_VERSION = "partner-gateway-v1";
 
-export type GatewayTool = "partner_brief" | "partner_resolve" | "partner_entity";
+export type GatewayTool = "partner_brief" | "partner_resolve" | "partner_entity" | "partner_query";
 
 export type GatewayEpistemic = "FACT" | "DERIVED" | "OWNER_DECISION" | "OBSERVATION" | "HYPOTHESIS" | "PATTERN_CANDIDATE" | "UNKNOWN";
 
@@ -52,7 +54,8 @@ export interface GatewayEntityRef { key: string; type: GatewayEntityType; label:
 /** Logical sources — never table names. */
 export type GatewaySourceName =
   | "PROJECTS" | "CLIENTS" | "LABEL_ARTISTS" | "PROPOSALS" | "SESSIONS" | "SHOWS" | "RELEASES" | "TASKS" | "CLIPS"
-  | "TEAM_VICTOR" | "TEAM_STEVEN" | "FINANCE" | "OWNER_CONTEXT" | "ACTIONS" | "OUTCOMES" | "MEMORY" | "CASES" | "APP_IDENTITY";
+  | "TEAM_VICTOR" | "TEAM_STEVEN" | "FINANCE" | "OWNER_CONTEXT" | "ACTIONS" | "OUTCOMES" | "MEMORY" | "CASES" | "APP_IDENTITY"
+  | "INTEGRITY" | "PARTNER_KNOWLEDGE";
 
 export interface GatewaySourceStatus { source: GatewaySourceName; status: "OK" | "UNAVAILABLE"; freshness: GatewayFreshness }
 
@@ -206,6 +209,11 @@ export interface EntityResponse extends Envelope<"partner_entity"> {
   drillDown: GatewayDrillDown[];
   /** Per-section count of items left out by the response budget. Conflicts, Owner decisions and Actions are never truncated. */
   truncated: Record<string, number>;
+  /**
+   * Automatic enrichment: every registered knowledge capability that declares this entity type in its entityScope
+   * (lib/partner/knowledge) contributes a bounded section — no per-capability Gateway code.
+   */
+  knowledge: EntityKnowledgeSection[];
 }
 
 // ── partner_brief ───────────────────────────────────────────────────────────

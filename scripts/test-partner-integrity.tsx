@@ -200,11 +200,12 @@ void (async () => {
   ok("no push / cron / email", !/web-push|sendPush|sendEmail|cron/i.test(src));
   const diff = (p: string) => execFileSync("git", ["status", "--porcelain", "--", p], { cwd: root, encoding: "utf8" }).trim();
   check("Finance Brain untouched", diff("lib/partner/finance"), "");
-  check("MCP contract untouched", [diff("lib/integrations/partner-mcp"), diff("app/api/mcp"), diff("app/api/mcp-oauth"), diff("app/.well-known")], ["", "", "", ""]);
-  check("Gateway untouched", diff("lib/partner/gateway"), "");
+  check("MCP auth surface untouched (OAuth / consent / config / discovery routes)", [diff("lib/integrations/partner-mcp/oauth.ts"), diff("lib/integrations/partner-mcp/consent.ts"), diff("lib/integrations/partner-mcp/config.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known")], ["", "", "", "", ""]);
+  const mcpSrc = fs.readdirSync(path.join(root, "lib/integrations/partner-mcp")).map((f) => read(`lib/integrations/partner-mcp/${f}`)).join("\n");
+  ok("MCP adapter has NO integrity-specific code (integrity reaches Claude only as a registered knowledge capability)", !/partner\/integrity|company\/read-context|INTEGRITY_|integrity\//.test(mcpSrc));
   check("Agent Alerts untouched", diff("lib/agent"), "");
   check("no migration added", diff("supabase"), "");
-  ok("register not wired into MCP / Gateway payloads", !/integrity/i.test(fs.readdirSync(path.join(root, "lib/integrations/partner-mcp")).map((f) => read(`lib/integrations/partner-mcp/${f}`)).join("\n")) && !/integrity\/register|company\/read-context/.test(fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n")));
+  ok("the Gateway reaches the register only through the CompanyReadContext (server) and types — never by building it", !/buildCompanyIntegrityRegister|integrity\/detectors/.test(fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n")));
   ok("session writers really store the declared statuses", SESSION_STATUS_VOCABULARY.writers.files.some((fl) => read(fl).includes("התקיים")) && read("app/api/sessions/route.ts").includes("מתוכנן"));
   ok("legacy readers really expect the declared statuses", SESSION_STATUS_VOCABULARY.legacyReaders.every((r) => r.expects.every((s) => read(r.file).includes(`"${s}"`))));
   ok("both Steven writers exist in code", STEVEN_PAYMENT_WRITERS.every((w) => read(w.file).includes(w.marker)));

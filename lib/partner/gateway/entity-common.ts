@@ -40,13 +40,24 @@ export function issuesFor(src: GatewaySources, key: string, ids: ReadonlySet<str
   })).sort((a, b) => a.code.localeCompare(b.code) || (a.subject ?? "").localeCompare(b.subject ?? ""));
 }
 
-/** Unanswered Owner questions about these entities — the Finance view's list, already filtered by the memory pre-flight. */
+/**
+ * Unanswered Owner questions about these entities: the Finance view's list (already memory-preflighted) + the
+ * Company Integrity questions surfaced right now (max 2, already Owner-Context-preflighted). answerable = the Owner
+ * can answer it in the Redbloods dashboard (never through a read-only interface).
+ */
 export function questionsFor(src: GatewaySources, keys: ReadonlySet<string>): GatewayQuestion[] {
+  const out: GatewayQuestion[] = [];
   const f = ok(src.finance);
-  if (!f || !f.answersAvailable) return [];
-  return f.integrity.questions
-    .filter((q) => keys.has(gatewayKeyForSubject(q.subject.type, q.subject.id)))
-    .map((q): GatewayQuestion => ({ questionType: q.questionType, subject: gatewayKeyForSubject(q.subject.type, q.subject.id), text: partnerRecord(q.textHe), why: partnerRecord(q.whyItMattersHe), answerable: !!q.identity }));
+  if (f && f.answersAvailable) {
+    out.push(...f.integrity.questions
+      .filter((q) => keys.has(gatewayKeyForSubject(q.subject.type, q.subject.id)))
+      .map((q): GatewayQuestion => ({ questionType: q.questionType, subject: gatewayKeyForSubject(q.subject.type, q.subject.id), text: partnerRecord(q.textHe), why: partnerRecord(q.whyItMattersHe), answerable: !!q.identity })));
+  }
+  for (const q of ok(src.integrity)?.questions ?? []) {
+    const subject = `${q.subject.type}:${q.subject.id}`;
+    if (keys.has(subject)) out.push({ questionType: q.questionType, subject, text: partnerRecord(q.textHe), why: partnerRecord(q.whyHe), answerable: true });
+  }
+  return out;
 }
 
 /** Suggested Actions for these entities (read-only): the live Owner surface first, then finance candidates not surfaced. */
@@ -154,6 +165,7 @@ export function finishEntity(src: GatewaySources, d: EntityDraft, env: Pick<Enti
     missing: cap(missing, GATEWAY_LIMITS.missing, truncated, "missing"),
     drillDown: d.drillDown,
     truncated,
+    knowledge: src.entityKnowledge ? src.entityKnowledge(d.entity.key) : [],
   };
 }
 
