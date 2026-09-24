@@ -28,10 +28,11 @@ const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const MAX_RECORD_TEXT = 300;
 const MAX_OFFSET = 10_000;
 
-const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE" };
+const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS" };
 const SOURCE_OF: Record<KnowledgeSourceNeed, (s: KnowledgeSources) => unknown> = {
   STATE: (s) => s.state, FINANCE: (s) => s.finance, MEMORY: (s) => s.memory, CASES: (s) => s.cases, ACTIONS: (s) => s.actions, OUTCOMES: (s) => s.outcomes, INTEGRITY: (s) => s.integrity,
   OWNER_KNOWLEDGE: (s) => s.ownerKnowledge,
+  OPERATIONS: (s) => s.operations,
 };
 
 export type ValidatedQuery = { cap: KnowledgeCapability; mode: string; params: Record<string, string>; limit: number; offset: number };

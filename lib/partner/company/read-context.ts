@@ -28,6 +28,7 @@ import type { CompanyIntegrityRegister } from "../integrity/types";
 import { readIntegrityExtras, type CompanyExtrasReadClient } from "./readers";
 import { createOwnerKnowledgeStore, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
 import type { Avail } from "../gateway/core";
+import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
 
 export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
@@ -40,6 +41,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   todayIL: string;
   /** Sunny organizational memory. undefined = the store is not enabled here (PARTNER_OWNER_KNOWLEDGE_ENABLED). */
   ownerKnowledge(): Promise<Avail<OwnerKnowledgeRecord[]> | undefined>;
+  /** Operations domains (SELECT only, narrow columns, per-section fail closed). */
+  operations(): Promise<Avail<OperationsRaw>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
   extras(): Promise<IntegrityExtras | null>;
   integrity(): Promise<CompanyIntegrityRegister>;
@@ -79,5 +82,9 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
       return r.status === "OK" ? { status: "OK", value: r.records } : { status: "UNAVAILABLE", detail: r.status === "READ_FAILED" ? r.detail : `invalid stored knowledge rows (${r.count})` };
     } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge };
+  const operations = once(async (): Promise<Avail<OperationsRaw>> => {
+    try { return { status: "OK", value: await readOperationsRaw(supabase as unknown as OperationsReadClient) }; }
+    catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations };
 }

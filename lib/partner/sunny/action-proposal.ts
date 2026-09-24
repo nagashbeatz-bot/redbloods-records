@@ -11,6 +11,7 @@
  * tool / scope (partner:propose_action) exists only behind PARTNER_MCP_PROPOSE_ACTION_ENABLED, which is OFF.
  */
 import type { GatewaySources } from "../gateway/core";
+import { BUSINESS_ACTIONS } from "../system/registry";
 import { resolveEntity } from "../owner-knowledge/propose";
 
 export const SUPPORTED_ACTIONS = ["UPDATE_PROJECT_DEADLINE"] as const;
@@ -20,7 +21,7 @@ export type ActionProposalResult =
   | { status: "PREVIEW_ONLY"; actionType: "UPDATE_PROJECT_DEADLINE"; project: { key: string; label: string }; currentDeadline: string | null; proposedDeadline: string;
       summaryHe: string; approvalHe: string; persisted: false; executed: false }
   | { status: "FINANCE_ACTIONS_DISABLED"; messageHe: string }
-  | { status: "UNSUPPORTED_ACTION"; supported: readonly string[] }
+  | { status: "UNSUPPORTED_ACTION"; supported: readonly string[]; known: { id: string; class: string; reason: string; design: unknown } | null; messageHe: string }
   | { status: "NEEDS_CLARIFICATION"; questionHe: string; candidates: Array<{ key: string; label: string; type: string }> }
   | { status: "INVALID"; errors: string[] }
   | { status: "CONFLICT_WITH_LIVE"; messageHe: string };
@@ -31,7 +32,12 @@ const he = (y: string) => `${y.slice(8, 10)}.${y.slice(5, 7)}.${y.slice(0, 4)}`;
 
 export function proposeActionPreviewCore(src: GatewaySources, input: { actionType: unknown; project: unknown; newDeadline: unknown }): ActionProposalResult {
   if ((REFUSED_FINANCE_ACTIONS as readonly unknown[]).includes(input.actionType)) return { status: "FINANCE_ACTIONS_DISABLED", messageHe: "פעולות כספים לא מבוצעות ולא מוצעות דרך סאני כרגע — רק בלוח הבקרה." };
-  if (input.actionType !== "UPDATE_PROJECT_DEADLINE") return { status: "UNSUPPORTED_ACTION", supported: SUPPORTED_ACTIONS };
+  if (input.actionType !== "UPDATE_PROJECT_DEADLINE") {
+    // Sunny knows its limits: an action that exists in Redbloods but has no Sunny primitive is described, never faked.
+    const k = BUSINESS_ACTIONS.find((a) => a.id === input.actionType) ?? null;
+    return { status: "UNSUPPORTED_ACTION", supported: SUPPORTED_ACTIONS, known: k ? { id: k.id, class: k.class, reason: k.reason, design: k.design ?? null } : null,
+      messageHe: k ? "הבנתי מה אתה רוצה, אבל לסאני אין עדיין פעולה מאושרת לזה — אפשר לעשות את זה בלוח הבקרה. שום דבר לא נוצר." : "אני לא מכיר פעולה כזו במערכת. שום דבר לא השתנה." };
+  }
   const st = src.state?.status === "OK" ? src.state.value : null;
   if (!st) return { status: "INVALID", errors: ["company state unavailable"] };
   const r = resolveEntity(src, input.project, ["project"], "project");

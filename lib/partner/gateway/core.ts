@@ -19,6 +19,7 @@ import type { PartnerOutcomeItemDto } from "../actions/outcome-dto";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import type { EntityKnowledgeSection, KnowledgeAudience } from "../knowledge/types";
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import type { OperationsRaw } from "../operations/types";
 import {
   GATEWAY_SCHEMA_VERSION, GATEWAY_TEXT_POLICY, RECENT_DAYS,
   type GText, type GatewayFreshness, type GatewaySourceName, type GatewaySourceStatus, type GatewayTool,
@@ -58,6 +59,8 @@ export interface GatewaySources {
   integrity?: Avail<CompanyIntegrityRegister>;
   /** Sunny organizational memory (partner_owner_knowledge). Absent while the store is not enabled. */
   ownerKnowledge?: Avail<OwnerKnowledgeRecord[]>;
+  /** Operations domains (Red Films, meetings, project actions, beats, social, balance cycles, albums, mix pipeline, deliveries, integrations). */
+  operations?: Avail<OperationsRaw>;
   identities: GatewayAppIdentities;
   /** Who is asking (for knowledge enrichment). Absent = the most restrictive audience (EXTERNAL, no Owner authority). */
   audience?: KnowledgeAudience;
