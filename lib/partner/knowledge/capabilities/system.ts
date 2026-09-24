@@ -4,6 +4,7 @@
  * deploy (versioned by SYSTEM_BASELINE_VERSION + the capability change log).
  */
 import { BUSINESS_ACTIONS, CAPABILITY_CHANGES, coverageMatrix, DOMAIN_CONTRACTS, RELATIONSHIPS, servedDomain, SYSTEM_BASELINE_VERSION } from "../../system";
+import { accessMatrix, PEOPLE_BASELINE_VERSION, personOfRole, PUSH_CONTRACTS, SECURITY_GAPS, servedPush, servedUser, USER_CONTRACTS } from "../../system/people-view";
 import type { KnowledgeCapability } from "../types";
 import { byCount, item, partner, result, sfact } from "./common";
 
@@ -25,11 +26,18 @@ export const systemAwareness: KnowledgeCapability = {
     rules: { descriptionForModel: "Business rules (optional domain / class)" }, relationships: { descriptionForModel: "Entity graph with relation quality" },
     actions: { descriptionForModel: "Business action map (optional domain)" }, limitations: { descriptionForModel: "What Sunny cannot see / do" },
     changes: { descriptionForModel: "Capability change log" }, coverage: { descriptionForModel: "READ / LEARN / PROPOSE / EXECUTE matrix" },
+    people: { descriptionForModel: "Every person / role that can use Redbloods OS (login roles, no-login people, machine identities) with pages, money visibility, what they can do" },
+    person: { descriptionForModel: "One person in full (param person): who, why access, auth, landing, every tab (purpose, data, money, writes + enforcement), cannot, pushes received / triggered, security gaps" },
+    push: { descriptionForModel: "Every Push that exists (optional param recipient role): recipient, purpose, trigger, type (manual / event / scheduled / page-load beacon), timing, conditions, dedupe, what happens next, status, known bugs. Sunny can never send push" },
+    access: { descriptionForModel: "Who sees money, who can upload / change status / delete / send push, who is read-only — derived per person" },
+    gaps: { descriptionForModel: "Reported security gaps / UI-vs-server mismatches / privacy issues (report only, not fixed)" },
   },
   defaultMode: "overview",
   params: {
     domain: { kind: "enum", values: DOMAIN_IDS, descriptionForModel: "A system domain id (see overview)" },
     class: { kind: "enum", values: ["CANONICAL_BUSINESS_RULE", "IMPLEMENTATION_BEHAVIOR", "OWNER_POLICY", "LEGACY_BEHAVIOR", "POSSIBLE_BUG", "CONFLICT"], descriptionForModel: "Only rules of this class" },
+    person: { kind: "enum", values: USER_CONTRACTS.map((u) => u.id), descriptionForModel: "A person id (see mode people), e.g. SHALEV, AVI, CLEANTONE, VICTOR, STEVEN, OWNER" },
+    recipient: { kind: "enum", values: ["owner", "shalev", "avi", "cleantone", "victor", "steven"], descriptionForModel: "Only pushes this role receives" },
   },
   paging: { defaultLimit: 40, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: [],
   read(_src, q) {
@@ -56,6 +64,31 @@ export const systemAwareness: KnowledgeCapability = {
     }
     if (q.mode === "limitations") {
       return result(pick.flatMap((d) => d.limitationsHe.map((l, i) => item({ id: `${d.id}:${i}`, label: partner(l), epistemic: "FACT", source: SRC, fields: { domain: d.id, states: [...d.states] } }))), base);
+    }
+    const peopleBase = { ...base, summary: [version(), sfact("PEOPLE_BASELINE", "גרסת הידע על משתמשים ופושים", PEOPLE_BASELINE_VERSION, "FACT", SRC)] };
+    if (q.mode === "people") {
+      return result(USER_CONTRACTS.map((u) => item({ id: u.id, label: partner(u.titleHe), epistemic: "FACT", source: SRC, fields: { kind: u.kind, whoTheyAre: u.whoTheyAre, whyAccess: u.whyAccess, landing: u.landing, pages: u.tabs.map((t) => t.titleHe), money: [...new Set(u.tabs.map((t) => t.money))], pushesReceived: u.receivesPush.length } })), peopleBase);
+    }
+    if (q.mode === "person") {
+      if (!q.params.person) return result([], { ...peopleBase, completeness: "UNKNOWN", missing: [{ fact: "person", whyNeeded: "pass params.person (see mode people)" }] });
+      const u = USER_CONTRACTS.find((x) => x.id === q.params.person)!;
+      const pushes = PUSH_CONTRACTS.filter((p) => u.receivesPush.includes(p.id) || u.triggersPush.includes(p.id)).map((p) => ({ id: p.id, title: p.titleHe, received: u.receivesPush.includes(p.id), triggeredByThem: u.triggersPush.includes(p.id), type: p.type, trigger: p.trigger, timing: p.timing, status: p.status }));
+      const gaps = SECURITY_GAPS.filter((g) => u.securityGapIds.includes(g.id));
+      return result([item({ id: u.id, label: partner(u.titleHe), epistemic: "FACT", source: SRC, fields: { ...(servedUser(u) as unknown as Record<string, unknown>), pushes, gaps } })], peopleBase);
+    }
+    if (q.mode === "push") {
+      const list = PUSH_CONTRACTS.filter((p) => !q.params.recipient || p.recipientRoles.includes(q.params.recipient));
+      return result(list.map((p) => item({ id: p.id, label: partner(p.titleHe), epistemic: "FACT", source: SRC, fields: { ...(servedPush(p) as unknown as Record<string, unknown>), recipients: p.recipientRoles.map((r) => personOfRole(r) ?? r) } })),
+        { ...peopleBase, summary: [...peopleBase.summary, sfact("BY_TYPE", "פושים לפי סוג", byCount(list.map((p) => p.type)), "FACT", SRC), sfact("BY_STATUS", "פושים לפי מצב", byCount(list.map((p) => p.status)), "FACT", SRC)],
+          coverage: [...peopleBase.coverage, partner("סאני לא שולח פושים ולא קורא היסטוריית התראות — זה ידע על המערכת בלבד.")] });
+    }
+    if (q.mode === "access") {
+      return result(accessMatrix().map((r) => item({ id: r.person, label: partner(r.title), epistemic: "FACT", source: SRC, fields: r as unknown as Record<string, unknown> })),
+        { ...peopleBase, coverage: [...peopleBase.coverage, partner("נראות בממשק אינה הרשאה: כל פעולה מסומנת לפי האכיפה בפועל (UI בלבד / שער מרכזי / בדיקה בשרת / RLS).")] });
+    }
+    if (q.mode === "gaps") {
+      return result(SECURITY_GAPS.map((g) => item({ id: g.id, label: partner(g.description), epistemic: "OBSERVATION", source: SRC, fields: { severity: g.severity, kind: g.kind, users: g.users, status: g.status } })),
+        { ...peopleBase, summary: [...peopleBase.summary, sfact("BY_SEVERITY", "לפי חומרה", byCount(SECURITY_GAPS.map((g) => g.severity)), "FACT", SRC)] });
     }
     if (q.mode === "changes") {
       return result([...CAPABILITY_CHANGES].reverse().map((c, i) => item({ id: `${c.version}:${c.domain}:${c.dimension}:${i}`, label: partner(c.noteHe), epistemic: "FACT", source: SRC, fields: { ...c } })), base);

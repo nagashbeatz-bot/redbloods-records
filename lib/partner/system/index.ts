@@ -7,6 +7,7 @@
  */
 import { BUSINESS_ACTIONS, CAPABILITY_CHANGES, DOMAIN_CONTRACTS, RELATIONSHIPS, SURFACE_EXCLUSIONS, SYSTEM_BASELINE_VERSION } from "./registry";
 import type { DomainContract } from "./types";
+import { PUSH_CONTRACTS, SECURITY_GAPS, USER_CONTRACTS, servedPush, servedUser } from "./people-view";
 
 export { BUSINESS_ACTIONS, CAPABILITY_CHANGES, DOMAIN_CONTRACTS, RELATIONSHIPS, SURFACE_EXCLUSIONS, SYSTEM_BASELINE_VERSION };
 export type * from "./types";
@@ -54,7 +55,7 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
   if (new Set(BUSINESS_ACTIONS.map((a) => a.id)).size !== actionIds.size) e.push("duplicate action id");
   for (const c of CAPABILITY_CHANGES) if (!ids.has(c.domain)) e.push(`change ${c.version}: unknown domain ${c.domain}`);
   if (!CAPABILITY_CHANGES.some((c) => c.version === SYSTEM_BASELINE_VERSION)) e.push("baseline version has no change entry");
-  const served = JSON.stringify({ d: DOMAIN_CONTRACTS.map(servedDomain), r: RELATIONSHIPS, a: BUSINESS_ACTIONS, c: CAPABILITY_CHANGES }).toLowerCase();
+  const served = JSON.stringify({ d: DOMAIN_CONTRACTS.map(servedDomain), r: RELATIONSHIPS, a: BUSINESS_ACTIONS, c: CAPABILITY_CHANGES, u: USER_CONTRACTS.map(servedUser), p: PUSH_CONTRACTS.map(servedPush), g: SECURITY_GAPS }).toLowerCase();
   for (const t of FORBIDDEN_SERVED_TERMS) if (served.includes(t.toLowerCase())) e.push(`served content contains implementation term "${t}"`);
   return e;
 }

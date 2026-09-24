@@ -10,7 +10,7 @@
  */
 import type { BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.24-2";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-1";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -552,7 +552,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("PUSH_CRON_OWNER", "External scheduler: overdue / due-soon projects, today's sessions, overdue expected income, stuck Victor work, morning / evening summary", "Owner", "SCHEDULED", "none (POSSIBLE_BUG)"),
       N("AGENT_ALERT_PUSH", "Agent alerts (important / urgent)", "Owner", "AGENT_CHECK", "currently DISABLED (AI flag off)"),
     ],
-    limitationsHe: ["לסאני אין הרשאה לשלוח Push או התראות — אף פעם.", "סאני לא קורא את היסטוריית ההתראות."],
+    limitationsHe: ["לסאני אין הרשאה לשלוח Push או התראות — אף פעם.", "סאני לא קורא את היסטוריית ההתראות — הוא מכיר את כל סוגי הפושים דרך system_awareness (מצב push)."],
     surfaces: S(["/push-test"], ["push", "notifications"]),
   },
   {
@@ -772,4 +772,8 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.24-2", date: "2026-09-24", domain: "CLIPS", dimension: "read", from: "MISSING", to: "PARTIAL", noteHe: "סאני רואה שורות תכנון קליפ." },
   { version: "2026.09.24-2", date: "2026-09-24", domain: "GOOGLE_CALENDAR", dimension: "read", from: "MISSING", to: "PARTIAL", noteHe: "סאני יודע אם היומן מחובר (לא קורא אירועים)." },
   { version: "2026.09.24-2", date: "2026-09-24", domain: "SUNNY_CORE", dimension: "domain", from: "—", to: "SYSTEM_AWARENESS", noteHe: "סאני מכיר את מבנה Redbloods, הכללים, הקשרים ומה הוא יכול/לא יכול לעשות." },
+  { version: "2026.09.24-3", date: "2026-09-24", domain: "SUNNY_CORE", dimension: "learn", from: "PARTIAL", to: "PARTIAL", noteHe: "זיכרון ארגוני (P2) פעיל: סאני לומד ממך ידע מסוג מוגדר אחרי אישור בשיחה." },
+  { version: "2026.09.25-1", date: "2026-09-25", domain: "PLATFORM_ACCESS", dimension: "read", from: "INTENTIONALLY_UNAVAILABLE", to: "INTENTIONALLY_UNAVAILABLE", noteHe: "סאני מכיר כל משתמש, מה הוא רואה ויכול לעשות, ואיך זה נאכף (ידע מערכת — לא שינוי הרשאות)." },
+  { version: "2026.09.25-1", date: "2026-09-25", domain: "PUSH_NOTIFICATIONS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "FULL_INVENTORY", noteHe: "סאני מכיר כל פוש שקיים: מי מקבל, למה, מתי ומה מפעיל אותו (לא שולח פושים)." },
+  { version: "2026.09.25-1", date: "2026-09-25", domain: "ARTIST_PORTALS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "PAGE_BY_PAGE", noteHe: "סאני מכיר כל לשונית בפורטלים של שליו, אבי, קלינטון, ויקטור וסטיבן." },
 ];
