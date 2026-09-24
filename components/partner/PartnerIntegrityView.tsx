@@ -73,7 +73,7 @@ export function PartnerIntegrityView({ surface, isMobile, controls, message }: {
             <p style={{ margin: "0 0 4px", fontSize: 11.5, fontWeight: 700, color: MUTED }}>מה למדתי ממך</p>
             {learned.map((l) => (
               <p key={`${l.subjectLabel}|${l.answerLabelHe}|${l.statusHe}`} style={{ margin: "2px 0", fontSize: 12, color: SUB, lineHeight: 1.5 }}>
-                <span style={{ color: TEXT }}>{l.subjectLabel}</span>: {l.answerLabelHe} <span style={{ color: MUTED }}>({l.statusHe})</span>
+                <span style={{ color: TEXT }}>{l.subjectLabel}</span>: {l.answerLabelHe} <span style={{ color: MUTED }}>({l.statusHe}{l.viaClaude ? " · דרך Claude" : ""})</span>
               </p>
             ))}
           </div>

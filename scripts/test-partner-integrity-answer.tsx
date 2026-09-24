@@ -296,7 +296,7 @@ void (async () => {
     const diff = (p: string) => execFileSync("git", ["status", "--porcelain", "--", p], { cwd: root, encoding: "utf8" }).trim();
     check("22. Finance Brain untouched", diff("lib/partner/finance"), "");
     check("23. Agent Alerts untouched", diff("lib/agent"), "");
-    check("24. MCP OAuth / consent / discovery untouched", [diff("lib/integrations/partner-mcp/oauth.ts"), diff("lib/integrations/partner-mcp/consent.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known"), diff("app/mcp-oauth")], ["", "", "", "", ""]);
+    check("24. MCP consent-token / discovery routes untouched", [diff("lib/integrations/partner-mcp/consent.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known")], ["", "", ""]);
     const mcpSrc = fs.readdirSync(path.join(root, "lib/integrations/partner-mcp")).map((f) => read(`lib/integrations/partner-mcp/${f}`)).join("\n");
     const gwSrc = fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n");
     ok("24. no Owner answer path through MCP / the Gateway (read-only: no answer core, no Owner Context store)", !/integrity\/answer|integrity\/server|context-store|appendOwnerContext/.test(mcpSrc + gwSrc));
@@ -307,7 +307,7 @@ void (async () => {
     const srv = read("lib/partner/integrity/server.ts");
     ok("25. the only write primitive is appendOwnerContext, used once, via the core", /^import \{ appendOwnerContext \} from "\.\.\/investigation\/context-store";$/m.test(srv) && (srv.match(/appendOwnerContext/g) ?? []).length === 2);
     const core = read("lib/partner/integrity/answer.ts").replace(/\/\*[\s\S]*?\*\//g, "");
-    ok("25. the draft is built from the LIVE question only (client never supplies text / type / subject / supersedes)", /questionText: q\.textHe/.test(core) && /questionType: q\.questionType/.test(core) && /subjectId: q\.subject\.id/.test(core) && /caseFactsFingerprint: q\.fingerprint/.test(core) && /const supersedesId = q\.previousAnswer\?\.contextId \?\? null/.test(core) && /provenance: \{ source: "owner_manual" \}/.test(core));
+    ok("25. the draft is built from the LIVE question only (client never supplies text / type / subject / supersedes)", /questionText: q\.textHe/.test(core) && /questionType: q\.questionType/.test(core) && /subjectId: q\.subject\.id/.test(core) && /caseFactsFingerprint: q\.fingerprint/.test(core) && /const supersedesId = q\.previousAnswer\?\.contextId \?\? null/.test(core) && /provenance: deps\.provenance \?\? \{ source: "owner_manual" \}/.test(core));
     ok("no Google Calendar / push / cron / email in the loop", !/googleapis|calendar\.events|web-push|sendPush|sendEmail|cron/i.test(src));
     ok("session status fix NOT included (legacy readers unchanged)", diff("lib/reports") === "" && diff("lib/agent") === "");
   }

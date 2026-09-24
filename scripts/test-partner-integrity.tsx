@@ -200,7 +200,7 @@ void (async () => {
   ok("no push / cron / email", !/web-push|sendPush|sendEmail|cron/i.test(src));
   const diff = (p: string) => execFileSync("git", ["status", "--porcelain", "--", p], { cwd: root, encoding: "utf8" }).trim();
   check("Finance Brain untouched", diff("lib/partner/finance"), "");
-  check("MCP auth surface untouched (OAuth / consent / config / discovery routes)", [diff("lib/integrations/partner-mcp/oauth.ts"), diff("lib/integrations/partner-mcp/consent.ts"), diff("lib/integrations/partner-mcp/config.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known")], ["", "", "", "", ""]);
+  check("MCP consent-token / discovery routes untouched", [diff("lib/integrations/partner-mcp/consent.ts"), diff("app/api/mcp-oauth"), diff("app/.well-known")], ["", "", ""]);
   const mcpSrc = fs.readdirSync(path.join(root, "lib/integrations/partner-mcp")).map((f) => read(`lib/integrations/partner-mcp/${f}`)).join("\n");
   ok("MCP adapter has NO integrity-specific code (integrity reaches Claude only as a registered knowledge capability)", !/partner\/integrity|company\/read-context|INTEGRITY_|integrity\//.test(mcpSrc));
   check("Agent Alerts untouched", diff("lib/agent"), "");

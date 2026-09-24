@@ -16,11 +16,13 @@ export type AccessCheck =
   | { result: "NOT_FOUND" };
 
 export interface AuditRow {
+  /** Only for the P1 answer ATTEMPT row: generated app-side so the Owner Context provenance can reference it (the service role has INSERT-only, no SELECT). */
+  id?: string;
   actor_user_id: string | null;
   client_id: string | null;
   token_id: string | null;
   method: string;
-  tool: "partner_brief" | "partner_resolve" | "partner_entity" | null;
+  tool: "partner_brief" | "partner_resolve" | "partner_entity" | "partner_answer_question" | null;
   input_fingerprint: string | null;
   input_key: string | null;
   resolved_entity_key: string | null;

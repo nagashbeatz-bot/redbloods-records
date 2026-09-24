@@ -22,6 +22,17 @@ import type { CaseDerivedFact, CaseEvidence } from "../cases/types";
 import type { FinanceQuestionType } from "./finance-questions";
 import type { IntegrityQuestionType } from "./integrity-questions";
 
+/**
+ * Who gave an Owner Context answer, and through which channel. The Owner is ALWAYS the author:
+ *   owner_manual     — the Owner answered in the Redbloods dashboard;
+ *   owner_via_claude — the Owner answered in a Claude conversation; the connector (P1 partner:answer) submitted the
+ *                      closed answer code it mapped. Set by the server only (never by MCP input); carries the MCP client,
+ *                      token and the pre-write attempt audit row for traceability. Claude is never the author.
+ */
+export type OwnerContextProvenance =
+  | { source: "owner_manual" }
+  | { source: "owner_via_claude"; channel: "mcp"; client_id: string; token_id: string; attempt_audit_id: string };
+
 export const INVESTIGATION_SCHEMA_VERSION = "partner-investigation-schema-v1";
 export const INVESTIGATION_OWNER_RULE = "INVESTIGATE_BEFORE_CONCLUDING";
 
@@ -149,7 +160,7 @@ export interface PartnerOwnerContext {
   answeredAt: string;
   /** v1: context always describes THIS Case instance. It is never broadened automatically. */
   scope: "CASE_INSTANCE";
-  provenance: { source: "owner_manual" };
+  provenance: OwnerContextProvenance;
 }
 
 export type InvestigationStatus = "OPEN" | "ANSWERED" | "NOT_REQUIRED";

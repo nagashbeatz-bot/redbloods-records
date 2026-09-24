@@ -13,6 +13,7 @@ import { getAuthUser, requireOwner } from "@/lib/require-auth";
 import { appendOwnerContext } from "../investigation/context-store";
 import { createCompanyReadContext } from "../company/read-context";
 import { answerIntegrityQuestionCore, createIntegrityRequestLedger, registerAppliesContext, type IntegrityAnswerDeps, type IntegrityAnswerResult } from "./answer";
+import type { OwnerContextProvenance } from "../investigation/types";
 import { toIntegritySurfaceDto, type IntegritySurfaceDto } from "./dto";
 
 export type OwnerAuthFailure = { status: "UNAUTHORIZED" } | { status: "FORBIDDEN" };
@@ -45,6 +46,14 @@ const deps: IntegrityAnswerDeps = {
   ledger: createIntegrityRequestLedger(),
   audit: (event, data) => console.info(`[partner-integrity] ${event}`, JSON.stringify(data)),
 };
+
+/**
+ * The SAME dependencies (store, live loader, fresh verify, shared replay ledger) for another channel: only the
+ * provenance differs (e.g. owner_via_claude from the P1 connector bridge). No second write path exists.
+ */
+export function integrityAnswerDeps(provenance?: OwnerContextProvenance): IntegrityAnswerDeps {
+  return provenance ? { ...deps, provenance } : deps;
+}
 
 export async function answerIntegrityQuestion(input: unknown): Promise<IntegrityAnswerResult | OwnerAuthFailure> {
   const who = await ownerOrFailure();

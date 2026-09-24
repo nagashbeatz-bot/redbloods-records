@@ -20,7 +20,7 @@ export interface IntegrityQuestionDto {
   previousAnswerHe: string | null;
 }
 
-export interface IntegrityLearnedDto { subjectLabel: string; answerLabelHe: string; statusHe: string }
+export interface IntegrityLearnedDto { subjectLabel: string; answerLabelHe: string; statusHe: string; viaClaude: boolean }
 
 export interface IntegritySurfaceDto {
   version: typeof INTEGRITY_SURFACE_VERSION;
@@ -32,7 +32,7 @@ export interface IntegritySurfaceDto {
 interface RegisterLike {
   questions: Array<{ questionId: string; subject: { id: string; label: string | null }; fingerprint: string; textHe: string; whyHe: string; evidenceHe: string[]; options: Array<{ code: string; labelHe: string }>; previousAnswer: { answerLabelHe: string; answeredAt: string } | null }>;
   deferredQuestions: number;
-  learned: Array<{ subjectLabel: string | null; decision: { answerLabelHe: string }; status: "APPLIES" | "FACTS_CHANGED" | "NO_LONGER_AMBIGUOUS" }>;
+  learned: Array<{ subjectLabel: string | null; decision: { answerLabelHe: string; via: "DASHBOARD" | "CLAUDE" }; status: "APPLIES" | "FACTS_CHANGED" | "NO_LONGER_AMBIGUOUS" }>;
 }
 
 const STATUS_HE = { APPLIES: "בשימוש", FACTS_CHANGED: "הנתונים השתנו מאז — נשמר כהיסטוריה", NO_LONGER_AMBIGUOUS: "הנתונים כבר ברורים — נשמר כהיסטוריה" } as const;
@@ -47,7 +47,7 @@ export function toIntegritySurfaceDto(r: RegisterLike): IntegritySurfaceDto {
       previousAnswerHe: q.previousAnswer ? `בפעם הקודמת (${ymdHe(q.previousAnswer.answeredAt)}) ענית: "${q.previousAnswer.answerLabelHe}". מאז הנתונים השתנו, אז אני שואל שוב.` : null,
     })),
     deferredCount: r.deferredQuestions,
-    learned: r.learned.filter((l) => l.status !== "NO_LONGER_AMBIGUOUS" || l.subjectLabel).map((l) => ({ subjectLabel: l.subjectLabel ?? "", answerLabelHe: l.decision.answerLabelHe, statusHe: STATUS_HE[l.status] })),
+    learned: r.learned.filter((l) => l.status !== "NO_LONGER_AMBIGUOUS" || l.subjectLabel).map((l) => ({ subjectLabel: l.subjectLabel ?? "", answerLabelHe: l.decision.answerLabelHe, statusHe: STATUS_HE[l.status], viaClaude: l.decision.via === "CLAUDE" })),
   };
 }
 
@@ -71,6 +71,6 @@ export function parseIntegritySurfaceResponse(json: unknown): { ok: true; surfac
   if (!isObj(json) || !exactKeys(json, ["version", "questions", "deferredCount", "learned"]) || json.version !== INTEGRITY_SURFACE_VERSION) return { ok: false };
   if (!Array.isArray(json.questions) || json.questions.length > 2 || !json.questions.every(isQuestion)) return { ok: false };
   if (typeof json.deferredCount !== "number" || !Number.isInteger(json.deferredCount) || json.deferredCount < 0) return { ok: false };
-  if (!Array.isArray(json.learned) || json.learned.length > 50 || !json.learned.every((l) => isObj(l) && exactKeys(l, ["subjectLabel", "answerLabelHe", "statusHe"]) && str(l.subjectLabel, 200) && str(l.answerLabelHe, 200) && str(l.statusHe, 200))) return { ok: false };
+  if (!Array.isArray(json.learned) || json.learned.length > 50 || !json.learned.every((l) => isObj(l) && exactKeys(l, ["subjectLabel", "answerLabelHe", "statusHe", "viaClaude"]) && str(l.subjectLabel, 200) && str(l.answerLabelHe, 200) && str(l.statusHe, 200) && typeof l.viaClaude === "boolean")) return { ok: false };
   return { ok: true, surface: json as unknown as IntegritySurfaceDto };
 }

@@ -43,7 +43,7 @@ import {
   type OwnerContextInsertRow, type PersistedOwnerContext,
 } from "./context-row";
 import { isFollowUpQuestionType, triggersFollowUp } from "./questions";
-import type { InvestigationQuestionType, PartnerInvestigationQuestion } from "./types";
+import type { InvestigationQuestionType, OwnerContextProvenance, PartnerInvestigationQuestion } from "./types";
 
 // ── injected client: minimal Supabase-shaped surface (select + insert ONLY) ──
 
@@ -254,7 +254,7 @@ export interface OwnerContextDraft {
   triggerContextId: string | null;
   note: string | null;
   scope: "CASE_INSTANCE";
-  provenance: { source: "owner_manual" };
+  provenance: OwnerContextProvenance;
   supersedesId: string | null;
 }
 

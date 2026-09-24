@@ -9,12 +9,17 @@ import type { IntegrityFinding } from "../../integrity/types";
 import type { KnowledgeRegistry } from "../registry";
 import type { KnowledgeCapability, KnowledgeDomain, KnowledgeItem } from "../types";
 import { byCount, item, ok, partner, partnerRecord, record, result, sfact, unavailable } from "./common";
+import { encodeQuestionRef } from "../../bridge/ref";
+import type { IntegrityQuestion } from "../../integrity/types";
+
+/** P1: the opaque ref + option codes a connector with partner:answer may use (the ref is re-validated live). */
+const answerRef = (q: IntegrityQuestion) => ({ questionRef: encodeQuestionRef({ kind: "integrity", questionId: q.questionId, subjectId: q.subject.id, fingerprint: q.fingerprint }), options: q.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) });
 
 const DOMAINS: KnowledgeDomain[] = ["COMPANY", "PARTNER", "FINANCE", "PROJECTS", "CLIENTS", "SALES", "LABEL", "SHOWS", "SESSIONS", "TEAM"];
 const EPI = (e: string) => (e === "FACT" || e === "DERIVED" || e === "OWNER_DECISION" || e === "HYPOTHESIS" ? e : "UNKNOWN") as KnowledgeItem["epistemic"];
 /** A stable, neutral id: entity keys stay (they are public Gateway keys); internal register subject keys are hashed (no table / column names). */
 const findingId = (f: IntegrityFinding) => `${f.type}:${f.subject.type === "label-artist" ? f.subject.key : `${f.subject.type}-${sha256Hex(f.subject.key).slice(0, 10)}`}`;
-const WHERE_TO_ANSWER = "הבעלים עונה בלוח הבקרה של Redbloods (\"צריך ממך\"). Partner לא מקבל תשובות דרך השיחה הזו.";
+const WHERE_TO_ANSWER = "הבעלים עונה בלוח הבקרה של Redbloods (\"צריך ממך\"), או — רק אם החיבור קיבל את הרשאת המענה — לענות ל־Claude בשיחה, ו־Claude ישלח את התשובה הסגורה (partner_answer_question).";
 
 /** The catalog is itself a capability: discovery goes through the same allowlist. */
 export function catalogCapability(getRegistry: () => KnowledgeRegistry): KnowledgeCapability {
@@ -53,7 +58,7 @@ export const ownerNeeds: KnowledgeCapability = {
             kind: "OWNER_QUESTION", area: "COMPANY_INTEGRITY", topic: q.questionType, subject: record(q.subject.label), why: partnerRecord(q.whyHe),
             evidence: q.evidenceHe.map((e) => partnerRecord(e)), options: q.options.map((o) => partner(o.labelHe)),
             previousAnswer: q.previousAnswer ? { answer: partner(q.previousAnswer.answerLabelHe), answeredAt: q.previousAnswer.answeredAt } : null,
-            whereToAnswer: partner(WHERE_TO_ANSWER),
+            whereToAnswer: partner(WHERE_TO_ANSWER), answer: answerRef(q),
           },
         }));
       }
@@ -111,7 +116,7 @@ export const integrity: KnowledgeCapability = {
     if (q.mode === "questions") {
       const qs = reg.questions.filter((x) => !about || `${x.subject.type}:${x.subject.id}` === about);
       return result(qs.map((x) => item({ id: `question:${x.subject.type}:${x.subject.id}`, entity: x.subject.type === "label-artist" ? `label-artist:${x.subject.id}` : null, label: partnerRecord(x.textHe), epistemic: "UNKNOWN", source: "INTEGRITY",
-        fields: { kind: "OWNER_QUESTION", topic: x.questionType, subject: record(x.subject.label), why: partnerRecord(x.whyHe), evidence: x.evidenceHe.map((e) => partnerRecord(e)), options: x.options.map((o) => partner(o.labelHe)), previousAnswer: x.previousAnswer ? partner(x.previousAnswer.answerLabelHe) : null, whereToAnswer: partner(WHERE_TO_ANSWER) } })),
+        fields: { kind: "OWNER_QUESTION", topic: x.questionType, subject: record(x.subject.label), why: partnerRecord(x.whyHe), evidence: x.evidenceHe.map((e) => partnerRecord(e)), options: x.options.map((o) => partner(o.labelHe)), previousAnswer: x.previousAnswer ? partner(x.previousAnswer.answerLabelHe) : null, whereToAnswer: partner(WHERE_TO_ANSWER), answer: answerRef(x) } })),
         { summary: [sfact("DEFERRED_QUESTIONS", "שאלות שנדחו", reg.deferredQuestions, "FACT", "INTEGRITY")], coverage });
     }
     if (q.mode === "learned") {
@@ -131,7 +136,7 @@ export const integrity: KnowledgeCapability = {
     }));
     if (about) {
       for (const x of reg.questions.filter((x) => `${x.subject.type}:${x.subject.id}` === about)) {
-        items.push(item({ id: `question:${about}`, entity: about, label: partnerRecord(x.textHe), epistemic: "UNKNOWN", source: "INTEGRITY", fields: { kind: "OWNER_QUESTION_OPEN", topic: x.questionType, options: x.options.map((o) => partner(o.labelHe)), whereToAnswer: partner(WHERE_TO_ANSWER) } }));
+        items.push(item({ id: `question:${about}`, entity: about, label: partnerRecord(x.textHe), epistemic: "UNKNOWN", source: "INTEGRITY", fields: { kind: "OWNER_QUESTION_OPEN", topic: x.questionType, options: x.options.map((o) => partner(o.labelHe)), whereToAnswer: partner(WHERE_TO_ANSWER), answer: answerRef(x) } }));
       }
     }
     return result(items, { summary: [sfact("STANCES", "ממצאים לפי עמדת Partner", reg.summary, "DERIVED", "INTEGRITY"), sfact("OPEN_QUESTIONS", "שאלות פתוחות לבעלים", reg.questions.length, "FACT", "INTEGRITY")], coverage });

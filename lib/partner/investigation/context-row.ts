@@ -85,13 +85,29 @@ export function isAnswerCodeValidFor(questionType: InvestigationQuestionType, an
 
 export const deriveQuestionId = (caseId: string, questionType: string) => `${caseId}::${questionType}`;
 
-/** v1 knows exactly one provenance: owner_manual. It is recorded, never acted on (it can never create an Owner Rule). */
+/**
+ * Two provenances, strict: owner_manual (dashboard) and owner_via_claude (P1 connector answer). Recorded, never acted
+ * on (it can never create an Owner Rule). Unknown keys / values are refused.
+ */
+const MCP_CLIENT_RE = /^rbmcp_[A-Za-z0-9_-]{32,64}$/;
 export function parseContextProvenance(raw: unknown, errors: string[]): PartnerOwnerContext["provenance"] | null {
   if (!isPlainObject(raw)) { errors.push("provenance: must be a JSON object"); return null; }
   const before = errors.length;
-  for (const k of Object.keys(raw)) if (k !== "source") errors.push(`provenance: unknown key "${k}"`);
-  if (raw.source !== "owner_manual") errors.push(`provenance.source: unsupported value ${JSON.stringify(raw.source)}`);
-  return errors.length > before ? null : { source: "owner_manual" };
+  if (raw.source === "owner_manual") {
+    for (const k of Object.keys(raw)) if (k !== "source") errors.push(`provenance: unknown key "${k}"`);
+    return errors.length > before ? null : { source: "owner_manual" };
+  }
+  if (raw.source === "owner_via_claude") {
+    const keys = ["source", "channel", "client_id", "token_id", "attempt_audit_id"];
+    for (const k of Object.keys(raw)) if (!keys.includes(k)) errors.push(`provenance: unknown key "${k}"`);
+    if (raw.channel !== "mcp") errors.push("provenance.channel must be \"mcp\"");
+    if (typeof raw.client_id !== "string" || !MCP_CLIENT_RE.test(raw.client_id)) errors.push("provenance.client_id: invalid");
+    if (!isUuid(raw.token_id)) errors.push("provenance.token_id: must be a uuid");
+    if (!isUuid(raw.attempt_audit_id)) errors.push("provenance.attempt_audit_id: must be a uuid");
+    return errors.length > before ? null : { source: "owner_via_claude", channel: "mcp", client_id: raw.client_id as string, token_id: raw.token_id as string, attempt_audit_id: raw.attempt_audit_id as string };
+  }
+  errors.push(`provenance.source: unsupported value ${JSON.stringify(raw.source)}`);
+  return null;
 }
 
 /** The ONLY way a stored row becomes a PersistedOwnerContext. Fail-closed on anything unexpected. */

@@ -42,15 +42,25 @@ const WRITE_ALLOW = [
   /^\/auth\/v1\/token$/, // Owner session refresh (Supabase auth), never business data
 ];
 
-export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string): boolean {
+/**
+ * P1 (only when the deployment's answer switch is on): one more write — an INSERT into partner_owner_context (exact
+ * path, POST only, never an upsert). Defense in depth, NOT authorization: the only code that reaches it is the existing
+ * validated Owner Context store behind the Partner answer bridge. PATCH / DELETE / PUT stay blocked (and the DB
+ * append-only triggers refuse UPDATE / DELETE anyway).
+ */
+const OWNER_CONTEXT_APPEND = /^\/rest\/v1\/partner_owner_context$/;
+
+export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, opts: { ownerContextAppend?: boolean } = {}): boolean {
   if (url.host !== dbHost) return false;
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return true;
-  return m === "POST" && WRITE_ALLOW.some((r) => r.test(url.pathname));
+  if (m !== "POST") return false;
+  if (WRITE_ALLOW.some((r) => r.test(url.pathname))) return true;
+  return opts.ownerContextAppend === true && OWNER_CONTEXT_APPEND.test(url.pathname) && !url.searchParams.has("on_conflict");
 }
 
 /** Wraps globalThis.fetch so a disallowed request throws before leaving the process. Idempotent. */
-export function installMcpOnlyFetchGuard(dbUrl: string, log: (msg: string) => void): void {
+export function installMcpOnlyFetchGuard(dbUrl: string, log: (msg: string) => void, opts: { ownerContextAppend?: boolean } = {}): void {
   const g = globalThis as typeof globalThis & { __rbMcpOnlyGuard?: boolean };
   if (g.__rbMcpOnlyGuard) return;
   const host = new URL(dbUrl).host;
@@ -58,7 +68,7 @@ export function installMcpOnlyFetchGuard(dbUrl: string, log: (msg: string) => vo
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url);
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")) || "GET";
-    if (!isAllowedMcpOnlyFetch(url, method, host)) {
+    if (!isAllowedMcpOnlyFetch(url, method, host, opts)) {
       log(`[mcp-only] blocked ${method.toUpperCase()} ${url.host}${url.pathname}`);
       throw new Error("MCP-only mode: request blocked (read-only connector)");
     }

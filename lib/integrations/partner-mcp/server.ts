@@ -5,7 +5,8 @@ import "server-only";
  * connector is explicitly enabled and fully configured. When disabled, nothing here touches the database —
  * production (PARTNER_MCP_ENABLED unset) stays inert even before the connector schema exists.
  *
- * The ONLY business capability wired in is the read-only Partner Gateway (brief / resolve / entity / query).
+ * Business capabilities wired in: the read-only Partner Gateway (brief / resolve / entity / query) and — ONLY when
+ * config.answerEnabled (PARTNER_MCP_ANSWER_ENABLED=true on an MCP-only deployment) — the P1 Partner answer bridge.
  *
  * Audience: EXTERNAL with the Owner's authority. A partner:read token can only exist after the Owner approved the
  * consent screen (decideAuthorization refuses NOT_OWNER), so every authenticated connector call carries the Owner's
@@ -25,6 +26,7 @@ export interface McpRuntime { config: McpConfig; store: McpStore; oauth: OAuthDe
 const MCP_AUDIENCE = { channel: "EXTERNAL", ownerAuthorized: true } as const;
 
 let limiter: SlidingWindowLimiter | null = null;
+let answerLimiter: SlidingWindowLimiter | null = null;
 let rejectedLimiter: SlidingWindowLimiter | null = null;
 let registrationLimiter: SlidingWindowLimiter | null = null;
 const consentReplay = new MemoryConsentReplayGuard();
@@ -43,8 +45,16 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
   rejectedLimiter ??= new SlidingWindowLimiter([{ windowMs: 60_000, max: 120 }]);
   registrationLimiter ??= new SlidingWindowLimiter([{ windowMs: 3_600_000, max: 30 }]);
   const oauth: OAuthDeps = { config, store, nowSec: () => Math.floor(Date.now() / 1000), consentReplay };
+  // P1: the answer bridge exists only where the switch is on; otherwise nothing is even imported.
+  let answer: McpDeps["answer"];
+  if (config.answerEnabled) {
+    const { answerViaConnector } = await import("@/lib/partner/bridge/server");
+    answerLimiter ??= new SlidingWindowLimiter(config.answerRateLimit);
+    answer = { limiter: answerLimiter, newId: () => crypto.randomUUID(), submit: async (i) => (await answerViaConnector(i)) as unknown as Record<string, unknown> };
+  }
   const mcp: McpDeps = {
     config,
+    ...(answer ? { answer } : {}),
     authenticate: (h) => authenticateBearer(h, oauth),
     gateway: {
       brief: async () => (await getPartnerBrief(undefined, MCP_AUDIENCE)) as unknown as Record<string, unknown>,

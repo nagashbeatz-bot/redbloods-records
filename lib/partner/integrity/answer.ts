@@ -24,7 +24,7 @@ import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { OwnerContextStoreError, type OwnerContextDraft } from "../investigation/context-persistence";
 import type { PersistedOwnerContext } from "../investigation/context-row";
 import { INTEGRITY_ANSWER_OPTIONS, isIntegrityQuestionType, type IntegrityQuestionType } from "../investigation/integrity-questions";
-import type { PartnerOwnerContext } from "../investigation/types";
+import type { OwnerContextProvenance, PartnerOwnerContext } from "../investigation/types";
 import { integrityCaseId } from "./register";
 import { INTEGRITY_SCHEMA_VERSION, type CompanyIntegrityRegister } from "./types";
 
@@ -41,6 +41,8 @@ export interface IntegrityAnswerDeps {
   verify(contextId: string, questionId: string): Promise<boolean>;
   ledger: IntegrityRequestLedger;
   audit(event: string, data: Record<string, unknown>): void;
+  /** Who answered through which channel — set by the server binding, never by input. Default: owner_manual (dashboard). */
+  provenance?: OwnerContextProvenance;
 }
 
 export type IntegrityAnswerResult =
@@ -163,7 +165,7 @@ async function answerOnce(deps: IntegrityAnswerDeps, actorUserId: string, v: Val
     triggerContextId: null,
     note: null,
     scope: "CASE_INSTANCE",
-    provenance: { source: "owner_manual" },
+    provenance: deps.provenance ?? { source: "owner_manual" },
     supersedesId,
   };
   let saved: PersistedOwnerContext;

@@ -123,7 +123,14 @@ export interface GatewayPattern {
   epistemic: "PATTERN_CANDIDATE";
 }
 
-export interface GatewayQuestion { questionType: string; subject: string | null; text: GText; why: GText; answerable: boolean }
+export interface GatewayQuestion {
+  questionType: string; subject: string | null; text: GText; why: GText; answerable: boolean;
+  /**
+   * P1: how a connector with the Owner's partner:answer permission may submit the Owner's explicit answer
+   * (partner_answer_question). questionRef is opaque and untrusted (re-validated live); options are the only codes.
+   */
+  answer?: { questionRef: string; options: Array<{ code: string; label: GText }> };
+}
 
 /** READ-ONLY view of a Suggested Action. The Gateway has no decide / execute capability. */
 export interface GatewaySuggestedAction {

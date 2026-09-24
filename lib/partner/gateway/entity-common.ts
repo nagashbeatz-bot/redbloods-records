@@ -7,6 +7,7 @@
 import type { PartnerCase } from "../cases/types";
 import { caseEntityIds, caseSubjectKey, cap, eventFreshness, gatewayEntityOfMemoryKey, gatewayKeyForSubject, memoryFor, ok, partner, partnerRecord, toConflicts, toObservations, toOwnerDecisions, toPatterns, type GatewaySources } from "./core";
 import { salaryLinkedId } from "../../victor-salary-format";
+import { encodeQuestionRef } from "../bridge/ref";
 import { isCancelledStatus, isExpenseFullyPaidStatus } from "../../finance/classify";
 import {
   GATEWAY_LIMITS,
@@ -55,7 +56,8 @@ export function questionsFor(src: GatewaySources, keys: ReadonlySet<string>): Ga
   }
   for (const q of ok(src.integrity)?.questions ?? []) {
     const subject = `${q.subject.type}:${q.subject.id}`;
-    if (keys.has(subject)) out.push({ questionType: q.questionType, subject, text: partnerRecord(q.textHe), why: partnerRecord(q.whyHe), answerable: true });
+    if (keys.has(subject)) out.push({ questionType: q.questionType, subject, text: partnerRecord(q.textHe), why: partnerRecord(q.whyHe), answerable: true,
+      answer: { questionRef: encodeQuestionRef({ kind: "integrity", questionId: q.questionId, subjectId: q.subject.id, fingerprint: q.fingerprint }), options: q.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) } });
   }
   return out;
 }

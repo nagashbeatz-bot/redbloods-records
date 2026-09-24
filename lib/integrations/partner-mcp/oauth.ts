@@ -6,11 +6,12 @@
  *     be EXACTLY in the configured allowlist (Claude's callback), grant types ⊆ {authorization_code, refresh_token},
  *     hard cap on active clients. Not a general OAuth platform.
  *   Authorization — code flow + PKCE S256 (required), exact redirect URI, resource (RFC 8707) bound to THIS MCP
- *     server, scope partner:read only, Owner consent proven by a single-use, session-bound consent token (consent.ts).
+ *     server, scope partner:read (+ partner:answer ONLY when the deployment's answer switch is on), Owner consent proven
+ *     by a single-use, session-bound consent token (consent.ts) that also binds the granted scope.
  *   Token — code exchange and refresh rotation are single atomic DB calls; errors are the RFC error codes.
  *   Bearer — opaque access token → hash → one DB check; audience (resource) and scope enforced here.
  */
-import { canonicalUrl, MCP_SCOPE, type McpConfig } from "./config";
+import { ANSWER_SCOPE_STRING, canonicalUrl, MCP_ANSWER_SCOPE, MCP_SCOPE, type McpConfig } from "./config";
 import { newClientId, PKCE_CHALLENGE, PKCE_VERIFIER, pkceS256, randomSecret, sha256Hex, TOKEN_PREFIX } from "./crypto";
 import { classifyConsentRequest, crossSiteSignal, issueConsentToken, verifyConsentToken, type ConsentBinding, type ConsentReplayGuard } from "./consent";
 import type { McpStore } from "./store";
@@ -22,6 +23,20 @@ const NO_STORE = { "Cache-Control": "no-store", Pragma: "no-cache" };
 const json = (status: number, body: unknown, extra: Record<string, string> = {}): HttpOut => ({ status, headers: { "Content-Type": "application/json", ...NO_STORE, ...extra }, body: JSON.stringify(body) });
 const oauthError = (status: number, error: string, description: string) => json(status, { error, error_description: description });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Scopes this deployment offers. partner:answer exists only when the answer switch is on. */
+export const advertisedScope = (c: McpConfig) => (c.answerEnabled ? ANSWER_SCOPE_STRING : MCP_SCOPE);
+const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_access" || s === "" || (c.answerEnabled && s === MCP_ANSWER_SCOPE);
+/**
+ * The scope an authorization grants (and the consent screen shows): read, plus answer only when the switch is on AND
+ * the client asked for it or asked for nothing specific (the consent screen then lists both permissions explicitly).
+ * A request for read alone stays read-only. A refresh can never add a scope (the DB copies the family's scope).
+ */
+export function grantedScope(c: McpConfig, requested: string | null): string {
+  if (!c.answerEnabled) return MCP_SCOPE;
+  const want = (requested ?? "").split(" ").filter((x) => x && x !== "offline_access");
+  return want.length === 0 || want.includes(MCP_ANSWER_SCOPE) ? ANSWER_SCOPE_STRING : MCP_SCOPE;
+}
 
 // ── registration ─────────────────────────────────────────────────────────────
 
@@ -39,8 +54,8 @@ export async function registerClientCore(body: unknown, deps: OAuthDeps): Promis
   }
   const rt = body.response_types ?? ["code"];
   if (!Array.isArray(rt) || rt.length !== 1 || rt[0] !== "code") return oauthError(400, "invalid_client_metadata", "response_types must be [\"code\"]");
-  if (body.scope !== undefined && (typeof body.scope !== "string" || !body.scope.split(" ").every((s) => s === MCP_SCOPE || s === "offline_access" || s === ""))) {
-    return oauthError(400, "invalid_client_metadata", "only scope partner:read is available");
+  if (body.scope !== undefined && (typeof body.scope !== "string" || !body.scope.split(" ").every((s) => scopeOk(deps.config, s)))) {
+    return oauthError(400, "invalid_client_metadata", `only scope ${advertisedScope(deps.config)} is available`);
   }
   const name = typeof body.client_name === "string" ? body.client_name.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 100) : "";
   const clientId = newClientId();
@@ -49,7 +64,7 @@ export async function registerClientCore(body: unknown, deps: OAuthDeps): Promis
   if (r === "LIMIT_REACHED") return oauthError(400, "invalid_client_metadata", "connector client limit reached — revoke old clients first");
   return json(201, {
     client_id: clientId, client_id_issued_at: deps.nowSec(), client_name: name, redirect_uris: [...new Set(redirects as string[])],
-    grant_types: grantTypes, response_types: ["code"], token_endpoint_auth_method: "none", scope: MCP_SCOPE,
+    grant_types: grantTypes, response_types: ["code"], token_endpoint_auth_method: "none", scope: advertisedScope(deps.config),
   });
 }
 
@@ -91,12 +106,12 @@ export async function validateAuthorizeRequest(params: Record<string, string | s
   if (one(params, "response_type") !== "code") return back("unsupported_response_type", "response_type must be code");
   const challenge = one(params, "code_challenge"), method = one(params, "code_challenge_method");
   if (!challenge || !PKCE_CHALLENGE.test(challenge) || method !== "S256") return back("invalid_request", "PKCE S256 is required");
-  const scopeRaw = one(params, "scope") ?? MCP_SCOPE;
-  const scopes = scopeRaw.split(" ").filter(Boolean);
-  if (!scopes.every((s) => s === MCP_SCOPE || s === "offline_access")) return back("invalid_scope", "only partner:read is available");
+  const scopeParam = one(params, "scope");
+  const scopes = (scopeParam ?? "").split(" ").filter(Boolean);
+  if (!scopes.every((s) => scopeOk(deps.config, s))) return back("invalid_scope", `only ${advertisedScope(deps.config)} is available`);
   const res = one(params, "resource");
   if (res !== null && canonicalUrl(res) !== deps.config.resource) return back("invalid_target", "resource must be this Redbloods Partner MCP server");
-  return { ok: true, request: { clientId, clientName: client.clientName, redirectUri, codeChallenge: challenge, scope: MCP_SCOPE, resource: deps.config.resource, state } };
+  return { ok: true, request: { clientId, clientName: client.clientName, redirectUri, codeChallenge: challenge, scope: grantedScope(deps.config, scopeParam), resource: deps.config.resource, state } };
 }
 
 const consentFields = (r: AuthorizeRequest) => [r.clientId, r.redirectUri, r.codeChallenge, r.scope, r.resource, r.state];
@@ -174,7 +189,7 @@ export async function tokenCore(form: Record<string, string>, deps: OAuthDeps): 
   if (!client || client.disabled) return oauthError(401, "invalid_client", "unknown client");
   const resource = form.resource === undefined ? null : canonicalUrl(form.resource);
   if (form.resource !== undefined && resource !== config.resource) return oauthError(400, "invalid_target", "resource must be this Redbloods Partner MCP server");
-  if (form.scope !== undefined && !form.scope.split(" ").filter(Boolean).every((s) => s === MCP_SCOPE || s === "offline_access")) return oauthError(400, "invalid_scope", "only partner:read is available");
+  if (form.scope !== undefined && !form.scope.split(" ").filter(Boolean).every((s) => scopeOk(config, s))) return oauthError(400, "invalid_scope", `only ${advertisedScope(config)} is available`);
 
   const access = randomSecret(TOKEN_PREFIX.access), refresh = randomSecret(TOKEN_PREFIX.refresh);
   let r;
@@ -213,12 +228,21 @@ export async function revokeCore(form: Record<string, string>, deps: OAuthDeps):
 
 // ── bearer authentication for the MCP resource ───────────────────────────────
 
+/** Step-up challenge (MCP / RFC 6750 §3.1): the call needs partner:answer, the token has only read. */
+export function insufficientScopeResponse(config: McpConfig): HttpOut {
+  return {
+    status: 403,
+    headers: { "WWW-Authenticate": `Bearer resource_metadata="${config.resourceMetadataUrl}", scope="${ANSWER_SCOPE_STRING}", error="insufficient_scope"`, "Content-Type": "application/json", ...NO_STORE },
+    body: JSON.stringify({ error: "insufficient_scope" }),
+  };
+}
+
 export interface Principal { tokenId: string; clientId: string; userId: string; scope: string }
 export type BearerResult = { ok: true; principal: Principal } | { ok: false; status: 401 | 403; category: string; headers: Record<string, string>; body: string };
 
 export async function authenticateBearer(authorization: string | null, deps: OAuthDeps): Promise<BearerResult> {
   const { config } = deps;
-  const challenge = (error: string | null, extra = "") => `Bearer resource_metadata="${config.resourceMetadataUrl}", scope="${MCP_SCOPE}"${error ? `, error="${error}"` : ""}${extra}`;
+  const challenge = (error: string | null, extra = "") => `Bearer resource_metadata="${config.resourceMetadataUrl}", scope="${advertisedScope(config)}"${error ? `, error="${error}"` : ""}${extra}`;
   const deny = (status: 401 | 403, category: string, error: string | null): BearerResult => ({
     ok: false, status, category, headers: { "WWW-Authenticate": challenge(error), "Content-Type": "application/json", ...NO_STORE },
     body: JSON.stringify({ error: error ?? "unauthorized" }),

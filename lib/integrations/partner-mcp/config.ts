@@ -8,6 +8,13 @@
  */
 export const MCP_PATH = "/api/mcp";
 export const MCP_SCOPE = "partner:read";
+/**
+ * P1: answer ONE question Partner is currently surfacing with one of its closed answer codes (nothing else).
+ * Always granted together with read: the stored scope string is exactly ANSWER_SCOPE_STRING.
+ */
+export const MCP_ANSWER_SCOPE = "partner:answer";
+export const ANSWER_SCOPE_STRING = `${MCP_SCOPE} ${MCP_ANSWER_SCOPE}`;
+export const hasAnswerScope = (scope: string) => scope.split(" ").includes(MCP_ANSWER_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
 export const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 
@@ -32,6 +39,15 @@ export interface McpConfig {
   maxResultChars: number;
   maxRequestBytes: number;
   rateLimit: Array<{ windowMs: number; max: number }>;
+  /**
+   * P1 answer capability. true ONLY when PARTNER_MCP_ANSWER_ENABLED is exactly "true" AND the deployment is the
+   * MCP-only connector (REDBLOODS_MCP_ONLY=true) — it can never switch on in the main app. Off → the scope is not
+   * advertised, not consentable, not accepted, and the answer tool does not exist.
+   */
+  answerEnabled: boolean;
+  /** Reserved (finance answers through Claude). NOT wired in P1: finance question refs are refused regardless. */
+  answerFinanceEnabled: boolean;
+  answerRateLimit: Array<{ windowMs: number; max: number }>;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -66,6 +82,9 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       accessTtlSeconds: 3600, refreshTtlSeconds: 30 * 86400, familyTtlSeconds: 90 * 86400, codeTtlSeconds: 300, consentTtlSeconds: 600,
       maxActiveClients: 10, toolTimeoutMs: 60_000, maxResultChars: 100_000, maxRequestBytes: 16 * 1024,
       rateLimit: [{ windowMs: 60_000, max: 30 }, { windowMs: 3_600_000, max: 300 }],
+      answerEnabled: env.PARTNER_MCP_ANSWER_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
+      answerFinanceEnabled: false,
+      answerRateLimit: [{ windowMs: 3_600_000, max: 10 }, { windowMs: 86_400_000, max: 30 }],
     },
   };
 }

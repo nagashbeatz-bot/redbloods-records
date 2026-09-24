@@ -4,15 +4,17 @@
  *   RFC 8414 OAuth 2.0 Authorization Server Metadata (this app, single Owner)
  * CIMD is deliberately NOT advertised (client_id_metadata_document_supported absent) → Claude uses DCR.
  */
-import { MCP_SCOPE, type McpConfig } from "./config";
+import { MCP_ANSWER_SCOPE, MCP_SCOPE, type McpConfig } from "./config";
+
+const scopes = (c: McpConfig) => (c.answerEnabled ? [MCP_SCOPE, MCP_ANSWER_SCOPE] : [MCP_SCOPE]);
 
 export function protectedResourceMetadata(c: McpConfig) {
   return {
     resource: c.resource,
     authorization_servers: [c.issuer],
-    scopes_supported: [MCP_SCOPE],
+    scopes_supported: scopes(c),
     bearer_methods_supported: ["header"],
-    resource_name: "Redbloods Partner (read-only)",
+    resource_name: c.answerEnabled ? "Redbloods Partner" : "Redbloods Partner (read-only)",
   };
 }
 
@@ -29,7 +31,7 @@ export function authorizationServerMetadata(c: McpConfig) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [MCP_SCOPE],
+    scopes_supported: scopes(c),
     authorization_response_iss_parameter_supported: true,
   };
 }

@@ -92,6 +92,8 @@ export interface IntegrityOwnerDecision {
    * DEFINITION   — a fact-set-independent definition (MIXED: "this artist can have both") kept across new projects.
    */
   basis: "EXACT_FACTS" | "DEFINITION";
+  /** The channel the Owner answered through (the Owner is always the author). */
+  via: "DASHBOARD" | "CLAUDE";
 }
 
 /**
