@@ -182,7 +182,7 @@ async function main() {
     check("the client parser accepts the real payload", parseRecentOutcomesResponse(r.status === "OK" ? JSON.parse(JSON.stringify(r.response)) : null).ok, true);
     const html = render(card ? [card] : []);
     ok("1. renders: 'בוצע' + headline + executed box + 'מצב נוכחי' + status", html.includes(">בוצע<") && html.includes("הדדליין של &#x27;קרוב אלייך&#x27; עודכן ל־07.10.2026") && /data-outcome-value="executed"[\s\S]*07\.10\.2026/.test(html) && /data-outcome-value="current"[\s\S]*מצב נוכחי[\s\S]*07\.10\.2026/.test(html) && html.includes("השינוי שבוצע עדיין תואם למצב הנוכחי."));
-    ok("5. historical and live values are separate boxes; the executed box names the origin value", /data-outcome-value="executed"[^>]*>[\s\S]*מה Partner ביצע \(מ־14\.07\.2026\)/.test(html) && (html.match(/data-outcome-value=/g) ?? []).length === 2);
+    ok("5. historical and live values are separate boxes; the executed box names the origin value", /data-outcome-value="executed"[^>]*>[\s\S]*מה סאני ביצע \(מ־14\.07\.2026\)/.test(html) && (html.match(/data-outcome-value=/g) ?? []).length === 2);
     ok("8. rendered execution time", html.includes("בוצע ב־<bdi dir=\"ltr\">23.09.2026, 20:05</bdi>"));
     check("the live read targeted the persisted subject project, and the store was only read", [real.liveReads, [...new Set(real.db.touches)].sort()], [[PID], ["from:partner_action_events", "select"]]);
   }
@@ -323,7 +323,7 @@ async function main() {
     const d = render([card!]);
     const m = render([card!], true);
     ok("27. Hebrew RTL section; LTR-isolated dates", /<section dir="rtl" lang="he"/.test(d) && (d.match(/<bdi dir="ltr"/g) ?? []).length === 3);
-    ok("27. region + heading 'בוצע לאחרונה'; header chip 'בוצע' when there is no current proposal", /role="region"/.test(d) && d.includes(">בוצע לאחרונה</h3>") && /<h2[^>]*>Partner<\/h2><span[^>]*>בוצע<\/span>/.test(d));
+    ok("27. region + heading 'בוצע לאחרונה'; header chip 'בוצע' when there is no current proposal", /role="region"/.test(d) && d.includes(">בוצע לאחרונה</h3>") && /<h2[^>]*>סאני<\/h2><span[^>]*>בוצע<\/span>/.test(d));
     ok("28. mobile: value boxes stacked (column)", /flex-direction:column;gap:6px/.test(m));
     ok("29. desktop: value boxes side by side (row)", /flex-direction:row;gap:10px/.test(d));
     check("no interactive element in the outcomes block", (d.match(/<button|<input|<a /g) ?? []).length, 0);

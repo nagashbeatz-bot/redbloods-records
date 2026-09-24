@@ -218,7 +218,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: ActionSu
         style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 6 : 12, marginBottom: 10 }}>
         <DateBox label="מה קיים עכשיו" value={item.currentDeadlineHe} tone="current" />
         <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, color: MUTED, flex: "0 0 auto", textAlign: "center" }}>{isMobile ? "↓" : "←"}</span>
-        <DateBox label="מה Partner מציע" value={item.suggestedDeadlineHe} tone="suggested" />
+        <DateBox label="מה סאני מציע" value={item.suggestedDeadlineHe} tone="suggested" />
       </div>
       <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 2 }}>למה</div>
       <p style={{ margin: 0, fontSize: 13.5, color: SUB, lineHeight: 1.6 }}>{item.reasonHe || item.explanationHe}</p>
@@ -246,7 +246,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: ActionSu
             <Panel>
               <ChoiceList name={`change-${item.actionId}`} legend="מה הדדליין החדש לפרויקט?" options={item.changeValueOptions} value={controls.changeCode} onChange={controls.onChangeCode} disabled={busy} />
               {controls.changeCode === "SPECIFIC_DATE" && controls.renderDatePicker({ value: controls.changeYmd, onChange: controls.onChangeYmd, min: item.minChangeDate, ariaLabel: "הדדליין החדש", disabled: busy })}
-              <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>זה מעדכן את התשובה שלך ל-Partner — הפרויקט עצמו לא משתנה.</p>
+              <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>זה מעדכן את התשובה שלך לסאני — הפרויקט עצמו לא משתנה.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 <button type="button" onClick={controls.onConfirmChange} disabled={busy || !controls.changeCode || (controls.changeCode === "SPECIFIC_DATE" && !controls.changeYmd)} style={btn("primary", isMobile, busy || !controls.changeCode)}>שמור תאריך</button>
                 <button type="button" onClick={controls.onCancel} disabled={busy} style={btn("secondary", isMobile, busy)}>ביטול</button>
@@ -270,11 +270,11 @@ export function PartnerActionsView({ items, isMobile, controlsFor, notice, outco
   if (!items.length && !notice && !outcomes.length && !finance) return null;
   const fresh = items.filter((i) => i.state === "SHOW").length;
   return (
-    <section dir="rtl" lang="he" aria-label="Partner — הצעות לפעולה" data-partner-actions
+    <section dir="rtl" lang="he" aria-label="סאני — הצעות לפעולה" data-partner-actions
       style={{ background: "#131313", border: `1px solid ${BORDER}`, borderRadius: 16, padding: isMobile ? "12px 12px 10px" : "14px 14px 12px", marginBottom: 18 }}>
       <header style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: items.length ? 10 : 4 }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: ACCENT }} />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: TEXT }}>Partner</h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: TEXT }}>סאני</h2>
         {items.length === 0 && outcomes.length > 0 && (
           <span style={{ display: "inline-flex", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99, color: "#4ADE80", background: "rgba(34,197,94,0.12)" }}>בוצע</span>
         )}

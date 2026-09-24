@@ -4,9 +4,11 @@
  *   RFC 8414 OAuth 2.0 Authorization Server Metadata (this app, single Owner)
  * CIMD is deliberately NOT advertised (client_id_metadata_document_supported absent) → Claude uses DCR.
  */
-import { MCP_ANSWER_SCOPE, MCP_SCOPE, type McpConfig } from "./config";
+import { scopeString, type McpConfig } from "./config";
 
-const scopes = (c: McpConfig) => (c.answerEnabled ? [MCP_SCOPE, MCP_ANSWER_SCOPE] : [MCP_SCOPE]);
+const scopes = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled }).split(" ");
+/** User-facing connector identity: Sunny (the internal names — partner_*, lib/partner — intentionally stay). */
+export const CONNECTOR_DISPLAY_NAME = "Redbloods Sunny";
 
 export function protectedResourceMetadata(c: McpConfig) {
   return {
@@ -14,7 +16,7 @@ export function protectedResourceMetadata(c: McpConfig) {
     authorization_servers: [c.issuer],
     scopes_supported: scopes(c),
     bearer_methods_supported: ["header"],
-    resource_name: c.answerEnabled ? "Redbloods Partner" : "Redbloods Partner (read-only)",
+    resource_name: c.answerEnabled || c.knowledgeEnabled ? CONNECTOR_DISPLAY_NAME : `${CONNECTOR_DISPLAY_NAME} (read-only)`,
   };
 }
 

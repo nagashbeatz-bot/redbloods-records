@@ -11,7 +11,7 @@
  *   Token — code exchange and refresh rotation are single atomic DB calls; errors are the RFC error codes.
  *   Bearer — opaque access token → hash → one DB check; audience (resource) and scope enforced here.
  */
-import { ANSWER_SCOPE_STRING, canonicalUrl, MCP_ANSWER_SCOPE, MCP_SCOPE, type McpConfig } from "./config";
+import { canonicalUrl, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE, scopeString, type McpConfig } from "./config";
 import { newClientId, PKCE_CHALLENGE, PKCE_VERIFIER, pkceS256, randomSecret, sha256Hex, TOKEN_PREFIX } from "./crypto";
 import { classifyConsentRequest, crossSiteSignal, issueConsentToken, verifyConsentToken, type ConsentBinding, type ConsentReplayGuard } from "./consent";
 import type { McpStore } from "./store";
@@ -24,18 +24,18 @@ const json = (status: number, body: unknown, extra: Record<string, string> = {})
 const oauthError = (status: number, error: string, description: string) => json(status, { error, error_description: description });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Scopes this deployment offers. partner:answer exists only when the answer switch is on. */
-export const advertisedScope = (c: McpConfig) => (c.answerEnabled ? ANSWER_SCOPE_STRING : MCP_SCOPE);
-const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_access" || s === "" || (c.answerEnabled && s === MCP_ANSWER_SCOPE);
+/** Scopes this deployment offers. partner:answer / partner:knowledge exist only when their switch is on. */
+export const advertisedScope = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled });
+const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_access" || s === "" || (c.answerEnabled && s === MCP_ANSWER_SCOPE) || (c.knowledgeEnabled && s === MCP_KNOWLEDGE_SCOPE);
 /**
  * The scope an authorization grants (and the consent screen shows): read, plus answer only when the switch is on AND
  * the client asked for it or asked for nothing specific (the consent screen then lists both permissions explicitly).
  * A request for read alone stays read-only. A refresh can never add a scope (the DB copies the family's scope).
  */
 export function grantedScope(c: McpConfig, requested: string | null): string {
-  if (!c.answerEnabled) return MCP_SCOPE;
   const want = (requested ?? "").split(" ").filter((x) => x && x !== "offline_access");
-  return want.length === 0 || want.includes(MCP_ANSWER_SCOPE) ? ANSWER_SCOPE_STRING : MCP_SCOPE;
+  const all = want.length === 0;
+  return scopeString({ answer: c.answerEnabled && (all || want.includes(MCP_ANSWER_SCOPE)), knowledge: c.knowledgeEnabled && (all || want.includes(MCP_KNOWLEDGE_SCOPE)) });
 }
 
 // ── registration ─────────────────────────────────────────────────────────────
@@ -228,11 +228,11 @@ export async function revokeCore(form: Record<string, string>, deps: OAuthDeps):
 
 // ── bearer authentication for the MCP resource ───────────────────────────────
 
-/** Step-up challenge (MCP / RFC 6750 §3.1): the call needs partner:answer, the token has only read. */
+/** Step-up challenge (MCP / RFC 6750 §3.1): the call needs a scope this token lacks (partner:answer / partner:knowledge). */
 export function insufficientScopeResponse(config: McpConfig): HttpOut {
   return {
     status: 403,
-    headers: { "WWW-Authenticate": `Bearer resource_metadata="${config.resourceMetadataUrl}", scope="${ANSWER_SCOPE_STRING}", error="insufficient_scope"`, "Content-Type": "application/json", ...NO_STORE },
+    headers: { "WWW-Authenticate": `Bearer resource_metadata="${config.resourceMetadataUrl}", scope="${advertisedScope(config)}", error="insufficient_scope"`, "Content-Type": "application/json", ...NO_STORE },
     body: JSON.stringify({ error: "insufficient_scope" }),
   };
 }

@@ -49,18 +49,26 @@ const WRITE_ALLOW = [
  * append-only triggers refuse UPDATE / DELETE anyway).
  */
 const OWNER_CONTEXT_APPEND = /^\/rest\/v1\/partner_owner_context$/;
+/**
+ * P2 (only when the deployment's knowledge switch is on): an INSERT into partner_owner_knowledge (exact path, POST only,
+ * never an upsert). Reached only through the Sunny owner-knowledge store; the DB blocks UPDATE / DELETE / TRUNCATE.
+ */
+const OWNER_KNOWLEDGE_APPEND = /^\/rest\/v1\/partner_owner_knowledge$/;
 
-export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, opts: { ownerContextAppend?: boolean } = {}): boolean {
+export interface McpOnlyWriteOptions { ownerContextAppend?: boolean; ownerKnowledgeAppend?: boolean }
+
+export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, opts: McpOnlyWriteOptions = {}): boolean {
   if (url.host !== dbHost) return false;
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return true;
   if (m !== "POST") return false;
   if (WRITE_ALLOW.some((r) => r.test(url.pathname))) return true;
-  return opts.ownerContextAppend === true && OWNER_CONTEXT_APPEND.test(url.pathname) && !url.searchParams.has("on_conflict");
+  if (url.searchParams.has("on_conflict")) return false;
+  return (opts.ownerContextAppend === true && OWNER_CONTEXT_APPEND.test(url.pathname)) || (opts.ownerKnowledgeAppend === true && OWNER_KNOWLEDGE_APPEND.test(url.pathname));
 }
 
 /** Wraps globalThis.fetch so a disallowed request throws before leaving the process. Idempotent. */
-export function installMcpOnlyFetchGuard(dbUrl: string, log: (msg: string) => void, opts: { ownerContextAppend?: boolean } = {}): void {
+export function installMcpOnlyFetchGuard(dbUrl: string, log: (msg: string) => void, opts: McpOnlyWriteOptions = {}): void {
   const g = globalThis as typeof globalThis & { __rbMcpOnlyGuard?: boolean };
   if (g.__rbMcpOnlyGuard) return;
   const host = new URL(dbUrl).host;

@@ -79,7 +79,7 @@ function QuestionCard({ q, controls }: { q: FinanceRehabQuestionDto; controls?: 
             max: a!.exactDateRule === "NOT_AFTER_TODAY" ? controls!.todayYmd : undefined,
             ariaLabel: a!.exactDateRule === "NOT_AFTER_TODAY" ? "תאריך התשלום" : "תאריך הגבייה הצפוי",
           })}
-          <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>זה נשמר כתשובה שלך ל-Partner — שום רישום בכספים לא משתנה.</p>
+          <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>זה נשמר כתשובה שלך לסאני — שום רישום בכספים לא משתנה.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button type="button" data-finance-exact-confirm disabled={busy || !controls!.exactYmd} onClick={() => controls!.onConfirmExact(q)} style={optBtn(busy || !controls!.exactYmd, true)}>שמור תאריך</button>
             <button type="button" disabled={busy} onClick={controls!.onCancelExact} style={optBtn(busy)}>ביטול</button>
@@ -96,7 +96,7 @@ export function PartnerFinanceBrief({ brief, isMobile, answerControls, notice }:
   const partial = brief.coverage === "PARTIAL";
   const hasRehab = brief.rehab.items.length > 0 || brief.rehab.questions.length > 0 || !!brief.rehab.questionsNoteHe || !!brief.rehab.actionNoteHe || !!notice;
   return (
-    <div data-partner-finance role="region" aria-label="Partner — כסף" style={{ marginTop: 10 }}>
+    <div data-partner-finance role="region" aria-label="סאני — כסף" style={{ marginTop: 10 }}>
       <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>כסף</h3>
       <div style={{ background: "#161616", border: `1px solid ${BORDER}`, borderRadius: 12, padding: isMobile ? "10px 12px" : "12px 14px" }}>
         {brief.coverageNoteHe && (

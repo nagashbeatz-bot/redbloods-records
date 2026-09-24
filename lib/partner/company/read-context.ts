@@ -26,6 +26,10 @@ import { buildCompanyIntegrityRegister } from "../integrity/register";
 import type { IntegrityExtras } from "../integrity/detectors";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import { readIntegrityExtras, type CompanyExtrasReadClient } from "./readers";
+import { createOwnerKnowledgeStore, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
+import type { Avail } from "../gateway/core";
+
+export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
 function once<T>(fn: () => Promise<T>): () => Promise<T> {
   let p: Promise<T> | null = null;
@@ -34,6 +38,8 @@ function once<T>(fn: () => Promise<T>): () => Promise<T> {
 
 export interface CompanyReadContext extends GatewayReadContext {
   todayIL: string;
+  /** Sunny organizational memory. undefined = the store is not enabled here (PARTNER_OWNER_KNOWLEDGE_ENABLED). */
+  ownerKnowledge(): Promise<Avail<OwnerKnowledgeRecord[]> | undefined>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
   extras(): Promise<IntegrityExtras | null>;
   integrity(): Promise<CompanyIntegrityRegister>;
@@ -66,5 +72,12 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
       ownerContexts: contexts,
     });
   });
-  return { ...g, todayIL, ownerContexts, extras, integrity };
+  const ownerKnowledge = once(async (): Promise<Avail<OwnerKnowledgeRecord[]> | undefined> => {
+    if (!ownerKnowledgeEnabled()) return undefined;
+    try {
+      const r = await createOwnerKnowledgeStore(supabase as unknown as OwnerKnowledgeTableClient).list();
+      return r.status === "OK" ? { status: "OK", value: r.records } : { status: "UNAVAILABLE", detail: r.status === "READ_FAILED" ? r.detail : `invalid stored knowledge rows (${r.count})` };
+    } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge };
 }

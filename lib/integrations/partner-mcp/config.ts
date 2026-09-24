@@ -15,6 +15,14 @@ export const MCP_SCOPE = "partner:read";
 export const MCP_ANSWER_SCOPE = "partner:answer";
 export const ANSWER_SCOPE_STRING = `${MCP_SCOPE} ${MCP_ANSWER_SCOPE}`;
 export const hasAnswerScope = (scope: string) => scope.split(" ").includes(MCP_ANSWER_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
+/**
+ * P2 (Sunny organizational memory): propose typed Owner knowledge → Owner confirms in the conversation → commit.
+ * Never granted alone; the stored scope string is canonical: read [answer] [knowledge] in this order (DB CHECK).
+ */
+export const MCP_KNOWLEDGE_SCOPE = "partner:knowledge";
+export const hasKnowledgeScope = (scope: string) => scope.split(" ").includes(MCP_KNOWLEDGE_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
+/** The canonical stored scope string for a grant (order fixed: read, answer, knowledge). */
+export const scopeString = (o: { answer: boolean; knowledge: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : [])].join(" ");
 export const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 
@@ -48,6 +56,15 @@ export interface McpConfig {
   /** Reserved (finance answers through Claude). NOT wired in P1: finance question refs are refused regardless. */
   answerFinanceEnabled: boolean;
   answerRateLimit: Array<{ windowMs: number; max: number }>;
+  /**
+   * P2 knowledge capability. true ONLY when PARTNER_MCP_KNOWLEDGE_ENABLED is exactly "true" AND the deployment is the
+   * MCP-only connector. Off → partner:knowledge is not advertised / consentable / accepted and the tool does not exist.
+   * Requires the P2 schema (partner_owner_knowledge + scope / audit CHECKs) — never switch on before it is applied.
+   */
+  knowledgeEnabled: boolean;
+  knowledgeRateLimit: Array<{ windowMs: number; max: number }>;
+  /** Reserved (P3 business-action proposals through Sunny). NOT wired: no scope, no tool, no DB permission exists. */
+  proposeActionEnabled: false;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -85,6 +102,9 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       answerEnabled: env.PARTNER_MCP_ANSWER_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
       answerFinanceEnabled: false,
       answerRateLimit: [{ windowMs: 3_600_000, max: 10 }, { windowMs: 86_400_000, max: 30 }],
+      knowledgeEnabled: env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
+      knowledgeRateLimit: [{ windowMs: 3_600_000, max: 20 }, { windowMs: 86_400_000, max: 60 }],
+      proposeActionEnabled: false,
     },
   };
 }

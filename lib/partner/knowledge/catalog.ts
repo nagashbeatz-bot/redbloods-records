@@ -13,6 +13,7 @@ import { cases, catalogCapability, integrity, knownUnknowns, memory, outcomes, o
 import { financeFlows, financeIntegrity, financePosition, financeReceivables, victorSalary } from "./capabilities/finance";
 import { clients, projects, proposals, sessions, teamSteven, teamVictor } from "./capabilities/work";
 import { labelRoster, releases, shows } from "./capabilities/label";
+import { improvementSignals, ownerKnowledge, relations } from "./capabilities/sunny";
 
 const brief: KnowledgeCapability = {
   id: "brief", domain: "COMPANY", titleHe: "מה חשוב עכשיו",
@@ -36,6 +37,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   labelRoster, releases, shows,
   sessions,
   teamVictor, teamSteven, victorSalary,
+  ownerKnowledge, relations, improvementSignals,
 ];
 
 /** The registry = catalog capability (bound to itself) + the given capabilities. Tests may add capabilities; production uses none. */

@@ -22,7 +22,7 @@ export interface AuditRow {
   client_id: string | null;
   token_id: string | null;
   method: string;
-  tool: "partner_brief" | "partner_resolve" | "partner_entity" | "partner_answer_question" | null;
+  tool: "partner_brief" | "partner_resolve" | "partner_entity" | "partner_answer_question" | "partner_propose_knowledge" | null;
   input_fingerprint: string | null;
   input_key: string | null;
   resolved_entity_key: string | null;

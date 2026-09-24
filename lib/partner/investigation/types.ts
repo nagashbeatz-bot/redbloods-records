@@ -28,10 +28,13 @@ import type { IntegrityQuestionType } from "./integrity-questions";
  *   owner_via_claude — the Owner answered in a Claude conversation; the connector (P1 partner:answer) submitted the
  *                      closed answer code it mapped. Set by the server only (never by MCP input); carries the MCP client,
  *                      token and the pre-write attempt audit row for traceability. Claude is never the author.
+ *   owner_via_sunny  — the SAME channel under the Sunny identity (identical shape). Read-compatible now; new P1 writes
+ *                      switch to it only after every service reads it (two-phase, see the Sunny activation plan).
+ *                      Existing owner_via_claude rows stay valid forever (history is never rewritten).
  */
 export type OwnerContextProvenance =
   | { source: "owner_manual" }
-  | { source: "owner_via_claude"; channel: "mcp"; client_id: string; token_id: string; attempt_audit_id: string };
+  | { source: "owner_via_claude" | "owner_via_sunny"; channel: "mcp"; client_id: string; token_id: string; attempt_audit_id: string };
 
 export const INVESTIGATION_SCHEMA_VERSION = "partner-investigation-schema-v1";
 export const INVESTIGATION_OWNER_RULE = "INVESTIGATE_BEFORE_CONCLUDING";

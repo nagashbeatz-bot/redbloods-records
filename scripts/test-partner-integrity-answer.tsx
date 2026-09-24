@@ -286,7 +286,7 @@ void (async () => {
     const saved = await w.answer(w.body(r0, LA_AVI, "LABEL_SONGS", RID(92)));
     const after = toIntegritySurfaceDto(await w.freshRegister());
     const html2 = renderToStaticMarkup(PartnerIntegrityView({ surface: after, isMobile: false, message: learnedMessageHe("אבי מולה"), controls: { busy: false, selected: {}, onSelect: () => {}, onSave: () => {} } })!);
-    ok("after saving: the question is gone and 'מה למדתי' lists it", saved.status === "ANSWER_SAVED" && !after.questions.some((x) => x.subjectLabel === "אבי מולה") && html2.includes("מה למדתי ממך") && html2.includes("למדתי. אשתמש בזה"));
+    ok("after saving: the question is gone and 'מה למדתי' lists it", saved.status === "ANSWER_SAVED" && !after.questions.some((x) => x.subjectLabel === "אבי מולה") && html2.includes("מה סאני למד ממך") && html2.includes("למדתי. אשתמש בזה"));
   }
 
   console.log("\n22–25. static guards");

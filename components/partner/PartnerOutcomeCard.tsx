@@ -40,7 +40,7 @@ export function PartnerOutcomeCard({ item, isMobile }: { item: PartnerOutcomeCar
       </div>
       <p data-outcome-headline style={{ margin: "0 0 8px", fontSize: isMobile ? 14 : 14.5, fontWeight: 700, color: TEXT, lineHeight: 1.5 }}>{item.headlineHe}</p>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 6 : 10 }}>
-        <ValueBox kind="executed" label={`מה Partner ביצע (מ־${item.executedFromHe})`} value={item.executedToHe} />
+        <ValueBox kind="executed" label={`מה סאני ביצע (מ־${item.executedFromHe})`} value={item.executedToHe} />
         {item.currentValueHe !== null && <ValueBox kind="current" label="מצב נוכחי" value={item.currentValueHe} />}
       </div>
       <p data-outcome-status style={{ margin: "8px 0 0", fontSize: 12.5, color: item.state === "TARGET_NOT_FOUND" ? "#F59E0B" : SUB }}>{item.statusHe}</p>
@@ -71,7 +71,7 @@ export function PartnerFinanceOutcomeCard({ item, isMobile }: { item: PartnerFin
 export function PartnerOutcomesList({ items, isMobile }: { items: PartnerOutcomeItemDto[]; isMobile: boolean }) {
   if (!items.length) return null;
   return (
-    <div data-partner-outcomes aria-label="Partner — פעולות שבוצעו לאחרונה" role="region" style={{ marginTop: 10 }}>
+    <div data-partner-outcomes aria-label="סאני — פעולות שבוצעו לאחרונה" role="region" style={{ marginTop: 10 }}>
       <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>בוצע לאחרונה</h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items.map((it) => it.actionType === "RECORD_PAID_EXPENSE"

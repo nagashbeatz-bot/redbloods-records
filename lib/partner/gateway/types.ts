@@ -19,7 +19,11 @@ export const GATEWAY_SCHEMA_VERSION = "partner-gateway-v1";
 
 export type GatewayTool = "partner_brief" | "partner_resolve" | "partner_entity" | "partner_query";
 
-export type GatewayEpistemic = "FACT" | "DERIVED" | "OWNER_DECISION" | "OBSERVATION" | "HYPOTHESIS" | "PATTERN_CANDIDATE" | "UNKNOWN";
+/**
+ * OWNER_REPORTED — something the Owner told Sunny happened (e.g. a payment); not a canonical record.
+ * OWNER_POLICY_CANDIDATE — how the Owner wants things done; a candidate, never an automatic rule.
+ */
+export type GatewayEpistemic = "FACT" | "DERIVED" | "OWNER_DECISION" | "OWNER_REPORTED" | "OWNER_POLICY_CANDIDATE" | "OBSERVATION" | "HYPOTHESIS" | "PATTERN_CANDIDATE" | "UNKNOWN";
 
 /**
  *   LIVE       — read from canonical state during this request.
@@ -32,7 +36,7 @@ export type GatewayFreshness = "LIVE" | "RECENT" | "HISTORICAL" | "STALE" | "UNK
 export const RECENT_DAYS = 14;
 
 /** How two entities connect. TEXT_MATCH is never a hard link. */
-export type GatewayRelationQuality = "ID" | "TEXT_MATCH" | "DERIVED" | "UNKNOWN";
+export type GatewayRelationQuality = "ID" | "TEXT_MATCH" | "DERIVED" | "OWNER_CONFIRMED" | "UNKNOWN";
 
 /**
  *   PARTNER        — fixed Partner vocabulary (safe to show as-is).
@@ -55,7 +59,7 @@ export interface GatewayEntityRef { key: string; type: GatewayEntityType; label:
 export type GatewaySourceName =
   | "PROJECTS" | "CLIENTS" | "LABEL_ARTISTS" | "PROPOSALS" | "SESSIONS" | "SHOWS" | "RELEASES" | "TASKS" | "CLIPS"
   | "TEAM_VICTOR" | "TEAM_STEVEN" | "FINANCE" | "OWNER_CONTEXT" | "ACTIONS" | "OUTCOMES" | "MEMORY" | "CASES" | "APP_IDENTITY"
-  | "INTEGRITY" | "PARTNER_KNOWLEDGE";
+  | "INTEGRITY" | "PARTNER_KNOWLEDGE" | "OWNER_KNOWLEDGE";
 
 export interface GatewaySourceStatus { source: GatewaySourceName; status: "OK" | "UNAVAILABLE"; freshness: GatewayFreshness }
 

@@ -458,7 +458,7 @@ async function main() {
   {
     const d = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={PRODUCTION_BRIEF} />);
     const m = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={true} finance={PRODUCTION_BRIEF} />);
-    ok("64-65. Hebrew RTL section with the 'כסף' region", /<section dir="rtl" lang="he"/.test(d) && d.includes(">כסף</h3>") && /aria-label="Partner — כסף"/.test(d));
+    ok("64-65. Hebrew RTL section with the 'כסף' region", /<section dir="rtl" lang="he"/.test(d) && d.includes(">כסף</h3>") && /aria-label="סאני — כסף"/.test(d));
     ok("partial coverage: net shown 'לפי הנתונים הרשומים כרגע' with the coverage note first", d.indexOf("data-finance-coverage=\"PARTIAL\"") < d.indexOf("data-finance-summary") && d.includes("לפי הנתונים הרשומים כרגע") && d.includes("הנתונים עדיין חלקיים"));
     check("at most 5 rendered items, no buttons / inputs", [(d.match(/data-finance-item=/g) ?? []).length, (d.match(/<button|<input|<a /g) ?? []).length], [5, 0]);
     ok("66. desktop: summary in a row", /data-finance-summary="true" style="display:flex;flex-direction:row/.test(d));

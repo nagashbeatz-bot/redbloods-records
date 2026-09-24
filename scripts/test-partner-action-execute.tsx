@@ -560,7 +560,7 @@ async function main() {
     const m = render([awaiting], true);
     ok("35. RTL desktop: <section dir=rtl lang=he>, compact 36px button, LTR-isolated dates", /<section dir="rtl" lang="he"/.test(d) && (d.match(/min-height:36px/g) ?? []).length === 1 && (d.match(/<bdi dir="ltr">/g) ?? []).length === 2);
     ok("36. RTL mobile: comfortable 44px tap target, wrapping row", /<section dir="rtl" lang="he"/.test(m) && (m.match(/min-height:44px/g) ?? []).length === 1 && m.includes("flex:1 1 30%") && m.includes("flex-wrap:wrap"));
-    ok("37. accessibility: one native <button type=button>, aria-live status region, card = <article>", (d.match(/<button type="button"/g) ?? []).length === 1 && /aria-live="polite" role="status"/.test(d) && /<article data-partner-action=/.test(d) && /aria-label="Partner — הצעות לפעולה"/.test(d));
+    ok("37. accessibility: one native <button type=button>, aria-live status region, card = <article>", (d.match(/<button type="button"/g) ?? []).length === 1 && /aria-live="polite" role="status"/.test(d) && /<article data-partner-action=/.test(d) && /aria-label="סאני — הצעות לפעולה"/.test(d));
     const busy = render([awaiting], false, { phase: "submitting" });
     ok("19. submitting: [בצע עכשיו] disabled, aria-busy, 'שומר…' announced", /<button type="button" disabled=""[^>]*>בצע עכשיו<\/button>/.test(busy) && busy.includes('aria-busy="true"') && busy.includes("שומר…"));
     const err = render([awaiting], false, { phase: "error", message: "לא הצלחתי לבצע כרגע. אפשר לנסות שוב.", canRetry: true });

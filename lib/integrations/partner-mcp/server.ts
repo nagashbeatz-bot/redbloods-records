@@ -6,7 +6,9 @@ import "server-only";
  * production (PARTNER_MCP_ENABLED unset) stays inert even before the connector schema exists.
  *
  * Business capabilities wired in: the read-only Partner Gateway (brief / resolve / entity / query) and — ONLY when
- * config.answerEnabled (PARTNER_MCP_ANSWER_ENABLED=true on an MCP-only deployment) — the P1 Partner answer bridge.
+ * config.answerEnabled (PARTNER_MCP_ANSWER_ENABLED=true on an MCP-only deployment) — the P1 Partner answer bridge, and
+ * — ONLY when config.knowledgeEnabled (PARTNER_MCP_KNOWLEDGE_ENABLED=true, MCP-only, P2 schema applied) — the P2 Sunny
+ * owner-knowledge core. P3 business-action proposals are NOT wired into the connector.
  *
  * Audience: EXTERNAL with the Owner's authority. A partner:read token can only exist after the Owner approved the
  * consent screen (decideAuthorization refuses NOT_OWNER), so every authenticated connector call carries the Owner's
@@ -27,6 +29,7 @@ const MCP_AUDIENCE = { channel: "EXTERNAL", ownerAuthorized: true } as const;
 
 let limiter: SlidingWindowLimiter | null = null;
 let answerLimiter: SlidingWindowLimiter | null = null;
+let knowledgeLimiter: SlidingWindowLimiter | null = null;
 let rejectedLimiter: SlidingWindowLimiter | null = null;
 let registrationLimiter: SlidingWindowLimiter | null = null;
 const consentReplay = new MemoryConsentReplayGuard();
@@ -52,9 +55,21 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
     answerLimiter ??= new SlidingWindowLimiter(config.answerRateLimit);
     answer = { limiter: answerLimiter, newId: () => crypto.randomUUID(), submit: async (i) => (await answerViaConnector(i)) as unknown as Record<string, unknown> };
   }
+  // P2: the knowledge core exists only where the switch is on; otherwise nothing is even imported.
+  let knowledge: McpDeps["knowledge"];
+  if (config.knowledgeEnabled) {
+    const { previewKnowledgeViaConnector, commitKnowledgeViaConnector } = await import("@/lib/partner/owner-knowledge/server");
+    knowledgeLimiter ??= new SlidingWindowLimiter(config.knowledgeRateLimit);
+    knowledge = {
+      limiter: knowledgeLimiter, newId: () => crypto.randomUUID(),
+      preview: async (i) => (await previewKnowledgeViaConnector(config.secret, i)) as unknown as Record<string, unknown>,
+      commit: async (i) => (await commitKnowledgeViaConnector(config.secret, i)) as unknown as Record<string, unknown>,
+    };
+  }
   const mcp: McpDeps = {
     config,
     ...(answer ? { answer } : {}),
+    ...(knowledge ? { knowledge } : {}),
     authenticate: (h) => authenticateBearer(h, oauth),
     gateway: {
       brief: async () => (await getPartnerBrief(undefined, MCP_AUDIENCE)) as unknown as Record<string, unknown>,

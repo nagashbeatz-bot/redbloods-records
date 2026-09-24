@@ -145,7 +145,7 @@ async function main() {
   const desktop = renderToStaticMarkup(<PartnerActionsView items={items} isMobile={false} />);
   const mobile = renderToStaticMarkup(<PartnerActionsView items={items} isMobile={true} />);
   ok("15. RTL + Hebrew section", /<section dir="rtl" lang="he"/.test(desktop));
-  ok("15. labels in Hebrew (מה קיים עכשיו / מה Partner מציע / למה / הצעה לפעולה)", ["מה קיים עכשיו", "מה Partner מציע", "למה", "הצעה לפעולה"].every((s) => desktop.includes(s)));
+  ok("15. labels in Hebrew (מה קיים עכשיו / מה סאני מציע / למה / הצעה לפעולה)", ["מה קיים עכשיו", "מה סאני מציע", "למה", "הצעה לפעולה"].every((s) => desktop.includes(s)));
   ok("15. dates isolated LTR (bdi) so digits never reorder", (desktop.match(/<bdi dir="ltr"/g) ?? []).length === 2 && desktop.includes("14.07.2026") && desktop.includes("07.10.2026"));
   ok("current is shown before suggested (reading order)", desktop.indexOf("14.07.2026") < desktop.indexOf("07.10.2026"));
   ok("name + headline + reason rendered", desktop.includes("הדדליין של &#x27;קרוב אלייך&#x27; לא מעודכן.") && desktop.includes("ציינת שהדדליין הישן לא עודכן, ולאחר מכן בחרת יעד חדש של עוד שבועיים."));

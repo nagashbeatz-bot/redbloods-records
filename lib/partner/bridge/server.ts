@@ -15,13 +15,16 @@ import { createCompanyReadContext } from "../company/read-context";
 import { integrityAnswerDeps } from "../integrity/server";
 import { answerViaConnectorCore, type BridgeActor, type BridgeAnswerResult, type BridgeDeps } from "./answer";
 
+/** Is this auth user STILL the Redbloods Owner? (auth user → email → roleForEmail). Fail closed. Shared with Sunny knowledge. */
+export async function isRedbloodsOwner(userId: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return false;
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+  if (error || !data?.user?.email) return false;
+  return roleForEmail(data.user.email) === "owner";
+}
+
 const deps: BridgeDeps = {
-  async isOwner(userId) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return false;
-    const { data, error } = await supabase.auth.admin.getUserById(userId);
-    if (error || !data?.user?.email) return false;
-    return roleForEmail(data.user.email) === "owner";
-  },
+  isOwner: isRedbloodsOwner,
   integrityDeps: (provenance) => integrityAnswerDeps(provenance),
   async freshRegister() {
     const ctx = createCompanyReadContext();

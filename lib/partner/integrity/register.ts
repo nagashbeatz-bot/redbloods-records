@@ -53,7 +53,7 @@ function buildQuestion(d: FindingDraft): IntegrityQuestion {
 
 function decisionOf(c: PartnerOwnerContext, questionType: IntegrityQuestion["questionType"], basis: IntegrityOwnerDecision["basis"]): IntegrityOwnerDecision {
   return { epistemic: "OWNER_DECISION", contextId: c.id, questionId: c.questionId, questionType, answerCode: c.answerCode, answerLabelHe: optionLabel(questionType, c.answerCode), answeredAt: c.answeredAt, basis,
-    via: c.provenance?.source === "owner_via_claude" ? "CLAUDE" : "DASHBOARD" };
+    via: c.provenance?.source === "owner_via_claude" || c.provenance?.source === "owner_via_sunny" ? "CLAUDE" : "DASHBOARD" };
 }
 
 /** How Partner reads the ambiguity once the Owner decided. Canonical rows are never changed by it. */

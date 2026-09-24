@@ -56,8 +56,8 @@ export function PartnerIntegrityView({ surface, isMobile, controls, message }: {
   const learned = surface.learned.slice(0, 6);
   if (!surface.questions.length && !learned.length && !message) return null;
   return (
-    <div data-partner-integrity role="region" aria-label="Partner — צריך ממך" style={{ marginTop: 10 }}>
-      <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>צריך ממך</h3>
+    <div data-partner-integrity role="region" aria-label="סאני — צריך ממך" style={{ marginTop: 10 }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>סאני צריך ממך</h3>
       <div style={{ background: "#161616", border: `1px solid ${BORDER}`, borderRadius: 12, padding: isMobile ? "10px 12px" : "12px 14px" }}>
         {message && <p role="status" aria-live="polite" data-integrity-message style={{ margin: "0 0 8px", fontSize: 12.5, color: TEXT }}>{message}</p>}
         {surface.questions.length > 0 ? (
@@ -70,10 +70,10 @@ export function PartnerIntegrityView({ surface, isMobile, controls, message }: {
         {surface.deferredCount > 0 && <p data-integrity-deferred style={{ margin: "8px 0 0", fontSize: 11.5, color: MUTED }}>יש עוד {surface.deferredCount === 1 ? "שאלה אחת" : `${surface.deferredCount} שאלות`} — אשאל אחרי שנסגור את אלה.</p>}
         {learned.length > 0 && (
           <div data-integrity-learned style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
-            <p style={{ margin: "0 0 4px", fontSize: 11.5, fontWeight: 700, color: MUTED }}>מה למדתי ממך</p>
+            <p style={{ margin: "0 0 4px", fontSize: 11.5, fontWeight: 700, color: MUTED }}>מה סאני למד ממך</p>
             {learned.map((l) => (
               <p key={`${l.subjectLabel}|${l.answerLabelHe}|${l.statusHe}`} style={{ margin: "2px 0", fontSize: 12, color: SUB, lineHeight: 1.5 }}>
-                <span style={{ color: TEXT }}>{l.subjectLabel}</span>: {l.answerLabelHe} <span style={{ color: MUTED }}>({l.statusHe}{l.viaClaude ? " · דרך Claude" : ""})</span>
+                <span style={{ color: TEXT }}>{l.subjectLabel}</span>: {l.answerLabelHe} <span style={{ color: MUTED }}>({l.statusHe}{l.viaClaude ? " · דרך סאני" : ""})</span>
               </p>
             ))}
           </div>
