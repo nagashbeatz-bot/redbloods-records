@@ -9,15 +9,17 @@ import "server-only";
 import { actionEventStore } from "./event-store";
 import { listLiveProposals } from "./live";
 import { buildActionSurface, type ActionSurfaceResult } from "./surface";
-import { loadFinanceLive } from "../finance/server";
+import { loadFinanceLive, type FinanceLiveResult } from "../finance/server";
+import type { PartnerCompanyState } from "../eyes/types";
 
-export function getOwnerActionSurface(): Promise<ActionSurfaceResult> {
+/** opts: the SAME request's already-read company state / finance derivation (Gateway request-scoped read) — reused, never re-read. */
+export function getOwnerActionSurface(opts: { state?: PartnerCompanyState; finance?: () => Promise<FinanceLiveResult> } = {}): Promise<ActionSurfaceResult> {
   return buildActionSurface({
-    listProposals: listLiveProposals,
+    listProposals: () => listLiveProposals({ state: opts.state }),
     getActionChain: (actionId) => actionEventStore.getActionChain(actionId),
     // F2.31: finance Suggested Actions (read-only here: candidates + chain reads; no decision / RPC capability)
     listFinanceCandidates: async () => {
-      const l = await loadFinanceLive(new Date());
+      const l = opts.finance ? await opts.finance() : await loadFinanceLive(new Date());
       if (l.status !== "OK") return { status: "READ_FAILED", detail: l.detail };
       if (!l.answersAvailable) return { status: "READ_FAILED", detail: "owner answers unreadable" };
       return { status: "OK", candidates: l.actions };

@@ -12,7 +12,7 @@ import "server-only";
 import { listOwnerContexts } from "../investigation/context-store";
 import { actionEventStore } from "../actions/event-store";
 import { listExecutedActionOutcomes, listFinanceOutcomes } from "../actions/outcome-server";
-import { loadFinanceLive } from "../finance/server";
+import { loadFinanceLive, type FinanceLiveResult } from "../finance/server";
 import type { PartnerActionEvent } from "../actions/events";
 import type { PartnerActionOutcome } from "../actions/outcome";
 import type { PartnerFinanceActionEvent } from "../actions/finance-events";
@@ -21,9 +21,10 @@ import type { PartnerMemory } from "./types";
 
 const EVENT_TYPES = ["APPROVED", "NOT_NOW", "REJECTED", "EXECUTED", "STALE_AT_EXECUTION"] as const;
 
-export async function loadPartnerMemory(now: Date = new Date()): Promise<PartnerMemory> {
+/** opts.finance: an already-read finance derivation of the SAME request (Gateway request-scoped read) — reused, never re-read. */
+export async function loadPartnerMemory(now: Date = new Date(), opts: { finance?: FinanceLiveResult } = {}): Promise<PartnerMemory> {
   const [finance, contexts, events, financeEvents, outcomes, financeOutcomes] = await Promise.all([
-    loadFinanceLive(now).catch((e) => ({ status: "UNAVAILABLE" as const, detail: (e as Error).message })),
+    (opts.finance ? Promise.resolve(opts.finance) : loadFinanceLive(now)).catch((e) => ({ status: "UNAVAILABLE" as const, detail: (e as Error).message })),
     listOwnerContexts().catch((e) => ({ status: "READ_FAILED" as const, error: e as Error })),
     Promise.all(EVENT_TYPES.map((t) => actionEventStore.getEventsByType(t))).catch((e) => [{ status: "READ_FAILED" as const, detail: (e as Error).message }]),
     Promise.all(EVENT_TYPES.map((t) => actionEventStore.getFinanceEventsByType(t))).catch((e) => [{ status: "READ_FAILED" as const, detail: (e as Error).message }]),
