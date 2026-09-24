@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { isAllowedInMcpOnlyMode, isMcpOnlyMode, isMcpPublicPath } from "@/lib/integrations/partner-mcp/mcp-only";
+import { isAllowedInMcpOnlyMode, isMcpOnlyMode, isMcpPublicPath, MCP_CONSENT_PATH } from "@/lib/integrations/partner-mcp/mcp-only";
 import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath, isCleantoneAllowedPath, isAviAllowedPath, AVI_ARTIST_ID } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
@@ -147,7 +147,10 @@ export async function proxy(request: NextRequest) {
   // ── Maintenance lock ──────────────────────────────────────────────────────
   // Owner ALWAYS bypasses. Evaluated ONLY when maintenance is actually ON, so the
   // verified-claims fallback below adds ZERO overhead in normal operation.
-  if (pathname !== "/login" && (await isMaintenanceOn(request))) {
+  // The MCP connector's Owner consent page is exempt from the maintenance SCREEN only (not from authentication):
+  // an unauthenticated Owner must reach /login?redirect=<consent> instead of a dead end; the auth gate and role
+  // checks below still apply, and the page itself re-checks the Owner (404 unless the connector is enabled).
+  if (pathname !== "/login" && pathname !== MCP_CONSENT_PATH && (await isMaintenanceOn(request))) {
     // Owner detection: prefer getUser's role; if that failed to identify the owner
     // (transient failure / refresh race), fall back to SIGNATURE-VERIFIED claims
     // (getClaims) — never a raw/unverified decode. A forged/hand-made cookie fails

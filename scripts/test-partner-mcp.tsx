@@ -270,6 +270,9 @@ async function main() {
     ok("the consent decision requires the Owner + exact same origin + the CSRF MAC", /origin !== rt\.config\.baseUrl/.test(rd("app/api/mcp-oauth/authorize/route.ts")) && /roleForEmail\(user\.email\) !== "owner"/.test(rd("app/api/mcp-oauth/authorize/route.ts")) && /csrf: form\.csrf/.test(rd("app/api/mcp-oauth/authorize/route.ts")));
     const proxy = strip(rd("proxy.ts"));
     ok("M. proxy: MCP-only wall first, then the EXACT connector bypass, both before every other gate", proxy.indexOf("isMcpOnlyMode(process.env)") < proxy.indexOf("isMcpPublicPath(pathname)") && proxy.indexOf("isMcpPublicPath(pathname)") < proxy.indexOf("PUBLIC_BYPASS.some") && proxy.indexOf("PUBLIC_BYPASS.some") < proxy.indexOf("isMaintenanceOn(request)"));
+    ok("M. the consent page skips ONLY the maintenance screen: exact path, after the session read, before the auth gate, never in the auth-bypass lists",
+      proxy.includes('pathname !== "/login" && pathname !== MCP_CONSENT_PATH && (await isMaintenanceOn(request))') && !isMcpPublicPath("/mcp-oauth/authorize")
+      && proxy.indexOf("supabase.auth.getUser()") < proxy.indexOf("pathname !== MCP_CONSENT_PATH") && proxy.indexOf("pathname !== MCP_CONSENT_PATH") < proxy.indexOf("if (!signedIn)"));
     const inst = strip(rd("instrumentation.ts"));
     ok("S. instrumentation: MCP-only mode returns BEFORE any scheduler is imported", inst.indexOf('REDBLOODS_MCP_ONLY === "true"') > 0 && inst.indexOf('REDBLOODS_MCP_ONLY === "true"') < inst.indexOf('import("node-cron")'));
     const pkg = JSON.parse(rd("package.json"));

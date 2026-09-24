@@ -24,6 +24,9 @@ export function isMcpPublicPath(pathname: string): boolean {
   return (MCP_PUBLIC_PATHS as readonly string[]).includes(pathname);
 }
 
+/** The Owner consent page: exempt from the maintenance SCREEN only (never from the cookie auth gate). */
+export const MCP_CONSENT_PATH = "/mcp-oauth/authorize";
+
 /** In MCP-only mode, the only other reachable paths: Owner login + consent (cookie-authenticated as usual). */
 const MCP_ONLY_EXTRA = ["/login", "/maintenance", "/api/maintenance/status", "/mcp-oauth/authorize", "/api/mcp-oauth/authorize"];
 export function isAllowedInMcpOnlyMode(pathname: string): boolean {
