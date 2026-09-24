@@ -2,6 +2,18 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Partner MCP connector consent page: never framed (clickjacking), no referrer leakage of the OAuth request.
+  async headers() {
+    return [{
+      source: "/mcp-oauth/:path*",
+      headers: [
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Cache-Control", value: "no-store" },
+      ],
+    }];
+  },
   // Keep googleapis (and its Node.js deps) server-side only
   serverExternalPackages: ["googleapis", "google-auth-library", "node-cron"],
   experimental: {

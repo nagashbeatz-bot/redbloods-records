@@ -10,6 +10,15 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Partner MCP connector staging service (connector-only): start NO scheduler, and block every outgoing
+  // request except database reads + the connector's own OAuth / audit writes. Unset in production.
+  if (process.env.REDBLOODS_MCP_ONLY === "true") {
+    const { installMcpOnlyFetchGuard } = await import("@/lib/integrations/partner-mcp/mcp-only");
+    installMcpOnlyFetchGuard(process.env.SUPABASE_URL ?? "https://invalid.invalid", (m) => console.warn(m));
+    console.log("[mcp-only] connector-only mode — no schedulers started");
+    return;
+  }
+
   const { default: cron }                      = await import("node-cron");
   const { getRuntimeConfig, setRuntimeConfig, markSchedulerStarted, markCronTick, markSent } = await import("@/lib/reports/runtime-config");
 

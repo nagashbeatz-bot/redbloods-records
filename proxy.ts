@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isAllowedInMcpOnlyMode, isMcpOnlyMode, isMcpPublicPath } from "@/lib/integrations/partner-mcp/mcp-only";
 import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath, isCleantoneAllowedPath, isAviAllowedPath, AVI_ARTIST_ID } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
@@ -75,6 +76,14 @@ async function isMaintenanceOn(request: NextRequest): Promise<boolean> {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Partner MCP connector (staging): a connector-only service answers 404 for everything else — incl. the
+  // cron / callback bypasses below. Unset in production (no effect).
+  if (isMcpOnlyMode(process.env) && !isAllowedInMcpOnlyMode(pathname)) return new NextResponse("Not Found", { status: 404 });
+  // Partner MCP connector endpoints authenticate themselves (Bearer token / PKCE) and never use cookies:
+  // EXACT paths only, exempt from the cookie gate and the maintenance redirect — NOT from authentication.
+  // Each route answers 404 unless PARTNER_MCP_ENABLED=true (production: unset).
+  if (isMcpPublicPath(pathname)) return NextResponse.next();
 
   if (PUBLIC_BYPASS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();

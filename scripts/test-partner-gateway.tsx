@@ -394,7 +394,10 @@ async function main() {
     ok("37. one read per source per request (memoized) and the SAME finance / state reused by memory + actions", /const state = once\(/.test(rc) && /const financeLive = once\(/.test(rc) && /loadPartnerMemory\(now, \{ finance: await financeLive\(\) \}\)/.test(rc) && /getOwnerActionSurface\(\{ state: s\.status === "OK" \? s\.value : undefined, finance: financeLive \}\)/.test(rc) && /buildLiveCases\(s\.value\)/.test(rc));
     const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(d, e.name)] : []);
     check("35. no route / page / component uses the Gateway yet (no public surface, no MCP, no OAuth)", [...walk(path.join(ROOT, "app")), ...walk(path.join(ROOT, "components"))].filter((f) => /partner\/gateway/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f)), []);
-    ok("no MCP / connector / OAuth code was added", !fs.existsSync(path.join(ROOT, "app/api/mcp")) && !code.some(([, s]) => /modelcontextprotocol|oauth/i.test(s)));
+    // MCP Phase 1: the connector lives OUTSIDE the Gateway (lib/integrations/partner-mcp) — the Gateway stays transport-neutral.
+    ok("the Gateway itself contains no MCP / OAuth / transport code", !code.some(([, s]) => /modelcontextprotocol|oauth|jsonrpc|partner-mcp/i.test(s)));
+    const gwImporters = walk(path.join(ROOT, "lib")).filter((f) => !f.includes(`${path.sep}partner${path.sep}`) && /partner\/gateway\//.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f).replace(/\\/g, "/")).sort();
+    check("outside lib/partner, only the read-only MCP connector consumes the Gateway", gwImporters, ["lib/integrations/partner-mcp/server.ts", "lib/integrations/partner-mcp/tools.ts"]);
     const mem = strip(rd("lib/partner/memory/server.ts")), live = strip(rd("lib/partner/actions/live.ts")), surf = strip(rd("lib/partner/actions/surface-server.ts"));
     ok("the shared-read hooks are optional and default to the previous behaviour", /opts\.finance \? Promise\.resolve\(opts\.finance\) : loadFinanceLive\(now\)/.test(mem) && /const state = shared \?\? await buildPartnerCompanyState\(\);/.test(live) && /opts\.finance \? await opts\.finance\(\) : await loadFinanceLive\(new Date\(\)\)/.test(surf));
   }
