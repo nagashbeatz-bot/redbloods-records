@@ -16,12 +16,12 @@ import { ilYmd } from "@/lib/coo/dates";
 import { resolveCurrentOwnerContexts } from "../investigation/context-store";
 import { buildFinanceBrief } from "./brief";
 import type { PartnerFinanceIntegrityState } from "./integrity";
-import { deriveFinanceView } from "./view";
+import { deriveFinanceView, type FinanceView } from "./view";
 import type { FinanceActionCandidate } from "./actions";
 import { financeAnswersFromContexts, type FinanceOwnerAnswer } from "./owner-answers";
 import { readFinanceRaw, type FinanceReadClient } from "./readers";
 import type { FinanceBriefDto } from "./dto";
-import type { PartnerFinanceState, SalaryMonthRow } from "./types";
+import type { FinanceRaw, PartnerFinanceState, SalaryMonthRow } from "./types";
 
 async function salaryMonths(now: Date): Promise<SalaryMonthRow[]> {
   const today = ilYmd(now);
@@ -41,7 +41,7 @@ async function readFinanceAnswers(): Promise<{ ok: true; answers: FinanceOwnerAn
 }
 
 export type FinanceLiveResult =
-  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null; actions: FinanceActionCandidate[]; actionNoteHe: string | null }
+  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null; actions: FinanceActionCandidate[]; actionNoteHe: string | null; raw: FinanceRaw; view: FinanceView }
   | { status: "UNAVAILABLE"; detail: string };
 
 /** One live derivation: finance read → brain → Owner answers → integrity (answers consumed as OWNER_DECISION). */
@@ -53,8 +53,9 @@ export async function loadFinanceLive(now: Date = new Date()): Promise<FinanceLi
     try { a = await readFinanceAnswers(); } catch (e) { a = { ok: false, detail: e instanceof Error ? e.message : "owner context read failed" }; }
     const answers = a.ok ? a.answers : [];
     // F2.5–F2.11: integrity / rehabilitation + the Owner overlay are evaluated on every read (no background worker).
-    const { state, integrity, actions, actionNoteHe } = deriveFinanceView(raw, now, answers);
-    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail, actions, actionNoteHe };
+    const view = deriveFinanceView(raw, now, answers);
+    const { state, integrity, actions, actionNoteHe } = view;
+    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail, actions, actionNoteHe, raw, view };
   } catch (e) {
     return { status: "UNAVAILABLE", detail: e instanceof Error ? e.message : "finance read failed" };
   }

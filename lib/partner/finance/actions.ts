@@ -20,6 +20,7 @@ import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { deriveQuestionId } from "../investigation/context-row";
 import { FINANCE_ANSWER_OPTIONS } from "../investigation/finance-questions";
 import { financeQuestionFingerprint, type FinanceOwnerAnswer } from "./owner-answers";
+import { salaryLinkedId, salaryTransactionDescription } from "../../victor-salary-format";
 import type { OwnerQuestion, PartnerFinanceIntegrityState, RehabIssue } from "./integrity";
 import type { FinanceRaw, PartnerFinanceState } from "./types";
 
@@ -93,7 +94,11 @@ export interface FinanceActionFacts {
   date: string;
   paymentStatus: "שולם" | "התקבל";
   type: "expense" | "income";
+  /** Exactly the canonical writer's text (lib/victor-salary-format) — a future executor writes this verbatim. */
   description: string;
+  category: string;
+  scope: "general" | "project";
+  artist: string;
   projectId: string | null;
   linkedSessionId: string | null;
 }
@@ -166,7 +171,7 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
       if (a.answerCode !== "PAID_NEEDS_RECORDING") { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness: "NOT_APPLICABLE", missing: [], facts: null, snapshotHash: null, ownerContextIds: [a.contextId], priority: 90 }); continue; }
       const workMonth = i.subjectId.slice("VICTOR_SALARY:".length);
       const known = state.recurring.known.find((k) => k.code === "VICTOR_SALARY" && k.workMonth === workMonth);
-      const linkedSessionId = `victor_salary_${workMonth}`;
+      const linkedSessionId = salaryLinkedId(workMonth);
       const existing = raw.transactions.filter((t) => t.linkedSessionId === linkedSessionId && t.status !== "בוטל");
       const missing: string[] = [];
       if (existing.length) { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness: "ALREADY_RECORDED", missing: [], facts: null, snapshotHash: null, ownerContextIds: [a.contextId], priority: 80 }); continue; }
@@ -186,7 +191,7 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
       const readiness: FinanceActionReadiness = missing.includes("amount") ? "NEEDS_AMOUNT" : missing.includes("currency") ? "NEEDS_CURRENCY" : missing.includes("paymentDate") ? "NEEDS_EXACT_DATE" : "READY_TO_PROPOSE";
       const ownerContextIds = [a.contextId, ...(dateAnswer ? [dateAnswer.contextId] : [])];
       if (readiness !== "READY_TO_PROPOSE") { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness, missing, facts: null, snapshotHash: null, ownerContextIds, priority: 10 }); continue; }
-      const facts: FinanceActionFacts = { amount: known.amount, currency: known.currency, date: date!, paymentStatus: "שולם", type: "expense", description: `משכורת Victor ${workMonth}`, projectId: null, linkedSessionId };
+      const facts: FinanceActionFacts = { amount: known.amount, currency: known.currency, date: date!, paymentStatus: "שולם", type: "expense", description: salaryTransactionDescription(workMonth), category: "צוות", scope: "general", artist: "Victor", projectId: null, linkedSessionId };
       const snapshot = { schemaVersion: "partner-finance-action-v1", actionType: "RECORD_PAID_EXPENSE", source: i.subjectId, period: workMonth, facts, existingTransactions: [], ownerContextIds, salaryConfig: { amount: known.amount, currency: known.currency, dueDate: known.dueDate } };
       candidates.push({
         ...base("RECORD_PAID_EXPENSE", i), readiness, missing: [], facts, ownerContextIds, priority: 1,

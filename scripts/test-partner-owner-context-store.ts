@@ -374,7 +374,12 @@ async function main() {
     // F2.8–F2.10 adds exactly three: the finance server binding (READS the active answers only), the finance answer
     // binding (server-only, requireOwner, the one finance append) and the pure finance answer core (draft + error type only).
     const FINANCE_CONTEXT_FILES = [path.join("lib", "partner", "finance", "server.ts"), path.join("lib", "partner", "finance", "answer-service.ts"), path.join("lib", "partner", "finance", "answer.ts")];
-    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files + the F2.8 finance answer files", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f) && !FINANCE_CONTEXT_FILES.includes(f)), []);
+    // F2.23 adds exactly one: the server-only Organizational Memory binding, which READS the full history
+    // (listOwnerContexts) and never appends.
+    const MEMORY_READER = path.join("lib", "partner", "memory", "server.ts");
+    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files + the F2.8 finance answer files + the read-only Memory V1 binding", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f) && !FINANCE_CONTEXT_FILES.includes(f) && f !== MEMORY_READER), []);
+    const memSrv = fs.readFileSync(path.join(ROOT, MEMORY_READER), "utf8");
+    ok("F2.23: the Memory binding imports ONLY listOwnerContexts from the store (never appendOwnerContext)", /^import \{ listOwnerContexts \} from "\.\.\/investigation\/context-store";$/m.test(memSrv) && !/appendOwnerContext|context-persistence/.test(memSrv));
     const finSrv = fs.readFileSync(path.join(ROOT, FINANCE_CONTEXT_FILES[0]), "utf8");
     ok("30. F2.8: the finance server binding only READS Owner Context (resolveCurrentOwnerContexts — no append)", /^import "server-only";/m.test(finSrv) && /^import \{ resolveCurrentOwnerContexts \} from "\.\.\/investigation\/context-store";$/m.test(finSrv) && !/appendOwnerContext|context-persistence|\.insert\(|\.update\(|\.upsert\(/.test(finSrv));
     const finSvc = fs.readFileSync(path.join(ROOT, FINANCE_CONTEXT_FILES[1]), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");

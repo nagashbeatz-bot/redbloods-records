@@ -36,11 +36,10 @@ export async function POST(req: NextRequest) {
     };
 
     const { supabase } = await import("@/lib/supabase");
-    const { salaryLinkedId, salaryDueDate, salaryMonthLabel } = await import("@/lib/vendor-store");
+    const { salaryLinkedId, salaryDueDate, salaryTransactionDescription } = await import("@/lib/vendor-store");
 
     const linkedId   = salaryLinkedId(workMonth);
     const dueDate    = salaryDueDate(workMonth);
-    const monthLabel = salaryMonthLabel(workMonth);
 
     // Guard: no duplicate
     const { data: existing } = await supabase
@@ -79,7 +78,7 @@ export async function POST(req: NextRequest) {
         type:              "expense",
         project_id:        null,
         artist:            "Victor",
-        description:       `משכורת Victor — ${monthLabel}`,
+        description:       salaryTransactionDescription(workMonth),
         amount:            amount,
         currency:          currency,
         payment_status:    historicPaid ? "שולם" : "לא שולם",

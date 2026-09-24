@@ -4,6 +4,7 @@
  */
 import "server-only";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_CURRENCY, isExpenseFullyPaidStatus, isReceivedStatus, normalizeCurrency } from "@/lib/finance";
 import { listProjects } from "@/lib/projects-store";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { GeneratedReport } from "./types";
@@ -51,8 +52,8 @@ interface WeeklyData {
   openIssues: string[];
 }
 
-// "חלקי" is intentionally NOT here — partial is treated as not-yet-received.
-const PAID_STATUSES = new Set(["שולם", "התקבל"]);
+// Finance contract: income received = שולם|התקבל; expense paid = שולם only; "חלקי" is never paid.
+// The weekly numbers are presented in ₪ — other currencies are never added into them.
 
 export async function fetchWeeklyData(): Promise<WeeklyData> {
   const now      = new Date();
@@ -124,17 +125,18 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
     .gte("created_at", `${wsStr}T00:00:00`)
     .lte("created_at", `${weStr}T23:59:59`);
 
-  const revenueThisWeek  = (txns ?? []).filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
-  const expensesThisWeek = (txns ?? []).filter((t) => t.type === "הוצאה").reduce((s, t) => s + (t.amount ?? 0), 0);
+  const ils = (t: { currency?: string | null }) => normalizeCurrency(t.currency) === DEFAULT_CURRENCY;
+  const revenueThisWeek  = (txns ?? []).filter((t) => t.type === "income" && isReceivedStatus(t.payment_status) && ils(t)).reduce((s, t) => s + (t.amount ?? 0), 0);
+  const expensesThisWeek = (txns ?? []).filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && ils(t)).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   // Pending total (all time) — excludes cancelled ("בוטל"): it is neither
   // received nor expected income.
   const { data: pendingTxns } = await supabase
     .from("transactions")
-    .select("amount")
-    .neq("type", "הוצאה")
+    .select("amount, currency")
+    .eq("type", "income")
     .not("payment_status", "in", '("שולם","התקבל","בוטל")');
-  const pendingTotal = (pendingTxns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
+  const pendingTotal = (pendingTxns ?? []).filter(ils).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   // Victor
   let victorStuck      = 0;

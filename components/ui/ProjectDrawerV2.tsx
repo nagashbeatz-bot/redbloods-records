@@ -14,7 +14,7 @@ import {
   CLIP_PAYMENT_STATUSES, isClipIncome, isSongIncome,
   summarizeClipFinance, clipStatusColor,
 } from "@/lib/clip-finance";
-import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount } from "@/lib/finance";
+import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
@@ -873,7 +873,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     .filter(t => isSongIncome(t) && isCancelledPayment(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   const totalExp    = txParts.same
-    .filter(t => t.type === "expense" && t.payment_status === "שולם")
+    .filter(t => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   // Finance-exception projects (no charge / favor) carry no receivable balance.
   // ACTUAL PAYMENT POSITION — displayed everywhere below; never nets out cancelled

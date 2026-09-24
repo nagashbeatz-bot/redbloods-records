@@ -51,6 +51,7 @@ async function main() {
     partner_owner_context: await table("partner_owner_context", "id"),
     partner_feedback: await table("partner_feedback", "id"),
     baseline: await table("settings", "key", ["key", "partner_%"]),
+    victor_settings: await table("settings", "key", ["key", "vendor_victor%"]),
   };
   const { getFinanceBrief } = await import("../lib/partner/finance/server");
   const r = await getFinanceBrief();

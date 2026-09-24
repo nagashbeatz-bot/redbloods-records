@@ -7,9 +7,9 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
-import { isCancelledPayment, actualBalanceAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
+import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import { PROJECT_TYPES } from "@/lib/types";
 
@@ -29,13 +29,17 @@ interface Session {
   start_time: string | null; end_time: string | null;
   status: string; session_type: string; notes: string;
 }
-interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; }
+interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; financeException?: boolean; }
 interface DeliveryRecord {
   projectId: string; deliveryLink: string; deliveryStatus: string; deliveredAt: string | null;
 }
 interface ProjectFinance {
   projectId: string; name: string; status: string;
-  agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; cancelledIncome: number; totalExpenses: number;
+  agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; cancelledIncome: number;
+  /** PAID expenses only (Finance contract: expense fully paid = "שולם") — the realized cost behind "רווח". */
+  totalExpenses: number;
+  /** No-charge / favor project: it never owes a balance. */
+  financeException: boolean;
   // R5: money in a currency OTHER than the project's finance currency. It is never added into
   // totalPaid / totalExpected / totalExpenses (which are in `currency`), only kept aside.
   otherPaid: CurrencyTotals; otherExpected: CurrencyTotals; otherExpenses: CurrencyTotals;
@@ -157,7 +161,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
       const finMap = new Map<string, ProjectFinance>();
       for (const p of clientProjects) {
-        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0, otherPaid: {}, otherExpected: {}, otherExpenses: {} });
+        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0, financeException: false, otherPaid: {}, otherExpected: {}, otherExpenses: {} });
       }
       // Settings first: the project's finance currency must be known before its transactions are
       // classified (R5). Only projects that belong to this client are looked up — never a scan of
@@ -167,6 +171,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
         const fin = finMap.get(s.project_id)!;
         fin.agreedPrice = s.agreedPrice ?? 0;
         fin.currency    = normalizeCurrency(s.currency);
+        fin.financeException = !!s.financeException;
       }
       for (const t of allTx) {
         if (!projectIds.has(t.project_id)) continue;
@@ -177,7 +182,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           if (["שולם","התקבל"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalPaid += t.amount; else addToTotals(fin.otherPaid, t.currency, t.amount); }
           else if (isCancelledPayment(t.payment_status)) { if (inProjectCurrency) fin.cancelledIncome += t.amount; }
           else if (["צפוי","חלקי"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalExpected += t.amount; else addToTotals(fin.otherExpected, t.currency, t.amount); }
-        } else if (t.type === "expense") { if (inProjectCurrency) fin.totalExpenses += t.amount; else addToTotals(fin.otherExpenses, t.currency, t.amount); }
+        } else if (t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)) { if (inProjectCurrency) fin.totalExpenses += t.amount; else addToTotals(fin.otherExpenses, t.currency, t.amount); }
       }
 
       setProjects(clientProjects);
@@ -315,13 +320,16 @@ function ModalContent({
   // Client totals, PER CURRENCY — currencies are never added together (no FX). The headline is ₪
   // when any project is in ₪ (else the first project's currency, exactly as before); every other
   // currency is shown on its own line under it.
-  type CurAgg = { agreed: number; paid: number; expected: number; expenses: number };
+  type CurAgg = { agreed: number; paid: number; expected: number; expenses: number; outstanding: number };
   const aggByCur: Record<string, CurAgg> = {};
   const bump = (cur: string, k: keyof CurAgg, v: number) => {
-    (aggByCur[cur] ??= { agreed: 0, paid: 0, expected: 0, expenses: 0 })[k] += v;
+    (aggByCur[cur] ??= { agreed: 0, paid: 0, expected: 0, expenses: 0, outstanding: 0 })[k] += v;
   };
   for (const f of finances) {
     bump(f.currency, "agreed", f.agreedPrice);
+    // "יתרה": what is still owed, summed per project — an overpaid project never offsets another's debt,
+    // and a finance-exception (no-charge) project never owes anything.
+    bump(f.currency, "outstanding", f.financeException ? 0 : actualOutstandingAgainstAgreedPrice(f.agreedPrice, f.totalPaid));
     bump(f.currency, "paid", f.totalPaid);
     bump(f.currency, "expected", f.totalExpected);
     bump(f.currency, "expenses", f.totalExpenses);
@@ -330,11 +338,11 @@ function ModalContent({
     for (const [c, v] of Object.entries(f.otherExpenses)) bump(c, "expenses", v);
   }
   const currency      = finances.some((f) => f.currency === DEFAULT_CURRENCY) ? DEFAULT_CURRENCY : (finances[0]?.currency ?? DEFAULT_CURRENCY);
-  const head          = aggByCur[currency] ?? { agreed: 0, paid: 0, expected: 0, expenses: 0 };
+  const head          = aggByCur[currency] ?? { agreed: 0, paid: 0, expected: 0, expenses: 0, outstanding: 0 };
   const totalAgreed   = head.agreed;
   const totalPaid     = head.paid;
   const totalExpected = head.expected;
-  const totalBalance  = totalAgreed - totalPaid;
+  const totalBalance  = head.outstanding;
   const totalExpenses = head.expenses;
   const otherCurs     = orderCurrencies(Object.keys(aggByCur).filter((c) => c !== currency));
   const nz = (n: number) => Math.round(n * 100) !== 0;
@@ -462,7 +470,7 @@ function ModalContent({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: totalExpected > 0 ? 10 : 0 }}>
                   <StatCard label="סוכם" value={fmtMoney(totalAgreed, currency)} color="#A855F7" extra={otherLines((a) => a.agreed)} />
                   <StatCard label="שולם" value={fmtMoney(totalPaid, currency)} color="#10B981" extra={otherLines((a) => a.paid)} />
-                  <StatCard label="יתרה" value={fmtMoney(totalBalance, currency)} color={totalBalance <= 0 ? "#10B981" : "#EF4444"} extra={otherLines((a) => a.agreed - a.paid, true).map((l) => ({ ...l, color: l.color === "#10B981" ? "#EF4444" : "#10B981" }))} />
+                  <StatCard label="יתרה" value={fmtMoney(totalBalance, currency)} color={totalBalance <= 0 ? "#10B981" : "#EF4444"} extra={otherLines((a) => a.outstanding).map((l) => ({ ...l, color: "#EF4444" }))} />
                   <StatCard label="רווח" value={fmtMoney(totalPaid - totalExpenses, currency)} color={(totalPaid - totalExpenses) >= 0 ? "#10B981" : "#EF4444"} extra={otherLines((a) => a.paid - a.expenses, true)} />
                 </div>
                 {(totalExpected > 0 || otherLines((a) => a.expected).length > 0) && (

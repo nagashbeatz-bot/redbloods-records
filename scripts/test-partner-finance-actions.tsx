@@ -115,7 +115,7 @@ async function main() {
     const v1 = view(RAW0, [paid]);
     const dq = v1.integrity.top.questions.find((q) => q.questionType === "FINANCE_PAYMENT_DATE")!;
     const ready = view(RAW0, [paid, asAnswer(dq, "EXACT_DATE", "2026-09-12")]).actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!;
-    check("17. READY_TO_PROPOSE with every mutation-relevant fact", [ready.readiness, ready.facts], ["READY_TO_PROPOSE", { amount: 550, currency: "$", date: "2026-09-12", paymentStatus: "שולם", type: "expense", description: "משכורת Victor 2026-08", projectId: null, linkedSessionId: "victor_salary_2026-08" }]);
+    check("17. READY_TO_PROPOSE with every mutation-relevant fact", [ready.readiness, ready.facts], ["READY_TO_PROPOSE", { amount: 550, currency: "$", date: "2026-09-12", paymentStatus: "שולם", type: "expense", description: "משכורת Victor — אוגוסט 2026", category: "צוות", scope: "general", artist: "Victor", projectId: null, linkedSessionId: "victor_salary_2026-08" }]);
     check("18. NEEDS_EXACT_DATE (payment date unknown)", v1.actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!.readiness, "NEEDS_EXACT_DATE");
     const noAmt = clone(RAW0); noAmt.victorSalary![0].amount = 0;
     const qv0 = view(noAmt).integrity.top.questions.find((q) => q.questionType === "FINANCE_RECURRING_PAYMENT_STATUS")!;

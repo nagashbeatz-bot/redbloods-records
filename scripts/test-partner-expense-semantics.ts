@@ -119,7 +119,8 @@ console.log("Static boundaries");
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
   ok("compare.ts gates receivedSemantic on income in BOTH snapshots", /if \(p\.type !== "income" \|\| c\.type !== "income"\) continue;/.test(rd("lib/partner/changes/compare.ts")));
   ok("changeDerived.ts gates MONEY_RECEIVED on a confirmed income transaction", /if \(txTypeById\.get\(c\.entityId\) !== "income"\) continue;/.test(rd("lib/partner/cases/detectors/changeDerived.ts")));
-  ok("Finance Brain never applies isReceivedStatus to expenses", /const received = row\.type === "income" \? isReceivedStatus\(row\.status\) : row\.status === EXPENSE_PAID_STATUS;/.test(rd("lib/partner/finance/core.ts")));
+  // F2.19: the expense side now uses the canonical shared helper (lib/finance/classify isExpenseFullyPaidStatus = "שולם" only).
+  ok("Finance Brain never applies isReceivedStatus to expenses", /const received = row\.type === "income" \? isReceivedStatus\(row\.status\) : isExpenseFullyPaidStatus\(row\.status\);/.test(rd("lib/partner/finance/core.ts")) && /export function isExpenseFullyPaidStatus\(status: string \| null \| undefined\): boolean \{\s*return status === EXPENSE_FULLY_PAID_STATUS;/.test(rd("lib/finance/classify.ts")) && /export const EXPENSE_FULLY_PAID_STATUS = "שולם";/.test(rd("lib/finance/classify.ts")));
   ok("lib/finance/classify.ts isReceivedStatus untouched (still שולם|התקבל via CLIP_PAID_STATUSES)", /export const RECEIVED_STATUSES: readonly string\[\] = CLIP_PAID_STATUSES;/.test(rd("lib/finance/classify.ts")) && /CLIP_PAID_STATUSES = \["שולם", "התקבל"\] as const;/.test(rd("lib/clip-finance.ts")));
   ok("no writes in the changed modules", ["lib/partner/changes/compare.ts", "lib/partner/cases/detectors/changeDerived.ts", "lib/partner/finance/core.ts"].every((f) => !/\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(|lib\/supabase/.test(strip(rd(f)))));
 }

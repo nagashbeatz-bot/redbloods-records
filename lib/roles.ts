@@ -50,6 +50,10 @@ export function isVictorAllowedPath(pathname: string): boolean {
   // Salary is owner-only even though it lives under the victor API prefix.
   if (pathname.startsWith("/api/vendor/victor/salary")) return false;
 
+  // Compensation settings (monthly salary / currency / payment status) are owner-only too:
+  // they feed Finance and Partner. requireOwner enforces it in-route as the second layer.
+  if (pathname === "/api/vendor/victor/settings" || pathname.startsWith("/api/vendor/victor/settings/")) return false;
+
   // The manual "send work to Victor" push is owner-only, even though it lives
   // under the victor API prefix (requireOwner enforces it in-route too).
   if (pathname.startsWith("/api/vendor/victor/notify-work")) return false;

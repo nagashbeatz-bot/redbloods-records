@@ -5,6 +5,8 @@
 
 import type { ReportData, GeneratedReport, ReportProject, ReportCalendarEvent, ReportSession, ReportTransaction, ReportActivityItem } from "./types";
 import { isCancelledPayment } from "@/lib/payment-status";
+import { isReceivedStatus } from "@/lib/finance/classify";
+import { normalizeCurrency, orderCurrencies, sumByCurrency } from "@/lib/finance/currency";
 
 // ─── Hebrew date utils ────────────────────────────────────────────────────────
 
@@ -388,19 +390,21 @@ function todayMainCard(data: ReportData): string {
       });
     }
 
-    // Finance totals if multiple items
-    const totalIn      = data.txReceivedToday.reduce((s, t) => s + t.amount, 0);
-    const totalPending = data.txPendingAddedToday.reduce((s, t) => s + t.amount, 0);
-    const totalExpPaid = txExpensesPaid.reduce((s, t) => s + t.amount, 0);
-    const totalExpPend = txExpensesPending.reduce((s, t) => s + t.amount, 0);
-    const cur = (data.txReceivedToday[0] ?? data.txPendingAddedToday[0] ?? txExpensesPaid[0] ?? txExpensesPending[0])?.currency ?? "₪";
+    // Finance totals if multiple items — per currency, never mixed (Finance contract)
+    const byCur = (rows: ReportTransaction[]) => sumByCurrency(rows.map((t) => ({ ...t, currency: normalizeCurrency(t.currency) })), (t) => t.amount);
+    const totalsIn      = byCur(data.txReceivedToday);
+    const totalsPending = byCur(data.txPendingAddedToday);
+    const totalsExpPaid = byCur(txExpensesPaid);
+    const totalsExpPend = byCur(txExpensesPending);
     const txCount = data.txReceivedToday.length + data.txPendingAddedToday.length + txExpensesPaid.length + txExpensesPending.length;
     if (txCount > 1) {
+      const spans = (totals: Record<string, number>, color: string, sign: "+" | "-" | "", label: string) =>
+        orderCurrencies(Object.keys(totals)).filter((c) => totals[c] > 0).map((c) => `<span style="color:${color};">${fmtMoney(totals[c], c, sign)} ${label}</span>`).join("");
       inner += `<div style="display:flex;gap:16px;padding:6px 0;font-size:12px;flex-wrap:wrap;">`;
-      if (totalIn > 0)      inner += `<span style="color:#10B981;">${fmtMoney(totalIn, cur, "+")} התקבל</span>`;
-      if (totalPending > 0) inner += `<span style="color:#F59E0B;">${fmtMoney(totalPending, cur)} צפוי לגבייה</span>`;
-      if (totalExpPaid > 0) inner += `<span style="color:#EF4444;">${fmtMoney(totalExpPaid, cur, "-")} שולם</span>`;
-      if (totalExpPend > 0) inner += `<span style="color:#F59E0B;">${fmtMoney(totalExpPend, cur)} לתשלום</span>`;
+      inner += spans(totalsIn, "#10B981", "+", "התקבל");
+      inner += spans(totalsPending, "#F59E0B", "", "צפוי לגבייה");
+      inner += spans(totalsExpPaid, "#EF4444", "-", "שולם");
+      inner += spans(totalsExpPend, "#F59E0B", "", "לתשלום");
       inner += `</div>`;
     }
   }
@@ -493,9 +497,10 @@ function openItemsCard(data: ReportData): string {
     ...(data.txExpensesPaidToday ?? []),
     ...(data.txExpensesPendingToday ?? []),
   ].map((t) => t.id));
-  const PAID = new Set(["שולם","שולמה","התקבל","שולם חלקית"]);
+  // "תשלומים צפויים שלא התקבלו" = expected INCOME not yet received (expenses are never "received").
+  const isExpenseRow = (t: ReportTransaction) => t.type === "expense" || t.type === "הוצאה"; // legacy Hebrew tolerance
   const unpaidExpectedToday = data.txExpectedToday.filter(
-    (t) => !createdTodayIds.has(t.id) && !PAID.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
+    (t) => !createdTodayIds.has(t.id) && !isExpenseRow(t) && !isReceivedStatus(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
 
   // Open deadlines today

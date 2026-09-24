@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { Project } from "@/lib/types";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 import AlbumPrevInfoBlock from "./AlbumPrevInfoBlock";
+import { isSongIncome } from "@/lib/clip-finance";
+import { isExpenseFullyPaidStatus, isReceivedStatus, sameCurrency } from "@/lib/finance";
 
 // Scoped ONLY to Maor Ahron's EP for now (not a global feature — see task scope).
 // The "מידע קודם" block appears only for this project id.
@@ -19,6 +21,8 @@ interface Transaction {
   date: string;
   payment_status: string;
   category?: string;
+  expense_scope?: string | null;
+  currency?: string | null;
 }
 
 interface TxData {
@@ -100,16 +104,19 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
   const transactions = txData?.transactions ?? [];
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
+  // Finance contract: against the album (song) deal only song income counts (clip income is its own deal),
+  // only in the project currency (never mixed); the "הוצאות" card is money actually paid (שולם only).
+  const inCur = (t: Transaction) => sameCurrency(t.currency, currency);
   const received = transactions
-    .filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status))
+    .filter((t) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inCur(t))
     .reduce((s, t) => s + t.amount, 0);
 
   const expected = transactions
-    .filter((t) => t.type === "income" && t.payment_status === "צפוי")
+    .filter((t) => isSongIncome(t) && t.payment_status === "צפוי" && inCur(t))
     .reduce((s, t) => s + t.amount, 0);
 
   const expenses = transactions
-    .filter((t) => t.type === "expense")
+    .filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && inCur(t))
     .reduce((s, t) => s + t.amount, 0);
 
   const balance = agreedPrice - received;

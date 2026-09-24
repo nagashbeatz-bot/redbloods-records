@@ -34,24 +34,24 @@ const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join("/");
 const countBy = (re: RegExp) => Object.fromEntries(SOURCES.map((f) => [rel(f), (fs.readFileSync(f, "utf8").match(re) ?? []).length] as const).filter(([, n]) => n > 0).sort(([a], [b]) => a.localeCompare(b)));
 
 // ── KNOWN divergences (F2.16 audit, 2026-09-24) — awaiting Owner approval; never "fixed" by this suite ──
-/** BUG-A: DB `type` compared to the Hebrew UI label "הוצאה"/"הכנסה" (writers store "expense"/"income"). */
+/**
+ * BUG-A: DB `type` compared to the Hebrew UI label "הוצאה"/"הכנסה" (writers store "expense"/"income").
+ * F2.19 FIXED: agent/snapshot, agent/goals, agent/context-builder, reports/weekly. What remains is pinned:
+ */
 const KNOWN_LOCALIZED_TYPE_COMPARISONS: Record<string, number> = {
   "components/ui/StatusDropdown.tsx": 1,   // LEGACY: accepts both ("income" || "הכנסה") — harmless
-  "lib/agent/context-builder.ts": 14,      // REAL (kill-switched: /api/ai/chat)
-  "lib/agent/goals.ts": 1,                 // REAL (live via /api/agent/snapshot)
-  "lib/agent/rules.ts": 2,                 // REAL (kill-switched: agent/check rules)
-  "lib/agent/snapshot.ts": 3,              // REAL (live: /api/agent/snapshot)
-  "lib/reports/data.ts": 1,                // LEGACY: accepts both ("הוצאה" || "expense") — harmless
-  "lib/reports/weekly.ts": 3,              // REAL (manual /api/reports/weekly only)
+  "lib/agent/rules.ts": 2,                 // NOT CHANGED: agent ALERT generation (kill-switched) — alert lifecycle is out of scope
+  "lib/reports/data.ts": 1,                // LEGACY: isExpenseType accepts both ("הוצאה" || "expense") — harmless
+  "lib/reports/templates.ts": 1,           // LEGACY: isExpenseRow tolerance ("expense" || "הוצאה") — harmless
 };
-/** BUG-B: "שולם חלקית" (a status that does not exist) listed as PAID. */
+/**
+ * BUG-B: "שולם חלקית" (a status that does not exist) listed as PAID.
+ * F2.19 FIXED: agent/goals, reports/data, reports/templates. What remains is pinned:
+ */
 const KNOWN_PARTIAL_AS_PAID: Record<string, number> = {
-  "app/api/agent/check/route.ts": 1,
-  "lib/agent/goals.ts": 1,
-  "lib/agent/rules.ts": 1,
+  "app/api/agent/check/route.ts": 1,       // NOT CHANGED: agent ALERT pipeline (kill-switched) — alert lifecycle is out of scope
+  "lib/agent/rules.ts": 1,                 // NOT CHANGED: agent ALERT generation (kill-switched)
   "lib/finance/classify.ts": 1,            // documentation comment only (classify gives it NO special behaviour)
-  "lib/reports/data.ts": 1,
-  "lib/reports/templates.ts": 1,
 };
 
 function main() {

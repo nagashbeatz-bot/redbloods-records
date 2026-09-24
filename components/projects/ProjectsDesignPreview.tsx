@@ -15,7 +15,7 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency } from "@/lib/finance";
+import { sameCurrency, normalizeCurrency, addToTotals, otherCurrencyLines, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
 import { sortProjectsForList } from "@/lib/projects-sort";
@@ -461,9 +461,14 @@ export default function ProjectsDesignPreview() {
     const active = projects.filter(p => !p.isHidden);
     const statusById = new Map(active.map(p => [p.id, p.status]));
     // COLLECTION INTENT — "still expected to collect". See lib/payment-status.ts module doc.
-    const totalExpected = Object.entries(financeSummary)
-      .filter(([id, f]) => statusById.has(id) && !f.financeException)
-      .reduce((s, [id, f]) => s + collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)), 0);
+    // Per currency — never added together (Finance contract). The KPI headline is ₪; others are listed apart.
+    const expectedByCurrency: CurrencyTotals = {};
+    for (const [id, f] of Object.entries(financeSummary)) {
+      if (!statusById.has(id) || f.financeException) continue;
+      addToTotals(expectedByCurrency, normalizeCurrency(f.currency), collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)));
+    }
+    const totalExpected = expectedByCurrency[DEFAULT_CURRENCY] ?? 0;
+    const expectedOtherLines = otherCurrencyLines(expectedByCurrency, DEFAULT_CURRENCY);
     const now = new Date();
     return {
       // "סה״כ פרויקטים" counts what is still ON THE TABLE — every visible project
@@ -483,6 +488,7 @@ export default function ProjectsDesignPreview() {
       }).length,
       overdue:  active.filter(p => p.isOverdue && p.status !== "הושלם").length,
       expected: totalExpected,
+      expectedOtherLines,
     };
   }, [projects, financeSummary]);
 
@@ -600,7 +606,7 @@ export default function ProjectsDesignPreview() {
           <KpiCard label="במיקס"          value={String(kpi.inMix)}          color="#A855F7" icon="🎚️" sub="אצל הסאונד" />
           <KpiCard label="באיחור"          value={String(kpi.overdue)}        color={kpi.overdue > 0 ? "#EF4444" : MUTED} icon="⚠️" sub="דורש טיפול" />
           <KpiCard label="הושלמו החודש"   value={String(kpi.completedMonth)} color="#10B981" icon="✅" sub="הצלחה בהצלחה" />
-          <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub="לגבייה"
+          <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub={kpi.expectedOtherLines.length ? `לגבייה · ${kpi.expectedOtherLines.join(" · ")}` : "לגבייה"}
             onMouseEnter={(e) => handleKpiEnter(expectedBreakdown, e)}
             onMouseLeave={handleKpiLeave}
           />

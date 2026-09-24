@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
+import { validateVictorPaymentPatch, validateVictorSettingsPatch } from "@/lib/victor-settings-input";
 
 /**
+ * OWNER-ONLY (F2.19–F2.23 security) — Victor's compensation configuration.
  * GET   /api/vendor/victor/settings         — get Victor settings
- * PATCH /api/vendor/victor/settings         — update Victor settings
+ * PATCH /api/vendor/victor/settings         — update Victor settings (strict keys, validated)
  *
  * Payment sub-resource:
- * PATCH /api/vendor/victor/settings?payment=YYYY-MM  — mark payment status
+ * PATCH /api/vendor/victor/settings?payment=YYYY-MM  — mark payment status (strict, validated)
+ *
+ * Salary amount / currency feed the Owner's "send to finance" transaction and Partner finance
+ * readiness, so Victor must never read-modify them: requireOwner here, and the path is excluded
+ * from Victor's proxy allowlist (lib/roles.ts). Victor's own portal never calls this route.
  */
 
 export async function GET() {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { getVictorSettings } = await import("@/lib/vendor-store");
     const settings = await getVictorSettings();
@@ -20,21 +28,23 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { searchParams } = new URL(req.url);
     const paymentMonth = searchParams.get("payment");
-    const body = await req.json() as Record<string, unknown>;
+    let body: unknown;
+    try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 }); }
 
-    if (paymentMonth) {
+    if (searchParams.has("payment")) {
+      const v = validateVictorPaymentPatch(paymentMonth, body);
+      if (!v.ok) return NextResponse.json({ ok: false, errors: v.errors }, { status: 400 });
       const { setVictorPaymentStatus } = await import("@/lib/vendor-store");
-      await setVictorPaymentStatus(
-        paymentMonth,
-        (body.status as string) ?? "שולם",
-        body.paidDate as string | undefined
-      );
+      await setVictorPaymentStatus(v.value.month, v.value.status, v.value.paidDate);
     } else {
+      const v = validateVictorSettingsPatch(body);
+      if (!v.ok) return NextResponse.json({ ok: false, errors: v.errors }, { status: 400 });
       const { updateVictorSettings } = await import("@/lib/vendor-store");
-      await updateVictorSettings(body as Parameters<typeof updateVictorSettings>[0]);
+      await updateVictorSettings(v.value);
     }
 
     return NextResponse.json({ ok: true });

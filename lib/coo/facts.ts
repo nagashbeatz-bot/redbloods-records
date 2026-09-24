@@ -17,7 +17,7 @@ import type {
   ReleasesFact, ReleaseFact, AlertsFact, AlertFact, RawFinanceSetting, RawStevenWork,
 } from "./types";
 import { COO_TZ, addDays, daysSinceIso, diffDays, ilYmd, monthOf, parseYmd, prevMonth, weekdayHe } from "./dates";
-import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, isCancelledStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "../finance";
+import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, isExpenseFullyPaidStatus, isCancelledStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "../finance";
 import { isSongIncome } from "../clip-finance";
 import { actualBalanceAgainstAgreedPrice } from "../payment-status";
 import { totalsRich, richText } from "./rich";
@@ -281,7 +281,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
       const bucket = monthOf(d) === curMonth ? cm : monthOf(d) === prev ? pm : null;
       if (bucket) {
         if (t.type === "income" && isReceivedStatus(t.status)) addToTotals(bucket.receivedByCurrency, cur, t.amount);
-        if (t.type === "expense" && t.status === "שולם") addToTotals(bucket.paidExpensesByCurrency, cur, t.amount);
+        if (t.type === "expense" && isExpenseFullyPaidStatus(t.status)) addToTotals(bucket.paidExpensesByCurrency, cur, t.amount);
       }
       if (t.type === "income" && t.status === "צפוי" && diffDays(d, today) > 0) {
         expectedOverdue.push({ txId: t.id, projectId: t.projectId, amount: t.amount, currency: cur, dateYmd: d, daysOverdue: diffDays(d, today), category: t.category ?? "", clip: t.expenseScope === "קליפ" });

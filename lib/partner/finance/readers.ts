@@ -39,7 +39,7 @@ async function readAll(client: FinanceReadClient, table: string, columns: string
 const FINANCE_KEY = /^finance_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 export async function readFinanceRaw(client: FinanceReadClient, readSalary: () => Promise<SalaryMonthRow[]>): Promise<FinanceRaw> {
-  const [tx, projects, settings, works, shows, proposals, clients, labelArtists, ledger, media, rfPay] = await Promise.all([
+  const [tx, projects, settings, works, shows, proposals, clients, labelArtists, ledger, media, rfPay, legacyVictor] = await Promise.all([
     readAll(client, "transactions", "id,project_id,type,date,amount,currency,payment_status,category,scope,expense_scope,linked_session_id,created_at"),
     readAll(client, "projects", "id,name,status,is_hidden,project_business_type,artist,updated_at"),
     readAll(client, "settings", "key,value", ["key", "finance_%"]),
@@ -51,6 +51,7 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     readAll(client, "artist_balance_entries", "artist_id,entry_type,amount,source_tx_id"),
     readAll(client, "label_media_income", "label_artist_id,status,gross_amount"),
     readAll(client, "red_films_budget_payments", "id,amount,payment_date"),
+    readAll(client, "settings", "key,value", ["key", "vendor_victor_payment_%"]),
   ]);
   let victorSalary: SalaryMonthRow[] | null = null;
   try { victorSalary = await readSalary(); } catch { victorSalary = null; }
@@ -67,5 +68,10 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     mediaIncome: media.map((r) => ({ labelArtistId: s(r.label_artist_id), status: s(r.status), grossAmount: r.gross_amount })),
     redFilmsPayments: rfPay.map((r) => ({ id: String(r.id), amount: r.amount, paymentDate: s(r.payment_date) })),
     victorSalary,
+    victorLegacyPayments: legacyVictor.flatMap((r) => {
+      const m = /^vendor_victor_payment_(\d{4})_(\d{2})$/.exec(String(r.key));
+      const v = r.value && typeof r.value === "object" ? (r.value as Record<string, unknown>) : {};
+      return m ? [{ month: `${m[1]}-${m[2]}`, status: s(v.status), paidDate: s(v.paidDate) }] : [];
+    }),
   };
 }

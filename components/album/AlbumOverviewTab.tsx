@@ -5,6 +5,8 @@ import type { Project, AlbumTrack, AlbumTrackStatus, FileLink, ProjectStatus } f
 import { ALL_STATUSES } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import { isSongIncome } from "@/lib/clip-finance";
+import { isExpenseFullyPaidStatus, isReceivedStatus, sameCurrency } from "@/lib/finance";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 
 interface ProjectAction {
@@ -102,6 +104,8 @@ interface Transaction {
   date: string;
   payment_status: string;
   category?: string;
+  expense_scope?: string | null;
+  currency?: string | null;
   payment_method?: string;
   artist?: string;
 }
@@ -325,14 +329,17 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const transactions = txData?.transactions ?? [];
   const agreedPrice  = txData?.agreedPrice ?? 0;
   const currency     = txData?.currency ?? "₪";
-  const received     = transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const expected     = transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי").reduce((s, t) => s + t.amount, 0);
-  const expenses     = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  // Finance contract (same as AlbumFinanceTab): song income only, project currency only, paid expenses only.
+  const inCur        = (t: Transaction) => sameCurrency(t.currency, currency);
+  const isReceivedSong = (t: Transaction) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inCur(t);
+  const received     = transactions.filter(isReceivedSong).reduce((s, t) => s + t.amount, 0);
+  const expected     = transactions.filter((t) => isSongIncome(t) && t.payment_status === "צפוי" && inCur(t)).reduce((s, t) => s + t.amount, 0);
+  const expenses     = transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && inCur(t)).reduce((s, t) => s + t.amount, 0);
   const balance      = agreedPrice - received;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
   const MODAL_ROWS: Record<FilterKey, Transaction[]> = {
-    received: transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)),
+    received: transactions.filter(isReceivedSong),
     expected: transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי"),
     expenses: transactions.filter((t) => t.type === "expense"),
     balance:  transactions.filter((t) => t.type === "income" && !["שולם", "התקבל", "בוטל"].includes(t.payment_status)),

@@ -11,6 +11,8 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { segmentVictorWork } from "@/lib/victor-segments";
 import { fileRefOf } from "@/lib/victor-files";
+import { isExpenseFullyPaidStatus } from "@/lib/finance/classify";
+import { salaryDueDate, salaryLinkedId, salaryMonthLabel, salaryTransactionDescription } from "@/lib/victor-salary-format";
 import type {
   VendorWork,
   VendorSettings,
@@ -356,26 +358,8 @@ const SALARY_OVERRIDES_KEY = "vendor_victor_salary_overrides";
 // Internal, finance-independent salary status overrides (month → "צפוי" | "שולם" | …)
 const SALARY_STATUS_OVERRIDES_KEY = "vendor_victor_salary_status_overrides";
 
-const HE_MONTHS_SALARY = [
-  "ינואר","פברואר","מרץ","אפריל","מאי","יוני",
-  "יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר",
-];
+// Pure salary formatting lives in lib/victor-salary-format.ts (shared with Partner finance readiness).
 
-function salaryLinkedId(workMonth: string) {
-  return `victor_salary_${workMonth}`;
-}
-
-export function salaryDueDate(workMonth: string): string {
-  const [y, m] = workMonth.split("-").map(Number);
-  const dueYear = m === 12 ? y + 1 : y;
-  const dueMon  = m === 12 ? 1 : m + 1;
-  return `${dueYear}-${String(dueMon).padStart(2, "0")}-10`;
-}
-
-export function salaryMonthLabel(workMonth: string): string {
-  const [y, m] = workMonth.split("-").map(Number);
-  return `${HE_MONTHS_SALARY[m - 1]} ${y}`;
-}
 
 export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryMonth[]> {
   const settings = await getVictorSettings();
@@ -434,7 +418,8 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
       status = due <= today ? "לא שולם" : "צפוי";
     } else {
       const ps = tx.paymentStatus;
-      if (ps === "שולם" || ps === "התקבל") status = "שולם";
+      // Finance contract: an EXPENSE is fully paid ONLY when "שולם". "התקבל" is an income status → not "paid" here.
+      if (isExpenseFullyPaidStatus(ps)) status = "שולם";
       else if (ps === "חלקי")              status = "חלקי";
       else if (ps === "בוטל") {
         // Cancelled transaction — show status as if no transaction (based on dueDate)
@@ -489,7 +474,7 @@ export async function setSalaryStatusOverride(workMonth: string, status: string)
     );
 }
 
-export { salaryLinkedId };
+export { salaryLinkedId, salaryDueDate, salaryMonthLabel, salaryTransactionDescription };
 
 // ── Monthly stats ─────────────────────────────────────────────────────────────
 

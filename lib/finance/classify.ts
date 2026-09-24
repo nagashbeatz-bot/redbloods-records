@@ -29,6 +29,23 @@ export function isReceivedStatus(status: string | null | undefined): boolean {
   return RECEIVED.has(status ?? "");
 }
 
+/**
+ * INCOME received (שולם | התקבל). Same rule as isReceivedStatus, named for the income side so
+ * callers that classify both sides read unambiguously.
+ */
+export const isIncomeReceivedStatus = isReceivedStatus;
+
+/** The ONLY status that means an EXPENSE was fully paid (Owner-confirmed Finance contract). */
+export const EXPENSE_FULLY_PAID_STATUS = "שולם";
+
+/**
+ * EXPENSE fully paid: "שולם" ONLY. "חלקי" / "צפוי" / "לא שולם" / "בוטל" are not paid, and an
+ * expense marked "התקבל" (an income status) is invalid / ambiguous data — never a paid expense.
+ */
+export function isExpenseFullyPaidStatus(status: string | null | undefined): boolean {
+  return status === EXPENSE_FULLY_PAID_STATUS;
+}
+
 /** True when a payment_status is "בוטל" (re-exported so callers import one module). */
 export const isCancelledStatus = isCancelledPayment;
 export { CANCELLED_PAYMENT_STATUS };

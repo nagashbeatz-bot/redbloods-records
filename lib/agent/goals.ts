@@ -4,6 +4,7 @@
  */
 import "server-only";
 import { supabase } from "@/lib/supabase";
+import { normalizeCurrency } from "@/lib/finance/currency";
 import type { BusinessGoals, GoalsProgress } from "@/lib/types";
 
 const DEFAULT_GOALS: BusinessGoals = {
@@ -66,7 +67,9 @@ function expectedByNow(target: number): number {
   return Math.round(target * dom / daysInMonth);
 }
 
-const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
+// Finance contract: revenue = INCOME received (שולם | התקבל) in the goal's currency — never an expense,
+// never "partial", never another currency added into the goal.
+const INCOME_RECEIVED_STATUSES = ["שולם", "התקבל"];
 
 export async function getGoalsProgress(month: string): Promise<GoalsProgress> {
   const goals = await getGoals();
@@ -82,13 +85,14 @@ export async function getGoalsProgress(month: string): Promise<GoalsProgress> {
 
   const { data: incTxns } = await supabase
     .from("transactions")
-    .select("amount")
-    .neq("type", "הוצאה")
-    .in("payment_status", Array.from(PAID_STATUSES))
+    .select("amount, currency")
+    .eq("type", "income")
+    .in("payment_status", INCOME_RECEIVED_STATUSES)
     .gte("date", monthStart)
     .lt("date", nextMonth);
 
-  const revenueActual = (incTxns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
+  const goalCurrency  = normalizeCurrency(goals.monthlyRevenue.currency);
+  const revenueActual = (incTxns ?? []).filter((t) => normalizeCurrency(t.currency) === goalCurrency).reduce((s, t) => s + (t.amount ?? 0), 0);
   const revExpected   = expectedByNow(goals.monthlyRevenue.target);
 
   // ── Weekly sessions ───────────────────────────────────────────────────────

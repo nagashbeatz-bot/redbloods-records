@@ -18,7 +18,7 @@
  * recording discipline starts 2026-09-23; orphan price settings never count as money.
  */
 import { addDays, diffDays, ilYmd, parseYmd } from "../../coo/dates";
-import { isCancelledStatus, isReceivedStatus } from "../../finance/classify";
+import { EXPENSE_FULLY_PAID_STATUS, isCancelledStatus, isExpenseFullyPaidStatus, isReceivedStatus } from "../../finance/classify";
 import { normalizeCurrency } from "../../finance/currency";
 import { collectibleAmount, overpaymentAmount } from "../../payment-status";
 import { isClipIncome, isSongIncome, summarizeClipFinance } from "../../clip-finance";
@@ -69,8 +69,8 @@ export function monthWindow(now: Date): MonthWindow {
 
 /** `received` = income received (שולם|התקבל) OR expense fully paid (שולם only) — the canonical rule per type. */
 interface Tx { row: FinanceTxRow; amount: number; currency: string; type: "income" | "expense"; date: string | null; received: boolean; cancelled: boolean }
-/** Canonical expense-paid status (lib/finance/stats.ts, lib/coo/facts.ts). "התקבל" is an INCOME status only. */
-export const EXPENSE_PAID_STATUS = "שולם";
+/** Canonical expense-paid status — re-exported from lib/finance/classify (single source). "התקבל" is an INCOME status only. */
+export const EXPENSE_PAID_STATUS = EXPENSE_FULLY_PAID_STATUS;
 /** An expense carrying an income-only status is invalid finance data (never counted anywhere). */
 export const isInvalidExpenseStatus = (type: string | null, status: string | null) => type === "expense" && status === "התקבל";
 /** Exported for the integrity layer: the SAME validation / canonical received-or-paid rule (no second copy). */
@@ -83,7 +83,7 @@ export function validateTx(row: FinanceTxRow): Tx | null {
   const date = row.date ? parseYmd(String(row.date).slice(0, 10)) : null;
   if (row.date && !date) return null;
   if (isInvalidExpenseStatus(row.type, row.status)) return null;
-  const received = row.type === "income" ? isReceivedStatus(row.status) : row.status === EXPENSE_PAID_STATUS;
+  const received = row.type === "income" ? isReceivedStatus(row.status) : isExpenseFullyPaidStatus(row.status);
   return { row, amount, currency: normalizeCurrency(row.currency), type: row.type, date, received, cancelled: isCancelledStatus(row.status) };
 }
 

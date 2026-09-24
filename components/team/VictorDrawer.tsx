@@ -573,7 +573,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const saveSettings = async () => {
     setSaving(true); setSaveMsg("");
     try {
-      await fetch("/api/vendor/victor/settings", {
+      const res = await fetch("/api/vendor/victor/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -584,6 +584,8 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
           stuckAfterDays: Number(stuckDays),
         }),
       });
+      // Owner-only route with strict validation: only claim "saved" when the server accepted it.
+      if (!res.ok) { setSaveMsg("לא נשמר — ערך לא תקין"); return; }
       setSaveMsg("נשמר ✓");
       onStatsRefresh();
     } finally { setSaving(false); }

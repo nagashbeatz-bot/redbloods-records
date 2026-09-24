@@ -10,7 +10,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency } from "@/lib/finance";
+import { sameCurrency, normalizeCurrency, addToTotals, otherCurrencyLines, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
@@ -877,12 +877,15 @@ export default function DashboardDesignPreview() {
         const agreed    = financeSummary[p.id]?.agreed    ?? 0;
         const paid      = financeSummary[p.id]?.paid      ?? 0;
         const cancelled = financeSummary[p.id]?.cancelled ?? 0;
-        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: collectibleAmount(agreed, paid, cancelled, p.status) };
+        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: collectibleAmount(agreed, paid, cancelled, p.status), currency: normalizeCurrency(financeSummary[p.id]?.currency) };
       })
       .filter(p => p.remaining > 0)
       .sort((a, b) => b.remaining - a.remaining);
-    const total = items.reduce((s, p) => s + p.remaining, 0);
-    return { total, items };
+    // Per currency — never added together (Finance contract). The KPI headline is ₪; others are listed apart.
+    const byCurrency: CurrencyTotals = {};
+    for (const p of items) addToTotals(byCurrency, p.currency, p.remaining);
+    const total = byCurrency[DEFAULT_CURRENCY] ?? 0;
+    return { total, items, otherLines: otherCurrencyLines(byCurrency, DEFAULT_CURRENCY) };
   }, [projects, financeSummary]);
 
   // Drive the cached "תשלומים צפויים" signal: project balances + shows' expected income.
@@ -899,7 +902,7 @@ export default function DashboardDesignPreview() {
     { label: "דחופים",          count: loading ? 0 : overdueProjects.length,   sub: "דורש טיפול",                                                  color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
     { label: "סשנים קרובים",    count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...",                color: "#8B5CF6", iconBg: "rgba(139,92,246,0.15)",  icon: "🎙" },
     { label: "הופעות קרובות",   count: upcomingShows ?? 0,                      sub: upcomingShows !== null ? "עתידיות" : "...",                    color: "#06B6D4", iconBg: "rgba(6,182,212,0.15)",   icon: "🎤" },
-    { label: "תשלומים צפויים",  count: pendingPayments !== null ? `₪${pendingPayments.toLocaleString()}` : "…", sub: pendingPayments !== null ? "יתרה לגבייה" : "...",     color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
+    { label: "תשלומים צפויים",  count: pendingPayments !== null ? `₪${pendingPayments.toLocaleString()}` : "…", sub: pendingPayments !== null ? (expectedIncome.otherLines.length ? `יתרה לגבייה · ${expectedIncome.otherLines.join(" · ")}` : "יתרה לגבייה") : "...",     color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
     { label: "הצעות פתוחות",    count: openProposals ?? 0,                      sub: openProposals !== null ? "ממתינות לאישור" : "...",             color: "#F97316", iconBg: "rgba(249,115,22,0.15)",  icon: "📋" },
     { label: "קמפיינים פעילים", count: activeCampaigns ?? 0,                    sub: activeCampaigns !== null ? "בהרצה" : "...",                    color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "🎯" },
   ];

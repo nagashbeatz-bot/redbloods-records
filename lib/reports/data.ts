@@ -7,6 +7,7 @@ import { listProjects } from "@/lib/projects-store";
 import { supabase } from "@/lib/supabase";
 import { daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment } from "@/lib/payment-status";
+import { isExpenseFullyPaidStatus, isReceivedStatus } from "@/lib/finance/classify";
 import type {
   ReportData,
   ReportProject,
@@ -211,20 +212,19 @@ export async function fetchReportData(): Promise<ReportData> {
 
   const txCreatedToday = (rawTxCreatedToday ?? []).map(txFromRow);
 
-  const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
-
-  // Use isExpenseType() to handle both Hebrew ("הוצאה") and English ("expense") type values
+  // Finance contract: income received = שולם|התקבל; expense paid = שולם ONLY ("התקבל" on an expense is
+  // invalid data, "חלקי" is not paid). isExpenseType() keeps the legacy Hebrew/English type tolerance.
   const txReceivedToday        = txCreatedToday.filter(
-    (t) => !isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
+    (t) => !isExpenseType(t.type) && isReceivedStatus(t.paymentStatus)
   );
   const txPendingAddedToday    = txCreatedToday.filter(
-    (t) => !isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
+    (t) => !isExpenseType(t.type) && !isReceivedStatus(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
   const txExpensesPaidToday    = txCreatedToday.filter(
-    (t) => isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
+    (t) => isExpenseType(t.type) && isExpenseFullyPaidStatus(t.paymentStatus)
   );
   const txExpensesPendingToday = txCreatedToday.filter(
-    (t) => isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
+    (t) => isExpenseType(t.type) && !isExpenseFullyPaidStatus(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
 
   // ── Transactions expected today (by payment date) ─────────────────────────

@@ -50,7 +50,14 @@ export interface FinanceRaw {
   redFilmsPayments: RedFilmsPaymentRow[];
   /** null = the canonical salary read failed (recurring coverage becomes MISSING, never guessed). */
   victorSalary: SalaryMonthRow[] | null;
+  /**
+   * F2.19 (Memory V1, read-only): the LEGACY per-month Victor payment store (settings vendor_victor_payment_YYYY_MM).
+   * Evidence only — never money; lower precedence than the salary status the canonical reader resolves.
+   * Optional: absent in fixtures / older callers.
+   */
+  victorLegacyPayments?: VictorLegacyPaymentRow[];
 }
+export interface VictorLegacyPaymentRow { month: string; status: string | null; paidDate: string | null }
 
 // ── derived state ──
 

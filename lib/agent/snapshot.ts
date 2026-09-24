@@ -8,9 +8,7 @@ import { listProjects } from "@/lib/projects-store";
 import { getAlerts } from "./alerts-store";
 import { getGoalsProgress } from "./goals";
 import { isCancelledPayment } from "@/lib/payment-status";
-
-// "חלקי" is intentionally NOT here — partial is treated as not-yet-received.
-const PAID_STATUSES = new Set(["שולם", "התקבל"]);
+import { DEFAULT_CURRENCY, isExpenseFullyPaidStatus, isReceivedStatus, normalizeCurrency, sumByCurrency } from "@/lib/finance";
 
 export async function buildSnapshot() {
   const now   = new Date();
@@ -42,9 +40,17 @@ export async function buildSnapshot() {
     .gte("created_at", thirtyAgo.toISOString())
     .order("created_at", { ascending: false });
 
-  const revenueThisMonth  = (txns ?? []).filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status) && t.date?.startsWith(month)).reduce((s, t) => s + (t.amount ?? 0), 0);
-  const pendingRevenue    = (txns ?? []).filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
-  const expensesThisMonth = (txns ?? []).filter((t) => t.type === "הוצאה" && t.date?.startsWith(month)).reduce((s, t) => s + (t.amount ?? 0), 0);
+  // Finance contract: DB type is "income" / "expense"; income received = שולם|התקבל; expense paid = שולם only;
+  // currencies are never mixed — the ₪ headline stays ₪, other currencies are reported separately.
+  const tx = txns ?? [];
+  const byCur = (rows: typeof tx) => sumByCurrency(rows.map((t) => ({ ...t, currency: normalizeCurrency(t.currency) })), (t) => t.amount ?? 0);
+  const revenueByCurrency  = byCur(tx.filter((t) => t.type === "income" && isReceivedStatus(t.payment_status) && t.date?.startsWith(month)));
+  const pendingByCurrency  = byCur(tx.filter((t) => t.type === "income" && !isReceivedStatus(t.payment_status) && !isCancelledPayment(t.payment_status)));
+  const expensesByCurrency = byCur(tx.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && t.date?.startsWith(month)));
+  const revenueThisMonth  = revenueByCurrency[DEFAULT_CURRENCY] ?? 0;
+  const pendingRevenue    = pendingByCurrency[DEFAULT_CURRENCY] ?? 0;
+  const expensesThisMonth = expensesByCurrency[DEFAULT_CURRENCY] ?? 0;
+  const otherCurrencies = (t: Record<string, number>) => Object.fromEntries(Object.entries(t).filter(([c]) => c !== DEFAULT_CURRENCY).map(([c, v]) => [c, Math.round(v)]));
 
   // Sessions (this month)
   const { data: sessions } = await supabase
@@ -118,6 +124,8 @@ export async function buildSnapshot() {
       revenueThisMonth: Math.round(revenueThisMonth),
       pendingRevenue:   Math.round(pendingRevenue),
       expensesThisMonth: Math.round(expensesThisMonth),
+      // Non-₪ money, never added into the ₪ headline numbers above.
+      otherCurrencies: { revenueThisMonth: otherCurrencies(revenueByCurrency), pendingRevenue: otherCurrencies(pendingByCurrency), expensesThisMonth: otherCurrencies(expensesByCurrency) },
       sessionsDone, sessionsUpcoming, sessionsOverdue,
     },
     projects: projectDetails,

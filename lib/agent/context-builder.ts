@@ -13,6 +13,7 @@ import { getAlerts } from "./alerts-store";
 import type { AlertSeverity } from "@/lib/types";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice } from "@/lib/payment-status";
 import { CLIP_SCOPE, summarizeClipFinance } from "@/lib/clip-finance";
+import { isExpenseFullyPaidStatus } from "@/lib/finance/classify";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -181,7 +182,7 @@ async function buildFinanceContext(month: string): Promise<string> {
         .select("project_id, amount, currency, type, payment_status, date, description")
         .lt("date", monthStart)
         .not("payment_status", "in", '("שולם","התקבל","בוטל")')
-        .neq("type", "הוצאה")
+        .eq("type", "income")
         .order("date", { ascending: true })
         .limit(30),
     ]);
@@ -201,16 +202,16 @@ async function buildFinanceContext(month: string): Promise<string> {
     // Month totals
     const mt = monthTxns ?? [];
     const revenueReceived = mt
-      .filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status))
+      .filter((t) => t.type === "income" && PAID_STATUSES.has(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const revenuePending = allTxns
-      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
+      .filter((t) => t.type === "income" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const expensesPaid = mt
-      .filter((t) => t.type === "הוצאה" && PAID_STATUSES.has(t.payment_status))
+      .filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const expensesPending = mt
-      .filter((t) => t.type === "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
+      .filter((t) => t.type === "expense" && !isExpenseFullyPaidStatus(t.payment_status) && !isCancelledPayment(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
 
     lines.push(`הכנסות שהתקבלו: ${fmt(revenueReceived)}₪`);
@@ -221,7 +222,7 @@ async function buildFinanceContext(month: string): Promise<string> {
 
     // Top pending income items (up to 10, by amount desc)
     const pendingIncome = allTxns
-      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
+      .filter((t) => t.type === "income" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
       .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
       .slice(0, 10);
 
@@ -236,7 +237,7 @@ async function buildFinanceContext(month: string): Promise<string> {
 
     // Recent large expenses (up to 5)
     const bigExpenses = mt
-      .filter((t) => t.type === "הוצאה")
+      .filter((t) => t.type === "expense")
       .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
       .slice(0, 5);
 
@@ -329,7 +330,7 @@ async function buildProjectsEnrichment(today: string): Promise<string> {
     const { data: pendingTxns } = await supabase
       .from("transactions")
       .select("project_id, amount")
-      .neq("type", "הוצאה")
+      .eq("type", "income")
       .not("payment_status", "in", '("שולם","התקבל","בוטל")')
       .not("project_id", "is", null)
       .limit(200);
@@ -462,7 +463,7 @@ async function buildClientDetailContext(clientId: string): Promise<string> {
         .from("transactions")
         .select("amount, currency, payment_status, date, type")
         .in("project_id", projIds)
-        .neq("type", "הוצאה")
+        .eq("type", "income")
         .not("payment_status", "in", '("שולם","התקבל","בוטל")');
 
       const pending = (txns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
@@ -574,7 +575,7 @@ async function buildCalendarPageContext(today: string, month: string): Promise<s
         .from("transactions")
         .select("project_id, amount")
         .in("project_id", monthProjIds)
-        .neq("type", "הוצאה")
+        .eq("type", "income")
         .not("payment_status", "in", '("שולם","התקבל","בוטל")');
       const pendingProjIds = new Set((pendingTxns ?? []).map((t) => t.project_id));
       const sessWithOpenMoney = (sessWithPayment ?? []).filter((s) => pendingProjIds.has(s.project_id));
@@ -640,7 +641,7 @@ async function buildProjectDetailContext(
       const curr    = (finance.currency   as string) ?? "₪";
       if (agreed) {
         const received = (txns ?? [])
-          .filter((t) => t.type !== "הוצאה" && !isClipRow(t) && PAID_STATUSES.has(t.payment_status))
+          .filter((t) => t.type === "income" && !isClipRow(t) && PAID_STATUSES.has(t.payment_status))
           .reduce((s, t) => s + (t.amount ?? 0), 0);
         // Actual payment truth for Mai — never nets out a cancelled ("בוטל")
         // transaction (Finance Semantics Unification audit, 2026-09-22).
@@ -649,7 +650,7 @@ async function buildProjectDetailContext(
       }
       // Clip deal — its own price, its own payments.
       const clipAgreed = (finance.clipAgreedPrice as number | null) ?? 0;
-      const clipIncome = (txns ?? []).filter((t) => t.type !== "הוצאה" && isClipRow(t));
+      const clipIncome = (txns ?? []).filter((t) => t.type === "income" && isClipRow(t));
       if (clipAgreed > 0 || clipIncome.length > 0) {
         const clipSum = summarizeClipFinance(
           clipIncome.map((t) => ({ type: "income", amount: t.amount ?? 0, payment_status: t.payment_status, expense_scope: CLIP_SCOPE })),
@@ -666,7 +667,7 @@ async function buildProjectDetailContext(
 
     // Pending transactions
     const pendingTxns = (txns ?? []).filter(
-      (t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)
+      (t) => t.type === "income" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)
     );
     if (pendingTxns.length > 0) {
       lines.push(`תשלומים ממתינים (${pendingTxns.length}):`);
@@ -771,7 +772,7 @@ async function buildProjectDetailContext(
     if (isDone) {
       // Check all income received
       const allPaid = (txns ?? [])
-        .filter((t) => t.type !== "הוצאה")
+        .filter((t) => t.type === "income")
         .every((t) => PAID_STATUSES.has(t.payment_status));
       if (!allPaid) missing.push("יש תשלום לא מסומן כהתקבל (בדוק סגירה פיננסית)");
     }
@@ -813,8 +814,8 @@ async function buildProjectDetailContext(
     // Clip expenses summary
     const clipExp = (txns ?? []).filter((t) => t.type === "expense" && (t as Record<string, unknown>).expense_scope === "קליפ");
     if (clipExp.length > 0) {
-      const clipPaid    = clipExp.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
-      const clipPending = clipExp.filter((t) => !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+      const clipPaid    = clipExp.filter((t) => isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+      const clipPending = clipExp.filter((t) => !isExpenseFullyPaidStatus(t.payment_status) && !isCancelledPayment(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
       lines.push(`\nהוצאות קליפ (${clipExp.length} פריטים):`);
       lines.push(`  שולם: ${fmt(clipPaid)}₪ | צפוי / לא שולם: ${fmt(clipPending)}₪ | סה"כ: ${fmt(clipPaid + clipPending)}₪`);
       const topClip = [...clipExp].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)).slice(0, 5);
