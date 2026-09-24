@@ -2,13 +2,11 @@
  * Redbloods Partner MCP connector — OAuth authorization endpoint (Owner consent page).
  * Cookie-authenticated as the Redbloods Owner (the proxy sends everyone else to login / their own home; this
  * page re-checks). The request is validated BEFORE anything is shown; an untrusted client / redirect is never
- * redirected to. The form carries a MAC bound to this Owner and this exact request (CSRF).
+ * redirected to. The form carries a single-use consent token bound to this Owner session and this exact request.
  */
 import { notFound, redirect } from "next/navigation";
-import { getAuthUser } from "@/lib/require-auth";
-import { roleForEmail } from "@/lib/roles";
 import { consentToken, validateAuthorizeRequest } from "@/lib/integrations/partner-mcp/oauth";
-import { getMcpRuntime } from "@/lib/integrations/partner-mcp/server";
+import { getConsentSession, getMcpRuntime } from "@/lib/integrations/partner-mcp/server";
 import { MCP_SCOPE } from "@/lib/integrations/partner-mcp/config";
 
 export const dynamic = "force-dynamic";
@@ -23,13 +21,13 @@ function Message({ title, text }: { title: string; text: string }) {
 export default async function McpAuthorizePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const rt = await getMcpRuntime();
   if (!rt) notFound();
-  const user = await getAuthUser();
-  if (!user || roleForEmail(user.email) !== "owner") return <Message title="אין הרשאה" text="רק הבעלים של Redbloods יכול לאשר חיבור של Claude ל־Partner." />;
+  const session = await getConsentSession();
+  if (!session || !session.isOwner) return <Message title="אין הרשאה" text="רק הבעלים של Redbloods יכול לאשר חיבור של Claude ל־Partner." />;
   const v = await validateAuthorizeRequest(await searchParams, rt.oauth);
   if (!v.ok && v.kind === "REDIRECT") redirect(v.location);
   if (!v.ok) return <Message title="בקשת חיבור לא תקינה" text={`לא ניתן להמשיך: ${v.error}. התחל מחדש מתוך Claude.`} />;
   const r = v.request;
-  const csrf = consentToken(r, user.id, rt.oauth);
+  const csrf = consentToken(r, { userId: session.userId, sessionId: session.sessionId }, rt.oauth);
   const hidden: Record<string, string> = {
     response_type: "code", client_id: r.clientId, redirect_uri: r.redirectUri, code_challenge: r.codeChallenge, code_challenge_method: "S256",
     scope: r.scope, resource: r.resource, state: r.state, csrf,

@@ -8,12 +8,15 @@ import { readMcpConfig, type McpConfig } from "../../lib/integrations/partner-mc
 import { pkceS256 } from "../../lib/integrations/partner-mcp/crypto";
 import { authenticateBearer, consentToken, decideAuthorization, registerClientCore, revokeCore, tokenCore, validateAuthorizeRequest, type OAuthDeps } from "../../lib/integrations/partner-mcp/oauth";
 import type { McpStore } from "../../lib/integrations/partner-mcp/store";
+import { MemoryConsentReplayGuard } from "../../lib/integrations/partner-mcp/consent";
 
 export interface ScenarioHooks { ageUnusedClients(): Promise<void> | void; expireAccess(): Promise<void> | void; expireRefresh(): Promise<void> | void; expireCodes(): Promise<void> | void; disableClient(id: string): Promise<void> | void; revokeAll(): Promise<number> | number; activeTokens(): Promise<number> | number }
 export type Check = (name: string, actual: unknown, expected: unknown) => void;
 
 export const BASE_ENV = { PARTNER_MCP_ENABLED: "true", PARTNER_MCP_BASE_URL: "https://partner-staging.example.com", PARTNER_MCP_SECRET: "s".repeat(48) };
 export const OWNER = "0f0f0f0f-0000-4000-8000-00000000a0a0";
+export const OWNER_SESSION = "5e55e55e-0000-4000-8000-0000000000aa";
+export const OWNER_BINDING = { userId: OWNER, sessionId: OWNER_SESSION };
 export const CALLBACK = "https://claude.ai/api/mcp/auth_callback";
 export const VERIFIER = "v".repeat(20) + "-._~" + "A1b2C3d4E5f6G7h8I9j0K1l2"; // 48 chars, RFC 7636 alphabet
 
@@ -25,7 +28,7 @@ export function testConfig(over: Partial<McpConfig> = {}, env: Record<string, st
 
 export async function runOAuthScenarios(store: McpStore, hooks: ScenarioHooks, check: Check, label = "") {
   const nowSec = { v: Math.floor(Date.now() / 1000) };
-  const deps: OAuthDeps = { config: testConfig(), store, nowSec: () => nowSec.v };
+  const deps: OAuthDeps = { config: testConfig(), store, nowSec: () => nowSec.v, consentReplay: new MemoryConsentReplayGuard() };
   const L = (s: string) => `${label}${s}`;
   const form = (o: Record<string, string>) => o;
   const body = (o: { body: string | null }) => (o.body ? JSON.parse(o.body) : null);
@@ -69,18 +72,18 @@ export async function runOAuthScenarios(store: McpStore, hooks: ScenarioHooks, c
   const r = good.request;
 
   // ── consent (CSRF bound to Owner + exact request) ──
-  const csrf = consentToken(r, OWNER, deps);
-  const d1 = await decideAuthorization(r, { userId: "11111111-0000-4000-8000-000000000000", approve: true, csrf }, deps);
-  const d2 = await decideAuthorization({ ...r, state: "tampered" }, { userId: OWNER, approve: true, csrf }, deps);
+  const csrf = consentToken(r, OWNER_BINDING, deps);
+  const d1 = await decideAuthorization(r, { binding: { userId: "11111111-0000-4000-8000-000000000000", sessionId: OWNER_SESSION }, approve: true, csrf }, deps);
+  const d2 = await decideAuthorization({ ...r, state: "tampered" }, { binding: OWNER_BINDING, approve: true, csrf }, deps);
   nowSec.v += deps.config.consentTtlSeconds + 5;
-  const d3 = await decideAuthorization(r, { userId: OWNER, approve: true, csrf }, deps);
+  const d3 = await decideAuthorization(r, { binding: OWNER_BINDING, approve: true, csrf }, deps);
   nowSec.v -= deps.config.consentTtlSeconds + 5;
   check(L("W. consent CSRF: another user / a changed request / an expired form are refused"), [d1.ok, d2.ok, d3.ok], [false, false, false]);
-  const deny = await decideAuthorization(r, { userId: OWNER, approve: false, csrf }, deps);
+  const deny = await decideAuthorization(r, { binding: OWNER_BINDING, approve: false, csrf }, deps);
   check(L("F. Owner declines → access_denied back to Claude (with state + iss)"), deny.ok ? [new URL(deny.location).searchParams.get("error"), new URL(deny.location).searchParams.get("state"), new URL(deny.location).searchParams.get("iss")] : null, ["access_denied", "st-1", deps.config.issuer]);
 
   const approve = async () => {
-    const d = await decideAuthorization(r, { userId: OWNER, approve: true, csrf: consentToken(r, OWNER, deps) }, deps);
+    const d = await decideAuthorization(r, { binding: OWNER_BINDING, approve: true, csrf: consentToken(r, OWNER_BINDING, deps) }, deps);
     if (!d.ok) throw new Error(d.error);
     const u = new URL(d.location);
     return { code: u.searchParams.get("code")!, state: u.searchParams.get("state"), iss: u.searchParams.get("iss"), host: u.host };

@@ -10,7 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { canonicalUrl, readMcpConfig } from "../lib/integrations/partner-mcp/config";
-import { pkceS256, signConsent, verifyConsent } from "../lib/integrations/partner-mcp/crypto";
+import { pkceS256 } from "../lib/integrations/partner-mcp/crypto";
+import { issueConsentToken, MemoryConsentReplayGuard, verifyConsentToken } from "../lib/integrations/partner-mcp/consent";
 import { authenticateBearer, consentToken, decideAuthorization, tokenCore, validateAuthorizeRequest, registerClientCore, type OAuthDeps } from "../lib/integrations/partner-mcp/oauth";
 import { handleMcpHttp, type McpDeps, type McpGateway } from "../lib/integrations/partner-mcp/mcp";
 import { SlidingWindowLimiter } from "../lib/integrations/partner-mcp/rate-limit";
@@ -19,7 +20,7 @@ import { authorizationServerMetadata, protectedResourceMetadata } from "../lib/i
 import { installMcpOnlyFetchGuard, isAllowedInMcpOnlyMode, isAllowedMcpOnlyFetch, isMcpPublicPath } from "../lib/integrations/partner-mcp/mcp-only";
 import { getPartnerEntityCore } from "../lib/partner/gateway/entity";
 import { memoryMcpStore } from "./fixtures/mcp-memory-store";
-import { BASE_ENV, CALLBACK, OWNER, runOAuthScenarios, testConfig, VERIFIER } from "./fixtures/mcp-oauth-scenarios";
+import { BASE_ENV, CALLBACK, OWNER, OWNER_BINDING, runOAuthScenarios, testConfig, VERIFIER } from "./fixtures/mcp-oauth-scenarios";
 
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
@@ -35,7 +36,7 @@ async function ownerToken(deps: OAuthDeps) {
   const clientId = JSON.parse(reg.body!).client_id as string;
   const v = await validateAuthorizeRequest({ response_type: "code", client_id: clientId, redirect_uri: CALLBACK, code_challenge: pkceS256(VERIFIER), code_challenge_method: "S256", resource: deps.config.resource, state: "s" }, deps);
   if (!v.ok) throw new Error("authorize");
-  const d = await decideAuthorization(v.request, { userId: OWNER, approve: true, csrf: consentToken(v.request, OWNER, deps) }, deps);
+  const d = await decideAuthorization(v.request, { binding: OWNER_BINDING, approve: true, csrf: consentToken(v.request, OWNER_BINDING, deps) }, deps);
   if (!d.ok) throw new Error(d.error);
   const code = new URL(d.location).searchParams.get("code")!;
   const t = JSON.parse((await tokenCore({ grant_type: "authorization_code", client_id: clientId, code, redirect_uri: CALLBACK, code_verifier: VERIFIER, resource: deps.config.resource }, deps)).body!);
@@ -72,8 +73,9 @@ async function main() {
   console.log("Crypto");
   {
     check("PKCE S256 = RFC 7636 appendix B vector", pkceS256("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
-    const tok = signConsent("k".repeat(40), ["a", "b"], 2_000_000_000);
-    check("consent MAC verifies only for the same fields / secret / time", [verifyConsent("k".repeat(40), ["a", "b"], tok, 1_900_000_000), verifyConsent("k".repeat(40), ["a", "c"], tok, 1_900_000_000), verifyConsent("x".repeat(40), ["a", "b"], tok, 1_900_000_000), verifyConsent("k".repeat(40), ["a", "b"], tok, 2_000_000_001)], [true, false, false, false]);
+    const B = { userId: "u1", sessionId: "s1" };
+    const tok = issueConsentToken("k".repeat(40), B, ["a", "b"], 1_900_000_000);
+    check("consent token verifies only for the same session / fields / secret / time", [verifyConsentToken("k".repeat(40), B, ["a", "b"], tok, 1_900_000_000).ok, verifyConsentToken("k".repeat(40), B, ["a", "c"], tok, 1_900_000_000).ok, verifyConsentToken("k".repeat(40), { userId: "u1", sessionId: "s2" }, ["a", "b"], tok, 1_900_000_000).ok, verifyConsentToken("x".repeat(40), B, ["a", "b"], tok, 1_900_000_000).ok, verifyConsentToken("k".repeat(40), B, ["a", "b"], tok, 1_900_000_301).ok], [true, false, false, false, false]);
   }
 
   console.log("OAuth lifecycle + threats (E–K, V, W) — in-memory mirror of the migration");
@@ -81,7 +83,7 @@ async function main() {
     const store = memoryMcpStore(() => Date.now());
     await runOAuthScenarios(store, store.hooks, check);
     const s2 = memoryMcpStore(() => Date.now());
-    const deps: OAuthDeps = { config: testConfig(), store: s2, nowSec: () => Math.floor(Date.now() / 1000) };
+    const deps: OAuthDeps = { config: testConfig(), store: s2, nowSec: () => Math.floor(Date.now() / 1000), consentReplay: new MemoryConsentReplayGuard() };
     const t = await ownerToken(deps);
     const stub = { ...s2, checkAccess: async () => ({ result: "VALID" as const, tokenId: "t", clientId: t.clientId, userId: OWNER, scope: "partner:other", resource: deps.config.resource }) };
     const ws = await authenticateBearer(`Bearer ${t.access}`, { ...deps, store: stub });
@@ -100,7 +102,7 @@ async function main() {
 
   console.log("MCP protocol (X) — local test client through the real adapter");
   const store = memoryMcpStore(() => Date.now());
-  const oauth: OAuthDeps = { config: testConfig(), store, nowSec: () => Math.floor(Date.now() / 1000) };
+  const oauth: OAuthDeps = { config: testConfig(), store, nowSec: () => Math.floor(Date.now() / 1000), consentReplay: new MemoryConsentReplayGuard() };
   const tk = await ownerToken(oauth);
   const brief = { schemaVersion: "partner-gateway-v1", tool: "partner_brief", freshness: "LIVE", items: [{ category: "MONEY", headline: { text: "נטו", trust: "PARTNER_RECORD" } }] };
   const unknownEntity = getPartnerEntityCore("vendor:VICTOR", { now: new Date("2026-09-24T09:00:00Z"), identities: { cleantone: null } }) as unknown as Record<string, unknown>;
@@ -251,7 +253,7 @@ async function main() {
   {
     const dir = "lib/integrations/partner-mcp";
     const files = fs.readdirSync(path.join(ROOT, dir)).map((f) => `${dir}/${f}`).sort();
-    check("connector module files", files, ["config.ts", "crypto.ts", "mcp-only.ts", "mcp.ts", "metadata.ts", "oauth.ts", "rate-limit.ts", "server.ts", "store-supabase.ts", "store.ts", "tools.ts"].map((f) => `${dir}/${f}`));
+    check("connector module files", files, ["config.ts", "consent.ts", "crypto.ts", "mcp-only.ts", "mcp.ts", "metadata.ts", "oauth.ts", "rate-limit.ts", "server.ts", "store-supabase.ts", "store.ts", "tools.ts"].map((f) => `${dir}/${f}`));
     const code = files.map((f) => [f, strip(rd(f))] as const);
     const FORBIDDEN = /action-service|decideSuggested|executeApproved|finance\/action-core|appendOwnerContext|context-store|answer-service|event-persistence|partner_execute|sendPush|web-push|lib\/push|node-cron|instrumentation|alerts-store|child_process|node:fs|"fs"|(?<!\.)\bexec\(|(?<!\.)\bspawn\(|openai|anthropic|ai-router|railway|process\.env\.[A-Z_]*(KEY|TOKEN)/i;
     check("20/21. no decide / execute / Owner Context / push / cron / alert / shell / file / LLM / deploy capability in the connector", code.filter(([, s]) => FORBIDDEN.test(s)).map(([f]) => f), []);
@@ -267,7 +269,8 @@ async function main() {
       "app/.well-known/oauth-authorization-server/route.ts", "app/.well-known/oauth-protected-resource/route.ts", "app/api/mcp-oauth/authorize/route.ts", "app/api/mcp-oauth/register/route.ts",
       "app/api/mcp-oauth/revoke/route.ts", "app/api/mcp-oauth/token/route.ts", "app/api/mcp/route.ts", "app/mcp-oauth/authorize/page.tsx"]);
     ok("L/AI. every connector route/page returns 404 unless the runtime exists (PARTNER_MCP_ENABLED=true)", routes.every((f) => /const rt = await getMcpRuntime\(\);\s*if \(!rt\) (return notFound\(\)|notFound\(\));/.test(rd(f))) && /export \{ GET \} from "\.\.\/\.\.\/route"/.test(rd("app/.well-known/oauth-protected-resource/api/mcp/route.ts")));
-    ok("the consent decision requires the Owner + exact same origin + the CSRF MAC", /origin !== rt\.config\.baseUrl/.test(rd("app/api/mcp-oauth/authorize/route.ts")) && /roleForEmail\(user\.email\) !== "owner"/.test(rd("app/api/mcp-oauth/authorize/route.ts")) && /csrf: form\.csrf/.test(rd("app/api/mcp-oauth/authorize/route.ts")));
+    const consentRoute = strip(rd("app/api/mcp-oauth/authorize/route.ts"));
+    ok("the consent decision route is a thin POST-only shell around consentDecisionCore (session + form + headers)", /consentDecisionCore\(/.test(consentRoute) && /session: await getConsentSession\(\)/.test(consentRoute) && !/export (async function|const) (GET|PUT|PATCH|DELETE)/.test(consentRoute));
     const proxy = strip(rd("proxy.ts"));
     ok("M. proxy: MCP-only wall first, then the EXACT connector bypass, both before every other gate", proxy.indexOf("isMcpOnlyMode(process.env)") < proxy.indexOf("isMcpPublicPath(pathname)") && proxy.indexOf("isMcpPublicPath(pathname)") < proxy.indexOf("PUBLIC_BYPASS.some") && proxy.indexOf("PUBLIC_BYPASS.some") < proxy.indexOf("isMaintenanceOn(request)"));
     ok("M. the consent page skips ONLY the maintenance screen: exact path, after the session read, before the auth gate, never in the auth-bypass lists",

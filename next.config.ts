@@ -2,14 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  // Partner MCP connector consent page: never framed (clickjacking), no referrer leakage of the OAuth request.
+  // Partner MCP connector consent page: never framed (clickjacking), no referrer leakage of the OAuth request to other sites.
   async headers() {
     return [{
       source: "/mcp-oauth/:path*",
       headers: [
         { key: "X-Frame-Options", value: "DENY" },
         { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-        { key: "Referrer-Policy", value: "no-referrer" },
+        // same-origin (NOT no-referrer): a no-referrer document makes browsers send Origin: null on its own form POST.
+        // same-origin still sends nothing to claude.ai or any other site.
+        { key: "Referrer-Policy", value: "same-origin" },
         { key: "Cache-Control", value: "no-store" },
       ],
     }];
