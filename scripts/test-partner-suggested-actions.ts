@@ -170,8 +170,11 @@ console.log("Isolation (23-26)");
   const OUTCOMES_READ_ONLY = [path.join("app", "api", "partner", "outcomes", "route.ts"), path.join("components", "partner", "PartnerOutcomeCard.tsx")];
   // F2.8–F2.10: the finance answer route reuses ONLY the shared same-origin / small-body request guard.
   const FINANCE_ANSWER_ROUTE = path.join("app", "api", "partner", "finance", "answer", "route.ts");
-  check("no app/ or components/ file imports actions except the approved surface + the Owner decision routes + the F.1M read-only outcomes route/card + the F2.8 finance answer route (request guard only)", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f) && !OUTCOMES_READ_ONLY.includes(f) && f !== FINANCE_ANSWER_ROUTE), []);
+  // Company Integrity learning loop: its answer route reuses ONLY the same shared request guard.
+  const INTEGRITY_ANSWER_ROUTE = path.join("app", "api", "partner", "integrity", "answer", "route.ts");
+  check("no app/ or components/ file imports actions except the approved surface + the Owner decision routes + the F.1M read-only outcomes route/card + the F2.8 finance answer route + the integrity answer route (request guard only)", importers.filter((f) => !READ_ONLY_SURFACE.includes(f) && !DECISION_ROUTES.includes(f) && !OUTCOMES_READ_ONLY.includes(f) && f !== FINANCE_ANSWER_ROUTE && f !== INTEGRITY_ANSWER_ROUTE), []);
   ok("F2.8: the finance answer route imports nothing from lib/partner/actions except request-guard", [...fs.readFileSync(path.join(ROOT, FINANCE_ANSWER_ROUTE), "utf8").matchAll(/from "([^"]*partner\/actions[^"]*)"/g)].map((m) => m[1]).join() === "@/lib/partner/actions/request-guard");
+  ok("the integrity answer route imports nothing from lib/partner/actions except request-guard", [...fs.readFileSync(path.join(ROOT, INTEGRITY_ANSWER_ROUTE), "utf8").matchAll(/from "([^"]*partner\/actions[^"]*)"/g)].map((m) => m[1]).join() === "@/lib/partner/actions/request-guard");
   ok("F.1M: the outcomes route/card never reach a write / decision / execution path and import only outcome-server / outcome-dto", OUTCOMES_READ_ONLY.every((f) => {
     const s = fs.readFileSync(path.join(ROOT, f), "utf8");
     return !/action-service|event-persistence|actions\/event-store|actions\/live|actions\/service|decideSuggestedAction|executeApprovedAction|appendOwnerContext|partner_execute_update_project_deadline|\.insert\(|\.update\(|\.rpc\(|onClick|<button/.test(s)

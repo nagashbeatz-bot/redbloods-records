@@ -27,7 +27,7 @@ export interface MemorySourceRef { kind: MemorySourceKind; ref: string }
  */
 export interface MemoryEntityRef {
   key: string;
-  kind: "vendor" | "recurring" | "recurring_period" | "project" | "receivable" | "finance_setting" | "expense_pattern" | "transaction";
+  kind: "vendor" | "recurring" | "recurring_period" | "project" | "receivable" | "finance_setting" | "expense_pattern" | "transaction" | "label_artist" | "client_name";
   period: string | null;
   /** Keys of the entities this one belongs to (e.g. recurring:VICTOR_SALARY, vendor:VICTOR). */
   parents: string[];

@@ -42,6 +42,8 @@ async function main() {
   }
   console.log(`\nQUESTIONS (${r.questions.length}, deferred ${r.deferredQuestions}, answered ${r.answeredQuestions.length}):`);
   for (const q of r.questions) console.log(`   ${q.questionType} · ${q.subject.label} · "${q.textHe}" · options=${q.options.map((o) => o.code).join("/")} · prev=${q.previousAnswer?.answerCode ?? "—"} · fp=${q.fingerprint.slice(0, 12)}…`);
+  console.log(`\nLEARNED (${r.learned.length}):`);
+  for (const l of r.learned) console.log(`   ${l.entityKey} "${l.subjectLabel ?? ""}" · ${l.decision.answerCode} (${l.decision.basis}) · ${l.status} · ${l.decision.answeredAt}`);
 }
 
 main()

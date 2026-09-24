@@ -22,6 +22,7 @@ import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
 import UpcomingReleasesCard from "@/components/dashboard/UpcomingReleasesCard";
 import CooSection from "@/components/coo/CooSection";
 import PartnerActionsSection from "@/components/partner/PartnerActionsSection";
+import PartnerIntegritySection from "@/components/partner/PartnerIntegritySection";
 import { summarizeUpcomingReleases } from "@/lib/dashboard-releases";
 
 // Minimal calendar event shape (only what preview needs)
@@ -1093,6 +1094,9 @@ export default function DashboardDesignPreview() {
 
           {/* ── Redbloods Partner (Owner-only, READ-ONLY Suggested Actions — F.1I) ── */}
           <PartnerActionsSection isMobile={isMobile} />
+
+          {/* ── Redbloods Partner (Owner-only) — Company Integrity "צריך ממך" (max 2 questions) ── */}
+          <PartnerIntegritySection isMobile={isMobile} />
 
           {/* ── KPI grid ── */}
           {!hasMounted ? (

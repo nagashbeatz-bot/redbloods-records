@@ -2,7 +2,7 @@
  * Redbloods Partner — Company Integrity Owner questions taxonomy. Pure constants, no imports.
  *
  * Asked ONLY when a business DEFINITION cannot be determined safely from canonical data (never an operational
- * status question). Persisted — when a surface for answering them exists — as ordinary Owner Context rows through
+ * status question). Persisted (POST /api/partner/integrity/answer) as ordinary Owner Context rows through
  * the existing append-only primitive (partner_owner_context; no schema change: question_type / subject_type /
  * case_type are text, the app-level taxonomy below is what the strict row parser accepts).
  *
@@ -22,15 +22,15 @@ export interface IntegrityAnswerOption { code: string; labelHe: string }
 
 export const INTEGRITY_ANSWER_OPTIONS: Record<IntegrityQuestionType, readonly IntegrityAnswerOption[]> = {
   INTEGRITY_LABEL_PROJECT_CLASSIFICATION: [
-    { code: "LABEL_SONGS", labelHe: "כן — אלה שירי לייבל של האמן" },
-    { code: "CLIENT_WORK", labelHe: "לא — אלה עבודות לקוח (לא שירי לייבל)" },
-    { code: "MIXED", labelHe: "משתנה — צריך להחליט לכל פרויקט בנפרד" },
-    { code: "UNKNOWN", labelHe: "לא יודע כרגע" },
+    { code: "LABEL_SONGS", labelHe: "הפרויקטים האלה הם עבודת לייבל" },
+    { code: "CLIENT_WORK", labelHe: "אלה עבודות לקוח, למרות שהאמן חתום בלייבל" },
+    { code: "MIXED", labelHe: "יש גם עבודות לייבל וגם עבודות לקוח — צריך להבדיל בין הפרויקטים" },
+    { code: "UNKNOWN", labelHe: "עוד לא החלטתי / צריך לבדוק" },
   ],
   INTEGRITY_CLIENT_IDENTITY: [
     { code: "SAME_PERSON", labelHe: "אותו אדם — רשומה כפולה" },
     { code: "DIFFERENT_PEOPLE", labelHe: "אנשים שונים עם אותו שם" },
-    { code: "UNKNOWN", labelHe: "לא יודע כרגע" },
+    { code: "UNKNOWN", labelHe: "עוד לא החלטתי / צריך לבדוק" },
   ],
 };
 

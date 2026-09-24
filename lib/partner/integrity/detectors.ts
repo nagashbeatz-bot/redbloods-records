@@ -37,7 +37,7 @@ export interface IntegrityInput {
 }
 
 /** A detector's draft; questions are attached by the register. */
-export interface FindingDraft extends Omit<IntegrityFinding, "observedAt" | "freshness" | "questionId"> {
+export interface FindingDraft extends Omit<IntegrityFinding, "observedAt" | "freshness" | "questionId" | "ownerDecision"> {
   question?: {
     type: "INTEGRITY_LABEL_PROJECT_CLASSIFICATION" | "INTEGRITY_CLIENT_IDENTITY";
     subjectType: string;
@@ -46,6 +46,13 @@ export interface FindingDraft extends Omit<IntegrityFinding, "observedAt" | "fre
     facts: unknown;
     textHe: string;
     whyHe: string;
+    /** Owner-readable evidence (names + statuses; never ids / tables / hashes). */
+    evidenceHe: string[];
+    /**
+     * Question minimization: does the ambiguity affect a CURRENT business conclusion (e.g. active work)?
+     * When false, the finding stays visible but the Owner is not asked.
+     */
+    affectsCurrentConclusion: boolean;
     priority: number;
   };
 }
@@ -139,8 +146,13 @@ export function detectLabelProjectClassification(input: IntegrityInput): Finding
       }),
       question: {
         type: "INTEGRITY_LABEL_PROJECT_CLASSIFICATION", subjectType: "label-artist", subjectId: a.id, subjectLabel: a.name, facts,
-        textHe: `${projects.length} הפרויקטים של ${a.name} שמסומנים "לקוח" — אלה שירי לייבל?`,
-        whyHe: `${a.name} ברוסטר הלייבל, אבל הפרויקטים שלו מסומנים כעבודת לקוח. התשובה קובעת איך Partner מבין את הלייבל — בלי לשנות את הנתונים.`,
+        textHe: `יש לי ${projects.length} פרויקטים של ${a.name} שמסומנים כ'לקוח', אבל ${a.name} נמצא ברשימת אמני הלייבל. איך להתייחס לפרויקטים האלה?`,
+        whyHe: `התשובה קובעת איך אני מבין את העבודה עם ${a.name}. היא לא משנה שום פרויקט — הסימון במערכת נשאר כמו שהוא.`,
+        evidenceHe: [
+          ...projects.slice(0, 8).map((p) => `${p.name} — ${p.status}${p.collab ? " (שיתוף עם אמן נוסף)" : ""}`),
+          ...(projects.length > 8 ? [`ועוד ${projects.length - 8}`] : []),
+        ],
+        affectsCurrentConclusion: active > 0,
         priority: 100 + active * 10 + projects.length,
       },
     });
@@ -164,7 +176,7 @@ export function detectProjectClientMatch(input: IntegrityInput): FindingDraft[] 
   }
   const counts = { EXACT: 0, NORMALIZED_ONLY: 0, AMBIGUOUS: 0, NO_MATCH: 0, EMPTY: 0 };
   const noMatch: Array<{ projectId: string; name: string; token: string }> = [];
-  const ambiguousNames = new Map<string, Array<{ projectId: string; name: string }>>();
+  const ambiguousNames = new Map<string, Array<{ projectId: string; name: string; status: string }>>();
   for (const [pid, p] of Object.entries(idx).sort(([x], [y]) => x.localeCompare(y))) {
     const tokens = splitArtistNames(p.artistText);
     if (!tokens.length) { counts.EMPTY++; continue; }
@@ -173,7 +185,7 @@ export function detectProjectClientMatch(input: IntegrityInput): FindingDraft[] 
       const exact = byExact.get(t) ?? [];
       const norm = byNorm.get(normalizeName(t)) ?? [];
       // An exact hit does not settle it while another record shares the normalized name — never a silent pick.
-      if (exact.length > 1 || norm.length > 1) { cls = "AMBIGUOUS"; ambiguousNames.set(normalizeName(t), [...(ambiguousNames.get(normalizeName(t)) ?? []), { projectId: pid, name: p.name }]); }
+      if (exact.length > 1 || norm.length > 1) { cls = "AMBIGUOUS"; ambiguousNames.set(normalizeName(t), [...(ambiguousNames.get(normalizeName(t)) ?? []), { projectId: pid, name: p.name, status: p.status }]); }
       else if (!exact.length && norm.length === 1 && cls === "EXACT") cls = "NORMALIZED_ONLY";
       else if (!exact.length && !norm.length) { if (cls !== "AMBIGUOUS") cls = "NO_MATCH"; noMatch.push({ projectId: pid, name: p.name, token: t }); }
     }
@@ -203,7 +215,13 @@ export function detectProjectClientMatch(input: IntegrityInput): FindingDraft[] 
       question: {
         type: "INTEGRITY_CLIENT_IDENTITY", subjectType: "client-name", subjectId: norm, subjectLabel: recs[0]?.name ?? norm, facts: { norm, clients: recs.map((r) => r.clientId) },
         textHe: `יש ${recs.length} רשומות לקוח בשם "${recs[0]?.name ?? norm}" — זה אותו אדם?`,
-        whyHe: "בלי זה Partner לא יכול לשייך את הפרויקטים של השם הזה ללקוח אחד. שום רשומה לא תשתנה.",
+        whyHe: "בלי זה אני לא יכול לשייך את הפרויקטים של השם הזה ללקוח אחד. שום רשומה לא תשתנה.",
+        evidenceHe: [
+          `${recs.length} כרטיסי לקוח עם השם הזה`,
+          ...projects.slice(0, 6).map((p) => `${p.name} — ${p.status}`),
+          ...(projects.length > 6 ? [`ועוד ${projects.length - 6}`] : []),
+        ],
+        affectsCurrentConclusion: projects.some((p) => !["הושלם", "בוטל"].includes(p.status)),
         priority: 50 + projects.length,
       },
     });
