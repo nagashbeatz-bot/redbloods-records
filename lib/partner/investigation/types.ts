@@ -20,6 +20,7 @@
  */
 import type { CaseDerivedFact, CaseEvidence } from "../cases/types";
 import type { FinanceQuestionType } from "./finance-questions";
+import type { IntegrityQuestionType } from "./integrity-questions";
 
 export const INVESTIGATION_SCHEMA_VERSION = "partner-investigation-schema-v1";
 export const INVESTIGATION_OWNER_RULE = "INVESTIGATE_BEFORE_CONCLUDING";
@@ -35,7 +36,9 @@ export type InvestigationQuestionType =
   // F.1E v2 — a FOLLOW-UP question: never generated from a Case alone, only from a specific Owner Context (see FOLLOW_UP_RULES).
   | "WHAT_IS_NEW_PROJECT_DEADLINE"
   // F2.8–F2.10 — structured Finance Owner questions (finance-questions.ts). Never generated from a Case.
-  | FinanceQuestionType;
+  | FinanceQuestionType
+  // Company Integrity Register — business DEFINITION questions (integrity-questions.ts). Never generated from a Case.
+  | IntegrityQuestionType;
 
 /**
  * Why a question exists (F.1E v2). CASE: generated from the Case/state alone.

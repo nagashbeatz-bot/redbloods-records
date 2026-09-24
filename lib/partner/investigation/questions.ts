@@ -20,6 +20,7 @@ import type { PartnerCase } from "../cases/types";
 import { fingerprintCaseFacts } from "../feedback/snapshot";
 import { formatYmdHe } from "./answer-value";
 import { FINANCE_ANSWER_OPTIONS, isFinanceQuestionType } from "./finance-questions";
+import { INTEGRITY_ANSWER_OPTIONS, isIntegrityQuestionType } from "./integrity-questions";
 import {
   INVESTIGATION_OWNER_RULE, INVESTIGATION_SCHEMA_VERSION,
   type InvestigationAnswerOption, type InvestigationDecision, type InvestigationQuestionType,
@@ -91,10 +92,12 @@ export const ANSWER_OPTIONS: Record<InvestigationQuestionType, readonly Investig
   ],
   // F2.8–F2.10: the Finance Owner questions (single source: finance-questions.ts).
   ...FINANCE_ANSWER_OPTIONS,
+  // Company Integrity Register: definition questions (single source: integrity-questions.ts).
+  ...INTEGRITY_ANSWER_OPTIONS,
 };
 
 export function answerOptionsFor(type: InvestigationQuestionType): InvestigationAnswerOption[] {
-  return isFinanceQuestionType(type) ? [...ANSWER_OPTIONS[type]] : [...ANSWER_OPTIONS[type], OTHER];
+  return isFinanceQuestionType(type) || isIntegrityQuestionType(type) ? [...ANSWER_OPTIONS[type]] : [...ANSWER_OPTIONS[type], OTHER];
 }
 
 // ── Case types that are FACT-COMPLETE in v1 (§6): the condition AND its meaning are computed facts ──

@@ -377,7 +377,11 @@ async function main() {
     // F2.23 adds exactly one: the server-only Organizational Memory binding, which READS the full history
     // (listOwnerContexts) and never appends.
     const MEMORY_READER = path.join("lib", "partner", "memory", "server.ts");
-    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files + the F2.8 finance answer files + the read-only Memory V1 binding", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f) && !FINANCE_CONTEXT_FILES.includes(f) && f !== MEMORY_READER), []);
+    // Company Integrity Register: the CompanyReadContext READS the Owner's active answers (resolveCurrentOwnerContexts) and never appends.
+    const COMPANY_READER = path.join("lib", "partner", "company", "read-context.ts");
+    check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files + the F2.8 finance answer files + the read-only Memory V1 binding + the read-only CompanyReadContext", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f) && !FINANCE_CONTEXT_FILES.includes(f) && f !== MEMORY_READER && f !== COMPANY_READER), []);
+    const companySrc = fs.readFileSync(path.join(ROOT, COMPANY_READER), "utf8");
+    ok("30. the CompanyReadContext is server-only and imports ONLY resolveCurrentOwnerContexts from the store (never appends)", /^import "server-only";/m.test(companySrc) && /^import \{ resolveCurrentOwnerContexts \} from "\.\.\/investigation\/context-store";$/m.test(companySrc) && !/appendOwnerContext|context-persistence|\.insert\(|\.update\(|\.upsert\(/.test(companySrc));
     const memSrv = fs.readFileSync(path.join(ROOT, MEMORY_READER), "utf8");
     ok("F2.23: the Memory binding imports ONLY listOwnerContexts from the store (never appendOwnerContext)", /^import \{ listOwnerContexts \} from "\.\.\/investigation\/context-store";$/m.test(memSrv) && !/appendOwnerContext|context-persistence/.test(memSrv));
     const finSrv = fs.readFileSync(path.join(ROOT, FINANCE_CONTEXT_FILES[0]), "utf8");
