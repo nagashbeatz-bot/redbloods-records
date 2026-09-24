@@ -195,7 +195,11 @@ async function main() {
   console.log("Z/AA/AB. Approval / execution / outcome / sync — fail closed in this phase");
   {
     ok("52-55. proposal / readiness never writes (pure module: no insert / update / rpc / fetch)", !/\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(|fetch\(|supabase/.test(strip(rd("lib/partner/finance/actions.ts"))) && !/\.insert\(|\.update\(|\.rpc\(|supabase/.test(strip(rd("lib/partner/finance/view.ts"))));
-    ok("56-61. finance actions can never reach the Action Event / execute RPC path", !/finance/.test(strip(rd("lib/partner/actions/suggested.ts"))) && !/finance/.test(strip(rd("lib/partner/actions/event-persistence.ts"))) && !/RECORD_PAID_EXPENSE/.test(rd("lib/partner/actions/types.ts")));
+    // F2.29: the event store may READ finance events (getFinanceEventsByType) — it still can never append one, and no
+    // app file names a finance execution RPC.
+    const EP = strip(rd("lib/partner/actions/event-persistence.ts"));
+    ok("56-61. finance actions can never reach the Action Event append / execute RPC path", !/finance/.test(strip(rd("lib/partner/actions/suggested.ts"))) && !/RECORD_PAID_EXPENSE/.test(rd("lib/partner/actions/types.ts"))
+      && /action_type: "UPDATE_PROJECT_DEADLINE",\s*action_schema_version: SUPPORTED_ACTION_SCHEMA_VERSION,\s*subject_type: "project",/.test(EP) && !/partner_execute_record_paid_expense/.test(EP) && (EP.match(/\.rpc\(/g) ?? []).length === 1 && /client\.rpc\(EXECUTE_RPC, args\)/.test(EP));
     ok("62-75. no Outcome / sync claimed for finance (nothing executed); Outcome model unchanged", !/RECORD_PAID_EXPENSE|finance/.test(strip(rd("lib/partner/actions/outcome.ts"))));
   }
 

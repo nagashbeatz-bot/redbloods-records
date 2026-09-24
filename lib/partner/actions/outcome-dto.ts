@@ -13,6 +13,7 @@
  * UNSUPPORTED_ACTION / INVARIANT_VIOLATION / no Outcome are omitted by the server (and logged).
  */
 import type { PartnerActionOutcome } from "./outcome";
+import type { PartnerFinanceActionOutcome } from "./finance-outcome";
 
 export const RECENT_OUTCOMES_DTO_VERSION = 1;
 export const RECENT_OUTCOMES_LIMIT = 5;
@@ -49,7 +50,31 @@ export interface PartnerOutcomeCardDto {
   statusHe: string;
 }
 
-export interface RecentOutcomesResponse { v: typeof RECENT_OUTCOMES_DTO_VERSION; items: PartnerOutcomeCardDto[] }
+/**
+ * F2.29 — RECORD_PAID_EXPENSE card (read-only; appears only once a real finance execution exists).
+ * Business language only: no ids / hashes in any text. executedEventId is a render key, never shown.
+ */
+export const FINANCE_OUTCOME_STATUS_HE: Record<OutcomeCardState, string> = {
+  APPLIED_AS_EXPECTED: "הרישום עדיין תואם למצב הנוכחי.",
+  LIVE_STATE_CHANGED_AFTER_EXECUTION: "הרישום בכספים השתנה מאז הפעולה של Partner.",
+  TARGET_NOT_FOUND: "הרישום שנוצר לא נמצא כרגע בכספים.",
+  READ_FAILED: "לא הצלחתי לקרוא כרגע את המצב הנוכחי.",
+};
+export interface PartnerFinanceOutcomeCardDto {
+  v: typeof RECENT_OUTCOMES_DTO_VERSION;
+  state: OutcomeCardState;
+  executedEventId: string;
+  actionType: "RECORD_PAID_EXPENSE";
+  executedAt: string;
+  executedAtHe: string;
+  /** e.g. "משכורת Victor עבור אוגוסט 2026 נרשמה בכספים — $550, 10.09.2026." */
+  headlineHe: string;
+  badgeHe: string;
+  statusHe: string;
+}
+export type PartnerOutcomeItemDto = PartnerOutcomeCardDto | PartnerFinanceOutcomeCardDto;
+
+export interface RecentOutcomesResponse { v: typeof RECENT_OUTCOMES_DTO_VERSION; items: PartnerOutcomeItemDto[] }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -102,11 +127,40 @@ export function toOutcomeCardDto(o: PartnerActionOutcome): PartnerOutcomeCardDto
   };
 }
 
+/** Server side: finance card from a derived finance Outcome. Throws for anything that must not be displayed. */
+export function toFinanceOutcomeCardDto(o: PartnerFinanceActionOutcome): PartnerFinanceOutcomeCardDto {
+  if (!(OUTCOME_CARD_STATES as readonly string[]).includes(o.state)) throw new OutcomeDtoError(`outcome state ${o.state} is not displayable`);
+  if (o.actionType !== "RECORD_PAID_EXPENSE" || !o.executed || !o.executedEventId || !o.headlineHe) throw new OutcomeDtoError("finance outcome lacks the executed history");
+  if (Number.isNaN(Date.parse(o.executed.executedAt))) throw new OutcomeDtoError("executedAt is malformed");
+  const state = o.state as OutcomeCardState;
+  return {
+    v: RECENT_OUTCOMES_DTO_VERSION, state, executedEventId: o.executedEventId, actionType: "RECORD_PAID_EXPENSE",
+    executedAt: o.executed.executedAt, executedAtHe: instantHe(o.executed.executedAt), headlineHe: o.headlineHe,
+    badgeHe: OUTCOME_TEXT_HE[state].badgeHe, statusHe: FINANCE_OUTCOME_STATUS_HE[state],
+  };
+}
+
+const FINANCE_KEYS: Array<keyof PartnerFinanceOutcomeCardDto> = ["v", "state", "executedEventId", "actionType", "executedAt", "executedAtHe", "headlineHe", "badgeHe", "statusHe"];
+function parseFinanceItem(r: Record<string, unknown>): PartnerFinanceOutcomeCardDto | null {
+  const keys = Object.keys(r);
+  if (keys.length !== FINANCE_KEYS.length || !FINANCE_KEYS.every((k) => keys.includes(k))) return null;
+  if (r.v !== RECENT_OUTCOMES_DTO_VERSION || r.actionType !== "RECORD_PAID_EXPENSE") return null;
+  if (!(OUTCOME_CARD_STATES as readonly unknown[]).includes(r.state)) return null;
+  const state = r.state as OutcomeCardState;
+  if (r.badgeHe !== OUTCOME_TEXT_HE[state].badgeHe || r.statusHe !== FINANCE_OUTCOME_STATUS_HE[state]) return null;
+  if (typeof r.executedEventId !== "string" || !UUID.test(r.executedEventId)) return null;
+  if (typeof r.executedAt !== "string" || Number.isNaN(Date.parse(r.executedAt)) || r.executedAtHe !== instantHe(r.executedAt)) return null;
+  if (typeof r.headlineHe !== "string" || r.headlineHe.length === 0 || r.headlineHe.length > 500 || UUID_ANYWHERE.test(r.headlineHe)) return null;
+  return r as unknown as PartnerFinanceOutcomeCardDto;
+}
+const UUID_ANYWHERE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 const KEYS: Array<keyof PartnerOutcomeCardDto> = ["v", "state", "executedEventId", "actionType", "projectId", "projectName", "executedFrom", "executedFromHe", "executedTo", "executedToHe", "executedAt", "executedAtHe", "currentValue", "currentValueHe", "headlineHe", "badgeHe", "statusHe"];
 
-function parseItem(x: unknown): PartnerOutcomeCardDto | null {
+function parseItem(x: unknown): PartnerOutcomeItemDto | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return null;
   const r = x as Record<string, unknown>;
+  if (r.actionType === "RECORD_PAID_EXPENSE") return parseFinanceItem(r);
   const keys = Object.keys(r);
   if (keys.length !== KEYS.length || !KEYS.every((k) => keys.includes(k))) return null;
   if (r.v !== RECENT_OUTCOMES_DTO_VERSION || r.actionType !== "UPDATE_PROJECT_DEADLINE") return null;
@@ -130,11 +184,11 @@ function parseItem(x: unknown): PartnerOutcomeCardDto | null {
 }
 
 /** Client side: strict, fail-closed. Any malformed item → { ok: false } and nothing is rendered. */
-export function parseRecentOutcomesResponse(json: unknown): { ok: true; items: PartnerOutcomeCardDto[] } | { ok: false } {
+export function parseRecentOutcomesResponse(json: unknown): { ok: true; items: PartnerOutcomeItemDto[] } | { ok: false } {
   if (typeof json !== "object" || json === null || Array.isArray(json)) return { ok: false };
   const r = json as Record<string, unknown>;
   if (r.v !== RECENT_OUTCOMES_DTO_VERSION || !Array.isArray(r.items) || Object.keys(r).length !== 2 || r.items.length > RECENT_OUTCOMES_LIMIT) return { ok: false };
-  const items: PartnerOutcomeCardDto[] = [];
+  const items: PartnerOutcomeItemDto[] = [];
   const seen = new Set<string>();
   for (const x of r.items) {
     const p = parseItem(x);

@@ -27,6 +27,7 @@ import {
   type ActionEventInsertRow, type ActionEventType, type DecisionRequestScope, type DeferChoice, type OwnerDecisionEventType, type PartnerActionEvent,
 } from "./events";
 import { hashActionSnapshot, type PartnerActionSnapshot } from "./snapshot";
+import { isFinanceActionRow, mapFinanceActionEventRow, type PartnerFinanceActionEvent } from "./finance-events";
 
 // ── injected client ──
 
@@ -104,6 +105,12 @@ export type ActionChainReadResult =
   | { status: "INVALID_STORED_EVENT"; errors: string[] }
   | { status: "INVALID_CHAIN"; reasons: string[] };
 
+/** F2.29 (read-only): RECORD_PAID_EXPENSE events have their own strict reader; they are never deadline events. */
+export type FinanceEventListReadResult =
+  | { status: "OK"; events: PartnerFinanceActionEvent[] }
+  | { status: "READ_FAILED"; detail: string }
+  | { status: "INVALID_STORED_EVENT"; errors: string[] };
+
 export interface DecisionAppendInput {
   requestId: string;
   actionId: string;
@@ -145,27 +152,42 @@ export interface ActionEventStore {
   callExecuteRpc(args: ExecuteRpcArgs): Promise<RpcCallResult>;
 }
 
+/** F2.29: READ-ONLY finance event capability (no finance append, no finance RPC exists in the app). */
+export interface FinanceActionEventReader {
+  /** Every stored RECORD_PAID_EXPENSE event of one type, created_at order; any malformed finance row fails the read closed. */
+  getFinanceEventsByType(eventType: ActionEventType): Promise<FinanceEventListReadResult>;
+}
+
 export const EVENT_PAGE_SIZE = 500;
 
-export function createActionEventStore(client: ActionEventTableClient): ActionEventStore {
+export function createActionEventStore(client: ActionEventTableClient): ActionEventStore & FinanceActionEventReader {
   const table = () => client.from(PARTNER_ACTION_EVENTS_TABLE);
 
-  async function readRows(column: string, value: string): Promise<{ ok: true; events: PartnerActionEvent[] } | { ok: false; result: Exclude<ActionChainReadResult, { status: "OK" }> }> {
+  async function readRawRows(column: string, value: string): Promise<{ ok: true; rows: unknown[] } | { ok: false; detail: string }> {
     const rows: unknown[] = [];
     for (let from = 0; ; from += EVENT_PAGE_SIZE) {
       let res: ActionEventDbResponse<unknown[]>;
       try {
         res = await table().select(ACTION_EVENT_COLUMNS).eq(column, value)
           .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, from + EVENT_PAGE_SIZE - 1);
-      } catch (e) { return { ok: false, result: { status: "READ_FAILED", detail: `partner_action_events read threw: ${describeDbError(e)}` } }; }
-      if (res.error) return { ok: false, result: { status: "READ_FAILED", detail: `partner_action_events read failed: ${describeDbError(res.error)}` } };
-      if (!Array.isArray(res.data)) return { ok: false, result: { status: "READ_FAILED", detail: "partner_action_events read returned no data array" } };
+      } catch (e) { return { ok: false, detail: `partner_action_events read threw: ${describeDbError(e)}` }; }
+      if (res.error) return { ok: false, detail: `partner_action_events read failed: ${describeDbError(res.error)}` };
+      if (!Array.isArray(res.data)) return { ok: false, detail: "partner_action_events read returned no data array" };
       rows.push(...res.data);
       if (res.data.length < EVENT_PAGE_SIZE) break;
     }
+    return { ok: true, rows };
+  }
+
+  async function readRows(column: string, value: string): Promise<{ ok: true; events: PartnerActionEvent[] } | { ok: false; result: Exclude<ActionChainReadResult, { status: "OK" }> }> {
+    const raw = await readRawRows(column, value);
+    if (!raw.ok) return { ok: false, result: { status: "READ_FAILED", detail: raw.detail } };
     const events: PartnerActionEvent[] = [];
     const errors: string[] = [];
-    for (const r of rows) {
+    for (const r of raw.rows) {
+      // F2.29: RECORD_PAID_EXPENSE rows belong to the finance reader (getFinanceEventsByType) — never parsed or
+      // returned as deadline events. Any OTHER unknown action type still fails the read closed, as before.
+      if (isFinanceActionRow(r)) continue;
       const m = mapActionEventRow(r);
       if (m.ok) events.push(m.value);
       else errors.push(`${(r as { id?: unknown })?.id ?? "?"}: ${m.code}: ${m.errors.join("; ")}`);
@@ -222,6 +244,22 @@ export function createActionEventStore(client: ActionEventTableClient): ActionEv
       const r = await readRows("event_type", eventType);
       if (!r.ok) return r.result.status === "INVALID_CHAIN" ? { status: "INVALID_STORED_EVENT", errors: r.result.reasons } : r.result;
       return { status: "OK", events: r.events };
+    },
+
+    async getFinanceEventsByType(eventType) {
+      if (!(ACTION_EVENT_TYPES as readonly string[]).includes(eventType)) return { status: "INVALID_STORED_EVENT", errors: [`unknown event type ${JSON.stringify(eventType)}`] };
+      const raw = await readRawRows("event_type", eventType);
+      if (!raw.ok) return { status: "READ_FAILED", detail: raw.detail };
+      const events: PartnerFinanceActionEvent[] = [];
+      const errors: string[] = [];
+      for (const r of raw.rows) {
+        if (!isFinanceActionRow(r)) continue;
+        const m = mapFinanceActionEventRow(r);
+        if (m.ok) events.push(m.value);
+        else errors.push(`${(r as { id?: unknown })?.id ?? "?"}: ${m.code}: ${m.errors.join("; ")}`);
+      }
+      if (errors.length) return { status: "INVALID_STORED_EVENT", errors };
+      return { status: "OK", events: events.sort((a, b) => (Date.parse(a.createdAt) - Date.parse(b.createdAt)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) };
     },
 
     async appendDecision(i) {

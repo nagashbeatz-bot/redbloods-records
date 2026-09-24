@@ -6,7 +6,7 @@
  * The HISTORICAL executed change ("בוצע: from → to", when) is always shown apart from the CURRENT
  * live value ("מצב נוכחי"); the current value is never presented as what Partner executed.
  */
-import type { PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
+import type { PartnerFinanceOutcomeCardDto, PartnerOutcomeCardDto, PartnerOutcomeItemDto } from "@/lib/partner/actions/outcome-dto";
 
 const TEXT = "#F2F2F2";
 const SUB = "#A0A0A0";
@@ -48,14 +48,35 @@ export function PartnerOutcomeCard({ item, isMobile }: { item: PartnerOutcomeCar
   );
 }
 
+/**
+ * F2.29 — a recorded finance expense (RECORD_PAID_EXPENSE). Business sentence + current status only;
+ * appears only once a real finance execution exists. No ids / hashes are rendered.
+ */
+export function PartnerFinanceOutcomeCard({ item, isMobile }: { item: PartnerFinanceOutcomeCardDto; isMobile: boolean }) {
+  const tone = TONE[item.state];
+  return (
+    <article data-partner-outcome={item.executedEventId} data-outcome-state={item.state} data-outcome-kind="finance"
+      style={{ background: "#161616", border: `1px solid ${tone.border}`, borderRadius: 12, padding: isMobile ? "10px 12px" : "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <span data-outcome-badge style={{ display: "inline-flex", fontSize: 11, fontWeight: 800, padding: "2px 9px", borderRadius: 99, color: tone.chip, background: tone.chipBg }}>{item.badgeHe}</span>
+        <span style={{ fontSize: 11.5, color: MUTED }}>בוצע ב־<bdi dir="ltr">{item.executedAtHe}</bdi></span>
+      </div>
+      <p data-outcome-headline style={{ margin: 0, fontSize: isMobile ? 14 : 14.5, fontWeight: 700, color: TEXT, lineHeight: 1.5 }}>{item.headlineHe}</p>
+      <p data-outcome-status style={{ margin: "8px 0 0", fontSize: 12.5, color: item.state === "TARGET_NOT_FOUND" ? "#F59E0B" : SUB }}>{item.statusHe}</p>
+    </article>
+  );
+}
+
 /** "בוצע לאחרונה" — the recent executed Actions block inside the Partner section. Renders nothing when empty. */
-export function PartnerOutcomesList({ items, isMobile }: { items: PartnerOutcomeCardDto[]; isMobile: boolean }) {
+export function PartnerOutcomesList({ items, isMobile }: { items: PartnerOutcomeItemDto[]; isMobile: boolean }) {
   if (!items.length) return null;
   return (
     <div data-partner-outcomes aria-label="Partner — פעולות שבוצעו לאחרונה" role="region" style={{ marginTop: 10 }}>
       <h3 style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 800, color: SUB }}>בוצע לאחרונה</h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {items.map((it) => <PartnerOutcomeCard key={it.executedEventId} item={it} isMobile={isMobile} />)}
+        {items.map((it) => it.actionType === "RECORD_PAID_EXPENSE"
+          ? <PartnerFinanceOutcomeCard key={it.executedEventId} item={it} isMobile={isMobile} />
+          : <PartnerOutcomeCard key={it.executedEventId} item={it as PartnerOutcomeCardDto} isMobile={isMobile} />)}
       </div>
     </div>
   );

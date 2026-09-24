@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { actionEventStore } from "./event-store";
 import { buildRecentOutcomes, type RecentOutcomesResult } from "./recent-outcomes";
 import { listExecutedActionOutcomesCore, readExecutedActionOutcomeCore, type LiveDeadlineRead, type OutcomeReaderDeps } from "./outcome";
+import { listFinanceOutcomesCore, type FinanceTxLiveRow, type LiveBusinessKeyRead } from "./finance-outcome";
 
 async function readProjectDeadline(projectId: string): Promise<LiveDeadlineRead> {
   const { data, error } = await supabase.from("projects").select("deadline,updated_at,name").eq("id", projectId).maybeSingle();
@@ -17,6 +18,20 @@ async function readProjectDeadline(projectId: string): Promise<LiveDeadlineRead>
   if (!data) return { status: "NOT_FOUND" };
   const row = data as { deadline: unknown; updated_at: unknown; name: unknown };
   return { status: "FOUND", deadline: typeof row.deadline === "string" ? row.deadline : null, updatedAt: typeof row.updated_at === "string" ? row.updated_at : null, name: typeof row.name === "string" ? row.name : null };
+}
+
+/** F2.29 (read-only): the live transactions rows carrying one finance business key (one SELECT). */
+async function readBusinessKey(linkedSessionId: string): Promise<LiveBusinessKeyRead> {
+  const { data, error } = await supabase.from("transactions")
+    .select("id,type,payment_status,amount,currency,date,description,category,scope,expense_scope,artist,project_id,linked_session_id")
+    .eq("linked_session_id", linkedSessionId);
+  if (error) return { status: "READ_FAILED", detail: error.message };
+  return { status: "OK", rows: (data ?? []) as FinanceTxLiveRow[] };
+}
+
+/** F2.29: derived Outcomes of every executed RECORD_PAID_EXPENSE action (none until a real finance execution). */
+export function listFinanceOutcomes() {
+  return listFinanceOutcomesCore({ listFinanceEvents: (t) => actionEventStore.getFinanceEventsByType(t), readBusinessKey, now: () => new Date() });
 }
 
 const deps: OutcomeReaderDeps = {
@@ -40,6 +55,7 @@ export function getRecentOutcomesSurface(): Promise<RecentOutcomesResult> {
   return buildRecentOutcomes({
     listExecutedEvents: () => actionEventStore.getEventsByType("EXECUTED"),
     readOutcome: (id) => readExecutedActionOutcomeCore(deps, id),
+    listFinanceOutcomes,
     log: (event, data) => console.warn(`[partner-outcomes] ${event}`, JSON.stringify(data)),
   });
 }

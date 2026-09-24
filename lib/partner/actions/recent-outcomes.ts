@@ -10,11 +10,14 @@
  */
 import type { PartnerActionEvent } from "./events";
 import type { OutcomeReadResult } from "./outcome";
-import { RECENT_OUTCOMES_DTO_VERSION, RECENT_OUTCOMES_LIMIT, toOutcomeCardDto, type PartnerOutcomeCardDto, type RecentOutcomesResponse } from "./outcome-dto";
+import { RECENT_OUTCOMES_DTO_VERSION, RECENT_OUTCOMES_LIMIT, toFinanceOutcomeCardDto, toOutcomeCardDto, type PartnerOutcomeItemDto, type RecentOutcomesResponse } from "./outcome-dto";
+import type { FinanceOutcomesListResult } from "./finance-outcome";
 
 export interface RecentOutcomesDeps {
   listExecutedEvents(): Promise<{ status: "OK"; events: PartnerActionEvent[] } | { status: "READ_FAILED"; detail: string } | { status: "INVALID_STORED_EVENT"; errors: string[] }>;
   readOutcome(executedEventId: string): Promise<OutcomeReadResult>;
+  /** F2.29 (optional, read-only): derived Outcomes of executed RECORD_PAID_EXPENSE actions. Absent / failing → deadline cards only. */
+  listFinanceOutcomes?(): Promise<FinanceOutcomesListResult>;
   log(event: string, data: Record<string, unknown>): void;
 }
 
@@ -35,7 +38,7 @@ export async function buildRecentOutcomes(deps: RecentOutcomesDeps, limit: numbe
   }
   const events = listed.events.filter((e) => e.eventType === "EXECUTED").sort(newestFirst);
   if (events.length !== listed.events.length) deps.log("partner_outcomes_non_executed_listed", { count: listed.events.length - events.length });
-  const items: PartnerOutcomeCardDto[] = [];
+  const items: PartnerOutcomeItemDto[] = [];
   for (const e of events) {
     if (items.length >= max) break;
     let r: OutcomeReadResult;
@@ -47,6 +50,21 @@ export async function buildRecentOutcomes(deps: RecentOutcomesDeps, limit: numbe
       continue;
     }
     try { items.push(toOutcomeCardDto(o)); } catch (err) { deps.log("partner_outcome_omitted", { executedEventId: e.id, actionId: o.actionId, reason: "DTO_REJECTED", detail: (err as Error).message }); }
+  }
+  // F2.29: finance cards (none exist until a real finance execution) merged newest first; with none, the response
+  // is exactly the deadline response above.
+  if (deps.listFinanceOutcomes) {
+    let fin: FinanceOutcomesListResult | null = null;
+    try { fin = await deps.listFinanceOutcomes(); } catch (err) { deps.log("partner_finance_outcomes_unavailable", { reason: "READ_THREW", detail: (err as Error).message }); }
+    if (fin && fin.status !== "OK") deps.log("partner_finance_outcomes_unavailable", { reason: fin.status, detail: fin.status === "STORE_READ_FAILED" ? fin.detail : fin.errors.join("; ") });
+    if (fin && fin.status === "OK" && fin.outcomes.length) {
+      for (const o of fin.outcomes) {
+        if (o.state === "UNSUPPORTED_ACTION" || o.state === "INVARIANT_VIOLATION") { deps.log("partner_outcome_omitted", { executedEventId: o.executedEventId, actionId: o.actionId, reason: o.state, reasons: o.reasons }); continue; }
+        try { items.push(toFinanceOutcomeCardDto(o)); } catch (err) { deps.log("partner_outcome_omitted", { executedEventId: o.executedEventId, actionId: o.actionId, reason: "DTO_REJECTED", detail: (err as Error).message }); }
+      }
+      items.sort((a, b) => (Date.parse(b.executedAt) - Date.parse(a.executedAt)) || (a.executedEventId < b.executedEventId ? 1 : a.executedEventId > b.executedEventId ? -1 : 0));
+      items.splice(max);
+    }
   }
   return { status: "OK", response: { v: RECENT_OUTCOMES_DTO_VERSION, items } };
 }

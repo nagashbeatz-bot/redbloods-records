@@ -166,7 +166,7 @@ async function main() {
   console.log("First real fixture → APPLIED_AS_EXPECTED card (1-5, 8, 30)");
   const real = realDeps(rows, { status: "FOUND", deadline: "2026-10-07", updatedAt: PROD.execution.at, name: LABEL });
   const r = await buildRecentOutcomes(real.deps);
-  const card = r.status === "OK" ? r.response.items[0] : undefined;
+  const card = r.status === "OK" ? (r.response.items[0] as PartnerOutcomeCardDto | undefined) : undefined;
   {
     check("30. the real executed Action yields exactly one APPLIED_AS_EXPECTED card", r.status === "OK" ? r.response.items.map((i) => [i.executedEventId, i.state]) : r, [[PROD.execution.id, "APPLIED_AS_EXPECTED"]]);
     check("2. project name (live, current)", card?.projectName, LABEL);
@@ -191,7 +191,7 @@ async function main() {
   {
     const changed = realDeps(rows, { status: "FOUND", deadline: "2026-10-20", updatedAt: "2026-09-30T10:00:00+00:00", name: LABEL });
     const rc = await buildRecentOutcomes(changed.deps);
-    const c = rc.status === "OK" ? rc.response.items[0] : undefined;
+    const c = rc.status === "OK" ? (rc.response.items[0] as PartnerOutcomeCardDto | undefined) : undefined;
     check("6. state + calm wording", [c?.state, c?.badgeHe, c?.statusHe], ["LIVE_STATE_CHANGED_AFTER_EXECUTION", "בוצע", "הדדליין השתנה מאז הפעולה של Partner."]);
     check("5. executed value stays 07.10.2026; current is 20.10.2026 — never swapped", [c?.executedTo, c?.executedToHe, c?.currentValue, c?.currentValueHe, c?.headlineHe], ["2026-10-07", "07.10.2026", "2026-10-20", "20.10.2026", "הדדליין של 'קרוב אלייך' עודכן ל־07.10.2026"]);
     const html = render(c ? [c] : []);
@@ -234,7 +234,7 @@ async function main() {
     check("12. malformed stored Action omitted (fail closed, logged)", [byId.has(m), mixed.logs.includes("partner_outcome_omitted:STORED_DATA_INVALID")], [false, true]);
     check("15. INVARIANT_VIOLATION omitted (fail closed, logged)", [byId.has(iv), mixed.logs.includes("partner_outcome_omitted:INVARIANT_VIOLATION")], [false, true]);
     check("no-Outcome and throwing reads omitted (logged)", [byId.has(no), byId.has(th), mixed.logs.includes("partner_outcome_omitted:NO_OUTCOME"), mixed.logs.includes("partner_outcome_omitted:READ_THREW")], [false, false, true, true]);
-    const nfc = byId.get(nf), rfc = byId.get(rf);
+    const nfc = byId.get(nf) as PartnerOutcomeCardDto | undefined, rfc = byId.get(rf) as PartnerOutcomeCardDto | undefined;
     check("13. TARGET_NOT_FOUND is a warning state, not normal success: own badge, no current value", [nfc?.state, nfc?.badgeHe, nfc?.statusHe, nfc?.currentValue, nfc?.currentValueHe], ["TARGET_NOT_FOUND", "לתשומת לב", "הפרויקט שעליו בוצעה הפעולה לא נמצא כרגע במערכת.", null, null]);
     ok("13. rendered in the warning tone, without a 'מצב נוכחי' box and without the success sentence", (() => { const h = render([nfc!]); return h.includes("#F59E0B") && !h.includes("מצב נוכחי") && !h.includes("עדיין תואם"); })());
     check("14. READ_FAILED shows no current value (nothing invented)", [rfc?.state, rfc?.currentValue, rfc?.currentValueHe, rfc?.statusHe], ["READ_FAILED", null, null, "לא הצלחתי לקרוא כרגע את המצב הנוכחי."]);

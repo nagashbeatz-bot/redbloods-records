@@ -195,23 +195,26 @@ export function compareEventOrder(a: PartnerActionEvent, b: PartnerActionEvent):
   return d !== 0 ? d : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-export type ActionChainResult =
-  | { status: "OK"; chain: PartnerActionEvent[]; head: PartnerActionEvent | null }
+/** The fields chain ordering needs — shared by deadline and (F2.29) finance events. */
+export type ChainEvent = Pick<PartnerActionEvent, "id" | "actionId" | "supersedesEventId" | "eventType">;
+
+export type ActionChainResult<E extends ChainEvent = PartnerActionEvent> =
+  | { status: "OK"; chain: E[]; head: E | null }
   | { status: "INVALID_CHAIN"; reasons: string[] };
 
 /** Orders one action's events along the supersedes chain and validates it is a single line (fail closed otherwise). */
-export function orderActionChain(actionId: string, events: readonly PartnerActionEvent[]): ActionChainResult {
+export function orderActionChain<E extends ChainEvent = PartnerActionEvent>(actionId: string, events: readonly E[]): ActionChainResult<E> {
   if (!events.length) return { status: "OK", chain: [], head: null };
   const reasons: string[] = [];
   if (events.some((e) => e.actionId !== actionId)) reasons.push("event of another action in the chain");
   const roots = events.filter((e) => e.supersedesEventId === null);
   if (roots.length !== 1) reasons.push(`expected exactly one root, found ${roots.length}`);
-  const next = new Map<string, PartnerActionEvent[]>();
+  const next = new Map<string, E[]>();
   for (const e of events) if (e.supersedesEventId) next.set(e.supersedesEventId, [...(next.get(e.supersedesEventId) ?? []), e]);
   for (const [p, s] of next) if (s.length > 1) reasons.push(`event ${p} has ${s.length} successors`);
   if (reasons.length) return { status: "INVALID_CHAIN", reasons };
-  const chain: PartnerActionEvent[] = [];
-  let cur: PartnerActionEvent | undefined = roots[0];
+  const chain: E[] = [];
+  let cur: E | undefined = roots[0];
   const seen = new Set<string>();
   while (cur && !seen.has(cur.id)) { seen.add(cur.id); chain.push(cur); cur = next.get(cur.id)?.[0]; }
   if (chain.length !== events.length) return { status: "INVALID_CHAIN", reasons: ["events not all reachable from the root (dangling or cyclic)"] };

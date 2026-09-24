@@ -11,7 +11,7 @@
  */
 import type { ReactNode } from "react";
 import type { ChangeValueAnswerCode, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
-import type { PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
+import type { PartnerOutcomeItemDto } from "@/lib/partner/actions/outcome-dto";
 import { NOT_NOW_CHOICES, type DecisionPhase, type NotNowChoice } from "./partner-decision-client";
 import { PartnerOutcomesList } from "./PartnerOutcomeCard";
 import type { FinanceBriefDto } from "@/lib/partner/finance/dto";
@@ -188,7 +188,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
  * between them (F2.8–F2.10: its "צריך ממך" questions are answerable when the section passes financeControls).
  * Renders nothing when there is nothing to show.
  */
-export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null, financeControls, financeNotice = null }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeCardDto[]; finance?: FinanceBriefDto | null; financeControls?: FinanceAnswerControls; financeNotice?: string | null }) {
+export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null, financeControls, financeNotice = null }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeItemDto[]; finance?: FinanceBriefDto | null; financeControls?: FinanceAnswerControls; financeNotice?: string | null }) {
   if (!items.length && !notice && !outcomes.length && !finance) return null;
   const fresh = items.filter((i) => i.state === "SHOW").length;
   return (

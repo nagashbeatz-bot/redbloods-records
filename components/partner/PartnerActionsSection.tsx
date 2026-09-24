@@ -27,7 +27,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/use-role";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { parseActionSurfaceResponse, type ChangeValueAnswerCode, type PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
-import { parseRecentOutcomesResponse, type PartnerOutcomeCardDto } from "@/lib/partner/actions/outcome-dto";
+import { parseRecentOutcomesResponse, type PartnerOutcomeItemDto } from "@/lib/partner/actions/outcome-dto";
 import { parseFinanceBriefResponse, type FinanceBriefDto } from "@/lib/partner/finance/dto";
 import { PartnerActionsView, type CardControls } from "./PartnerActionCard";
 import type { FinanceAnswerControls } from "./PartnerFinanceBrief";
@@ -64,7 +64,7 @@ const newRequestId = () => (typeof crypto !== "undefined" && "randomUUID" in cry
 export default function PartnerActionsSection({ isMobile }: { isMobile: boolean }) {
   const role = useRole();
   const [items, setItems] = useState<PartnerActionCardDto[]>([]);
-  const [outcomes, setOutcomes] = useState<PartnerOutcomeCardDto[]>([]);
+  const [outcomes, setOutcomes] = useState<PartnerOutcomeItemDto[]>([]);
   const [finance, setFinance] = useState<FinanceBriefDto | null>(null);
   const [ui, setUi] = useState<UiState>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);

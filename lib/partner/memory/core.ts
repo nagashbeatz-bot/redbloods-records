@@ -13,6 +13,8 @@ import { classifyOwnerContexts } from "../investigation/context-applicability";
 import type { PersistedOwnerContext } from "../investigation/context-row";
 import type { PartnerActionEvent } from "../actions/events";
 import type { PartnerActionOutcome } from "../actions/outcome";
+import type { PartnerFinanceActionEvent } from "../actions/finance-events";
+import type { PartnerFinanceActionOutcome } from "../actions/finance-outcome";
 import type { FinanceView } from "../finance/view";
 import type { FinanceRaw } from "../finance/types";
 import { salaryLinkedId } from "../../victor-salary-format";
@@ -29,8 +31,9 @@ export interface MemorySources {
   now: Date;
   finance: Available<{ raw: FinanceRaw; view: FinanceView }>;
   ownerContexts: Available<{ history: PersistedOwnerContext[] }>;
-  actionEvents: Available<{ events: PartnerActionEvent[] }>;
-  outcomes: Available<{ outcomes: PartnerActionOutcome[] }>;
+  /** Deadline and (F2.29) finance Action Events, each already parsed fail-closed by its own reader. */
+  actionEvents: Available<{ events: Array<PartnerActionEvent | PartnerFinanceActionEvent> }>;
+  outcomes: Available<{ outcomes: Array<PartnerActionOutcome | PartnerFinanceActionOutcome> }>;
 }
 
 /** V1 pattern threshold: at least this many distinct, uncontested instances of one signature. */
@@ -154,14 +157,37 @@ export function buildPartnerMemory(src: MemorySources): PartnerMemory {
     }
   }
 
+  /** F2.29: RECORD_PAID_EXPENSE Outcome → FINANCE_EXPENSE_RECORDED fact (+ RESOLVED_BY_ACTION when applied). */
+  function rememberFinanceOutcome(o: PartnerFinanceActionOutcome) {
+    if (o.actionType !== "RECORD_PAID_EXPENSE" || !o.subject || o.subject.type !== "recurring") return;
+    const ref = entityForSubject("recurring", o.subject.key);
+    if (ref.kind !== "recurring_period") return; // only the supported Victor salary periods
+    const e = idx.get(ref);
+    e.outcomes.push({ entity: ref.key, actionId: o.actionId, state: o.state, evaluatedAt: o.evaluatedAt, expectedValue: o.executed?.transactionId ?? null, currentValue: o.current ? (o.current.transactionIds.join(",") || null) : null, summaryHe: o.summaryHe });
+    if (o.executed) {
+      e.facts.push({
+        entity: ref.key, code: "FINANCE_EXPENSE_RECORDED", epistemic: "FACT",
+        value: { sourceKey: o.subject.key, period: o.period, transactionId: o.executed.transactionId, amount: o.executed.amount, currency: o.executed.currency, paymentDate: o.executed.paymentDate, linkedSessionId: o.executed.linkedSessionId, outcomeStatus: o.state },
+        sources: [{ kind: "ACTION_OUTCOME", ref: o.actionId }],
+      });
+    }
+    if (o.state === "APPLIED_AS_EXPECTED") {
+      e.resolutions.push({ entity: ref.key, code: "RESOLVED_BY_ACTION", resolvedIssue: PAID_BUT_MISSING_FINANCE_RECORD, evidence: [{ kind: "ACTION_EVENTS", ref: o.executedEventId ?? o.actionId }, { kind: "ACTION_OUTCOME", ref: o.actionId }] });
+    }
+  }
+
   // ── 3. Actions (full chains) + Outcomes ──
   if (src.actionEvents.status === "OK") {
-    const byAction = new Map<string, PartnerActionEvent[]>();
+    const byAction = new Map<string, Array<PartnerActionEvent | PartnerFinanceActionEvent>>();
     for (const ev of src.actionEvents.events) byAction.set(ev.actionId, [...(byAction.get(ev.actionId) ?? []), ev]);
     for (const [actionId, evs] of [...byAction.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       const ordered = [...evs].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       const head = ordered[ordered.length - 1];
-      const ref = entityForSubject(head.subjectType, head.subjectId);
+      // F2.29: a finance Action belongs to its BUSINESS subject (snapshot.subjectKey, e.g. VICTOR_SALARY:2026-08) —
+      // the derived UUID subject_id is an audit key only and never becomes a memory entity.
+      const ref = head.actionType === "RECORD_PAID_EXPENSE"
+        ? entityForSubject("recurring", (head as PartnerFinanceActionEvent).subjectKey)
+        : entityForSubject(head.subjectType, head.subjectId);
       const e = idx.get(ref);
       const snapIds = (head.snapshot as unknown as { sourceContextIds?: unknown }).sourceContextIds;
       const act: MemoryAction = {
@@ -173,7 +199,11 @@ export function buildPartnerMemory(src: MemorySources): PartnerMemory {
     }
   }
   if (src.outcomes.status === "OK") {
-    for (const o of src.outcomes.outcomes) {
+    for (const oc of src.outcomes.outcomes) {
+      // F2.29: Outcome memory dispatches by action type. Finance → its own fact; unknown types add nothing.
+      if (oc.schemaVersion === "partner-finance-action-outcome-v1") { rememberFinanceOutcome(oc as PartnerFinanceActionOutcome); continue; }
+      const o = oc as PartnerActionOutcome;
+      if (o.actionType !== "UPDATE_PROJECT_DEADLINE") continue;
       if (!o.subject) continue;
       const ref = entityForSubject(o.subject.type, o.subject.id);
       const e = idx.get({ ...ref, labelHe: o.subjectLabel });
@@ -184,6 +214,13 @@ export function buildPartnerMemory(src: MemorySources): PartnerMemory {
         e.resolutions.push({ entity: ref.key, code: "RESOLVED_BY_ACTION", resolvedIssue: o.actionType, evidence: [{ kind: "ACTION_EVENTS", ref: o.executedEventId ?? o.actionId }, { kind: "ACTION_OUTCOME", ref: o.actionId }] });
       }
     }
+  }
+
+  // an executed Partner repair is the specific cause of the resolution: RESOLVED_BY_ACTION supersedes the generic
+  // live-state resolution of the same issue (history — the observation itself — is kept either way)
+  for (const m of idx.all()) {
+    const byAction = new Set(m.resolutions.filter((r) => r.code === "RESOLVED_BY_ACTION").map((r) => r.resolvedIssue));
+    if (byAction.size) m.resolutions = m.resolutions.filter((r) => !(r.code === "RESOLVED_SINCE_OBSERVATION" && byAction.has(r.resolvedIssue)));
   }
 
   const entities = idx.all();

@@ -9,6 +9,11 @@ import { requireOwner } from "@/lib/require-auth";
  *                                              month (settings only — never touches Finance)
  */
 
+/** 23505 on the Victor salary business key — and nothing else (other unique violations are real errors). */
+function isVictorSalaryKeyConflict(e: { code?: string; message?: string; details?: string | null }): boolean {
+  return e.code === "23505" && /\btransactions_victor_salary_period_uk\b/.test(`${e.message ?? ""} ${e.details ?? ""}`);
+}
+
 export async function GET(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
@@ -93,7 +98,21 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) {
+      // A concurrent writer committed the same salary period first. With the (future) DB business-key index
+      // transactions_victor_salary_period_uk the DB — not the read above — is the final guard; only THAT exact
+      // conflict becomes the same safe duplicate answer as the pre-check. Every other error still fails.
+      if (isVictorSalaryKeyConflict(error)) {
+        const { data: winner } = await supabase
+          .from("transactions")
+          .select("id, payment_status")
+          .eq("linked_session_id", linkedId)
+          .maybeSingle();
+        const w = winner as { id: string; payment_status: string } | null;
+        if (w && w.payment_status !== "בוטל") return NextResponse.json({ ok: true, transaction: w, duplicate: true });
+      }
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, transaction: data });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
