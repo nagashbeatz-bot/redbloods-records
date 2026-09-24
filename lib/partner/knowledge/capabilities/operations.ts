@@ -93,7 +93,8 @@ export const clipPlanning: KnowledgeCapability = {
     const o = ops(src);
     if (!o || !need(o.clipItems, "clip items")) return miss("clip planning");
     const pid = q.params.project ? idOf(q.params.project) : null;
-    const rows = o.clipItems.rows.filter((c) => c.status !== "בוטל" && (!pid || c.projectId === pid));
+    // "הועבר לכספים" = already promoted into a Finance expense (legacy rows are kept) — never counted as planning again
+    const rows = o.clipItems.rows.filter((c) => c.status !== "בוטל" && c.status !== "הועבר לכספים" && !c.hasTransaction && (!pid || c.projectId === pid));
     const perCur: Record<string, number> = {};
     for (const c of rows) perCur[c.currency ?? "₪"] = (perCur[c.currency ?? "₪"] ?? 0) + (c.amount ?? 0);
     return result(rows.map((c, i) => item({ id: `${c.projectId ?? "none"}:${i}`, entity: c.projectId ? `project:${c.projectId}` : null, label: partner(c.category ?? "פריט"), epistemic: "FACT", source: "CLIPS",
