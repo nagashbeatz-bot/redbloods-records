@@ -10,6 +10,10 @@
  */
 import type { ChangeValueAnswerCode, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
 
+/** What a decision echoes back — shared by the deadline and (F2.31) the finance cards. Never a value. */
+type DecisionEcho = Pick<PartnerActionCardDto, "actionId" | "snapshotHash" | "headEventId">;
+type ExecuteEcho = Pick<PartnerActionCardDto, "state" | "approvalEventId">;
+
 export type NotNowChoice = "LATER_TODAY" | "TOMORROW" | "IN_3_DAYS" | "IN_1_WEEK" | "CUSTOM";
 /** The Owner's choices. SYSTEM_DEFAULT is deliberately not offered. */
 export const NOT_NOW_CHOICES: ReadonlyArray<{ code: NotNowChoice; labelHe: string }> = [
@@ -28,11 +32,11 @@ export interface DecisionAttempt { url: string; body: Record<string, unknown>; k
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-export function buildApproveAttempt(item: PartnerActionCardDto, requestId: string): DecisionAttempt {
+export function buildApproveAttempt(item: DecisionEcho, requestId: string): DecisionAttempt {
   return { url: DECIDE_URL, kind: "APPROVE", body: { actionId: item.actionId, decision: "APPROVE", seenSnapshotHash: item.snapshotHash, expectedHeadEventId: item.headEventId, requestId } };
 }
 
-export function buildNotNowAttempt(item: PartnerActionCardDto, requestId: string, choice: NotNowChoice, customYmd: string | null): DecisionAttempt | null {
+export function buildNotNowAttempt(item: DecisionEcho, requestId: string, choice: NotNowChoice, customYmd: string | null): DecisionAttempt | null {
   if (choice === "CUSTOM" && (!customYmd || !YMD.test(customYmd))) return null;
   const body: Record<string, unknown> = { actionId: item.actionId, decision: "NOT_NOW", seenSnapshotHash: item.snapshotHash, expectedHeadEventId: item.headEventId, requestId, deferChoice: choice };
   if (choice === "CUSTOM") body.deferDateYmd = customYmd;
@@ -95,9 +99,28 @@ export const EXECUTE_STALE_MESSAGE_HE = "הפעולה כבר לא מתאימה �
 export interface ExecuteAttempt { url: typeof EXECUTE_URL; body: { approvalEventId: string; requestId: string } }
 
 /** Only from an AWAITING_EXECUTION card: the persisted approval + ONE requestId for this execution attempt. */
-export function buildExecuteAttempt(item: PartnerActionCardDto, requestId: string): ExecuteAttempt | null {
+export function buildExecuteAttempt(item: ExecuteEcho, requestId: string): ExecuteAttempt | null {
   if (item.state !== "AWAITING_EXECUTION" || !item.approvalEventId || !requestId) return null;
   return { url: EXECUTE_URL, body: { approvalEventId: item.approvalEventId, requestId } };
+}
+
+// ── F2.31: finance execution — clear Owner messages from the stale reason CODES (never raw SQL / RPC text) ──
+export const FINANCE_STALE_MESSAGE_HE = "המידע השתנה מאז האישור. בדקתי מחדש ולא ביצעתי את הפעולה.";
+export const FINANCE_EXECUTED_MESSAGE_HE = "ההוצאה נרשמה בכספים.";
+const FINANCE_REASON_MESSAGES: Array<[readonly string[], string]> = [
+  [["ALREADY_RECORDED"], "ההוצאה כבר רשומה בכספים."],
+  [["CANCELLED_RECORD_EXISTS"], "קיימת רשומה מבוטלת לחודש הזה. צריך החלטה שלך לפני שיוצרים רישום חדש."],
+  [["EXISTING_RECORD_NOT_PAID"], "כבר קיימת בכספים רשומה לחודש הזה שלא מסומנת כשולמה. לא יצרתי רישום נוסף."],
+  [["AMBIGUOUS_EXISTING_RECORD"], "יש בכספים רשומה דומה לחודש הזה. לא יצרתי רישום נוסף — צריך בדיקה שלך."],
+  [["SALARY_AMOUNT_CHANGED", "SALARY_CURRENCY_CHANGED", "SALARY_CONFIG_MISSING", "SALARY_CONFIG_INVALID", "CONFIG_MISSING", "CONFIG_INVALID"], "הגדרות המשכורת של Victor השתנו מאז האישור. לא ביצעתי — צריך לאשר מחדש."],
+  [["SALARY_STATUS_CONTRADICTS", "STATUS_CONTRADICTS"], "עמוד המשכורת של Victor כבר לא מסמן את החודש כשולם. לא ביצעתי."],
+  [["STATUS_CONTEXT_CHANGED", "STATUS_CONTEXT_REVISED", "DATE_CONTEXT_CHANGED", "DATE_CONTEXT_REVISED", "STATUS_CONTEXT_MISSING", "DATE_CONTEXT_MISSING", "OWNER_CONTEXT_REVISED", "PAYMENT_DATE_CHANGED"], "התשובה שלך על התשלום השתנתה מאז האישור. לא ביצעתי — צריך לאשר מחדש."],
+  [["PAYMENT_DATE_OUT_OF_RANGE"], "תאריך התשלום כבר לא תקין לחודש הזה. לא ביצעתי."],
+];
+/** The Owner message for a finance execution that did not write (first matching reason wins; never a raw code). */
+export function financeStaleMessageHe(reasons: readonly string[]): string {
+  for (const [codes, msg] of FINANCE_REASON_MESSAGES) if (reasons.some((r) => codes.includes(r))) return msg;
+  return FINANCE_STALE_MESSAGE_HE;
 }
 
 /**
@@ -107,6 +130,14 @@ export function buildExecuteAttempt(item: PartnerActionCardDto, requestId: strin
 export function interpretExecuteResponse(httpStatus: number, json: unknown): DecisionOutcome {
   const r = typeof json === "object" && json !== null && !Array.isArray(json) ? (json as Record<string, unknown>) : null;
   const status = typeof r?.status === "string" ? r.status : null;
+  // F2.31: a finance result carries its reason codes (an array); the deadline response never does.
+  const financeReasons = Array.isArray(r?.reasons) ? (r!.reasons as unknown[]).filter((x): x is string => typeof x === "string") : null;
+  if (financeReasons && httpStatus === 200) {
+    if (status === "EXECUTED" || (status === "REPLAY" && r?.eventType === "EXECUTED")) return { ui: "executed", messageHe: FINANCE_EXECUTED_MESSAGE_HE };
+    if (status === "ALREADY_EXECUTED") return { ui: "executed", messageHe: "ההוצאה כבר נרשמה בכספים." };
+    if (status === "STALE_AT_EXECUTION" || (status === "REPLAY" && r?.eventType === "STALE_AT_EXECUTION")) return { ui: "stale", messageHe: financeStaleMessageHe(financeReasons) };
+  }
+  if (status === "UNSUPPORTED_ACTION") return { ui: "error", messageHe: "סוג הפעולה לא נתמך — הפעולה לא בוצעה." };
   if (httpStatus === 401 || httpStatus === 403) return { ui: "error", messageHe: "אין הרשאה לבצע את הפעולה הזו." };
   if (httpStatus === 503 || status === "RETRYABLE") return { ui: "retry", messageHe: "לא הצלחתי לבצע כרגע. אפשר לנסות שוב." };
   if (httpStatus >= 500 || status === null || status === "INVARIANT_VIOLATION") return { ui: "error", messageHe: "משהו השתבש — הפעולה לא בוצעה." };

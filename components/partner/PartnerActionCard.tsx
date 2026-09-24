@@ -10,7 +10,7 @@
  *                          + a deliberate [בצע עכשיו] (F.1K). Never a fresh proposal, never looks already changed.
  */
 import type { ReactNode } from "react";
-import type { ChangeValueAnswerCode, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
+import type { ActionSurfaceItemDto, ChangeValueAnswerCode, FinanceActionCardDto, PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
 import type { PartnerOutcomeItemDto } from "@/lib/partner/actions/outcome-dto";
 import { NOT_NOW_CHOICES, type DecisionPhase, type NotNowChoice } from "./partner-decision-client";
 import { PartnerOutcomesList } from "./PartnerOutcomeCard";
@@ -129,7 +129,85 @@ function AwaitingExecutionCard({ item, isMobile, controls }: { item: PartnerActi
   );
 }
 
-export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerActionCardDto; isMobile: boolean; controls?: CardControls }) {
+/** F2.31: the recorded-payment facts of a finance card — amount / status / payment date as three calm boxes. */
+function FinanceFacts({ item, isMobile }: { item: FinanceActionCardDto; isMobile: boolean }) {
+  const box = (label: string, value: string, key: string) => (
+    <div key={key} data-finance-fact={key} style={{ flex: "1 1 0", minWidth: 0, borderRadius: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 2 }}>{label}</div>
+      <bdi dir={key === "status" ? "rtl" : "ltr"} style={{ fontSize: 17, fontWeight: 800, color: TEXT, letterSpacing: "0.02em" }}>{value}</bdi>
+    </div>
+  );
+  return (
+    <div role="group" aria-label={`${item.titleHe}: ${item.amountHe}, ${item.paymentStatusHe}, ${item.paymentDateHe}`}
+      style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 6 : 10, marginBottom: 10 }}>
+      {box("סכום", item.amountHe, "amount")}
+      {box("סטטוס", item.paymentStatusHe, "status")}
+      {box("תאריך תשלום", item.paymentDateHe, "date")}
+    </div>
+  );
+}
+
+/**
+ * F2.31 — a RECORD_PAID_EXPENSE Suggested Action (Victor salary).
+ * SHOW:               [אשר] [לא עכשיו] — "אשר" records ONLY the approval (no Finance write).
+ * AWAITING_EXECUTION: the approved record exactly as approved + a deliberate [בצע עכשיו]. Never automatic.
+ */
+function FinanceActionCard({ item, isMobile, controls }: { item: FinanceActionCardDto; isMobile: boolean; controls?: CardControls }) {
+  const busy = controls?.phase === "submitting";
+  if (item.state === "AWAITING_EXECUTION") {
+    return (
+      <article data-partner-action={item.actionId} data-state={item.state} data-action-kind="finance" aria-busy={busy || undefined}
+        style={{ background: CARD, border: "1px solid rgba(34,197,94,0.25)", borderRadius: 14, padding: isMobile ? "12px 12px 10px" : "14px 16px 12px" }}>
+        <p style={{ margin: "0 0 6px", fontSize: isMobile ? 15 : 16, fontWeight: 800, color: "#4ADE80" }}>הפעולה אושרה</p>
+        <p data-approved-change style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: TEXT, lineHeight: 1.6 }}>{item.titleHe}</p>
+        <FinanceFacts item={item} isMobile={isMobile} />
+        <p data-awaiting-note style={{ margin: "6px 0 0", fontSize: 12.5, fontWeight: 700, color: SUB }}>ההוצאה עדיין לא נרשמה בכספים.</p>
+        {controls && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={controls.onExecute} disabled={busy} style={btn("primary", isMobile, !!busy)}>בצע עכשיו</button>
+            </div>
+            <StatusLine controls={controls} />
+          </>
+        )}
+      </article>
+    );
+  }
+  return (
+    <article data-partner-action={item.actionId} data-state={item.state} data-action-kind="finance" aria-busy={busy || undefined}
+      style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: isMobile ? "12px 12px 10px" : "14px 16px 12px" }}>
+      <p style={{ margin: "0 0 10px", fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT, lineHeight: 1.45 }}>{item.headlineHe}</p>
+      <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: SUB }}>{item.titleHe}</p>
+      <FinanceFacts item={item} isMobile={isMobile} />
+      <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 2 }}>למה</div>
+      <p style={{ margin: 0, fontSize: 13.5, color: SUB, lineHeight: 1.6 }}>{item.reasonHe}</p>
+      {controls && (
+        <>
+          {controls.panel === "none" && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={controls.onApprove} disabled={busy} style={btn("primary", isMobile, busy)}>אשר</button>
+              <button type="button" onClick={controls.onOpenNotNow} disabled={busy} style={btn("secondary", isMobile, busy)}>לא עכשיו</button>
+            </div>
+          )}
+          {controls.panel === "notNow" && (
+            <Panel>
+              <ChoiceList name={`not-now-${item.actionId}`} legend="מתי לחזור לזה?" options={NOT_NOW_CHOICES} value={controls.notNowChoice} onChange={controls.onNotNowChoice} disabled={busy} />
+              {controls.notNowChoice === "CUSTOM" && controls.renderDatePicker({ value: controls.customYmd, onChange: controls.onCustomYmd, min: "", ariaLabel: "תאריך לחזרה להצעה", disabled: busy })}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button type="button" onClick={controls.onConfirmNotNow} disabled={busy || !controls.notNowChoice || (controls.notNowChoice === "CUSTOM" && !controls.customYmd)} style={btn("primary", isMobile, busy || !controls.notNowChoice)}>שמור</button>
+                <button type="button" onClick={controls.onCancel} disabled={busy} style={btn("secondary", isMobile, busy)}>ביטול</button>
+              </div>
+            </Panel>
+          )}
+          <StatusLine controls={controls} />
+        </>
+      )}
+    </article>
+  );
+}
+
+export function PartnerActionCard({ item, isMobile, controls }: { item: ActionSurfaceItemDto; isMobile: boolean; controls?: CardControls }) {
+  if (item.actionType === "RECORD_PAID_EXPENSE") return <FinanceActionCard item={item} isMobile={isMobile} controls={controls} />;
   if (item.state === "AWAITING_EXECUTION") return <AwaitingExecutionCard item={item} isMobile={isMobile} controls={controls} />;
   const busy = controls?.phase === "submitting";
   return (
@@ -188,7 +266,7 @@ export function PartnerActionCard({ item, isMobile, controls }: { item: PartnerA
  * between them (F2.8–F2.10: its "צריך ממך" questions are answerable when the section passes financeControls).
  * Renders nothing when there is nothing to show.
  */
-export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null, financeControls, financeNotice = null }: { items: PartnerActionCardDto[]; isMobile: boolean; controlsFor?: (item: PartnerActionCardDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeItemDto[]; finance?: FinanceBriefDto | null; financeControls?: FinanceAnswerControls; financeNotice?: string | null }) {
+export function PartnerActionsView({ items, isMobile, controlsFor, notice, outcomes = [], finance = null, financeControls, financeNotice = null }: { items: ActionSurfaceItemDto[]; isMobile: boolean; controlsFor?: (item: ActionSurfaceItemDto) => CardControls | undefined; notice?: string | null; outcomes?: PartnerOutcomeItemDto[]; finance?: FinanceBriefDto | null; financeControls?: FinanceAnswerControls; financeNotice?: string | null }) {
   if (!items.length && !notice && !outcomes.length && !finance) return null;
   const fresh = items.filter((i) => i.state === "SHOW").length;
   return (

@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/use-role";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import { parseActionSurfaceResponse, type ChangeValueAnswerCode, type PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
+import { parseActionSurfaceResponse, type ActionSurfaceItemDto, type ChangeValueAnswerCode, type PartnerActionCardDto } from "@/lib/partner/actions/surface-dto";
 import { parseRecentOutcomesResponse, type PartnerOutcomeItemDto } from "@/lib/partner/actions/outcome-dto";
 import { parseFinanceBriefResponse, type FinanceBriefDto } from "@/lib/partner/finance/dto";
 import { PartnerActionsView, type CardControls } from "./PartnerActionCard";
@@ -63,7 +63,7 @@ const newRequestId = () => (typeof crypto !== "undefined" && "randomUUID" in cry
 
 export default function PartnerActionsSection({ isMobile }: { isMobile: boolean }) {
   const role = useRole();
-  const [items, setItems] = useState<PartnerActionCardDto[]>([]);
+  const [items, setItems] = useState<ActionSurfaceItemDto[]>([]);
   const [outcomes, setOutcomes] = useState<PartnerOutcomeItemDto[]>([]);
   const [finance, setFinance] = useState<FinanceBriefDto | null>(null);
   const [ui, setUi] = useState<UiState>(IDLE);
@@ -192,7 +192,7 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
     ),
   };
 
-  const controlsFor = (item: PartnerActionCardDto): CardControls | undefined => {
+  const controlsFor = (item: ActionSurfaceItemDto): CardControls | undefined => {
     const mine = ui.actionId === item.actionId;
     const s = mine ? ui : IDLE;
     const otherBusy = (ui.phase === "submitting" && !mine) || fin.busy;
@@ -210,7 +210,8 @@ export default function PartnerActionsSection({ isMobile }: { isMobile: boolean 
       onConfirmNotNow: () => { if (s.notNowChoice) submit(item.actionId, decisionAttempt(buildNotNowAttempt(item, newRequestId(), s.notNowChoice, s.notNowChoice === "CUSTOM" ? s.customYmd : null))); },
       onChangeCode: (c) => setUi((u) => ({ ...u, changeCode: c })),
       onChangeYmd: (v) => setUi((u) => ({ ...u, changeYmd: v })),
-      onConfirmChange: () => { if (s.changeCode) submit(item.actionId, decisionAttempt(buildChangeAttempt(item, s.changeCode, s.changeCode === "SPECIFIC_DATE" ? s.changeYmd : null))); },
+      // "שנה תאריך" exists only on a deadline card (a finance card has no change-value flow).
+      onConfirmChange: () => { if (s.changeCode && item.actionType === "UPDATE_PROJECT_DEADLINE") submit(item.actionId, decisionAttempt(buildChangeAttempt(item as PartnerActionCardDto, s.changeCode, s.changeCode === "SPECIFIC_DATE" ? s.changeYmd : null))); },
       // F.1K: the ONLY execution trigger — a deliberate click on an AWAITING_EXECUTION card, one requestId per attempt.
       onExecute: () => submit(item.actionId, executeAttempt(buildExecuteAttempt(item, newRequestId()))),
       renderDatePicker: ({ value, onChange, min, ariaLabel }) => (

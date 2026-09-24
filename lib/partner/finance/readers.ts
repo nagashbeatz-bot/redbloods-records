@@ -39,7 +39,7 @@ async function readAll(client: FinanceReadClient, table: string, columns: string
 const FINANCE_KEY = /^finance_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 export async function readFinanceRaw(client: FinanceReadClient, readSalary: () => Promise<SalaryMonthRow[]>): Promise<FinanceRaw> {
-  const [tx, projects, settings, works, shows, proposals, clients, labelArtists, ledger, media, rfPay, legacyVictor] = await Promise.all([
+  const [tx, projects, settings, works, shows, proposals, clients, labelArtists, ledger, media, rfPay, legacyVictor, victorConfig, victorDescribed] = await Promise.all([
     readAll(client, "transactions", "id,project_id,type,date,amount,currency,payment_status,category,scope,expense_scope,linked_session_id,created_at"),
     readAll(client, "projects", "id,name,status,is_hidden,project_business_type,artist,updated_at"),
     readAll(client, "settings", "key,value", ["key", "finance_%"]),
@@ -52,11 +52,16 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     readAll(client, "label_media_income", "label_artist_id,status,gross_amount"),
     readAll(client, "red_films_budget_payments", "id,amount,payment_date"),
     readAll(client, "settings", "key,value", ["key", "vendor_victor_payment_%"]),
+    // F2.31: vendor_victor_settings / _salary_overrides / _salary_status_overrides, raw (the executor never uses code defaults)
+    readAll(client, "settings", "key,value", ["key", "vendor_victor_s%"]),
+    // F2.31: the ONLY free-text read — rows whose text starts with the canonical Victor salary prefix (duplicate guard)
+    readAll(client, "transactions", "id,description", ["description", "משכורת Victor%"]),
   ]);
+  const victorText = new Map(victorDescribed.map((r) => [String(r.id), s(r.description)]));
   let victorSalary: SalaryMonthRow[] | null = null;
   try { victorSalary = await readSalary(); } catch { victorSalary = null; }
   return {
-    transactions: tx.map((r) => ({ id: String(r.id), projectId: s(r.project_id), type: s(r.type), date: s(r.date), amount: r.amount, currency: s(r.currency), status: s(r.payment_status), category: s(r.category), scope: s(r.scope), expenseScope: s(r.expense_scope), linkedSessionId: s(r.linked_session_id), createdAt: s(r.created_at) })),
+    transactions: tx.map((r) => ({ id: String(r.id), projectId: s(r.project_id), type: s(r.type), date: s(r.date), amount: r.amount, currency: s(r.currency), status: s(r.payment_status), category: s(r.category), scope: s(r.scope), expenseScope: s(r.expense_scope), linkedSessionId: s(r.linked_session_id), createdAt: s(r.created_at), description: victorText.get(String(r.id)) ?? null })),
     projects: projects.map((r) => ({ id: String(r.id), name: String(r.name ?? ""), status: String(r.status ?? ""), isHidden: r.is_hidden === true, businessType: s(r.project_business_type), artist: s(r.artist), updatedAt: s(r.updated_at) })),
     financeSettings: settings.flatMap((r) => { const m = FINANCE_KEY.exec(String(r.key)); return m ? [{ projectId: m[1], value: r.value }] : []; }),
     engineerWorks: works.map((r) => ({ id: String(r.id), projectId: s(r.project_id), engineerName: s(r.engineer_name), status: s(r.status), agreedPrice: r.agreed_price, amountPaid: r.amount_paid, currency: s(r.currency), linkedTransactionId: s(r.linked_transaction_id) })),
@@ -68,6 +73,11 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     mediaIncome: media.map((r) => ({ labelArtistId: s(r.label_artist_id), status: s(r.status), grossAmount: r.gross_amount })),
     redFilmsPayments: rfPay.map((r) => ({ id: String(r.id), amount: r.amount, paymentDate: s(r.payment_date) })),
     victorSalary,
+    victorSalaryConfig: {
+      settings: victorConfig.find((r) => r.key === "vendor_victor_settings")?.value ?? null,
+      overrides: victorConfig.find((r) => r.key === "vendor_victor_salary_overrides")?.value ?? null,
+      statusOverrides: victorConfig.find((r) => r.key === "vendor_victor_salary_status_overrides")?.value ?? null,
+    },
     victorLegacyPayments: legacyVictor.flatMap((r) => {
       const m = /^vendor_victor_payment_(\d{4})_(\d{2})$/.exec(String(r.key));
       const v = r.value && typeof r.value === "object" ? (r.value as Record<string, unknown>) : {};

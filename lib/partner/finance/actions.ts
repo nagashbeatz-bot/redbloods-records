@@ -22,7 +22,9 @@ import { FINANCE_ANSWER_OPTIONS } from "../investigation/finance-questions";
 import { financeQuestionFingerprint, type FinanceOwnerAnswer } from "./owner-answers";
 import { salaryLinkedId, salaryTransactionDescription } from "../../victor-salary-format";
 import type { OwnerQuestion, PartnerFinanceIntegrityState, RehabIssue } from "./integrity";
-import type { FinanceRaw, PartnerFinanceState } from "./types";
+import type { FinanceRaw, PartnerFinanceState, VictorSalaryConfigRaw } from "./types";
+import { hashActionSnapshot } from "../actions/snapshot";
+import { financeActionId, financeSubjectUuid, validateFinanceSnapshot, type FinanceActionSnapshotV1 } from "../actions/finance-events";
 
 export const FINANCE_ACTION_SCHEMA_VERSION = "partner-finance-action-v1";
 export type FinanceActionType = "RECORD_PAID_EXPENSE" | "RECORD_RECEIVED_INCOME" | "SET_PROJECT_AGREED_PRICE" | "SET_RECEIVABLE_DUE_DATE";
@@ -30,12 +32,12 @@ export type FinancePermissionMode = "ALWAYS_ASK" | "PREAPPROVED_LOW_RISK" | "AUT
 /** The only mode with behaviour. */
 export const FINANCE_PERMISSION_MODE: FinancePermissionMode = "ALWAYS_ASK";
 
-export type ExecutorStatus = "EXECUTOR_BLOCKED_REQUIRES_SCHEMA_CHANGE" | "UNSUPPORTED_NO_CANONICAL_MODEL";
+export type ExecutorStatus = "EXECUTOR_READY" | "EXECUTOR_BLOCKED_REQUIRES_SCHEMA_CHANGE" | "UNSUPPORTED_NO_CANONICAL_MODEL";
 
 export interface FinanceActionCapability {
   actionType: FinanceActionType;
-  /** false for every type in this phase — see the module note. */
-  executable: false;
+  /** F2.31: true ONLY for RECORD_PAID_EXPENSE (Victor salary) — its narrow DB executor is live (F2.30). */
+  executable: boolean;
   executorStatus: ExecutorStatus;
   blockers: string[];
   /** Where the mutation-relevant facts come from, and which canonical path would write them (system contract). */
@@ -53,10 +55,10 @@ const SCHEMA_BLOCKERS = [
 /** Narrow capabilities only — there is no generic EDIT_FINANCE / WRITE_TRANSACTION. */
 export const FINANCE_ACTION_REGISTRY: Readonly<Record<FinanceActionType, FinanceActionCapability>> = {
   RECORD_PAID_EXPENSE: {
-    actionType: "RECORD_PAID_EXPENSE", executable: false, executorStatus: "EXECUTOR_BLOCKED_REQUIRES_SCHEMA_CHANGE", blockers: SCHEMA_BLOCKERS,
+    actionType: "RECORD_PAID_EXPENSE", executable: true, executorStatus: "EXECUTOR_READY", blockers: [],
     canonical: {
-      sourceFacts: ["Victor salary config: settings.vendor_victor_settings + vendor_victor_salary_overrides (lib/vendor-store.ts getVictorSalaryMonths)", "existing record: transactions.linked_session_id = victor_salary_YYYY-MM", "Owner Context: FINANCE_RECURRING_PAYMENT_STATUS = PAID_NEEDS_RECORDING + FINANCE_PAYMENT_DATE = EXACT_DATE"],
-      writePrimitive: "POST /api/vendor/victor/salary (historicPaid → expense 'שולם', scope general, category 'צוות', linked_session_id victor_salary_YYYY-MM; existence check by linked_session_id, not race-safe)",
+      sourceFacts: ["Victor salary config: settings.vendor_victor_settings + vendor_victor_salary_overrides + vendor_victor_salary_status_overrides (raw, no code defaults)", "existing record: transactions.linked_session_id = victor_salary_YYYY-MM (DB-unique)", "Owner Context: FINANCE_RECURRING_PAYMENT_STATUS = PAID_NEEDS_RECORDING + FINANCE_PAYMENT_DATE = EXACT_DATE"],
+      writePrimitive: "DB RPC partner_execute_record_paid_expense (F2.30, Owner-approved; Victor salary ONLY; atomic insert + EXECUTED event, or STALE_AT_EXECUTION)",
       consumers: CONSUMERS,
     },
   },
@@ -85,7 +87,10 @@ export const FINANCE_ACTION_REGISTRY: Readonly<Record<FinanceActionType, Finance
 
 export type FinanceActionReadiness =
   | "READY_TO_PROPOSE" | "NEEDS_OWNER_CONTEXT" | "NEEDS_EXACT_DATE" | "NEEDS_AMOUNT" | "NEEDS_CURRENCY"
-  | "NEEDS_PROJECT_LINK" | "NEEDS_CLASSIFICATION" | "ALREADY_RECORDED" | "AMBIGUOUS" | "UNSUPPORTED" | "NOT_APPLICABLE";
+  | "NEEDS_PROJECT_LINK" | "NEEDS_CLASSIFICATION" | "ALREADY_RECORDED" | "AMBIGUOUS" | "UNSUPPORTED" | "NOT_APPLICABLE"
+  // F2.31 — the execution RPC's deterministic refusals, mirrored so nothing it would reject is ever offered
+  | "CANCELLED_RECORD_EXISTS" | "EXISTING_RECORD_NOT_PAID" | "AMBIGUOUS_EXISTING_RECORD" | "CONFIG_MISSING" | "CONFIG_INVALID"
+  | "STATUS_CONTRADICTS" | "PAYMENT_DATE_OUT_OF_RANGE";
 
 export interface FinanceActionFacts {
   amount: number;
@@ -116,8 +121,13 @@ export interface FinanceActionCandidate {
   /** Hash of every mutation-relevant fact + the Owner Context revisions it relies on. */
   snapshotHash: string | null;
   ownerContextIds: string[];
-  /** Always false in this phase (registry). */
-  executable: false;
+  /**
+   * F2.31: true ONLY when readiness is READY_TO_PROPOSE, the registry executor is live and every fact the RPC
+   * re-checks was verified against the RAW stored config (not code defaults). Anything else → false.
+   */
+  executable: boolean;
+  /** F2.31: the exact finance-action-v1 APPROVED snapshot (only on an executable candidate). */
+  eventSnapshot?: FinanceActionSnapshotV1 | null;
   executorStatus: ExecutorStatus;
   /** Finance-internal priority (lower first): a ready repair outranks a vague historical question. */
   priority: number;
@@ -152,6 +162,53 @@ export function paymentDateQuestion(issue: RehabIssue, statusAnswerContextId: st
   return q;
 }
 
+const FINANCE_CURRENCY_SET = new Set(["$", "₪", "€", "£"]);
+const isObjRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * F2.31 — the Victor salary config exactly as the execution RPC reads it (settings rows, no code defaults):
+ * amount = per-period override ?? monthlySalary (numbers only); currency = salaryCurrency (non-blank, allowed);
+ * the salary page's own status for the period may be absent but must never contradict "paid".
+ * undefined = the raw config was not read (fixtures / older callers) → UNVERIFIED → never executable.
+ */
+export function strictVictorSalaryConfig(cfg: VictorSalaryConfigRaw | null | undefined, period: string):
+  | { status: "UNVERIFIED" } | { status: "OK"; amount: number; currency: string } | { status: "CONFIG_MISSING" | "CONFIG_INVALID" | "STATUS_CONTRADICTS" } {
+  if (cfg === undefined) return { status: "UNVERIFIED" };
+  if (cfg === null || !isObjRec(cfg.settings)) return { status: "CONFIG_MISSING" };
+  const cur = cfg.settings.salaryCurrency;
+  if (typeof cur !== "string" || cur.trim() === "") return { status: "CONFIG_MISSING" };
+  let amount: number;
+  if (isObjRec(cfg.overrides) && period in cfg.overrides) {
+    const o = cfg.overrides[period];
+    if (typeof o !== "number") return { status: "CONFIG_INVALID" };
+    amount = o;
+  } else if (typeof cfg.settings.monthlySalary === "number") amount = cfg.settings.monthlySalary;
+  else return { status: "CONFIG_MISSING" };
+  if (!FINANCE_CURRENCY_SET.has(cur) || !(amount > 0) || !/^\d{1,9}(\.\d{1,2})?$/.test(String(amount))) return { status: "CONFIG_INVALID" };
+  if (isObjRec(cfg.statusOverrides) && period in cfg.statusOverrides && cfg.statusOverrides[period] !== "שולם") return { status: "STATUS_CONTRADICTS" };
+  return { status: "OK", amount, currency: cur };
+}
+
+/** F2.31 — the exact RECORD_PAID_EXPENSE V1 APPROVED snapshot (the contract the F2.24 RPC was proven against). */
+export function buildRecordPaidExpenseSnapshot(p: { subjectKey: string; period: string; facts: FinanceActionFacts; status: { id: string; fingerprint: string }; date: { id: string; fingerprint: string } }): FinanceActionSnapshotV1 {
+  const f = p.facts;
+  return {
+    id: financeActionId(p.subjectKey, p.period, p.status.id, p.date.id, f.amount, f.currency, f.date),
+    schemaVersion: "partner-finance-action-v1", actionType: "RECORD_PAID_EXPENSE",
+    subjectType: "recurring", subjectKey: p.subjectKey, subjectId: financeSubjectUuid(p.subjectKey),
+    status: "PROPOSED", requiresOwnerApproval: true, riskLevel: "MEDIUM",
+    source: "VICTOR_SALARY", period: p.period,
+    facts: { amount: f.amount, currency: f.currency, date: f.date, paymentStatus: "שולם", type: "expense", description: f.description, category: "צוות", scope: "general", expenseScope: "כללי", artist: "Victor", projectId: null, linkedSessionId: f.linkedSessionId as string, notes: "" },
+    sourceContextIds: [p.status.id, p.date.id],
+    ownerContext: {
+      status: { id: p.status.id, questionType: "FINANCE_RECURRING_PAYMENT_STATUS", answerCode: "PAID_NEEDS_RECORDING", fingerprint: p.status.fingerprint },
+      date: { id: p.date.id, questionType: "FINANCE_PAYMENT_DATE", answerCode: "EXACT_DATE", ymd: f.date, fingerprint: p.date.fingerprint },
+    },
+    salaryConfig: { amount: f.amount, currency: f.currency, basis: "OVERRIDE_OR_MONTHLY" },
+    duplicateState: { businessKey: f.linkedSessionId as string, existingTransactionIds: [] },
+  } as FinanceActionSnapshotV1;
+}
+
 export interface FinanceActionDerivation { candidates: FinanceActionCandidate[]; questions: OwnerQuestion[] }
 
 /**
@@ -172,9 +229,17 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
       const workMonth = i.subjectId.slice("VICTOR_SALARY:".length);
       const known = state.recurring.known.find((k) => k.code === "VICTOR_SALARY" && k.workMonth === workMonth);
       const linkedSessionId = salaryLinkedId(workMonth);
-      const existing = raw.transactions.filter((t) => t.linkedSessionId === linkedSessionId && t.status !== "בוטל");
+      // F2.31: every existing record for the business key is decisive — the RPC would refuse to add a second row
+      const keyed = raw.transactions.filter((t) => t.linkedSessionId === linkedSessionId);
       const missing: string[] = [];
-      if (existing.length) { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness: "ALREADY_RECORDED", missing: [], facts: null, snapshotHash: null, ownerContextIds: [a.contextId], priority: 80 }); continue; }
+      const blocked = (readiness: FinanceActionReadiness, ids: string[], priority: number) => candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness, missing: [], facts: null, snapshotHash: null, ownerContextIds: ids, priority });
+      if (keyed.length) {
+        const st = keyed[0].status;
+        blocked(keyed.length > 1 ? "AMBIGUOUS_EXISTING_RECORD" : st === "שולם" ? "ALREADY_RECORDED" : st === "בוטל" ? "CANCELLED_RECORD_EXISTS" : "EXISTING_RECORD_NOT_PAID", [a.contextId], 80);
+        continue;
+      }
+      // an unkeyed expense carrying the canonical description would make a second row ambiguous for every consumer
+      if (raw.transactions.some((t) => (t.linkedSessionId ?? "") === "" && t.type === "expense" && t.description === salaryTransactionDescription(workMonth))) { blocked("AMBIGUOUS_EXISTING_RECORD", [a.contextId], 80); continue; }
       if (!known) { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness: "AMBIGUOUS", missing: ["salaryConfiguration"], facts: null, snapshotHash: null, ownerContextIds: [a.contextId], priority: 60 }); continue; }
       if (!(Number.isFinite(known.amount) && known.amount > 0)) missing.push("amount");
       if (!known.currency || !known.currency.trim()) missing.push("currency");
@@ -184,19 +249,32 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
       if (!date) {
         missing.push("paymentDate");
         if (!dateAnswer) questions.push(dq); // UNKNOWN is an answer: never re-asked, the action simply stays blocked
-      } else if (date < `${workMonth}-01`) {
-        candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness: "AMBIGUOUS", missing: ["paymentDate"], facts: null, snapshotHash: null, ownerContextIds: [a.contextId, dateAnswer!.contextId], priority: 60 });
+      } else if (date < `${workMonth}-01` || date > state.month.today) {
+        // the RPC refuses a payment date before the work month or in the future
+        blocked("PAYMENT_DATE_OUT_OF_RANGE", [a.contextId, dateAnswer!.contextId], 60);
         continue;
       }
       const readiness: FinanceActionReadiness = missing.includes("amount") ? "NEEDS_AMOUNT" : missing.includes("currency") ? "NEEDS_CURRENCY" : missing.includes("paymentDate") ? "NEEDS_EXACT_DATE" : "READY_TO_PROPOSE";
       const ownerContextIds = [a.contextId, ...(dateAnswer ? [dateAnswer.contextId] : [])];
       if (readiness !== "READY_TO_PROPOSE") { candidates.push({ ...base("RECORD_PAID_EXPENSE", i), id: null, readiness, missing, facts: null, snapshotHash: null, ownerContextIds, priority: 10 }); continue; }
-      const facts: FinanceActionFacts = { amount: known.amount, currency: known.currency, date: date!, paymentStatus: "שולם", type: "expense", description: salaryTransactionDescription(workMonth), category: "צוות", scope: "general", artist: "Victor", projectId: null, linkedSessionId };
-      const snapshot = { schemaVersion: "partner-finance-action-v1", actionType: "RECORD_PAID_EXPENSE", source: i.subjectId, period: workMonth, facts, existingTransactions: [], ownerContextIds, salaryConfig: { amount: known.amount, currency: known.currency, dueDate: known.dueDate } };
+      // F2.31: the RAW stored config decides (the executor never falls back to code defaults)
+      const strict = strictVictorSalaryConfig(raw.victorSalaryConfig, workMonth);
+      if (strict.status === "CONFIG_MISSING" || strict.status === "CONFIG_INVALID" || strict.status === "STATUS_CONTRADICTS") { blocked(strict.status, ownerContextIds, 20); continue; }
+      const amount = strict.status === "OK" ? strict.amount : known.amount;
+      const currency = strict.status === "OK" ? strict.currency : known.currency;
+      const facts: FinanceActionFacts = { amount, currency, date: date!, paymentStatus: "שולם", type: "expense", description: salaryTransactionDescription(workMonth), category: "צוות", scope: "general", artist: "Victor", projectId: null, linkedSessionId };
+      const id = financeActionId(i.subjectId, workMonth, a.contextId, dateAnswer!.contextId, amount, currency, date!);
+      // the RPC compares each Owner Context row's own fingerprint — taken from the ACTIVE answers, never recomputed
+      const statusAnswer = answers.find((x) => x.contextId === a.contextId && x.questionType === "FINANCE_RECURRING_PAYMENT_STATUS");
+      const eventSnapshot = strict.status === "OK" && FINANCE_ACTION_REGISTRY.RECORD_PAID_EXPENSE.executable && statusAnswer
+        ? buildRecordPaidExpenseSnapshot({ subjectKey: i.subjectId, period: workMonth, facts, status: { id: a.contextId, fingerprint: statusAnswer.factsFingerprint }, date: { id: dateAnswer!.contextId, fingerprint: dateAnswer!.factsFingerprint } })
+        : null;
+      if (eventSnapshot && (eventSnapshot.id !== id || validateFinanceSnapshot(eventSnapshot).length)) { blocked("UNSUPPORTED", ownerContextIds, 70); continue; }
+      const legacySnapshot = { schemaVersion: "partner-finance-action-v1", actionType: "RECORD_PAID_EXPENSE", source: i.subjectId, period: workMonth, facts, existingTransactions: [], ownerContextIds, salaryConfig: { amount, currency, dueDate: known.dueDate } };
       candidates.push({
-        ...base("RECORD_PAID_EXPENSE", i), readiness, missing: [], facts, ownerContextIds, priority: 1,
-        id: `RECORD_PAID_EXPENSE:${i.subjectId}:${workMonth}:${ownerContextIds.join("+")}:${known.amount}:${known.currency}:${date}`,
-        snapshotHash: sha256Hex(canonicalStableStringify(snapshot)),
+        ...base("RECORD_PAID_EXPENSE", i), readiness, missing: [], facts, ownerContextIds, priority: 1, id,
+        executable: eventSnapshot !== null, executorStatus: FINANCE_ACTION_REGISTRY.RECORD_PAID_EXPENSE.executorStatus, eventSnapshot,
+        snapshotHash: eventSnapshot ? hashActionSnapshot(eventSnapshot) : sha256Hex(canonicalStableStringify(legacySnapshot)),
       });
       continue;
     }
@@ -218,6 +296,8 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
 /** Owner-facing line for the most important candidate (business language only; null = nothing to say). */
 export function financeActionNoteHe(c: FinanceActionCandidate | undefined): string | null {
   if (!c) return null;
+  // F2.31: an executable action is shown as a Partner Suggested Action card (אשר / לא עכשיו) — no duplicate note.
+  if (c.readiness === "READY_TO_PROPOSE" && c.executable) return null;
   if (c.readiness === "READY_TO_PROPOSE" && c.facts) {
     const d = c.facts.date;
     const money = `${c.facts.currency}${c.facts.amount.toLocaleString("en-US")}`;

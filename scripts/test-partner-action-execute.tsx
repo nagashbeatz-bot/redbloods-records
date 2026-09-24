@@ -30,7 +30,7 @@ import { mapActionEventRow, type ActionEventInsertRow } from "../lib/partner/act
 import { createActionEventStore, type ActionEventDbResponse, type ActionEventTableClient, type ActionEventSelectQuery, type ExecuteRpcArgs } from "../lib/partner/actions/event-persistence";
 import { decideSuggestedActionCore, executeApprovedActionCore, type ActionServiceDeps, type LiveActionLookup, type LiveCaseView } from "../lib/partner/actions/service";
 import { buildActionSurface } from "../lib/partner/actions/surface";
-import { parseActionSurfaceResponse, ACTION_SURFACE_DTO_VERSION, type PartnerActionCardDto } from "../lib/partner/actions/surface-dto";
+import { parseActionSurfaceResponse, ACTION_SURFACE_DTO_VERSION, type ActionSurfaceItemDto, type PartnerActionCardDto } from "../lib/partner/actions/surface-dto";
 import { PartnerActionsView, type CardControls } from "../components/partner/PartnerActionCard";
 import { EXECUTE_STALE_MESSAGE_HE, EXECUTE_URL, STALE_MESSAGE_HE, buildExecuteAttempt, interpretExecuteResponse, phaseForOutcome } from "../components/partner/partner-decision-client";
 import { isAviAllowedPath, isCleantoneAllowedPath, isShalevAllowedPath, isStevenAllowedPath, isVictorAllowedPath } from "../lib/roles";
@@ -143,7 +143,7 @@ async function surface(chainRows: Record<string, unknown>[], opts: { now?: strin
   return r;
 }
 async function surfaceItem(chainRows: Record<string, unknown>[], opts: { now?: string; proposals?: Array<{ action: PartnerSuggestedAction; caseRef: PartnerCase }> } = {}): Promise<PartnerActionCardDto | undefined> {
-  return (await surface(chainRows, opts)).response.items[0];
+  return (await surface(chainRows, opts)).response.items[0] as PartnerActionCardDto;
 }
 
 function controls(over: Partial<CardControls> = {}): CardControls {
@@ -152,7 +152,7 @@ function controls(over: Partial<CardControls> = {}): CardControls {
     onApprove: noop, onOpenNotNow: noop, onOpenChange: noop, onCancel: noop, onRetry: noop, onNotNowChoice: noop, onCustomYmd: noop, onConfirmNotNow: noop,
     onChangeCode: noop, onChangeYmd: noop, onConfirmChange: noop, onExecute: noop, renderDatePicker: ({ ariaLabel }) => <div data-date-picker={ariaLabel} />, ...over };
 }
-const render = (items: PartnerActionCardDto[], isMobile = false, over: Partial<CardControls> = {}) => renderToStaticMarkup(<PartnerActionsView items={items} isMobile={isMobile} controlsFor={() => controls(over)} />);
+const render = (items: ActionSurfaceItemDto[], isMobile = false, over: Partial<CardControls> = {}) => renderToStaticMarkup(<PartnerActionsView items={items} isMobile={isMobile} controlsFor={() => controls(over)} />);
 
 // ── the REAL execute route, with its single dependency faked ──
 type FakeMode = "UNAUTHORIZED" | "FORBIDDEN" | "CORE" | "THROW";
@@ -356,7 +356,12 @@ async function main() {
     svc.mode = "UNAUTHORIZED"; svc.calls = [];
     const u = await post({ approvalEventId: APPROVAL, requestId: randomUUID() });
     check("1. no Owner session → 401 UNAUTHORIZED (auth resolved inside executeApprovedAction, nothing executed)", [u.status, u.json], [401, { status: "UNAUTHORIZED" }]);
-    ok("1. executeApprovedAction resolves the Owner (requireOwner + session user) BEFORE the core; actor never from input", /export async function executeApprovedAction\(input: unknown\)[^{]*\{\s*const a = await resolveOwnerActor\(\);\s*if \(!a\.ok\) return a\.result;\s*return executeApprovedActionCore\(deps, a\.actor, input\);/.test(ACTION_SERVICE) && /requireOwner\(\)[\s\S]*getAuthUser\(\)[\s\S]*actor: \{ userId: user\.id \}/.test(ACTION_SERVICE));
+    // F2.31: the Owner is resolved FIRST; only then the persisted approval picks the executor (finance → finance core,
+    // otherwise the unchanged deadline core). The actor always comes from the session.
+    ok("1. executeApprovedAction resolves the Owner (requireOwner + session user) BEFORE any core; actor never from input",
+      /export async function executeApprovedAction\(input: unknown\)[^{]*\{\s*const a = await resolveOwnerActor\(\);\s*if \(!a\.ok\) return a\.result;/.test(ACTION_SERVICE)
+      && /if \(fin\.status === "FOUND"\) return executeFinanceActionCore\(financeDeps, a\.actor, input\);\s*\}\s*return executeApprovedActionCore\(deps, a\.actor, input\);/.test(ACTION_SERVICE)
+      && /requireOwner\(\)[\s\S]*getAuthUser\(\)[\s\S]*actor: \{ userId: user\.id \}/.test(ACTION_SERVICE));
     svc.mode = "FORBIDDEN";
     const f = await post({ approvalEventId: APPROVAL, requestId: randomUUID() });
     check("2. non-owner session → 403 FORBIDDEN", [f.status, f.json], [403, { status: "FORBIDDEN" }]);
@@ -459,7 +464,7 @@ async function main() {
     await decide(s2.deps, "REJECT");
     const rejRow = s2.db.rows[0];
     const exec = execRow(approvedRow, "EXECUTED"), stale = execRow(approvedRow, "STALE_AT_EXECUTION");
-    const has = (items: PartnerActionCardDto[]) => /בצע עכשיו/.test(render(items));
+    const has = (items: ActionSurfaceItemDto[]) => /בצע עכשיו/.test(render(items));
     const aw = await surface([approvedRow]);
     check("13. APPROVED head → AWAITING_EXECUTION card with [בצע עכשיו]", [aw.states[ACTION_ID], has(aw.response.items)], ["AWAITING_EXECUTION", true]);
     check("13. the AWAITING DTO carries the persisted approval id (= head)", [awaiting.approvalEventId, awaiting.headEventId, awaiting.approvalEventId === approvedRow.id], [approvedRow.id, approvedRow.id, true]);

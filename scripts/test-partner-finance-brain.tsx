@@ -338,7 +338,14 @@ async function main() {
     ok("a failed table read fails the whole read (never a silently partial brief)", threw);
     check("a failed salary read → victorSalary null (coverage MISSING, not fatal)", (await readFinanceRaw(client(), async () => { throw new Error("x"); })).victorSalary, null);
     const READERS = strip(rd("lib/partner/finance/readers.ts"));
-    ok("reader never reads free text (notes / description) and has no write capability", !/notes|description|\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(/.test(READERS));
+    // F2.31: exactly ONE narrow free-text read — rows whose description starts with the canonical Victor salary text
+    // (the RECORD_PAID_EXPENSE ambiguous-record guard). Nothing else free-text is ever read; no write capability.
+    const narrowVictorText = 'readAll(client, "transactions", "id,description", ["description", "משכורת Victor%"])';
+    ok("reader reads no free text except the narrow Victor-salary description guard, and has no write capability",
+      READERS.split(narrowVictorText).length === 2 && !/notes|\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(/.test(READERS)
+      && !/description/.test(READERS.replace(narrowVictorText, "")
+        .replace("const victorText = new Map(victorDescribed.map((r) => [String(r.id), s(r.description)]));", "")
+        .replace("description: victorText.get(String(r.id)) ?? null", "")));
   }
 
   console.log("Timezone / month boundaries (73-74)");

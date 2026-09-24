@@ -109,7 +109,11 @@ async function main() {
   console.log("W. Finance Action registry + readiness (15-22)");
   {
     check("15. narrow registry (no generic edit / write)", Object.keys(FINANCE_ACTION_REGISTRY), ["RECORD_PAID_EXPENSE", "RECORD_RECEIVED_INCOME", "SET_PROJECT_AGREED_PRICE", "SET_RECEIVABLE_DUE_DATE"]);
-    ok("16. every type fails closed: not executable, with explicit blockers", Object.values(FINANCE_ACTION_REGISTRY).every((c) => c.executable === false && c.blockers.length > 0) && FINANCE_ACTION_REGISTRY.RECORD_PAID_EXPENSE.executorStatus === "EXECUTOR_BLOCKED_REQUIRES_SCHEMA_CHANGE" && FINANCE_ACTION_REGISTRY.SET_RECEIVABLE_DUE_DATE.executorStatus === "UNSUPPORTED_NO_CANONICAL_MODEL");
+    // F2.31: RECORD_PAID_EXPENSE (Victor salary) is the ONLY executable type — its DB executor is live (F2.30).
+    ok("16. only RECORD_PAID_EXPENSE is executable (EXECUTOR_READY); every other type fails closed with explicit blockers",
+      FINANCE_ACTION_REGISTRY.RECORD_PAID_EXPENSE.executable === true && FINANCE_ACTION_REGISTRY.RECORD_PAID_EXPENSE.executorStatus === "EXECUTOR_READY"
+      && Object.values(FINANCE_ACTION_REGISTRY).filter((c) => c.actionType !== "RECORD_PAID_EXPENSE").every((c) => c.executable === false && c.blockers.length > 0)
+      && FINANCE_ACTION_REGISTRY.SET_RECEIVABLE_DUE_DATE.executorStatus === "UNSUPPORTED_NO_CANONICAL_MODEL");
     ok("16b. permission model: ALWAYS_ASK only", FINANCE_PERMISSION_MODE === "ALWAYS_ASK");
     const paid = asAnswer(qVictor, "PAID_NEEDS_RECORDING");
     const v1 = view(RAW0, [paid]);
@@ -126,9 +130,12 @@ async function main() {
     const noCurState = { ...vPaid.state, recurring: { ...vPaid.state.recurring, known: vPaid.state.recurring.known.map((k) => ({ ...k, currency: "" })) } };
     check("20. NEEDS_CURRENCY when the canonical currency is genuinely missing (no silent default)", deriveFinanceActions(RAW0, noCurState, vPaid.integrity, [paid]).candidates.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!.readiness, "NEEDS_CURRENCY");
     const dup = clone(RAW0); dup.transactions.push(tx({ type: "expense", status: "לא שולם", amount: 550, currency: "$", linkedSessionId: "victor_salary_2026-08", scope: "general", date: null }));
-    check("21. ALREADY_RECORDED when a canonical record exists (never a duplicate)", view(dup, [paid]).actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!.readiness, "ALREADY_RECORDED");
+    // F2.31: the RPC's exact refusal — a keyed row that is NOT paid is EXISTING_RECORD_NOT_PAID; a paid one is ALREADY_RECORDED
+    const dupPaid = clone(RAW0); dupPaid.transactions.push(tx({ type: "expense", status: "שולם", amount: 550, currency: "$", linkedSessionId: "victor_salary_2026-08", scope: "general", date: "2026-09-10" }));
+    check("21. an existing record for the period never becomes a duplicate (not paid → EXISTING_RECORD_NOT_PAID; paid → ALREADY_RECORDED)",
+      [view(dup, [paid]).actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!.readiness, view(dupPaid, [paid]).actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!.readiness], ["EXISTING_RECORD_NOT_PAID", "ALREADY_RECORDED"]);
     const early = view(RAW0, [paid, asAnswer(dq, "EXACT_DATE", "2026-07-15")]).actions.find((c) => c.actionType === "RECORD_PAID_EXPENSE")!;
-    check("22. ambiguous (paid before the work month started) fails closed", [early.readiness, early.facts, early.id], ["AMBIGUOUS", null, null]);
+    check("22. a payment date before the work month fails closed (PAYMENT_DATE_OUT_OF_RANGE — the RPC's own refusal)", [early.readiness, early.facts, early.id], ["PAYMENT_DATE_OUT_OF_RANGE", null, null]);
   }
 
   console.log("X. RECORD_PAID_EXPENSE design (23-41)");
@@ -160,7 +167,12 @@ async function main() {
     ok("39. currency change → different identity", alt((r) => { r.victorSalary![0].currency = "₪"; }) !== same);
     ok("40. payment date change → different identity", idOf(view(RAW0, [paid, asAnswer(dq, "EXACT_DATE", "2026-09-13", "aaaaaaaa-0000-4000-8000-000000000002")]).actions.find((x) => x.actionType === "RECORD_PAID_EXPENSE")) !== same);
     ok("41. Owner Context revision → different identity (context ids are part of it)", idOf(view(RAW0, [paid, asAnswer(dq, "EXACT_DATE", "2026-09-12", "aaaaaaaa-0000-4000-8000-000000000009")]).actions.find((x) => x.actionType === "RECORD_PAID_EXPENSE")) !== same);
-    ok("35-37 (execution). NO finance execution path exists: registry not executable, no executor / approval route for finance", Object.values(FINANCE_ACTION_REGISTRY).every((x) => !x.executable) && !fs.existsSync(path.join(ROOT, "app/api/partner/finance/execute")) && !fs.existsSync(path.join(ROOT, "app/api/partner/finance/decide")) && !/RECORD_PAID_EXPENSE|finance/.test(strip(rd("lib/partner/actions/service.ts"))));
+    // F2.31: execution exists ONLY through the shared Owner routes → action-service dispatch → finance/action-core → the one RPC.
+    ok("35-37 (execution). finance execution only via the existing Owner routes + the narrow core (no finance-specific route, deadline core untouched)",
+      !fs.existsSync(path.join(ROOT, "app/api/partner/finance/execute")) && !fs.existsSync(path.join(ROOT, "app/api/partner/finance/decide"))
+      && !/RECORD_PAID_EXPENSE|finance/.test(strip(rd("lib/partner/actions/service.ts")))
+      && /executeFinanceActionCore\(financeDeps, a\.actor, input\)/.test(rd("lib/partner/actions/action-service.ts"))
+      && /callFinanceExecuteRpc\(\{/.test(rd("lib/partner/finance/action-core.ts")));
   }
 
   console.log("Payment-date loop end-to-end (real answer core + store)");
@@ -198,8 +210,12 @@ async function main() {
     // F2.29: the event store may READ finance events (getFinanceEventsByType) — it still can never append one, and no
     // app file names a finance execution RPC.
     const EP = strip(rd("lib/partner/actions/event-persistence.ts"));
-    ok("56-61. finance actions can never reach the Action Event append / execute RPC path", !/finance/.test(strip(rd("lib/partner/actions/suggested.ts"))) && !/RECORD_PAID_EXPENSE/.test(rd("lib/partner/actions/types.ts"))
-      && /action_type: "UPDATE_PROJECT_DEADLINE",\s*action_schema_version: SUPPORTED_ACTION_SCHEMA_VERSION,\s*subject_type: "project",/.test(EP) && !/partner_execute_record_paid_expense/.test(EP) && (EP.match(/\.rpc\(/g) ?? []).length === 1 && /client\.rpc\(EXECUTE_RPC, args\)/.test(EP));
+    // F2.31: exactly two narrow write capabilities per type — decisions (APPROVED / NOT_NOW) and ONE named RPC each.
+    ok("56-61. the store writes finance ONLY as APPROVED / NOT_NOW decisions + the ONE finance RPC (no generic insert / rpc)", !/finance/.test(strip(rd("lib/partner/actions/suggested.ts"))) && !/RECORD_PAID_EXPENSE/.test(rd("lib/partner/actions/types.ts"))
+      && /action_type: "UPDATE_PROJECT_DEADLINE",\s*action_schema_version: SUPPORTED_ACTION_SCHEMA_VERSION,\s*subject_type: "project",/.test(EP)
+      && /action_type: FINANCE_ACTION_TYPE,\s*action_schema_version: FINANCE_ACTION_SCHEMA_VERSION,\s*subject_type: FINANCE_SUBJECT_TYPE,/.test(EP)
+      && /if \(i\.eventType !== "APPROVED" && i\.eventType !== "NOT_NOW"\) errors\.push/.test(EP)
+      && (EP.match(/\.rpc\(/g) ?? []).length === 2 && /client\.rpc\(EXECUTE_RPC, args\)/.test(EP) && /client\.rpc\(FINANCE_EXECUTE_RPC, args\)/.test(EP));
     ok("62-75. no Outcome / sync claimed for finance (nothing executed); Outcome model unchanged", !/RECORD_PAID_EXPENSE|finance/.test(strip(rd("lib/partner/actions/outcome.ts"))));
   }
 

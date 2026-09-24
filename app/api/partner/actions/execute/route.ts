@@ -9,7 +9,8 @@ import { checkSameOriginJson, readSmallJson } from "@/lib/partner/actions/reques
  *
  * - same-origin JSON only (identical guard to F.1J); strict whitelist + uuid shapes BEFORE the primitive;
  * - Owner-only: executeApprovedAction() → requireOwner(), actor from the session;
- * - calls ONLY executeApprovedAction(): live revalidation, then the approved DB RPC, which alone owns the
+ * - calls ONLY executeApprovedAction() (F2.31: it dispatches a RECORD_PAID_EXPENSE approval to the approved finance RPC,
+ *   everything else to the unchanged deadline core): live revalidation, then the approved DB RPC, which alone owns the
  *   locks, CAS, staleness, the project mutation and the EXECUTED / STALE_AT_EXECUTION audit (atomic).
  *   No project update, no snapshot / from / to / actor from the client, no automatic retry;
  * - responses are structured and minimal (no SQL / internal details).
@@ -41,8 +42,9 @@ export async function POST(req: NextRequest) {
       case "RETRYABLE": return json({ status: r.status }, 503);
       case "INVARIANT_VIOLATION": case "FAILED": console.error("[partner/actions/execute]", r.status, r.detail); return json({ status: "INVARIANT_VIOLATION" }, 500);
       case "EXECUTED": case "STALE_AT_EXECUTION": case "REPLAY": case "ALREADY_EXECUTED":
-        return json({ status: r.status, eventType: r.eventType });
-      case "APPROVAL_NOT_CURRENT": case "APPROVAL_NOT_FOUND": case "ACTION_MISMATCH": case "REQUEST_ID_CONFLICT":
+        // F2.31: a finance result also carries its stale reason CODES (never SQL, ids or values) for the Owner message.
+        return json("kind" in r && r.kind === "FINANCE" ? { status: r.status, eventType: r.eventType, reasons: r.reasons } : { status: r.status, eventType: r.eventType });
+      case "APPROVAL_NOT_CURRENT": case "APPROVAL_NOT_FOUND": case "ACTION_MISMATCH": case "REQUEST_ID_CONFLICT": case "UNSUPPORTED_ACTION":
         return json({ status: r.status });
       default: return json({ status: "INVARIANT_VIOLATION" }, 500);
     }

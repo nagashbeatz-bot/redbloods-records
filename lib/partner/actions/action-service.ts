@@ -16,6 +16,9 @@ import { changeSuggestedActionValueCore, type ChangeValueResult } from "./change
 import { actionEventStore } from "./event-store";
 import { livePartnerView } from "./live";
 import { decideSuggestedActionCore, executeApprovedActionCore, type ActionServiceDeps, type DecideResult, type ExecuteResult, type OwnerActor } from "./service";
+import { LOWER_UUID_RE } from "./events";
+import { loadFinanceLive } from "../finance/server";
+import { decideFinanceActionCore, executeFinanceActionCore, isFinanceActionId, type FinanceActionServiceDeps, type FinanceDecideResult, type FinanceExecuteResult } from "../finance/action-core";
 
 export type OwnerAuthFailure = { status: "UNAUTHORIZED" } | { status: "FORBIDDEN" };
 
@@ -34,9 +37,26 @@ const deps: ActionServiceDeps = {
   audit: (event, data) => console.info(`[partner-action] ${event}`, JSON.stringify(data)),
 };
 
-export async function decideSuggestedAction(input: unknown): Promise<DecideResult | OwnerAuthFailure> {
+/** F2.31: the finance action flow (RECORD_PAID_EXPENSE only) — same store, live finance derivation, its own narrow RPC. */
+const financeDeps: FinanceActionServiceDeps = {
+  now: () => new Date(),
+  store: actionEventStore,
+  live: {
+    async loadCandidates() {
+      const l = await loadFinanceLive(new Date());
+      if (l.status !== "OK") return { status: "READ_FAILED", detail: l.detail };
+      if (!l.answersAvailable) return { status: "READ_FAILED", detail: "owner answers unreadable" };
+      return { status: "OK", candidates: l.actions };
+    },
+  },
+  audit: deps.audit,
+};
+
+export async function decideSuggestedAction(input: unknown): Promise<DecideResult | FinanceDecideResult | OwnerAuthFailure> {
   const a = await resolveOwnerActor();
   if (!a.ok) return a.result;
+  // F2.31: dispatch by the action identity — a finance action id never reaches the deadline core and vice versa.
+  if (typeof input === "object" && input !== null && isFinanceActionId((input as Record<string, unknown>).actionId)) return decideFinanceActionCore(financeDeps, a.actor, input);
   return decideSuggestedActionCore(deps, a.actor, input);
 }
 
@@ -50,8 +70,17 @@ export async function changeSuggestedActionValue(input: unknown): Promise<Change
   return changeSuggestedActionValueCore({ live: livePartnerView, appendOwnerContext, audit: deps.audit }, input);
 }
 
-export async function executeApprovedAction(input: unknown): Promise<ExecuteResult | OwnerAuthFailure> {
+export async function executeApprovedAction(input: unknown): Promise<ExecuteResult | FinanceExecuteResult | OwnerAuthFailure> {
   const a = await resolveOwnerActor();
   if (!a.ok) return a.result;
+  // F2.31: the persisted APPROVED event decides the executor. A finance approval → the finance RPC; anything else →
+  // the unchanged deadline core (which never sees finance rows). A failed finance lookup fails closed.
+  const id = typeof input === "object" && input !== null ? (input as Record<string, unknown>).approvalEventId : undefined;
+  if (typeof id === "string" && LOWER_UUID_RE.test(id)) {
+    const fin = await actionEventStore.getFinanceEventById(id);
+    if (fin.status === "READ_FAILED") return { kind: "FINANCE", status: "RETRYABLE", detail: fin.detail, sqlstate: null };
+    if (fin.status === "INVALID_STORED_EVENT") return { kind: "FINANCE", status: "INVARIANT_VIOLATION", detail: fin.errors.join("; ") };
+    if (fin.status === "FOUND") return executeFinanceActionCore(financeDeps, a.actor, input);
+  }
   return executeApprovedActionCore(deps, a.actor, input);
 }

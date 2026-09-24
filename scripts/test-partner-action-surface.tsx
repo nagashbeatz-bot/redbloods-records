@@ -85,7 +85,7 @@ async function main() {
   console.log("Real card (1-4)");
   const d0 = deps([]);
   const r = await buildActionSurface(d0);
-  const item = r.status === "OK" ? r.response.items[0] : undefined;
+  const item = (r.status === "OK" ? r.response.items[0] : undefined) as PartnerActionCardDto | undefined;
   check("1. real PROPOSED + empty chain → SHOW → exactly one card", [r.status, r.status === "OK" ? r.response.items.length : -1, r.status === "OK" ? r.states[ACTION_ID] : null], ["OK", 1, "SHOW"]);
   check("2. project name (from the live label, not hardcoded)", [item?.projectName, item?.projectId, item?.headlineHe], [LABEL, PID, "הדדליין של 'קרוב אלייך' לא מעודכן."]);
   check("3. from / to dates (ISO + Hebrew display)", [item?.currentDeadline, item?.currentDeadlineHe, item?.suggestedDeadline, item?.suggestedDeadlineHe], ["2026-07-14", "14.07.2026", "2026-10-07", "07.10.2026"]);
@@ -170,7 +170,8 @@ async function main() {
     ok("10. no decision / write primitive referenced (decideSuggestedAction / appendDecision / action-service / event-persistence writes)", Object.values(src).every((s) => !/decideSuggestedAction|executeApprovedAction|appendDecision|action-service|\.insert\(|\.update\(|\.upsert\(|\.delete\(/.test(strip(s))));
     ok("11. no RPC execution path (no callExecuteRpc / .rpc( / partner_execute_update_project_deadline)", Object.values(src).every((s) => !/callExecuteRpc|\.rpc\(|partner_execute_update_project_deadline/.test(strip(s))));
     ok("12. no Owner Context write (no appendOwnerContext / context-persistence)", Object.values(src).every((s) => !/appendOwnerContext|context-persistence/.test(strip(s))));
-    ok("the surface binding gets ONLY the chain read from the store", /getActionChain: \(actionId\) => actionEventStore\.getActionChain\(actionId\)/.test(src["lib/partner/actions/surface-server.ts"]) && (strip(src["lib/partner/actions/surface-server.ts"]).match(/actionEventStore\.\w+/g) ?? []).every((m) => m === "actionEventStore.getActionChain"));
+    // F2.31: + the finance chain READ (no decision / append / RPC capability reaches the surface)
+    ok("the surface binding gets ONLY chain reads from the store (deadline + finance)", /getActionChain: \(actionId\) => actionEventStore\.getActionChain\(actionId\)/.test(src["lib/partner/actions/surface-server.ts"]) && (strip(src["lib/partner/actions/surface-server.ts"]).match(/actionEventStore\.\w+/g) ?? []).every((m) => m === "actionEventStore.getActionChain" || m === "actionEventStore.getFinanceActionChain"));
     ok("no Feedback / baseline / Push / Cron / Alerts write", Object.values(src).every((s) => !/feedback\/store|appendFeedback|savePartnerBaseline|baseline\/store|web-push|node-cron|agent_alerts/.test(strip(s))));
     ok("13. route: requireOwner() before any work, GET only", /const denied = await requireOwner\(\);\s*if \(denied\) return denied;/.test(src["app/api/partner/actions/route.ts"]) && !/export (async )?function (POST|PUT|PATCH|DELETE)/.test(src["app/api/partner/actions/route.ts"]));
     ok("13. client section is Owner-gated in the UI too", /if \(role !== "owner"\) return null;/.test(src["components/partner/PartnerActionsSection.tsx"]));

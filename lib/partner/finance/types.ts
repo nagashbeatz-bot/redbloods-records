@@ -21,6 +21,8 @@ export interface FinanceTxRow {
   expenseScope: string | null;
   linkedSessionId: string | null;
   createdAt: string | null;
+  /** F2.31 (optional): the row description — used ONLY to detect an unkeyed row carrying the canonical Victor salary text. */
+  description?: string | null;
 }
 export interface FinanceProjectRow { id: string; name: string; status: string; isHidden: boolean; businessType: string | null; artist: string | null; updatedAt: string | null }
 /** settings key `finance_<projectId>` (any projectId — orphans included). */
@@ -56,7 +58,14 @@ export interface FinanceRaw {
    * Optional: absent in fixtures / older callers.
    */
   victorLegacyPayments?: VictorLegacyPaymentRow[];
+  /**
+   * F2.31 (read-only): the RAW Victor salary settings exactly as stored (no code defaults), so readiness can fail
+   * closed on everything the execution RPC would reject (missing / malformed config, contradicting status override).
+   * null = not read (fixtures / older callers) → a finance action can never become executable.
+   */
+  victorSalaryConfig?: VictorSalaryConfigRaw | null;
 }
+export interface VictorSalaryConfigRaw { settings: unknown; overrides: unknown; statusOverrides: unknown }
 export interface VictorLegacyPaymentRow { month: string; status: string | null; paidDate: string | null }
 
 // ── derived state ──

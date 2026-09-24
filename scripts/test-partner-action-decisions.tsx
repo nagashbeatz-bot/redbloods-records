@@ -122,7 +122,7 @@ async function surfaceItem(chainRows: Record<string, unknown>[] = []): Promise<P
     getActionChain: async () => ({ status: "OK", chain: events, head: events[events.length - 1] ?? null }),
     now: () => new Date("2026-09-23T12:00:00Z"), log: () => {},
   });
-  return r.status === "OK" ? r.response.items[0] : undefined;
+  return r.status === "OK" ? (r.response.items[0] as PartnerActionCardDto) : undefined;
 }
 
 function controls(over: Partial<CardControls> = {}): CardControls {

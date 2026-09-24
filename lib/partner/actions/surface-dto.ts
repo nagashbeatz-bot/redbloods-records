@@ -15,6 +15,8 @@
  */
 import { formatYmdHe } from "../investigation/answer-value";
 import type { PartnerSuggestedAction } from "./types";
+import type { FinanceActionSnapshotV1 } from "./finance-events";
+import { salaryMonthLabel } from "../../victor-salary-format";
 
 export const ACTION_SURFACE_DTO_VERSION = 3;
 export const STATUS_LABEL_HE = "הצעה לפעולה";
@@ -58,7 +60,82 @@ export interface PartnerActionCardDto {
   minChangeDate: string;
 }
 
-export interface ActionSurfaceResponse { v: typeof ACTION_SURFACE_DTO_VERSION; items: PartnerActionCardDto[] }
+/**
+ * F2.31 — a RECORD_PAID_EXPENSE (Victor salary) Suggested Action card. Business language only; it carries
+ * exactly what a decision must echo back (snapshotHash, headEventId, approvalEventId) and nothing a caller could
+ * submit as a value (the server re-derives amount / currency / date / description).
+ */
+export interface FinanceActionCardDto {
+  v: typeof ACTION_SURFACE_DTO_VERSION;
+  state: ActionCardState;
+  actionId: string;
+  actionType: "RECORD_PAID_EXPENSE";
+  /** "אפשר לרשום את משכורת Victor של אוגוסט בכספים." */
+  headlineHe: string;
+  /** "משכורת Victor — אוגוסט 2026" */
+  titleHe: string;
+  /** "$550" */
+  amountHe: string;
+  paymentStatusHe: "שולם";
+  /** "10.09.2026" */
+  paymentDateHe: string;
+  reasonHe: string;
+  statusLabelHe: string;
+  snapshotHash: string;
+  headEventId: string | null;
+  approvalEventId: string | null;
+}
+export type ActionSurfaceItemDto = PartnerActionCardDto | FinanceActionCardDto;
+
+export interface ActionSurfaceResponse { v: typeof ACTION_SURFACE_DTO_VERSION; items: ActionSurfaceItemDto[] }
+
+const ymdHe = (ymd: string) => `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}`;
+const moneyHe = (currency: string, amount: number) => `${currency}${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+/** Server side: the finance card of a live (SHOW) or persisted APPROVED (AWAITING_EXECUTION) snapshot. */
+export function toFinanceActionCardDto(
+  snap: FinanceActionSnapshotV1,
+  extra: { state: ActionCardState; snapshotHash: string; headEventId: string | null; approvalEventId: string | null },
+): FinanceActionCardDto {
+  const f = snap.facts;
+  const monthLabel = salaryMonthLabel(snap.period);
+  return {
+    v: ACTION_SURFACE_DTO_VERSION,
+    state: extra.state,
+    actionId: snap.id,
+    actionType: "RECORD_PAID_EXPENSE",
+    headlineHe: `אפשר לרשום את משכורת Victor של ${monthLabel.split(" ")[0]} בכספים.`,
+    titleHe: `משכורת Victor — ${monthLabel}`,
+    amountHe: moneyHe(f.currency, f.amount),
+    paymentStatusHe: "שולם",
+    paymentDateHe: ymdHe(f.date),
+    reasonHe: `אישרת שהמשכורת שולמה ב־${ymdHe(f.date)} — והיא עדיין לא רשומה בכספים.`,
+    statusLabelHe: extra.state === "SHOW" ? STATUS_LABEL_HE : AWAITING_LABEL_HE,
+    snapshotHash: extra.snapshotHash,
+    headEventId: extra.headEventId,
+    approvalEventId: extra.approvalEventId,
+  };
+}
+
+const FINANCE_KEYS: Array<keyof FinanceActionCardDto> = ["v", "state", "actionId", "actionType", "headlineHe", "titleHe", "amountHe", "paymentStatusHe", "paymentDateHe", "reasonHe", "statusLabelHe", "snapshotHash", "headEventId", "approvalEventId"];
+const UUID_ANYWHERE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+function parseFinanceItem(r: Record<string, unknown>): FinanceActionCardDto | null {
+  const keys = Object.keys(r);
+  if (keys.length !== FINANCE_KEYS.length || !FINANCE_KEYS.every((k) => keys.includes(k))) return null;
+  if (r.v !== ACTION_SURFACE_DTO_VERSION || r.actionType !== "RECORD_PAID_EXPENSE" || r.paymentStatusHe !== "שולם") return null;
+  if (r.state !== "SHOW" && r.state !== "AWAITING_EXECUTION") return null;
+  if (r.statusLabelHe !== (r.state === "SHOW" ? STATUS_LABEL_HE : AWAITING_LABEL_HE)) return null;
+  if (typeof r.actionId !== "string" || !r.actionId.startsWith("RECORD_PAID_EXPENSE:") || r.actionId.length > 300) return null;
+  for (const k of ["headlineHe", "titleHe", "amountHe", "paymentDateHe", "reasonHe"] as const) {
+    if (typeof r[k] !== "string" || (r[k] as string).length === 0 || (r[k] as string).length > 500 || UUID_ANYWHERE.test(r[k] as string)) return null;
+  }
+  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(r.paymentDateHe as string)) return null;
+  if (typeof r.snapshotHash !== "string" || !HEX64.test(r.snapshotHash)) return null;
+  if (!(r.headEventId === null || (typeof r.headEventId === "string" && UUID.test(r.headEventId)))) return null;
+  if (r.state === "AWAITING_EXECUTION" ? !(typeof r.approvalEventId === "string" && UUID.test(r.approvalEventId) && r.approvalEventId === r.headEventId) : r.approvalEventId !== null) return null;
+  return r as unknown as FinanceActionCardDto;
+}
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -98,9 +175,10 @@ export function toActionCardDto(
 
 const KEYS: Array<keyof PartnerActionCardDto> = ["v", "state", "actionId", "actionType", "projectId", "projectName", "currentDeadline", "currentDeadlineHe", "suggestedDeadline", "suggestedDeadlineHe", "headlineHe", "reasonHe", "explanationHe", "statusLabelHe", "snapshotHash", "headEventId", "approvalEventId", "changeValueOptions", "minChangeDate"];
 
-function parseItem(x: unknown): PartnerActionCardDto | null {
+function parseItem(x: unknown): ActionSurfaceItemDto | null {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return null;
   const r = x as Record<string, unknown>;
+  if (r.actionType === "RECORD_PAID_EXPENSE") return parseFinanceItem(r);
   const keys = Object.keys(r).sort();
   if (keys.length !== KEYS.length || !KEYS.every((k) => keys.includes(k))) return null;
   if (r.v !== ACTION_SURFACE_DTO_VERSION || r.actionType !== "UPDATE_PROJECT_DEADLINE") return null;
@@ -127,11 +205,11 @@ function parseItem(x: unknown): PartnerActionCardDto | null {
 }
 
 /** Client side: strict, fail-closed. Any malformed field → { ok: false } and nothing is rendered. */
-export function parseActionSurfaceResponse(json: unknown): { ok: true; items: PartnerActionCardDto[] } | { ok: false } {
+export function parseActionSurfaceResponse(json: unknown): { ok: true; items: ActionSurfaceItemDto[] } | { ok: false } {
   if (typeof json !== "object" || json === null || Array.isArray(json)) return { ok: false };
   const r = json as Record<string, unknown>;
   if (r.v !== ACTION_SURFACE_DTO_VERSION || !Array.isArray(r.items) || Object.keys(r).length !== 2) return { ok: false };
-  const items: PartnerActionCardDto[] = [];
+  const items: ActionSurfaceItemDto[] = [];
   for (const x of r.items) {
     const p = parseItem(x);
     if (!p) return { ok: false };

@@ -27,7 +27,10 @@ import {
   type ActionEventInsertRow, type ActionEventType, type DecisionRequestScope, type DeferChoice, type OwnerDecisionEventType, type PartnerActionEvent,
 } from "./events";
 import { hashActionSnapshot, type PartnerActionSnapshot } from "./snapshot";
-import { isFinanceActionRow, mapFinanceActionEventRow, type PartnerFinanceActionEvent } from "./finance-events";
+import {
+  FINANCE_ACTION_SCHEMA_VERSION, FINANCE_ACTION_TYPE, FINANCE_EXECUTE_RPC, FINANCE_SUBJECT_TYPE, isFinanceActionRow, mapFinanceActionEventRow, validateFinanceSnapshot,
+  type FinanceActionEventInsertRow, type FinanceActionSnapshotV1, type FinanceExecuteRpcArgs, type PartnerFinanceActionEvent,
+} from "./finance-events";
 
 // ── injected client ──
 
@@ -50,9 +53,10 @@ export interface ExecuteRpcArgs {
 export interface ActionEventTableClient {
   from(table: typeof PARTNER_ACTION_EVENTS_TABLE): {
     select(columns: string): ActionEventSelectQuery;
-    insert(row: ActionEventInsertRow): { select(columns: string): { single(): PromiseLike<ActionEventDbResponse<unknown>> } };
+    insert(row: ActionEventInsertRow | FinanceActionEventInsertRow): { select(columns: string): { single(): PromiseLike<ActionEventDbResponse<unknown>> } };
   };
-  rpc(fn: typeof EXECUTE_RPC, args: ExecuteRpcArgs): PromiseLike<ActionEventDbResponse<unknown>>;
+  /** Exactly two functions: the deadline RPC (F.1G) and, F2.31, the Victor-salary finance RPC (F2.30). */
+  rpc(fn: typeof EXECUTE_RPC | typeof FINANCE_EXECUTE_RPC, args: ExecuteRpcArgs | FinanceExecuteRpcArgs): PromiseLike<ActionEventDbResponse<unknown>>;
 }
 
 // ── DB error classification ──
@@ -152,15 +156,62 @@ export interface ActionEventStore {
   callExecuteRpc(args: ExecuteRpcArgs): Promise<RpcCallResult>;
 }
 
-/** F2.29: READ-ONLY finance event capability (no finance append, no finance RPC exists in the app). */
+/** F2.29: READ-ONLY finance event capability. */
 export interface FinanceActionEventReader {
   /** Every stored RECORD_PAID_EXPENSE event of one type, created_at order; any malformed finance row fails the read closed. */
   getFinanceEventsByType(eventType: ActionEventType): Promise<FinanceEventListReadResult>;
 }
 
+export type FinanceEventReadResult =
+  | { status: "FOUND"; event: PartnerFinanceActionEvent }
+  | { status: "NOT_FOUND" }
+  | { status: "READ_FAILED"; detail: string }
+  | { status: "INVALID_STORED_EVENT"; errors: string[] };
+export type FinanceChainReadResult =
+  | { status: "OK"; chain: PartnerFinanceActionEvent[]; head: PartnerFinanceActionEvent | null }
+  | { status: "READ_FAILED"; detail: string }
+  | { status: "INVALID_STORED_EVENT"; errors: string[] }
+  | { status: "INVALID_CHAIN"; reasons: string[] };
+export interface FinanceDecisionAppendInput {
+  requestId: string;
+  actionId: string;
+  eventType: "APPROVED" | "NOT_NOW";
+  expectedHeadEventId: string | null;
+  actorUserId: string;
+  snapshot: FinanceActionSnapshotV1;
+  snapshotHash: string;
+  deferChoice: DeferChoice | null;
+  deferUntil: string | null;
+  note: string | null;
+  revalidation: Record<string, unknown>;
+}
+export type FinanceDecisionAppendResult =
+  | { status: "RECORDED"; event: PartnerFinanceActionEvent }
+  | { status: "REPLAY"; event: PartnerFinanceActionEvent }
+  | { status: "REQUEST_ID_CONFLICT" }
+  | { status: "ALREADY_IN_STATE"; head: PartnerFinanceActionEvent }
+  | { status: "ALREADY_EXECUTED"; head: PartnerFinanceActionEvent }
+  | { status: "HEAD_CONFLICT"; head: PartnerFinanceActionEvent | null }
+  | { status: "INVALID_TRANSITION"; from: string; to: string }
+  | { status: "INVALID_INPUT"; errors: string[] }
+  | { status: "RETRYABLE"; detail: string }
+  | { status: "INVARIANT_VIOLATION"; detail: string }
+  | { status: "FAILED"; detail: string };
+
+/**
+ * F2.31: the finance decision + execution capability — deliberately narrow: APPROVED / NOT_NOW decisions on
+ * RECORD_PAID_EXPENSE only, and the ONE approved finance RPC. No update / delete / generic insert exists.
+ */
+export interface FinanceActionEventWriter {
+  getFinanceEventById(id: string): Promise<FinanceEventReadResult>;
+  getFinanceActionChain(actionId: string): Promise<FinanceChainReadResult>;
+  appendFinanceDecision(input: FinanceDecisionAppendInput): Promise<FinanceDecisionAppendResult>;
+  callFinanceExecuteRpc(args: FinanceExecuteRpcArgs): Promise<RpcCallResult>;
+}
+
 export const EVENT_PAGE_SIZE = 500;
 
-export function createActionEventStore(client: ActionEventTableClient): ActionEventStore & FinanceActionEventReader {
+export function createActionEventStore(client: ActionEventTableClient): ActionEventStore & FinanceActionEventReader & FinanceActionEventWriter {
   const table = () => client.from(PARTNER_ACTION_EVENTS_TABLE);
 
   async function readRawRows(column: string, value: string): Promise<{ ok: true; rows: unknown[] } | { ok: false; detail: string }> {
@@ -194,6 +245,54 @@ export function createActionEventStore(client: ActionEventTableClient): ActionEv
     }
     if (errors.length) return { ok: false, result: { status: "INVALID_STORED_EVENT", errors } };
     return { ok: true, events: events.sort(compareEventOrder) };
+  }
+
+  /** F2.31: finance rows for one column value (non-finance rows are ignored; malformed finance rows fail closed). */
+  async function readFinanceRows(column: string, value: string): Promise<{ ok: true; events: PartnerFinanceActionEvent[]; foreign: number } | { ok: false; result: Exclude<FinanceChainReadResult, { status: "OK" }> }> {
+    const raw = await readRawRows(column, value);
+    if (!raw.ok) return { ok: false, result: { status: "READ_FAILED", detail: raw.detail } };
+    const events: PartnerFinanceActionEvent[] = [];
+    const errors: string[] = [];
+    let foreign = 0;
+    for (const r of raw.rows) {
+      if (!isFinanceActionRow(r)) { foreign++; continue; }
+      const m = mapFinanceActionEventRow(r);
+      if (m.ok) events.push(m.value);
+      else errors.push(`${(r as { id?: unknown })?.id ?? "?"}: ${m.code}: ${m.errors.join("; ")}`);
+    }
+    if (errors.length) return { ok: false, result: { status: "INVALID_STORED_EVENT", errors } };
+    return { ok: true, events: events.sort((a, b) => (Date.parse(a.createdAt) - Date.parse(b.createdAt)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)), foreign };
+  }
+
+  async function getFinanceActionChain(actionId: string): Promise<FinanceChainReadResult> {
+    const r = await readFinanceRows("action_id", actionId);
+    if (!r.ok) return r.result;
+    const o = orderActionChain(actionId, r.events);
+    return o.status === "OK" ? o : { status: "INVALID_CHAIN", reasons: o.reasons };
+  }
+
+  function validateFinanceAppend(i: FinanceDecisionAppendInput): string[] {
+    const errors: string[] = [];
+    if (!LOWER_UUID_RE.test(i.requestId)) errors.push("requestId must be a lowercase uuid");
+    if (!LOWER_UUID_RE.test(i.actorUserId)) errors.push("actorUserId must be a lowercase uuid");
+    if (i.expectedHeadEventId !== null && !LOWER_UUID_RE.test(i.expectedHeadEventId)) errors.push("expectedHeadEventId must be a lowercase uuid or null");
+    if (i.eventType !== "APPROVED" && i.eventType !== "NOT_NOW") errors.push("only APPROVED / NOT_NOW finance decisions can be appended");
+    errors.push(...validateFinanceSnapshot(i.snapshot));
+    if (i.snapshot?.id !== i.actionId) errors.push("snapshot.id must equal actionId");
+    if (!SHA256_HEX_RE.test(i.snapshotHash)) errors.push("snapshotHash must be 64 lowercase hex");
+    else { try { if (hashActionSnapshot(i.snapshot) !== i.snapshotHash) errors.push("snapshotHash does not match the snapshot"); } catch (e) { errors.push(`snapshot is not canonical: ${(e as Error).message}`); } }
+    if ((i.eventType === "NOT_NOW") !== (i.deferUntil !== null) || (i.deferUntil === null) !== (i.deferChoice === null)) errors.push("defer fields are required exactly for NOT_NOW");
+    if (i.note !== null && (typeof i.note !== "string" || i.note.length > 2000)) errors.push("note must be a string of at most 2000 characters or null");
+    return errors;
+  }
+
+  async function financeReplayOrConflict(i: FinanceDecisionAppendInput, scope: DecisionRequestScope): Promise<FinanceDecisionAppendResult | null> {
+    const prior = await readFinanceRows("request_id", i.requestId);
+    if (!prior.ok) return prior.result.status === "READ_FAILED" ? { status: "RETRYABLE", detail: prior.result.detail } : { status: "INVARIANT_VIOLATION", detail: prior.result.status === "INVALID_CHAIN" ? prior.result.reasons.join("; ") : prior.result.errors.join("; ") };
+    if (prior.foreign > 0) return { status: "REQUEST_ID_CONFLICT" };   // the request id belongs to another (deadline) event
+    if (!prior.events.length) return null;
+    if (prior.events.length > 1) return { status: "INVARIANT_VIOLATION", detail: "request_id is not unique" };
+    return decisionReplayMatches(prior.events[0] as unknown as PartnerActionEvent, scope) ? { status: "REPLAY", event: prior.events[0] } : { status: "REQUEST_ID_CONFLICT" };
   }
 
   async function readOne(column: string, value: string): Promise<EventReadResult> {
@@ -260,6 +359,83 @@ export function createActionEventStore(client: ActionEventTableClient): ActionEv
       }
       if (errors.length) return { status: "INVALID_STORED_EVENT", errors };
       return { status: "OK", events: events.sort((a, b) => (Date.parse(a.createdAt) - Date.parse(b.createdAt)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) };
+    },
+
+    // ── F2.31: finance decisions + the ONE approved finance RPC ──
+    async getFinanceEventById(id) {
+      if (!LOWER_UUID_RE.test(id)) return { status: "NOT_FOUND" };
+      const r = await readFinanceRows("id", id);
+      if (!r.ok) return r.result.status === "READ_FAILED" ? r.result : { status: "INVALID_STORED_EVENT", errors: r.result.status === "INVALID_CHAIN" ? r.result.reasons : r.result.errors };
+      if (!r.events.length) return { status: "NOT_FOUND" };
+      return { status: "FOUND", event: r.events[0] };
+    },
+    getFinanceActionChain,
+
+    async appendFinanceDecision(i) {
+      const errors = validateFinanceAppend(i);
+      if (errors.length) return { status: "INVALID_INPUT", errors };
+      const scope: DecisionRequestScope = { actionId: i.actionId, eventType: i.eventType, expectedHeadEventId: i.expectedHeadEventId, actorUserId: i.actorUserId, deferChoice: i.deferChoice, deferUntil: i.deferUntil };
+      const early = await financeReplayOrConflict(i, scope);
+      if (early) return early;
+      const c = await getFinanceActionChain(i.actionId);
+      if (c.status === "READ_FAILED") return { status: "RETRYABLE", detail: c.detail };
+      if (c.status !== "OK") return { status: "INVARIANT_VIOLATION", detail: c.status === "INVALID_CHAIN" ? c.reasons.join("; ") : c.errors.join("; ") };
+      const sameRequest = c.chain.find((e) => e.requestId === i.requestId);
+      if (sameRequest) return decisionReplayMatches(sameRequest as unknown as PartnerActionEvent, scope) ? { status: "REPLAY", event: sameRequest } : { status: "REQUEST_ID_CONFLICT" };
+      const head = c.head;
+      if (head?.eventType === "EXECUTED") return { status: "ALREADY_EXECUTED", head };
+      if (head && head.eventType === i.eventType && i.eventType !== "NOT_NOW") return { status: "ALREADY_IN_STATE", head };
+      if ((head?.id ?? null) !== i.expectedHeadEventId) return { status: "HEAD_CONFLICT", head };
+      if (!isAllowedTransition(head?.eventType ?? null, i.eventType)) return { status: "INVALID_TRANSITION", from: head?.eventType ?? "ROOT", to: i.eventType };
+      const row: FinanceActionEventInsertRow = {
+        event_schema_version: ACTION_EVENT_SCHEMA_VERSION,
+        request_id: i.requestId,
+        action_id: i.actionId,
+        action_type: FINANCE_ACTION_TYPE,
+        action_schema_version: FINANCE_ACTION_SCHEMA_VERSION,
+        subject_type: FINANCE_SUBJECT_TYPE,
+        subject_id: i.snapshot.subjectId,
+        event_type: i.eventType,
+        supersedes_event_id: i.expectedHeadEventId,
+        actor_kind: "OWNER",
+        actor_user_id: i.actorUserId,
+        action_snapshot: i.snapshot,
+        snapshot_hash: i.snapshotHash,
+        revalidation: i.revalidation,
+        execution: null,
+        defer_choice: i.deferChoice,
+        defer_until: i.deferUntil,
+        note: i.note,
+      };
+      let res: ActionEventDbResponse<unknown>;
+      try { res = await table().insert(row).select(ACTION_EVENT_COLUMNS).single(); } catch (e) {
+        return { status: "RETRYABLE", detail: `insert threw (outcome unknown — retry with the same requestId): ${describeDbError(e)}` };
+      }
+      if (res.error) {
+        const cls = classifyDbError(res.error);
+        const text = `${res.error.message ?? ""} ${res.error.details ?? ""}`;
+        if (cls === "UNIQUE_VIOLATION" && /request_uk/.test(text)) return (await financeReplayOrConflict(i, scope)) ?? { status: "RETRYABLE", detail: describeDbError(res.error) };
+        if (cls === "UNIQUE_VIOLATION" || cls === "FK_VIOLATION") {
+          const again = await getFinanceActionChain(i.actionId);
+          return { status: "HEAD_CONFLICT", head: again.status === "OK" ? again.head : null };
+        }
+        if (cls === "CHECK_VIOLATION") return { status: "INVALID_TRANSITION", from: head?.eventType ?? "ROOT", to: i.eventType };
+        if (cls === "INVARIANT_VIOLATION") return { status: "INVARIANT_VIOLATION", detail: describeDbError(res.error) };
+        if (cls === "RETRYABLE") return { status: "RETRYABLE", detail: describeDbError(res.error) };
+        return { status: "FAILED", detail: describeDbError(res.error) };
+      }
+      const m = mapFinanceActionEventRow(res.data);
+      if (!m.ok) return { status: "INVARIANT_VIOLATION", detail: `inserted finance event failed read-back validation: ${m.errors.join("; ")}` };
+      return { status: "RECORDED", event: m.value };
+    },
+
+    async callFinanceExecuteRpc(args) {
+      let res: ActionEventDbResponse<unknown>;
+      try { res = await client.rpc(FINANCE_EXECUTE_RPC, args); } catch (e) {
+        return { status: "RPC_ERROR", error: { code: "CLIENT", message: `rpc threw (outcome unknown — retry with the same requestId): ${describeDbError(e)}` }, errorClass: "RETRYABLE" };
+      }
+      if (res.error) return { status: "RPC_ERROR", error: { code: res.error.code, message: describeDbError(res.error) }, errorClass: classifyDbError(res.error) };
+      return { status: "RPC_OK", data: res.data };
     },
 
     async appendDecision(i) {

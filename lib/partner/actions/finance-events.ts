@@ -236,5 +236,42 @@ export function mapFinanceActionEventRow(raw: unknown): FinanceEventRowMapping {
   };
 }
 
+// ── F2.31: the narrow write contract (Owner decisions + the ONE approved finance RPC) ──
+
+/** The Owner-approved (F2.30, sha256 d6e83ae3…fa97) Victor-salary execution function — the only finance write primitive. */
+export const FINANCE_EXECUTE_RPC = "partner_execute_record_paid_expense";
+
+/** What the store inserts for a finance Owner decision (id / created_at are assigned by the DB). */
+export interface FinanceActionEventInsertRow {
+  event_schema_version: typeof ACTION_EVENT_SCHEMA_VERSION;
+  request_id: string;
+  action_id: string;
+  action_type: typeof FINANCE_ACTION_TYPE;
+  action_schema_version: typeof FINANCE_ACTION_SCHEMA_VERSION;
+  subject_type: typeof FINANCE_SUBJECT_TYPE;
+  subject_id: string;
+  event_type: "APPROVED" | "NOT_NOW";
+  supersedes_event_id: string | null;
+  actor_kind: "OWNER";
+  actor_user_id: string;
+  action_snapshot: FinanceActionSnapshotV1;
+  snapshot_hash: string;
+  revalidation: Record<string, unknown>;
+  execution: null;
+  defer_choice: DeferChoice | null;
+  defer_until: string | null;
+  note: string | null;
+}
+
+/** Identifiers only — every business value comes from the stored APPROVED snapshot inside the RPC. */
+export interface FinanceExecuteRpcArgs {
+  p_request_id: string;
+  p_approval_event_id: string;
+  p_action_id: string;
+  p_actor_user_id: string;
+  p_app_stale_reasons: string[];
+  p_revalidation: Record<string, unknown>;
+}
+
 /** The raw action_type decides the parser: finance rows are never handed to the deadline parser and vice versa. */
 export const isFinanceActionRow = (raw: unknown): boolean => isObj(raw) && raw.action_type === FINANCE_ACTION_TYPE;
