@@ -3,12 +3,14 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import { safeInternalRedirect } from "@/lib/safe-redirect";
 
 export const dynamic = "force-dynamic";
 
 function LoginForm() {
   const params = useSearchParams();
-  const redirectTo = params.get("redirect") || "/dashboard";
+  // Only a validated same-origin path (lib/safe-redirect.ts); anything else → "/" (the proxy routes each role home).
+  const redirectTo = safeInternalRedirect(params.get("redirect"));
 
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -31,10 +33,9 @@ function LoginForm() {
       // refetch with the new session cookie — otherwise pages render empty until
       // a manual refresh, because client-side navigation keeps the providers
       // (already mounted on /login) with their stale anonymous (401) state.
-      // Never bounce back to /login or /maintenance after a successful sign-in — the
-      // owner should land in the app; the proxy re-checks the role on that navigation.
-      const target = redirectTo.startsWith("/") && redirectTo !== "/login" && redirectTo !== "/maintenance" ? redirectTo : "/dashboard";
-      window.location.assign(target);
+      // redirectTo is already validated (never /login, /maintenance or off-site); the proxy re-checks the role
+      // on that navigation.
+      window.location.assign(redirectTo);
     } catch {
       setError("שגיאה בהתחברות, נסה שוב");
       setLoading(false);
