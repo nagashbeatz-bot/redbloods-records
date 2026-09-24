@@ -15,8 +15,8 @@
  *  - bounded: at most ROW_CAP rows per section (paged); a capped section is reported as capped.
  */
 
-import type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OperationsRaw } from "./types";
-export type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OperationsRaw };
+import type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OperationsRaw } from "./types";
+export type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OperationsRaw };
 
 interface Resp { data: unknown[] | null; error: { message?: string } | null }
 export interface OpsQuery extends PromiseLike<Resp> {
@@ -51,7 +51,7 @@ const map = <T,>(sec: Section<Record<string, unknown>> | null, f: (r: Record<str
   sec ? { rows: sec.rows.map(f).filter((x): x is T => x !== null), capped: sec.capped } : null;
 
 export async function readOperationsRaw(client: OperationsReadClient): Promise<OperationsRaw> {
-  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ] = await Promise.all([
+  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta] = await Promise.all([
     read(client, "red_films_productions", "id, title, production_type, status, project_id, client_id, artist_name, client_source, shoot_date, publish_date, edit_status, collection_status, general_budget, client_price, advance_required, advance_received"),
     read(client, "red_films_budget_items", "production_id, planned_amount, actual_amount, status, linked_transaction_id"),
     read(client, "red_films_budget_payments", "production_id, amount, payment_date"),
@@ -74,6 +74,8 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     read(client, "settings", "key, status:value->>deliveryStatus, delivered:value->>deliveredAt", (q) => q.like("key", "delivery_%")),
     // integration credentials: the KEY only — the value (a secret) is never selected
     read(client, "settings", "key", (q) => q.in("key", ["google_calendar_token", "dropbox_tokens"])),
+    // project metadata the company-state reader drops (hidden projects included) — never notes / files / folders / links
+    read(client, "projects", "id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, is_hidden, planned_hours, planned_days, updated_at"),
   ]);
   const has = (k: string) => (integ ? integ.rows.some((r) => r.key === k) : null);
   return {
@@ -106,6 +108,11 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
       const id = typeof r.key === "string" ? r.key.slice("delivery_".length) : "";
       return UUID.test(id) ? { projectId: id, status: s(r.status), deliveredAt: s(r.delivered) } : null;
     }),
+    projectsMeta: map(pmeta, (r) => (s(r.id) ? {
+      id: String(r.id), name: s(r.name) ?? "", status: s(r.status), projectType: s(r.project_type), businessType: s(r.project_business_type), artistText: s(r.artist),
+      deadline: s(r.deadline), startDate: s(r.start_date), endDate: s(r.end_date), parentProject: s(r.parent_project), isHidden: r.is_hidden === true,
+      plannedHours: n(r.planned_hours), plannedDays: n(r.planned_days), updatedAt: s(r.updated_at),
+    } : null)),
     integrations: { googleCalendarConnected: has("google_calendar_token"), dropboxConnected: has("dropbox_tokens") },
   };
 }

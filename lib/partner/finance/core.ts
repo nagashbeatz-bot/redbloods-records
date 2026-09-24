@@ -87,8 +87,9 @@ export function validateTx(row: FinanceTxRow): Tx | null {
   return { row, amount, currency: normalizeCurrency(row.currency), type: row.type, date, received, cancelled: isCancelledStatus(row.status) };
 }
 
-interface PriceSetting { price: number | null; currency: string; exception: boolean; clipPrice: number | null; malformed: boolean }
-function parseSetting(value: unknown): PriceSetting {
+/** Exported (read-only reuse by the connected project view — the SAME parse, no second copy). */
+export interface PriceSetting { price: number | null; currency: string; exception: boolean; clipPrice: number | null; malformed: boolean }
+export function parseSetting(value: unknown): PriceSetting {
   if (!isObj(value)) return { price: null, currency: ILS, exception: false, clipPrice: null, malformed: true };
   const rawPrice = value.agreedPrice;
   const price = num(rawPrice);

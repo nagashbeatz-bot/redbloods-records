@@ -10,7 +10,7 @@
  */
 import type { BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-1";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-2";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -26,7 +26,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["project"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "INTENTIONALLY_UNAVAILABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["projects", "project_actions", "tasks", "deliveries", "albums", "sessions", "mix_pipeline", "red_films", "clip_planning", "finance_receivables"],
+    readCapabilities: ["project_view", "project_portfolio", "projects", "project_actions", "tasks", "deliveries", "albums", "sessions", "mix_pipeline", "red_films", "clip_planning", "finance_receivables"],
     learnKinds: ["PROJECT_BLOCKER", "FOLLOW_UP_EXPECTATION", "RELEASE_PRIORITY", "PAYMENT_REPORTED_BY_OWNER"],
     proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
@@ -39,6 +39,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("LABEL_CLASSIFICATION_CONFLICT", "CONFLICT", "Whether a project is a LABEL project is decided in two ways: the stored business type (לקוח / לייבל, used by releases and Sunny) vs matching the artist name against the label roster (used by project sorting). Most label artists' projects are stored as לקוח. Finance screens use neither. Sunny asks the Owner (Company Integrity) instead of guessing.", ["LABEL_ARTISTS", "FINANCE", "RELEASES"]),
       R("PROJECT_DELETE_CASCADE", "IMPLEMENTATION_BEHAVIOR", "Deleting a project hard-deletes its sessions (and their calendar events), planning rows, engineer work links and settings; its transactions are unlinked (kept, orphaned) and linked proposals revert to לא נסגר. Album settings / tracks are not cleaned (POSSIBLE_BUG).", ["SESSIONS", "FINANCE", "PROPOSALS"]),
       R("CANCEL_PROJECT_BALANCE_PROMPT", "POSSIBLE_BUG", "Cancelling a project offers to cancel its open expected income, but ignores partial rows, includes clip income and sums across currencies."),
+      R("PROJECT_DB_CASCADES", "IMPLEMENTATION_BEHAVIOR", "In the database, deleting a project cascades to engineer work, Victor work, project actions, clip planning rows, release details, album tracks and agent alerts, and nulls proposals, mix versions, final files and social campaigns; transactions, sessions, meetings, Red Films and social content have no database link.", ["FINANCE", "SESSIONS", "MIX_PIPELINE", "VICTOR", "RELEASES", "ALBUMS", "SOCIAL", "RED_FILMS"]),
+      R("PROJECT_ACTIVE_DEFINITION_CONFLICT", "CONFLICT", "'Active project' is defined differently on the dashboard, health checks, the projects KPI and the projects filter (the filter even includes cancelled)."),
+      R("PROJECT_STATUS_NOT_VALIDATED", "POSSIBLE_BUG", "The server accepts any project status text (no vocabulary check)."),
+      R("LEGACY_DRAWER_OPEN_WRITES", "POSSIBLE_BUG", "Opening a project in the legacy drawer marks passed sessions held and, for hidden projects, overwrites the start date on every open."),
     ],
     sideEffects: [
       E("PROJECT_COMPLETE_VICTOR", "A project is marked הושלם from the status menu", "Victor's open work on it can be closed and a delivery folder offered (both Owner choices in the UI).", ["VICTOR", "DELIVERY"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
@@ -776,4 +780,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-1", date: "2026-09-25", domain: "PLATFORM_ACCESS", dimension: "read", from: "INTENTIONALLY_UNAVAILABLE", to: "INTENTIONALLY_UNAVAILABLE", noteHe: "סאני מכיר כל משתמש, מה הוא רואה ויכול לעשות, ואיך זה נאכף (ידע מערכת — לא שינוי הרשאות)." },
   { version: "2026.09.25-1", date: "2026-09-25", domain: "PUSH_NOTIFICATIONS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "FULL_INVENTORY", noteHe: "סאני מכיר כל פוש שקיים: מי מקבל, למה, מתי ומה מפעיל אותו (לא שולח פושים)." },
   { version: "2026.09.25-1", date: "2026-09-25", domain: "ARTIST_PORTALS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "PAGE_BY_PAGE", noteHe: "סאני מכיר כל לשונית בפורטלים של שליו, אבי, קלינטון, ויקטור וסטיבן." },
+  { version: "2026.09.25-2", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת פרויקט מחוברת: לקוח/אמן (עם איכות קישור), כסף מוסבר לפי הכללים, סשנים, הצעה, משימות, מי מחכה למי, ויקטור, מהנדסים, Red Films, ריליס, מסירה, אותות — ומה חסר." },
 ];

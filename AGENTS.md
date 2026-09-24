@@ -40,3 +40,13 @@ Any change that touches **who can log in, what a role or portal can see or do, a
 - **Access-control files** (`lib/roles.ts`, `proxy.ts`, `lib/require-auth.ts`, `lib/red-artists/portal-access.ts`, `lib/beat-scope.ts`, `lib/steven-scope.ts`, `lib/push.ts`): changing any of them fails `scripts/test-sunny-people.tsx` until the people contracts are reviewed and `ACCESS_REVIEWED_FINGERPRINTS` is updated.
 - **Security gaps and UI-vs-server mismatches** are recorded in `SECURITY_GAPS` and reported to the Owner. Fixing them is a separate, approved mission.
 - **Screenshots** are supplemental evidence only. Browsing production as the Owner writes data on page load (session auto-mark, push re-subscribe, task sync), so live browsing is not a read-only activity.
+
+## Sunny Awareness Check: Projects (the central node)
+
+Any change that touches **a project field, status / type vocabulary, a table or setting that references a project, project deletion / cascade, project money, a project page or drawer, or a page-load write on a project surface** must also update `lib/partner/system/projects.ts` in the same change:
+
+- **Fields / vocabularies:** keep `PROJECT_FIELDS` (classified CANONICAL / DERIVED / LEGACY / DISPLAY_ONLY / AMBIGUOUS / POSSIBLE_BUG / CONFLICT) and `PROJECT_VOCABULARIES` true.
+- **Relationships:** every project-referencing column must be a `PROJECT_LINKS` entry with link method, cardinality, quality (CANONICAL_RELATION / OWNER_CONFIRMED_RELATION / DERIVED_RELATION / TEXT_MATCH / AMBIGUOUS / UNKNOWN), DB enforcement, what breaks it and the live-read capability. Add new columns to `PROJECT_SCHEMA_COLUMNS`. Never claim a canonical link where the app only matches names.
+- **Money:** the connected project view (`lib/partner/projects/money.ts`) reuses the Finance Brain primitives. Never add a second money rule; record conflicts in `PROJECT_MONEY_MODEL.conflictsHe` (report only).
+- **Project semantics files** (`lib/projects-store.ts`, `lib/types.ts`, `app/api/projects/route.ts`, `app/api/projects/[id]/route.ts`, `lib/payment-status.ts`, `lib/clip-finance.ts`, `lib/finance/classify.ts`, `lib/project-paths.ts`, `components/ui/ProjectDrawer.tsx`, `components/AppShell.tsx`): changing any of them fails `scripts/test-sunny-projects.tsx` until the project contract is reviewed and `PROJECT_REVIEWED_FINGERPRINTS` is updated.
+- **Signals are derived, never a score.** Stale is not urgent; quality before speed; label release work is protected. The portfolio is sorted by deadline, not ranked.

@@ -5,6 +5,7 @@
  */
 import { BUSINESS_ACTIONS, CAPABILITY_CHANGES, coverageMatrix, DOMAIN_CONTRACTS, RELATIONSHIPS, servedDomain, SYSTEM_BASELINE_VERSION } from "../../system";
 import { accessMatrix, PEOPLE_BASELINE_VERSION, personOfRole, PUSH_CONTRACTS, SECURITY_GAPS, servedPush, servedUser, USER_CONTRACTS } from "../../system/people-view";
+import { PROJECT_BASELINE_VERSION, PROJECT_FIELDS, PROJECT_INTEGRITY, PROJECT_LINKS, PROJECT_MONEY_MODEL, PROJECT_PAGE_LOAD_EFFECTS, PROJECT_SIGNAL_MODEL, PROJECT_SURFACES, PROJECT_VOCABULARIES } from "../../system/projects";
 import type { KnowledgeCapability } from "../types";
 import { byCount, item, partner, result, sfact } from "./common";
 
@@ -31,6 +32,7 @@ export const systemAwareness: KnowledgeCapability = {
     push: { descriptionForModel: "Every Push that exists (optional param recipient role): recipient, purpose, trigger, type (manual / event / scheduled / page-load beacon), timing, conditions, dedupe, what happens next, status, known bugs. Sunny can never send push" },
     access: { descriptionForModel: "Who sees money, who can upload / change status / delete / send push, who is read-only — derived per person" },
     gaps: { descriptionForModel: "Reported security gaps / UI-vs-server mismatches / privacy issues (report only, not fixed)" },
+    project_model: { descriptionForModel: "The PROJECT as the central node (param section): fields, vocabularies, links (every relationship with link method, cardinality, DB enforcement, what breaks it, live read), money (rules + known conflicts), signals, surfaces, side_effects (page-load writes), integrity (production counts + risks)" },
   },
   defaultMode: "overview",
   params: {
@@ -38,6 +40,7 @@ export const systemAwareness: KnowledgeCapability = {
     class: { kind: "enum", values: ["CANONICAL_BUSINESS_RULE", "IMPLEMENTATION_BEHAVIOR", "OWNER_POLICY", "LEGACY_BEHAVIOR", "POSSIBLE_BUG", "CONFLICT"], descriptionForModel: "Only rules of this class" },
     person: { kind: "enum", values: USER_CONTRACTS.map((u) => u.id), descriptionForModel: "A person id (see mode people), e.g. SHALEV, AVI, CLEANTONE, VICTOR, STEVEN, OWNER" },
     recipient: { kind: "enum", values: ["owner", "shalev", "avi", "cleantone", "victor", "steven"], descriptionForModel: "Only pushes this role receives" },
+    section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity"], descriptionForModel: "project_model section (default links)" },
   },
   paging: { defaultLimit: 40, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: [],
   read(_src, q) {
@@ -89,6 +92,20 @@ export const systemAwareness: KnowledgeCapability = {
     if (q.mode === "gaps") {
       return result(SECURITY_GAPS.map((g) => item({ id: g.id, label: partner(g.description), epistemic: "OBSERVATION", source: SRC, fields: { severity: g.severity, kind: g.kind, users: g.users, status: g.status } })),
         { ...peopleBase, summary: [...peopleBase.summary, sfact("BY_SEVERITY", "לפי חומרה", byCount(SECURITY_GAPS.map((g) => g.severity)), "FACT", SRC)] });
+    }
+    if (q.mode === "project_model") {
+      const sec = q.params.section ?? "links";
+      const pb = { ...base, summary: [version(), sfact("PROJECT_BASELINE", "גרסת הידע על פרויקטים", PROJECT_BASELINE_VERSION, "FACT", SRC)] };
+      const rows: Array<{ id: string; label: string; fields: Record<string, unknown> }> =
+        sec === "fields" ? PROJECT_FIELDS.map((f) => ({ id: f.field, label: f.meaning, fields: { ...f } }))
+        : sec === "vocabularies" ? Object.entries(PROJECT_VOCABULARIES).map(([k, v]) => ({ id: k, label: k, fields: { values: v } }))
+        : sec === "money" ? [{ id: "rules", label: "Project money rules", fields: { rules: PROJECT_MONEY_MODEL.rules, sunny: PROJECT_MONEY_MODEL.sunnyImplementation } }, ...PROJECT_MONEY_MODEL.conflictsHe.map((c, i) => ({ id: `conflict:${i}`, label: c, fields: { class: "CONFLICT" } }))]
+        : sec === "signals" ? PROJECT_SIGNAL_MODEL.map((s) => ({ id: s.code, label: s.note, fields: { ...s } }))
+        : sec === "surfaces" ? PROJECT_SURFACES.map((s) => ({ id: s.surface, label: s.purpose, fields: { ...s } }))
+        : sec === "side_effects" ? PROJECT_PAGE_LOAD_EFFECTS.map((e, i) => ({ id: `effect:${i}`, label: e.trigger, fields: { ...e } }))
+        : sec === "integrity" ? [{ id: "counts", label: "Production integrity counts (read-only, 2026-09-25)", fields: { ...PROJECT_INTEGRITY.productionCounts20260925 } }, ...PROJECT_INTEGRITY.risksHe.map((r, i) => ({ id: `risk:${i}`, label: r, fields: {} }))]
+        : PROJECT_LINKS.map((l) => ({ id: l.id, label: `project ↔ ${l.target}`, fields: { linkMethod: l.linkMethod, cardinality: l.cardinality, direction: l.direction, quality: l.quality, enforcement: l.enforcement, breaks: l.breaks, liveRead: l.liveRead } }));
+      return result(rows.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), pb);
     }
     if (q.mode === "changes") {
       return result([...CAPABILITY_CHANGES].reverse().map((c, i) => item({ id: `${c.version}:${c.domain}:${c.dimension}:${i}`, label: partner(c.noteHe), epistemic: "FACT", source: SRC, fields: { ...c } })), base);

@@ -64,6 +64,7 @@ const OPS: OperationsRaw = {
   mixComments: sec([{ versionId: U(861), status: "open" }, { versionId: U(861), status: "resolved" }]),
   finalFiles: sec([{ workId: U(852), createdAt: "2026-09-01T10:00:00Z" }]),
   deliveries: sec([{ projectId: P(3), status: "ready", deliveredAt: null }]),
+  projectsMeta: sec([]),
   integrations: { googleCalendarConnected: true, dropboxConnected: true },
 };
 function sources(ops: OperationsRaw | "UNAVAILABLE" | undefined = OPS): GatewaySources {

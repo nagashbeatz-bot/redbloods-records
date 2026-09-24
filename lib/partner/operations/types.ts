@@ -31,6 +31,12 @@ export interface OpsMixComment { versionId: string | null; status: string | null
 export interface OpsFinalFile { workId: string | null; createdAt: string | null }
 export interface OpsDelivery { projectId: string; status: string | null; deliveredAt: string | null }
 export interface OpsEquipment { category: string | null; status: string | null }
+/** Project metadata the company-state reader drops (incl. HIDDEN projects). No notes / files / folder paths / links. */
+export interface OpsProjectMeta {
+  id: string; name: string; status: string | null; projectType: string | null; businessType: string | null; artistText: string | null;
+  deadline: string | null; startDate: string | null; endDate: string | null; parentProject: string | null; isHidden: boolean;
+  plannedHours: number | null; plannedDays: number | null; updatedAt: string | null;
+}
 
 export interface OperationsRaw {
   redFilms: Maybe<OpsRedFilmsProduction>;
@@ -52,6 +58,7 @@ export interface OperationsRaw {
   mixComments: Maybe<OpsMixComment>;
   finalFiles: Maybe<OpsFinalFile>;
   deliveries: Maybe<OpsDelivery>;
+  projectsMeta: Maybe<OpsProjectMeta>;
   /** Whether the integration's stored credential KEY exists (the value is never selected). null = could not tell. */
   integrations: { googleCalendarConnected: boolean | null; dropboxConnected: boolean | null };
 }
