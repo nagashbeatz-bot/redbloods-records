@@ -57,7 +57,7 @@ const SHOWS: DetailShow[] = [
   show(PAST, { incomeTxId: TX_INC, djExpenseTxId: TX_DJ, artistExpenseTxId: TX_ART }),
   show(NEXT, { name: "הופעה הבאה", date: "2026-10-15", startTime: null, location: "", status: "אושרה", paymentStatus: "צפוי", advancePayment: 1000, djClientId: null, djName: "", djConfirmationStatus: null, djConfirmedAt: null }),
   show(CLEAN_PENDING, { name: "הופעה עם CLEANTONE", date: "2026-10-20", status: "נסגר", paymentStatus: "צפוי", djConfirmationStatus: "ממתין לאישור", djConfirmedAt: null }),
-  show(CANCELLED, { name: "בוטלה", date: "2026-08-13", status: "בוטל", paymentStatus: "בוטל" }),
+  show(CANCELLED, { name: "בוטלה", date: "2026-08-13", status: "בוטל", paymentStatus: "בוטל", djConfirmationStatus: "ממתין לאישור", djConfirmedAt: null }),
   show(COLLAB, { name: "שיתוף", artistText: "שליו טסמה, אבי מולה", date: "2026-10-25", status: "אושרה", paymentStatus: "צפוי" }),
 ];
 const LD: LabelDetailRaw = {
@@ -145,6 +145,7 @@ function main() {
   section("SCENARIO F — cancelled after the artist income existed");
   const f = buildShowView(sources(), CANCELLED)!;
   ok("realized ledger kept after cancel is surfaced", codes(f).includes("LEDGER_KEPT_AFTER_CANCEL"));
+  ok("a cancelled show never raises 'awaiting DJ confirmation'", !codes(f).includes("DJ_AWAITING_CONFIRMATION"));
   ok("contract explains cancel: rows → בוטל, expected removed, realized kept", /realized income \+ payments KEPT/.test(SM.LIFECYCLE.find((x) => x.transition.startsWith("CANCEL"))!.ledger));
 
   section("SCENARIO G — reopened after close");
