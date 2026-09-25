@@ -183,6 +183,7 @@ function main() {
   const p1 = vg.projects.find((p) => p.projectId === P(1))!;
   ok("label work is not treated as client work (no advance expectation)", p1.labelWork === true && p1.advance === "NOT_APPLICABLE_LABEL_WORK" && !vg.signals.some((s) => s.code === "PAYMENT_EVIDENCE_MISSING" && s.entity === `project:${P(1)}`));
   ok("collaboration project marked (אבי 2 names both)", vg.projects.some((p) => p.basis === "NAME_COLLABORATION"));
+  ok("label-work money kept apart from client money", vg.money!.rows.some((r) => r.labelWork === true && r.project === `project:${P(1)}`) && !vg.money!.rows.some((r) => r.project === `project:${P(1)}` && r.labelWork !== true));
 
   section("SCENARIO H — similar names");
   const h = clientWorkflow(sources(), "NEW_CLIENT_REQUEST", { name: "כפול" });

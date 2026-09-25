@@ -128,10 +128,17 @@ export function buildClientView(src: GatewaySources, clientId: string) {
 
   // ── money: REALIZED / EXPECTED / POTENTIAL, per currency, never merged ──
   const realized: Record<string, number> = {}, expected: Record<string, number> = {}, potential: Record<string, number> = {}, collectible: Record<string, number> = {};
+  const labelWorkMoney: { realized: Record<string, number>; expected: Record<string, number> } = { realized: {}, expected: {} };
   const moneyRows: Array<Record<string, unknown>> = [];
   if (fin) {
     for (const p of projects) {
       const m = projectMoney(fin.raw, { id: p.projectId, status: p.status });
+      if (p.labelWork) {
+        // label work of a person who is also a client record is NOT commercial client money (Owner classification / business type)
+        if (m.song) { addTo(labelWorkMoney.realized, m.price.currency, m.song.received); addTo(labelWorkMoney.expected, m.price.currency, m.song.openExpected); }
+        moneyRows.push({ project: p.key, name: p.name, link: p.basis, labelWork: true, received: m.song?.received ?? 0, openExpected: m.song?.openExpected ?? 0, currency: m.price.currency, note: "label work — kept apart from client money" });
+        continue;
+      }
       if (m.song) { addTo(realized, m.price.currency, m.song.received); addTo(expected, m.price.currency, m.song.openExpected); if (m.song.collectible) addTo(collectible, m.price.currency, m.song.collectible); }
       for (const [cur, o] of Object.entries(m.otherCurrencyIncome)) { addTo(realized, cur, o.received); addTo(expected, cur, o.open); }
       if (m.clip) { addTo(realized, m.price.currency, m.clip.paid); addTo(expected, m.price.currency, m.clip.expected); }
@@ -227,7 +234,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
     key, found: true as const,
     identity: { id: client.id, name: client.name, type: client.type, status: client.status, statusMeaning: "one field mixing lifecycle / tier / role (חדש is also the auto-create default)", createdAt: client.createdAt },
     contact: stored ? { phone: stored.phone, email: stored.email, hasPhone: !!stored.phone, hasEmail: !!stored.email } : null,
-    roles, proposals, projects, money: fin ? { realized, expected, collectible, potential, rows: moneyRows, rule: "REALIZED = received rows; EXPECTED = open (not received, not cancelled) rows; POTENTIAL = open proposal amounts — never added together; per currency" } : null,
+    roles, proposals, projects, money: fin ? { realized, expected, collectible, potential, labelWorkMoney, rows: moneyRows, rule: "REALIZED = received rows; EXPECTED = open (not received, not cancelled) rows; POTENTIAL = open proposal amounts — never added together; per currency. Label work of the same person is kept apart (labelWorkMoney)." } : null,
     meetings, calendar, sessions, tasks, deliveries, notes, history, lastRecordedActivity: lastActivity, ownerKnowledge: knowledge, signals, questions, unavailable,
   };
 }
