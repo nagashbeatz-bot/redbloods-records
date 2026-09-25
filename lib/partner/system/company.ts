@@ -152,6 +152,32 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   NO_SESSIONS: a("CONTEXT", "NONE"),
   STALE: a("CONTEXT", "UNKNOWN"),
   HIDDEN_PROJECT: a("CONTEXT", "NONE"),
+  // sessions / tasks / meetings / albums / delivery / social (Full-Brain Completion)
+  SESSION_TYPE_UNKNOWN: a("SYSTEM_GAP", "NONE", "SYSTEM_GAP"),
+  SESSION_PASSED_STILL_PLANNED: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT"),
+  SESSION_UPCOMING: a("CONTEXT", "NONE", "SCHEDULED_EVENT"),
+  SESSION_NO_CALENDAR_EVENT: a("CONTEXT", "OWNER", "SCHEDULED_EVENT"),
+  SESSION_CANCELLED_EVENT_KEPT: a("CONFLICT", "NONE", "DATA_CONFLICT", "SCHEDULED_EVENT"),
+  REHEARSAL_STATUS_NOT_COUNTED: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
+  SESSION_UNLINKED: a("SYSTEM_GAP", "NONE", "SYSTEM_GAP"),
+  SESSION_EXPENSE_ORPHAN: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
+  TASK_OVERDUE: a("NEEDS_ATTENTION", "OWNER", "TIME_SENSITIVE"),
+  TASK_DUE_TODAY: a("NEEDS_ATTENTION", "OWNER", "TIME_SENSITIVE"),
+  TASK_RELATED_MISSING: a("SYSTEM_GAP", "NONE", "SYSTEM_GAP"),
+  TASK_LINK_DANGLING: a("SYSTEM_GAP", "NONE", "DATA_CONFLICT"),
+  MEETING_PAST_STILL_SCHEDULED: a("CONTEXT", "OWNER", "DATA_CONFLICT"),
+  MEETING_CANCELLED_EVENT_KEPT: a("CONFLICT", "NONE", "DATA_CONFLICT"),
+  MEETING_CLIENT_NOT_FOUND: a("SYSTEM_GAP", "NONE", "SYSTEM_GAP"),
+  MEETING_CLIENT_NAME_DRIFT: a("CONTEXT", "NONE"),
+  ALBUM_NO_TRACKS: a("CONTEXT", "OWNER"),
+  ALBUM_TRACK_STATUS_OUT_OF_VOCAB: a("SYSTEM_GAP", "NONE", "SYSTEM_GAP"),
+  ALBUM_TRACK_MIX_UNLINKED: a("SYSTEM_GAP", "NONE", "DATA_CONFLICT"),
+  COMPLETED_NO_DELIVERY_EVIDENCE: a("NEEDS_ATTENTION", "OWNER", "CLIENT_COMMITMENT"),
+  DELIVERY_READY_NOT_MARKED: a("NEEDS_ATTENTION", "OWNER", "CLIENT_COMMITMENT"),
+  DELIVERED_BALANCE_OPEN: a("NEEDS_ATTENTION", "EXTERNAL", "MONEY_RELEVANT"),
+  SOCIAL_APP_CHECKLIST_FLAG: a("CONTEXT", "OWNER", "RELEASE_CONTEXT"),
+  SOCIAL_CONTENT_OVERDUE: a("CONTEXT", "OWNER", "RELEASE_CONTEXT"),
+  SOCIAL_RELEASE_DATE_DIFFERS: a("CONFLICT", "NONE", "DATA_CONFLICT", "RELEASE_CONTEXT"),
 };
 
 // ── cross-domain graph (semantic; never a fake DB link) ───────────────────────────────────────────────────────────
@@ -338,8 +364,18 @@ export const DEPTH_RECONCILIATION: ReadonlyArray<{ domain: string; from: string;
   { domain: "RELEASES", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "release details schema pinned and served by the Label Artists Deep Brain; release context joined by the company view" },
   { domain: "BEATS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "beats + assignments schema pinned by the Label Artists Deep Brain" },
   { domain: "COMPANY_OVERVIEW", from: "SYSTEM_AWARENESS_ONLY", to: "DEEP_BRAIN_V1", proof: "this mission: company_view composes every Deep Brain; test-sunny-company" },
+  { domain: "SESSIONS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: session contract (every column, vocabularies pinned to the code, every route, rules) + session_view + test-sunny-full-brain" },
+  { domain: "TASKS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: task contract (TEXT markers kept TEXT_MATCH, Google mirror semantics) + task_view + test" },
+  { domain: "MEETINGS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: meeting contract (text client id re-verified in production) + meeting_view + test" },
+  { domain: "ALBUMS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: album contract (track statuses vs mix works kept apart) + album_view + test" },
+  { domain: "DELIVERY", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: delivery contract + evidence ladder + delivery_view + test" },
+  { domain: "SOCIAL", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: social contract + the app's checker evaluated as implementation behaviour + social_view + test" },
+  { domain: "FILES_DROPBOX", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: every storage namespace + operation + the live-listing decision + storage_view (every recorded file) + test; storage-only files registered as FS_STORAGE_ONLY_FILES" },
+  { domain: "REPORTS", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: reports model (schedule, money / date semantics vs the Finance Brain), every background job, every attention engine + reports_view + test" },
+  { domain: "SUNNY_CORE", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: Sunny core stores + what Sunny can / cannot recall + sunny_self + test" },
+  { domain: "SUNNY_CONNECTOR", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", proof: "Full-Brain: connector model (auth, scopes, tools, limits, audit, failure states, flags; no secrets) + sunny_self model + test" },
 ];
-export const STILL_PENDING = ["SESSIONS", "TASKS", "MEETINGS", "ALBUMS", "DELIVERY", "SOCIAL", "FILES_DROPBOX", "REPORTS", "SUNNY_CORE", "SUNNY_CONNECTOR"] as const;
+export const STILL_PENDING: readonly string[] = [];
 
 // ── what this mission found that earlier missions missed ────────────────────────────────────────────────────────────
 export interface Discovery { id: string; what: string; where: string; why: string; domains: string[]; sunnyReads: string; gap: string | null; ownerInput: boolean }
@@ -355,6 +391,10 @@ export const DISCOVERIES: readonly Discovery[] = [
   { id: "PORTAL_MUSIC_LINK", what: "Projects uploads can be linked into a portal artist's 'המוזיקה שלי' library for an explicit artist list only", where: "red-artists project link", why: "a project → portal relationship limited to named artists", domains: ["ARTIST_PORTALS", "PROJECTS"], sunnyReads: "people / artist_view", gap: null, ownerInput: false },
   { id: "SUNNY_AUDIT_TRAIL", what: "Sunny's own gateway audit (every connector query) exists and is not read by Sunny", where: "partner gateway audit", why: "Sunny cannot yet answer 'what did I look at / answer before'", domains: ["SUNNY_CORE"], sunnyReads: "no", gap: "CO_SUNNY_OWN_AUDIT", ownerInput: false },
   { id: "DEPTH_STALE_MARKERS", what: "Four domains fully covered by the Label Deep Brain were still marked pending (artist balances, media income, releases, beats)", where: "system awareness depth map", why: "Sunny under-stated its own knowledge", domains: ["ARTIST_BALANCES", "MEDIA_INCOME", "RELEASES", "BEATS"], sunnyReads: "reconciled", gap: null, ownerInput: false },
+  { id: "CODE_BUSINESS_GOALS", what: "Business goals hard-coded in the old agent code (₪20,000 GROSS monthly income, 8 sessions / week, 4 completions / month, Victor 12) — no settings rows, so the code defaults drive the 'goal behind' alerts and the weekly report", where: "old agent goals", why: "a second, unconfirmed goal system that measures gross where the Owner measures net", domains: ["REPORTS", "AGENT_ALERTS", "FINANCE"], sunnyReads: "reports_view engines", gap: "RP_CODE_GOALS_VS_OWNER_TARGET", ownerInput: true },
+  { id: "AUDIT_INSERT_ONLY", what: "Sunny's connector audit is insert-only for the service role and stores input HASHES — Sunny can never read back what it queried", where: "connector audit grant", why: "'what did you check before' is unanswerable by design", domains: ["SUNNY_CONNECTOR"], sunnyReads: "sunny_self (the boundary itself)", gap: "CO_SUNNY_OWN_AUDIT", ownerInput: true },
+  { id: "STORAGE_ONLY_PORTAL", what: "The artist portal 'המוזיקה שלי' lives only in a storage manifest (versions, ratings, next release / next work) — no database record at all", where: "artist portal storage", why: "an artist's plans for the next song are invisible to Sunny", domains: ["FILES_DROPBOX", "ARTIST_PORTALS"], sunnyReads: "no", gap: "FS_STORAGE_ONLY_FILES", ownerInput: true },
+  { id: "REHEARSAL_AUTOMARK_MONEY", what: "The app-wide session auto-mark writes התקיים on show rehearsals while the show split counts only בוצע — held rehearsals can drop out of the artist / label split", where: "sessions auto-mark + show split", why: "a silent money effect", domains: ["SESSIONS", "SHOWS", "FINANCE"], sunnyReads: "session_view", gap: "WK_REHEARSAL_STATUS_CONFLICT", ownerInput: true },
 ];
 
 export const COMPANY_RULES = [

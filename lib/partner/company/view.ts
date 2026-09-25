@@ -24,6 +24,7 @@ import { buildShowView } from "../shows/view";
 import { buildVictorView } from "../victor/view";
 import { buildMixView } from "../mix/view";
 import { buildVideoView } from "../redfilms/view";
+import { buildSessionsView, buildTasksView, buildMeetingsView, buildAlbumsView, buildDeliveryView, buildSocialView } from "../work/view";
 import { companyOperating, repeatedQuestionSignals } from "../sunny/operating";
 import { buildCalendarLinkIndex, linkCalendarEvent } from "../calendar/links";
 import { buildReleaseCandidates } from "../../release-candidates";
@@ -36,7 +37,7 @@ const DAY = 86_400_000;
 const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export type CompanyDomain = "PROJECTS" | "CLIENTS" | "LABEL" | "SHOWS" | "VICTOR" | "MIX" | "VIDEO" | "FINANCE" | "AGENT_ALERTS" | "CALENDAR";
+export type CompanyDomain = "PROJECTS" | "CLIENTS" | "LABEL" | "SHOWS" | "VICTOR" | "MIX" | "VIDEO" | "FINANCE" | "AGENT_ALERTS" | "CALENDAR" | "SESSIONS" | "TASKS" | "MEETINGS" | "ALBUMS" | "DELIVERY" | "SOCIAL";
 export interface CompanyObservation {
   code: string;
   concept: string;
@@ -69,6 +70,7 @@ export interface CompanyDecision {
 const CONCEPT_ALIAS: Readonly<Record<string, string>> = {
   VICTOR_WAITING_OWNER: "WAITING_ON_OWNER", AT_VICTOR: "WAITING_ON_VICTOR", AT_ENGINEER: "WAITING_ON_ENGINEER", ENGINEER_RETURNED_WORK: "WAITING_ON_OWNER",
   DONE_UNPAID: "SHOW_DONE_UNPAID", NO_DJ: "SHOW_WITHOUT_DJ", UPCOMING: "UPCOMING_SHOW", COLLABORATION: "IDENTITY_COLLABORATION",
+  COMPLETED_NO_DELIVERY_EVIDENCE: "COMPLETED_DELIVERY_OPEN", MEETING_PAST_STILL_SCHEDULED: "MEETING_STATUS_NOT_UPDATED", SESSION_UPCOMING: "UPCOMING_SESSION",
 };
 
 /** Company-level agent alert types → meaning. Owner policy: alerts are never canonical action truth → always CONTEXT (an observation of a parallel engine), never attention. */
@@ -116,6 +118,10 @@ export function buildCompanyView(src: GatewaySources) {
   const mix = safe("mix", partial, () => buildMixView(src));
   const video = safe("video", partial, () => buildVideoView(src));
   const operating = safe("operating model", partial, () => companyOperating(src));
+  const work = {
+    SESSIONS: safe("sessions", partial, () => buildSessionsView(src)), TASKS: safe("tasks", partial, () => buildTasksView(src)), MEETINGS: safe("meetings", partial, () => buildMeetingsView(src)),
+    ALBUMS: safe("albums", partial, () => buildAlbumsView(src)), DELIVERY: safe("delivery", partial, () => buildDeliveryView(src)), SOCIAL: safe("social", partial, () => buildSocialView(src)),
+  } as const;
 
   // ── attention: every domain signal → the company meaning ──
   const all: CompanyObservation[] = [];
@@ -134,6 +140,7 @@ export function buildCompanyView(src: GatewaySources) {
   for (const s of victor?.signals ?? []) push("VICTOR", s.code, s.he, s.work ?? null, s.work ? vWork.get(s.work) ?? null : null, s.kind);
   for (const s of mix?.signals ?? []) push("MIX", s.code, s.he, s.work ?? s.project ?? null, s.project ?? null, s.kind);
   for (const s of video?.signals ?? []) push("VIDEO", s.code, s.he, s.production ?? s.project ?? null, s.project ?? null, s.kind);
+  for (const [dom, v] of Object.entries(work) as Array<[CompanyDomain, { signals: Array<{ code: string; he: string; kind: string; entity?: string; project?: string }> } | null]>) for (const s of v?.signals ?? []) push(dom, s.code, s.he, s.entity ?? null, s.project ?? null, s.kind);
   // company-level agent alerts (no project) — the in-app alert engine's own observations
   // open = "new" (the engine marks closed alerts "handled"); most alerts carry their project only in the entity key, not the project id
   const companyAlerts = (c.det?.agentAlerts?.rows ?? []).filter((a) => !a.projectId && a.status === "new");

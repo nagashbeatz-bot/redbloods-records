@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-14";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-15";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -108,7 +108,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["session"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["READ_ONLY"],
-    readCapabilities: ["sessions"], learnKinds: [], proposableActions: [],
+    readCapabilities: ["sessions", "session_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("SESSION_VOCAB", "CANONICAL_BUSINESS_RULE", "Session status: מתוכנן, התקיים, בוטל, נדחה, לא הגיע. Types: סשן, ניקוי מיקס, חזרה, צילום קליפ, חזרה להופעה."),
@@ -155,14 +155,14 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Task records (title, status, due date, related entity, show id, mirrored Google Task id).",
     entityTypes: ["task"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["tasks"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["tasks", "task_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("TASK_VOCAB", "CANONICAL_BUSINESS_RULE", "Task status: פתוח, בוצע, בוטל."),
       R("TASK_GOOGLE_SYNC", "IMPLEMENTATION_BEHAVIOR", "Completing the mirrored Google Task marks the local task בוצע (Google → Redbloods only).", ["GOOGLE_CALENDAR"]),
       R("VICTOR_TASK_NO_RELATED", "POSSIBLE_BUG", "A Victor deadline task on a standalone work is saved as project-related with no project."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא יוצר/סוגר משימות.", "הערות המשימה לא נקראות."],
+    sideEffects: [], limitationsHe: ["סאני לא יוצר/סוגר משימות.", "קישור משימת מעקב להצעה / הצעת הופעה / מיקס הוא לפי טקסט — לא מפתח.", "Google Tasks עצמן לא נקראות — רק מזהה המראה; השלמה בגוגל עוברת רק כשדף המשימות נטען."],
     surfaces: S(["/tasks"], ["tasks"]),
   },
   {
@@ -171,11 +171,11 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Meeting records (client id + duplicated client name, project id, date, time, duration, status, calendar event id).",
     entityTypes: ["meeting"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["meetings", "client_view"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["meetings", "client_view", "meeting_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [R("MEETING_VOCAB", "CANONICAL_BUSINESS_RULE", "Meeting status: נקבעה, התקיימה, בוטלה."), R("MEETING_NO_OUTCOME", "IMPLEMENTATION_BEHAVIOR", "A meeting has no outcome field and its status is updated only by hand: a past meeting still נקבעה may or may not have happened."), R("MEETING_CLIENT_NO_FK", "IMPLEMENTATION_BEHAVIOR", "A meeting stores the client id as text (no FK) plus a name snapshot that a client rename does not update.", ["CLIENTS"])],
     sideEffects: [E("MEETING_CALENDAR", "A meeting is booked with a calendar event", "A Google event is created at booking only.", ["GOOGLE_CALENDAR"], "MANUAL")],
-    limitationsHe: ["מיקום והערות פגישה לא נקראים."],
+    limitationsHe: ["לפגישה אין תוצאה / המשך מתועד; פגישה שעברה ועדיין 'נקבעה' — לא ידוע אם התקיימה.", "שינוי / ביטול פגישה לא מעדכן את אירוע היומן."],
     surfaces: S([], ["meetings"]),
   },
   {
@@ -196,7 +196,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Album track records per project; legacy per-project album finance blob; historical Monday data (never used by finance).",
     entityTypes: ["album_track"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["albums"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["albums", "album_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("ALBUM_TRACK_STATUS_CONFLICT", "CONFLICT", "The default track status 'טרום הקלטה' is not part of the project status vocabulary."),
@@ -212,7 +212,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Per-project delivery setting (status, delivered date; folder path + link are not exposed to Sunny).",
     entityTypes: ["delivery"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["deliveries"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["deliveries", "delivery_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("DELIVERY_PUBLIC_LINK", "IMPLEMENTATION_BEHAVIOR", "Creating a delivery creates a PUBLIC Dropbox share link; deleting a delivery deletes the Dropbox folder."),
@@ -586,7 +586,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Campaign records (one per project) + content items + promotions (actual spend lives only as a marketing expense transaction) + social files in Dropbox.",
     entityTypes: ["campaign", "content_item", "promotion"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["social"], learnKinds: ["PROCESS_FRICTION", "RELEASE_PRIORITY"], proposableActions: [],
+    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["social", "social_view"], learnKinds: ["PROCESS_FRICTION", "RELEASE_PRIORITY"], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("SOCIAL_STATUS_CONFLICT", "CONFLICT", "Content statuses disagree: the approved Hebrew 9-status pipeline vs the stored 4 English statuses (draft / in_progress / ready_to_post / published) vs the missing-content checker, which only knows legacy values — so ready / published content can be reported as missing."),
@@ -601,7 +601,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Dropbox (external) + file metadata on project / work records.",
     entityTypes: ["file"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "OWNER_APPROVAL_REQUIRED"], readCapabilities: ["mix_pipeline", "deliveries", "integrations"], learnKinds: [], proposableActions: [],
+    states: ["PARTIAL", "OWNER_APPROVAL_REQUIRED"], readCapabilities: ["mix_pipeline", "deliveries", "integrations", "storage_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
     rules: [
       R("PROJECT_AUDIO_IN_DROPBOX", "CANONICAL_BUSINESS_RULE", "Project audio (the player), mixes and finals are Dropbox files; LISTEN / radio is a separate external system, not part of Redbloods."),
@@ -609,7 +609,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("DROPBOX_CALLBACK_NO_STATE", "POSSIBLE_BUG", "The Dropbox OAuth callback has no state check (security review item)."),
       R("STORAGE_ROUTES_OWNER_IN_ROUTE", "IMPLEMENTATION_BEHAVIOR", "The raw storage routes (stream, upload, delete, share link, intake, status, connect) check the Owner inside the route as well as at the central gate (since 2026-09-25)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא ניגש לתוכן קבצים ולא לקישורים — רק למטא-דאטה (מספר גרסאות/קבצים, תאריכים)."],
+    sideEffects: [], limitationsHe: ["סאני לא ניגש לתוכן קבצים ולא לקישורים — רק למטא-דאטה של כל קובץ שיש לו רשומה (שם, סוג, גודל, מעלה, תאריך, שייכות).", "קבצים שקיימים רק באחסון (פורטל האמן: 'המוזיקה שלי', קבצי הופעה, פרס קיט, תמונה; תוכן תיקיית מסירה; קבצים שנוספו מחוץ לאפליקציה) לא נראים — קריאה חיה דורשת אישור בעלים."],
     surfaces: S(["/setup/dropbox"], ["dropbox"]),
   },
   // ───────────────────────────── NOTIFICATIONS / OPERATIONS ─────────────────────────────
@@ -642,13 +642,16 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Report schedule setting + live company data at send time.",
     entityTypes: ["report"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["system_settings"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["system_settings", "reports_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
     rules: [
+      R("REPORT_MONEY_BY_CREATED_VS_FINANCE", "CONFLICT", "Report money counts transactions by creation date (weekly: ₪ only) while the Finance Brain uses the transaction date and keeps every currency — the email and Sunny can show different numbers."),
+      R("REPORT_UTC_DAY", "POSSIBLE_BUG", "The reports compute 'today' as a UTC date (00:00–03:00 Israel time falls on the previous day)."),
+      R("REPORT_WEEKLY_NOT_AUTOMATIC", "IMPLEMENTATION_BEHAVIOR", "Only the morning / evening emails are sent automatically; the weekly one is sent only manually (its automatic path lives in the switched-off agent route)."),
       R("REPORT_DAILY_BY_CREATED", "IMPLEMENTATION_BEHAVIOR", "The daily report counts money by creation date (not transaction date); weekly is ₪ only."),
       R("REPORT_DEDUPE_MEMORY", "IMPLEMENTATION_BEHAVIOR", "Report send dedupe is in memory only (a restart within the minute can resend)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא שולח דוחות."],
+    sideEffects: [], limitationsHe: ["סאני לא שולח דוחות.", "מה נשלח בפועל לא נשמר — אין היסטוריית דוחות.", "ההמלצות בדוח הן כללים סטטיים (ה-AI כבוי)."],
     surfaces: S(["/setup/reports"], ["reports"]),
   },
   {
@@ -707,7 +710,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog"],
+    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
@@ -726,10 +729,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Connector clients / tokens / audit (OAuth), the Unified Knowledge Gateway.",
     entityTypes: [],
     support: { read: "FULL", learn: "INTENTIONALLY_UNAVAILABLE", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["AVAILABLE"], readCapabilities: ["catalog", "system_awareness"], learnKinds: [], proposableActions: [],
+    states: ["AVAILABLE"], readCapabilities: ["catalog", "system_awareness", "sunny_self"], learnKinds: [], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
-    rules: [R("SCOPES", "CANONICAL_BUSINESS_RULE", "Scopes: read (always), answer (P1: answer a surfaced question), knowledge (P2: learn typed Owner knowledge — not active yet). No generic write scope exists.")],
-    sideEffects: [], limitationsHe: [],
+    rules: [R("SCOPES", "CANONICAL_BUSINESS_RULE", "Scopes: read (always), answer (answer a surfaced question — flag + MCP-only), knowledge (learn typed Owner knowledge — flag + MCP-only). No generic write scope exists."), R("AUDIT_FAIL_CLOSED", "CANONICAL_BUSINESS_RULE", "Every connector call writes an audit row first; if it cannot, the call is refused. The audit stores hashes of the inputs, never payloads or tokens."), R("AUDIT_INSERT_ONLY", "IMPLEMENTATION_BEHAVIOR", "The audit is insert-only for the service role — Sunny cannot read its own query history.")],
+    sideEffects: [], limitationsHe: ["סאני לא יכול לקרוא את יומן הביקורת של החיבור (הרשאת הוספה בלבד) — ולכן לא יודע אילו שאילתות הריץ בשיחות קודמות.", "שיחות Claude לא נשמרות ב-Redbloods — רק מה שענית / לימדת / אישרת."],
     surfaces: S(["/mcp-oauth/authorize"], ["mcp", "mcp-oauth"]),
   },
 ];
@@ -907,4 +910,14 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-13", date: "2026-09-25", domain: "CLIPS", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "תמונת קליפ בפרויקט: עסקת הקליפ (הכנסה מהאמן), שורות תכנון והעבר לכספים, ימי צילום + יומן, הוצאות קליפ בפועל לפי מטבע, הפקות, ריליס ותוכן — שתי המערכות מחוברות רק דרך הפרויקט." },
   { version: "2026.09.25-14", date: "2026-09-25", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני אחד על כל החברה: תמונת מצב, מה צריך תשומת לב (בלי ציון), תזרים מול לייבל, ריליסים, הופעות, הפקה, מיקס, וידאו, יומן, צוות, החלטות פתוחות (כולל ישנות שנבדקו מחדש), סתירות, פערים לפי שורש, שינויים ותוצאות — מחובר, לא מועתק." },
   { version: "2026.09.25-14", date: "2026-09-25", domain: "AGENT_ALERTS", dimension: "read", from: "PARTIAL", to: "PARTIAL", noteHe: "התראות מערכת ברמת החברה (יעדים, שבוע חלש, חגים) נקראות עכשיו כתצפית — לא אמת לפעולה." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "SESSIONS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "סאני מבין כל סשן לעומק: סוג, סטטוס ומשמעותו האמיתית (התקיים יכול להיות סימון אוטומטי), תאריך שעבר ≠ התקיים, חזרות להופעה, ימי צילום, אירוע יומן, הוצאות מקושרות ומגבלת סשנים." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "TASKS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "כל המשימות: קשר קנוני, מקור (מעקב הצעה / הופעה / ויקטור / מיקס — לפי טקסט, לא מקודם), איחור, מראה ב-Google Tasks וקישורים חוזרים." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "MEETINGS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "כל הפגישות: לקוח (מזהה טקסט + שם מהקביעה), פרויקט, סטטוס ומשמעותו, אירוע יומן שלא מסונכרן." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "ALBUMS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "אלבומים / EP: רשימת שירים, סטטוסים ידניים (שיר / מיקס / מאסטר) לצד עבודות המיקס — בלי לאחד." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "DELIVERY", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "מסירה: סולם ראיות (רשומת מסירה > שליחה מתועדת > מוכן > קבצים סופיים > הושלם) — 'נמסר' רק מרשומה." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "SOCIAL", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "סושיאל: קמפיינים, תכנים, קבצים, קידום, והצ'קליסט של האפליקציה (התנהגות מערכת, לא מדיניות)." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "FILES_DROPBOX", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "קבצים: כל מרחב אחסון, כל קובץ עם רשומה (מטא-דאטה בלבד), ומה שקיים רק באחסון — פער מפורש." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "REPORTS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "דוחות: לוח זמנים, סמנטיקת כסף ותאריך מול מוח הכספים וסיכום הבוקר, כל משימות הרקע ומנועי תשומת הלב." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "סאני על עצמו: מה לימדת, מה ענית, מה בוצע, מה פתוח — ומה הוא לא זוכר (אין שיחות שמורות)." },
+  { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CONNECTOR", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "החיבור ל-Claude: הרשאות, כלים, מגבלות, ביקורת (לא קריאה), מצבי כשל ודגלים — בלי סודות." },
 ];

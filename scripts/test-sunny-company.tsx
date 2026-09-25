@@ -107,7 +107,7 @@ const texts = (r: QueryResponse) => JSON.stringify(r);
 
 function main() {
   section("1. permanent whole-system guards");
-  const VIEWS = ["lib/partner/projects/view.ts", "lib/partner/clients/view.ts", "lib/partner/label/view.ts", "lib/partner/shows/view.ts", "lib/partner/victor/view.ts", "lib/partner/mix/view.ts", "lib/partner/redfilms/view.ts"];
+  const VIEWS = ["lib/partner/projects/view.ts", "lib/partner/clients/view.ts", "lib/partner/label/view.ts", "lib/partner/shows/view.ts", "lib/partner/victor/view.ts", "lib/partner/mix/view.ts", "lib/partner/redfilms/view.ts", "lib/partner/work/view.ts"];
   const emitted = new Set(VIEWS.flatMap((f) => [...code(read(f)).matchAll(/(?:code: |S\()"([A-Z][A-Z_]{2,})"/g)].map((m) => m[1])));
   check("every domain signal code is mapped in the company ATTENTION_MAP (a new signal must be classified)", [...emitted].filter((c) => !CO.ATTENTION_MAP[c]).sort(), []);
   ok(`the attention map covers ${emitted.size} emitted codes`, emitted.size >= 100);
@@ -123,7 +123,7 @@ function main() {
   ok("depth reconciliation is applied in the depth map", CO.DEPTH_RECONCILIATION.every((d) => DOMAIN_KNOWLEDGE_DEPTH[d.domain] === d.to));
   check("the still-pending list equals the depth map's pending domains", [...CO.STILL_PENDING].sort(), Object.entries(DOMAIN_KNOWLEDGE_DEPTH).filter(([, v]) => v === "PENDING_DEEP_MISSION").map(([k]) => k).sort());
   ok("every depth domain is a registry domain", Object.keys(DOMAIN_KNOWLEDGE_DEPTH).every((d) => DOMAIN_CONTRACTS.some((c) => c.id === d)));
-  ok("baseline bumped with a COMPANY_OVERVIEW change", SYSTEM_BASELINE_VERSION === "2026.09.25-14" && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-14" && c.domain === "COMPANY_OVERVIEW"));
+  ok("baseline bumped with a COMPANY_OVERVIEW change", Number(SYSTEM_BASELINE_VERSION.split("-").pop()) >= 14 && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-14" && c.domain === "COMPANY_OVERVIEW"));
   ok("COMPANY_OVERVIEW reads company_view", DOMAIN_CONTRACTS.find((d) => d.id === "COMPANY_OVERVIEW")!.readCapabilities.includes("company_view"));
   const cap = REG.get("company_view")!;
   ok("company_view is registered, Owner-only, FINANCIAL", !!cap && cap.access.ownerOnly && cap.access.sensitivity === "FINANCIAL");

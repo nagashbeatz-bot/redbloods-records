@@ -160,3 +160,32 @@ It is read through `company_view` (`lib/partner/company/view.ts`), which compose
 - Decisions are Owner-only. A known decision is re-evaluated against live state, never answered by Sunny.
 - "What changed" shows only recorded timestamps.
 - The morning brief is produced on request only: no Push, no Cron.
+
+## Sunny Awareness Check: Sessions, Tasks, Meetings, Albums, Delivery, Social, Files, Reports, Sunny core + connector
+
+These ten domains are contracts:
+- `lib/partner/system/work-domains.ts` covers every column, the vocabularies pinned to the code, every route with its auth and writes, relations, rules, side effects, production state and gaps.
+- `lib/partner/system/platform-domains.ts` covers:
+  - the storage namespaces and operations, and the live-listing decision;
+  - the reports model, every background job and the attention engines;
+  - the code business goals;
+  - the Sunny core stores and the connector model.
+
+They are read through `session_view`, `task_view`, `meeting_view`, `album_view`, `delivery_view`, `social_view`, `storage_view`, `reports_view` and `sunny_self` (`lib/partner/work/view.ts`, `lib/partner/self/view.ts`).
+
+`scripts/test-sunny-full-brain.tsx` fails on any of these:
+- a new column in those tables;
+- a changed vocabulary;
+- a new route in those families;
+- a new in-process schedule or secret-protected cron route;
+- a changed connector tool list;
+- changed code business goals.
+
+Rules:
+- A passed date is never "happened". A session's התקיים may be auto-marked.
+- Task links by notes / title markers stay TEXT_MATCH.
+- "Delivered" comes only from a delivery record.
+- The social checklist is implementation behaviour, never a release verdict.
+- Files are served as metadata only (never a path or link); storage-only files are a registered gap.
+- Report money (creation date, ₪ only weekly) is a registered conflict with the Finance Brain.
+- Sunny never claims conversation memory. The connector audit is insert-only and unreadable by Sunny.
