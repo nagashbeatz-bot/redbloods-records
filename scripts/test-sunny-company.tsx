@@ -199,6 +199,9 @@ function main() {
   section("SCENARIO P — decision dedupe: the same question text appears once");
   const qk = v.decisions.map((d) => `${d.kind}|${d.questionHe.replace(/\s+/g, " ")}`);
   check("no duplicate question", qk.length - new Set(qk).size, 0);
+  ok("the live Victor June question is folded into the known June decision (with its evidence)", !v.decisions.some((d) => d.origin === "LIVE_QUESTION" && d.domain === "VICTOR" && /2026-06/.test(d.questionHe)) && /2026-06/.test(dec("known:victor-june-500")?.evidenceHe ?? ""));
+  ok("the live Red Films ledger question is folded into the known decision", !v.decisions.some((d) => d.origin === "LIVE_QUESTION" && d.domain === "VIDEO" && /פנקס נפרד/.test(d.questionHe)));
+  ok("only open (new) company-level alerts are read", v.companyAlerts.every((a) => a.status === "new"));
   section("SCENARIO Q — agent alerts: company-level alerts read as CONTEXT (never canonical action truth)");
   ok("goal_behind company alert is read", v.companyAlerts.some((a) => a.type === "goal_behind"));
   ok("…as context, never attention", v.context.some((o) => o.code === "ALERT_GOAL_BEHIND" && o.epistemic === "OBSERVATION") && !v.attention.some((o) => o.domain === "AGENT_ALERTS"));
