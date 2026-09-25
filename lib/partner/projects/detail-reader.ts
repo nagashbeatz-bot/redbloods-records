@@ -92,7 +92,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     r("sessions", "id, project_id, show_id, date, start_time, end_time, status, session_type, title, notes, location, photographer, cost, calendar_event_id, created_at"),
     r("meetings", "id, project_id, client_id, client_name, date, time, duration, location, notes, status, calendar_event_id, created_at"),
     r("tasks", "id, related_type, related_id, title, notes, status, due_date, start_time, end_time, show_id, calendar_event_id, created_at, updated_at"),
-    r("sound_engineer_work", "id, project_id, engineer_name, notes, files_link, sort_order, created_at, updated_at"),
+    r("sound_engineer_work", "id, project_id, engineer_name, notes, files_link, sort_order, created_at, updated_at, work_title, work_type, status, agreed_price, currency, amount_paid, sent_date, internal_deadline, linked_transaction_id, payment_date"),
     r("mix_versions", "id, sound_engineer_work_id, project_id, label, file_name, dropbox_path, file_size, file_type, status, uploaded_by, duration_seconds, uploaded_at, mix_target_id, created_at, updated_at"),
     r("mix_comments", "id, mix_version_id, timestamp_seconds, comment_text, author, role, status, created_at, updated_at"),
     r("mix_comment_attachments", "id, comment_id, file_name, file_size, dropbox_path, mime_type, uploaded_by, created_at"),
@@ -140,7 +140,8 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
       id: String(x.id), relatedType: s(x.related_type), relatedId: s(x.related_id), title: t(x.title), notes: t(x.notes), status: s(x.status), dueDate: s(x.due_date), startTime: s(x.start_time), endTime: s(x.end_time), showId: s(x.show_id),
       hasGoogleTask: has(x.calendar_event_id), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
     } : null)),
-    engineerWork: mapSection(work, (x) => (s(x.id) ? { id: String(x.id), projectId: s(x.project_id), engineerName: s(x.engineer_name), notes: t(x.notes), hasFilesLink: has(x.files_link), sortOrder: n(x.sort_order), createdAt: s(x.created_at), updatedAt: s(x.updated_at) } : null)),
+    engineerWork: mapSection(work, (x) => (s(x.id) ? { id: String(x.id), projectId: s(x.project_id), engineerName: s(x.engineer_name), notes: t(x.notes), hasFilesLink: has(x.files_link), sortOrder: n(x.sort_order), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
+      workTitle: s(x.work_title), workType: s(x.work_type), status: s(x.status), agreedPrice: n(x.agreed_price), currency: s(x.currency), amountPaid: n(x.amount_paid), sentDate: s(x.sent_date), internalDeadline: s(x.internal_deadline), linkedTransactionId: s(x.linked_transaction_id), paymentDate: s(x.payment_date) } : null)),
     mixVersions: mapSection(vers, (x) => (s(x.id) ? {
       id: String(x.id), workId: s(x.sound_engineer_work_id), projectId: s(x.project_id), label: s(x.label), fileName: s(x.file_name), status: s(x.status), uploadedBy: s(x.uploaded_by),
       durationSeconds: n(x.duration_seconds), uploadedAt: s(x.uploaded_at), targetId: s(x.mix_target_id), path: s(x.dropbox_path), size: n(x.file_size), type: s(x.file_type), createdAt: s(x.created_at), updatedAt: s(x.updated_at),

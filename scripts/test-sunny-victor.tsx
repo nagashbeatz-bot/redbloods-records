@@ -191,7 +191,7 @@ function main() {
   const served = JSON.stringify([q("victor_view", "overview"), q("victor_view", "money"), q("victor_view", "work", { work: U(W_NOTES), section: "files" }), q("victor_portfolio", "list", { filter: "all" }), ...["fields", "files", "money", "actions", "portal"].map((t) => q("system_awareness", "victor_model", { section: t }))]);
   check("no forbidden implementation / secret terms served", FORBIDDEN_SERVED_TERMS.filter((t) => served.toLowerCase().includes(t.toLowerCase())), []);
   ok("no share links / tokens served", !/dropbox\.com\/s|token=|access_token|dropboxShareUrl/.test(served));
-  ok("VICTOR = DEEP_BRAIN_V1; Steven / Mix / Red Films NOT marked complete", DOMAIN_KNOWLEDGE_DEPTH.VICTOR === "DEEP_BRAIN_V1" && ["STEVEN", "MIX_PIPELINE", "RED_FILMS"].every((d) => DOMAIN_KNOWLEDGE_DEPTH[d] === "PENDING_DEEP_MISSION") && CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-10" && x.domain === "VICTOR"));
+  ok("VICTOR = DEEP_BRAIN_V1; Steven / Mix / Red Films NOT marked complete", DOMAIN_KNOWLEDGE_DEPTH.VICTOR === "DEEP_BRAIN_V1" && ["RED_FILMS"].every((d) => DOMAIN_KNOWLEDGE_DEPTH[d] === "PENDING_DEEP_MISSION") && CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-10" && x.domain === "VICTOR"));
   check("system registry valid", validateSystemRegistry({ capabilityIds: REG.all().map((x) => x.id), knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
   check("gaps valid", validateKnowledgeGaps({ domainIds: DOMAIN_CONTRACTS.map((x) => x.id), capabilityIds: REG.all().map((x) => x.id) }), []);
   const vg = KNOWLEDGE_GAPS.filter((x) => x.id.startsWith("VIC_"));

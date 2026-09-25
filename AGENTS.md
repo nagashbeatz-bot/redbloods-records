@@ -115,3 +115,15 @@ Victor's work is a system contract in `lib/partner/system/victor.ts`. It covers 
   - Lookups by project id, the folder builder and the raw storage routes are Owner-only, checked in-route as well as at the proxy.
 - A new Victor-reachable route or file operation must use that scope module and extend that test.
 - Remaining findings stay in `SECURITY_GAPS` with an honest status (REPORTED_NOT_FIXED / REMEDIATED with proof / PARTIALLY_REMEDIATED). Fixing an open one is a separate, approved mission.
+
+## Sunny Awareness Check: Steven + Mix Pipeline
+
+Mix / master work (Steven and any other engineer) is a system contract in `lib/partner/system/mix.ts`. It covers:
+- fields of the seven mix tables, settings, vocabularies, engineer identity and Steven-specific vs generic behavior;
+- the work unit and creation paths, statuses, handoff evidence, versions, comments, final files, money;
+- the portal, pushes, consumers, actions, workflows, signals, security and integrity.
+
+It is read through `mix_view` / `mix_portfolio` (`lib/partner/mix/view.ts`).
+- A change to an engineer-work / version / comment / attachment / riddim-line / pre-mix-note / final-file column, a status / work type / version status, the Steven page status mapping, the mix setup engineers, a `steven_*` / `final_files_batch:` setting, a mix route, the completion flow, the payment sync or a mix push must update that contract. `scripts/test-sunny-mix.tsx` pins the schema, the vocabularies, the settings literals, the route families + action inventory and `MIX_REVIEWED_FINGERPRINTS`.
+- Reuse the app's own rules (final-files request flags, closed status, newer-version comparison, Finance validation), never a second rule.
+- Completed ≠ approved ≠ final files ≠ paid. The latest version is the newest upload, never the highest number. $ and ₪ are never added. The 3.25 ratio / $200 / PayPal ×1.05 are code working values, not Owner policy. An engineer is a free-text name; only exactly "Steven" is Steven.

@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-11";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-12";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -484,13 +484,16 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Sound-engineer work records where the engineer is exactly 'Steven' + mix versions, comments, targets, final files.",
     entityTypes: ["vendor"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["team_steven", "mix_pipeline"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
+    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["team_steven", "mix_pipeline", "mix_view", "mix_portfolio"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("STEVEN_SCOPE_BY_NAME", "CANONICAL_BUSINESS_RULE", "Steven owns a work only when the engineer name is exactly 'Steven' (his access guard)."),
       R("STEVEN_PROJECT_TYPES", "CANONICAL_BUSINESS_RULE", "New project-linked work can be sent to Steven only for שיר / רידים / אלבום / EP."),
       R("STEVEN_FIRST_VERSION", "CANONICAL_BUSINESS_RULE", "The first mix version moves a work from לא נשלח to בתהליך."),
       R("STEVEN_PAID", "CANONICAL_BUSINESS_RULE", "Steven is paid when agreed > 0, paid ≥ agreed and a payment date exists."),
+      R("STEVEN_PAYMENT_RATIO", "IMPLEMENTATION_BEHAVIOR", "Steven's payment is recorded in Finance in ₪ at a hard-coded $→₪ 3.25 with a PayPal ×1.05 note; the project send pre-fills $200. These are code working values, not a stored rate or Owner policy."),
+      R("STEVEN_PAYMENT_PUSH_ANY_ENGINEER", "POSSIBLE_BUG", "The 'Payment sent' push to Steven fires for ANY engineer's paid transition; the ₪ payment sync and the notes / send pushes have no engineer check either."),
+      R("STEVEN_PORTAL_DISPLAY_STATUS", "IMPLEMENTATION_BEHAVIOR", "Steven's page shows לא התחיל (לא נשלח with no version) / פעיל / הושלם (אושר) / בוטל; the stored statuses are richer."),
       R("STEVEN_TWO_FINANCE_WRITERS", "CONFLICT", "Two mechanisms write the same engineer transaction: an older price sync (work currency, usually $) and the payment-expense sync (₪ at a fixed 3.25 rate, deleted when unpaid). They can overwrite each other."),
     ],
     sideEffects: [E("STEVEN_PAYMENT_EXPENSE", "Steven's payment is toggled paid", "A project / general expense transaction is upserted (deleted when toggled unpaid).", ["FINANCE"], "MANUAL")],
@@ -501,7 +504,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("STEVEN_MIX_READY", "The Owner marks a mix ready", "Owner + Steven", "MANUAL", "deduplicated unless resent"),
       N("STEVEN_PAID", "Payment becomes paid", "Owner + Steven", "EVENT", "once per payment date"),
     ],
-    limitationsHe: ["תוכן ההערות והקבצים לא נקרא — רק ספירות ותאריכים."],
+    limitationsHe: ["סאני קורא כל עבודה, גרסה, הערה (כולל הטקסט), צרופה, קבצים סופיים וכסף — לא משנה, לא שולח ולא מוחק.", "האחסון עצמו לא נקרא — רק רישומי הקבצים.", "אין רשומת אישור מיקס, אין מי-סימן-טופל, ומי שהעלה גרסה לא ניתן להוכחה.", "תשלום לסטיבן נרשם בשקלים ביחס קבוע שבקוד — לא מדיניות."],
     surfaces: S(["/team/steven"], ["supplier/steven"]),
   },
   {
@@ -510,14 +513,23 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Sound-engineer work records (engineer name is free text) + mix versions / targets / comments / final files.",
     entityTypes: ["engineer_work", "mix_version", "final_file"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["mix_pipeline"], learnKinds: ["VENDOR_COMMITMENT", "PROJECT_BLOCKER"], proposableActions: [],
+    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["mix_pipeline", "mix_view", "mix_portfolio"], learnKinds: ["VENDOR_COMMITMENT", "PROJECT_BLOCKER"], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("MIX_VERSION_TO_PROJECT", "CANONICAL_BUSINESS_RULE", "A full mix version on a project-linked work is copied into the project's files (player); deleting the version leaves the copy (POSSIBLE_BUG).", ["PROJECTS", "FILES_DROPBOX"]),
       R("RIDDIM_MODE", "CANONICAL_BUSINESS_RULE", "Riddim mode is driven only by the project type רידים; mix labels are numbered per mix line."),
-      R("ENGINEER_WORK_DELETE_ORPHANS", "IMPLEMENTATION_BEHAVIOR", "Deleting a work keeps its transaction and files."),
+      R("ENGINEER_WORK_DELETE_ORPHANS", "IMPLEMENTATION_BEHAVIOR", "Deleting a work keeps its transaction and files; the database blocks deleting a work that has final files."),
+      R("MIX_WORK_UNIT", "CANONICAL_BUSINESS_RULE", "The engineer work is the mix work unit (one engineer × one project or a standalone title × one work type); versions, comments, riddim lines and final files hang off it."),
+      R("MIX_ENGINEER_FREE_TEXT", "IMPLEMENTATION_BEHAVIOR", "The engineer is a free-text name; exactly 'Steven' is Steven (portal, pushes, completion flow). Other engineers have no portal."),
+      R("MIX_LATEST_BY_UPLOAD", "CANONICAL_BUSINESS_RULE", "A version is a 'Mix N' round of files; the latest round is the newest upload, not the highest number (numbers reuse the lowest free slot)."),
+      R("MIX_COMMENTS_OWNER_ONLY", "CANONICAL_BUSINESS_RULE", "Only the Owner writes comments / attachments / pre-mix notes; the engineer can only mark a comment done / open. A new version resolves nothing."),
+      R("MIX_COMPLETED_NOT_APPROVED", "CANONICAL_BUSINESS_RULE", "אושר is the 'completed' status; no Owner approval record exists (the version status is never set). Completed, approved, final files and paid are separate facts."),
+      R("MIX_FINAL_FILES_PER_PROJECT", "CANONICAL_BUSINESS_RULE", "Final files are separate delivery records counted per project; a completion request is satisfied only by a final file uploaded after it."),
+      R("MIX_BALL_EVIDENCE", "IMPLEMENTATION_BEHAVIOR", "Sunny's mix ball holder is evidence (feedback vs upload times, the comparison the notes reminder uses); the COO uses status only. Owner uploads are recorded as the engineer's."),
+      R("MIX_EXPENSE_SCOPE", "POSSIBLE_BUG", "Engineer payment expenses are written with expense scope כללי (intended מיקס / מאסטר)."),
+      R("MIX_NO_HANDOFF", "IMPLEMENTATION_BEHAVIOR", "There is no production → mix handoff record; the send log to the engineer is not linked to the work and its status is never updated."),
     ],
-    sideEffects: [], limitationsHe: ["שם המהנדס הוא טקסט חופשי — אין רשומת מהנדס."],
+    sideEffects: [], limitationsHe: ["שם המהנדס הוא טקסט חופשי — אין רשומת מהנדס.", "אין רישום מעבר מהפקה למיקס ואין רשומת אישור מיקס.", "סטטוס מיקס/מאסטר של שירי אלבום נפרד ולא מקושר לעבודות המיקס."],
     surfaces: S([], ["sound-engineer"]),
   },
   // ───────────────────────────── MEDIA / FILES ─────────────────────────────
@@ -877,4 +889,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-9", date: "2026-09-25", domain: "LABEL_DJ", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני יודע מי ה-DJ בכל הופעה, האם CLEANTONE אישר, האם נשלחה לו הודעה ומה רואה הפורטל שלו — בלי להניח ש-CLEANTONE מנגן." },
   { version: "2026.09.25-10", date: "2026-09-25", domain: "VICTOR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני מבין את ויקטור לעומק: כל העבודות (גם בלי פרויקט), פרויקט / אמן / לייבל מול לקוח, אצל מי הכדור לפי כלל המערכת + יומן השליחה (סתירות מוצגות), דדליין פנימי מול התחייבות ללקוח, גרסאות וקבצים, טיוטות מול הערות שנשלחו, המשך למיקס / ריליס, משכורת חודשית מול כספים (סתירות), נוכחות ופורטל — בלי ציון עומס או ביצועים." },
   { version: "2026.09.25-11", date: "2026-09-25", domain: "VICTOR", dimension: "domain", from: "SECURITY_GAPS_OPEN", to: "PORTAL_HARDENED", noteHe: "הפורטל של ויקטור הוקשח בצד השרת: אין לו עריכה של רשומת עבודה, קבצים רק בתוך תיקיית העבודה, מחיקה רק של מה שהוא העלה, בלי נתיבים / קישורים / משכורת בתשובות. סאני יודע מה נסגר ומה נשאר פתוח (סשן העלאה במנות, קישורים ציבוריים, callback)." },
+  { version: "2026.09.25-12", date: "2026-09-25", domain: "STEVEN", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מבין את סטיבן לעומק: כל עבודה, גרסאות לפי סבב (האחרונה לפי זמן העלאה), הערות לכל גרסה (פתוחות / טופלו, אחרונה מול קודמות), צרופות, רידים, קבצים סופיים לפי הכלל של המערכת, אצל מי הכדור לפי ראיות, דדליין פנימי מול לקוח, תשלום מול כספים (שני כותבים, יחס קבוע), פורטל, נוכחות ופושים — ומה ייחודי לסטיבן מול כללי." },
+  { version: "2026.09.25-12", date: "2026-09-25", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת מיקס כלל-חברתית: כל אנשי הסאונד (שם חופשי), פרויקטים במיקס בלי איש סאונד, הפקה שהושלמה בלי מיקס, הושלם ≠ אושר ≠ קבצים סופיים ≠ שולם, הוצאות מיקס יתומות — בלי ציון ובלי מדיניות מומצאת." },
 ];
