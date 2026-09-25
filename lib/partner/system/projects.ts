@@ -6,7 +6,7 @@
  * (foreign keys) and code, and guarded by scripts/test-sunny-projects.tsx. Semantic only when served.
  */
 
-export const PROJECT_BASELINE_VERSION = "2026.09.25-2";
+export const PROJECT_BASELINE_VERSION = "2026.09.25-3";
 
 export type FieldClass = "CANONICAL" | "DERIVED" | "LEGACY" | "DISPLAY_ONLY" | "AMBIGUOUS";
 export interface ProjectField { field: string; meaning: string; writtenBy: string; cls: FieldClass; lifecycle: string; sunnyReads: boolean }

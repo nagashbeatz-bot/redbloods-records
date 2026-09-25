@@ -29,6 +29,8 @@ import { readIntegrityExtras, type CompanyExtrasReadClient } from "./readers";
 import { createOwnerKnowledgeStore, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
 import type { Avail } from "../gateway/core";
 import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
+import { readProjectDetailRaw } from "../projects/detail-reader";
+import type { ProjectDetailRaw } from "../projects/detail-types";
 
 export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
@@ -43,6 +45,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   ownerKnowledge(): Promise<Avail<OwnerKnowledgeRecord[]> | undefined>;
   /** Operations domains (SELECT only, narrow columns, per-section fail closed). */
   operations(): Promise<Avail<OperationsRaw>>;
+  /** Project human context + file metadata (SELECT only, per-section fail closed, secrets reduced to booleans). */
+  projectDetail(): Promise<Avail<ProjectDetailRaw>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
   extras(): Promise<IntegrityExtras | null>;
   integrity(): Promise<CompanyIntegrityRegister>;
@@ -86,5 +90,9 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     try { return { status: "OK", value: await readOperationsRaw(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations };
+  const projectDetail = once(async (): Promise<Avail<ProjectDetailRaw>> => {
+    try { return { status: "OK", value: await readProjectDetailRaw(supabase as unknown as OperationsReadClient) }; }
+    catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail };
 }

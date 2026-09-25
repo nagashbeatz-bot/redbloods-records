@@ -23,9 +23,11 @@ import { buildFinanceBrief } from "../lib/partner/finance/brief";
 import type { FinanceRaw } from "../lib/partner/finance/types";
 import { projectMoney } from "../lib/partner/projects/money";
 import { buildProjectView, projectPortfolio } from "../lib/partner/projects/view";
+import type { ProjectDetailRaw } from "../lib/partner/projects/detail-types";
 import { NOW, P, U, input } from "./fixtures/integrity-company";
 import { empty, tx } from "./fixtures/finance-mirror";
 
+const EMPTY_DETAIL = Object.fromEntries(["projects", "financeNotes", "deliveries", "actions", "sessions", "meetings", "tasks", "engineerWork", "mixVersions", "mixComments", "commentAttachments", "mixTargets", "mixTargetNotes", "finalFiles", "victor", "productions", "budgetItems", "albumTracks", "clipItems", "proposals", "releases", "campaigns", "contentItems", "socialFiles", "projectSettings", "transactionsText", "budgetPayments", "agentAlerts", "notifications"].map((k) => [k, { rows: [], capped: false }])) as unknown as ProjectDetailRaw;
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -82,7 +84,8 @@ function sources(opts: { ops?: OperationsRaw | "UNAVAILABLE"; fin?: FinanceRaw |
     finance = { status: "OK", value: f };
   }
   return { now: NOW, state: { status: "OK", value: st }, finance, identities: { cleantone: null },
-    cases: { status: "OK", value: [] }, actions: { status: "OK", value: [] }, ownerKnowledge: { status: "OK", value: [] },
+    cases: { status: "OK", value: [] }, actions: { status: "OK", value: [] }, outcomes: { status: "OK", value: [] }, ownerKnowledge: { status: "OK", value: [] },
+    projectDetail: { status: "OK", value: EMPTY_DETAIL },
     operations: ops === "UNAVAILABLE" ? { status: "UNAVAILABLE", detail: "x" } : { status: "OK", value: ops } };
 }
 const q = (capability: string, extra: { mode?: string; params?: Record<string, string> } = {}, src = sources(), aud = OWNER): QueryResponse => queryKnowledgeCore(REG, { capability, ...extra }, src, aud);
@@ -91,9 +94,9 @@ function main() {
   section("A. The project contract is valid and wired into the system registry");
   const capIds = REG.all().map((c) => c.id);
   check("validateSystemRegistry()", validateSystemRegistry({ capabilityIds: capIds, knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
-  check("baseline versions agree", [SYSTEM_BASELINE_VERSION, PROJECT_BASELINE_VERSION], ["2026.09.25-2", "2026.09.25-2"]);
+  check("baseline versions agree", [SYSTEM_BASELINE_VERSION, PROJECT_BASELINE_VERSION], ["2026.09.25-3", "2026.09.25-3"]);
   ok("PROJECTS domain lists project_view + project_portfolio", ["project_view", "project_portfolio"].every((c) => DOMAIN_CONTRACTS.find((d) => d.id === "PROJECTS")!.readCapabilities.includes(c)));
-  ok("a PROJECTS change entry exists for this baseline", CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-2" && c.domain === "PROJECTS"));
+  ok("a PROJECTS change entry exists for this baseline", CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
   check("every link's live-read capability is registered", PROJECT_LINKS.filter((l) => l.liveRead && !capIds.includes(l.liveRead)).map((l) => l.id), []);
   const Q = ["CANONICAL_RELATION", "OWNER_CONFIRMED_RELATION", "DERIVED_RELATION", "TEXT_MATCH", "AMBIGUOUS", "UNKNOWN"];
   check("every link quality is from the canonical set", PROJECT_LINKS.filter((l) => !Q.includes(l.quality)).map((l) => l.id), []);
@@ -152,7 +155,7 @@ function main() {
   ok("signals: AT_ENGINEER, WAITING_FEEDBACK, OUTSTANDING_CLIENT_MONEY, DEADLINE_PASSED", ["AT_ENGINEER", "WAITING_FEEDBACK", "OUTSTANDING_CLIENT_MONEY", "DEADLINE_PASSED"].every((c) => codes.includes(c)));
   ok("deadline signal says a deadline alone is not urgency", v.signals.find((s) => s.code === "DEADLINE_PASSED")!.he.includes("איכות לפני מהירות"));
   ok("stale wording: stale is not urgent", code(read("lib/partner/projects/view.ts")).includes("ישן זה לא דחוף"));
-  ok("certain / inferred / missing are all present; calendar + files + crew declared missing", v.certain.length > 0 && v.inferred.length > 0 && v.missing.some((x) => x.includes("Google Calendar")) && v.missing.some((x) => x.includes("Red Films")));
+  ok("certain / inferred / missing are all present; live calendar gap + unread detail declared", v.certain.length > 0 && v.inferred.length > 0 && v.missing.some((x) => x.includes("Google Calendar")) && v.missing.some((x) => x.includes("section")));
   check("no parent when 'ללא שיוך'", v.identity?.parentProject, null);
   const v1 = buildProjectView(sources(), P(1));
   ok("label project: release link is CANONICAL", v1.people.labelArtists.some((l) => l.quality === "CANONICAL_RELATION"));
@@ -169,7 +172,7 @@ function main() {
 
   section("E. partner_query — project_view / project_portfolio");
   const r = q("project_view", { params: { project: `project:${pid}` } });
-  check("project_view OK for the Owner", [r.status, r.items.length, r.summary[0]?.value], ["OK", 1, "DEBT"]);
+  check("project_view OK for the Owner", [r.status, r.items.length, r.summary.find((x) => x.code === "MONEY_VERDICT")?.value], ["OK", 1, "DEBT"]);
   check("project_view without a project → UNKNOWN + missing", [q("project_view").completeness, q("project_view").missing.length > 0], ["UNKNOWN", true]);
   check("project_view refused for a non-Owner", q("project_view", { params: { project: `project:${pid}` } }, sources(), STRANGER).status === "OK", false);
   check("project_portfolio refused for a non-Owner", q("project_portfolio", {}, sources(), STRANGER).status === "OK", false);

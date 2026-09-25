@@ -157,7 +157,9 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
   for (const k of ownerKnowledge) inferred.push(`ידע מהבעלים: ${k.meaningHe}`);
   if (clients.length) inferred.push("הקישור ללקוח הוא לפי שם בלבד (TEXT_MATCH).");
   if (!clients.length && identity?.artistText) missing.push("שם האמן בפרויקט לא תואם אף לקוח — אין קישור ללקוח.");
-  missing.push("Google Calendar לא נקרא — אירועי יומן שאינם סשנים לא ידועים.", "תוכן הקבצים והתיקיות של הפרויקט לא נקראים (רק ספירות מהנדס/מסירה).", "צוות Red Films (צלם/במאי) לא נקרא.");
+  missing.push("האירוע החי ב-Google Calendar לא נקרא (פער יכולת רשום) — קישורי היומן ש-Redbloods שומרת זמינים ב-section calendar.");
+  if (src.projectDetail?.status === "OK") missing.push("תוכן הקבצים עצמם ורשימת דרופבוקס החיה לא נקראים (פער יכולת רשום) — המטא-דאטה של כל קובץ זמינה ב-section files.");
+  else missing.push("פרטי הפרויקט (הערות, קבצים, צוות, תגובות) לא נקראו בבקשה הזו — בקש section.");
 
   return {
     key, found, identity,

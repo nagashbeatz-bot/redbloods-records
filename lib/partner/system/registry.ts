@@ -10,7 +10,7 @@
  */
 import type { BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-2";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-3";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -48,7 +48,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       E("PROJECT_COMPLETE_VICTOR", "A project is marked הושלם from the status menu", "Victor's open work on it can be closed and a delivery folder offered (both Owner choices in the UI).", ["VICTOR", "DELIVERY"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
       E("STEVEN_APPROVAL_COMPLETES_PROJECT", "Steven's last open work on a project is approved", "The project becomes הושלם automatically (never over בוטל / בהשהייה).", ["STEVEN", "MIX_PIPELINE"]),
     ],
-    limitationsHe: ["פרויקט מקושר לאמן/לקוח לפי שם בלבד — לא קישור מזהה.", "אין לסאני פעולת יצירה/מחיקה/שינוי סטטוס לפרויקט — רק הצעת שינוי דדליין (אישור בלוח הבקרה)."],
+    limitationsHe: ["פרויקט מקושר לאמן/לקוח לפי שם בלבד — לא קישור מזהה (גשרים מזהים דרך הצעה / פגישה / הפקה / יומן שליחות מסומנים DERIVED).", "סאני קורא הכול על הפרויקט (הערות, קבצים, תגובות, צוות, התראות) — חוץ מקישורי שיתוף / אסימונים, תוכן הקבצים והיומן החי (פערי יכולת רשומים).", "היסטוריית סטטוס / דדליין / מחיר לא נשמרת ב-Redbloods.", "אין לסאני פעולת יצירה/מחיקה/שינוי סטטוס לפרויקט עדיין — רק שינוי דדליין (אישור בלוח הבקרה). מפת כל הפעולות: system_awareness action_inventory."],
     surfaces: S(["/projects", "/projects/[id]", "/projects-old", "/projects-preview"], ["projects"]),
   },
   {
@@ -781,4 +781,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-1", date: "2026-09-25", domain: "PUSH_NOTIFICATIONS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "FULL_INVENTORY", noteHe: "סאני מכיר כל פוש שקיים: מי מקבל, למה, מתי ומה מפעיל אותו (לא שולח פושים)." },
   { version: "2026.09.25-1", date: "2026-09-25", domain: "ARTIST_PORTALS", dimension: "domain", from: "PARTIAL_AWARENESS", to: "PAGE_BY_PAGE", noteHe: "סאני מכיר כל לשונית בפורטלים של שליו, אבי, קלינטון, ויקטור וסטיבן." },
   { version: "2026.09.25-2", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת פרויקט מחוברת: לקוח/אמן (עם איכות קישור), כסף מוסבר לפי הכללים, סשנים, הצעה, משימות, מי מחכה למי, ויקטור, מהנדסים, Red Films, ריליס, מסירה, אותות — ומה חסר." },
+  { version: "2026.09.25-3", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע הכול על פרויקט: הערות, הוראות, תגובות מיקס, ביקורות ויקטור, צוות Red Films, קבצים וגרסאות, מסירה, התראות, היסטוריה, ראיות מחיר ומי מחכה למי — בחלקים לפי בקשה. מפת פערים גלובלית ומפת כל פעולות הפרויקט." },
 ];

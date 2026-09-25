@@ -25,7 +25,7 @@ export const KNOWLEDGE_SCHEMA_VERSION = "partner-knowledge-v1";
 export type KnowledgeDomain = "COMPANY" | "PARTNER" | "FINANCE" | "PROJECTS" | "CLIENTS" | "SALES" | "LABEL" | "SHOWS" | "SESSIONS" | "TEAM";
 
 /** Which request-scoped Partner sources a capability reads (the Gateway loads only these, once per request). */
-export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS";
+export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "PROJECT_DETAIL";
 
 /**
  * Who is asking. INTERNAL = a Redbloods OS surface behind the Owner session. EXTERNAL = a remote interface (the Claude
@@ -100,6 +100,8 @@ export interface KnowledgeCapability {
    */
   entityScope?: { types: readonly GatewayEntityType[]; param: string; mode: string; limit: number };
   paging: { defaultLimit: number; maxLimit: number };
+  /** Max characters of RECORD text per field for deep-retrieval capabilities (default 300, at most 4000). */
+  recordTextLimit?: number;
   access: {
     /** false = INTERNAL only (never served to a remote interface; refused as unknown there). */
     externalRead: boolean;

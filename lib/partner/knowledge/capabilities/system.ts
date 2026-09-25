@@ -6,6 +6,8 @@
 import { BUSINESS_ACTIONS, CAPABILITY_CHANGES, coverageMatrix, DOMAIN_CONTRACTS, RELATIONSHIPS, servedDomain, SYSTEM_BASELINE_VERSION } from "../../system";
 import { accessMatrix, PEOPLE_BASELINE_VERSION, personOfRole, PUSH_CONTRACTS, SECURITY_GAPS, servedPush, servedUser, USER_CONTRACTS } from "../../system/people-view";
 import { PROJECT_BASELINE_VERSION, PROJECT_FIELDS, PROJECT_INTEGRITY, PROJECT_LINKS, PROJECT_MONEY_MODEL, PROJECT_PAGE_LOAD_EFFECTS, PROJECT_SIGNAL_MODEL, PROJECT_SURFACES, PROJECT_VOCABULARIES } from "../../system/projects";
+import { DOMAIN_KNOWLEDGE_DEPTH, KNOWLEDGE_GAPS } from "../../system/gaps";
+import { ACTION_CONTRACT_FIELDS, ACTION_FLOW, APPROVAL_CLASSES, PROJECT_ACTIONS } from "../../system/project-actions";
 import type { KnowledgeCapability } from "../types";
 import { byCount, item, partner, result, sfact } from "./common";
 
@@ -32,6 +34,8 @@ export const systemAwareness: KnowledgeCapability = {
     push: { descriptionForModel: "Every Push that exists (optional param recipient role): recipient, purpose, trigger, type (manual / event / scheduled / page-load beacon), timing, conditions, dedupe, what happens next, status, known bugs. Sunny can never send push" },
     access: { descriptionForModel: "Who sees money, who can upload / change status / delete / send push, who is read-only — derived per person" },
     gaps: { descriptionForModel: "Reported security gaps / UI-vs-server mismatches / privacy issues (report only, not fixed)" },
+    knowledge_gaps: { descriptionForModel: "Every place where Redbloods knows something Sunny cannot yet read, or Redbloods itself does not record it (optional domain / kind = gap class): class, what Redbloods knows, what Sunny knows, why, what would close it, status; plus each domain's knowledge depth" },
+    action_inventory: { descriptionForModel: "Every mutation Redbloods can make on a project today (optional kind = group or approval class): who, input, side effects, push / calendar / finance / file effects, reversibility, risk, future Sunny primitive, approval class; plus the permanent action contract. Sunny executes none of them (only the deadline action after dashboard approval)" },
     project_model: { descriptionForModel: "The PROJECT as the central node (param section): fields, vocabularies, links (every relationship with link method, cardinality, DB enforcement, what breaks it, live read), money (rules + known conflicts), signals, surfaces, side_effects (page-load writes), integrity (production counts + risks)" },
   },
   defaultMode: "overview",
@@ -41,6 +45,7 @@ export const systemAwareness: KnowledgeCapability = {
     person: { kind: "enum", values: USER_CONTRACTS.map((u) => u.id), descriptionForModel: "A person id (see mode people), e.g. SHALEV, AVI, CLEANTONE, VICTOR, STEVEN, OWNER" },
     recipient: { kind: "enum", values: ["owner", "shalev", "avi", "cleantone", "victor", "steven"], descriptionForModel: "Only pushes this role receives" },
     section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity"], descriptionForModel: "project_model section (default links)" },
+    kind: { kind: "enum", values: [...new Set([...KNOWLEDGE_GAPS.map((g) => g.class), ...PROJECT_ACTIONS.map((a) => a.group), ...Object.keys(APPROVAL_CLASSES)])], descriptionForModel: "knowledge_gaps: a gap class; action_inventory: an action group or approval class" },
   },
   paging: { defaultLimit: 40, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: [],
   read(_src, q) {
@@ -106,6 +111,19 @@ export const systemAwareness: KnowledgeCapability = {
         : sec === "integrity" ? [{ id: "counts", label: "Production integrity counts (read-only, 2026-09-25)", fields: { ...PROJECT_INTEGRITY.productionCounts20260925 } }, ...PROJECT_INTEGRITY.risksHe.map((r, i) => ({ id: `risk:${i}`, label: r, fields: {} }))]
         : PROJECT_LINKS.map((l) => ({ id: l.id, label: `project ↔ ${l.target}`, fields: { linkMethod: l.linkMethod, cardinality: l.cardinality, direction: l.direction, quality: l.quality, enforcement: l.enforcement, breaks: l.breaks, liveRead: l.liveRead } }));
       return result(rows.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), pb);
+    }
+    if (q.mode === "knowledge_gaps") {
+      const gaps = KNOWLEDGE_GAPS.filter((g) => (!q.params.domain || g.domain === q.params.domain) && (!q.params.kind || g.class === q.params.kind));
+      return result(gaps.map((g) => item({ id: g.id, label: partner(g.description), epistemic: g.class === "DATA_NOT_RECORDED" ? "UNKNOWN" : "FACT", source: SRC, fields: { ...g } })),
+        { ...base, summary: [version(), sfact("BY_CLASS", "פערים לפי סוג", byCount(gaps.map((g) => g.class)), "FACT", SRC), sfact("BY_STATUS", "פערים לפי מצב", byCount(gaps.map((g) => g.status)), "FACT", SRC), sfact("DOMAIN_DEPTH", "עומק הידע לפי תחום", { ...DOMAIN_KNOWLEDGE_DEPTH }, "FACT", SRC)],
+          coverage: [...base.coverage, partner("עיקרון: סאני יודע כל מה ש-Redbloods יודעת. רק סודות (אסימונים, סיסמאות, קישורי שיתוף) אינם ידע.")] });
+    }
+    if (q.mode === "action_inventory") {
+      const acts = PROJECT_ACTIONS.filter((a) => !q.params.kind || a.group === q.params.kind || a.approvalClass === q.params.kind);
+      return result(acts.map((a) => { const { internal: _i, ...served } = a; void _i; return item({ id: a.id, label: partner(a.action), epistemic: "FACT", source: SRC, fields: served as unknown as Record<string, unknown> }); }),
+        { ...base, summary: [version(), sfact("BY_GROUP", "פעולות לפי קבוצה", byCount(acts.map((a) => a.group)), "FACT", SRC), sfact("BY_APPROVAL_CLASS", "פעולות לפי סוג אישור", byCount(acts.map((a) => a.approvalClass ?? "AUTOMATIC")), "FACT", SRC),
+          sfact("ACTION_CONTRACT", "חוזה פעולה קבוע", { fields: ACTION_CONTRACT_FIELDS, flow: ACTION_FLOW, approvalClasses: APPROVAL_CLASSES }, "FACT", SRC)],
+          coverage: [...base.coverage, partner("זו מפת הפעולות הקיימות ב-Redbloods — סאני לא מבצע אף אחת מהן כרגע (חוץ משינוי דדליין אחרי אישור בלוח הבקרה). כל פעולה עתידית: הצעה → תצוגה מקדימה מדויקת → אישור בעלים → ביצוע → קריאה טרייה → תוצאה.")] });
     }
     if (q.mode === "changes") {
       return result([...CAPABILITY_CHANGES].reverse().map((c, i) => item({ id: `${c.version}:${c.domain}:${c.dimension}:${i}`, label: partner(c.noteHe), epistemic: "FACT", source: SRC, fields: { ...c } })), base);

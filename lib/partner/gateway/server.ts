@@ -39,14 +39,15 @@ async function integrityOf(ctx: AnyCtx): Promise<Avail<CompanyIntegrityRegister>
 /** Loads exactly the declared sources (each memoized by the read context → read at most once per request). */
 async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience): Promise<GatewaySources> {
   const want = new Set(needs);
-  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations] = await Promise.all([
+  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail] = await Promise.all([
     want.has("STATE") ? ctx.state() : undefined, want.has("FINANCE") ? ctx.finance() : undefined, want.has("MEMORY") ? ctx.memory() : undefined,
     want.has("CASES") ? ctx.cases() : undefined, want.has("ACTIONS") ? ctx.actions() : undefined, want.has("OUTCOMES") ? ctx.outcomes() : undefined,
     want.has("INTEGRITY") ? integrityOf(ctx) : undefined,
     want.has("OWNER_KNOWLEDGE") && "ownerKnowledge" in ctx ? ctx.ownerKnowledge() : undefined,
     want.has("OPERATIONS") && "operations" in ctx ? ctx.operations() : undefined,
+    want.has("PROJECT_DETAIL") && "projectDetail" in ctx ? ctx.projectDetail() : undefined,
   ]);
-  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, identities: APP_IDENTITIES, audience };
+  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, identities: APP_IDENTITIES, audience };
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {
@@ -61,7 +62,9 @@ export async function resolvePartnerEntity(query: string, ctx: AnyCtx = createCo
 export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE, registry: KnowledgeRegistry = PARTNER_KNOWLEDGE_REGISTRY): Promise<EntityResponse> {
   const k = String(key ?? "").slice(0, 120);
   if (!parseEntityKey(k)) return getPartnerEntityCore(k, { now: ctx.now, identities: APP_IDENTITIES });
-  const src = await loadSources(ctx, ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS"], audience);
+  // project entities also load the project's human context + material metadata (Owner-only capability, bounded)
+  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : [])];
+  const src = await loadSources(ctx, needs, audience);
   return getPartnerEntityCore(k, { ...src, entityKnowledge: (entityKey) => entityKnowledge(registry, src, entityKey) });
 }
 

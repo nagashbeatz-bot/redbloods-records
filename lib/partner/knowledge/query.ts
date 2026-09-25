@@ -26,13 +26,15 @@ import {
 export const RESTRICTIVE_AUDIENCE: KnowledgeAudience = { channel: "EXTERNAL", ownerAuthorized: false };
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const MAX_RECORD_TEXT = 300;
+const MAX_DEEP_RECORD_TEXT = 4000;
 const MAX_OFFSET = 10_000;
 
-const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS" };
+const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL" };
 const SOURCE_OF: Record<KnowledgeSourceNeed, (s: KnowledgeSources) => unknown> = {
   STATE: (s) => s.state, FINANCE: (s) => s.finance, MEMORY: (s) => s.memory, CASES: (s) => s.cases, ACTIONS: (s) => s.actions, OUTCOMES: (s) => s.outcomes, INTEGRITY: (s) => s.integrity,
   OWNER_KNOWLEDGE: (s) => s.ownerKnowledge,
   OPERATIONS: (s) => s.operations,
+  PROJECT_DETAIL: (s) => s.projectDetail,
 };
 
 export type ValidatedQuery = { cap: KnowledgeCapability; mode: string; params: Record<string, string>; limit: number; offset: number };
@@ -87,10 +89,12 @@ function decodeCursor(s: unknown): { c: string; m: string; h: string; o: number 
 }
 
 /** Record text is DATA: capped, never trusted. */
-function capText(g: GText): GText { return g.trust === "PARTNER" || g.text.length <= MAX_RECORD_TEXT ? g : { text: `${g.text.slice(0, MAX_RECORD_TEXT)}…`, trust: g.trust }; }
-function capItem(i: KnowledgeItem): KnowledgeItem {
+function capText(g: GText, max = MAX_RECORD_TEXT): GText { return g.trust === "PARTNER" || g.text.length <= max ? g : { text: `${g.text.slice(0, max)}…`, trust: g.trust }; }
+/** Deep-retrieval capabilities may declare a larger (bounded) record-text limit; labels stay at the default cap. */
+const textLimitOf = (cap: KnowledgeCapability) => Math.min(Math.max(cap.recordTextLimit ?? MAX_RECORD_TEXT, MAX_RECORD_TEXT), MAX_DEEP_RECORD_TEXT);
+function capItem(i: KnowledgeItem, max = MAX_RECORD_TEXT): KnowledgeItem {
   const fields: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(i.fields)) fields[k] = v && typeof v === "object" && "trust" in (v as object) && "text" in (v as object) ? capText(v as GText) : v;
+  for (const [k, v] of Object.entries(i.fields)) fields[k] = v && typeof v === "object" && "trust" in (v as object) && "text" in (v as object) ? capText(v as GText, max) : v;
   return { ...i, label: capText(i.label), fields };
 }
 
@@ -122,13 +126,13 @@ export function queryKnowledgeCore(registry: KnowledgeRegistry, req: KnowledgeRe
   const sources = sourceStatuses(cap, src);
   // readers never decide access; the catalog uses the audience only to list what THIS caller may read
   const r = runReader(cap, { ...src, audience }, mode, params);
-  const page = r.items.slice(offset, offset + limit).map(capItem);
+  const page = r.items.slice(offset, offset + limit).map((i) => capItem(i, textLimitOf(cap)));
   const next = offset + limit < r.items.length ? encodeCursor({ c: cap.id, m: mode, h: paramsHash(params), o: offset + limit }) : null;
   const completeness = sources.some((s) => s.status !== "OK") ? "UNKNOWN" : r.completeness;
   return {
     ...base, freshness: sources.every((s) => s.status === "OK") ? "LIVE" : "UNKNOWN", sources,
     status: "OK", capability: { id: cap.id, domain: cap.domain, title: cap.titleHe }, mode, params,
-    completeness, coverage: r.coverage.map(capText), summary: r.summary, items: page,
+    completeness, coverage: r.coverage.map((g) => capText(g)), summary: r.summary, items: page,
     page: { limit, offset, returned: page.length, total: r.items.length, nextCursor: next },
     missing: [...r.missing, ...sources.filter((s) => s.status !== "OK").map((s) => ({ fact: s.source, whyNeeded: "this source could not be read — missing items do not mean \"none\"" }))],
     drillDown: [], error: null,
@@ -151,7 +155,7 @@ export function entityKnowledge(registry: KnowledgeRegistry, src: KnowledgeSourc
     const r = runReader(cap, src, scope.mode, { [scope.param]: entityKey });
     if (!r.items.length && !r.summary.length && r.completeness === "COMPLETE") continue;
     const unavailable = cap.needs.some((n) => (SOURCE_OF[n](src) as { status?: string }).status !== "OK");
-    out.push({ capability: cap.id, title: cap.titleHe, completeness: unavailable ? "UNKNOWN" : r.completeness, summary: r.summary.slice(0, 6), items: r.items.slice(0, scope.limit).map(capItem), total: r.items.length, coverage: r.coverage.map(capText) });
+    out.push({ capability: cap.id, title: cap.titleHe, completeness: unavailable ? "UNKNOWN" : r.completeness, summary: r.summary.slice(0, 6), items: r.items.slice(0, scope.limit).map((i) => capItem(i)), total: r.items.length, coverage: r.coverage.map((g) => capText(g)) });
   }
   return out;
 }

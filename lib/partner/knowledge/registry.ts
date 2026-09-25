@@ -33,6 +33,7 @@ export function validateCapability(c: KnowledgeCapability): string[] {
     if (p.kind === "enum" && (!p.values.length || p.values.length > 40)) e.push(`${c.id}: enum ${k} needs 1–40 values`);
     if (p.kind === "text" && (p.maxLength < 1 || p.maxLength > 120)) e.push(`${c.id}: text ${k} maxLength must be 1–120`);
   }
+  if (c.recordTextLimit !== undefined && (!Number.isInteger(c.recordTextLimit) || c.recordTextLimit < 300 || c.recordTextLimit > 4000)) e.push(`${c.id}: recordTextLimit must be 300–4000`);
   if (Object.keys(c.params).length > 6) e.push(`${c.id}: at most 6 params`);
   if (c.paging.defaultLimit < 1 || c.paging.maxLimit > KNOWLEDGE_MAX_LIMIT || c.paging.defaultLimit > c.paging.maxLimit) e.push(`${c.id}: paging must be 1 ≤ default ≤ max ≤ ${KNOWLEDGE_MAX_LIMIT}`);
   if (c.entityScope) {

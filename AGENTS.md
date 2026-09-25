@@ -4,6 +4,21 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+# SUNNY COMPLETE SYSTEM AWARENESS (permanent Owner charter, 2026-09-25)
+
+**SUNNY KNOWS EVERYTHING REDBLOODS KNOWS.** From the smallest operation (a status click, a resolved comment, one uploaded version, a page-load write) to the largest company flow (client → proposal → project → finance → sessions → calendar → producer → engineer → files → clip → release → show → artist balance → outcome). Existing Partner capabilities are implementation, never the knowledge boundary. "Redbloods knows it but Sunny cannot see it" is never an accepted final state: it is either closed or registered in `lib/partner/system/gaps.ts` (DATA_NOT_RECORDED / DATA_MODEL_GAP / CAPABILITY_GAP / AMBIGUOUS_IDENTITY / CONFLICTING_SOURCES / INTENTIONALLY_SECRET / TEMPORARILY_UNAVAILABLE / LEGACY_CONFLICT / SYSTEM_BEHAVIOR_GAP) with what would close it.
+
+- **SECRETS ARE NOT KNOWLEDGE.** Passwords, cookies, OAuth tokens, service keys, API / cron / webhook secrets and bearer share links never reach Sunny. Sunny knows that an integration exists, whether it is connected, what it does, what depends on it and what failed. INTENTIONALLY_SECRET is reserved for that; ordinary detail is never excluded for being "too small".
+- **CONNECT, DO NOT COPY.** Four layers: canonical live state, system knowledge, Owner organizational knowledge (P2), action / outcome history. One fact, one canonical source. Two disagreeing sources are modelled as CONFLICTING_SOURCES; they are never silently merged. P2 is never project / finance / client / show / file storage.
+- **MAXIMUM KNOWLEDGE, MINIMUM CONTEXT.** Everything is retrievable by progressive disclosure (discover → summarize → traverse → fetch detail → deepen). Nothing is dumped whole into a conversation.
+- **PROVENANCE.** Every item carries its epistemic status (FACT / DERIVED / OWNER_DECISION / OWNER_REPORTED / OBSERVATION / HYPOTHESIS / UNKNOWN …) and relationship quality. Free text is evidence, not a structured fact. UI labels are not server truth. History is not current state.
+- **ACTIONS: EVERYTHING, WITH OWNER APPROVAL.** Knowledge access and mutation authority are separate. Every mutation is a typed primitive following UNDERSTAND → PROPOSE → PREVIEW EXACT CHANGE → OWNER APPROVAL → EXECUTE → FRESH READ → OUTCOME → HISTORY, with the action contract and approval classes in `lib/partner/system/project-actions.ts`. There is never a generic SQL writer or a generic mutation endpoint.
+
+Every meaningful Redbloods change answers, in the same change:
+1. What changed? 2. Which entities are affected? 3. Which fields / states / actions changed? 4. Which relationships changed? 5. Which user / role sees it? 6. Which read capability exposes it to Sunny? 7. Which System Awareness contract explains it? 8. What side effects exist? 9. What Push / Calendar / Dropbox / Finance effects exist? 10. Does it create a new Sunny knowledge gap (register it)? 11. Does it change an action Sunny may eventually perform (update the action inventory)? 12. Does it need a new relationship? 13. Does it change provenance / the source of truth? 14. Does it create a duplicate source? 15. Does it change history / audit / outcome semantics?
+
+`SUNNY IMPACT: NONE` is allowed only for genuinely visual changes. Proof lives in tests, not in contracts: `scripts/test-sunny-complete-knowledge.tsx` pins every project-linked production column (`lib/partner/system/project-columns.ts`) and every mutating project route (`lib/partner/system/project-actions.ts`); a new column or route that Sunny cannot read / does not know fails it.
+
 # Sunny Awareness Check (permanent development contract)
 
 Sunny (סאני) is Redbloods' organizational brain. The Owner talks to Sunny through Claude, and Redbloods OS is Sunny's source of truth. Sunny's knowledge has three layers, which must never be mixed:

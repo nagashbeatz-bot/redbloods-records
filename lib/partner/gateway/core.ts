@@ -20,6 +20,7 @@ import type { CompanyIntegrityRegister } from "../integrity/types";
 import type { EntityKnowledgeSection, KnowledgeAudience } from "../knowledge/types";
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { OperationsRaw } from "../operations/types";
+import type { ProjectDetailRaw } from "../projects/detail-types";
 import {
   GATEWAY_SCHEMA_VERSION, GATEWAY_TEXT_POLICY, RECENT_DAYS,
   type GText, type GatewayFreshness, type GatewaySourceName, type GatewaySourceStatus, type GatewayTool,
@@ -61,6 +62,8 @@ export interface GatewaySources {
   ownerKnowledge?: Avail<OwnerKnowledgeRecord[]>;
   /** Operations domains (Red Films, meetings, project actions, beats, social, balance cycles, albums, mix pipeline, deliveries, integrations). */
   operations?: Avail<OperationsRaw>;
+  /** Project human context + material metadata (Owner-only; secrets reduced to booleans at the read edge). */
+  projectDetail?: Avail<ProjectDetailRaw>;
   identities: GatewayAppIdentities;
   /** Who is asking (for knowledge enrichment). Absent = the most restrictive audience (EXTERNAL, no Owner authority). */
   audience?: KnowledgeAudience;
