@@ -61,5 +61,9 @@ console.log("\n7. Proposal follow-up rules survive under a neutral name");
 ok("the client drawer uses the renamed pure module", /from "@\/lib\/proposal-followups"/.test(read("components/clients/ClientDrawer.tsx")) && fs.existsSync(path.join(ROOT, "lib/proposal-followups.ts")));
 ok("the renamed module is pure (no fetch / DB / model)", !/fetch\(|supabase|openai/i.test(read("lib/proposal-followups.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
 
+console.log("\n8. Its storage is gone from the model too");
+ok("no table coverage entry for the dropped memory table", !/business_memory/.test(read("lib/partner/system/company.ts")));
+ok("no settings family for the deleted AI budget / log keys", !/OLD_AI_BUDGET_AND_LOG|ai_budget_|ai_log_/.test(read("lib/partner/system/settings.ts")));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

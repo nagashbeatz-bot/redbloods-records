@@ -115,7 +115,7 @@ function main() {
   check("every non-partner lib module is classified (DOMAIN_OWNED / CROSS_DOMAIN / INFRASTRUCTURE / SECRET_SECURITY / LEGACY / UI_ONLY)", libFiles.filter((f) => !CO.REPO_COVERAGE.some((r) => new RegExp(r.pattern).test(f))), []);
   const tables = new Set([...walkTs("app"), ...walkTs("lib")].flatMap((f) => [...code(read(f)).matchAll(/(?<!storage)\.from\("([a-z_]+)"\)/g)].map((m) => m[1])));
   check("every table the code reads / writes is classified in TABLE_COVERAGE", [...tables].filter((t) => !CO.TABLE_COVERAGE[t]).sort(), []);
-  check("TABLE_COVERAGE = the 52 production tables (2026-09-25 read-only census)", Object.keys(CO.TABLE_COVERAGE).length, 52);
+  check("TABLE_COVERAGE = the 51 production tables (2026-09-25 census, after the retired assistant's table was dropped)", Object.keys(CO.TABLE_COVERAGE).length, 51);
   const roots = new Set(Object.keys(CO.GAP_ROOTS));
   ok(`every registered gap (${KNOWLEDGE_GAPS.length}) has a root cause`, KNOWLEDGE_GAPS.every((g) => roots.has(CO.gapRootOf(g))));
   const byRoot = KNOWLEDGE_GAPS.reduce<Record<string, number>>((m, g) => ({ ...m, [CO.gapRootOf(g)]: (m[CO.gapRootOf(g)] ?? 0) + 1 }), {});

@@ -106,7 +106,7 @@ export const LEGACY_AI = {
   status: "RETIRED AND REMOVED (2026-09-25, Owner decision) — chat, prompt, context builder, provider router, AI budget tracking, memory route and context snapshot no longer exist; there is no flag that can bring it back",
   flagAlsoGates: ["its old kill switch was replaced by a neutral agent-alert rules switch (still off) — it gates only the rule-based alert pipeline"],
   sunnyDependsOnIt: false,
-  memory: "the memory table (0 rows) and the AI budget / log settings keys remain as orphaned storage pending an approved drop — never Sunny's knowledge",
+  memory: "REMOVED — the empty memory table was dropped and the six AI budget / log settings keys deleted on 2026-09-25 (Owner-approved; rollback backup kept)",
 } as const;
 
 // ═══════════════════════════════ SUNNY CORE ═══════════════════════════════
