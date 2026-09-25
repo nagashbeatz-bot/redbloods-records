@@ -83,3 +83,14 @@ The Owner-confirmed way of working (deadlines, ball holder, investigate-then-ask
 The customer journey (client → proposal → follow-up → conversion → project → money) is a system contract in `lib/partner/system/clients.ts`. It covers fields, vocabularies, status consumers, links with quality, the conversion flow, follow-up, lead reality, deal terms, the client_id assessment, history, actions and workflows. It is read through `client_view` / `client_portfolio` (`lib/partner/clients/view.ts`) and the CLIENT_DETAIL source.
 - A change to a client / proposal column, status, route, conversion or follow-up behaviour must update that contract. `scripts/test-sunny-clients.tsx` pins the schema columns, the vocabularies the code declares, every route touching clients / proposals, and `CLIENT_REVIEWED_FINGERPRINTS`.
 - Proposal amounts are POTENTIAL money. Project ↔ client by name is TEXT_MATCH; only the proposal chain is canonical. A due follow-up means "no recorded follow-up", never "the Owner did not follow up".
+
+## Sunny Awareness Check: Label Artists
+
+Label-artist development is a system contract in `lib/partner/system/label-artists.ts`. It covers:
+- fields and vocabularies, membership, and links with quality;
+- releases, money (ledger, cycles, show → ledger, media income and recoup, currency);
+- portal, availability, presence, every artist push, actions and workflows.
+
+It is read through `artist_view` / `artist_portfolio` (`lib/partner/label/view.ts`) and the LABEL_DETAIL source.
+- A change to an artist / release / beat / ledger / cycle / media-income column, a vocabulary, a label / portal / beats route, show → ledger behaviour, the name → slug table or an artist push must update that contract. `scripts/test-sunny-label-artists.tsx` pins the schema, the vocabularies the code declares, the route families and `LABEL_REVIEWED_FINGERPRINTS`.
+- Never invent release cadence, readiness, inactivity thresholds or payout / recoup policy. Keep the ledger, cycles, media income, recoup view, show money and client money separate. None of them stores a currency.

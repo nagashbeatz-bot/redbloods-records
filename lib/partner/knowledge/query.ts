@@ -29,13 +29,14 @@ const MAX_RECORD_TEXT = 300;
 const MAX_DEEP_RECORD_TEXT = 4000;
 const MAX_OFFSET = 10_000;
 
-const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL", CLIENT_DETAIL: "CLIENT_DETAIL", SETTINGS: "SETTINGS", CALENDAR: "CALENDAR" };
+const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL", CLIENT_DETAIL: "CLIENT_DETAIL", LABEL_DETAIL: "LABEL_DETAIL", SETTINGS: "SETTINGS", CALENDAR: "CALENDAR" };
 const SOURCE_OF: Record<KnowledgeSourceNeed, (s: KnowledgeSources) => unknown> = {
   STATE: (s) => s.state, FINANCE: (s) => s.finance, MEMORY: (s) => s.memory, CASES: (s) => s.cases, ACTIONS: (s) => s.actions, OUTCOMES: (s) => s.outcomes, INTEGRITY: (s) => s.integrity,
   OWNER_KNOWLEDGE: (s) => s.ownerKnowledge,
   OPERATIONS: (s) => s.operations,
   PROJECT_DETAIL: (s) => s.projectDetail,
   CLIENT_DETAIL: (s) => s.clientDetail,
+  LABEL_DETAIL: (s) => s.labelDetail,
   SETTINGS: (s) => s.settings,
   CALENDAR: (s) => s.calendar,
 };

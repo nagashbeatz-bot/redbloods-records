@@ -59,7 +59,7 @@ export interface GatewayEntityRef { key: string; type: GatewayEntityType; label:
 export type GatewaySourceName =
   | "PROJECTS" | "CLIENTS" | "LABEL_ARTISTS" | "PROPOSALS" | "SESSIONS" | "SHOWS" | "RELEASES" | "TASKS" | "CLIPS"
   | "TEAM_VICTOR" | "TEAM_STEVEN" | "FINANCE" | "OWNER_CONTEXT" | "ACTIONS" | "OUTCOMES" | "MEMORY" | "CASES" | "APP_IDENTITY"
-  | "INTEGRITY" | "PARTNER_KNOWLEDGE" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "SYSTEM_CONTRACTS" | "RED_FILMS" | "MEETINGS" | "BEATS" | "SOCIAL" | "PROJECT_DETAIL" | "CLIENT_DETAIL" | "SETTINGS" | "CALENDAR";
+  | "INTEGRITY" | "PARTNER_KNOWLEDGE" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "SYSTEM_CONTRACTS" | "RED_FILMS" | "MEETINGS" | "BEATS" | "SOCIAL" | "PROJECT_DETAIL" | "CLIENT_DETAIL" | "LABEL_DETAIL" | "SETTINGS" | "CALENDAR";
 
 export interface GatewaySourceStatus { source: GatewaySourceName; status: "OK" | "UNAVAILABLE"; freshness: GatewayFreshness }
 

@@ -22,6 +22,7 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import type { ClientDetailRaw } from "../clients/detail-types";
+import type { LabelDetailRaw } from "../label/detail-types";
 import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
 import {
@@ -69,6 +70,8 @@ export interface GatewaySources {
   projectDetail?: Avail<ProjectDetailRaw>;
   /** Client contact details / notes + text of project-less transactions (Owner-only; secrets scrubbed at the read edge). */
   clientDetail?: Avail<ClientDetailRaw>;
+  /** Label artists in full (ledger, cycles, media income, beats, shows) — Owner-only; image / phone reduced to booleans. */
+  labelDetail?: Avail<LabelDetailRaw>;
   /** Registered non-secret settings families (never credentials). */
   settings?: Avail<SettingsState>;
   /** The Owner's LIVE Google Calendar window (sanitized; read through the trusted MAIN integration). The result carries its own read status. */

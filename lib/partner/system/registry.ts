@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-7";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-8";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -261,14 +261,18 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["label-artist"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
-    readCapabilities: ["label_roster", "releases", "shows", "integrity", "beats", "balance_cycles", "relations"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "RELEASE_PRIORITY"], proposableActions: [],
+    readCapabilities: ["artist_view", "artist_portfolio", "label_roster", "releases", "shows", "integrity", "beats", "balance_cycles", "relations", "system_awareness"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "RELEASE_PRIORITY"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("ARTIST_RENAME_BREAKS_LINKS", "CONFLICT", "Renaming a label artist silently breaks every name-based link (portal registry, show matching, balance sync, summaries)."),
       R("DJ_CLEANTONE_IDENTITY", "CANONICAL_BUSINESS_RULE", "DJ CLEANTONE is one identity with two records: a client record (used as the DJ on shows) and a label-artist record — linked canonically in application code.", ["SHOWS", "LABEL_DJ"]),
       R("LABEL_PROJECT_QUESTION", "OWNER_POLICY", "How a label artist's projects count (label vs client) is an Owner decision asked through Company Integrity ('סאני צריך ממך')."),
+      R("ROSTER_IS_CANONICAL", "CANONICAL_BUSINESS_RULE", "A label artist is a roster row (status פעיל / בהשהייה / לא פעיל, DB-checked; name DB-unique). The roster is never derived from project artist text; the add-release picker may create a roster row from a client whose status is אמן לייבל."),
+      R("PORTAL_BY_NAME_TABLE", "IMPLEMENTATION_BEHAVIOR", "A portal exists only for names in the app's fixed name → slug table (4 names); login roles exist for Shalev, Avi and CLEANTONE; Nagash has a portal page without a login."),
+      R("ARTIST_NO_DELETE_NO_EDIT_UI", "IMPLEMENTATION_BEHAVIOR", "There is no artist delete, and the artist edit route has no screen; notes are never written or shown."),
+      R("LABEL_PROTECTED_TRACK", "OWNER_POLICY", "Label artists are a protected growth track (Owner operating model): Sunny surfaces when label work has no recorded progress while client work continues — it never ranks label work above client work automatically."),
     ],
-    sideEffects: [], limitationsHe: ["רוב הקישורים של אמן לפרויקטים/הופעות/קליפים הם לפי שם."],
+    sideEffects: [], limitationsHe: ["רוב הקישורים של אמן לפרויקטים/הופעות/קליפים/סושיאל הם לפי שם; רק ריליס, מאזן, מחזורים והכנסות מדיה לפי מזהה.", "סקיצות, דירוגים, 'העבודה הבאה', קיט יח״צ, קבצי הופעות ותמונת פרופיל נשמרים בתיקיית האמן (לא בבסיס הנתונים) — סאני לא קורא אותם.", "אין הגדרת 'מוכן לריליס', אין קצב ריליסים ואין סף חוסר פעילות — סאני מציג ראיות בלבד.", "סאני לא יוצר / עורך אמנים, ריליסים, ביטים, תנועות מאזן או הופעות — כל הפעולות ממופות (artist_model actions) ודורשות פרימיטיב עתידי."],
     surfaces: S(["/label"], ["label/artists", "label/projects"]),
   },
   {
@@ -278,7 +282,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["portal", "sketch"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["PARTIAL", "READ_ONLY"],
-    readCapabilities: ["shows", "sessions", "beats", "releases", "label_roster"], learnKinds: [], proposableActions: [],
+    readCapabilities: ["artist_view", "shows", "sessions", "beats", "releases", "label_roster"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
     rules: [
       R("PORTAL_REGISTRY", "CANONICAL_BUSINESS_RULE", "Portals: שליו טסמה (own login, full portal: home, music, shows, balance read-only, beats, schedule, performance files), אבי מולה (own login: home, shows, music, beats), DJ CLEANTONE (own login: home, his DJ shows), נגש ביטס (no login — Owner preview only). A portal's slug drives its folders and settings and never changes."),
@@ -306,7 +310,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["show"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
-    readCapabilities: ["shows", "sessions", "tasks"], learnKinds: ["ENTITY_RELATIONSHIP", "PAYMENT_REPORTED_BY_OWNER", "FOLLOW_UP_EXPECTATION", "PROCESS_FRICTION"], proposableActions: [],
+    readCapabilities: ["artist_view", "shows", "sessions", "tasks"], learnKinds: ["ENTITY_RELATIONSHIP", "PAYMENT_REPORTED_BY_OWNER", "FOLLOW_UP_EXPECTATION", "PROCESS_FRICTION"], proposableActions: [],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
       R("SHOW_VOCAB", "CANONICAL_BUSINESS_RULE", "Show status: ליד חדש, ממתין לתשובה, צריך פולואפ, נסגר, אושרה, בוצע, בוטל (confirmed = נסגר / אושרה / בוצע). Client payment: שולם, לא שולם, צפוי, מקדמה, בוטל (legacy חלקי = מקדמה)."),
@@ -341,7 +345,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["dj"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
-    readCapabilities: ["shows", "relations"], learnKinds: ["ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "ENTITY_ALIAS"], proposableActions: [],
+    readCapabilities: ["artist_view", "shows", "relations"], learnKinds: ["ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "ENTITY_ALIAS"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("DJ_PORTAL_PAYMENT_PILL", "CONFLICT", "The DJ portal's payment pill shows whether the CLIENT paid, not whether the DJ was paid."),
@@ -357,9 +361,14 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Artist balance ledger entries (income, expected income, payments, expenses, expected expenses) + closed cycle snapshots + a per-artist cycle anchor.",
     entityTypes: ["balance_entry", "balance_cycle"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["label_roster", "balance_cycles"], learnKinds: [], proposableActions: [],
+    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["artist_view", "label_roster", "balance_cycles"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
+      R("LEDGER_FORMULA", "CANONICAL_BUSINESS_RULE", "Artist balance = income − payments − expenses (expected rows shown, not counted); no currency is stored."),
+      R("CYCLES_TWO_MONTHS", "IMPLEMENTATION_BEHAVIOR", "Cycles are 2-month windows from the artist's anchor (end exclusive); the current cycle = max(today's window, closed count); close is refused before the window ends unless forced; closed cycles are immutable snapshots (unique per artist + index)."),
+      R("SHOW_TO_LEDGER_BOOKING", "IMPLEMENTATION_BEHAVIOR", "Shalev only: a confirmed show with an artist fee writes an EXPECTED income (half of net) deduped by the artist-fee finance row; removed on cancel / revert / delete; frozen after a manual income.", ["SHOWS"]),
+      R("SHOW_TO_LEDGER_CLOSE", "IMPLEMENTATION_BEHAVIOR", "Closing a show as בוצע through the close-show dialog writes the artist's INCOME (deduped per show + artist) and optionally a PAYMENT; unticking paid deletes nothing; reopen / cancel after close leaves the rows.", ["SHOWS"]),
+      R("CYCLE_REMINDER_NO_GUARD", "POSSIBLE_BUG", "The balance-cycle reminder push has no production guard and deep-links every artist to Shalev's balance tab."),
       R("LEDGER_BALANCE", "CANONICAL_BUSINESS_RULE", "Current balance = income − payments − expenses (expected rows excluded)."),
       R("THREE_BALANCES_CONFLICT", "CONFLICT", "Three different 'artist balance' calculations exist: (1) the ledger (balance tab, cycles), (2) summing artist-fee transactions by artist name, (3) show split totals keyed on the CLIENT payment (and including leads). They can disagree; Sunny must say which one it uses."),
       R("CYCLE_NO_CARRYOVER", "IMPLEMENTATION_BEHAVIOR", "A closed cycle stores only its own net (no opening balance); entries back-dated into a closed window fall out of every cycle."),
@@ -378,9 +387,11 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Media income records (income / reversal, gross, split and recoup amounts computed by the database) + clip budgets (recoup target).",
     entityTypes: ["media_income"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL"], readCapabilities: ["finance_position"], learnKinds: [], proposableActions: [],
+    states: ["PARTIAL"], readCapabilities: ["artist_view", "finance_position"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
     rules: [
+      R("MEDIA_SPLIT_RECOUP_STORED", "CANONICAL_BUSINESS_RULE", "Media income records are written only by server transactions that store the label / artist split and a recoup snapshot (before / recouped / payable / after); a received record is corrected by an appended reversal; no currency is stored; media income never touches the artist ledger."),
+      R("RECOUP_VIEW_DERIVED", "IMPLEMENTATION_BEHAVIOR", "The label page's recoup is derived (artist half of active clip budgets vs paid show artist fees + received media artist share) — not stored and never reconciled with the artist ledger."),
       R("MEDIA_REVERSAL", "CANONICAL_BUSINESS_RULE", "Cancelling media income creates a reversal record; totals are signed."),
       R("RECOUP_TARGET", "CANONICAL_BUSINESS_RULE", "Each non-cancelled clip's general budget is split 50/50: label investment and artist recoup target.", ["CLIPS", "RED_FILMS"]),
       R("RECOUP_INCLUDES_LEGACY", "CONFLICT", "Recoup includes legacy clip productions whose budgets are deliberately not managed."),
@@ -394,9 +405,14 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Release details per label project (label artist id, stage, target date, stage-entered and released dates).",
     entityTypes: ["release"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["releases"], learnKinds: ["RELEASE_PRIORITY", "PROJECT_BLOCKER"], proposableActions: [],
+    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["artist_view", "artist_portfolio", "releases"], learnKinds: ["RELEASE_PRIORITY", "PROJECT_BLOCKER"], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
+      R("RELEASE_STAGE_DB_CHECKED", "CANONICAL_BUSINESS_RULE", "Release stages are DB-checked (רעיון … מוכן ליציאה, יצא, בהשהייה); active = not יצא / בהשהייה. A stage change resets the stage start; stage edits use an optimistic lock; no push / finance / calendar side effect."),
+      R("RELEASED_AT_CLEARED", "POSSIBLE_BUG", "Moving a release away from יצא clears its release date — release history is lost."),
+      R("NEXT_RELEASE_IGNORES_STAGE", "POSSIBLE_BUG", "The portal / weekly 'next release' is the nearest future target date regardless of stage (a released or shelved row with a future date still counts)."),
+      R("RELEASE_VISIBILITY_SPLIT", "CONFLICT", "The label list shows only business type לייבל; the artist page / portal list every release of the artist (a project switched back to client work still shows)."),
+      R("READY_IS_OWNER_STATEMENT", "IMPLEMENTATION_BEHAVIOR", "'מוכן ליציאה' is an Owner-set stage; there are no readiness checks."),
       R("RELEASE_STAGES", "CANONICAL_BUSINESS_RULE", "Stages: רעיון, הפקה, הקלטה, עריכות, מיקס, מאסטר, עטיפה, הפצה, תוכן, מוכן ליציאה, יצא, בהשהייה. Entering יצא stamps the released date."),
     ],
     sideEffects: [], limitationsHe: ["סאני לא משנה שלב ריליס."],
@@ -408,7 +424,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Beat records (name, genre, key, status) + beat ↔ artist-portal assignments; audio in Dropbox.",
     entityTypes: ["beat"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["beats"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["artist_view", "beats"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [R("BEAT_SCOPE", "CANONICAL_BUSINESS_RULE", "Each artist sees only beats assigned to their own portal; archived status is never written (legacy).")],
     sideEffects: [],
@@ -835,4 +851,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-6", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "—", to: "OWNER_OPERATING_MODEL", noteHe: "סאני מכיר את דרך העבודה שאישרת: דדליין לקוח = התחייבות, דדליין פנימי = ציפייה, איחורים ישנים = חוב תפעולי לשיקום, מי מחזיק את הכדור, מקדמה בלי להמציא תנאים, לייבל מוגן, בלי שעות עבודה קבועות, אירוע = תהליך (הופעה חדשה: מה ידוע ומה לשאול), ושאלות חוזרות = הצעה לשיפור המערכת." },
   { version: "2026.09.25-7", date: "2026-09-25", domain: "CLIENTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת לקוח מחוברת: זהות ותפקידים (לקוח / אמן לייבל / מזמין / DJ), פרטי קשר, הצעות ופולואפ, פרויקטים (קנוני דרך הצעה / לפי שם), כסף שהתקבל / צפוי / פוטנציאל, פגישות, יומן, סשנים, משימות, הערות, היסטוריה רשומה ושאלות — ותמונת לקוחות לכל החברה בלי דירוג." },
   { version: "2026.09.25-7", date: "2026-09-25", domain: "PROPOSALS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מכיר את כל מחזור ההצעה: סטטוסים ומי סופר מה כפתוח, פולואפ ומשימת המעקב, המרה לפרויקט (לא אטומית), מחיר מוסכם, ומה לא נרשם (תנאי עסקה, תגובות, קשר חיצוני)." },
+  { version: "2026.09.25-8", date: "2026-09-25", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת אמן לייבל מחוברת: פרויקטים (ריליס קנוני / לפי שם, לייבל מול לקוח), ויקטור, מיקס והערות פתוחות, ריליסים וראיות קצב, ביטים, הופעות (DJ, שכר, חזרות, סימוני שליחה), מאזן, מחזורים, הכנסות מדיה ו-recoup, סשנים ויומן, קליפים / Red Films / סושיאל, זמינות, כניסה לפורטל, צעדים הבאים ושאלות — ותמונת סגל בלי דירוג." },
 ];
