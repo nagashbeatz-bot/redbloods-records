@@ -26,6 +26,7 @@ import { showPortfolioCap, showView } from "./capabilities/shows-deep";
 import { victorPortfolio, victorView } from "./capabilities/victor-deep";
 import { mixPortfolio, mixView } from "./capabilities/mix-deep";
 import { videoPortfolio, videoView } from "./capabilities/video-deep";
+import { companyView } from "./capabilities/company-view";
 
 const brief: KnowledgeCapability = {
   id: "brief", domain: "COMPANY", titleHe: "מה חשוב עכשיו",
@@ -62,6 +63,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   victorView, victorPortfolio,
   mixView, mixPortfolio,
   videoView, videoPortfolio,
+  companyView,
 ];
 
 /** The registry = catalog capability (bound to itself) + the given capabilities. Tests may add capabilities; production uses none. */

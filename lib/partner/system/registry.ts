@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-13";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-14";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -657,7 +657,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Agent alert records (entity keys per alert type), business memory, goals.",
     entityTypes: ["agent_alert"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["project_view", "system_settings"], learnKinds: [], proposableActions: [],
+    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["project_view", "system_settings", "company_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
     rules: [
       R("ALERTS_NOT_TRUTH", "OWNER_POLICY", "Agent alerts are never canonical action truth for Sunny (Owner decision); Sunny's own Cases replace them."),
@@ -665,7 +665,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("AI_FLAG_DOC_CONFLICT", "CONFLICT", "The AI flag is documented as UI-only but also disables the agent cron."),
       R("WEEK_STRENGTH", "IMPLEMENTATION_BEHAVIOR", "Every Friday 10:00 an alert is raised if next week has fewer than 3 significant activities or fewer than 2 active days."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא קורא, לא סוגר ולא יוצר Agent Alerts."],
+    sideEffects: [], limitationsHe: ["סאני קורא Agent Alerts פתוחות כתצפית בלבד (לא אמת לפעולה); לא סוגר ולא יוצר אותן."],
     surfaces: S([], ["agent", "ai"]),
   },
   {
@@ -674,10 +674,14 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Views over company state (no own data).",
     entityTypes: [],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs"], learnKinds: [], proposableActions: [],
+    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
-    rules: [R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods).")],
-    sideEffects: [], limitationsHe: [],
+    rules: [
+      R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods)."),
+      R("ONE_SUNNY", "CANONICAL_BUSINESS_RULE", "The company view composes every domain view; attention = every domain signal classified by nature + dimensions + whose move, deduplicated by concept — no score, no ranking; the order is a fixed presentation order."),
+      R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
+    ],
+    sideEffects: [], limitationsHe: ["'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
     surfaces: S(["/", "/dashboard", "/dashboard-old", "/dashboard-preview"], ["coo"]),
   },
   {
@@ -901,4 +905,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-12", date: "2026-09-25", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת מיקס כלל-חברתית: כל אנשי הסאונד (שם חופשי), פרויקטים במיקס בלי איש סאונד, הפקה שהושלמה בלי מיקס, הושלם ≠ אושר ≠ קבצים סופיים ≠ שולם, הוצאות מיקס יתומות — בלי ציון ובלי מדיניות מומצאת." },
   { version: "2026.09.25-13", date: "2026-09-25", domain: "RED_FILMS", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני מבין את Red Films לעומק: כל הפקה (סטטוס, סטטוס עריכה, צוות, תאריך צילום, קונספט ותסריט, קישורים, מסמכים, רפרנסים, משימות), תקציב ותשלומים בפנקס הנפרד, ושכבות הכסף — תכנון ≠ פנקס Red Films ≠ הוצאה בפועל ≠ שולם — בלי ציון ובלי קביעת מוכנות." },
   { version: "2026.09.25-13", date: "2026-09-25", domain: "CLIPS", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "תמונת קליפ בפרויקט: עסקת הקליפ (הכנסה מהאמן), שורות תכנון והעבר לכספים, ימי צילום + יומן, הוצאות קליפ בפועל לפי מטבע, הפקות, ריליס ותוכן — שתי המערכות מחוברות רק דרך הפרויקט." },
+  { version: "2026.09.25-14", date: "2026-09-25", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני אחד על כל החברה: תמונת מצב, מה צריך תשומת לב (בלי ציון), תזרים מול לייבל, ריליסים, הופעות, הפקה, מיקס, וידאו, יומן, צוות, החלטות פתוחות (כולל ישנות שנבדקו מחדש), סתירות, פערים לפי שורש, שינויים ותוצאות — מחובר, לא מועתק." },
+  { version: "2026.09.25-14", date: "2026-09-25", domain: "AGENT_ALERTS", dimension: "read", from: "PARTIAL", to: "PARTIAL", noteHe: "התראות מערכת ברמת החברה (יעדים, שבוע חלש, חגים) נקראות עכשיו כתצפית — לא אמת לפעולה." },
 ];

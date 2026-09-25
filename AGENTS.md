@@ -140,3 +140,23 @@ It is read through `video_view` / `video_portfolio` (`lib/partner/redfilms/view.
 - Planned ≠ spent: production budget, budget lines and clip rows are planning; Red Films payments are a separate ledger; only Finance expenses with scope קליפ are actual spend, and only שולם is paid. Never add currencies; Red Films money has no currency column.
 - Clip income (scope קליפ on income) is revenue, never a video expense.
 - A passed shoot date never proves a shoot. A release never requires a video. Crew names are free text.
+
+## Sunny Awareness Check: the whole company (ONE Sunny)
+
+The whole-system model is a contract in `lib/partner/system/company.ts`. It covers:
+- the attention map (every domain signal → nature, dimensions and whose move; no score);
+- the cross-domain graph with relationship quality, source precedence per concept, and the question planner;
+- the E2E workflows, gap root causes and future primitives;
+- repo and table coverage, the depth reconciliation and the discoveries.
+
+It is read through `company_view` (`lib/partner/company/view.ts`), which composes every Deep Brain view and adds no second rule.
+- **A new signal code** in any domain view fails `scripts/test-sunny-company.tsx` until it is mapped in `ATTENTION_MAP`.
+- **A new non-partner `lib/` module** fails until it matches a `REPO_COVERAGE` entry.
+- **A new table** read or written with `.from("…")` fails until it is in `TABLE_COVERAGE`.
+- **A new knowledge gap** must resolve to a root cause through `gapRootOf`.
+- Attention ≠ problem. Label spend is INVESTMENT. Cashflow vs label is a tension for the Owner to decide.
+- The presentation order is fixed and is never a priority.
+- Agent alerts are context only; they are never action truth.
+- Decisions are Owner-only. A known decision is re-evaluated against live state, never answered by Sunny.
+- "What changed" shows only recorded timestamps.
+- The morning brief is produced on request only: no Push, no Cron.
