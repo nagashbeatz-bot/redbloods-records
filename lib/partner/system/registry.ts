@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-9";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-10";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -450,9 +450,18 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Victor work records (state, dates, files sent / received, version reviews) + Victor settings + salary month records and Finance salary transactions.",
     entityTypes: ["vendor", "recurring"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
-    states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY"], readCapabilities: ["team_victor", "victor_salary", "memory"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
+    states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY"], readCapabilities: ["victor_view", "victor_portfolio", "team_victor", "victor_salary", "memory"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
+      R("VICTOR_WORK_UNIT", "CANONICAL_BUSINESS_RULE", "The unit of Victor work is a vendor work record (vendor victor) — with or without a project; a project may be sent again (no duplicate guard)."),
+      R("VICTOR_STATUS_OWNER_ONLY", "IMPLEMENTATION_BEHAVIOR", "Only the Owner changes status / deadline / outcome; work_state is set at send time and never updated; completing can also complete the project (Owner's choice)."),
+      R("VICTOR_BALL_RULE", "IMPLEMENTATION_BEHAVIOR", "Ball holder = latest upload vs latest notes-sent time (60 s tolerance); the Owner's own uploads count as uploads; drafts do not count."),
+      R("VICTOR_DEADLINE_INTERNAL", "OWNER_POLICY", "Victor deadlines are internal expectations, never client commitments; a passed one means investigate, not blame (Owner-confirmed)."),
+      R("VICTOR_NOTES_SENT_ON_DELIVERY", "IMPLEMENTATION_BEHAVIOR", "Version notes are marked sent only after the push to Victor was delivered; a review's status is always 'waiting'."),
+      R("VICTOR_SALARY_MONTHLY", "IMPLEMENTATION_BEHAVIOR", "Salary is monthly (settings amount / currency, per-month overrides), due the 10th of the next month (pay-day setting ignored); status overrides outrank the finance row; the live UI cannot create the salary finance row."),
+      R("VICTOR_GOAL_KPI_ONLY", "CONFLICT", "The monthly works goal (settings 12 in production, code default 10, agent goal 12) drives KPIs / below-pace alerts only — no code ties it to pay."),
+      R("VICTOR_STUCK_CRON_BROKEN", "POSSIBLE_BUG", "The push-cron stuck check filters status by work-state values, so it never fires; stuck day thresholds disagree ('>' vs '>=')."),
+      R("VICTOR_NO_MIX_HANDOFF", "IMPLEMENTATION_BEHAVIOR", "Nothing links a Victor work to the mix engineer or the project's mix status; stems / final production are not recorded (file roles are guessed in the browser)."),
       R("VICTOR_STUCK", "CANONICAL_BUSINESS_RULE", "Victor work is 'stuck' when active and more than the configured days (default 5) since it was sent."),
       R("VICTOR_SALARY_PRECEDENCE", "CANONICAL_BUSINESS_RULE", "Salary status per month: an explicit status override wins; else no transaction = לא שולם after the due date (10th of next month) or צפוי before; else the transaction status (שולם / חלקי / cancelled = none / otherwise נשלח לכספים)."),
       R("VICTOR_FOURTH_STORE_CONFLICT", "CONFLICT", "A legacy per-month Victor payment store is never reconciled with the override or the transaction — two screens can show different 'paid' states."),
@@ -466,7 +475,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("VICTOR_NEW_WORK", "The Owner sends new work", "Victor (+ Owner ack)", "MANUAL", "repeatable"),
       N("VICTOR_COMPLETED", "Victor work becomes הושלם", "Victor + Owner", "EVENT", "once per work"),
     ],
-    limitationsHe: ["סאני לא רואה את שמות הקבצים/התיקיות של ויקטור.", "תשלום משכורת לויקטור הוא פעולת כספים שמאושרת רק בלוח הבקרה."],
+    limitationsHe: ["סאני רואה כל עבודה של ויקטור (גם בלי פרויקט), העלאות, הערות, דדליינים, כסף ונוכחות — לא משנה, לא שולח ולא מוחק.", "האחסון עצמו (Dropbox) לא נקרא — רק רישומי הקבצים.", "אין רישום של מעבר מהפקה למיקס ואין מדד ״הפקה מוכנה״.", "סאני לא רואה את שמות הקבצים/התיקיות של ויקטור.", "תשלום משכורת לויקטור הוא פעולת כספים שמאושרת רק בלוח הבקרה."],
     surfaces: S(["/team", "/team/victor"], ["vendor/victor"]),
   },
   {
@@ -865,4 +874,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-8", date: "2026-09-25", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת אמן לייבל מחוברת: פרויקטים (ריליס קנוני / לפי שם, לייבל מול לקוח), ויקטור, מיקס והערות פתוחות, ריליסים וראיות קצב, ביטים, הופעות (DJ, שכר, חזרות, סימוני שליחה), מאזן, מחזורים, הכנסות מדיה ו-recoup, סשנים ויומן, קליפים / Red Films / סושיאל, זמינות, כניסה לפורטל, צעדים הבאים ושאלות — ותמונת סגל בלי דירוג." },
   { version: "2026.09.25-9", date: "2026-09-25", domain: "SHOWS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת הופעה מחוברת: אמן (לקוח / סגל), מזמין, DJ ואישור, מחיר, מקדמה, תשלום לקוח, חלוקה לפי כללי המערכת, שורות כספים, מאזן האמן, חזרות (נספרות או לא), יומן, משימות, הודעות לאמן / ל-DJ, פורטלים — ותמונת הופעות בלי דירוג." },
   { version: "2026.09.25-9", date: "2026-09-25", domain: "LABEL_DJ", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני יודע מי ה-DJ בכל הופעה, האם CLEANTONE אישר, האם נשלחה לו הודעה ומה רואה הפורטל שלו — בלי להניח ש-CLEANTONE מנגן." },
+  { version: "2026.09.25-10", date: "2026-09-25", domain: "VICTOR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני מבין את ויקטור לעומק: כל העבודות (גם בלי פרויקט), פרויקט / אמן / לייבל מול לקוח, אצל מי הכדור לפי כלל המערכת + יומן השליחה (סתירות מוצגות), דדליין פנימי מול התחייבות ללקוח, גרסאות וקבצים, טיוטות מול הערות שנשלחו, המשך למיקס / ריליס, משכורת חודשית מול כספים (סתירות), נוכחות ופורטל — בלי ציון עומס או ביצועים." },
 ];

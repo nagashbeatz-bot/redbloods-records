@@ -114,7 +114,7 @@ async function main() {
   ok("live calendar gap is CLOSED (Sunny live calendar, read through the trusted MAIN integration)", KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.status === "CLOSED_NOW" && KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.sunnyReadsVia.includes("calendar"));
   const kg = sa("knowledge_gaps");
   check("system_awareness knowledge_gaps serves every gap", kg.page?.total, KNOWLEDGE_GAPS.length);
-  ok("version bumped + change logged", SYSTEM_BASELINE_VERSION >= "2026.09.25-3" && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
+  ok("version bumped + change logged", ((v) => v.date > "2026.09.25" || (v.date === "2026.09.25" && v.n >= 3))({ date: SYSTEM_BASELINE_VERSION.split("-")[0], n: Number(SYSTEM_BASELINE_VERSION.split("-")[1]) }) && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
 
   section("3. PROOF: every project-linked production column is read by Sunny");
   const readerSrc = PROJECT_READER_FILES.map(read).join("\n");

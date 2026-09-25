@@ -227,7 +227,7 @@ function main() {
   ok("no share links / tokens in served client data", !/dropbox\.com\/s|token=|access_token/.test(served));
 
   section("4. System Awareness + gaps");
-  ok("baseline -7 with CLIENTS + PROPOSALS change entries", SYSTEM_BASELINE_VERSION >= "2026.09.25-7" && CAPABILITY_CHANGES.filter((c) => c.version === "2026.09.25-7").length >= 2);
+  ok("baseline -7 with CLIENTS + PROPOSALS change entries", ((v) => v.date > "2026.09.25" || (v.date === "2026.09.25" && v.n >= 7))({ date: SYSTEM_BASELINE_VERSION.split("-")[0], n: Number(SYSTEM_BASELINE_VERSION.split("-")[1]) }) && CAPABILITY_CHANGES.filter((c) => c.version === "2026.09.25-7").length >= 2);
   ok("CLIENTS / PROPOSALS read client_view + client_portfolio", ["CLIENTS", "PROPOSALS"].every((d) => ["client_view", "client_portfolio"].every((c) => DOMAIN_CONTRACTS.find((x) => x.id === d)!.readCapabilities.includes(c))));
   ok("CLIENTS / PROPOSALS depth = DEEP_BRAIN_V1", DOMAIN_KNOWLEDGE_DEPTH.CLIENTS === "DEEP_BRAIN_V1" && DOMAIN_KNOWLEDGE_DEPTH.PROPOSALS === "DEEP_BRAIN_V1");
   check("system registry valid", validateSystemRegistry({ capabilityIds: REG.all().map((c) => c.id), knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);

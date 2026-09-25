@@ -98,7 +98,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     r("mix_targets", "id, work_id, target_kind, display_name, sort_order, removed_at, created_at"),
     r("mix_target_notes", "id, mix_target_id, note_text, author, status, created_at, updated_at"),
     r("final_files", "id, work_id, project_id, file_name, dropbox_path, file_type, file_size, uploaded_by, created_at"),
-    r("vendor_project_work", "id, project_id, notes, brief_text, reference_links, version_reviews, files_sent, files_received, brief_files, returned_date, outcome, quality, entered_project, dropbox_folder, dropbox_share_link"),
+    r("vendor_project_work", "id, vendor_name, project_id, title, status, work_state, sent_date, internal_deadline, linked_task_id, created_at, updated_at, notes, brief_text, reference_links, version_reviews, files_sent, files_received, brief_files, returned_date, outcome, quality, entered_project, dropbox_folder, dropbox_share_link"),
     r("red_films_productions", "id, project_id, client_name, created_at, updated_at, photographer_name, director_name, editor_name, locations, concept_summary, concept_vibe, ref_links, script_start, script_middle, script_end, director_notes, photographer_notes, fix_notes, notes, published_where, dropbox_folder_path, files_raw_link, files_edit_folder, version_1_link, version_2_link, final_version_link, dropbox_folder_url"),
     r("red_films_budget_items", "id, production_id, title, category, vendor_name, status, planned_amount, actual_amount, linked_transaction_id, notes, created_at, updated_at"),
     r("album_tracks", "id, project_id, track_number, title, notes, created_at, updated_at"),
@@ -152,7 +152,8 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     mixTargetNotes: mapSection(tnotes, (x) => ({ targetId: s(x.mix_target_id), text: t(x.note_text), author: s(x.author), status: s(x.status), createdAt: s(x.created_at), updatedAt: s(x.updated_at) })),
     finalFiles: mapSection(finals, (x) => ({ workId: s(x.work_id), projectId: s(x.project_id), fileName: s(x.file_name), path: s(x.dropbox_path), fileType: s(x.file_type), fileSize: n(x.file_size), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at) })),
     victor: mapSection(vic, (x) => (s(x.id) ? {
-      id: String(x.id), projectId: s(x.project_id), notes: t(x.notes), briefText: t(x.brief_text),
+      id: String(x.id), projectId: s(x.project_id), vendorName: s(x.vendor_name), title: t(x.title), status: s(x.status), workState: s(x.work_state), sentDate: s(x.sent_date), internalDeadline: s(x.internal_deadline), linkedTaskId: s(x.linked_task_id), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
+      notes: t(x.notes), briefText: t(x.brief_text),
       references: (Array.isArray(x.reference_links) ? x.reference_links : []).map((ref) => { const o = obj(ref) ?? {}; const url = s(o.url); return { title: t(o.title), note: t(o.note), publicUrl: url && PUBLIC_REFERENCE.test(url) ? url : null }; }),
       reviews: Object.entries(obj(x.version_reviews) ?? {}).map(([version, v]) => { const o = obj(v) ?? {}; return { version, status: s(o.status), notes: t(o.notes), sentNotes: t(o.sentNotes), sentAt: s(o.sentAt), draft: o.draft === true, reviewedAt: s(o.reviewedAt) }; }),
       filesSent: files(x.files_sent), filesReceived: files(x.files_received), briefFiles: files(x.brief_files), returnedDate: s(x.returned_date), outcome: s(x.outcome), quality: s(x.quality),
