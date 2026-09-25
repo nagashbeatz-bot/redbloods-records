@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
 
-// Victor may only patch file/folder fields — never status/work-state/deadlines.
-const VICTOR_PATCH_FIELDS = new Set(["filesSent", "filesReceived", "dropboxFolder", "dropboxShareLink"]);
+import { victorMayPatch } from "@/lib/victor-scope";
 
 /**
  * GET    /api/vendor/victor/work/[id]  — fetch a single work record (victor/owner)
- * PATCH  /api/vendor/victor/work/[id]  — update a work record (victor/owner)
+ * PATCH  /api/vendor/victor/work/[id]  — update a work record (owner only in practice: Victor may patch nothing —
+ *                                         his files are written server-side by upload / delete, never by a client path)
  * DELETE /api/vendor/victor/work/[id]  — delete a work record (owner only)
  */
 
@@ -17,8 +17,8 @@ export async function GET(
   const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { id } = await params;
-    const { getVictorWorkById, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
-    const work = await getVictorWorkById(id);
+    const { getScopedVictorWork, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
+    const work = await getScopedVictorWork(id); // well-formed id + a Victor row, else 404
     if (!work) return NextResponse.json({ ok: false, work: null }, { status: 404 });
     // Victor never receives Artist/Project/Dropbox-folder fields; owner gets all.
     const safe = (await getAuthRole()) === "victor" ? sanitizeWorkForVictor(work) : work;
@@ -38,11 +38,12 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    // Victor = view + files only: reject any non-file field (status, workState,
-    // outcome, deadlines, notes…). Owner may patch anything.
-    if ((await getAuthRole()) !== "owner") {
-      const hasForbiddenField = Object.keys(body ?? {}).some((k) => !VICTOR_PATCH_FIELDS.has(k));
-      if (hasForbiddenField) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    // Victor = view only here. Status / work-state / deadlines are the Owner's, and file or folder fields
+    // (filesSent / filesReceived / dropboxFolder / dropboxShareLink) would let a client choose Dropbox paths that
+    // stream / download / delete / upload then act on. Victor's files change only through the server-side
+    // upload and delete routes. Owner may patch anything.
+    if ((await getAuthRole()) !== "owner" && !victorMayPatch(body)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
     const { updateVictorWork, getVictorWorkById } = await import("@/lib/vendor-store");

@@ -14,6 +14,8 @@ export type { Section, Maybe };
 export interface DetailFile {
   name: string; category: string | null; versionLabel: string | null; trackId: string | null; durationSeconds: number | null; size: number | null;
   uploadedAt: string | null; path: string | null; hasShareLink: boolean; fromMixVersionId: string | null; structureMarkers: number;
+  /** Victor work files only: "owner" / "victor" as recorded at upload (since 2026-09-25); null = not recorded. */
+  uploadedBy?: string | null;
 }
 export interface DetailProject { id: string; createdAt: string | null; legacyMondayId: string | null; notes: string | null; workMaterials: { bpm: string | null; key: string | null; instructions: string | null } | null; dropboxFolder: string | null; files: DetailFile[] }
 export interface DetailFinanceNote { projectId: string; financialNotes: string | null; exceptionReason: string | null; exceptionDate: string | null; hasSetting: true }

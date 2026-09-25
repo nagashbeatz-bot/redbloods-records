@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
 import { addFileToProject } from "@/lib/projects-store";
@@ -74,6 +75,7 @@ const SCOPE_HINT = "נדרשים scopes: files.metadata.read · files.content.wr
 
 // ── POST /api/dropbox/intake ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   try {
     const body = await req.json();
     const action = body.action as "scan" | "move" | "diag" | "delete-source";

@@ -170,7 +170,9 @@ function main() {
   ok("evidence-backed candidates (waiting on Victor), no score", n.status === "OK" && n.items.some((i) => i.id === U(W_NOTES)) && !/"(score|rank)"/.test(JSON.stringify(n.items)));
 
   section("SCENARIO O — over-broad file access");
-  ok("security findings registered (report only)", SECURITY_GAPS.some((g) => g.id === "SG_VICTOR_DROPBOX_PATHS" && g.severity === "HIGH") && SECURITY_GAPS.some((g) => g.id === "SG_VICTOR_DELETES_OWNER_FILES") && SECURITY_GAPS.some((g) => g.id === "SG_VICTOR_UPLOAD_RESPONSE_LEAK") && KNOWLEDGE_GAPS.some((g) => g.id === "VIC_PORTAL_FILE_SECURITY" && g.status === "SECURITY_REMEDIATION_REQUIRED"));
+  ok("the portal findings are REMEDIATED with proof; the chunk-session residue stays open (never claimed closed)", ["SG_VICTOR_DROPBOX_PATHS", "SG_VICTOR_DELETES_OWNER_FILES", "SG_VICTOR_UPLOAD_RESPONSE_LEAK", "SG_VICTOR_SALARY_IN_PAYLOAD", "SG_VENDOR_FOLDER_PUBLIC_LINK", "SG_VICTOR_WORK_LOOKUP_BY_PROJECT", "SG_STORAGE_ROUTES_PROXY_ONLY"].every((id) => SECURITY_GAPS.find((g) => g.id === id)?.status === "REMEDIATED") && SECURITY_GAPS.find((g) => g.id === "SG_VICTOR_CHUNK_SESSION_UNSCOPED")?.status === "REPORTED_NOT_FIXED" && KNOWLEDGE_GAPS.some((g) => g.id === "VIC_PORTAL_FILE_SECURITY" && g.status === "PARTIALLY_CLOSED"));
+  ok("Sunny knows the new file-scope rules + that older uploads have no recorded uploader", /folder-scoped paths/.test(JSON.stringify(q("system_awareness", "victor_model", { section: "files" }))) && KNOWLEDGE_GAPS.some((g) => g.id === "VIC_LEGACY_FILE_UPLOADER" && g.class === "DATA_NOT_RECORDED"));
+  ok("file metadata carries the recorded uploader or NOT_RECORDED", W(v, W_NOTES).files.byVersion.every((bv) => bv.files.every((x) => x.uploadedBy === "NOT_RECORDED")));
 
   section("SCENARIO P — August 2026");
   const aug = v.money.months.find((m) => m.month === "2026-08")!;

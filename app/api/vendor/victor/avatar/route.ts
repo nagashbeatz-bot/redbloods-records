@@ -21,10 +21,16 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
 const imageUrlFor = (a: { dropboxPath: string | null; updatedAt: string | null }) =>
   a.dropboxPath ? `/api/vendor/victor/avatar/image?v=${encodeURIComponent(a.updatedAt ?? "")}` : null;
 
+// The storage path stays server-side: the client needs only the image URL + crop.
+function publicAvatar<T extends { dropboxPath: string | null; updatedAt: string | null }>(a: T) {
+  const { dropboxPath: _path, ...pub } = a;
+  return { ...pub, imageUrl: imageUrlFor(a) };
+}
+
 export async function GET() {
   const denied = await requireVictorAccess(); if (denied) return denied;
   const a = await getVictorAvatar();
-  return NextResponse.json({ ...a, imageUrl: imageUrlFor(a) });
+  return NextResponse.json(publicAvatar(a));
 }
 
 export async function POST(req: NextRequest) {
@@ -71,7 +77,7 @@ export async function POST(req: NextRequest) {
       : { zoom: 1, posX: 50, posY: 50 };
 
     const saved = await setVictorAvatar({ dropboxPath: path, ext, ...crop });
-    return NextResponse.json({ ok: true, ...saved, imageUrl: imageUrlFor(saved) });
+    return NextResponse.json({ ok: true, ...publicAvatar(saved) });
   } catch (e) {
     console.error("[victor/avatar] POST", e);
     return NextResponse.json({ error: "server error" }, { status: 500 });
@@ -87,7 +93,7 @@ export async function PATCH(req: NextRequest) {
     if (Number.isFinite(Number(body.posX))) patch.posX = clamp(Number(body.posX), 0, 100);
     if (Number.isFinite(Number(body.posY))) patch.posY = clamp(Number(body.posY), 0, 100);
     const saved = await setVictorAvatar(patch);
-    return NextResponse.json({ ok: true, ...saved, imageUrl: imageUrlFor(saved) });
+    return NextResponse.json({ ok: true, ...publicAvatar(saved) });
   } catch (e) {
     console.error("[victor/avatar] PATCH", e);
     return NextResponse.json({ error: "server error" }, { status: 500 });

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 
 /** GET /api/dropbox/auth — returns the Dropbox OAuth URL */
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   if (!process.env.DROPBOX_APP_KEY || !process.env.DROPBOX_APP_SECRET) {
     return NextResponse.json(
       { error: "DROPBOX_APP_KEY / DROPBOX_APP_SECRET חסרים ב-.env.local" },

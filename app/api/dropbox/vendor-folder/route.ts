@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { getDropboxToken } from "@/lib/dropbox-token";
-import { requireVictorAccess } from "@/lib/require-auth";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
  * POST /api/dropbox/vendor-folder
@@ -93,7 +93,9 @@ async function getOrCreateShareLink(token: string, path: string): Promise<string
 }
 
 export async function POST(req: Request) {
-  const denied = await requireVictorAccess(); if (denied) return denied;
+  // Owner only: it builds folders from client-sent artist / project names and returns a PUBLIC folder link.
+  // Victor never needs it (his uploads resolve the work folder server-side from the workId).
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json() as {
       vendorName:        string;

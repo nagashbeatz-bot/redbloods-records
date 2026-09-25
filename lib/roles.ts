@@ -54,6 +54,10 @@ export function isVictorAllowedPath(pathname: string): boolean {
   // they feed Finance and Partner. requireOwner enforces it in-route as the second layer.
   if (pathname === "/api/vendor/victor/settings" || pathname.startsWith("/api/vendor/victor/settings/")) return false;
 
+  // The vendor-folder builder returns a public folder link and is owner-only (Victor's uploads resolve
+  // the work folder server-side); requireOwner enforces it in-route too.
+  if (pathname.startsWith("/api/dropbox/vendor-folder")) return false;
+
   // The manual "send work to Victor" push is owner-only, even though it lives
   // under the victor API prefix (requireOwner enforces it in-route too).
   if (pathname.startsWith("/api/vendor/victor/notify-work")) return false;
@@ -65,7 +69,6 @@ export function isVictorAllowedPath(pathname: string): boolean {
   const apiAllow = [
     "/api/me",
     "/api/vendor/victor",          // GET stats/work, /projects, /work/[id] (method-guarded per route)
-    "/api/dropbox/vendor-folder",
     "/api/dropbox/vendor-upload",
     "/api/notifications",          // his OWN bell only: every handler under this
                                    // prefix scopes to recipient_user_id = the

@@ -67,6 +67,7 @@ export function detailFile(v: unknown): DetailFile | null {
     name, category: s(f.category), versionLabel: s(f.versionLabel), trackId: s(f.trackId), durationSeconds: n(f.durationSeconds), size: n(f.size),
     uploadedAt: s(f.uploadedAt), path: s(f.dropboxPath), hasShareLink: has(f.dropboxShareUrl) || has(f.url), fromMixVersionId: s(f.sourceMixVersionId),
     structureMarkers: Array.isArray(f.segments) ? f.segments.length : 0,
+    uploadedBy: s(f.uploadedBy),
   };
 }
 const files = (v: unknown): DetailFile[] => (Array.isArray(v) ? v.map(detailFile).filter((x): x is DetailFile => x !== null) : []);

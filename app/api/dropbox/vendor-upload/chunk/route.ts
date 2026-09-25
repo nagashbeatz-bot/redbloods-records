@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 import { queueVictorUploadNotice } from "@/lib/victor-upload-notify";
+import { isWorkId, isWithinRoot, uploadDestination } from "@/lib/victor-scope";
 
 // Chunked Victor upload (large files up to 1GB) via the Dropbox upload-session
 // API. Each request carries ONE small chunk (~8MB), never the whole file — so
@@ -79,6 +80,8 @@ export async function POST(req: NextRequest) {
       if (!workId)    return NextResponse.json({ ok: false, error: "workId חסר" }, { status: 400 });
       if (!sessionId) return NextResponse.json({ ok: false, error: "sessionId חסר" }, { status: 400 });
       if (!rawName)   return NextResponse.json({ ok: false, error: "name חסר" }, { status: 400 });
+      if (!isWorkId(workId)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+      const role: "owner" | "victor" = (await getAuthRole()) === "owner" ? "owner" : "victor";
 
       // Resolve the base folder SERVER-SIDE from the workId (creating it on first
       // use). Throws for a non-Victor / missing work — the ownership gate.
@@ -94,12 +97,8 @@ export async function POST(req: NextRequest) {
       // Same path construction as the single-shot route: sanitize the (already
       // version-prefixed) filename; subFolder is a fixed bucket — strip anything
       // that isn't a plain name so it can't alter the path (no traversal).
-      const sanitizedName  = rawName.replace(/[<>:"/\\|?*]/g, "_");
-      const cleanSubFolder = (sp.get("subFolder") ?? "Production").replace(/[^A-Za-z0-9_]/g, "");
-      const cleanBase      = baseFolder.replace(/\/+$/, "");
-      const dropboxPath    = cleanSubFolder
-        ? `${cleanBase}/${cleanSubFolder}/${sanitizedName}`
-        : `${cleanBase}/${sanitizedName}`;
+      const dropboxPath = uploadDestination(baseFolder, sp.get("subFolder") ?? "Production", rawName, role);
+      if (!dropboxPath) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
       const res = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
         method: "POST",
@@ -109,14 +108,15 @@ export async function POST(req: NextRequest) {
       if (!res.ok) return NextResponse.json({ ok: false, error: `Dropbox: ${await res.text()}` }, { status: 500 });
       const uploaded  = (await res.json()) as { path_display: string; name: string; size?: number };
       const finalPath = uploaded.path_display;
+      const insideFolder = isWithinRoot(finalPath, baseFolder);
       const streamUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
       // Persist to vendor_project_work.files_sent — SAME shape as the single-shot
       // route, minus the public share link (none is created here). dropboxPath +
       // stream url are enough for playback/download via the scoped Victor route.
-      const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: "", uploadedAt: new Date().toISOString(), ...(versionLabel ? { versionLabel } : {}) };
+      const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: "", uploadedAt: new Date().toISOString(), uploadedBy: role, ...(versionLabel ? { versionLabel } : {}) };
 
-      const { updateVictorWork } = await import("@/lib/vendor-store");
+      const { updateVictorWork, fileForVictor } = await import("@/lib/vendor-store");
       const { supabase } = await import("@/lib/supabase");
       const { data: row } = await supabase
         .from("vendor_project_work")
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       // Ownership: only Victor's work rows may receive uploads here.
-      if (!row || (row.vendor_name as string) !== "victor") {
+      if (!insideFolder || !row || (row.vendor_name as string) !== "victor") {
         // Roll back the committed file so a rejected upload leaves nothing behind.
         try {
           await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       // ── Owner push (batched) — parity with the single-shot route: only when
       //    Victor uploaded, only after the file is saved, best-effort. ──
       try {
-        if ((await getAuthRole()) === "victor") {
+        if (role === "victor") {
           let projectName = (row.title as string | null) ?? "";
           if (!projectName && row.project_id) {
             const { data: proj } = await supabase
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
         console.error("[vendor-upload/chunk] notify queue failed (non-fatal):", e);
       }
 
-      return NextResponse.json({ ok: true, file: newFile });
+      return NextResponse.json({ ok: true, file: role === "victor" ? { ...fileForVictor(newFile), deletable: true } : newFile });
     }
 
     return NextResponse.json({ ok: false, error: "action לא תקין" }, { status: 400 });

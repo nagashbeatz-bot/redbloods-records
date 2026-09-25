@@ -288,6 +288,8 @@ export interface FileLink {
   segments?: BriefSegment[]; // structure markers — ONLY on brief audio files (owner-authored, Victor read-only). Never on versions.
   fileRef?: string;          // opaque, path-free handle sent to Victor INSTEAD of dropboxPath/url/shareUrl (see sanitizeWorkForVictor). Resolved server-side per work.
   sourceMixVersionId?: string; // set ONLY on a file auto-duplicated from a mix_versions row (Steven full-mix → project player); absent on manual uploads
+  uploadedBy?: "owner" | "victor"; // Victor work files only: who uploaded it, from the session role, recorded server-side at upload (older entries lack it)
+  deletable?: boolean;       // Victor view only (never stored): true when Victor may delete this file (his own upload, inside the work folder)
 }
 
 /** Canonical song-structure type. Stored (not the display label) so the Victor

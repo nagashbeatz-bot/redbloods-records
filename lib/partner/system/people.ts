@@ -86,7 +86,10 @@ export interface SecurityGap {
   kind: "SECURITY_GAP" | "UI_SERVER_MISMATCH" | "PRIVACY";
   users: readonly string[];
   description: string;
-  status: "REPORTED_NOT_FIXED";
+  /** REPORTED_NOT_FIXED = open; REMEDIATED = fixed and proven by a test; PARTIALLY_REMEDIATED = the named residue stays open. */
+  status: "REPORTED_NOT_FIXED" | "REMEDIATED" | "PARTIALLY_REMEDIATED";
+  /** What was fixed, how the server now enforces it, and the proving test (REMEDIATED / PARTIALLY_REMEDIATED only). */
+  remediation?: string;
 }
 
 const W = (action: string, enforcement: Enforcement, sideEffects = "none") => ({ action, enforcement, sideEffects });
@@ -185,15 +188,15 @@ export const USER_CONTRACTS: readonly UserContract[] = [
     landing: "/team/victor", language: "English by default for him (he can switch to Russian or Hebrew)",
     entities: [{ entity: "vendor:VICTOR", quality: "CANONICAL_RELATION", basis: "the vendor work records are filtered to Victor" }],
     tabs: [
-      { id: "PROFILE", titleHe: "העמוד של ויקטור", purpose: "Month navigation, KPIs (goal, done, in progress, stuck), capacity, the month's work list.", visibleData: "Work titles and states (no artist / project / folder / owner notes); salary hidden in the UI", money: "HIDDEN_BUT_IN_PAYLOAD", writes: [W("Change his avatar", "SERVER_AUTHORIZED")] },
-      { id: "WORK_DRAWER", titleHe: "מגירת עבודה", purpose: "One work: brief + brief files, references, steps, sent / received timeline, sent notes per version.", visibleData: "Brief, files, notes after they are sent", money: "NONE", writes: [W("Upload files", "SERVER_AUTHORIZED", "files land in the work folder; owner push (P_VICTOR_UPLOADS)"), W("Delete his own file", "SERVER_AUTHORIZED", "Dropbox delete (path trust gap)")] },
+      { id: "PROFILE", titleHe: "העמוד של ויקטור", purpose: "Month navigation, KPIs (goal, done, in progress, stuck), capacity, the month's work list.", visibleData: "Work titles and states (no artist / project / folder / owner notes); no salary / currency / payment status (removed server-side)", money: "NONE", writes: [W("Change his avatar", "SERVER_AUTHORIZED")] },
+      { id: "WORK_DRAWER", titleHe: "מגירת עבודה", purpose: "One work: brief + brief files, references, steps, sent / received timeline, sent notes per version.", visibleData: "Brief, files, notes after they are sent", money: "NONE", writes: [W("Upload files", "SERVER_AUTHORIZED", "the server derives the destination: the work's own folder, bucket Production / 02_From_Victor only; the uploader is recorded; owner push (P_VICTOR_UPLOADS); the response carries no path / link"), W("Delete his own file", "SERVER_AUTHORIZED", "only a file he uploaded (recorded uploader) inside the work folder; Owner uploads and older entries with no uploader record are refused")] },
     ],
-    cannot: ["Change status, title, brief, notes; see salary / settings / payment history (hidden in UI); send work notifications; delete work."],
+    cannot: ["Change status, title, brief, notes, files or the work folder (every work PATCH is refused); see salary / settings / payment status (not in his payload); look up a work by project id; build folders or receive a folder link; read / delete / upload outside a work's own folder; delete a file he did not upload; send work notifications; delete work."],
     receivesPush: ["P_VICTOR_NEW_WORK", "P_VICTOR_VERSION_NOTES", "P_VICTOR_COMPLETED"],
     triggersPush: ["P_VICTOR_PRESENCE", "P_VICTOR_UPLOADS"],
-    securityGapIds: ["SG_VICTOR_DROPBOX_PATHS", "SG_VENDOR_FOLDER_PUBLIC_LINK", "SG_VICTOR_SALARY_IN_PAYLOAD", "SG_VICTOR_GET_NO_VENDOR_CHECK"],
-    limitationsHe: ["ויקטור לא רואה שם אמן או פרויקט — רק כותרת עבודה."],
-    internal: { role: "victor", allowedPaths: ["/team/victor", "/api/vendor/victor", "/api/vendor/victor/work/x", "/api/dropbox/vendor-upload", "/api/dropbox/vendor-folder", "/api/notifications"], deniedPaths: ["/api/vendor/victor/salary", "/api/vendor/victor/settings", "/api/vendor/victor/notify-work", "/api/vendor/victor/notify-version-notes", "/dashboard", "/team/steven", "/api/dropbox/upload"] },
+    securityGapIds: ["SG_VICTOR_DROPBOX_PATHS", "SG_VENDOR_FOLDER_PUBLIC_LINK", "SG_VICTOR_SALARY_IN_PAYLOAD", "SG_VICTOR_GET_NO_VENDOR_CHECK", "SG_VICTOR_DELETES_OWNER_FILES", "SG_VICTOR_UPLOAD_RESPONSE_LEAK", "SG_VICTOR_WORK_LOOKUP_BY_PROJECT", "SG_VICTOR_AVATAR_PATH", "SG_VICTOR_CHUNK_SESSION_UNSCOPED"],
+    limitationsHe: ["ויקטור לא רואה שם אמן או פרויקט — רק כותרת עבודה.", "ויקטור יכול למחוק רק קובץ שהוא עצמו העלה (מאז 2026-09-25). קבצים ישנים בלי רישום מעלה — רק הבעלים מוחק."],
+    internal: { role: "victor", allowedPaths: ["/team/victor", "/api/vendor/victor", "/api/vendor/victor/work/x", "/api/dropbox/vendor-upload", "/api/dropbox/vendor-upload/chunk", "/api/notifications"], deniedPaths: ["/api/vendor/victor/salary", "/api/vendor/victor/settings", "/api/vendor/victor/notify-work", "/api/vendor/victor/notify-version-notes", "/dashboard", "/team/steven", "/api/dropbox/upload", "/api/dropbox/vendor-folder", "/api/dropbox/vendor-delete", "/api/dropbox/stream"] },
   },
   {
     id: "STEVEN", titleHe: "סטיבן (מהנדס מיקס/מאסטר)", kind: "LOGIN_ROLE",
@@ -327,23 +330,25 @@ export const PUSH_MODULE_EXCLUSIONS: ReadonlyArray<{ module: string; reason: str
 ];
 
 // ─────────────────────────────── SECURITY GAPS / MISMATCHES (report only) ───────────────────────────────
-const G = (id: string, severity: SecurityGap["severity"], kind: SecurityGap["kind"], users: string[], description: string): SecurityGap => ({ id, severity, kind, users, description, status: "REPORTED_NOT_FIXED" });
+const G = (id: string, severity: SecurityGap["severity"], kind: SecurityGap["kind"], users: string[], description: string, status: SecurityGap["status"] = "REPORTED_NOT_FIXED", remediation?: string): SecurityGap => ({ id, severity, kind, users, description, status, ...(remediation ? { remediation } : {}) });
 export const SECURITY_GAPS: readonly SecurityGap[] = [
-  G("SG_VICTOR_DROPBOX_PATHS", "HIGH", "SECURITY_GAP", ["VICTOR"], "Victor can write file entries and his work folder with any Dropbox path; the server then streams / deletes / uploads by those paths — effectively arbitrary Dropbox read, delete and write. The restriction is UI-only."),
-  G("SG_VENDOR_FOLDER_PUBLIC_LINK", "MEDIUM", "SECURITY_GAP", ["VICTOR"], "The vendor-folder endpoint builds folders from client-sent artist / project names and returns a public share link, contradicting 'Victor never receives folder links'."),
+  G("SG_VICTOR_DROPBOX_PATHS", "HIGH", "SECURITY_GAP", ["VICTOR"], "Victor can write file entries and his work folder with any Dropbox path; the server then streams / deletes / uploads by those paths — effectively arbitrary Dropbox read, delete and write. The restriction is UI-only.", "REMEDIATED", "2026-09-25: Victor may patch nothing on a work (403). Every read / download / delete / upload resolves the path server-side and requires it to lie inside the work's canonical folder (/Projects/{artist}/{project}/Victor or /Projects/Victor/{title}); traversal / malformed / out-of-folder paths fail closed. Proven by the Victor portal security tests (B–H)."),
+  G("SG_VENDOR_FOLDER_PUBLIC_LINK", "MEDIUM", "SECURITY_GAP", ["VICTOR"], "The vendor-folder endpoint builds folders from client-sent artist / project names and returns a public share link, contradicting 'Victor never receives folder links'.", "REMEDIATED", "2026-09-25: the folder builder is Owner-only (in-route + proxy); Victor's uploads resolve the folder server-side. The Owner's own public folder links remain part of SG_PUBLIC_SHARE_LINKS. Proven by the Victor portal security tests (C, K)."),
   G("SG_OAUTH_CALLBACK_STATE", "MEDIUM", "SECURITY_GAP", ["OWNER"], "The Dropbox and Google Calendar OAuth callbacks are public and have no state check — the company connection could be swapped."),
   G("SG_CALENDAR_WEEK_ROUTE_PROXY_ONLY", "LOW", "UI_SERVER_MISMATCH", ["OWNER"], "The Calendar page's week read relies only on the central gate for Owner protection — the route itself has no Owner check (Sunny's internal calendar read has its own service authentication)."),
-  G("SG_VICTOR_DELETES_OWNER_FILES", "MEDIUM", "SECURITY_GAP", ["VICTOR"], "Victor's file-delete route removes any file entry of any Victor work — including files the Owner uploaded — with no uploader check."),
-  G("SG_VICTOR_UPLOAD_RESPONSE_LEAK", "MEDIUM", "PRIVACY", ["VICTOR"], "Victor's upload responses return the unsanitized file entry: the storage path (revealing the project tree) and, for single uploads, a public share link."),
-  G("SG_STORAGE_ROUTES_PROXY_ONLY", "MEDIUM", "UI_SERVER_MISMATCH", ["OWNER", "VICTOR", "STEVEN"], "Several storage routes (stream, delete, upload, share-link, intake, status) have no in-route role check and rely on the central proxy alone."),
-  G("SG_VICTOR_WORK_LOOKUP_BY_PROJECT", "LOW", "PRIVACY", ["VICTOR"], "Victor can look up the (sanitized) work of any project id he knows; chunked upload sessions start with no work check."),
-  G("SG_VICTOR_SALARY_IN_PAYLOAD", "MEDIUM", "PRIVACY", ["VICTOR"], "Victor's page data includes his salary / currency / payment status; only the UI hides it."),
+  G("SG_VICTOR_DELETES_OWNER_FILES", "MEDIUM", "SECURITY_GAP", ["VICTOR"], "Victor's file-delete route removes any file entry of any Victor work — including files the Owner uploaded — with no uploader check.", "REMEDIATED", "2026-09-25: Victor may delete only a file he uploaded (uploader recorded server-side at upload) inside the work folder; Owner uploads and older entries with no uploader record are refused (Owner can still delete them). Proven by the Victor portal security tests (F, N)."),
+  G("SG_VICTOR_UPLOAD_RESPONSE_LEAK", "MEDIUM", "PRIVACY", ["VICTOR"], "Victor's upload responses return the unsanitized file entry: the storage path (revealing the project tree) and, for single uploads, a public share link.", "REMEDIATED", "2026-09-25: Victor's upload responses (single + chunked) return only name, version, upload time, an opaque file handle and the delete flag — no path, URL or share link. Proven by the Victor portal security tests (L)."),
+  G("SG_STORAGE_ROUTES_PROXY_ONLY", "MEDIUM", "UI_SERVER_MISMATCH", ["OWNER", "VICTOR", "STEVEN"], "Several storage routes (stream, delete, upload, share-link, intake, status) have no in-route role check and rely on the central proxy alone.", "REMEDIATED", "2026-09-25: stream, upload, delete, share-link, intake, status and auth check the Owner in-route (the central gate stays the first layer). The OAuth callback stays public by design (SG_OAUTH_CALLBACK_STATE). Proven by the Victor portal security tests (route wiring, I, J)."),
+  G("SG_VICTOR_WORK_LOOKUP_BY_PROJECT", "LOW", "PRIVACY", ["VICTOR"], "Victor can look up the (sanitized) work of any project id he knows; chunked upload sessions start with no work check.", "REMEDIATED", "2026-09-25: the lookup by project id is Owner-only (only Owner surfaces hold a project id). The chunked-upload session residue is tracked as SG_VICTOR_CHUNK_SESSION_UNSCOPED. Proven by the Victor portal security tests (B, K)."),
+  G("SG_VICTOR_SALARY_IN_PAYLOAD", "MEDIUM", "PRIVACY", ["VICTOR"], "Victor's page data includes his salary / currency / payment status; only the UI hides it.", "REMEDIATED", "2026-09-25: salary / currency / payment status are removed from Victor's stats server-side; the goal and counts remain. Proven by the Victor portal security tests (M)."),
+  G("SG_VICTOR_AVATAR_PATH", "LOW", "PRIVACY", ["VICTOR"], "Found in the 2026-09-25 re-audit: the avatar payload returned the avatar's internal storage path to Victor.", "REMEDIATED", "2026-09-25: the avatar responses carry only the image URL + crop. Proven by the Victor portal security tests (M)."),
+  G("SG_VICTOR_CHUNK_SESSION_UNSCOPED", "LOW", "SECURITY_GAP", ["VICTOR"], "Chunked uploads open and extend a Dropbox upload session with no work check; only the final commit is work-scoped (inside the work folder, a Victor bucket). A session holds uncommitted bytes only (nothing appears in Dropbox until the commit) and its id is random; closing it needs the client to send the work id on the first chunk (a client + server change)."),
   G("SG_OWNER_CAN_CONFIRM_AS_DJ", "MEDIUM", "UI_SERVER_MISMATCH", ["OWNER", "CLEANTONE"], "The Owner previewing the DJ portal can really confirm / withdraw a booking, and the Owner receives 'DJ CLEANTONE confirmed' as if the DJ did."),
   G("SG_STEVEN_PAYMENT_WRONG_RECIPIENT", "MEDIUM", "PRIVACY", ["STEVEN", "EXTERNAL_ENGINEERS"], "Marking ANY engineer's job paid pushes 'Payment sent' to Steven."),
   G("SG_PUSH_NO_PROD_GUARD", "MEDIUM", "SECURITY_GAP", ["OWNER", "SCHEDULED_CALLERS"], "Five senders (cycle reminder, manual sketch notify, external push cron, legacy push check, agent alerts) have no production-only guard — a local run could send real pushes."),
   G("SG_PROXY_ONLY_OWNER_ROUTES", "LOW", "SECURITY_GAP", ["OWNER"], "About half of the Owner mutation routes rely on the central gate only (no in-route check) — no second layer."),
   G("SG_PROXY_STATIC_EXT_MATCHER", "LOW", "SECURITY_GAP", ["UNKNOWN_ACCOUNT"], "The gate skips paths ending in static-file extensions; an API path ending that way would bypass it (not exploitable today)."),
-  G("SG_VICTOR_GET_NO_VENDOR_CHECK", "LOW", "SECURITY_GAP", ["VICTOR"], "Reading one Victor work does not re-check the vendor (harmless while only Victor rows exist)."),
+  G("SG_VICTOR_GET_NO_VENDOR_CHECK", "LOW", "SECURITY_GAP", ["VICTOR"], "Reading one Victor work does not re-check the vendor (harmless while only Victor rows exist).", "REMEDIATED", "2026-09-25: every Victor work route loads the work through a scoped loader (well-formed id + a Victor row, else 404). Proven by the Victor portal security tests (B)."),
   G("SG_AGENT_CHECK_INFO_LEAK", "LOW", "SECURITY_GAP", ["SCHEDULED_CALLERS"], "With the AI flag off, the agent check answers callers without the secret with small holiday counts."),
   G("SG_DIRECT_REST_RLS_UNKNOWN", "UNKNOWN", "SECURITY_GAP", ["SHALEV", "AVI", "CLEANTONE", "UNKNOWN_ACCOUNT"], "Signed-in users could call the database REST API directly with their own session; protection there depends on table RLS policies, which are not in the repository (only the notification bell is known to be RLS-scoped)."),
   G("SG_SHALEV_BALANCE_EXPOSURE", "LOW", "UI_SERVER_MISMATCH", ["SHALEV"], "Code comments say the artist never receives financial figures, yet Shalev's balance tab shows his full ledger (read-only)."),
@@ -361,7 +366,7 @@ export const SECURITY_GAPS: readonly SecurityGap[] = [
  * access / push contracts above were reviewed for SUNNY IMPACT and these hashes updated in the same change.
  */
 export const ACCESS_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/roles.ts": "23d4f79f97de0f10b81192c9afd6cb9e398a8cc891d245efc4ffe6614e8a1bd4",
+  "lib/roles.ts": "0f6865361e3ec0940ea697cd3ac15ce24a267e07019d3caf9fa54a34d7b66b1a",
   "proxy.ts": "3ea7871698926436fa12047c1660f12dbd298622c83f98318ca99f71bcf0af65",
   "lib/require-auth.ts": "5d28fa016ffe37c1b6c6847ac1ae2aa0f118977bba4c35e658f400a4ad3e5f8a",
   "lib/red-artists/portal-access.ts": "4d5454199c8f846043b3cc0097ec13ba867df5494961e5e7a3b517d35ae14b87",

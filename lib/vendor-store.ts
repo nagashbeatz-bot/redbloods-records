@@ -11,6 +11,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { segmentVictorWork } from "@/lib/victor-segments";
 import { fileRefOf } from "@/lib/victor-files";
+import { isWorkId, isVictorWork, victorMayDelete } from "@/lib/victor-scope";
 import { isExpenseFullyPaidStatus } from "@/lib/finance/classify";
 import { salaryDueDate, salaryLinkedId, salaryMonthLabel, salaryTransactionDescription } from "@/lib/victor-salary-format";
 import type {
@@ -93,9 +94,9 @@ function mapRow(
 // every route that returns work data when the caller's role is "victor"; the
 // owner keeps the full record. projectName collapses to the Victor-facing work
 // title (never the real project name), so client fallbacks never leak it.
-// NOTE: per-file dropboxPath/url inside filesSent/briefFiles still carry the
-// folder path (the player/stream need them) — that is a separate, larger change.
 export function sanitizeWorkForVictor(w: VendorWork): VendorWork {
+  // Victor may delete only his own uploads inside the work folder (lib/victor-scope) — the flag drives his delete button.
+  const sent = (w.filesSent ?? []).map((f) => ({ ...fileForVictor(f), ...(victorMayDelete(w, f) ? { deletable: true } : {}) }));
   return {
     ...w,
     projectName:      (w.title && w.title.trim()) ? w.title : "—",
@@ -105,7 +106,7 @@ export function sanitizeWorkForVictor(w: VendorWork): VendorWork {
     dropboxShareLink: null,
     notes:            "", // owner-internal notes — never shown to Victor
     versionReviews:   reviewsForVictor(w.versionReviews),
-    filesSent:        (w.filesSent     ?? []).map(fileForVictor),
+    filesSent:        sent,
     filesReceived:    (w.filesReceived ?? []).map(fileForVictor),
     briefFiles:       (w.briefFiles    ?? []).map(fileForVictor),
   };
@@ -138,7 +139,7 @@ function reviewsForVictor(
 // Path-free file object for Victor: drop dropboxPath/url/dropboxShareUrl (all
 // carry /Projects/{artist}/{project}/…) and hand back an opaque fileRef that the
 // stream/download routes resolve server-side. Keep only what the UI needs.
-function fileForVictor(f: FileLink): FileLink {
+export function fileForVictor(f: FileLink): FileLink {
   return {
     name:            f.name,
     url:             "", // required by the type; the client uses fileRef instead
@@ -194,6 +195,13 @@ export async function getVictorWorkById(id: string): Promise<VendorWork | null> 
 
   if (!data) return null;
   return mapRow(data as Record<string, unknown>, projectMap, settings.stuckAfterDays);
+}
+
+/** A work the Victor portal may act on: a well-formed id AND an existing Victor row. Null otherwise (callers answer 404 / 403). */
+export async function getScopedVictorWork(id: unknown): Promise<VendorWork | null> {
+  if (!isWorkId(id)) return null;
+  const work = await getVictorWorkById(id);
+  return isVictorWork(work) ? work : null;
 }
 
 export async function getVictorWorkForProject(projectId: string): Promise<VendorWork | null> {

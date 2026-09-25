@@ -28,18 +28,19 @@ export async function GET(req: NextRequest) {
   //     ONLY against that work's own files, so it can't reach anything else.
   //   • path              → legacy form, still scoped to Victor's own files.
   let target: string | null = null;
+  // Either form, the path must be one of a Victor work's own entries AND lie inside that work's folder
+  // (victorReadablePath) — a stored entry pointing elsewhere is refused.
+  const { victorReadablePath } = await import("@/lib/victor-scope");
   if (fileRef && workId) {
-    const { getVictorWorkById } = await import("@/lib/vendor-store");
+    const { getScopedVictorWork } = await import("@/lib/vendor-store");
     const { resolveVictorFileRef } = await import("@/lib/victor-files");
-    const work = await getVictorWorkById(workId);
-    if (work && work.vendorName === "victor") target = resolveVictorFileRef(work, fileRef);
+    const work = await getScopedVictorWork(workId);
+    if (work) target = victorReadablePath(work, resolveVictorFileRef(work, fileRef));
   } else if (path) {
     const { getVictorWork } = await import("@/lib/vendor-store");
     const works = await getVictorWork();
     for (const w of works) {
-      for (const f of [...(w.filesSent ?? []), ...(w.filesReceived ?? []), ...(w.briefFiles ?? [])]) {
-        if (f.dropboxPath === path) { target = path; break; }
-      }
+      target = victorReadablePath(w, path);
       if (target) break;
     }
   }

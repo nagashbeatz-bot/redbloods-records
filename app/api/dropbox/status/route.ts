@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 
 async function dbx(token: string, endpoint: string, body: unknown, pathRoot?: string) {
@@ -20,6 +21,7 @@ async function topFolders(token: string, pathRoot?: string): Promise<string[] | 
 /** GET /api/dropbox/status — { connected }. With ?account=1 also returns the
  *  connected account identity + visible top-level folders (no secrets). */
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   const { data } = await supabase
     .from("settings")
     .select("value")
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
 
 /** DELETE /api/dropbox/status — revokes and removes stored tokens */
 export async function DELETE() {
+  const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   try {
     // Load token to revoke it with Dropbox
     const { data } = await supabase

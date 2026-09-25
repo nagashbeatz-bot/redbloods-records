@@ -174,7 +174,7 @@ export const PROJECT_INTEGRITY = {
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "33977432a48347e93dfe0d4bac8c450b71fe1d9bac34bf3a5596545ae8beb22f",
-  "lib/types.ts": "cad118621bf25c68808c4c1d9a757b6227f7f3fbf03cbab70c5dc34c0e80e27e",
+  "lib/types.ts": "f1a0d3b1450c72b2cf50edafd1900d4fef1f6cdead9864227b0e2074d96363a8",
   "app/api/projects/route.ts": "0d47fb66bc1bef0f008ac05bc32579643eb9739a39f5838b1e3e766caf713b92",
   "app/api/projects/[id]/route.ts": "09e3269e3451bf9271c6d05f3ec31ee124c378aa048bb97844a784d68a286229",
   "lib/payment-status.ts": "f2a0e2c061e0862c0595918d0389c17cc156f73d646e7c7891054d51baf538e8",

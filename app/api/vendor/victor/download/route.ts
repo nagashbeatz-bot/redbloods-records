@@ -20,10 +20,12 @@ export async function GET(req: NextRequest) {
   const fileRef = sp.get("fileRef");
   if (!workId || !fileRef) return NextResponse.json({ error: "workId + fileRef נדרשים" }, { status: 400 });
 
-  const { getVictorWorkById } = await import("@/lib/vendor-store");
+  const { getScopedVictorWork } = await import("@/lib/vendor-store");
   const { resolveVictorFileRef } = await import("@/lib/victor-files");
-  const work = await getVictorWorkById(workId);
-  const target = work && work.vendorName === "victor" ? resolveVictorFileRef(work, fileRef) : null;
+  const { victorReadablePath } = await import("@/lib/victor-scope");
+  // The ref resolves only within this work's own files, and the path must lie inside the work's folder.
+  const work = await getScopedVictorWork(workId);
+  const target = work ? victorReadablePath(work, resolveVictorFileRef(work, fileRef)) : null;
   if (!target) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let token: string;

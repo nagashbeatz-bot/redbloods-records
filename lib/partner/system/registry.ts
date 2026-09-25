@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-10";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-11";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -466,7 +466,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("VICTOR_SALARY_PRECEDENCE", "CANONICAL_BUSINESS_RULE", "Salary status per month: an explicit status override wins; else no transaction = לא שולם after the due date (10th of next month) or צפוי before; else the transaction status (שולם / חלקי / cancelled = none / otherwise נשלח לכספים)."),
       R("VICTOR_FOURTH_STORE_CONFLICT", "CONFLICT", "A legacy per-month Victor payment store is never reconciled with the override or the transaction — two screens can show different 'paid' states."),
       R("VICTOR_SEES_NO_ARTIST", "CANONICAL_BUSINESS_RULE", "Victor never sees artist, project, folder or unsent owner notes."),
-      R("VICTOR_FILE_PATH_SECURITY", "POSSIBLE_BUG", "Victor can write file entries with arbitrary Dropbox paths that the server later deletes / streams (security review item)."),
+      R("VICTOR_FILE_PATH_SECURITY", "IMPLEMENTATION_BEHAVIOR", "Since 2026-09-25 every Victor file operation is authorized server-side: he may change nothing on a work record; read / download / delete / upload only inside the work's own storage folder (malformed or out-of-folder paths are refused); delete only files he uploaded; his payload carries no paths, links or salary. The Owner is unaffected."),
     ],
     sideEffects: [E("VICTOR_SALARY_TX", "The Owner records a Victor salary month", "A general 'צוות' expense transaction (deduplicated per month).", ["FINANCE"], "MANUAL")],
     notifications: [
@@ -587,6 +587,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("PROJECT_AUDIO_IN_DROPBOX", "CANONICAL_BUSINESS_RULE", "Project audio (the player), mixes and finals are Dropbox files; LISTEN / radio is a separate external system, not part of Redbloods."),
       R("PUBLIC_SHARE_LINKS", "IMPLEMENTATION_BEHAVIOR", "Most uploads create PUBLIC share links."),
       R("DROPBOX_CALLBACK_NO_STATE", "POSSIBLE_BUG", "The Dropbox OAuth callback has no state check (security review item)."),
+      R("STORAGE_ROUTES_OWNER_IN_ROUTE", "IMPLEMENTATION_BEHAVIOR", "The raw storage routes (stream, upload, delete, share link, intake, status, connect) check the Owner inside the route as well as at the central gate (since 2026-09-25)."),
     ],
     sideEffects: [], limitationsHe: ["סאני לא ניגש לתוכן קבצים ולא לקישורים — רק למטא-דאטה (מספר גרסאות/קבצים, תאריכים)."],
     surfaces: S(["/setup/dropbox"], ["dropbox"]),
@@ -875,4 +876,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-9", date: "2026-09-25", domain: "SHOWS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת הופעה מחוברת: אמן (לקוח / סגל), מזמין, DJ ואישור, מחיר, מקדמה, תשלום לקוח, חלוקה לפי כללי המערכת, שורות כספים, מאזן האמן, חזרות (נספרות או לא), יומן, משימות, הודעות לאמן / ל-DJ, פורטלים — ותמונת הופעות בלי דירוג." },
   { version: "2026.09.25-9", date: "2026-09-25", domain: "LABEL_DJ", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני יודע מי ה-DJ בכל הופעה, האם CLEANTONE אישר, האם נשלחה לו הודעה ומה רואה הפורטל שלו — בלי להניח ש-CLEANTONE מנגן." },
   { version: "2026.09.25-10", date: "2026-09-25", domain: "VICTOR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני מבין את ויקטור לעומק: כל העבודות (גם בלי פרויקט), פרויקט / אמן / לייבל מול לקוח, אצל מי הכדור לפי כלל המערכת + יומן השליחה (סתירות מוצגות), דדליין פנימי מול התחייבות ללקוח, גרסאות וקבצים, טיוטות מול הערות שנשלחו, המשך למיקס / ריליס, משכורת חודשית מול כספים (סתירות), נוכחות ופורטל — בלי ציון עומס או ביצועים." },
+  { version: "2026.09.25-11", date: "2026-09-25", domain: "VICTOR", dimension: "domain", from: "SECURITY_GAPS_OPEN", to: "PORTAL_HARDENED", noteHe: "הפורטל של ויקטור הוקשח בצד השרת: אין לו עריכה של רשומת עבודה, קבצים רק בתוך תיקיית העבודה, מחיקה רק של מה שהוא העלה, בלי נתיבים / קישורים / משכורת בתשובות. סאני יודע מה נסגר ומה נשאר פתוח (סשן העלאה במנות, קישורים ציבוריים, callback)." },
 ];

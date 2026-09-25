@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 import { queueVictorUploadNotice } from "@/lib/victor-upload-notify";
+import { isWorkId, isWithinRoot, uploadDestination } from "@/lib/victor-scope";
 
 export const maxDuration = 300;
 
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
     if (!file || !workId) {
       return NextResponse.json({ error: "׳—׳¡׳¨׳™׳ ׳₪׳¨׳׳˜׳¨׳™׳: file, workId, dropboxFolder" }, { status: 400 });
     }
+    if (!isWorkId(workId)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const role: "owner" | "victor" = (await getAuthRole()) === "owner" ? "owner" : "victor";
 
     // Resolve the base folder SERVER-SIDE from the workId (creating it on first
     // use). The client never sends a path, so Victor can upload without ever
@@ -56,14 +59,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "folder not ready" }, { status: 409 });
     }
 
-    const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
-    // subFolder is a fixed bucket name (Production / 03_Approved …) — strip
-    // anything that isn't a plain name so it can't alter the path (no traversal).
-    const cleanSubFolder = (subFolder ?? "").replace(/[^A-Za-z0-9_]/g, "");
-    const cleanBase      = baseFolder.replace(/\/+$/, "");
-    const dropboxPath    = cleanSubFolder
-      ? `${cleanBase}/${cleanSubFolder}/${sanitizedName}`
-      : `${cleanBase}/${sanitizedName}`;
+    // The destination is derived server-side (lib/victor-scope): inside the work folder only, a plain bucket
+    // name (Victor: Production / 02_From_Victor), a sanitized file name. Anything else -> 403, nothing uploaded.
+    const dropboxPath = uploadDestination(baseFolder, subFolder, file.name, role);
+    if (!dropboxPath) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
     // Upload to Dropbox
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -86,6 +85,10 @@ export async function POST(req: NextRequest) {
 
     const uploaded   = (await uploadRes.json()) as { path_display: string; name: string };
     const finalPath  = uploaded.path_display;
+    if (!isWithinRoot(finalPath, baseFolder)) {
+      console.error("[vendor-upload] committed path left the work folder - refusing to record it");
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
     const streamUrl  = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
     // Get share link
@@ -105,10 +108,10 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, uploadedAt: new Date().toISOString(), ...(versionLabel ? { versionLabel } : {}) };
+    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, uploadedAt: new Date().toISOString(), uploadedBy: role, ...(versionLabel ? { versionLabel } : {}) };
 
     // Update vendor_project_work.files_sent
-    const { updateVictorWork, getVictorWorkForProject } = await import("@/lib/vendor-store");
+    const { updateVictorWork, fileForVictor } = await import("@/lib/vendor-store");
     // Fetch current record to append
     const { supabase } = await import("@/lib/supabase");
     const { data: row } = await supabase
@@ -136,7 +139,7 @@ export async function POST(req: NextRequest) {
     // ── Owner push (batched, 3-min window) — ONLY when Victor uploaded, and only
     //    after the file is saved. Best-effort: never block/fail the upload. ──
     try {
-      if ((await getAuthRole()) === "victor") {
+      if (role === "victor") {
         let projectName = (row.title as string | null) ?? "";
         if (!projectName && row.project_id) {
           const { data: proj } = await supabase
@@ -149,7 +152,9 @@ export async function POST(req: NextRequest) {
       console.error("[vendor-upload] notify queue failed (non-fatal):", e);
     }
 
-    return NextResponse.json({ ok: true, file: newFile });
+    // Victor gets the path-free file object (opaque fileRef, no storage path, no share link) - exactly
+    // what his view needs to play / download / delete it; the Owner keeps the full entry.
+    return NextResponse.json({ ok: true, file: role === "victor" ? { ...fileForVictor(newFile), deletable: true } : newFile });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "׳©׳’׳™׳׳× ׳©׳¨׳×";
     console.error("[dropbox/vendor-upload]", msg);

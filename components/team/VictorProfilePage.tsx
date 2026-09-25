@@ -2456,8 +2456,9 @@ function VictorProjectDrawer({
         <button onClick={() => downloadFile(file, work.id, dlFail)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={15} /></button>
         {/* Delete a version file — owner (Hebrew) + Victor (English). Victor's
-            delete goes through the secure fileRef endpoint (see handleDeleteFile). */}
-        {(() => {
+            delete goes through the secure fileRef endpoint (see handleDeleteFile)
+            and is offered only on his own uploads (server flag `deletable`). */}
+        {(isOwner || file.deletable) && (() => {
           const fkey = fileId(file);
           const isDeleting = deletingKey === fkey;
           return deleteConfirmKey === fkey ? (

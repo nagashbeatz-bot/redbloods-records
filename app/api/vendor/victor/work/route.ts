@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
- * GET  /api/vendor/victor/work?projectId=...  — get work record for a project
+ * GET  /api/vendor/victor/work?projectId=...  — get work record for a project (owner only: only Owner surfaces
+ *      hold a project id; Victor never receives one, so a lookup by project id is never his to make)
  * POST /api/vendor/victor/work               — create a new work record (owner only)
  */
 
 export async function GET(req: Request) {
-  const denied = await requireVictorAccess(); if (denied) return denied;
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
     if (!projectId) return NextResponse.json({ ok: false, error: "projectId חסר" }, { status: 400 });
 
-    const { getVictorWorkForProject, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
+    const { getVictorWorkForProject } = await import("@/lib/vendor-store");
     const work = await getVictorWorkForProject(projectId);
-    const safe = work && (await getAuthRole()) === "victor" ? sanitizeWorkForVictor(work) : work;
-    return NextResponse.json({ ok: true, work: safe });
+    return NextResponse.json({ ok: true, work });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

@@ -1,6 +1,7 @@
 import "server-only";
 import { getVictorWorkById, updateVictorWork } from "@/lib/vendor-store";
 import { getDropboxToken } from "@/lib/dropbox-token";
+import { victorWorkRoot } from "@/lib/victor-scope";
 
 /**
  * Server-side resolver for a Victor work's Dropbox base folder — so the client
@@ -38,12 +39,17 @@ async function createFolder(token: string, path: string): Promise<void> {
 /**
  * Returns the work's Dropbox base folder, creating it if missing. workId only —
  * the path is derived server-side from the DB record, never trusted from a client.
- * Throws for a non-victor / missing work.
+ * Throws for a non-victor / missing work, and for a folder that is not a canonical Victor work folder
+ * (/Projects/{artist}/{project}/Victor or /Projects/Victor/{title}) — fail closed, nothing is created.
  */
 export async function ensureVendorFolder(workId: string): Promise<string> {
   const work = await getVictorWorkById(workId); // server-side: full, unsanitized
   if (!work || work.vendorName !== "victor") throw new Error("work not found");
-  if (work.dropboxFolder) return work.dropboxFolder;
+  if (work.dropboxFolder) {
+    const root = victorWorkRoot(work.dropboxFolder);
+    if (!root) throw new Error("work folder outside the Victor scope");
+    return root;
+  }
 
   const hasProject = !!(work.projectId && (work.projectName ?? "").trim() && work.projectName !== "—");
   let basePath: string;
@@ -58,6 +64,8 @@ export async function ensureVendorFolder(workId: string): Promise<string> {
     const titleFolder = sanitizeName(work.title ?? "") || `vendor_work_${workId.slice(0, 8)}`;
     basePath = `/Projects/Victor/${titleFolder}`;
   }
+
+  if (!victorWorkRoot(basePath)) throw new Error("cannot derive a safe Victor work folder");
 
   const token = await getDropboxToken();
   await createFolder(token, basePath);

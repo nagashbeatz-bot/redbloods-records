@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
  * GET /api/dropbox/stream?path=/projectId/filename.mp3
@@ -7,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Used as the audio src so the player always gets a playable direct URL.
  */
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   let token: string;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");

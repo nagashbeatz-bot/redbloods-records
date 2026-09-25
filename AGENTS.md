@@ -107,4 +107,11 @@ Victor's work is a system contract in `lib/partner/system/victor.ts`. It covers 
 - A change to a Victor work column, status / work-state / outcome, a `vendor_victor_*` / `victor_*` setting, a Victor route (`app/api/vendor/victor/*`, `app/api/dropbox/vendor-*`), the ball rule, the salary view or a Victor push must update that contract. `scripts/test-sunny-victor.tsx` pins the schema, the vocabularies, the settings keys, the route families and `VICTOR_REVIEWED_FINGERPRINTS`.
 - The handoff must reuse the app's own `computeVictorBall`, never a second rule. A disagreeing send log is shown as CONFLICTING_EVIDENCE, not resolved.
 - A salary month is paid only when a finance row is שולם. Overrides and legacy keys are Owner statements, and a disagreement is a conflict. Never mix $ and ₪. The monthly goal is a KPI, never a pay rule. There is no workload cap and no performance score.
-- Victor portal file-access findings live in `SECURITY_GAPS`. Report them only; fixing them is a separate, approved mission.
+- Victor portal security is enforced server-side, and `scripts/test-victor-portal-security.tsx` proves it with the real routes on fakes:
+  - Victor may change nothing on a work record (every work PATCH is refused).
+  - Every Victor file read / download / delete / upload must lie inside the work's own canonical folder (`lib/victor-scope.ts`); malformed or out-of-folder paths fail closed.
+  - Victor may delete only a file whose recorded uploader is `victor`.
+  - Victor responses carry no storage path, link or salary.
+  - Lookups by project id, the folder builder and the raw storage routes are Owner-only, checked in-route as well as at the proxy.
+- A new Victor-reachable route or file operation must use that scope module and extend that test.
+- Remaining findings stay in `SECURITY_GAPS` with an honest status (REPORTED_NOT_FIXED / REMEDIATED with proof / PARTIALLY_REMEDIATED). Fixing an open one is a separate, approved mission.

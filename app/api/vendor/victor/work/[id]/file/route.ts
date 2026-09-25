@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 import { fileRefOf } from "@/lib/victor-files";
+import { victorMayDelete } from "@/lib/victor-scope";
 import type { FileLink, VersionReview } from "@/lib/types";
 
 // ── Version-key helpers (pure) — kept in sync with VictorProfilePage.tsx so the
@@ -30,6 +31,9 @@ function versionKeysOf(files: FileLink[]): Set<string> {
  * filesSent array (which would risk losing paths / corruption). The server resolves
  * the fileRef against THIS work's own filesSent, deletes the real file from Dropbox,
  * and only then removes that single entry from the DB.
+ *
+ * Victor additionally may delete only a file HE uploaded that lies inside the work's own folder
+ * (victorMayDelete): an Owner upload, an older entry with no uploader record, or a path outside the folder → 403.
  */
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const denied = await requireVictorAccess(); if (denied) return denied; // owner|victor; else 403/401
@@ -39,13 +43,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const fileRef = typeof body?.fileRef === "string" ? body.fileRef.trim() : "";
     if (!fileRef) return NextResponse.json({ ok: false, error: "fileRef נדרש" }, { status: 400 });
 
-    const { getVictorWorkById, updateVictorWork, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
+    const { getScopedVictorWork, getVictorWorkById, updateVictorWork, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
 
-    const work = await getVictorWorkById(id);
+    // Scope guard: a well-formed id of a Victor row only (anything else → 404).
+    const work = await getScopedVictorWork(id);
     if (!work) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-
-    // Scope guard: this endpoint manages Victor's rows only.
-    if (work.vendorName !== "victor") return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
     // Resolve the fileRef ONLY within THIS work's filesSent — never receivedFiles /
     // briefFiles, and never another work's files. A ref from elsewhere → 404.
@@ -53,6 +55,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const idx = filesSent.findIndex(f => f.dropboxPath && fileRefOf(f.dropboxPath) === fileRef);
     if (idx < 0) return NextResponse.json({ ok: false, error: "file not found" }, { status: 404 });
     const dropboxPath = filesSent[idx].dropboxPath as string;
+    const role = await getAuthRole();
+    if (role !== "owner" && !victorMayDelete(work, filesSent[idx])) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
 
     // Delete from Dropbox FIRST. Only touch the DB after it succeeds (or is already
     // gone). A real failure keeps the file so nothing is left orphaned/inconsistent.
@@ -91,7 +97,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // Return the fresh record so the client updates state from the server (never
     // rebuilds filesSent locally). Victor gets the path-free sanitized shape.
     const updated = await getVictorWorkById(id);
-    const safe = updated && (await getAuthRole()) === "victor" ? sanitizeWorkForVictor(updated) : updated;
+    const safe = updated && role === "victor" ? sanitizeWorkForVictor(updated) : updated;
     return NextResponse.json({ ok: true, work: safe });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
