@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-4";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-5";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -112,21 +112,26 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     surfaces: S([], ["sessions"]),
   },
   {
-    id: "GOOGLE_CALENDAR", group: "OPERATIONS", titleHe: "יומן Google",
-    purpose: "The Owner's Google Calendar + Google Tasks, used to mirror sessions, shows, meetings and follow-up tasks, and to find free slots.",
-    canonicalSource: "Google Calendar / Google Tasks (external). Redbloods stores only event / task ids on its own records.",
+    id: "GOOGLE_CALENDAR", group: "OPERATIONS", titleHe: "יומן Google — הקשר הזמן של החברה",
+    purpose: "The Owner's LIVE Google Calendar (every calendar: sessions, shows, meetings, personal events, holidays, all-day, recurring, invited) — a HORIZONTAL time-context source for every Redbloods domain (projects, clients, shows, releases, tasks, team), plus Google Tasks mirrored from Redbloods tasks.",
+    canonicalSource: "Google Calendar (external) is the source of truth; the Redbloods MAIN service is the trusted integration owner (stored OAuth credential, automatic token refresh). Redbloods records store event ids (sessions / meetings / shows / social content) — the only canonical links.",
     entityTypes: ["calendar_event"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["NOT_CONNECTED", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["integrations"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_CONNECTED",
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    states: ["AVAILABLE", "READ_ONLY"],
+    readCapabilities: ["calendar", "project_view", "integrations"], learnKinds: [], proposableActions: [],
+    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("CALENDAR_REAUTH", "IMPLEMENTATION_BEHAVIOR", "The app asks the Owner to reconnect only when Google definitively rejects the stored credential; transient errors never lock the app."),
       R("CALENDAR_ATTENDEE_INVITES", "IMPLEMENTATION_BEHAVIOR", "Creating a calendar event from the app can invite attendees and email them; session events never have attendees."),
       R("MEETING_EVENT_STALE", "POSSIBLE_BUG", "Changing or cancelling a meeting does not update or delete its Google event.", ["MEETINGS"]),
       R("CALENDAR_CALLBACK_NO_STATE", "POSSIBLE_BUG", "The calendar OAuth callback has no state check (security review item)."),
+      R("CALENDAR_HORIZONTAL_CONTEXT", "CANONICAL_BUSINESS_RULE", "The calendar is time context for the whole company: every domain may use it (a project's sessions and the Owner's occupancy before its deadline, a show's rehearsals, a client's meetings, work before a release). An event not linked to Redbloods (personal, holiday) affects availability only and is never a business fact.", ["PROJECTS", "CLIENTS", "SHOWS", "RELEASES", "TASKS", "SESSIONS", "MEETINGS"]),
+      R("CALENDAR_LINK_QUALITY", "CANONICAL_BUSINESS_RULE", "A calendar event is CANONICALLY linked only when a Redbloods record stores its event id; a title that names a project / person is TEXT_MATCH (inferred), several matches are AMBIGUOUS, otherwise UNLINKED — never upgraded.", ["SESSIONS", "MEETINGS", "SHOWS", "PROJECTS"]),
+      R("CALENDAR_FAILURE_IS_NOT_EMPTY", "CANONICAL_BUSINESS_RULE", "A calendar that could not be read (not connected / needs reconnect / provider error / partial) is never 'empty' and never means 'the Owner is free'."),
+      R("CALENDAR_FREE_IS_NOT_WORK_TIME", "OWNER_POLICY", "Free calendar time only means 'no calendar commitment' — it is not automatically suitable for work."),
+      R("CALENDAR_WEEK_UTC_WINDOW", "POSSIBLE_BUG", "The Calendar page's week window starts at 00:00 UTC (03:00 in Israel), so events between midnight and 03:00 on the first day can be missed there. Sunny's read uses Israel-time windows."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא קורא את היומן ולא כותב אליו. הוא יודע רק אם היומן מחובר ל-Redbloods.", "אם תבקש 'תוסיף ליומן' — סאני יבין את הבקשה אבל יגיד שאין לו חיבור ליומן."],
+    sideEffects: [], limitationsHe: ["סאני קורא את היומן החי (כל היומנים) דרך האינטגרציה של Redbloods — בלי אסימונים. קריאה יכולה לגרום לחידוש אסימון רגיל בשירות הראשי.", "סאני לא כותב ליומן: יצירה / עדכון / מחיקה / קביעת סשן הן פעולות עתידיות שידרשו אישור בעלים.", "קישורי פגישה וקבצים מצורפים מופיעים רק כ'יש / אין'.", "יומני free/busy-only ויומנים מוסתרים לא נקראים (כמו בדף היומן).", "משימות Google Tasks עצמן לא נקראות (רק משימות Redbloods)."],
     surfaces: S(["/setup/calendar"], ["calendar"]),
   },
   {
@@ -635,7 +640,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("PATTERN_LADDER", "OWNER_POLICY", "Single evidence = OBSERVATION; repeated = PATTERN_CANDIDATE; only with Owner confirmation does it become operating knowledge — never an automatic rule or Charter change."),
     ],
     sideEffects: [], limitationsHe: ["זיכרון ארגוני (P2) עדיין לא פעיל בפרודקשן."],
-    surfaces: S([], ["partner/actions", "partner/finance", "partner/integrity", "partner/knowledge", "partner/outcomes"]),
+    surfaces: S([], ["partner/actions", "partner/finance", "partner/integrity", "partner/internal", "partner/knowledge", "partner/outcomes"]),
   },
   {
     id: "SUNNY_CONNECTOR", group: "SUNNY", titleHe: "החיבור ל-Claude",
@@ -704,6 +709,10 @@ export const RELATIONSHIPS: readonly Relationship[] = [
   L("mix_version", "file", "copied into project files when a full mix", "DERIVED_RELATION"),
   L("session", "transaction", "rehearsal / shoot-day expense linked session id", "CANONICAL_RELATION"),
   L("session", "calendar_event", "stored event id", "CANONICAL_RELATION"),
+  L("meeting", "calendar_event", "stored event id", "CANONICAL_RELATION"),
+  L("social_content", "calendar_event", "stored event id", "CANONICAL_RELATION"),
+  L("project", "calendar_event", "via a session / meeting / social item that stores the event id; otherwise the event title names the project", "TEXT_MATCH", "canonical only through a stored id; a title match is inferred"),
+  L("client", "calendar_event", "via a meeting that stores the event id; otherwise the event title names the client", "TEXT_MATCH", "canonical only through a stored id"),
   L("victor", "transaction", "salary month key on the transaction", "CANONICAL_RELATION"),
   L("any", "any", "Owner-confirmed relationship (P2 knowledge)", "OWNER_CONFIRMED_RELATION"),
   L("person", "person", "two people with the same name", "AMBIGUOUS", "Sunny asks the Owner — never picks"),
@@ -754,6 +763,12 @@ export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("SPLIT_INCOME", "FINANCE", "Split an expected income into received + remaining", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Atomic in the database; candidate for RECORD_RECEIVED_INCOME."),
   A("CREATE_SESSION", "SESSIONS", "Book a session / rehearsal / shoot day", "FUTURE_PRIMITIVE_REQUIRED", "LOW", "GOOGLE_CALENDAR", "OWNER_APPROVAL_IN_DASHBOARD", "Creates a calendar event, rehearsal finance, Shalev push."),
   A("CALENDAR_WRITE", "GOOGLE_CALENDAR", "Create / move / delete calendar events", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today (earlier Owner decision: no calendar writes yet). Future primitive: external effect on Google Calendar — preview of the exact event; external-effect confirmation."),
+  A("CREATE_CALENDAR_EVENT", "GOOGLE_CALENDAR", "Create a calendar event", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: preview of the exact event (calendar, time, attendees — attendees are emailed); external-effect confirmation."),
+  A("UPDATE_CALENDAR_EVENT", "GOOGLE_CALENDAR", "Change a calendar event", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: before / after preview; if Redbloods stores the event id, the linked session / meeting must change consistently; external-effect confirmation."),
+  A("DELETE_CALENDAR_EVENT", "GOOGLE_CALENDAR", "Delete a calendar event", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: destructive external change (attendees notified); the Redbloods record that stores the id must be handled; destructive + external confirmation."),
+  A("SCHEDULE_SESSION", "SESSIONS", "Schedule a session (session + calendar event)", "FUTURE_PRIMITIVE_REQUIRED", "LOW", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: creates the session and its event together (Shalev projects also push Shalev); preview + external-effect confirmation."),
+  A("SCHEDULE_MEETING", "MEETINGS", "Schedule a client meeting (+ calendar event)", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: meeting + event; preview + external-effect confirmation."),
+  A("RESCHEDULE_EVENT", "GOOGLE_CALENDAR", "Move an event / session to another time", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "GOOGLE_CALENDAR", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: availability-checked proposal, before / after preview, linked session updated consistently; external-effect confirmation."),
   A("CREATE_TASK", "TASKS", "Create / complete a task", "PROPOSAL_CANDIDATE", "NONE", "GOOGLE_CALENDAR", "OWNER_APPROVAL_IN_DASHBOARD", "Low risk; may mirror to Google Tasks."),
   A("BALANCE_ENTRY", "ARTIST_BALANCES", "Add / edit / delete ledger entries", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "NONE", "NOT_EXECUTABLE_YET", "Not executable today. Future typed primitive for artist money — financial confirmation."),
   A("CLOSE_BALANCE_CYCLE", "ARTIST_BALANCES", "Close a balance cycle", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "NONE", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: irreversible cycle snapshot — financial + strong confirmation."),
@@ -799,4 +814,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-2", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת פרויקט מחוברת: לקוח/אמן (עם איכות קישור), כסף מוסבר לפי הכללים, סשנים, הצעה, משימות, מי מחכה למי, ויקטור, מהנדסים, Red Films, ריליס, מסירה, אותות — ומה חסר." },
   { version: "2026.09.25-3", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע הכול על פרויקט: הערות, הוראות, תגובות מיקס, ביקורות ויקטור, צוות Red Films, קבצים וגרסאות, מסירה, התראות, היסטוריה, ראיות מחיר ומי מחכה למי — בחלקים לפי בקשה. מפת פערים גלובלית ומפת כל פעולות הפרויקט." },
   { version: "2026.09.25-4", date: "2026-09-25", domain: "PLATFORM_ACCESS", dimension: "read", from: "INTENTIONALLY_UNAVAILABLE", to: "PARTIAL", noteHe: "סאני קורא את כל ההגדרות שאינן סודות (הגדרות ויקטור, עוגני מחזורי יתרה, לוח דוחות, מצב תחזוקה, יעדים, זמינות, סימוני פושים, נוכחות בפורטלים, בקשת קבצים סופיים מסטיבן). אסימונים וקישורי שיתוף — אף פעם. אין יותר פעולה ‘אסורה לתמיד’ — רק רמות אישור." },
+  { version: "2026.09.25-5", date: "2026-09-25", domain: "GOOGLE_CALENDAR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני רואה את היומן החי — כל היומנים, אירועים אישיים, חגים, חוזרים, מוזמנים — ומחבר אותו לפרויקטים, סשנים, פגישות, הופעות וריליסים (קנוני / הסקה / עמום / לא מקושר), כולל זמינות. בלי אסימונים, בלי כתיבה." },
 ];

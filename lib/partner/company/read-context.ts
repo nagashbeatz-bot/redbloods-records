@@ -33,6 +33,7 @@ import { readProjectDetailRaw } from "../projects/detail-reader";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import { readSettingsState } from "../settings/reader";
 import type { SettingsState } from "../settings/types";
+import type { CalendarWindowResult } from "../calendar/types";
 
 export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
@@ -51,6 +52,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   projectDetail(): Promise<Avail<ProjectDetailRaw>>;
   /** Registered non-secret settings families (bounded; never credentials). */
   settings(): Promise<Avail<SettingsState>>;
+  /** Live Google Calendar window (Israel dates). MAIN: the trusted integration directly; connector: MAIN's internal endpoint. */
+  calendar(startYmd: string, endYmd: string): Promise<Avail<CalendarWindowResult>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
   extras(): Promise<IntegrityExtras | null>;
   integrity(): Promise<CompanyIntegrityRegister>;
@@ -102,5 +105,20 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     try { return { status: "OK", value: await readSettingsState(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, settings };
+  const calendarMemo = new Map<string, Promise<Avail<CalendarWindowResult>>>();
+  const calendar = (startYmd: string, endYmd: string): Promise<Avail<CalendarWindowResult>> => {
+    const key = `${startYmd}|${endYmd}`;
+    if (!calendarMemo.has(key)) calendarMemo.set(key, (async (): Promise<Avail<CalendarWindowResult>> => {
+      try {
+        if (process.env.REDBLOODS_MCP_ONLY === "true") {
+          const { fetchCalendarWindowRemote } = await import("../calendar/remote");
+          return { status: "OK", value: await fetchCalendarWindowRemote(startYmd, endYmd) };
+        }
+        const [{ readCalendarWindowCore }, { googleCalendarApi }] = await Promise.all([import("../calendar/read-core"), import("../calendar/google-api")]);
+        return { status: "OK", value: await readCalendarWindowCore(googleCalendarApi(), startYmd, endYmd) };
+      } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+    })());
+    return calendarMemo.get(key)!;
+  };
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, settings, calendar };
 }

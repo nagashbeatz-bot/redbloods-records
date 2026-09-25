@@ -28,6 +28,12 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /\bya29\.[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   /\brbmcp_[A-Za-z0-9]{16,}/g,
+  // meeting join links (bearer access to a call) — Sunny gets hasMeetingLink, never the URL
+  /https?:\/\/meet\.google\.com\/[^\s)"'<>]+/gi,
+  /https?:\/\/[a-z0-9.-]*zoom\.us\/(?:j|w|my|s)\/[^\s)"'<>]+/gi,
+  /https?:\/\/teams\.(?:microsoft|live)\.com\/[^\s)"'<>]+/gi,
+  /https?:\/\/[^\s)"'<>]*[?&](?:pwd|passcode|password)=[^\s)"'<>]+/gi,
+  /\b1\/\/[A-Za-z0-9_-]{20,}/g,
 ];
 export const REDACTED = "[קישור / אסימון גישה הוסתר]";
 export function scrubSecrets(text: string | null): string | null {

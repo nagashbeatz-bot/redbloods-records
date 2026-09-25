@@ -25,7 +25,7 @@ export const KNOWLEDGE_SCHEMA_VERSION = "partner-knowledge-v1";
 export type KnowledgeDomain = "COMPANY" | "PARTNER" | "FINANCE" | "PROJECTS" | "CLIENTS" | "SALES" | "LABEL" | "SHOWS" | "SESSIONS" | "TEAM";
 
 /** Which request-scoped Partner sources a capability reads (the Gateway loads only these, once per request). */
-export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "PROJECT_DETAIL" | "SETTINGS";
+export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "PROJECT_DETAIL" | "SETTINGS" | "CALENDAR";
 
 /**
  * Who is asking. INTERNAL = a Redbloods OS surface behind the Owner session. EXTERNAL = a remote interface (the Claude
@@ -110,6 +110,8 @@ export interface KnowledgeCapability {
     sensitivity: "STANDARD" | "FINANCIAL" | "PERSONAL";
   };
   needs: readonly KnowledgeSourceNeed[];
+  /** Loaded too, reported in sources[], but their failure never lowers completeness (e.g. live calendar context for a project). */
+  optionalNeeds?: readonly KnowledgeSourceNeed[];
   /** PURE: reads the given sources only; returns every matching item in a deterministic order (the Gateway pages). */
   read(src: KnowledgeSources, q: KnowledgeQuery): KnowledgeReadResult;
 }

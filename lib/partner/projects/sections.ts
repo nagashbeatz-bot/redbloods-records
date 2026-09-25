@@ -20,6 +20,9 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { ProjectDetailRaw, DetailFile } from "./detail-types";
 import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { buildProjectView, type ProjectView } from "./view";
+import type { CalendarWindowResult } from "../calendar/types";
+import { buildCalendarLinkIndex, eventsForEntity, linkCalendarEvent } from "../calendar/links";
+import { availability, dayList } from "../calendar/availability";
 
 export const PROJECT_SECTIONS = [
   "summary", "identity", "people", "money", "notes", "files", "materials", "sessions", "calendar", "proposal", "tasks", "meetings", "waiting",
@@ -205,6 +208,25 @@ function calendarOf(c: Ctx): SectionRow[] {
   for (const t of rows(d?.tasks).filter((x) => x.relatedType === "project" && x.relatedId === id)) out.push(R(`task:${t.id}`, t.title ?? "משימה", "FACT", { kind: "TASK", due: t.dueDate, status: t.status, hasGoogleTask: t.hasGoogleTask }));
   for (const k of rows(d?.contentItems).filter((x) => x.projectId === id && x.hasCalendarEvent)) out.push(R(`content:${k.id}`, k.title ?? "תוכן", "FACT", { kind: "SOCIAL_CONTENT", due: k.dueDate, publish: k.publishDate, hasCalendarEvent: true }));
   if (c.v.identity?.deadline) out.push(R("deadline", `דדליין ${c.v.identity.deadline}`, "FACT", { kind: "DEADLINE", date: c.v.identity.deadline, onCalendar: false }));
+  // ── live Google Calendar (through the trusted MAIN integration) ──
+  const cal = ok(c.src.calendar) as CalendarWindowResult | null;
+  if (!cal || (cal.status !== "CALENDAR_DATA_AVAILABLE" && cal.status !== "CALENDAR_PARTIAL")) {
+    out.push(R("live-calendar-status", "היומן החי לא נקרא", "UNKNOWN", { kind: "LIVE_CALENDAR_STATUS", status: cal?.status ?? "NOT_LOADED", reasons: cal?.reasons ?? [], note: "not an empty calendar — related events and availability are unknown" }));
+    return out;
+  }
+  const idx = buildCalendarLinkIndex(c.ops, c.st);
+  const linked = cal.events.map((e) => linkCalendarEvent(e, idx));
+  const rel = eventsForEntity(linked, c.key);
+  const evRow = (kind: string, l: (typeof linked)[number]) => R(`live:${l.event.id}`, l.event.title ?? "(ללא כותרת)", kind === "LIVE_EVENT_CANONICAL" ? "FACT" : "OBSERVATION", { kind, relationship: l.quality, basis: l.edges.filter((e) => e.to === c.key).map((e) => e.basis), start: l.event.start, end: l.event.end, allDay: l.event.allDay, location: l.event.location, status: l.event.status, calendar: l.event.calendarName, eventId: l.event.id });
+  out.push(...rel.canonical.map((l) => evRow("LIVE_EVENT_CANONICAL", l)), ...rel.inferred.map((l) => evRow("LIVE_EVENT_INFERRED", l)), ...rel.ambiguous.map((l) => evRow("LIVE_EVENT_AMBIGUOUS", l)));
+  const winEnd = /^\d{4}-\d{2}-\d{2}$/.test(cal.window.end) ? cal.window.end : cal.window.end.slice(0, 10);
+  const until = c.v.identity?.deadline && c.v.identity.deadline >= c.today ? (c.v.identity.deadline < winEnd ? c.v.identity.deadline : winEnd) : null;
+  if (until) {
+    const av = availability(cal.events, dayList(c.today, until), cal.status);
+    out.push(R("schedule-context", "עומס הבעלים עד הדדליין (הקשר כללי — לא עובדות של הפרויקט)", "DERIVED", { kind: "GENERAL_SCHEDULE_CONTEXT", from: c.today, to: until, deadlineBeyondWindow: c.v.identity!.deadline! > winEnd, calendarStatus: cal.status,
+      occupiedMinutes: av.reduce((s, d) => s + (d.occupiedMinutes ?? 0), 0), freeMinutesInsideDay: av.every((d) => d.free) ? av.reduce((s, d) => s + (d.free ?? []).reduce((x, f) => x + f.minutes, 0), 0) : null,
+      holidays: av.flatMap((d) => d.allDay.filter((x) => x.holiday).map((x) => d.date)), overlapDays: av.filter((d) => d.overlaps.length).map((d) => d.date), note: "personal events count as occupied time only; they are not attached to the project" }));
+  }
   return out;
 }
 

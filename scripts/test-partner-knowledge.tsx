@@ -256,7 +256,7 @@ void (async () => {
     ok("11. no dynamic import / eval / Function / require in the knowledge layer or MCP adapter", !/import\(|\beval\(|new Function|require\(/.test(kn + dir("lib/integrations/partner-mcp").replace(/await import\("@\/lib\/(supabase|partner\/gateway\/server|partner\/bridge\/server|partner\/owner-knowledge\/server|supabase-server|roles)"\)/g, "")));
     ok("capability lookup is an exact Map lookup", /map\.has\(id\) \? map\.get\(id\)!/.test(fs.readFileSync(path.join(root, "lib/partner/knowledge/registry.ts"), "utf8")));
     const srv = fs.readFileSync(path.join(root, "lib/partner/gateway/server.ts"), "utf8");
-    ok("the Gateway loads only the capability's declared sources, and refusals read nothing", /loadSources\(ctx, v\.value\.cap\.needs, audience\)/.test(srv) && /v\.ok \? await loadSources/.test(srv));
+    ok("the Gateway loads only the capability's declared sources, and refusals read nothing", /loadSources\(ctx, \[\.\.\.v\.value\.cap\.needs, \.\.\.\(v\.value\.cap\.optionalNeeds \?\? \[\]\)\], audience, calendarWindow\)/.test(srv) && /v\.ok \? await loadSources/.test(srv));
     const mcpServer = fs.readFileSync(path.join(root, "lib/integrations/partner-mcp/server.ts"), "utf8");
     ok("MCP binds partner_query to the Gateway only, as EXTERNAL with the Owner's grant", /query: async \(a\) => \(await queryPartnerKnowledge\(a, MCP_AUDIENCE\)\)/.test(mcpServer) && /MCP_AUDIENCE = \{ channel: "EXTERNAL", ownerAuthorized: true \}/.test(mcpServer));
     ok("18. no write / answer path anywhere in the knowledge layer or MCP (no Owner answer can be written from Claude)", !/answerIntegrityQuestion|answerFinanceQuestion|decideSuggestedAction|executeApprovedAction/.test(kn + dir("lib/integrations/partner-mcp")));

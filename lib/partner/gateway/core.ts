@@ -22,6 +22,7 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import type { SettingsState } from "../settings/types";
+import type { CalendarWindowResult } from "../calendar/types";
 import {
   GATEWAY_SCHEMA_VERSION, GATEWAY_TEXT_POLICY, RECENT_DAYS,
   type GText, type GatewayFreshness, type GatewaySourceName, type GatewaySourceStatus, type GatewayTool,
@@ -67,6 +68,8 @@ export interface GatewaySources {
   projectDetail?: Avail<ProjectDetailRaw>;
   /** Registered non-secret settings families (never credentials). */
   settings?: Avail<SettingsState>;
+  /** The Owner's LIVE Google Calendar window (sanitized; read through the trusted MAIN integration). The result carries its own read status. */
+  calendar?: Avail<CalendarWindowResult>;
   identities: GatewayAppIdentities;
   /** Who is asking (for knowledge enrichment). Absent = the most restrictive audience (EXTERNAL, no Owner authority). */
   audience?: KnowledgeAudience;

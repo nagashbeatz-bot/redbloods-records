@@ -15,8 +15,8 @@
  *  - bounded: at most ROW_CAP rows per section (paged); a capped section is reported as capped.
  */
 
-import type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OperationsRaw } from "./types";
-export type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OperationsRaw };
+import type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OpsCalendarLink, OperationsRaw } from "./types";
+export type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OpsCalendarLink, OperationsRaw };
 
 interface Resp { data: unknown[] | null; error: { message?: string } | null }
 export interface OpsQuery extends PromiseLike<Resp> {
@@ -52,7 +52,7 @@ export const mapSection = <T,>(sec: Section<Record<string, unknown>> | null, f: 
   sec ? { rows: sec.rows.map(f).filter((x): x is T => x !== null), capped: sec.capped } : null;
 
 export async function readOperationsRaw(client: OperationsReadClient): Promise<OperationsRaw> {
-  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta] = await Promise.all([
+  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta, clSess, clMeet, clShow, clSocial] = await Promise.all([
     readSection(client, "red_films_productions", "id, title, production_type, status, project_id, client_id, artist_name, client_source, shoot_date, publish_date, edit_status, collection_status, general_budget, client_price, advance_required, advance_received"),
     readSection(client, "red_films_budget_items", "production_id, planned_amount, actual_amount, status, linked_transaction_id"),
     readSection(client, "red_films_budget_payments", "production_id, amount, payment_date"),
@@ -77,7 +77,20 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "settings", "key", (q) => q.in("key", ["google_calendar_token", "dropbox_tokens"])),
     // project metadata the company-state reader drops (hidden projects included) — never notes / files / folders / links
     readSection(client, "projects", "id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, is_hidden, planned_hours, planned_days, updated_at"),
+    // stored Google Calendar event ids → canonical calendar relationships (ids only)
+    readSection(client, "sessions", "id, project_id, show_id, date, status, calendar_event_id"),
+    readSection(client, "meetings", "id, project_id, client_id, date, status, calendar_event_id"),
+    readSection(client, "shows", "id, artist_client_id, date, status, calendar_event_id"),
+    readSection(client, "social_content_items", "id, project_id, due_date, status, calendar_event_id"),
   ]);
+  const links = (sec: Section<Record<string, unknown>> | null, kind: OpsCalendarLink["kind"], f: (r: Record<string, unknown>) => Omit<OpsCalendarLink, "eventId" | "kind" | "entityId">): Section<OpsCalendarLink> | null =>
+    sec ? { rows: sec.rows.filter((r) => s(r.calendar_event_id) && s(r.id)).map((r) => ({ eventId: String(r.calendar_event_id), kind, entityId: String(r.id), ...f(r) })), capped: sec.capped } : null;
+  const calParts = [
+    links(clSess, "SESSION", (r) => ({ projectId: s(r.project_id), clientId: null, showId: s(r.show_id), date: s(r.date), status: s(r.status) })),
+    links(clMeet, "MEETING", (r) => ({ projectId: s(r.project_id), clientId: s(r.client_id), showId: null, date: s(r.date), status: s(r.status) })),
+    links(clShow, "SHOW", (r) => ({ projectId: null, clientId: s(r.artist_client_id), showId: s(r.id), date: s(r.date), status: s(r.status) })),
+    links(clSocial, "SOCIAL_CONTENT", (r) => ({ projectId: s(r.project_id), clientId: null, showId: null, date: s(r.due_date), status: s(r.status) })),
+  ];
   const has = (k: string) => (integ ? integ.rows.some((r) => r.key === k) : null);
   return {
     redFilms: mapSection(prods, (r) => (s(r.id) ? {
@@ -115,5 +128,6 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
       plannedHours: n(r.planned_hours), plannedDays: n(r.planned_days), updatedAt: s(r.updated_at),
     } : null)),
     integrations: { googleCalendarConnected: has("google_calendar_token"), dropboxConnected: has("dropbox_tokens") },
+    calendarLinks: calParts.some((x) => x === null) ? null : { rows: calParts.flatMap((x) => x!.rows), capped: calParts.some((x) => x!.capped) },
   };
 }

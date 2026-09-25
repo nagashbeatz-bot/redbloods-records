@@ -17,6 +17,9 @@ const PUBLIC_BYPASS = [
   "/api/sessions/calendar-pull",
   "/api/push/cron",
   "/api/maintenance/status", // boolean lock state only — used by the owner Sidebar
+  // Sunny connector → MAIN live calendar read: authenticates itself with a dedicated service secret (constant-time),
+  // never a cookie; read-only; 404 on the MCP-only connector. Exact path only.
+  "/api/partner/internal/calendar",
 ];
 
 // Service-role client (read-only use here) for the global maintenance flag. The

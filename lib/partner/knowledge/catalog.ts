@@ -18,6 +18,7 @@ import { OPERATIONS_CAPABILITIES } from "./capabilities/operations";
 import { systemAwareness } from "./capabilities/system";
 import { projectPortfolioCap, projectView } from "./capabilities/projects-deep";
 import { systemSettings } from "./capabilities/settings";
+import { calendarCap } from "./capabilities/calendar";
 
 const brief: KnowledgeCapability = {
   id: "brief", domain: "COMPANY", titleHe: "מה חשוב עכשיו",
@@ -46,6 +47,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   systemAwareness,
   projectView, projectPortfolioCap,
   systemSettings,
+  calendarCap,
 ];
 
 /** The registry = catalog capability (bound to itself) + the given capabilities. Tests may add capabilities; production uses none. */

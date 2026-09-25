@@ -111,7 +111,7 @@ async function main() {
   check("inherited count", INHERITED.length, 19);
   ok("INTENTIONALLY_SECRET only for credentials / bearer links", KNOWLEDGE_GAPS.filter((g) => g.class === "INTENTIONALLY_SECRET").every((g) => g.id.startsWith("SECRET_")) && KNOWLEDGE_GAPS.filter((g) => g.class === "INTENTIONALLY_SECRET").length === 2);
   check("every system domain has a knowledge-depth status", DOMAIN_CONTRACTS.map((d) => d.id).filter((d) => !DOMAIN_KNOWLEDGE_DEPTH[d]), []);
-  ok("calendar is a CAPABILITY_GAP needing approval, NOT permanently unavailable", KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.class === "CAPABILITY_GAP" && KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.appRemediation === "OAUTH_OR_INTEGRATION_APPROVAL");
+  ok("live calendar gap is CLOSED (Sunny live calendar, read through the trusted MAIN integration)", KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.status === "CLOSED_NOW" && KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.sunnyReadsVia.includes("calendar"));
   const kg = sa("knowledge_gaps");
   check("system_awareness knowledge_gaps serves every gap", kg.page?.total, KNOWLEDGE_GAPS.length);
   ok("version bumped + change logged", SYSTEM_BASELINE_VERSION >= "2026.09.25-3" && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));

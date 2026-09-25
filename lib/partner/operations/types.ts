@@ -38,6 +38,9 @@ export interface OpsProjectMeta {
   plannedHours: number | null; plannedDays: number | null; updatedAt: string | null;
 }
 
+/** A Redbloods record that STORES a Google Calendar event id (the only canonical calendar relationships). */
+export interface OpsCalendarLink { eventId: string; kind: "SESSION" | "MEETING" | "SHOW" | "SOCIAL_CONTENT"; entityId: string; projectId: string | null; clientId: string | null; showId: string | null; date: string | null; status: string | null }
+
 export interface OperationsRaw {
   redFilms: Maybe<OpsRedFilmsProduction>;
   budgetItems: Maybe<OpsBudgetItem>;
@@ -59,6 +62,8 @@ export interface OperationsRaw {
   finalFiles: Maybe<OpsFinalFile>;
   deliveries: Maybe<OpsDelivery>;
   projectsMeta: Maybe<OpsProjectMeta>;
+  /** Records that store a Google Calendar event id (sessions / meetings / shows / social content). Optional for older fixtures. */
+  calendarLinks?: Maybe<OpsCalendarLink>;
   /** Whether the integration's stored credential KEY exists (the value is never selected). null = could not tell. */
   integrations: { googleCalendarConnected: boolean | null; dropboxConnected: boolean | null };
 }

@@ -15,7 +15,10 @@ export async function register() {
   if (process.env.REDBLOODS_MCP_ONLY === "true") {
     const { installMcpOnlyFetchGuard } = await import("@/lib/integrations/partner-mcp/mcp-only");
     // P1: the one extra write (Owner Context append for the Partner answer bridge) only when the answer switch is on.
-    installMcpOnlyFetchGuard(process.env.SUPABASE_URL ?? "https://invalid.invalid", (m) => console.warn(m), { ownerContextAppend: process.env.PARTNER_MCP_ANSWER_ENABLED === "true", ownerKnowledgeAppend: process.env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true" });
+    // Sunny live calendar: the ONE extra outgoing read — GET the MAIN service's internal calendar endpoint (no Google credential here).
+    const { internalCalendarUrl } = await import("@/lib/partner/calendar/remote");
+    const calendarUrl = internalCalendarUrl(process.env);
+    installMcpOnlyFetchGuard(process.env.SUPABASE_URL ?? "https://invalid.invalid", (m) => console.warn(m), { ownerContextAppend: process.env.PARTNER_MCP_ANSWER_ENABLED === "true", ownerKnowledgeAppend: process.env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true", internalReadUrls: calendarUrl ? [calendarUrl] : [] });
     console.log("[mcp-only] connector-only mode — no schedulers started");
     return;
   }

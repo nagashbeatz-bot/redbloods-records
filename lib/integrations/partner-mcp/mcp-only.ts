@@ -55,10 +55,17 @@ const OWNER_CONTEXT_APPEND = /^\/rest\/v1\/partner_owner_context$/;
  */
 const OWNER_KNOWLEDGE_APPEND = /^\/rest\/v1\/partner_owner_knowledge$/;
 
-export interface McpOnlyWriteOptions { ownerContextAppend?: boolean; ownerKnowledgeAppend?: boolean }
+export interface McpOnlyWriteOptions {
+  ownerContextAppend?: boolean; ownerKnowledgeAppend?: boolean;
+  /**
+   * Sunny live calendar: EXACT https URLs (origin + path, no query match needed) the connector may GET on the Redbloods
+   * MAIN service — the service-to-service internal calendar read. GET only; any other method / path / host stays blocked.
+   */
+  internalReadUrls?: readonly string[];
+}
 
 export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, opts: McpOnlyWriteOptions = {}): boolean {
-  if (url.host !== dbHost) return false;
+  if (url.host !== dbHost) return method.toUpperCase() === "GET" && url.protocol === "https:" && (opts.internalReadUrls ?? []).includes(`${url.origin}${url.pathname}`);
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return true;
   if (m !== "POST") return false;

@@ -251,7 +251,7 @@ export const USER_CONTRACTS: readonly UserContract[] = [
     authMethod: "OAuth 2.1 + PKCE bearer token that only the Owner can approve; scopes read / answer / knowledge.",
     landing: null, language: "—",
     entities: [{ entity: "the Owner", quality: "CANONICAL_RELATION", basis: "tokens exist only after Owner consent" }],
-    tabs: [], cannot: ["No business mutation, no Push, no Calendar, no finance execution, no settings / auth."],
+    tabs: [], cannot: ["No business mutation, no Push, no Calendar write (live calendar READ only, through the Redbloods main service — the connector holds no Google credential), no finance execution, no settings / auth."],
     receivesPush: [], triggersPush: [], securityGapIds: [], limitationsHe: [],
     internal: { role: null, allowedPaths: [], deniedPaths: [] },
   },
@@ -332,6 +332,7 @@ export const SECURITY_GAPS: readonly SecurityGap[] = [
   G("SG_VICTOR_DROPBOX_PATHS", "HIGH", "SECURITY_GAP", ["VICTOR"], "Victor can write file entries and his work folder with any Dropbox path; the server then streams / deletes / uploads by those paths — effectively arbitrary Dropbox read, delete and write. The restriction is UI-only."),
   G("SG_VENDOR_FOLDER_PUBLIC_LINK", "MEDIUM", "SECURITY_GAP", ["VICTOR"], "The vendor-folder endpoint builds folders from client-sent artist / project names and returns a public share link, contradicting 'Victor never receives folder links'."),
   G("SG_OAUTH_CALLBACK_STATE", "MEDIUM", "SECURITY_GAP", ["OWNER"], "The Dropbox and Google Calendar OAuth callbacks are public and have no state check — the company connection could be swapped."),
+  G("SG_CALENDAR_WEEK_ROUTE_PROXY_ONLY", "LOW", "UI_SERVER_MISMATCH", ["OWNER"], "The Calendar page's week read relies only on the central gate for Owner protection — the route itself has no Owner check (Sunny's internal calendar read has its own service authentication)."),
   G("SG_VICTOR_SALARY_IN_PAYLOAD", "MEDIUM", "PRIVACY", ["VICTOR"], "Victor's page data includes his salary / currency / payment status; only the UI hides it."),
   G("SG_OWNER_CAN_CONFIRM_AS_DJ", "MEDIUM", "UI_SERVER_MISMATCH", ["OWNER", "CLEANTONE"], "The Owner previewing the DJ portal can really confirm / withdraw a booking, and the Owner receives 'DJ CLEANTONE confirmed' as if the DJ did."),
   G("SG_STEVEN_PAYMENT_WRONG_RECIPIENT", "MEDIUM", "PRIVACY", ["STEVEN", "EXTERNAL_ENGINEERS"], "Marking ANY engineer's job paid pushes 'Payment sent' to Steven."),
@@ -357,7 +358,7 @@ export const SECURITY_GAPS: readonly SecurityGap[] = [
  */
 export const ACCESS_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/roles.ts": "23d4f79f97de0f10b81192c9afd6cb9e398a8cc891d245efc4ffe6614e8a1bd4",
-  "proxy.ts": "7d2e04387484db9d4881f40a01d45ff44910d5be0ff85ffc8fa15e1e1e9ddc42",
+  "proxy.ts": "3ea7871698926436fa12047c1660f12dbd298622c83f98318ca99f71bcf0af65",
   "lib/require-auth.ts": "5d28fa016ffe37c1b6c6847ac1ae2aa0f118977bba4c35e658f400a4ad3e5f8a",
   "lib/red-artists/portal-access.ts": "4d5454199c8f846043b3cc0097ec13ba867df5494961e5e7a3b517d35ae14b87",
   "lib/beat-scope.ts": "a14f3dddcae310f4ddf41f71f1b3c05d627095cf3b7b279616a6383580a64163",

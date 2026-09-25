@@ -37,9 +37,15 @@ async function integrityOf(ctx: AnyCtx): Promise<Avail<CompanyIntegrityRegister>
 }
 
 /** Loads exactly the declared sources (each memoized by the read context → read at most once per request). */
-async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience): Promise<GatewaySources> {
+/** Default live-calendar window: 7 days back → 37 days ahead (45 days, Israel dates). */
+export function defaultCalendarWindow(now: Date): { start: string; end: string } {
+  const ymd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  return { start: ymd(new Date(now.getTime() - 7 * 86_400_000)), end: ymd(new Date(now.getTime() + 37 * 86_400_000)) };
+}
+
+async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience, calendarWindow?: { start: string; end: string }): Promise<GatewaySources> {
   const want = new Set(needs);
-  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings] = await Promise.all([
+  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings, calendar] = await Promise.all([
     want.has("STATE") ? ctx.state() : undefined, want.has("FINANCE") ? ctx.finance() : undefined, want.has("MEMORY") ? ctx.memory() : undefined,
     want.has("CASES") ? ctx.cases() : undefined, want.has("ACTIONS") ? ctx.actions() : undefined, want.has("OUTCOMES") ? ctx.outcomes() : undefined,
     want.has("INTEGRITY") ? integrityOf(ctx) : undefined,
@@ -47,8 +53,9 @@ async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], a
     want.has("OPERATIONS") && "operations" in ctx ? ctx.operations() : undefined,
     want.has("PROJECT_DETAIL") && "projectDetail" in ctx ? ctx.projectDetail() : undefined,
     want.has("SETTINGS") && "settings" in ctx ? ctx.settings() : undefined,
+    want.has("CALENDAR") && "calendar" in ctx ? (() => { const w = calendarWindow ?? defaultCalendarWindow(ctx.now); return ctx.calendar(w.start, w.end); })() : undefined,
   ]);
-  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings, identities: APP_IDENTITIES, audience };
+  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings, calendar, identities: APP_IDENTITIES, audience };
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {
@@ -64,7 +71,7 @@ export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyR
   const k = String(key ?? "").slice(0, 120);
   if (!parseEntityKey(k)) return getPartnerEntityCore(k, { now: ctx.now, identities: APP_IDENTITIES });
   // project entities also load the project's human context + material metadata (Owner-only capability, bounded)
-  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : [])];
+  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
   const src = await loadSources(ctx, needs, audience);
   return getPartnerEntityCore(k, { ...src, entityKnowledge: (entityKey) => entityKnowledge(registry, src, entityKey) });
 }
@@ -72,7 +79,9 @@ export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyR
 /** DISCOVER / QUERY any registered capability. Refusals (unknown / not authorized / invalid) read nothing. */
 export async function queryPartnerKnowledge(req: KnowledgeRequest, audience: KnowledgeAudience, ctx: AnyCtx = createCompanyReadContext(), registry: KnowledgeRegistry = PARTNER_KNOWLEDGE_REGISTRY): Promise<QueryResponse> {
   const v = validateKnowledgeRequest(registry, req, audience);
-  const src = v.ok ? await loadSources(ctx, v.value.cap.needs, audience) : { now: ctx.now, identities: APP_IDENTITIES, audience };
+  const p = v.ok ? v.value.params : {};
+  const calendarWindow = p.from && p.to ? { start: p.from, end: p.to } : p.from ? { start: p.from, end: p.from } : undefined;
+  const src = v.ok ? await loadSources(ctx, [...v.value.cap.needs, ...(v.value.cap.optionalNeeds ?? [])], audience, calendarWindow) : { now: ctx.now, identities: APP_IDENTITIES, audience };
   return queryKnowledgeCore(registry, req, src, audience);
 }
 

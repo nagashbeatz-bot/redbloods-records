@@ -29,13 +29,14 @@ const MAX_RECORD_TEXT = 300;
 const MAX_DEEP_RECORD_TEXT = 4000;
 const MAX_OFFSET = 10_000;
 
-const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL", SETTINGS: "SETTINGS" };
+const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL", SETTINGS: "SETTINGS", CALENDAR: "CALENDAR" };
 const SOURCE_OF: Record<KnowledgeSourceNeed, (s: KnowledgeSources) => unknown> = {
   STATE: (s) => s.state, FINANCE: (s) => s.finance, MEMORY: (s) => s.memory, CASES: (s) => s.cases, ACTIONS: (s) => s.actions, OUTCOMES: (s) => s.outcomes, INTEGRITY: (s) => s.integrity,
   OWNER_KNOWLEDGE: (s) => s.ownerKnowledge,
   OPERATIONS: (s) => s.operations,
   PROJECT_DETAIL: (s) => s.projectDetail,
   SETTINGS: (s) => s.settings,
+  CALENDAR: (s) => s.calendar,
 };
 
 export type ValidatedQuery = { cap: KnowledgeCapability; mode: string; params: Record<string, string>; limit: number; offset: number };
@@ -100,7 +101,7 @@ function capItem(i: KnowledgeItem, max = MAX_RECORD_TEXT): KnowledgeItem {
 }
 
 function sourceStatuses(cap: KnowledgeCapability, src: KnowledgeSources) {
-  return cap.needs.map((n) => {
+  return [...cap.needs, ...(cap.optionalNeeds ?? [])].map((n) => {
     const a = SOURCE_OF[n](src) as { status?: string } | undefined;
     const up = !!a && a.status === "OK";
     return { source: SOURCE_NAME[n], status: up ? ("OK" as const) : ("UNAVAILABLE" as const), freshness: up ? ("LIVE" as const) : ("UNKNOWN" as const) };
@@ -129,13 +130,14 @@ export function queryKnowledgeCore(registry: KnowledgeRegistry, req: KnowledgeRe
   const r = runReader(cap, { ...src, audience }, mode, params);
   const page = r.items.slice(offset, offset + limit).map((i) => capItem(i, textLimitOf(cap)));
   const next = offset + limit < r.items.length ? encodeCursor({ c: cap.id, m: mode, h: paramsHash(params), o: offset + limit }) : null;
-  const completeness = sources.some((s) => s.status !== "OK") ? "UNKNOWN" : r.completeness;
+  const required = new Set(cap.needs.map((n) => SOURCE_NAME[n]));
+  const completeness = sources.some((s) => s.status !== "OK" && required.has(s.source)) ? "UNKNOWN" : r.completeness;
   return {
     ...base, freshness: sources.every((s) => s.status === "OK") ? "LIVE" : "UNKNOWN", sources,
     status: "OK", capability: { id: cap.id, domain: cap.domain, title: cap.titleHe }, mode, params,
     completeness, coverage: r.coverage.map((g) => capText(g)), summary: r.summary, items: page,
     page: { limit, offset, returned: page.length, total: r.items.length, nextCursor: next },
-    missing: [...r.missing, ...sources.filter((s) => s.status !== "OK").map((s) => ({ fact: s.source, whyNeeded: "this source could not be read — missing items do not mean \"none\"" }))],
+    missing: [...r.missing, ...sources.filter((s) => s.status !== "OK").map((s) => ({ fact: s.source, whyNeeded: required.has(s.source) ? "this source could not be read — missing items do not mean \"none\"" : "optional context could not be read — conclusions that need it are unknown" }))],
     drillDown: [], error: null,
   };
 }

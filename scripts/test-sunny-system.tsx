@@ -114,7 +114,7 @@ async function main() {
   ok("Sunny execute is NOT_YET_EXECUTABLE for EVERY domain in this baseline (legitimate future, not forbidden)", DOMAIN_CONTRACTS.every((d) => d.support.execute === "NOT_YET_EXECUTABLE" || d.support.execute === "MISSING"));
   ok("FULL is never claimed without a live read capability", DOMAIN_CONTRACTS.filter((d) => d.support.read === "FULL").every((d) => d.readCapabilities.length > 0));
   ok("Push and Agent Alerts: readable knowledge (history / markers / alerts), NOT executable by Sunny", ["PUSH_NOTIFICATIONS", "AGENT_ALERTS"].every((id) => { const d = DOMAIN_CONTRACTS.find((x) => x.id === id)!; return d.readCapabilities.length > 0 && d.support.execute === "NOT_YET_EXECUTABLE"; }));
-  ok("Google Calendar is honestly NOT_CONNECTED (no event read, no write)", (() => { const d = DOMAIN_CONTRACTS.find((x) => x.id === "GOOGLE_CALENDAR")!; return d.states.includes("NOT_CONNECTED") && d.freshness === "NOT_CONNECTED" && d.support.read === "PARTIAL"; })());
+  ok("Google Calendar: LIVE read (FULL) through the trusted integration, no write", (() => { const d = DOMAIN_CONTRACTS.find((x) => x.id === "GOOGLE_CALENDAR")!; return d.support.read === "FULL" && d.freshness === "LIVE" && d.readCapabilities.includes("calendar") && d.support.execute === "NOT_YET_EXECUTABLE"; })());
   ok("every notification contract says sunnyMayTrigger=false", DOMAIN_CONTRACTS.flatMap((d) => d.notifications ?? []).every((n) => n.sunnyMayTrigger === false));
   ok("CONFLICT / POSSIBLE_BUG rules exist and are never marked as policy", DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "CONFLICT").length >= 10 && DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "POSSIBLE_BUG").length >= 10);
   ok("the canonical finance rules are encoded (received / paid / partial / cancelled / no FX / debt / overpayment)", ["INCOME_RECEIVED", "EXPENSE_PAID", "PARTIAL_NOT_PAID", "CANCELLED_NOT_MONEY", "NO_FX", "PROJECT_DEBT", "FINANCE_EXCEPTION"].every((id) => DOMAIN_CONTRACTS.find((d) => d.id === "FINANCE")!.rules.some((r) => r.id === id && r.class === "CANONICAL_BUSINESS_RULE")));
@@ -192,11 +192,11 @@ async function main() {
   const push = q("system_awareness", { mode: "actions", params: { domain: "PUSH_NOTIFICATIONS" } });
   check("'can you send push?' → a legitimate future action needing explicit Owner approval, not executable today", push.items.map((i) => [i.fields.class, i.fields.sunnyCanExecuteToday, (i.fields.confirmations as string[]).includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED")]), [["FUTURE_PRIMITIVE_REQUIRED", false, true]]);
   const cal = q("system_awareness", { mode: "coverage", params: { domain: "GOOGLE_CALENDAR" } });
-  check("'calendar access?' → read PARTIAL (connection only), execute unavailable, NOT_CONNECTED", [cal.items[0].fields.read, cal.items[0].fields.execute, (cal.items[0].fields.states as string[]).includes("NOT_CONNECTED")], ["PARTIAL", "NOT_YET_EXECUTABLE", true]);
+  check("'calendar access?' → live read FULL, execute not yet, AVAILABLE", [cal.items[0].fields.read, cal.items[0].fields.execute, (cal.items[0].fields.states as string[]).includes("AVAILABLE")], ["FULL", "NOT_YET_EXECUTABLE", true]);
   const conflicts = q("system_awareness", { mode: "rules", params: { class: "CONFLICT" }, });
   ok("conflicts are served as OBSERVATION and policy=false (never taught as policy)", conflicts.items.length >= 10 && conflicts.items.every((i) => i.epistemic === "OBSERVATION" && i.fields.policy === false));
   const lim = q("system_awareness", { mode: "limitations", params: { domain: "GOOGLE_CALENDAR" } });
-  ok("limitations in Hebrew, incl. 'תוסיף ליומן' honesty", lim.items.some((i) => i.label.text.includes("תוסיף ליומן")));
+  ok("limitations in Hebrew, incl. calendar write honesty", lim.items.some((i) => i.label.text.includes("לא כותב ליומן")));
   const ch = q("system_awareness", { mode: "changes" });
   check("changes: newest first, baseline version in summary", [ch.items[0]?.fields.version, ch.summary[0].value], [SYSTEM_BASELINE_VERSION, SYSTEM_BASELINE_VERSION]);
   const all = JSON.stringify(["overview", "domain", "rules", "relationships", "actions", "limitations", "changes", "coverage"].flatMap((m) => DOMAIN_CONTRACTS.map((d) => q("system_awareness", { mode: m, params: m === "domain" ? { domain: d.id } : {} }))));

@@ -21,7 +21,7 @@ export const projectView: KnowledgeCapability = {
     section: { kind: "enum", values: [...PROJECT_SECTIONS], descriptionForModel: "Which part to deepen (default summary)" },
   },
   entityScope: { types: ["project"], param: "project", mode: "view", limit: 1 },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 4000, access: OWNER_FIN, needs: NEEDS,
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 4000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR"],
   read(src, q) {
     if (!q.params.project) return result([], { completeness: "UNKNOWN", missing: [{ fact: "project", whyNeeded: "pass params.project (partner_resolve gives the key)" }] });
     const section = (q.params.section ?? "summary") as ProjectSection;

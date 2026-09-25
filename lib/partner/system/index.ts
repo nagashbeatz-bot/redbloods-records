@@ -16,7 +16,7 @@ export type * from "./types";
 export const FORBIDDEN_SERVED_TERMS = [
   "supabase", "service_role", "service-role", "SUPABASE_", "PARTNER_MCP_SECRET", "CRON_SECRET", "google_calendar_token", "dropbox_tokens", "push_subscriptions",
   "sound_engineer_work", "artist_balance_entries", "artist_balance_cycles", "label_media_income", "red_films_productions", "red_films_budget", "project_release_details", "partner_owner_context",
-  "partner_owner_knowledge", "partner_action_events", "partner_gateway_audit", "vendor_project_work", "lib/", "app/api", ".tsx", ".ts:",
+  "partner_owner_knowledge", "partner_action_events", "partner_gateway_audit", "vendor_project_work", "lib/", "app/api", ".tsx", ".ts:", "PARTNER_INTERNAL_SERVICE_SECRET", "x-redbloods-internal-auth",
 ];
 
 export type ServedDomain = Omit<DomainContract, "surfaces">;
