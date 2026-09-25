@@ -210,7 +210,7 @@ function main() {
   check("no forbidden implementation / secret terms served", FORBIDDEN_SERVED_TERMS.filter((t) => served.toLowerCase().includes(t.toLowerCase())), []);
   ok("no image URL / phone / share link served", !/https?:\/\/|dropbox\.com\/s|050-/.test(served.replace(/\\"/g, "")));
   ok("baseline -8 + LABEL_ARTISTS change entry", SYSTEM_BASELINE_VERSION >= "2026.09.25-8" && CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-8" && x.domain === "LABEL_ARTISTS"));
-  ok("LABEL_ARTISTS = DEEP_BRAIN_V1; Shows / Victor / Steven / Red Films NOT marked complete", DOMAIN_KNOWLEDGE_DEPTH.LABEL_ARTISTS === "DEEP_BRAIN_V1" && ["SHOWS", "VICTOR", "STEVEN", "RED_FILMS", "LABEL_DJ"].every((d) => DOMAIN_KNOWLEDGE_DEPTH[d] === "PENDING_DEEP_MISSION"));
+  ok("LABEL_ARTISTS = DEEP_BRAIN_V1; Victor / Steven / Red Films NOT marked complete by the artist mission", DOMAIN_KNOWLEDGE_DEPTH.LABEL_ARTISTS === "DEEP_BRAIN_V1" && ["VICTOR", "STEVEN", "RED_FILMS"].every((d) => DOMAIN_KNOWLEDGE_DEPTH[d] === "PENDING_DEEP_MISSION"));
   ok("label domains read artist_view", ["LABEL_ARTISTS", "RELEASES", "ARTIST_BALANCES", "MEDIA_INCOME", "BEATS", "ARTIST_PORTALS"].every((dd) => DOMAIN_CONTRACTS.find((x) => x.id === dd)!.readCapabilities.includes("artist_view")));
   check("system registry valid", validateSystemRegistry({ capabilityIds: REG.all().map((x) => x.id), knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
   check("gaps valid", validateKnowledgeGaps({ domainIds: DOMAIN_CONTRACTS.map((x) => x.id), capabilityIds: REG.all().map((x) => x.id) }), []);

@@ -120,8 +120,15 @@ void (async () => {
     const tools = (await rpc(deps, "tools/list")).result.tools as Array<{ name: string; description: string; annotations: { readOnlyHint: boolean; destructiveHint: boolean } }>;
     const qt = tools.find((t) => t.name === "partner_query")!;
     ok("1. Gateway discovers it: tools/list partner_query description lists test_probe (no MCP change)", qt.description.includes("test_probe") && !qt.description.includes("test_internal"));
-    const cat = await call(deps, { capability: "catalog" });
-    ok("1. …and the catalog capability lists it", (cat.structuredContent.items as Array<{ id: string }>).some((i) => i.id === "test_probe") && !(cat.structuredContent.items as Array<{ id: string }>).some((i) => i.id === "test_internal"));
+    // the catalog is paginated (≤ 50 per page) — follow page.nextCursor like a client would
+    const catItems: Array<{ id: string }> = [];
+    let cursor: string | null = null;
+    do {
+      const page = await call(deps, cursor ? { capability: "catalog", cursor } : { capability: "catalog" });
+      catItems.push(...(page.structuredContent.items as Array<{ id: string }>));
+      cursor = (page.structuredContent.page as { nextCursor: string | null } | null)?.nextCursor ?? null;
+    } while (cursor);
+    ok("1. …and the catalog capability lists it (across pages)", catItems.some((i) => i.id === "test_probe") && !catItems.some((i) => i.id === "test_internal"));
     const r = await call(deps, { capability: "test_probe" });
     check("2. generic MCP read returns it", [r.isError, r.structuredContent.status, r.structuredContent.capability.id, r.structuredContent.items.length], [false, "OK", "test_probe", 3]);
     const mcpSrc = ["mcp.ts", "tools.ts", "server.ts"].map((f) => fs.readFileSync(path.join(__dirname, "../lib/integrations/partner-mcp", f), "utf8")).join("\n");

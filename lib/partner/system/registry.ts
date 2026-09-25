@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-8";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-9";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -310,9 +310,17 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["show"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
-    readCapabilities: ["artist_view", "shows", "sessions", "tasks"], learnKinds: ["ENTITY_RELATIONSHIP", "PAYMENT_REPORTED_BY_OWNER", "FOLLOW_UP_EXPECTATION", "PROCESS_FRICTION"], proposableActions: [],
+    readCapabilities: ["show_view", "show_portfolio", "artist_view", "shows", "sessions", "tasks"], learnKinds: ["ENTITY_RELATIONSHIP", "PAYMENT_REPORTED_BY_OWNER", "FOLLOW_UP_EXPECTATION", "PROCESS_FRICTION"], proposableActions: [],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
+      R("SHOW_SPLIT_APP_RULE", "CANONICAL_BUSINESS_RULE", "Show split: net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label = the rest; no rounding. The stored artist-fee column is legacy and never used."),
+      R("REHEARSAL_COUNTED_RULE", "IMPLEMENTATION_BEHAVIOR", "A rehearsal cost counts when the rehearsal is בוצע or paid; חלקי never; planned / cancelled unpaid never; the auto-mark status התקיים is never counted."),
+      R("SHOW_FINANCE_ROWS", "IMPLEMENTATION_BEHAVIOR", "Confirmed shows (נסגר / אושרה / בוצע) get income / DJ-fee / artist-fee rows (₪, linked by id, 'show_id:' note); cancel → rows בוטל; back to pipeline → rows HARD-deleted even when received; the DJ-fee row is created even with no DJ.", ["FINANCE"]),
+      R("SHOW_NO_CURRENCY", "IMPLEMENTATION_BEHAVIOR", "Shows store no currency; every show finance row is written as ₪."),
+      R("SHOW_STATUS_UNVALIDATED", "POSSIBLE_BUG", "Show status / payment status are not validated server-side; list / create routes rely on the proxy only."),
+      R("SHOW_CLOSE_PREVIEW_MISMATCH", "POSSIBLE_BUG", "The close dialog previews the artist amount without rehearsal costs; the server deducts them."),
+      R("SHOW_LEDGER_KEPT_AFTER_CANCEL", "POSSIBLE_BUG", "Cancelling / deleting after close keeps realized artist income and payments; a price change after close does not update the realized income; a plain edit to בוצע writes no ledger.", ["ARTIST_BALANCES"]),
+      R("SHOW_CONSUMERS_DISAGREE", "CONFLICT", "Label page / recoup / dashboard count pipeline leads as expected shows; hub KPIs / COO / finance do not."),
       R("SHOW_VOCAB", "CANONICAL_BUSINESS_RULE", "Show status: ליד חדש, ממתין לתשובה, צריך פולואפ, נסגר, אושרה, בוצע, בוטל (confirmed = נסגר / אושרה / בוצע). Client payment: שולם, לא שולם, צפוי, מקדמה, בוטל (legacy חלקי = מקדמה)."),
       R("SHOW_PAYMENT_MEANS_CLIENT", "CANONICAL_BUSINESS_RULE", "A show's payment status means THE CLIENT paid — not the artist or DJ."),
       R("SHOW_SPLIT", "CANONICAL_BUSINESS_RULE", "Net = price − DJ fee − counted rehearsal costs; the artist gets half, the label half. A rehearsal counts when performed or paid (never partial). DJ fee defaults to 500."),
@@ -335,7 +343,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("SHOW_NOTIFY_DJ", "The Owner presses 'send to DJ'", "DJ CLEANTONE (+ Owner ack)", "MANUAL", "deduplicated by fingerprint"),
       N("DJ_CONFIRMED", "DJ CLEANTONE confirms a show", "Owner", "EVENT", "only on a real transition"),
     ],
-    limitationsHe: ["אין לסאני פעולת 'יצירת הופעה' — הוא יכול להבין ולאסוף את פרטי ההופעה, אבל לא לטעון שהיא נוצרה.", "אין פנקס DJ — תשלומי DJ הם רק הוצאות 'שכר דיג'יי' בכספים."],
+    limitationsHe: ["סאני קורא כל הופעה במלואה (כסף, DJ, חזרות, יומן, מאזן, הודעות, משימות) — לא יוצר, לא עורך ולא שולח.", "קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם.", "אין 'מוכנות להופעה' ואין תזכורות אוטומטיות להופעות.", "אין לסאני פעולת 'יצירת הופעה' — הוא יכול להבין ולאסוף את פרטי ההופעה, אבל לא לטעון שהיא נוצרה.", "אין פנקס DJ — תשלומי DJ הם רק הוצאות 'שכר דיג'יי' בכספים."],
     surfaces: S(["/shows", "/shows-legacy", "/shows-preview"], ["shows"]),
   },
   {
@@ -345,14 +353,17 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["dj"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
-    readCapabilities: ["artist_view", "shows", "relations"], learnKinds: ["ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "ENTITY_ALIAS"], proposableActions: [],
+    readCapabilities: ["show_view", "show_portfolio", "artist_view", "shows", "relations"], learnKinds: ["ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "ENTITY_ALIAS"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
+      R("DJ_ANY_CREW_CLIENT", "IMPLEMENTATION_BEHAVIOR", "The DJ is any crew client chosen in the form; no DJ is ever preselected; a show saved without a DJ gets a 'close a DJ' task. Only CLEANTONE (the app's fixed client id) has confirmation, a portal and push."),
+      R("DJ_CONFIRMATION_NOT_RESET", "POSSIBLE_BUG", "CLEANTONE's confirmation is reset only when the DJ changes — not by a date / time / place change or cancellation."),
+      R("DJ_PORTAL_CLIENT_PAYMENT", "POSSIBLE_BUG", "The DJ portal shows the CLIENT's payment status, not whether the DJ was paid; its 'upcoming' list has no date or status filter."),
       R("DJ_PORTAL_PAYMENT_PILL", "CONFLICT", "The DJ portal's payment pill shows whether the CLIENT paid, not whether the DJ was paid."),
       R("DJ_PORTAL_UPCOMING_LEADS", "POSSIBLE_BUG", "The DJ portal's 'upcoming' includes pipeline leads and past unclosed shows."),
       R("DJ_FREQUENCY_NOT_RULE", "OWNER_POLICY", "How often a DJ plays label shows is an observation / Owner knowledge — never an automatic booking rule."),
     ],
-    sideEffects: [], limitationsHe: ["אין פנקס DJ נפרד."],
+    sideEffects: [], limitationsHe: ["אישור DJ קיים רק ל-CLEANTONE; DJ אחר הוא רק שם + שורת הוצאה.", "סאני לעולם לא משבץ את CLEANTONE אוטומטית — הוא מנגן ברוב ההופעות, לא בכולן.", "אין פנקס DJ נפרד."],
     surfaces: S(["/dj-cleantone"], ["red-artists/cleantone", "red-artists/cleantone-summary"]),
   },
   {
@@ -852,4 +863,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-7", date: "2026-09-25", domain: "CLIENTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת לקוח מחוברת: זהות ותפקידים (לקוח / אמן לייבל / מזמין / DJ), פרטי קשר, הצעות ופולואפ, פרויקטים (קנוני דרך הצעה / לפי שם), כסף שהתקבל / צפוי / פוטנציאל, פגישות, יומן, סשנים, משימות, הערות, היסטוריה רשומה ושאלות — ותמונת לקוחות לכל החברה בלי דירוג." },
   { version: "2026.09.25-7", date: "2026-09-25", domain: "PROPOSALS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מכיר את כל מחזור ההצעה: סטטוסים ומי סופר מה כפתוח, פולואפ ומשימת המעקב, המרה לפרויקט (לא אטומית), מחיר מוסכם, ומה לא נרשם (תנאי עסקה, תגובות, קשר חיצוני)." },
   { version: "2026.09.25-8", date: "2026-09-25", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת אמן לייבל מחוברת: פרויקטים (ריליס קנוני / לפי שם, לייבל מול לקוח), ויקטור, מיקס והערות פתוחות, ריליסים וראיות קצב, ביטים, הופעות (DJ, שכר, חזרות, סימוני שליחה), מאזן, מחזורים, הכנסות מדיה ו-recoup, סשנים ויומן, קליפים / Red Films / סושיאל, זמינות, כניסה לפורטל, צעדים הבאים ושאלות — ותמונת סגל בלי דירוג." },
+  { version: "2026.09.25-9", date: "2026-09-25", domain: "SHOWS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת הופעה מחוברת: אמן (לקוח / סגל), מזמין, DJ ואישור, מחיר, מקדמה, תשלום לקוח, חלוקה לפי כללי המערכת, שורות כספים, מאזן האמן, חזרות (נספרות או לא), יומן, משימות, הודעות לאמן / ל-DJ, פורטלים — ותמונת הופעות בלי דירוג." },
+  { version: "2026.09.25-9", date: "2026-09-25", domain: "LABEL_DJ", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני יודע מי ה-DJ בכל הופעה, האם CLEANTONE אישר, האם נשלחה לו הודעה ומה רואה הפורטל שלו — בלי להניח ש-CLEANTONE מנגן." },
 ];

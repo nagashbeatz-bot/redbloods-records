@@ -22,6 +22,7 @@ import { calendarCap } from "./capabilities/calendar";
 import { operatingModel } from "./capabilities/operating";
 import { clientPortfolioCap, clientView } from "./capabilities/clients-deep";
 import { artistPortfolioCap, artistView } from "./capabilities/label-deep";
+import { showPortfolioCap, showView } from "./capabilities/shows-deep";
 
 const brief: KnowledgeCapability = {
   id: "brief", domain: "COMPANY", titleHe: "מה חשוב עכשיו",
@@ -54,6 +55,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   operatingModel,
   clientView, clientPortfolioCap,
   artistView, artistPortfolioCap,
+  showView, showPortfolioCap,
 ];
 
 /** The registry = catalog capability (bound to itself) + the given capabilities. Tests may add capabilities; production uses none. */

@@ -73,7 +73,7 @@ export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyR
   const k = String(key ?? "").slice(0, 120);
   if (!parseEntityKey(k)) return getPartnerEntityCore(k, { now: ctx.now, identities: APP_IDENTITIES });
   // project entities also load the project's human context + material metadata (Owner-only capability, bounded)
-  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
+  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(k.startsWith("show:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
   const src = await loadSources(ctx, needs, audience);
   return getPartnerEntityCore(k, { ...src, entityKnowledge: (entityKey) => entityKnowledge(registry, src, entityKey) });
 }

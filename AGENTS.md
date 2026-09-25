@@ -94,3 +94,9 @@ Label-artist development is a system contract in `lib/partner/system/label-artis
 It is read through `artist_view` / `artist_portfolio` (`lib/partner/label/view.ts`) and the LABEL_DETAIL source.
 - A change to an artist / release / beat / ledger / cycle / media-income column, a vocabulary, a label / portal / beats route, show → ledger behaviour, the name → slug table or an artist push must update that contract. `scripts/test-sunny-label-artists.tsx` pins the schema, the vocabularies the code declares, the route families and `LABEL_REVIEWED_FINGERPRINTS`.
 - Never invent release cadence, readiness, inactivity thresholds or payout / recoup policy. Keep the ledger, cycles, media income, recoup view, show money and client money separate. None of them stores a currency.
+
+## Sunny Awareness Check: Shows + DJ
+
+A live show is a system contract in `lib/partner/system/shows.ts`. It covers fields, vocabularies, status consumers, lifecycle transitions, the DJ model, money, the show → ledger paths, calendar, notifications, preparation evidence, actions and workflows. It is read through `show_view` / `show_portfolio` (`lib/partner/shows/view.ts`).
+- A change to a show column, a status, the split / rehearsal rule, finance or ledger sync, DJ confirmation, show notifications or a show route must update that contract. `scripts/test-sunny-shows.tsx` pins the schema, the vocabularies, the route families and `SHOW_REVIEWED_FINGERPRINTS`.
+- Show money must reuse the app's own `computeShowSplit` / `rehearsalCountedAmount`, never a second rule. Never auto-assign CLEANTONE. Shows store no currency.

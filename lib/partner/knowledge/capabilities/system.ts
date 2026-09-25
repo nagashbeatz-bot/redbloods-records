@@ -11,6 +11,7 @@ import { CALENDAR_CONTEXT_CONTRACT } from "../../system/calendar";
 import { ACTION_CONTRACT_FIELDS, ACTION_FLOW, APPROVAL_CLASSES, PROJECT_ACTIONS } from "../../system/project-actions";
 import * as CM from "../../system/clients";
 import * as LM from "../../system/label-artists";
+import * as SM from "../../system/shows";
 import type { KnowledgeCapability } from "../types";
 import { byCount, item, partner, result, sfact } from "./common";
 
@@ -40,6 +41,7 @@ export const systemAwareness: KnowledgeCapability = {
     knowledge_gaps: { descriptionForModel: "Every place where Redbloods knows something Sunny cannot yet read, or Redbloods itself does not record it (optional domain / kind = gap class): class, what Redbloods knows, what Sunny knows, why, what would close it, status; plus each domain's knowledge depth" },
     action_inventory: { descriptionForModel: "Every mutation Redbloods can make on a project today (optional kind = group or approval class): who, input, side effects, push / calendar / finance / file effects, reversibility, risk, future Sunny primitive, approval class; plus the permanent action contract. Sunny executes none of them (only the deadline action after dashboard approval)" },
     calendar_model: { descriptionForModel: "The live calendar as a cross-domain context source: source of truth, trusted integration owner, Sunny read path, token refresh, freshness, limits, fields, failure / relationship / availability semantics, cross-domain usage, future write capabilities" },
+    show_model: { descriptionForModel: "SHOWS + DJ as Redbloods implements them (param section): fields, vocabularies (statuses, payment, DJ confirmation, status groups), status_consumers (who counts which shows), lifecycle (every transition: entry, writes, finance, ledger, calendar, push, tasks, idempotency), dj (identity, default, confirmation, fee, portal, hardcoded), money (currency, split, rehearsal-counted rule, advance, finance rows), ledger (booking + close paths, edge cases), calendar, notifications, preparation (recorded evidence, performance files), actions, workflows, signals, integrity" },
     artist_model: { descriptionForModel: "LABEL ARTISTS as Redbloods implements them (param section): fields, vocabularies, membership (what makes a label artist, portal, login), links (every artist relationship + quality), releases (stages, groups, ready, next release, attention, history, cadence evidence), money (ledger formula, cycles, show → ledger, media income + recoup, currency, portal money), portal, availability, presence, pushes (every artist push), actions, workflows, signals, integrity" },
     client_model: { descriptionForModel: "CLIENTS + PROPOSALS as Redbloods implements them (param section): fields (every client / proposal field: meaning, class, validation, writers, readers, side effects, history), vocabularies, statuses (meaning, open, follow-up, conversion, side effects), status_consumers (who counts what as open — disagreements), links (every client relationship with quality + enforcement), conversion (proposal → project steps, atomicity, failure modes), follow_up, lead (no lead entity), deal_terms (what is stored vs not + the proposed model), client_id (assessment + recommendation), history, actions (every client / proposal mutation + approval class), workflows, signals, integrity (production counts)" },
     project_model: { descriptionForModel: "The PROJECT as the central node (param section): fields, vocabularies, links (every relationship with link method, cardinality, DB enforcement, what breaks it, live read), money (rules + known conflicts), signals, surfaces, side_effects (page-load writes), integrity (production counts + risks)" },
@@ -50,7 +52,7 @@ export const systemAwareness: KnowledgeCapability = {
     class: { kind: "enum", values: ["CANONICAL_BUSINESS_RULE", "IMPLEMENTATION_BEHAVIOR", "OWNER_POLICY", "LEGACY_BEHAVIOR", "POSSIBLE_BUG", "CONFLICT"], descriptionForModel: "Only rules of this class" },
     person: { kind: "enum", values: USER_CONTRACTS.map((u) => u.id), descriptionForModel: "A person id (see mode people), e.g. SHALEV, AVI, CLEANTONE, VICTOR, STEVEN, OWNER" },
     recipient: { kind: "enum", values: ["owner", "shalev", "avi", "cleantone", "victor", "steven"], descriptionForModel: "Only pushes this role receives" },
-    section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity", "statuses", "status_consumers", "conversion", "follow_up", "lead", "deal_terms", "client_id", "history", "actions", "workflows", "membership", "releases", "portal", "availability", "presence", "pushes"], descriptionForModel: "artist_model: fields / vocabularies / membership / links / releases / money / portal / availability / presence / pushes / actions / workflows / signals / integrity; project_model: fields / vocabularies / links / money / signals / surfaces / side_effects / integrity; client_model: fields / vocabularies / statuses / status_consumers / links / conversion / follow_up / lead / deal_terms / client_id / history / actions / workflows / signals / integrity (default links)" },
+    section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity", "statuses", "status_consumers", "conversion", "follow_up", "lead", "deal_terms", "client_id", "history", "actions", "workflows", "membership", "releases", "portal", "availability", "presence", "pushes", "lifecycle", "dj", "ledger", "calendar", "notifications", "preparation"], descriptionForModel: "show_model: fields / vocabularies / status_consumers / lifecycle / dj / money / ledger / calendar / notifications / preparation / actions / workflows / signals / integrity; artist_model: fields / vocabularies / membership / links / releases / money / portal / availability / presence / pushes / actions / workflows / signals / integrity; project_model: fields / vocabularies / links / money / signals / surfaces / side_effects / integrity; client_model: fields / vocabularies / statuses / status_consumers / links / conversion / follow_up / lead / deal_terms / client_id / history / actions / workflows / signals / integrity (default links)" },
     kind: { kind: "enum", values: [...new Set([...KNOWLEDGE_GAPS.map((g) => g.class), ...PROJECT_ACTIONS.map((a) => a.group), ...Object.keys(APPROVAL_CLASSES)])], descriptionForModel: "knowledge_gaps: a gap class; action_inventory: an action group or approval class" },
   },
   paging: { defaultLimit: 40, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: [],
@@ -117,6 +119,26 @@ export const systemAwareness: KnowledgeCapability = {
         : sec === "integrity" ? [{ id: "counts", label: "Production integrity counts (read-only, 2026-09-25)", fields: { ...PROJECT_INTEGRITY.productionCounts20260925 } }, ...PROJECT_INTEGRITY.risksHe.map((r, i) => ({ id: `risk:${i}`, label: r, fields: {} }))]
         : PROJECT_LINKS.map((l) => ({ id: l.id, label: `project ↔ ${l.target}`, fields: { linkMethod: l.linkMethod, cardinality: l.cardinality, direction: l.direction, quality: l.quality, enforcement: l.enforcement, breaks: l.breaks, liveRead: l.liveRead } }));
       return result(rows.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), pb);
+    }
+    if (q.mode === "show_model") {
+      const t = q.params.section ?? "lifecycle";
+      const obj = (id: string, label: string, v: unknown) => ({ id, label, fields: (v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : { value: v }) });
+      const rowsS: Array<{ id: string; label: string; fields: Record<string, unknown> }> =
+        t === "fields" ? SM.SHOW_FIELDS.map((f) => ({ id: f.field, label: f.meaning, fields: { ...f } }))
+        : t === "vocabularies" ? Object.entries(SM.SHOW_VOCABULARIES).map(([k, v]) => obj(k, k, Array.isArray(v) ? { values: v } : v))
+        : t === "status_consumers" ? SM.SHOW_STATUS_CONSUMERS.map((x) => ({ id: x.consumer, label: x.consumer, fields: { ...x } }))
+        : t === "dj" ? Object.entries(SM.DJ_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "money" ? Object.entries(SM.MONEY_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "ledger" ? Object.entries(SM.LEDGER_SYNC).map(([k, v]) => obj(k, k, v))
+        : t === "calendar" ? Object.entries(SM.CALENDAR_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "notifications" ? SM.NOTIFICATION_MODEL.map((x) => ({ id: x.id, label: x.trigger, fields: { ...x, sunnyMaySend: false } }))
+        : t === "preparation" ? Object.entries(SM.PREPARATION_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "actions" ? SM.SHOW_ACTIONS.map((a) => { const { internal: _i, ...served } = a; void _i; return { id: a.id, label: a.action, fields: { ...served } }; })
+        : t === "workflows" ? SM.SHOW_WORKFLOWS.map((w) => ({ id: w.event, label: w.concept, fields: { ...w } }))
+        : t === "signals" ? SM.SHOW_SIGNAL_MODEL.map((x) => ({ id: x.code, label: x.note, fields: { ...x } }))
+        : t === "integrity" ? [obj("counts", "Production integrity counts (read-only, 2026-09-25)", SM.SHOW_INTEGRITY.productionCounts20260925), ...SM.SHOW_INTEGRITY.findingsHe.map((f, i) => ({ id: `finding:${i}`, label: f, fields: {} }))]
+        : SM.LIFECYCLE.map((x) => ({ id: x.transition, label: x.transition, fields: { ...x } }));
+      return result(rowsS.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), { ...base, summary: [version(), sfact("SHOWS_BASELINE", "גרסת הידע על הופעות", SM.SHOWS_BASELINE_VERSION, "FACT", SRC)] });
     }
     if (q.mode === "artist_model") {
       const t = q.params.section ?? "links";
