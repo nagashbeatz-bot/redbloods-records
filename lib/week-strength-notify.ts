@@ -30,13 +30,13 @@ import {
  *     a week that stays open longer than the severity's cooldown window);
  *     it only ever flips an existing row to "handled" via updateAlertStatus.
  *
- * Deliberately NOT gated on MAI_AI_ENABLED — unlike the AI chat/report
+ * Deliberately NOT gated on the agent-alert rules switch — unlike the other
  * recommendations, this is a plain deterministic scheduling check (no LLM
  * call), so it must keep running even while that kill-switch is off. Only
  * this check is exempt; nothing else in the AI/alerts system is touched —
- * the alert still lands in the same `agent_alerts` table other MAI-gated UI
+ * the alert still lands in the same `agent_alerts` table other switch-gated UI
  * (the dashboard card, /insights, /api/agent/alerts) reads from, so it only
- * becomes visible there once MAI_AI_ENABLED is turned back on.
+ * becomes visible there once the agent-alert rules switch is turned on.
  */
 
 async function fetchWeekActivities(weekStart: string, weekEnd: string): Promise<Activity[]> {

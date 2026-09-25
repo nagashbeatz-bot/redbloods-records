@@ -147,8 +147,8 @@ export async function createHolidayAlertIfAbsent(input: AlertInput): Promise<boo
  * upcoming_holiday alert whose entity_key is NOT among the currently-in-window
  * holidays (i.e. the holiday has passed / left the 35-day window). Scoped
  * STRICTLY to type "upcoming_holiday": it never reads or touches any other
- * agent_alerts row. Runs independently of the MAI_AI_ENABLED kill-switch, so a
- * holiday alert still closes on time even while Mai AI is off. Returns the count.
+ * agent_alerts row. Runs independently of the agent-alert rules switch, so a
+ * holiday alert still closes on time even while that switch is off. Returns the count.
  */
 export async function resolveStaleHolidayAlerts(activeEntityKeys: Set<string>): Promise<number> {
   try {
@@ -184,7 +184,7 @@ export async function resolveStaleHolidayAlerts(activeEntityKeys: Set<string>): 
  * Full self-contained holiday cycle: detect in-window holidays (from Google
  * Calendar), persist them (insert-if-absent → one row per entity_key), and
  * auto-resolve holiday alerts that left the window. Touches ONLY holiday alerts;
- * runs no other agent rule. Safe to call regardless of MAI_AI_ENABLED.
+ * runs no other agent rule. Safe to call regardless of the agent-alert rules switch.
  */
 export async function runHolidayAlertCycle(): Promise<{
   holidaysInWindow: number; newHolidayAlerts: number; holidaysResolved: number;

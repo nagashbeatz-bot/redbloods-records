@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-15";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-16";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -88,7 +88,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     rules: [
       R("PROPOSAL_VOCAB", "CANONICAL_BUSINESS_RULE", "Proposal status: הצעה נשלחה, ממתין לתשובה (default), צריך פולואפ, נסגר, לא נסגר, לחזור בעתיד. Open = anything except נסגר / לא נסגר."),
       R("PROPOSAL_FOLLOWUP_TASK_TEXT_LINK", "IMPLEMENTATION_BEHAVIOR", "A proposal's follow-up task is linked by an id marker inside the task text (weak link) and may mirror to a Google Task.", ["TASKS", "GOOGLE_CALENDAR"]),
-      R("PROPOSAL_STATUS_UNVALIDATED", "CONFLICT", "Any status string is accepted. Allow-list consumers (client drawer, Mai) treat an unknown status as closed; block-list consumers (dashboards, Insights, COO, Sunny) as open. לחזור בעתיד counts as open everywhere."),
+      R("PROPOSAL_STATUS_UNVALIDATED", "CONFLICT", "Any status string is accepted. Allow-list consumers (client drawer, follow-up rules) treat an unknown status as closed; block-list consumers (dashboards, Insights, COO, Sunny) as open. לחזור בעתיד counts as open everywhere."),
       R("PROPOSAL_OPEN_VALUE_CURRENCY", "CONFLICT", "Open proposal value: the client drawer sums every currency under one label; Insights and the legacy grid count ₪ only."),
       R("PROPOSAL_FOLLOWUP_DEFAULTS", "IMPLEMENTATION_BEHAVIOR", "The create form defaults the follow-up to today + 3; an edit silently fills today + 3 when empty (and creates a follow-up task)."),
       R("PROPOSAL_STATUS_KEEPS_TASK", "POSSIBLE_BUG", "Changing a proposal's status (including לא נסגר) never closes its follow-up task; only conversion does."),
@@ -631,7 +631,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     sideEffects: [],
     notifications: [
       N("PUSH_CRON_OWNER", "External scheduler: overdue / due-soon projects, today's sessions, overdue expected income, stuck Victor work, morning / evening summary", "Owner", "SCHEDULED", "none (POSSIBLE_BUG)"),
-      N("AGENT_ALERT_PUSH", "Agent alerts (important / urgent)", "Owner", "AGENT_CHECK", "currently DISABLED (AI flag off)"),
+      N("AGENT_ALERT_PUSH", "Agent alerts (important / urgent)", "Owner", "AGENT_CHECK", "currently DISABLED (agent-alert rules switched off)"),
     ],
     limitationsHe: ["לסאני אין הרשאה לשלוח Push או התראות — אף פעם.", "סאני לא קורא את היסטוריית ההתראות — הוא מכיר את כל סוגי הפושים דרך system_awareness (מצב push)."],
     surfaces: S(["/push-test"], ["push", "notifications"]),
@@ -651,21 +651,21 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("REPORT_DAILY_BY_CREATED", "IMPLEMENTATION_BEHAVIOR", "The daily report counts money by creation date (not transaction date); weekly is ₪ only."),
       R("REPORT_DEDUPE_MEMORY", "IMPLEMENTATION_BEHAVIOR", "Report send dedupe is in memory only (a restart within the minute can resend)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא שולח דוחות.", "מה נשלח בפועל לא נשמר — אין היסטוריית דוחות.", "ההמלצות בדוח הן כללים סטטיים (ה-AI כבוי)."],
+    sideEffects: [], limitationsHe: ["סאני לא שולח דוחות.", "מה נשלח בפועל לא נשמר — אין היסטוריית דוחות.", "ההמלצות בדוח הן כללים קבועים (אין קריאה למודל)."],
     surfaces: S(["/setup/reports"], ["reports"]),
   },
   {
-    id: "AGENT_ALERTS", group: "OPERATIONS", titleHe: "Agent Alerts ו-AI ישן",
-    purpose: "The older rule-based alert agent + AI chat (currently disabled by flag) and the week-strength check.",
-    canonicalSource: "Agent alert records (entity keys per alert type), business memory, goals.",
+    id: "AGENT_ALERTS", group: "OPERATIONS", titleHe: "Agent Alerts",
+    purpose: "The older rule-based alert engine (its rule pipeline switched off) with the holiday and week-strength checks that still run.",
+    canonicalSource: "Agent alert records (entity keys per alert type) and goals.",
     entityTypes: ["agent_alert"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["project_view", "system_settings", "company_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
     rules: [
       R("ALERTS_NOT_TRUTH", "OWNER_POLICY", "Agent alerts are never canonical action truth for Sunny (Owner decision); Sunny's own Cases replace them."),
-      R("AI_FLAG_OFF", "IMPLEMENTATION_BEHAVIOR", "The AI flag is off: AI chat / rules / alert pushes are disabled; the holiday cycle and week-strength check still run."),
-      R("AI_FLAG_DOC_CONFLICT", "CONFLICT", "The AI flag is documented as UI-only but also disables the agent cron."),
+      R("ALERT_RULES_OFF", "IMPLEMENTATION_BEHAVIOR", "The agent-alert rules switch is off: the 13 rules, their pushes and alert widgets are disabled; the holiday cycle and week-strength check still run."),
+      R("IN_APP_AI_RETIRED", "OWNER_POLICY", "The older in-app AI assistant was retired and removed (2026-09-25); Sunny is the only AI / organizational partner."),
       R("WEEK_STRENGTH", "IMPLEMENTATION_BEHAVIOR", "Every Friday 10:00 an alert is raised if next week has fewer than 3 significant activities or fewer than 2 active days."),
     ],
     sideEffects: [], limitationsHe: ["סאני קורא Agent Alerts פתוחות כתצפית בלבד (לא אמת לפעולה); לא סוגר ולא יוצר אותן."],
@@ -920,4 +920,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-15", date: "2026-09-25", domain: "REPORTS", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "דוחות: לוח זמנים, סמנטיקת כסף ותאריך מול מוח הכספים וסיכום הבוקר, כל משימות הרקע ומנועי תשומת הלב." },
   { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "סאני על עצמו: מה לימדת, מה ענית, מה בוצע, מה פתוח — ומה הוא לא זוכר (אין שיחות שמורות)." },
   { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CONNECTOR", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "החיבור ל-Claude: הרשאות, כלים, מגבלות, ביקורת (לא קריאה), מצבי כשל ודגלים — בלי סודות." },
+  { version: "2026.09.25-16", date: "2026-09-25", domain: "AGENT_ALERTS", dimension: "domain", from: "LEGACY_AI_PRESENT", to: "LEGACY_AI_REMOVED", noteHe: "העוזר הישן באפליקציה ('מאי') הוסר מהמוצר לפי החלטתך: אין צ'אט, פרומפט, בונה הקשר, נתב מודלים, מעקב תקציב AI או נתיב זיכרון. סאני הוא השותף היחיד. נשאר רק אחסון יתום (טבלת הזיכרון הריקה ומפתחות תקציב/לוג AI) עד מחיקה מאושרת." },
 ];

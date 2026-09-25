@@ -6,7 +6,6 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { DEFAULT_CURRENCY, isExpenseFullyPaidStatus, isReceivedStatus, normalizeCurrency } from "@/lib/finance";
 import { listProjects } from "@/lib/projects-store";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { GeneratedReport } from "./types";
 
 // ── Hebrew date utils ─────────────────────────────────────────────────────────
@@ -205,58 +204,9 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
   };
 }
 
-// ── AI recommendations ────────────────────────────────────────────────────────
+// ── Recommendations (deterministic rules) ─────────────────────────────────────
 
 async function getWeeklyRecommendations(data: WeeklyData): Promise<string[]> {
-  const ctx = [
-    `שבוע: ${data.weekRange}`,
-    `פרויקטים פעילים: ${data.activeCount}, עברו דדליין: ${data.overdueCount}, הושלמו השבוע: ${data.completedCount}`,
-    `סשנים השבוע: ${data.sessionsThisWeek}, לשבוע הבא: ${data.sessionsNextWeek}`,
-    `הכנסות השבוע: ${fmt(data.revenueThisWeek)}, הוצאות: ${fmt(data.expensesThisWeek)}, ממתין: ${fmt(data.pendingTotal)}`,
-    `ויקטור: ${data.victorStuck} תקועים, ${data.victorBelowPace ? "מתחת לקצב" : "בקצב"}`,
-  ].join("\n");
-
-  const prompt = `אתה מנהל תפעול של סטודיו מוזיקה "Redbloods Records". סיכום שבועי:\n${ctx}\n\nתן בדיוק 3 המלצות עדיפות לשבוע הבא. כל המלצה: משפט אחד, עברית, קצר ומעשי. החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
-
-  // OpenAI primary — skipped entirely while the agent/AI is disabled.
-  if (MAI_AI_ENABLED && process.env.OPENAI_API_KEY) {
-    try {
-      const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
-      const model = resolveModel("default");
-      const { data, inputTokens, outputTokens } = await openAIJSON<{ recommendations: string[] }>(
-        prompt, { model, maxTokens: 250, temperature: 0.65 }
-      );
-      void (async () => {
-        try {
-          const { trackAIUsage } = await import("@/lib/agent/budget");
-          await trackAIUsage({ provider: "openai", model, action: "weekly_report_recommendations", source: "report", inputTokens, outputTokens });
-        } catch { /* ignore */ }
-      })();
-      if (Array.isArray(data.recommendations) && data.recommendations.length >= 3) {
-        return data.recommendations.slice(0, 3);
-      }
-    } catch { /* fallthrough to Groq */ }
-  }
-
-  // Groq fallback (optional) — skipped entirely while the agent/AI is disabled.
-  if (MAI_AI_ENABLED && process.env.GROQ_API_KEY) {
-    try {
-      const OpenAI = (await import("openai")).default;
-      const client = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
-      const res = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 220, temperature: 0.65,
-      });
-      const parsed = JSON.parse(res.choices[0].message.content ?? "{}");
-      if (Array.isArray(parsed.recommendations) && parsed.recommendations.length >= 3) {
-        return parsed.recommendations.slice(0, 3);
-      }
-    } catch { /* fallthrough to static */ }
-  }
-
-  // Static fallback
   const recs = [];
   if (data.overdueCount > 0)     recs.push(`עדכן דדליינים ל-${data.overdueCount} פרויקטים שעברו תאריך`);
   if (data.sessionsNextWeek < 3) recs.push("קבע סשנים לשבוע הבא — לא מספיק מתוכננים");

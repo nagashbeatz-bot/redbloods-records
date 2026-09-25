@@ -20,8 +20,8 @@ const PROPOSAL_TERMINAL_STATUSES = new Set(["נסגר", "לא נסגר"]);
  * passed while the proposal is still in a non-terminal status. Terminal set
  * ("נסגר"/"לא נסגר") is not guessed — it is the SAME set already used
  * production-wide (components/clients/ProposalsSection.tsx, InsightsPage.tsx,
- * lib/coo/facts.ts, lib/agent/rules.ts, lib/agent/context-builder.ts,
- * lib/mai/operational-rules.ts) for exactly this open/closed distinction.
+ * lib/coo/facts.ts, lib/agent/rules.ts,
+ * lib/proposal-followups.ts) for exactly this open/closed distinction.
  */
 export function detectProposalFollowupCases(state: PartnerCompanyState, todayYmd: string): PartnerCase[] {
   const domain = state.domains.proposalsFull;

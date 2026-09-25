@@ -74,7 +74,7 @@ export const PROPOSAL_STATUS_SEMANTICS: readonly ProposalStatusSemantics[] = [
 /** How each consumer counts a proposal as open / due. They disagree — Sunny reports, never normalizes. */
 export const PROPOSAL_STATUS_CONSUMERS = [
   { consumer: "Client drawer KPIs", open: "allow-list of the 4 open statuses (unknown string = not open)", followUp: "earliest follow-up among open", money: "sums every currency under one label" },
-  { consumer: "Mai rules (legacy)", open: "allow-list", followUp: "date ≤ today (UTC)", money: "—" },
+  { consumer: "proposal follow-up rules (client drawer)", open: "allow-list", followUp: "date ≤ today (UTC)", money: "—" },
   { consumer: "Legacy dashboard grid", open: "block-list (not נסגר / לא נסגר)", followUp: "today / overdue (UTC)", money: "₪ only" },
   { consumer: "Live dashboard", open: "block-list", followUp: "date = today only (UTC)", money: "none" },
   { consumer: "Insights", open: "block-list", followUp: "overdue < today, today = (UTC)", money: "'potential' ₪ only" },
@@ -135,7 +135,7 @@ export const FOLLOW_UP_MODEL = {
   created: "the create form defaults the date to today + 3; an edit silently fills today + 3 when the date is empty (so saving any edit adds a follow-up)",
   statusLabels: "צריך פולואפ / לחזור בעתיד are labels only — no code path branches on them; status changes never close the follow-up task",
   overdue: "computed separately by each consumer (UTC vs Israel dates) — there is no stored 'overdue' state",
-  alerts: "the proposal follow-up agent rule exists but the agent check is switched off (MAI flag); even when on, its severity is never pushed; no push, cron or email covers proposals",
+  alerts: "the proposal follow-up agent rule exists but the agent check is switched off (agent-alert rules switch); even when on, its severity is never pushed; no push, cron or email covers proposals",
   contactLog: "NOT recorded — Redbloods has no record of calls / messages / replies; WhatsApp / phone / in-person are invisible",
   sunnyWording: "Sunny says 'I don't see a recorded follow-up' / 'the recorded follow-up date passed' — never 'you did not follow up'.",
 } as const;

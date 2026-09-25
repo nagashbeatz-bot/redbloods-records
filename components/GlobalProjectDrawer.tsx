@@ -121,14 +121,6 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects]);
 
-  // Broadcast selected project to AppShell so ChatPanel can receive it
-  useEffect(() => {
-    const id = drawerProjectId ?? albumProject?.id ?? null;
-    window.dispatchEvent(
-      new CustomEvent("rb:project-selected", { detail: id })
-    );
-  }, [drawerProjectId, albumProject]);
-
   return (
     <Ctx.Provider value={{ openProject, closeProject, drawerProjectId, albumProjectId: albumProject?.id ?? null }}>
       {children}

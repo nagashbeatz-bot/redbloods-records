@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { AgentAlert, AlertSeverity } from "@/lib/types";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 
 // ── Category definitions ──────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export default function AgentSummaryCard() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!MAI_AI_ENABLED) return; // agent disabled → no fetch; card stays hidden (returns null below)
+    if (!AGENT_ALERT_RULES_ENABLED) return; // agent disabled → no fetch; card stays hidden (returns null below)
     fetch("/api/agent/alerts?status=new&limit=50")
       .then((r) => r.json())
       .then((d) => {
@@ -58,7 +58,7 @@ export default function AgentSummaryCard() {
       .catch(() => setLoaded(true));
   }, []);
 
-  if (!MAI_AI_ENABLED || !loaded || alerts.length === 0) return null;
+  if (!AGENT_ALERT_RULES_ENABLED || !loaded || alerts.length === 0) return null;
 
   const urgent = alerts.filter(
     (a) => a.severity === "urgent" || a.severity === "important"

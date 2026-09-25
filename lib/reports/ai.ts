@@ -1,145 +1,15 @@
 /**
- * AI recommendations for daily reports.
- * Uses Groq first (fast, free-tier), falls back to OpenAI, then to static fallbacks.
+ * Recommendations for the daily reports — deterministic rules over the report data (no model call).
  * SERVER ONLY.
  */
 import "server-only";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { ReportData, ReportType } from "./types";
 
 export async function getRecommendations(
   data: ReportData,
   reportType: ReportType
 ): Promise<string[]> {
-  const contextLines: string[] = [
-    `פרויקטים פעילים: ${data.activeProjects.length}`,
-    `פרויקטים שעברו דדליין: ${data.overdueProjects.length}`,
-  ];
-
-  if (data.overdueProjects.length) {
-    contextLines.push(
-      `שמות שעברו דדליין: ${data.overdueProjects
-        .slice(0, 3)
-        .map((p) => `${p.name} (${p.artist || "לא ידוע"})`)
-        .join(", ")}`
-    );
-  }
-  if (data.dueTodayProjects.length) {
-    contextLines.push(
-      `דדליין היום: ${data.dueTodayProjects.map((p) => p.name).join(", ")}`
-    );
-  }
-  if (data.dueSoonProjects.length) {
-    contextLines.push(
-      `דדליין קרוב: ${data.dueSoonProjects
-        .slice(0, 3)
-        .map((p) => `${p.name} (${p.daysUntil} ימים)`)
-        .join(", ")}`
-    );
-  }
-  if (data.missingInfoProjects.length) {
-    contextLines.push(`פרויקטים חסרי מידע: ${data.missingInfoProjects.length}`);
-  }
-  if (data.calendarEvents.length) {
-    contextLines.push(
-      `אירועים היום: ${data.calendarEvents
-        .map((e) => `${e.type} "${e.title}"`)
-        .join(", ")}`
-    );
-  }
-
-  // Evening-specific context (uses new field names from ReportData v2)
-  if (reportType === "evening") {
-    if ((data.sessionsDone ?? []).length > 0) {
-      contextLines.push(
-        `סשנים שהתקיימו היום: ${(data.sessionsDone ?? [])
-          .map((s) => `${s.projectName}${s.artist ? ` (${s.artist})` : ""}`)
-          .join(", ")}`
-      );
-    }
-    if ((data.sessionsNeedingUpdate ?? []).length > 0) {
-      contextLines.push(
-        `סשנים שעברו ודורשים עדכון: ${(data.sessionsNeedingUpdate ?? [])
-          .map((s) => s.projectName).join(", ")}`
-      );
-    }
-    if ((data.tomorrowSessions ?? []).length > 0) {
-      contextLines.push(
-        `סשנים מחר: ${(data.tomorrowSessions ?? [])
-          .map((s) => `${s.projectName}${s.startTime ? ` ב-${s.startTime.slice(0, 5)}` : ""}`)
-          .join(", ")}`
-      );
-    }
-    const totalIn      = (data.txReceivedToday         ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0);
-    const totalPending = (data.txPendingAddedToday      ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0);
-    const totalExpPaid = (data.txExpensesPaidToday      ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0);
-    const totalExpPend = (data.txExpensesPendingToday   ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0);
-    if (totalIn + totalPending + totalExpPaid + totalExpPend > 0) {
-      contextLines.push(`תנועות כספיות שנרשמו היום: התקבל ${totalIn}₪, הכנסות צפויות ${totalPending}₪, הוצאות ששולמו ${totalExpPaid}₪, הוצאות לתשלום ${totalExpPend}₪`);
-    }
-    if ((data.completedTodayProjects ?? []).length > 0) {
-      contextLines.push(
-        `פרויקטים שהסתיימו היום: ${(data.completedTodayProjects ?? []).map((p) => p.name).join(", ")}`
-      );
-    }
-    if ((data.activityItems ?? []).length > 0) {
-      contextLines.push(`פעולות שבוצעו היום: ${(data.activityItems ?? []).length} פעולות`);
-    }
-  }
-
-  const forTomorrow = reportType === "evening";
-  const prompt = `אתה מנהל תפעול של סטודיו מוזיקה "Redbloods Records".
-
-מצב נוכחי:
-${contextLines.join("\n")}
-
-תן בדיוק 3 המלצות פעולה ${forTomorrow ? "למחר" : "להיום"}.
-כל המלצה: משפט אחד, בעברית, קצר, מעשי, ישיר.
-אל תחזור על מה שכתבת כבר בדוח. התמקד בצעד הבא הכי חשוב.
-החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
-
-  // Try OpenAI (primary) — skipped entirely while the agent/AI is disabled.
-  if (MAI_AI_ENABLED && process.env.OPENAI_API_KEY) {
-    try {
-      const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
-      const model = resolveModel("default");
-      const { data, inputTokens, outputTokens } = await openAIJSON<{ recommendations: string[] }>(
-        prompt, { model, maxTokens: 250, temperature: 0.65 }
-      );
-      // Track usage (fire-and-forget)
-      void (async () => {
-        try {
-          const { trackAIUsage } = await import("@/lib/agent/budget");
-          await trackAIUsage({ provider: "openai", model, action: `${reportType}_report_recommendations`, source: "report", inputTokens, outputTokens });
-        } catch { /* ignore */ }
-      })();
-      if (Array.isArray(data.recommendations) && data.recommendations.length >= 3) {
-        return data.recommendations.slice(0, 3);
-      }
-    } catch {
-      /* fall through to Groq */
-    }
-  }
-
-  // Groq fallback (optional) — skipped entirely while the agent/AI is disabled.
-  if (MAI_AI_ENABLED && process.env.GROQ_API_KEY) {
-    try {
-      const OpenAI = (await import("openai")).default;
-      const client = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
-      const model  = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
-      const res    = await client.chat.completions.create({
-        model, messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }, max_tokens: 220, temperature: 0.65,
-      });
-      const parsed = JSON.parse(res.choices[0].message.content ?? "{}");
-      if (Array.isArray(parsed.recommendations) && parsed.recommendations.length >= 3) {
-        return parsed.recommendations.slice(0, 3);
-      }
-    } catch {
-      /* fall through to static */
-    }
-  }
-
+  // Deterministic, rule-based recommendations only (no model call).
   return genericRecommendations(data, reportType);
 }
 

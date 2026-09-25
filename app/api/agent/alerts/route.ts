@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAlerts, createAlertIfNotCoolingDown, getUnreadCount } from "@/lib/agent/alerts-store";
 import { requireOwner } from "@/lib/require-auth";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { WEEK_STRENGTH_ALERT_TYPE } from "@/lib/week-strength-pure";
 import type { AlertSeverity, AlertStatus } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   // data either way, so requireOwner() runs in both branches below.
   const denied = await requireOwner(); if (denied) return denied;
 
-  if (!MAI_AI_ENABLED) {
+  if (!AGENT_ALERT_RULES_ENABLED) {
     const alerts = (await getAlerts({ status: "new", limit: 200 }))
       .filter((a) => a.type === WEEK_STRENGTH_ALERT_TYPE);
     return NextResponse.json(countOnly ? { count: alerts.length } : { alerts });
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   // Kill-switch — no manual alert creation while the agent is disabled.
-  if (!MAI_AI_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
+  if (!AGENT_ALERT_RULES_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json();

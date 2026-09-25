@@ -189,3 +189,12 @@ Rules:
 - Files are served as metadata only (never a path or link); storage-only files are a registered gap.
 - Report money (creation date, ₪ only weekly) is a registered conflict with the Finance Brain.
 - Sunny never claims conversation memory. The connector audit is insert-only and unreadable by Sunny.
+
+## Retired: the in-app AI assistant ("Mai")
+
+The older in-app AI assistant was removed on 2026-09-25 by Owner decision. Sunny, through Claude, is the only AI / organizational partner.
+- Never re-add an in-app chat, prompt, context builder, model router or model SDK.
+- `lib/feature-flags.ts` `AGENT_ALERT_RULES_ENABLED` (off) gates only the rule-based agent-alert pipeline, never AI.
+- The reports keep their deterministic recommendations.
+- The orphaned storage (the memory table, the `ai_budget_*` / `ai_log_*` settings keys) stays until the Owner approves the exact drop SQL.
+- `scripts/test-mai-removed.tsx` must pass.

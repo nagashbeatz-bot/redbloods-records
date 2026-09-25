@@ -1,12 +1,9 @@
 /**
- * Client-side feature flags.
+ * Feature flags.
  *
- * MAI_AI_ENABLED — temporary kill-switch for the in-app "מאי AI" agent. While
- * false: the chat panel never renders, the "סוכן AI" buttons are hidden, and no
- * agent fetch fires from page chrome (`/api/ai/chat`, `/api/agent/alerts`).
- * Flip back to true to restore the feature — the code stays intact.
- *
- * Scope: purely a UI / active-usage gate. It does NOT touch API routes, the
- * agent cron (`/api/agent/check`), Push, or the DB — those remain as-is.
+ * AGENT_ALERT_RULES_ENABLED — the old rule-based agent-alert pipeline stays switched off, exactly as before:
+ * the 13 alert rules, their alert pushes and report triggers (the agent check route), the alert list / badge /
+ * summary widgets and alert updates. The deterministic holiday alerts and the week-strength alert run regardless.
+ * This flag never enables any AI: the retired in-app AI assistant was removed from the product on 2026-09-25.
  */
-export const MAI_AI_ENABLED = false;
+export const AGENT_ALERT_RULES_ENABLED = false;

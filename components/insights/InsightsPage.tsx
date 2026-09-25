@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import {
@@ -647,8 +647,6 @@ export default function InsightsPage() {
   const [agentAlerts,       setAgentAlerts]       = useState<AgentAlert[]>([]);
   const [agentAlertsLoaded, setAgentAlertsLoaded] = useState(false);
   const [updatingIds,       setUpdatingIds]       = useState<Set<string>>(new Set());
-  const [snapshotCopied,    setSnapshotCopied]    = useState(false);
-  const [snapshotLoading,   setSnapshotLoading]   = useState(false);
 
   const [period,     setPeriod]     = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
@@ -674,7 +672,7 @@ export default function InsightsPage() {
   }, []);
 
   // Fetch agent alerts separately — always fetch, since the route itself
-  // enforces the MAI_AI_ENABLED kill-switch: while it's off, only the
+  // enforces the agent-alert rules switch: while it's off, only the
   // exempted "week_understaffed" alert comes back (see
   // app/api/agent/alerts/route.ts), so no other gated alert leaks here.
   useEffect(() => {
@@ -703,21 +701,6 @@ export default function InsightsPage() {
     }
   }, []);
 
-  const handleSnapshot = useCallback(async () => {
-    setSnapshotLoading(true);
-    try {
-      const res = await fetch("/api/agent/context");
-      if (!res.ok) throw new Error("שגיאה");
-      const text = await res.text();
-      await navigator.clipboard.writeText(text);
-      setSnapshotCopied(true);
-      setTimeout(() => setSnapshotCopied(false), 3000);
-    } catch {
-      alert("שגיאה ביצירת תמונת מצב");
-    } finally {
-      setSnapshotLoading(false);
-    }
-  }, []);
 
   const openModal = useCallback((key: ModalKey) => setActiveModal(key), []);
   const closeModal = useCallback(() => setActiveModal(null), []);
@@ -960,34 +943,17 @@ export default function InsightsPage() {
         <div style={{ color: "#444", fontSize: 13, padding: "60px", textAlign: "center" }}>טוען נתונים...</div>
       ) : (
         <>
-          {/* 🤖 התראות סוכן — hidden while Mai AI is disabled, EXCEPT the one
-              exempted "week_understaffed" alert (a plain deterministic check,
-              not an AI feature — see app/api/agent/alerts/route.ts). The
-              snapshot button stays hidden while disabled either way — that's
-              a genuine AI-context feature, not part of this exemption. */}
-          {!MAI_AI_ENABLED && agentAlerts.length === 0 ? (
+          {/* 🤖 התראות סוכן — hidden while the agent-alert rules are off, EXCEPT the one
+              exempted "week_understaffed" alert (a plain deterministic check —
+              see app/api/agent/alerts/route.ts). */}
+          {!AGENT_ALERT_RULES_ENABLED && agentAlerts.length === 0 ? (
             <div style={{ background: "#181818", border: "1px solid #252525", borderRadius: 16, padding: "18px 18px", marginBottom: 24, textAlign: "center" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#555" }}>🤖 התובנות החכמות כבויות כרגע</div>
             </div>
           ) : (agentAlertsLoaded || agentAlerts.length > 0) && (
             <div style={{ background: "#181818", border: "1px solid #252525", borderRadius: 16, padding: "16px 18px", marginBottom: 24 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: agentAlerts.length > 0 ? 12 : 0 }}>
-                {MAI_AI_ENABLED ? (
-                  <button
-                    onClick={handleSnapshot}
-                    disabled={snapshotLoading}
-                    style={{
-                      padding: "5px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
-                      border: snapshotCopied ? "1px solid rgba(16,185,129,0.4)" : "1px solid #2A2A2A",
-                      background: snapshotCopied ? "rgba(16,185,129,0.1)" : "#1A1A1A",
-                      color: snapshotCopied ? "#10B981" : "#666",
-                      cursor: snapshotLoading ? "wait" : "pointer",
-                      fontFamily: "inherit", transition: "all 0.2s",
-                    }}
-                  >
-                    {snapshotCopied ? "✓ הועתק!" : snapshotLoading ? "מכין..." : "📋 צור תמונת מצב"}
-                  </button>
-                ) : <div />}
+                <div />
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#555", letterSpacing: "0.05em" }}>🤖 התראות סוכן</span>
                   {agentAlerts.length > 0 && (

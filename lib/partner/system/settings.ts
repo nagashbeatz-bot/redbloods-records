@@ -70,7 +70,7 @@ export const SETTINGS_FAMILIES: readonly SettingsFamily[] = [
   F("PENDING_UPLOAD_NOTIFICATIONS", C, "PUSH_NOTIFICATIONS", "Uploads waiting to be batched into one Owner push (Steven / Victor uploads)", "upload notify", "SYSTEM_SETTINGS", "WORK", "^(steven_upload_pending_|victor_upload_pending_)", { like: "%_upload_pending_%" }),
   F("PENDING_FINAL_FILE_BATCHES", C, "PUSH_NOTIFICATIONS", "Final-file upload batches waiting for their Owner push", "final files batch notify", "SYSTEM_SETTINGS", "WORK", "^final_files_batch:", { like: "final_files_batch:" }),
   F("PORTAL_PRESENCE", C, "ARTIST_PORTALS", "When Steven / Victor / Shalev / Avi / CLEANTONE last entered their portal (presence push dedupe)", "presence notify", "SYSTEM_SETTINGS", "NONE", "^(steven_login_seen|steven_visit_last|victor_visit_last|shalev_entry_last|avi_entry_last|cleantone_entry_last)$", { in: ["steven_login_seen", "steven_visit_last", "victor_visit_last", "shalev_entry_last", "avi_entry_last", "cleantone_entry_last"] }),
-  F("OLD_AI_BUDGET_AND_LOG", C, "AGENT_ALERTS", "The old AI agent's monthly budget and usage log", "old agent", "SYSTEM_SETTINGS", "NONE", "^ai_(budget|log)_", { like: "ai_%" }),
+  F("OLD_AI_BUDGET_AND_LOG", C, "AGENT_ALERTS", "The retired in-app assistant's monthly AI budget and usage log — orphaned storage (no code writes or reads it since 2026-09-25), pending an approved drop", "nobody (retired)", "SYSTEM_SETTINGS", "NONE", "^ai_(budget|log)_", { like: "ai_%" }),
   // ── B: authentication secrets (never read) ──
   F("GOOGLE_CALENDAR_CREDENTIAL", B, "GOOGLE_CALENDAR", "Google Calendar OAuth credential — Sunny knows only whether the calendar is connected", "OAuth connect flow", "NEVER_SECRET", "NONE", "^google_calendar_token$", null),
   F("DROPBOX_CREDENTIAL", B, "FILES_DROPBOX", "Dropbox OAuth credential — Sunny knows only whether Dropbox is connected", "Dropbox connect flow", "NEVER_SECRET", "NONE", "^dropbox_tokens$", null),
@@ -107,8 +107,6 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/sessions/route.ts",
   "app/api/transactions/route.ts",
   "app/share/[token]/page.tsx",
-  "lib/agent/budget.ts",
-  "lib/agent/context-builder.ts",
   "lib/agent/goals.ts",
   "lib/agent/notifications.ts",
   "lib/agent/snapshot.ts",

@@ -181,6 +181,6 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
   "lib/finance/classify.ts": "7a40590e70ca5c22423d1bbe88352aa7cc64a72252c54d1b0a651a3c4beded9f",
   "lib/project-paths.ts": "69c88d46ab47affddbe1b1d94dcfc118026e94a2bc0e41c85b5e4a5ae7e46b07",
-  "components/ui/ProjectDrawer.tsx": "27deea41ff2a2c6cc1615afc7633a3c83427e903456b7f22d43c5d9be761e425",
-  "components/AppShell.tsx": "63d7c24dbaf3a0a41414075008d4ccf4275e250a21c0768fc650a64a1b604f34",
+  "components/ui/ProjectDrawer.tsx": "baa223afc99dba577b58d2604a4b616127282550708f48751c2ba3efceb4357c",
+  "components/AppShell.tsx": "4249e7a7e41aeb55eaac6001fef9bae542e6e30f92ebd6bb7a148bcc064d3f6f",
 };

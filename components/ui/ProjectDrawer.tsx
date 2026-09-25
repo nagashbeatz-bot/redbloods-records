@@ -274,7 +274,7 @@ interface Props {
 }
 
 // ── ProjectNextActionBlock ────────────────────────────────────────────────────
-// Mai Operational Layer — read-only, pure, no mutations, no fetch.
+// Operational layer — read-only, pure, no mutations, no fetch.
 // Uses checkHealth + checkFinanceHealth from lib/health.ts.
 
 interface TxLike { type: string; payment_status: string; amount: number; date: string | null; expense_scope?: string; currency?: string | null }
@@ -1954,7 +1954,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         <div style={{ flex: 1, overflowY: "auto", background: "#141414", padding: isMobile ? "20px 16px calc(20px + env(safe-area-inset-bottom)) 16px" : 20 } as React.CSSProperties}>
 
           <div style={{ display: activeTab === "סקירה" ? "block" : "none" }}>
-          {/* ── Mai: הפעולה הבאה (pure, no fetch) ──────────────────────── */}
+          {/* ── Operational layer: הפעולה הבאה (pure, no fetch) ──────────────────────── */}
           <ProjectNextActionBlock
             project={project}
             transactions={transactions}

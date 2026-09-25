@@ -640,7 +640,7 @@ export default function DashboardDesignPreview() {
   }, []);
 
   useEffect(() => {
-    // Always fetch — the route itself enforces the MAI_AI_ENABLED kill-switch,
+    // Always fetch — the route itself enforces the agent-alert rules switch,
     // exposing only the exempted "week_understaffed" alert while it's off
     // (see app/api/agent/alerts/route.ts), so no other gated alert leaks here.
     fetch("/api/agent/alerts?status=new&limit=50")

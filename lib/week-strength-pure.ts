@@ -7,7 +7,7 @@
 export const TZ = "Asia/Jerusalem";
 
 /** agent_alerts.type for this check — also the one type exempted from the
- *  MAI_AI_ENABLED kill-switch (see app/api/agent/alerts/route.ts, [id]/route.ts,
+ *  agent-alert rules switch (see app/api/agent/alerts/route.ts, [id]/route.ts,
  *  and lib/week-strength-notify.ts's own doc comment for why). */
 export const WEEK_STRENGTH_ALERT_TYPE = "week_understaffed";
 

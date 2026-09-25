@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { useVictorT } from "@/lib/victor-i18n";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { useIsClient } from "@/lib/use-is-client";
 
 const MOBILE_TABS = [
@@ -31,9 +31,8 @@ const MORE_ITEMS = [
   { href: "/push-test",     label: "🔔 התראות", icon: "🔔", iconColor: "#F59E0B" },
 ];
 
-function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
+function MoreSheet({ onClose, pathname, insightsBadge }: {
   onClose: () => void;
-  onOpenChat?: () => void;
   pathname: string;
   insightsBadge?: number;
 }) {
@@ -93,21 +92,6 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
               </Link>
             );
           })}
-          {MAI_AI_ENABLED && (
-            <button
-              onClick={() => { onClose(); onOpenChat?.(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "14px 16px", borderRadius: 14,
-                background: "#1A1A1A", border: "1px solid #252525",
-                color: "#A855F7", fontSize: 15, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <span style={{ fontSize: 20 }}>✦</span>
-              סוכן AI
-            </button>
-          )}
 
           {/* Logout — full width at the bottom (user area) */}
           <button
@@ -149,10 +133,8 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
 // truth for its own safe-area clearance and the mobile mini player's position.
 
 export default function MobileNav({
-  onOpenChat,
   navRef,
 }: {
-  onOpenChat?: () => void;
   navRef?: Ref<HTMLElement>;
 }) {
   const isClient = useIsClient();
@@ -183,7 +165,7 @@ export default function MobileNav({
   // scrolls with the page rather than pinning a bar. owner/steven are unchanged.
 
   useEffect(() => {
-    if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled
+    if (role !== "owner" || !AGENT_ALERT_RULES_ENABLED) return; // owner-only; skipped while the agent-alert rules are off
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))
@@ -278,7 +260,6 @@ export default function MobileNav({
       {isOwner && moreOpen && (
         <MoreSheet
           onClose={() => setMoreOpen(false)}
-          onOpenChat={onOpenChat}
           pathname={pathname}
           insightsBadge={unreadAlerts}
         />

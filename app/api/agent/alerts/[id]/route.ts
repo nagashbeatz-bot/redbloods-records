@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateAlertStatus, getAlertById } from "@/lib/agent/alerts-store";
 import { requireOwner } from "@/lib/require-auth";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { WEEK_STRENGTH_ALERT_TYPE } from "@/lib/week-strength-pure";
 import type { AlertStatus } from "@/lib/types";
 
@@ -22,7 +22,7 @@ export async function PATCH(
   // Kill-switch — while the agent is disabled, only the exempted
   // WEEK_STRENGTH_ALERT_TYPE alert can still be acted on (mirrors the GET
   // exemption); every other alert type stays frozen exactly as before.
-  if (!MAI_AI_ENABLED) {
+  if (!AGENT_ALERT_RULES_ENABLED) {
     const alert = await getAlertById(id);
     if (!alert || alert.type !== WEEK_STRENGTH_ALERT_TYPE) {
       return NextResponse.json({ disabled: true }, { status: 503 });

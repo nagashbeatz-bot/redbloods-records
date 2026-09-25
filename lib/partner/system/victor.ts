@@ -130,7 +130,7 @@ export const VICTOR_PUSHES = [
   { id: "WORK_COMPLETED", trigger: "status → הושלם (real transition)", recipients: "Victor, then Owner", guard: "production", deepLink: "?workId" },
   { id: "PRESENCE", trigger: "Victor loads his page (30-minute cooldown)", recipients: "Owner", guard: "production", deepLink: "his portal" },
   { id: "STUCK_CRON", trigger: "push cron — filters status by work-state values, so it NEVER fires on current data", recipients: "Owner", guard: "production", deepLink: "team" },
-  { id: "STUCK_AGENT", trigger: "agent check (switched off by the MAI flag)", recipients: "Owner (12-hour cooldown)", guard: "production", deepLink: "team" },
+  { id: "STUCK_AGENT", trigger: "agent check (switched off by the agent-alert rules switch)", recipients: "Owner (12-hour cooldown)", guard: "production", deepLink: "team" },
 ] as const;
 
 export interface VictorActionEntry { id: string; action: string; who: Who | "VICTOR_OR_OWNER"; enforcement: Enforcement; entryPoint: string; writes: string; files: string | null; project: string | null; finance: string | null; calendar: string | null; push: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY" | "EXECUTE_AFTER_DASHBOARD_APPROVAL"; futurePrimitive: string; internal: { routes: readonly string[] } }

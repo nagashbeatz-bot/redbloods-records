@@ -30,7 +30,7 @@ import { createAlertIfNotCoolingDown } from "@/lib/agent/alerts-store";
 import { runHolidayAlertCycle } from "@/lib/agent/holiday-check";
 import { sendAlertsAsNotifications } from "@/lib/agent/notifications";
 import { getGoalsProgress } from "@/lib/agent/goals";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import type { AgentAlert, AlertInput } from "@/lib/types";
 
 const supabase = createClient(
@@ -47,23 +47,23 @@ export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get("secret");
   const authed = !!secret && secret === process.env.CRON_SECRET;
 
-  // ── Upcoming-holiday alerts — run REGARDLESS of MAI_AI_ENABLED (holiday alerts
-  // are independent of the Mai AI kill-switch), but only for an authed cron call.
+  // ── Upcoming-holiday alerts — run REGARDLESS of AGENT_ALERT_RULES_ENABLED (holiday alerts
+  // are independent of the agent-alert rules switch), but only for an authed cron call.
   // Self-contained: reads Google Calendar, persists (insert-if-absent), and
   // auto-resolves ONLY upcoming_holiday alerts. It runs no other rule and touches
   // no other agent_alerts row, so it cannot re-activate anything the kill-switch
   // disables — and its auto-resolve is NOT behind the early return, so a holiday
-  // still closes on time while Mai AI is off. ──
+  // still closes on time while the rules switch is off. ──
   let holiday = { holidaysInWindow: 0, newHolidayAlerts: 0, holidaysResolved: 0 };
   if (authed) {
     try { holiday = await runHolidayAlertCycle(); }
     catch (e) { console.error("[agent/check] holiday cycle error:", e); }
   }
 
-  // ── Kill-switch — MEANING UNCHANGED: when Mai AI is disabled, stop here without
+  // ── Kill-switch — MEANING UNCHANGED: when the agent-alert rules switch is off, stop here without
   // running any other rule, report, or push, and return even for unauthed callers
   // exactly as before. Holiday alerts above are the sole, deliberate exception. ──
-  if (!MAI_AI_ENABLED) return NextResponse.json({ ok: true, disabled: true, ...holiday });
+  if (!AGENT_ALERT_RULES_ENABLED) return NextResponse.json({ ok: true, disabled: true, ...holiday });
 
   // ── Auth gate for the rest of the pipeline (unchanged) ──────────────────────
   if (!authed) {

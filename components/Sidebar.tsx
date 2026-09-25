@@ -8,7 +8,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { type ClientRole } from "@/lib/use-role";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import { useVictorT } from "@/lib/victor-i18n";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -114,7 +114,7 @@ function NavLink({ href, label, icon, iconColor, pathname, badge, hoveredHref, o
   );
 }
 
-export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: ClientRole; onOpenChat?: () => void }) {
+export default function Sidebar({ role }: { role: ClientRole }) {
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   }, []);
 
   useEffect(() => {
-    if (role !== "owner" || !MAI_AI_ENABLED) return; // alerts owner-only; skipped while AI is disabled
+    if (role !== "owner" || !AGENT_ALERT_RULES_ENABLED) return; // alerts owner-only; skipped while the agent-alert rules are off
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))

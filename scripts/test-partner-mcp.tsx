@@ -285,7 +285,7 @@ async function main() {
     const inst = strip(rd("instrumentation.ts"));
     ok("S. instrumentation: MCP-only mode returns BEFORE any scheduler is imported", inst.indexOf('REDBLOODS_MCP_ONLY === "true"') > 0 && inst.indexOf('REDBLOODS_MCP_ONLY === "true"') < inst.indexOf('import("node-cron")'));
     const pkg = JSON.parse(rd("package.json"));
-    ok("47/48. no Anthropic SDK / key, no MCP SDK dependency, no in-app chat revived", !Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some((d) => /anthropic|modelcontextprotocol|mcp/i.test(d)) && !/partner-mcp|partner\/gateway/.test(rd("app/api/ai/chat/route.ts")) && /MAI_AI_ENABLED/.test(rd("app/api/ai/chat/route.ts")));
+    ok("47/48. no Anthropic SDK / key, no MCP SDK dependency, no in-app chat revived", !Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some((d) => /anthropic|modelcontextprotocol|mcp/i.test(d)) && !fs.existsSync(path.join(ROOT, "app/api/ai/chat/route.ts")));
     ok("the Owner kill switch revoke_all is NOT callable by the app", !code.some(([, s]) => /partner_mcp_revoke_all/.test(s)));
   }
 

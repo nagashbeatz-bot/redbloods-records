@@ -1,5 +1,5 @@
 /**
- * Mai Operational Layer — pure rule checks.
+ * Operational layer — pure rule checks.
  *
  * Constraints:
  *   - No fetch, no Supabase, no mutation, no AI, no side effects.

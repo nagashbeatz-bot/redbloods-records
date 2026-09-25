@@ -49,7 +49,7 @@ export const REPORTS_MODEL = {
   recipients: "one address from server configuration (not stored in the database)",
   history: "NOT_RECORDED — only an in-memory 'last sent' time; no record of what was sent",
   dedupe: "in memory only — a restart in the same minute can send twice",
-  aiRecommendations: "gated by the old AI flag (off) → static rule-based recommendations only",
+  aiRecommendations: "deterministic rule-based recommendations only (the model-call path was removed with the retired in-app assistant on 2026-09-25)",
   moneySemantics: [
     { report: "daily 'added today'", rule: "transactions CREATED today (created_at), received = שולם/התקבל, expense paid = שולם only, per currency", vsFinanceBrain: "CONFLICT — the Finance Brain uses the transaction DATE, not the creation date" },
     { report: "daily 'expected today'", rule: "transactions DATED today", vsFinanceBrain: "consistent in date semantics" },
@@ -73,7 +73,7 @@ export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does:
   { id: "STEVEN_MIX_REMINDER", trigger: "every 5h after notes", does: "reminds Steven about pending mix notes", writes: "push + state", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "STEVEN_DEADLINE_DIGEST", trigger: "09:00–09:15 New York time", does: "daily deadline digest to Steven", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "OWNER_BELL_RESET", trigger: "Friday 06:00–06:15", does: "deletes the Owner's notification bell rows", writes: "deletes notifications", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "AGENT_CHECK_ROUTE", trigger: "external cron every 3h (cron secret)", does: "holiday alerts always; the rule-based alert pipeline + pushes + report triggers only when the old AI flag is on (it is off)", writes: "holiday agent alerts", classes: ["BACKGROUND", "DISABLED", "LEGACY"] },
+  { id: "AGENT_CHECK_ROUTE", trigger: "external cron every 3h (cron secret)", does: "holiday alerts always; the rule-based alert pipeline + pushes + report triggers only when the agent-alert rules switch is on (it is off)", writes: "holiday agent alerts", classes: ["BACKGROUND", "DISABLED", "LEGACY"] },
   { id: "PUSH_CRON_ROUTE", trigger: "external cron (cron secret)", does: "Owner pushes for overdue / due-soon deadlines + today's sessions", writes: "push", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SESSION_CALENDAR_PULL", trigger: "external cron (cron secret)", does: "copies moved Google event times into sessions", writes: "sessions", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "AGENT_SNAPSHOT_READ", trigger: "external call (cron secret)", does: "returns a read-only business snapshot of the old agent", writes: "nothing", classes: ["BACKGROUND", "LEGACY"] },
@@ -103,10 +103,10 @@ export const CODE_BUSINESS_GOALS = {
 } as const;
 
 export const LEGACY_AI = {
-  status: "RETIREMENT_APPROVED — the in-app assistant (chat, prompt, context builder, provider router, memory route) is kill-switched; the Owner approved its complete removal (separate mission)",
-  flagAlsoGates: ["the agent-alert rule pipeline + its pushes + report triggers", "the reports' AI recommendation calls"],
+  status: "RETIRED AND REMOVED (2026-09-25, Owner decision) — chat, prompt, context builder, provider router, AI budget tracking, memory route and context snapshot no longer exist; there is no flag that can bring it back",
+  flagAlsoGates: ["its old kill switch was replaced by a neutral agent-alert rules switch (still off) — it gates only the rule-based alert pipeline"],
   sunnyDependsOnIt: false,
-  memory: "a separate memory table (0 rows) — never Sunny's knowledge",
+  memory: "the memory table (0 rows) and the AI budget / log settings keys remain as orphaned storage pending an approved drop — never Sunny's knowledge",
 } as const;
 
 // ═══════════════════════════════ SUNNY CORE ═══════════════════════════════

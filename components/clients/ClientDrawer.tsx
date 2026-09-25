@@ -6,7 +6,7 @@ import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
-import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
+import { checkProposalFollowUps, type ProposalFinding } from "@/lib/proposal-followups";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
@@ -531,7 +531,7 @@ function ModalContent({
               )}
             </SectionCard>
 
-            {/* Mai: follow-up reminders — pure, no fetch */}
+            {/* Follow-up reminders — pure, no fetch */}
             <ProposalFollowUpBlock proposals={proposals} />
 
             {/* Proposals */}
@@ -1344,7 +1344,7 @@ function NewProjectForm({ client, onClose, onCreated }: {
 }
 
 // ─── ProposalFollowUpBlock ────────────────────────────────────────────────────
-// Mai Operational Layer — read-only, pure, no mutations.
+// Operational layer — read-only, pure, no mutations.
 
 function ProposalFollowUpBlock({ proposals }: { proposals: Proposal[] }) {
   const findings = checkProposalFollowUps(proposals);
