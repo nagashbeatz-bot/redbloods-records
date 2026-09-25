@@ -93,5 +93,5 @@ export interface ProjectDetailRaw {
 export const PROJECT_DETAIL_SOURCES = [
   "projects", "settings:finance_", "settings:delivery_", "project_actions", "sessions", "meetings", "tasks", "sound_engineer_work", "mix_versions", "mix_comments",
   "mix_comment_attachments", "mix_targets", "mix_target_notes", "final_files", "vendor_project_work", "red_films_productions", "red_films_budget_items", "album_tracks",
-  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "agent_alerts", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_",
+  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "agent_alerts", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_", "settings:steven_final_files_requested_project:", "settings:steven_final_files_requested:",
 ] as const;

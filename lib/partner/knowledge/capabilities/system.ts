@@ -67,7 +67,7 @@ export const systemAwareness: KnowledgeCapability = {
     }
     if (q.mode === "actions") {
       const acts = BUSINESS_ACTIONS.filter((a) => !q.params.domain || a.domain === q.params.domain);
-      return result(acts.map((a) => item({ id: a.id, label: partner(a.meaning), epistemic: "FACT", source: SRC, fields: { domain: a.domain, class: a.class, approval: a.approval, financialRisk: a.financialRisk, externalRisk: a.externalRisk, primitive: a.primitive ?? null, reason: a.reason } })),
+      return result(acts.map((a) => item({ id: a.id, label: partner(a.meaning), epistemic: "FACT", source: SRC, fields: { domain: a.domain, class: a.class, approval: a.approval, confirmations: [...a.confirmations], sunnyCanExecuteToday: a.sunnyCanExecuteToday, financialRisk: a.financialRisk, externalRisk: a.externalRisk, primitive: a.primitive ?? null, reason: a.reason } })),
         { ...base, summary: [version(), sfact("BY_CLASS", "פעולות לפי סיווג", byCount(acts.map((a) => a.class)), "FACT", SRC)] });
     }
     if (q.mode === "limitations") {

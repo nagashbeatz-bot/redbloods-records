@@ -303,6 +303,9 @@ export function buildProjectSection(src: GatewaySources, projectId: string, sect
       const p = rows(d?.projects).find((x) => x.id === id);
       const approvedNoFinals = (c.ops?.engineerWork?.rows ?? []).filter((w) => w.projectId === id && w.status === "אושר" && !rows(d?.finalFiles).some((f) => f.workId === w.id));
       const missing = approvedNoFinals.map((w) => R(`expected-final:${w.id}`, `${w.engineerName}: עבודה אושרה ואין קבצים סופיים`, "DERIVED", { kind: "EXPECTED_MATERIAL_MISSING", engineer: w.engineerName }));
+      const requested = rows(d?.projectSettings).filter((x) => (x.kind === "STEVEN_FINAL_FILES_REQUESTED_PROJECT" && x.projectId === id) || (x.kind === "STEVEN_FINAL_FILES_REQUESTED_WORK" && c.workIds.has(x.projectId)))
+        .map((x, i) => R(`final-files-requested:${i}`, "סטיבן התבקש לשלוח קבצים סופיים", "FACT", { kind: "FINAL_FILES_REQUESTED", scope: x.kind === "STEVEN_FINAL_FILES_REQUESTED_PROJECT" ? "PROJECT" : "WORK", request: x.value }));
+      missing.push(...requested);
       return { ...base, rows: [...r, ...missing], notes: [p ? (p.dropboxFolder ? `תיקייה קפואה: ${p.dropboxFolder}` : "התיקייה לא קפואה — מחושבת מהאמן והשם; שינוי אמן יעביר העלאות עתידיות.") : "", "תוכן הקבצים ורשימת דרופבוקס החיה לא נקראים (פער יכולת רשום)."].filter(Boolean) };
     }
     case "materials": {

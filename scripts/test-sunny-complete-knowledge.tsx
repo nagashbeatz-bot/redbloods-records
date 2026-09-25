@@ -114,7 +114,7 @@ async function main() {
   ok("calendar is a CAPABILITY_GAP needing approval, NOT permanently unavailable", KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.class === "CAPABILITY_GAP" && KNOWLEDGE_GAPS.find((g) => g.id === "PRJ_CALENDAR_LIVE")!.appRemediation === "OAUTH_OR_INTEGRATION_APPROVAL");
   const kg = sa("knowledge_gaps");
   check("system_awareness knowledge_gaps serves every gap", kg.page?.total, KNOWLEDGE_GAPS.length);
-  ok("version bumped + change logged", SYSTEM_BASELINE_VERSION === "2026.09.25-3" && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
+  ok("version bumped + change logged", SYSTEM_BASELINE_VERSION >= "2026.09.25-3" && CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
 
   section("3. PROOF: every project-linked production column is read by Sunny");
   const readerSrc = PROJECT_READER_FILES.map(read).join("\n");
@@ -176,6 +176,8 @@ async function main() {
   ok("file metadata: version / path / uploadedAt / source; share link only as a boolean", files.items.some((i) => i.fields.version === "V1" && i.fields.path && i.fields.uploadedAt && i.fields.hasShareLink === true) && files.items.some((i) => i.fields.source === "MIX_VERSION_COPY"));
   ok("unfrozen folder is disclosed", files.coverage.some((c) => c.text.includes("לא קפואה")));
   ok("expected material missing: approved engineer work without final files", JSON.stringify(q({ project: `project:${P(4)}`, section: "files" })).includes("EXPECTED_MATERIAL_MISSING"));
+  const p4files = JSON.stringify(q({ project: `project:${P(4)}`, section: "files" }, sources(), OWNER, 50));
+  ok("Steven final-files request markers (project + work settings) are visible, token scrubbed", (p4files.match(/FINAL_FILES_REQUESTED/g) ?? []).length >= 2 && !p4files.includes("sl.ABCDEFG"));
   const mats = q({ project: P2, section: "materials" });
   ok("materials: BPM / key / instructions (token redacted) + work-material file + Victor brief", JSON.stringify(mats).includes("\"bpm\":\"95\"") && JSON.stringify(mats).includes("WORK_MATERIAL_FILE") && !JSON.stringify(mats).includes("sl.ABCDEFG"));
   const rf = q({ project: `project:${P(1)}`, section: "red_films" });

@@ -25,7 +25,7 @@ export const KNOWLEDGE_SCHEMA_VERSION = "partner-knowledge-v1";
 export type KnowledgeDomain = "COMPANY" | "PARTNER" | "FINANCE" | "PROJECTS" | "CLIENTS" | "SALES" | "LABEL" | "SHOWS" | "SESSIONS" | "TEAM";
 
 /** Which request-scoped Partner sources a capability reads (the Gateway loads only these, once per request). */
-export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "PROJECT_DETAIL";
+export type KnowledgeSourceNeed = "STATE" | "FINANCE" | "MEMORY" | "CASES" | "ACTIONS" | "OUTCOMES" | "INTEGRITY" | "OWNER_KNOWLEDGE" | "OPERATIONS" | "PROJECT_DETAIL" | "SETTINGS";
 
 /**
  * Who is asking. INTERNAL = a Redbloods OS surface behind the Owner session. EXTERNAL = a remote interface (the Claude

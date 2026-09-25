@@ -39,15 +39,16 @@ async function integrityOf(ctx: AnyCtx): Promise<Avail<CompanyIntegrityRegister>
 /** Loads exactly the declared sources (each memoized by the read context → read at most once per request). */
 async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience): Promise<GatewaySources> {
   const want = new Set(needs);
-  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail] = await Promise.all([
+  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings] = await Promise.all([
     want.has("STATE") ? ctx.state() : undefined, want.has("FINANCE") ? ctx.finance() : undefined, want.has("MEMORY") ? ctx.memory() : undefined,
     want.has("CASES") ? ctx.cases() : undefined, want.has("ACTIONS") ? ctx.actions() : undefined, want.has("OUTCOMES") ? ctx.outcomes() : undefined,
     want.has("INTEGRITY") ? integrityOf(ctx) : undefined,
     want.has("OWNER_KNOWLEDGE") && "ownerKnowledge" in ctx ? ctx.ownerKnowledge() : undefined,
     want.has("OPERATIONS") && "operations" in ctx ? ctx.operations() : undefined,
     want.has("PROJECT_DETAIL") && "projectDetail" in ctx ? ctx.projectDetail() : undefined,
+    want.has("SETTINGS") && "settings" in ctx ? ctx.settings() : undefined,
   ]);
-  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, identities: APP_IDENTITIES, audience };
+  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, settings, identities: APP_IDENTITIES, audience };
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {

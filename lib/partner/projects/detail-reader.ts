@@ -38,7 +38,7 @@ export function scrubSecrets(text: string | null): string | null {
 }
 const t = (v: unknown) => scrubSecrets(s(v));
 /** Deep scrub of a JSON setting value: strings scrubbed, link-looking keys reduced to a boolean. */
-function scrubValue(v: unknown): unknown {
+export function scrubValue(v: unknown): unknown {
   if (typeof v === "string") return scrubSecrets(v);
   if (Array.isArray(v)) return v.map(scrubValue);
   const o = obj(v);
@@ -70,6 +70,8 @@ export const PROJECT_SETTING_FAMILIES = [
   { prefix: "album_prev_info_", kind: "ALBUM_PREVIOUS_SYSTEM_INFO" },
   { prefix: "session_limit_", kind: "SESSION_LIMIT" },
   { prefix: "project_cover_", kind: "PROJECT_COVER" },
+  { prefix: "steven_final_files_requested_project:", kind: "STEVEN_FINAL_FILES_REQUESTED_PROJECT" },
+  { prefix: "steven_final_files_requested:", kind: "STEVEN_FINAL_FILES_REQUESTED_WORK" },
 ] as const;
 const PUBLIC_REFERENCE = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i;
 

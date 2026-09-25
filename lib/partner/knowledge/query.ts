@@ -29,12 +29,13 @@ const MAX_RECORD_TEXT = 300;
 const MAX_DEEP_RECORD_TEXT = 4000;
 const MAX_OFFSET = 10_000;
 
-const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL" };
+const SOURCE_NAME: Record<KnowledgeSourceNeed, GatewaySourceName> = { STATE: "PROJECTS", FINANCE: "FINANCE", MEMORY: "MEMORY", CASES: "CASES", ACTIONS: "ACTIONS", OUTCOMES: "OUTCOMES", INTEGRITY: "INTEGRITY", OWNER_KNOWLEDGE: "OWNER_KNOWLEDGE", OPERATIONS: "OPERATIONS", PROJECT_DETAIL: "PROJECT_DETAIL", SETTINGS: "SETTINGS" };
 const SOURCE_OF: Record<KnowledgeSourceNeed, (s: KnowledgeSources) => unknown> = {
   STATE: (s) => s.state, FINANCE: (s) => s.finance, MEMORY: (s) => s.memory, CASES: (s) => s.cases, ACTIONS: (s) => s.actions, OUTCOMES: (s) => s.outcomes, INTEGRITY: (s) => s.integrity,
   OWNER_KNOWLEDGE: (s) => s.ownerKnowledge,
   OPERATIONS: (s) => s.operations,
   PROJECT_DETAIL: (s) => s.projectDetail,
+  SETTINGS: (s) => s.settings,
 };
 
 export type ValidatedQuery = { cap: KnowledgeCapability; mode: string; params: Record<string, string>; limit: number; offset: number };

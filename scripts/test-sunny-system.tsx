@@ -111,9 +111,9 @@ async function main() {
   check("validateSystemRegistry()", validateSystemRegistry({ capabilityIds: capIds, knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
   ok(`${DOMAIN_CONTRACTS.length} domains, ${RELATIONSHIPS.length} relationships, ${BUSINESS_ACTIONS.length} actions`, DOMAIN_CONTRACTS.length >= 30 && RELATIONSHIPS.length >= 40 && BUSINESS_ACTIONS.length >= 35);
   ok("the baseline version has change entries (capability change awareness)", CAPABILITY_CHANGES.some((c) => c.version === SYSTEM_BASELINE_VERSION));
-  ok("Sunny execute is unavailable for EVERY domain in this baseline", DOMAIN_CONTRACTS.every((d) => d.support.execute === "INTENTIONALLY_UNAVAILABLE" || d.support.execute === "MISSING"));
+  ok("Sunny execute is NOT_YET_EXECUTABLE for EVERY domain in this baseline (legitimate future, not forbidden)", DOMAIN_CONTRACTS.every((d) => d.support.execute === "NOT_YET_EXECUTABLE" || d.support.execute === "MISSING"));
   ok("FULL is never claimed without a live read capability", DOMAIN_CONTRACTS.filter((d) => d.support.read === "FULL").every((d) => d.readCapabilities.length > 0));
-  ok("Push and Agent Alerts are not readable / executable by Sunny", ["PUSH_NOTIFICATIONS", "AGENT_ALERTS"].every((id) => { const d = DOMAIN_CONTRACTS.find((x) => x.id === id)!; return d.readCapabilities.length === 0 && d.support.execute === "INTENTIONALLY_UNAVAILABLE"; }));
+  ok("Push and Agent Alerts: readable knowledge (history / markers / alerts), NOT executable by Sunny", ["PUSH_NOTIFICATIONS", "AGENT_ALERTS"].every((id) => { const d = DOMAIN_CONTRACTS.find((x) => x.id === id)!; return d.readCapabilities.length > 0 && d.support.execute === "NOT_YET_EXECUTABLE"; }));
   ok("Google Calendar is honestly NOT_CONNECTED (no event read, no write)", (() => { const d = DOMAIN_CONTRACTS.find((x) => x.id === "GOOGLE_CALENDAR")!; return d.states.includes("NOT_CONNECTED") && d.freshness === "NOT_CONNECTED" && d.support.read === "PARTIAL"; })());
   ok("every notification contract says sunnyMayTrigger=false", DOMAIN_CONTRACTS.flatMap((d) => d.notifications ?? []).every((n) => n.sunnyMayTrigger === false));
   ok("CONFLICT / POSSIBLE_BUG rules exist and are never marked as policy", DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "CONFLICT").length >= 10 && DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "POSSIBLE_BUG").length >= 10);
@@ -190,9 +190,9 @@ async function main() {
   const cs = acts.items.find((i) => i.id === "CREATE_SHOW")!;
   check("'can you create a show?' → exists, FUTURE_PRIMITIVE_REQUIRED, with the inputs to collect", [cs.fields.class, cs.fields.approval], ["FUTURE_PRIMITIVE_REQUIRED", "OWNER_APPROVAL_IN_DASHBOARD"]);
   const push = q("system_awareness", { mode: "actions", params: { domain: "PUSH_NOTIFICATIONS" } });
-  check("'can you send push?' → NEVER_EXPOSE_TO_SUNNY", push.items.map((i) => i.fields.class), ["NEVER_EXPOSE_TO_SUNNY"]);
+  check("'can you send push?' → a legitimate future action needing explicit Owner approval, not executable today", push.items.map((i) => [i.fields.class, i.fields.sunnyCanExecuteToday, (i.fields.confirmations as string[]).includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED")]), [["FUTURE_PRIMITIVE_REQUIRED", false, true]]);
   const cal = q("system_awareness", { mode: "coverage", params: { domain: "GOOGLE_CALENDAR" } });
-  check("'calendar access?' → read PARTIAL (connection only), execute unavailable, NOT_CONNECTED", [cal.items[0].fields.read, cal.items[0].fields.execute, (cal.items[0].fields.states as string[]).includes("NOT_CONNECTED")], ["PARTIAL", "INTENTIONALLY_UNAVAILABLE", true]);
+  check("'calendar access?' → read PARTIAL (connection only), execute unavailable, NOT_CONNECTED", [cal.items[0].fields.read, cal.items[0].fields.execute, (cal.items[0].fields.states as string[]).includes("NOT_CONNECTED")], ["PARTIAL", "NOT_YET_EXECUTABLE", true]);
   const conflicts = q("system_awareness", { mode: "rules", params: { class: "CONFLICT" }, });
   ok("conflicts are served as OBSERVATION and policy=false (never taught as policy)", conflicts.items.length >= 10 && conflicts.items.every((i) => i.epistemic === "OBSERVATION" && i.fields.policy === false));
   const lim = q("system_awareness", { mode: "limitations", params: { domain: "GOOGLE_CALENDAR" } });

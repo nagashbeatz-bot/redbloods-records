@@ -21,6 +21,7 @@ import type { EntityKnowledgeSection, KnowledgeAudience } from "../knowledge/typ
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
+import type { SettingsState } from "../settings/types";
 import {
   GATEWAY_SCHEMA_VERSION, GATEWAY_TEXT_POLICY, RECENT_DAYS,
   type GText, type GatewayFreshness, type GatewaySourceName, type GatewaySourceStatus, type GatewayTool,
@@ -64,6 +65,8 @@ export interface GatewaySources {
   operations?: Avail<OperationsRaw>;
   /** Project human context + material metadata (Owner-only; secrets reduced to booleans at the read edge). */
   projectDetail?: Avail<ProjectDetailRaw>;
+  /** Registered non-secret settings families (never credentials). */
+  settings?: Avail<SettingsState>;
   identities: GatewayAppIdentities;
   /** Who is asking (for knowledge enrichment). Absent = the most restrictive audience (EXTERNAL, no Owner authority). */
   audience?: KnowledgeAudience;

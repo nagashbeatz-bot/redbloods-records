@@ -14,7 +14,9 @@
  */
 
 /** How complete Sunny's support is on one dimension. FULL requires useful live semantic state, not mere awareness. */
-export type SunnySupport = "FULL" | "PARTIAL" | "MISSING" | "INTENTIONALLY_UNAVAILABLE";
+/** NOT_YET_EXECUTABLE: a legitimate capability Sunny will get through a typed, Owner-approved primitive — never "forbidden forever".
+ *  INTENTIONALLY_UNAVAILABLE: reserved for secrets / credentials (and similar security material). */
+export type SunnySupport = "FULL" | "PARTIAL" | "MISSING" | "NOT_YET_EXECUTABLE" | "INTENTIONALLY_UNAVAILABLE";
 
 /** Operational state labels (a domain may carry several). */
 export type CapabilityState =
@@ -25,11 +27,22 @@ export type RelationQuality = "CANONICAL_RELATION" | "OWNER_CONFIRMED_RELATION" 
 
 export type RuleClass = "CANONICAL_BUSINESS_RULE" | "IMPLEMENTATION_BEHAVIOR" | "OWNER_POLICY" | "LEGACY_BEHAVIOR" | "POSSIBLE_BUG" | "CONFLICT";
 
-export type ActionClass = "READ_ONLY" | "LEARN_ONLY" | "PROPOSAL_CANDIDATE" | "VALIDATED_ACTION_EXISTS" | "FUTURE_PRIMITIVE_REQUIRED" | "NEVER_EXPOSE_TO_SUNNY";
+/**
+ * No legitimate Redbloods operation is permanently forbidden to Sunny (Owner directive, 2026-09-25): risk decides the
+ * CONFIRMATION a future typed primitive needs, never whether it may exist. SECURITY_RESTRICTED is only for auth /
+ * roles / credentials / integration secrets.
+ */
+export type ActionClass = "READ_ONLY" | "LEARN_ONLY" | "PROPOSAL_CANDIDATE" | "VALIDATED_ACTION_EXISTS" | "FUTURE_PRIMITIVE_REQUIRED" | "SECURITY_RESTRICTED";
+
+/** The confirmation a mutation needs (an action can need several; OWNER_APPROVAL_REQUIRED is always included). */
+export type ConfirmationClass =
+  | "OWNER_APPROVAL_REQUIRED" | "STRONG_CONFIRMATION_REQUIRED" | "DESTRUCTIVE_CONFIRMATION_REQUIRED"
+  | "FINANCIAL_CONFIRMATION_REQUIRED" | "EXTERNAL_EFFECT_CONFIRMATION_REQUIRED" | "SECURITY_RESTRICTED";
 
 export type TriggerType = "MANUAL" | "EVENT" | "SCHEDULED" | "AGENT_CHECK";
 
-export type Approval = "NONE" | "OWNER_CONFIRMATION_IN_CONVERSATION" | "OWNER_APPROVAL_IN_DASHBOARD" | "NEVER";
+/** Where approval happens today. NOT_EXECUTABLE_YET = no typed primitive exists yet (NOT a permanent prohibition). */
+export type Approval = "NONE" | "OWNER_CONFIRMATION_IN_CONVERSATION" | "OWNER_APPROVAL_IN_DASHBOARD" | "NOT_EXECUTABLE_YET";
 
 export type DomainGroup = "WORK" | "LABEL" | "MONEY" | "VENDORS" | "MEDIA_FILES" | "OPERATIONS" | "NOTIFICATIONS" | "SUNNY";
 
@@ -112,9 +125,13 @@ export interface BusinessActionContract {
   financialRisk: "NONE" | "LOW" | "HIGH";
   externalRisk: "NONE" | "DROPBOX" | "GOOGLE_CALENDAR" | "PUSH" | "EMAIL" | "MULTIPLE";
   approval: Approval;
+  /** The confirmation classes a Sunny primitive for this action must enforce (derived from risk + explicit extras). */
+  confirmations: readonly ConfirmationClass[];
+  /** Whether Sunny itself can execute it today. Always false in this baseline (approval / execution happen in the dashboard). */
+  sunnyCanExecuteToday: false;
   /** The Partner action type id when VALIDATED_ACTION_EXISTS. */
   primitive?: string;
-  /** Why it is not / not yet available to Sunny. */
+  /** Why it is not YET available to Sunny / what a primitive must handle. */
   reason: string;
   /**
    * FUTURE primitives: the typed inputs a narrow primitive would need (so Sunny can collect them from the Owner and

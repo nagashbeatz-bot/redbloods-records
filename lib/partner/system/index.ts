@@ -36,7 +36,7 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
     if (d.support.read !== "MISSING" && d.support.read !== "INTENTIONALLY_UNAVAILABLE" && d.readCapabilities.length === 0) e.push(`${d.id}: read ${d.support.read} but no read capability`);
     if (d.support.read === "FULL" && d.freshness === "NOT_CONNECTED") e.push(`${d.id}: FULL read cannot be NOT_CONNECTED`);
     if (d.support.learn !== "MISSING" && d.support.learn !== "INTENTIONALLY_UNAVAILABLE" && d.learnKinds.length === 0) e.push(`${d.id}: learn ${d.support.learn} but no knowledge kind`);
-    if (d.support.execute !== "INTENTIONALLY_UNAVAILABLE" && d.support.execute !== "MISSING") e.push(`${d.id}: Sunny execute must stay unavailable in this baseline`);
+    if (d.support.execute !== "NOT_YET_EXECUTABLE" && d.support.execute !== "MISSING") e.push(`${d.id}: Sunny execute is NOT_YET_EXECUTABLE in this baseline (never "forbidden forever")`);
     for (const r of d.rules) if (!/^[A-Z][A-Z0-9_]{2,50}$/.test(r.id)) e.push(`${d.id}.${r.id}: bad rule id`);
     for (const n of d.notifications ?? []) if (n.sunnyMayTrigger !== false) e.push(`${d.id}.${n.id}: Sunny may never trigger notifications`);
     if (!d.limitationsHe.every((l) => l.length > 0)) e.push(`${d.id}: empty limitation`);
@@ -50,7 +50,11 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
   for (const a of BUSINESS_ACTIONS) {
     if (!ids.has(a.domain)) e.push(`action ${a.id}: unknown domain ${a.domain}`);
     if (a.class === "VALIDATED_ACTION_EXISTS" && !a.primitive && a.id !== "ANSWER_QUESTION") e.push(`action ${a.id}: validated but no primitive`);
-    if (a.class === "NEVER_EXPOSE_TO_SUNNY" && a.approval !== "NEVER") e.push(`action ${a.id}: never-exposed must have approval NEVER`);
+    if (a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY" && !a.confirmations.includes("OWNER_APPROVAL_REQUIRED")) e.push(`action ${a.id}: every mutation needs OWNER_APPROVAL_REQUIRED`);
+    if (a.class === "SECURITY_RESTRICTED" && a.domain !== "PLATFORM_ACCESS") e.push(`action ${a.id}: SECURITY_RESTRICTED is only for auth / roles / credentials`);
+    if (a.sunnyCanExecuteToday !== false) e.push(`action ${a.id}: no action is executable by Sunny in this baseline`);
+    if (a.financialRisk === "HIGH" && !a.confirmations.includes("FINANCIAL_CONFIRMATION_REQUIRED") && a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY") e.push(`action ${a.id}: high financial risk needs FINANCIAL_CONFIRMATION_REQUIRED`);
+    if (a.externalRisk !== "NONE" && !a.confirmations.includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED") && a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY") e.push(`action ${a.id}: external effects need EXTERNAL_EFFECT_CONFIRMATION_REQUIRED`);
   }
   if (new Set(BUSINESS_ACTIONS.map((a) => a.id)).size !== actionIds.size) e.push("duplicate action id");
   for (const c of CAPABILITY_CHANGES) if (!ids.has(c.domain)) e.push(`change ${c.version}: unknown domain ${c.domain}`);

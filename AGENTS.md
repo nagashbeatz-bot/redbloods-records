@@ -17,6 +17,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 Every meaningful Redbloods change answers, in the same change:
 1. What changed? 2. Which entities are affected? 3. Which fields / states / actions changed? 4. Which relationships changed? 5. Which user / role sees it? 6. Which read capability exposes it to Sunny? 7. Which System Awareness contract explains it? 8. What side effects exist? 9. What Push / Calendar / Dropbox / Finance effects exist? 10. Does it create a new Sunny knowledge gap (register it)? 11. Does it change an action Sunny may eventually perform (update the action inventory)? 12. Does it need a new relationship? 13. Does it change provenance / the source of truth? 14. Does it create a duplicate source? 15. Does it change history / audit / outcome semantics?
 
+**Settings are not a blind spot:** every key family of the `settings` store is classified in `lib/partner/system/settings.ts` (A business / system information, B authentication secret — never read, C internal state with meaning, D display detail). A new settings key, prefix or settings-touching file fails `scripts/test-sunny-settings.tsx` until it is classified; A / C families must be readable by Sunny.
+
 `SUNNY IMPACT: NONE` is allowed only for genuinely visual changes. Proof lives in tests, not in contracts: `scripts/test-sunny-complete-knowledge.tsx` pins every project-linked production column (`lib/partner/system/project-columns.ts`) and every mutating project route (`lib/partner/system/project-actions.ts`); a new column or route that Sunny cannot read / does not know fails it.
 
 # Sunny Awareness Check (permanent development contract)
@@ -33,7 +35,7 @@ Every meaningful business feature change must answer the SUNNY AWARENESS CHECK i
 2. Should Sunny relate it? Add relationships with an honest quality (CANONICAL / OWNER_CONFIRMED / DERIVED / TEXT_MATCH / AMBIGUOUS / UNKNOWN). Never manufacture DB links.
 3. Can Sunny learn context about it? If so, use an existing typed knowledge kind, or add a bounded kind (no generic notes). Canonical data is never copied into owner knowledge.
 4. Can Sunny propose changes? Only through an existing validated Partner action primitive. Never add a generic mutation.
-5. Is there a validated action primitive? Record it in `BUSINESS_ACTIONS` with its class (VALIDATED / FUTURE_PRIMITIVE_REQUIRED / NEVER_EXPOSE_TO_SUNNY).
+5. Is there a validated action primitive? Record it in `BUSINESS_ACTIONS` with its class (VALIDATED / FUTURE_PRIMITIVE_REQUIRED / SECURITY_RESTRICTED) and its confirmation classes (OWNER_APPROVAL / FINANCIAL / EXTERNAL_EFFECT / DESTRUCTIVE / STRONG). No legitimate operation is ever "never" for Sunny: risk sets the confirmation, not the prohibition. SECURITY_RESTRICTED is only for auth / roles / credentials.
 6. What approval is required?
 7. What is canonical?
 8. What limitation must Sunny know? Record it in `limitationsHe`. Ignorance of a limitation is a Sunny bug.

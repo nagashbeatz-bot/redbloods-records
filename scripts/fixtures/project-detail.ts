@@ -27,6 +27,8 @@ export const DETAIL_ROWS: Record<string, Record<string, unknown>[]> = {
   "settings:session_limit_": [{ key: `session_limit_${P(2)}`, value: 10 }],
   "settings:album_prev_info_": [{ key: `album_prev_info_${P(2)}`, value: { songs: [{ name: "x", paid: 100, shareUrl: SHARE }] } }],
   "settings:album_finance_": [], "settings:project_cover_": [],
+  "settings:steven_final_files_requested_project:": [{ key: `steven_final_files_requested_project:${P(4)}`, value: { requestedAt: "2026-09-21T10:00:00Z", token: TOKEN } }],
+  "settings:steven_final_files_requested:": [{ key: `steven_final_files_requested:${U(852)}`, value: { requestedAt: "2026-09-21T10:00:00Z" } }],
   project_actions: [{ id: U(821), project_id: P(2), action_type: "sent", content_type: "mix", version_label: "Mix 2", recipient_role: "artist", recipient_name: "אבי", recipient_client_id: C_AVI, recipient_phone: "050-1234567", dropbox_url: SHARE, status: "pending_feedback", action_date: "2026-09-15", followup_date: "2026-09-20", notes: "שלחתי מיקס 2 לאבי", linked_task_id: U(871), linked_work_id: null, created_at: "2026-09-15T10:00:00Z", updated_at: "2026-09-15T10:00:00Z" }],
   sessions: [{ id: U(900), project_id: P(2), show_id: null, date: "2026-08-25", start_time: "10:00", end_time: "14:00", status: "התקיים", session_type: "סשן", title: null, notes: "הקלטנו פזמון", location: "סטודיו", photographer: null, cost: null, calendar_event_id: "evt-900", created_at: "2026-08-20T10:00:00Z" }],
   meetings: [{ id: U(811), project_id: P(2), client_id: C_AVI, client_name: "אבי מולה", date: "2026-09-28", time: "12:00", duration: 60, location: "קפה", notes: "לדבר על קליפ", status: "נקבעה", calendar_event_id: "evt-811", created_at: "2026-09-20T10:00:00Z" }],

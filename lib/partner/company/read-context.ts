@@ -31,6 +31,8 @@ import type { Avail } from "../gateway/core";
 import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
 import { readProjectDetailRaw } from "../projects/detail-reader";
 import type { ProjectDetailRaw } from "../projects/detail-types";
+import { readSettingsState } from "../settings/reader";
+import type { SettingsState } from "../settings/types";
 
 export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
@@ -47,6 +49,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   operations(): Promise<Avail<OperationsRaw>>;
   /** Project human context + file metadata (SELECT only, per-section fail closed, secrets reduced to booleans). */
   projectDetail(): Promise<Avail<ProjectDetailRaw>>;
+  /** Registered non-secret settings families (bounded; never credentials). */
+  settings(): Promise<Avail<SettingsState>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
   extras(): Promise<IntegrityExtras | null>;
   integrity(): Promise<CompanyIntegrityRegister>;
@@ -94,5 +98,9 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     try { return { status: "OK", value: await readProjectDetailRaw(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail };
+  const settings = once(async (): Promise<Avail<SettingsState>> => {
+    try { return { status: "OK", value: await readSettingsState(supabase as unknown as OperationsReadClient) }; }
+    catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, settings };
 }

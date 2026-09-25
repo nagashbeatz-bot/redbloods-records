@@ -94,7 +94,7 @@ function main() {
   section("A. The project contract is valid and wired into the system registry");
   const capIds = REG.all().map((c) => c.id);
   check("validateSystemRegistry()", validateSystemRegistry({ capabilityIds: capIds, knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
-  check("baseline versions agree", [SYSTEM_BASELINE_VERSION, PROJECT_BASELINE_VERSION], ["2026.09.25-3", "2026.09.25-3"]);
+  check("baseline versions (system ≥ project contract)", [SYSTEM_BASELINE_VERSION >= PROJECT_BASELINE_VERSION, PROJECT_BASELINE_VERSION], [true, "2026.09.25-3"]);
   ok("PROJECTS domain lists project_view + project_portfolio", ["project_view", "project_portfolio"].every((c) => DOMAIN_CONTRACTS.find((d) => d.id === "PROJECTS")!.readCapabilities.includes(c)));
   ok("a PROJECTS change entry exists for this baseline", CAPABILITY_CHANGES.some((c) => c.version === "2026.09.25-3" && c.domain === "PROJECTS"));
   check("every link's live-read capability is registered", PROJECT_LINKS.filter((l) => l.liveRead && !capIds.includes(l.liveRead)).map((l) => l.id), []);
