@@ -77,3 +77,9 @@ The Owner-confirmed way of working (deadlines, ball holder, investigate-then-ask
 - A feature that adds a business event (new show / project / payment …) must update its `WORKFLOW_MODELS` entry: what must be known, where Redbloods keeps it, downstream effects, pushes, actions.
 - A new field that removes a repeated Owner question should update `QUESTION_TYPE_TO_MISSING_CONCEPT`.
 - `scripts/test-sunny-operating-model.tsx` must pass.
+
+## Sunny Awareness Check: Clients + Proposals
+
+The customer journey (client → proposal → follow-up → conversion → project → money) is a system contract in `lib/partner/system/clients.ts`. It covers fields, vocabularies, status consumers, links with quality, the conversion flow, follow-up, lead reality, deal terms, the client_id assessment, history, actions and workflows. It is read through `client_view` / `client_portfolio` (`lib/partner/clients/view.ts`) and the CLIENT_DETAIL source.
+- A change to a client / proposal column, status, route, conversion or follow-up behaviour must update that contract. `scripts/test-sunny-clients.tsx` pins the schema columns, the vocabularies the code declares, every route touching clients / proposals, and `CLIENT_REVIEWED_FINGERPRINTS`.
+- Proposal amounts are POTENTIAL money. Project ↔ client by name is TEXT_MATCH; only the proposal chain is canonical. A due follow-up means "no recorded follow-up", never "the Owner did not follow up".

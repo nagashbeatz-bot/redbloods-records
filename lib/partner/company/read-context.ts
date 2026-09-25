@@ -31,6 +31,8 @@ import type { Avail } from "../gateway/core";
 import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
 import { readProjectDetailRaw } from "../projects/detail-reader";
 import type { ProjectDetailRaw } from "../projects/detail-types";
+import { readClientDetailRaw } from "../clients/detail-reader";
+import type { ClientDetailRaw } from "../clients/detail-types";
 import { readSettingsState } from "../settings/reader";
 import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
@@ -50,6 +52,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   operations(): Promise<Avail<OperationsRaw>>;
   /** Project human context + file metadata (SELECT only, per-section fail closed, secrets reduced to booleans). */
   projectDetail(): Promise<Avail<ProjectDetailRaw>>;
+  /** Client contact details / notes + the text of transactions with no project (SELECT only, per-section fail closed). */
+  clientDetail(): Promise<Avail<ClientDetailRaw>>;
   /** Registered non-secret settings families (bounded; never credentials). */
   settings(): Promise<Avail<SettingsState>>;
   /** Live Google Calendar window (Israel dates). MAIN: the trusted integration directly; connector: MAIN's internal endpoint. */
@@ -101,6 +105,10 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     try { return { status: "OK", value: await readProjectDetailRaw(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
+  const clientDetail = once(async (): Promise<Avail<ClientDetailRaw>> => {
+    try { return { status: "OK", value: await readClientDetailRaw(supabase as unknown as OperationsReadClient) }; }
+    catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
   const settings = once(async (): Promise<Avail<SettingsState>> => {
     try { return { status: "OK", value: await readSettingsState(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
@@ -120,5 +128,5 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     })());
     return calendarMemo.get(key)!;
   };
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, settings, calendar };
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, clientDetail, settings, calendar };
 }

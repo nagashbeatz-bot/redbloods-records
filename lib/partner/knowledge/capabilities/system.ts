@@ -9,6 +9,7 @@ import { PROJECT_BASELINE_VERSION, PROJECT_FIELDS, PROJECT_INTEGRITY, PROJECT_LI
 import { DOMAIN_KNOWLEDGE_DEPTH, KNOWLEDGE_GAPS } from "../../system/gaps";
 import { CALENDAR_CONTEXT_CONTRACT } from "../../system/calendar";
 import { ACTION_CONTRACT_FIELDS, ACTION_FLOW, APPROVAL_CLASSES, PROJECT_ACTIONS } from "../../system/project-actions";
+import * as CM from "../../system/clients";
 import type { KnowledgeCapability } from "../types";
 import { byCount, item, partner, result, sfact } from "./common";
 
@@ -38,6 +39,7 @@ export const systemAwareness: KnowledgeCapability = {
     knowledge_gaps: { descriptionForModel: "Every place where Redbloods knows something Sunny cannot yet read, or Redbloods itself does not record it (optional domain / kind = gap class): class, what Redbloods knows, what Sunny knows, why, what would close it, status; plus each domain's knowledge depth" },
     action_inventory: { descriptionForModel: "Every mutation Redbloods can make on a project today (optional kind = group or approval class): who, input, side effects, push / calendar / finance / file effects, reversibility, risk, future Sunny primitive, approval class; plus the permanent action contract. Sunny executes none of them (only the deadline action after dashboard approval)" },
     calendar_model: { descriptionForModel: "The live calendar as a cross-domain context source: source of truth, trusted integration owner, Sunny read path, token refresh, freshness, limits, fields, failure / relationship / availability semantics, cross-domain usage, future write capabilities" },
+    client_model: { descriptionForModel: "CLIENTS + PROPOSALS as Redbloods implements them (param section): fields (every client / proposal field: meaning, class, validation, writers, readers, side effects, history), vocabularies, statuses (meaning, open, follow-up, conversion, side effects), status_consumers (who counts what as open — disagreements), links (every client relationship with quality + enforcement), conversion (proposal → project steps, atomicity, failure modes), follow_up, lead (no lead entity), deal_terms (what is stored vs not + the proposed model), client_id (assessment + recommendation), history, actions (every client / proposal mutation + approval class), workflows, signals, integrity (production counts)" },
     project_model: { descriptionForModel: "The PROJECT as the central node (param section): fields, vocabularies, links (every relationship with link method, cardinality, DB enforcement, what breaks it, live read), money (rules + known conflicts), signals, surfaces, side_effects (page-load writes), integrity (production counts + risks)" },
   },
   defaultMode: "overview",
@@ -46,7 +48,7 @@ export const systemAwareness: KnowledgeCapability = {
     class: { kind: "enum", values: ["CANONICAL_BUSINESS_RULE", "IMPLEMENTATION_BEHAVIOR", "OWNER_POLICY", "LEGACY_BEHAVIOR", "POSSIBLE_BUG", "CONFLICT"], descriptionForModel: "Only rules of this class" },
     person: { kind: "enum", values: USER_CONTRACTS.map((u) => u.id), descriptionForModel: "A person id (see mode people), e.g. SHALEV, AVI, CLEANTONE, VICTOR, STEVEN, OWNER" },
     recipient: { kind: "enum", values: ["owner", "shalev", "avi", "cleantone", "victor", "steven"], descriptionForModel: "Only pushes this role receives" },
-    section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity"], descriptionForModel: "project_model section (default links)" },
+    section: { kind: "enum", values: ["fields", "vocabularies", "links", "money", "signals", "surfaces", "side_effects", "integrity", "statuses", "status_consumers", "conversion", "follow_up", "lead", "deal_terms", "client_id", "history", "actions", "workflows"], descriptionForModel: "project_model: fields / vocabularies / links / money / signals / surfaces / side_effects / integrity; client_model: fields / vocabularies / statuses / status_consumers / links / conversion / follow_up / lead / deal_terms / client_id / history / actions / workflows / signals / integrity (default links)" },
     kind: { kind: "enum", values: [...new Set([...KNOWLEDGE_GAPS.map((g) => g.class), ...PROJECT_ACTIONS.map((a) => a.group), ...Object.keys(APPROVAL_CLASSES)])], descriptionForModel: "knowledge_gaps: a gap class; action_inventory: an action group or approval class" },
   },
   paging: { defaultLimit: 40, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: [],
@@ -113,6 +115,27 @@ export const systemAwareness: KnowledgeCapability = {
         : sec === "integrity" ? [{ id: "counts", label: "Production integrity counts (read-only, 2026-09-25)", fields: { ...PROJECT_INTEGRITY.productionCounts20260925 } }, ...PROJECT_INTEGRITY.risksHe.map((r, i) => ({ id: `risk:${i}`, label: r, fields: {} }))]
         : PROJECT_LINKS.map((l) => ({ id: l.id, label: `project ↔ ${l.target}`, fields: { linkMethod: l.linkMethod, cardinality: l.cardinality, direction: l.direction, quality: l.quality, enforcement: l.enforcement, breaks: l.breaks, liveRead: l.liveRead } }));
       return result(rows.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), pb);
+    }
+    if (q.mode === "client_model") {
+      const t = q.params.section ?? "links";
+      const obj = (id: string, label: string, v: unknown) => ({ id, label, fields: (v && typeof v === "object" && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : { value: v }) });
+      const rows: Array<{ id: string; label: string; fields: Record<string, unknown> }> =
+        t === "fields" ? [...CM.CLIENT_FIELDS.map((f) => ({ id: `client.${f.field}`, label: f.meaning, fields: { entity: "client", ...f } })), ...CM.PROPOSAL_FIELDS.map((f) => ({ id: `proposal.${f.field}`, label: f.meaning, fields: { entity: "proposal", ...f } }))]
+        : t === "vocabularies" ? Object.entries(CM.CLIENT_VOCABULARIES).map(([k, v]) => obj(k, k, { values: v }))
+        : t === "statuses" ? CM.PROPOSAL_STATUS_SEMANTICS.map((x) => ({ id: x.status, label: x.meaning, fields: { ...x } }))
+        : t === "status_consumers" ? CM.PROPOSAL_STATUS_CONSUMERS.map((x) => ({ id: x.consumer, label: x.consumer, fields: { ...x } }))
+        : t === "conversion" ? Object.entries(CM.CONVERSION_FLOW).map(([k, v]) => obj(k, k, v))
+        : t === "follow_up" ? Object.entries(CM.FOLLOW_UP_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "lead" ? Object.entries(CM.LEAD_REALITY).map(([k, v]) => obj(k, k, v))
+        : t === "deal_terms" ? [...CM.DEAL_TERMS_MATRIX.map((d) => ({ id: d.concept, label: d.concept, fields: { ...d } })), obj("decision", "Can Redbloods represent the real deal?", CM.DEAL_TERMS_DECISION)]
+        : t === "client_id" ? Object.entries(CM.CLIENT_ID_ASSESSMENT).map(([k, v]) => obj(k, k, v))
+        : t === "history" ? Object.entries(CM.CLIENT_HISTORY_MODEL).map(([k, v]) => obj(k, k, v))
+        : t === "actions" ? CM.CLIENT_ACTIONS.map((a) => { const { internal: _i, ...served } = a; void _i; return { id: a.id, label: a.action, fields: { ...served } }; })
+        : t === "workflows" ? CM.CLIENT_WORKFLOWS.map((w) => ({ id: w.event, label: w.redbloodsConcept, fields: { ...w } }))
+        : t === "signals" ? CM.CLIENT_SIGNAL_MODEL.map((x) => ({ id: x.code, label: x.note, fields: { ...x } }))
+        : t === "integrity" ? [obj("counts", "Production integrity counts (read-only, 2026-09-25)", CM.CLIENT_INTEGRITY.productionCounts20260925), ...CM.CLIENT_INTEGRITY.findingsHe.map((f, i) => ({ id: `finding:${i}`, label: f, fields: {} }))]
+        : CM.CLIENT_LINKS.map((l) => ({ id: l.id, label: `${l.from} → ${l.to}`, fields: { ...l } }));
+      return result(rows.map((r) => item({ id: r.id, label: partner(r.label), epistemic: "FACT", source: SRC, fields: r.fields })), { ...base, summary: [version(), sfact("CLIENTS_BASELINE", "גרסת הידע על לקוחות והצעות", CM.CLIENTS_BASELINE_VERSION, "FACT", SRC)] });
     }
     if (q.mode === "calendar_model") {
       return result(Object.entries(CALENDAR_CONTEXT_CONTRACT).map(([k, v]) => item({ id: k, label: partner(k), epistemic: "FACT", source: SRC, fields: { value: v } })), base);

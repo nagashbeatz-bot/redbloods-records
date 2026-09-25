@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-6";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-7";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -58,15 +58,22 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["client", "dj"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
-    readCapabilities: ["clients", "proposals", "meetings", "relations"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "FOLLOW_UP_EXPECTATION"], proposableActions: [],
+    readCapabilities: ["client_view", "client_portfolio", "clients", "proposals", "meetings", "relations", "system_awareness"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "FOLLOW_UP_EXPECTATION"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
-      R("CLIENT_VOCAB", "CANONICAL_BUSINESS_RULE", "Client type: אמן / לקוח / איש צוות / אחר. Status: פעיל / לא פעיל / בעייתי / VIP / חדש / אמן לייבל."),
+      R("CLIENT_VOCAB", "CANONICAL_BUSINESS_RULE", "Client type: אמן / לקוח / איש צוות / אחר. Status: פעיל / לא פעיל / בעייתי / VIP / חדש / אמן לייבל. The server validates neither."),
+      R("CLIENT_NAME_UNIQUE", "CANONICAL_BUSINESS_RULE", "A client name is unique in the database ignoring case and surrounding spaces (not inner spaces); it is also the only key linking a client to projects and project-less money.", ["PROJECTS", "FINANCE"]),
+      R("CLIENT_STATUS_MIXES_CONCEPTS", "CONFLICT", "Client status mixes lifecycle (חדש / פעיל / לא פעיל / בעייתי), tier (VIP) and role (אמן לייבל); חדש is also the default of every automatically created client, so it does not mean 'new lead'."),
+      R("CLIENT_TYPE_DEFAULTS_DIFFER", "CONFLICT", "A new client's type depends on where it was created: API לקוח, client form אמן, auto-create from a project אמן, shows quick-create לקוח; an edit without a type sets אחר."),
+      R("CLIENT_DELETE_NO_CLEANUP", "POSSIBLE_BUG", "Deleting a client cascades its proposals (DB) but leaves meetings, client tasks, Red Films rows and Google Tasks pointing at it; with no project naming the client the page deletes without confirmation.", ["PROPOSALS", "MEETINGS", "TASKS"]),
+      R("CLIENT_RENAME_PARTIAL", "POSSIBLE_BUG", "A rename rewrites project artist text only; meeting / Red Films name snapshots, transactions.artist, send-log recipient names and follow-up task titles keep the old name.", ["PROJECTS", "MEETINGS", "FINANCE"]),
+      R("NO_LEAD_ENTITY", "IMPLEMENTATION_BEHAVIOR", "Redbloods has no lead / opportunity entity: a potential client exists only as a client record, an open proposal, a meeting or free text."),
       R("CLIENT_RENAME_REWRITES_PROJECTS", "IMPLEMENTATION_BEHAVIOR", "Renaming a client rewrites the artist text of every project that named them (not atomic).", ["PROJECTS"]),
       R("CLIENT_MATCH_CASE_CONFLICT", "CONFLICT", "Client ↔ project name matching is case-insensitive on the server but case-sensitive in the client drawer."),
       R("NO_CLIENT_LABEL_LINK", "CANONICAL_BUSINESS_RULE", "Nothing links a client record to a label-artist record except the app's canonical DJ CLEANTONE link; every other artist ↔ client link is by name.", ["LABEL_ARTISTS"]),
     ],
-    sideEffects: [], limitationsHe: ["קישור לקוח↔פרויקט הוא לפי שם בלבד.", "אין לסאני פעולת עריכת לקוח."],
+    sideEffects: [E("CLIENT_AUTO_CREATE", "A project is created / its artist changes / a proposal is converted", "Missing clients are created from the artist names (type אמן, status חדש; exact-case check; never removed).", ["PROJECTS"], "EVENT", "IMPLEMENTATION_BEHAVIOR")],
+    limitationsHe: ["קישור לקוח↔פרויקט הוא לפי שם בלבד — חוץ מפרויקט שנוצר מהצעה (קישור קנוני דרך ההצעה).", "סאני לא יוצר / עורך / מוחק לקוחות — הפעולות ממופות (client_model actions) ודורשות פרימיטיב עתידי + אישור.", "אין ישות ליד; אין רישום של קשר מחוץ ל-Redbloods (וואטסאפ / טלפון).", "הכנסות בלי פרויקט (למשל הופעות) משויכות ללקוח רק לפי שם האמן בטקסט."],
     surfaces: S(["/clients"], ["clients"]),
   },
   {
@@ -76,14 +83,22 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["proposal"],
     support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
-    readCapabilities: ["proposals", "tasks"], learnKinds: ["FOLLOW_UP_EXPECTATION"], proposableActions: [],
+    readCapabilities: ["client_view", "client_portfolio", "proposals", "tasks", "system_awareness"], learnKinds: ["FOLLOW_UP_EXPECTATION"], proposableActions: [],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
       R("PROPOSAL_VOCAB", "CANONICAL_BUSINESS_RULE", "Proposal status: הצעה נשלחה, ממתין לתשובה (default), צריך פולואפ, נסגר, לא נסגר, לחזור בעתיד. Open = anything except נסגר / לא נסגר."),
       R("PROPOSAL_FOLLOWUP_TASK_TEXT_LINK", "IMPLEMENTATION_BEHAVIOR", "A proposal's follow-up task is linked by an id marker inside the task text (weak link) and may mirror to a Google Task.", ["TASKS", "GOOGLE_CALENDAR"]),
+      R("PROPOSAL_STATUS_UNVALIDATED", "CONFLICT", "Any status string is accepted. Allow-list consumers (client drawer, Mai) treat an unknown status as closed; block-list consumers (dashboards, Insights, COO, Sunny) as open. לחזור בעתיד counts as open everywhere."),
+      R("PROPOSAL_OPEN_VALUE_CURRENCY", "CONFLICT", "Open proposal value: the client drawer sums every currency under one label; Insights and the legacy grid count ₪ only."),
+      R("PROPOSAL_FOLLOWUP_DEFAULTS", "IMPLEMENTATION_BEHAVIOR", "The create form defaults the follow-up to today + 3; an edit silently fills today + 3 when empty (and creates a follow-up task)."),
+      R("PROPOSAL_STATUS_KEEPS_TASK", "POSSIBLE_BUG", "Changing a proposal's status (including לא נסגר) never closes its follow-up task; only conversion does."),
+      R("PROPOSAL_FOLLOWUP_ALERT_OFF", "IMPLEMENTATION_BEHAVIOR", "The proposal follow-up agent rule exists but the agent check is switched off, and its severity would never be pushed — no push, cron or email covers proposals."),
+      R("PROPOSAL_CONVERT_DUPLICATE_RISK", "POSSIBLE_BUG", "Conversion is not transactional and its only guard is a read-then-write: a failure after the project insert or two quick clicks can create a second project; the UI swallows errors.", ["PROJECTS", "FINANCE"]),
+      R("PROPOSAL_CLOSED_BY_HAND", "IMPLEMENTATION_BEHAVIOR", "נסגר can be set by hand without converting — then no project exists; the convert button still shows on every unlinked card (even לא נסגר)."),
+      R("PROPOSAL_AMOUNT_NOT_REVENUE", "CANONICAL_BUSINESS_RULE", "A proposal amount is potential money only; it becomes the project's agreed price once, at conversion (when > 0); received money exists only as received transactions."),
     ],
     sideEffects: [E("PROPOSAL_CONVERT", "A proposal is converted", "A project is created (artist = client name, status לא התחיל, business type לקוח), the client is upserted, the project's agreed price is set from the proposal amount, the proposal becomes נסגר and its follow-up task בוצע. Not transactional.", ["PROJECTS", "CLIENTS", "FINANCE", "TASKS"], "MANUAL")],
-    limitationsHe: ["סאני לא ממיר הצעה לפרויקט — זה נעשה בלוח הבקרה."],
+    limitationsHe: ["סאני לא ממיר הצעה לפרויקט ולא משנה סטטוס — זה נעשה בלוח הבקרה (פרימיטיבים עתידיים).", "Redbloods לא רושמת היסטוריית שינויים של הצעה (רק עדכון אחרון), לא רושמת תגובות לקוח ולא קשר מחוץ למערכת.", "תנאי עסקה (מקדמה / אבני דרך) לא נרשמים — סאני מראה רק מה התקבל ומה צפוי.", "אין מסמכים / קבצים להצעות."],
     surfaces: S([], ["proposals"]),
   },
   {
@@ -156,9 +171,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Meeting records (client id + duplicated client name, project id, date, time, duration, status, calendar event id).",
     entityTypes: ["meeting"],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["READ_ONLY"], readCapabilities: ["meetings"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["meetings", "client_view"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
-    rules: [R("MEETING_VOCAB", "CANONICAL_BUSINESS_RULE", "Meeting status: נקבעה, התקיימה, בוטלה.")],
+    rules: [R("MEETING_VOCAB", "CANONICAL_BUSINESS_RULE", "Meeting status: נקבעה, התקיימה, בוטלה."), R("MEETING_NO_OUTCOME", "IMPLEMENTATION_BEHAVIOR", "A meeting has no outcome field and its status is updated only by hand: a past meeting still נקבעה may or may not have happened."), R("MEETING_CLIENT_NO_FK", "IMPLEMENTATION_BEHAVIOR", "A meeting stores the client id as text (no FK) plus a name snapshot that a client rename does not update.", ["CLIENTS"])],
     sideEffects: [E("MEETING_CALENDAR", "A meeting is booked with a calendar event", "A Google event is created at booking only.", ["GOOGLE_CALENDAR"], "MANUAL")],
     limitationsHe: ["מיקום והערות פגישה לא נקראים."],
     surfaces: S([], ["meetings"]),
@@ -818,4 +833,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-4", date: "2026-09-25", domain: "PLATFORM_ACCESS", dimension: "read", from: "INTENTIONALLY_UNAVAILABLE", to: "PARTIAL", noteHe: "סאני קורא את כל ההגדרות שאינן סודות (הגדרות ויקטור, עוגני מחזורי יתרה, לוח דוחות, מצב תחזוקה, יעדים, זמינות, סימוני פושים, נוכחות בפורטלים, בקשת קבצים סופיים מסטיבן). אסימונים וקישורי שיתוף — אף פעם. אין יותר פעולה ‘אסורה לתמיד’ — רק רמות אישור." },
   { version: "2026.09.25-5", date: "2026-09-25", domain: "GOOGLE_CALENDAR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני רואה את היומן החי — כל היומנים, אירועים אישיים, חגים, חוזרים, מוזמנים — ומחבר אותו לפרויקטים, סשנים, פגישות, הופעות וריליסים (קנוני / הסקה / עמום / לא מקושר), כולל זמינות. בלי אסימונים, בלי כתיבה." },
   { version: "2026.09.25-6", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "—", to: "OWNER_OPERATING_MODEL", noteHe: "סאני מכיר את דרך העבודה שאישרת: דדליין לקוח = התחייבות, דדליין פנימי = ציפייה, איחורים ישנים = חוב תפעולי לשיקום, מי מחזיק את הכדור, מקדמה בלי להמציא תנאים, לייבל מוגן, בלי שעות עבודה קבועות, אירוע = תהליך (הופעה חדשה: מה ידוע ומה לשאול), ושאלות חוזרות = הצעה לשיפור המערכת." },
+  { version: "2026.09.25-7", date: "2026-09-25", domain: "CLIENTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת לקוח מחוברת: זהות ותפקידים (לקוח / אמן לייבל / מזמין / DJ), פרטי קשר, הצעות ופולואפ, פרויקטים (קנוני דרך הצעה / לפי שם), כסף שהתקבל / צפוי / פוטנציאל, פגישות, יומן, סשנים, משימות, הערות, היסטוריה רשומה ושאלות — ותמונת לקוחות לכל החברה בלי דירוג." },
+  { version: "2026.09.25-7", date: "2026-09-25", domain: "PROPOSALS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מכיר את כל מחזור ההצעה: סטטוסים ומי סופר מה כפתוח, פולואפ ומשימת המעקב, המרה לפרויקט (לא אטומית), מחיר מוסכם, ומה לא נרשם (תנאי עסקה, תגובות, קשר חיצוני)." },
 ];

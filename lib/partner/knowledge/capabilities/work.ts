@@ -90,9 +90,9 @@ export const proposals: KnowledgeCapability = {
 
 export const sessions: KnowledgeCapability = {
   id: "sessions", domain: "SESSIONS", titleHe: "סשנים",
-  descriptionForModel: "Studio session RECORDS (business records: date, status, type, linked project / show by ID). They are NOT the calendar: Google Calendar is the future-schedule truth and Partner does not read it yet, so the future schedule is PARTIAL / UNKNOWN — zero future session rows only means none are recorded in the sessions records, never that the calendar is empty.",
+  descriptionForModel: "Studio session RECORDS (business records: date, status, type, linked project / show by ID). They are NOT the calendar: the live Google Calendar is the schedule truth (capability calendar) — zero future session rows only means none are recorded as sessions, never that the calendar is empty.",
   examplesHe: ["מתי היה הסשן האחרון?", "כמה סשנים היו לפרויקט?", "יש סשנים קבועים?"],
-  modes: { recent: { descriptionForModel: "Past sessions, newest first" }, upcoming: { descriptionForModel: "Future session RECORDS only (partial — calendar not read)" }, all: { descriptionForModel: "Every session record" } }, defaultMode: "recent",
+  modes: { recent: { descriptionForModel: "Past sessions, newest first" }, upcoming: { descriptionForModel: "Future session RECORDS only (see capability calendar for the live schedule)" }, all: { descriptionForModel: "Every session record" } }, defaultMode: "recent",
   params: { about: { kind: "entityKey", types: ["project", "show"], descriptionForModel: "Only sessions of this project / show (ID link)" } },
   entityScope: { types: ["project", "show"], param: "about", mode: "all", limit: 5 },
   paging: { defaultLimit: 15, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: ["STATE"],

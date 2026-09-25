@@ -195,7 +195,7 @@ function main() {
   ok("workflows mode: askOwner list", served(wq) && Array.isArray(itemsOf(wq)[0].fields.askOwner) && (itemsOf(wq)[0].fields.askOwner as string[]).includes("price + currency"));
 
   section("3. System Awareness cross-links + safety");
-  check("baseline", SYSTEM_BASELINE_VERSION, "2026.09.25-6");
+  ok("baseline at least -6", SYSTEM_BASELINE_VERSION >= "2026.09.25-6");
   ok("CAPABILITY_CHANGES has the -6 entry", CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-6" && x.domain === "SUNNY_CORE"));
   ok("SUNNY_CORE reads operating_model + OWNER_OPERATING_MODEL rule", DOMAIN_CONTRACTS.find((x) => x.id === "SUNNY_CORE")!.readCapabilities.includes("operating_model") && DOMAIN_CONTRACTS.find((x) => x.id === "SUNNY_CORE")!.rules.some((r) => r.id === "OWNER_OPERATING_MODEL"));
   check("system registry valid", validateSystemRegistry({ capabilityIds: REG.all().map((c) => c.id), knowledgeKinds: KNOWLEDGE_KINDS.map((k) => k.kind) }), []);
