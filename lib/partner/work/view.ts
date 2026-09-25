@@ -202,7 +202,11 @@ export const DELIVERY_EVIDENCE_LADDER = [
 ] as const;
 export function buildDeliveryView(src: GatewaySources) {
   const c = ctxOf(src);
-  const deliveries = new Map((c.det?.deliveries?.rows ?? []).map((d) => [d.projectId, d]));
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const allDeliveries = c.det?.deliveries?.rows ?? [];
+  // a delivery record whose key is not a project id (e.g. a leftover test key) is reported, never treated as a project
+  const nonProjectRecords = allDeliveries.filter((d) => !UUID.test(d.projectId)).length;
+  const deliveries = new Map(allDeliveries.filter((d) => UUID.test(d.projectId)).map((d) => [d.projectId, d]));
   const finals = c.det?.finalFiles?.rows ?? [];
   const actions = c.det?.actions?.rows ?? [];
   const requests = (c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "STEVEN_FINAL_FILES_REQUESTED_PROJECT");
@@ -230,7 +234,7 @@ export function buildDeliveryView(src: GatewaySources) {
     if (p.delivery?.status === "ready") S("DELIVERY_READY_NOT_MARKED", "CANONICAL_FACT", `${p.name ?? "פרויקט"}: תיקיית מסירה + קישור מוכנים, לא סומן 'נמסר'`);
     if (p.evidence === "DELIVERY_RECORDED" && p.remainingToCollect && Object.values(p.remainingToCollect).some((v) => v > 0)) S("DELIVERED_BALANCE_OPEN", "DERIVED_SIGNAL", `${p.name ?? "פרויקט"}: סומן נמסר ועדיין יש יתרה לגבייה (${Object.entries(p.remainingToCollect).map(([k, v]) => `${k}${v}`).join(", ")})`);
   }
-  return { counts: { projects: projects.length, byEvidence: count(projects.map((p) => p.evidence)), deliveryRecords: deliveries.size, delivered: [...deliveries.values()].filter((d) => d.status === "delivered").length, finalFiles: finals.length, note: "'delivered' only from a delivery record — never from completion or final files" }, ladder: DELIVERY_EVIDENCE_LADDER, projects, signals, unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (deliveries, final files, send log) — unknown, not none"]), "the delivery folder contents are not listed (Dropbox listing is not read)"] };
+  return { counts: { projects: projects.length, byEvidence: count(projects.map((p) => p.evidence)), deliveryRecords: deliveries.size, nonProjectDeliveryRecords: nonProjectRecords, delivered: [...deliveries.values()].filter((d) => d.status === "delivered").length, finalFiles: finals.length, note: "'delivered' only from a delivery record — never from completion or final files" }, ladder: DELIVERY_EVIDENCE_LADDER, projects, signals, unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (deliveries, final files, send log) — unknown, not none"]), "the delivery folder contents are not listed (Dropbox listing is not read)"] };
 }
 
 // ═══════════════════════════════ SOCIAL ═══════════════════════════════

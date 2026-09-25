@@ -77,7 +77,7 @@ export function buildSunnySelfView(src: GatewaySources) {
     actions: actions ? actions.map((a) => ({ type: a.actionType, state: a.state, headlineHe: a.headlineHe })) : null,
     outcomes: outcomes ? outcomes.map((o) => ({ type: o.actionType, state: o.state, executedAt: o.executedAt, headlineHe: o.headlineHe })) : null,
     openQuestions: integrity ? { integrity: integrity.questions.length, deferred: integrity.deferredQuestions, learned: integrity.learned.length } : null,
-    audit: { readable: false, why: "the connector audit is insert-only for the service role by design, and it stores parameter HASHES — past queries cannot be read back, and even with read rights only capability names, entity keys and times would be recoverable", closesWith: "an Owner-approved read grant + a bounded Owner-only history capability (see gap SC_CONNECTOR_AUDIT_UNREADABLE)" },
+    audit: { readable: false, why: "the connector audit is insert-only for the service role by design, and it stores parameter HASHES — past queries cannot be read back, and even with read rights only capability names, entity keys and times would be recoverable", closesWith: "an Owner-approved read grant + a bounded Owner-only history capability (see gap CO_SUNNY_OWN_AUDIT)" },
     conversationMemory: "NONE — Claude conversations are never stored in Redbloods; only what the Owner explicitly answered / taught / approved is kept",
     canAnswer: SUNNY_CORE_MODEL.whatSunnyCanAnswerAboutItself, cannotAnswer: SUNNY_CORE_MODEL.cannotAnswer,
     unavailable: [...(kn ? [] : ["OWNER_KNOWLEDGE — not active or unreadable (unknown, not none)"]), ...(mem ? [] : ["MEMORY (Owner answers) — unknown"]), ...(actions ? [] : ["ACTIONS"]), ...(outcomes ? [] : ["OUTCOMES"])],

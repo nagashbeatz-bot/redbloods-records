@@ -162,8 +162,8 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
       R("COMPLETED_NO_DELIVERY_ALERT_FILES", "CONFLICT", "The agent alert 'completed without delivery' checks project files, not the delivery record."),
     ],
     sideEffects: ["storage folder create / delete", "final-files push to the Owner per batch", "final-files request push to Steven"], integrations: ["FILES_DROPBOX"], security: ["delivery routes rely on the central proxy only; the delivery link is public"],
-    production20260925: { finalFiles: 17, finalFilesUploader: "Steven" },
-    anomalies: [], gaps: ["WK_DELIVERY_RECIPIENT_NOT_RECORDED", "RF_NO_DELIVERY_RECORD"], sunnyReads: ["delivery_view", "deliveries", "mix_view", "project_view"],
+    production20260925: { finalFiles: 17, finalFilesUploader: "Steven", deliveryRecords: 1, deliveryReady: 1, delivered: 0, testLeftoverRecords: 1, completedClientProjectsWithoutDeliveryEvidence: 17 },
+    anomalies: ["no project is marked delivered in production (0 of 1 real delivery records)", "a leftover test delivery record (key not a project id) exists — reported, never treated as a project"], gaps: ["WK_DELIVERY_RECIPIENT_NOT_RECORDED", "RF_NO_DELIVERY_RECORD"], sunnyReads: ["delivery_view", "deliveries", "mix_view", "project_view"],
   },
   {
     id: "SOCIAL", meaningHe: "קמפיין סושיאל לכל פרויקט (אחד לפרויקט), תכנים עם סטטוס/סוג/פלטפורמה/תאריכים, קבצים, וקידום ממומן שנרשם ככסף. כללי 'מה חסר' הם של האפליקציה — לא מדיניות.",

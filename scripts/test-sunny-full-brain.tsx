@@ -99,7 +99,7 @@ function sources(o: { settings?: boolean; knowledge?: boolean } = {}): GatewaySo
     ]),
     victor: sec([{ id: U(710), projectId: P(2), linkedTaskId: U(399), notes: null, briefText: null, references: [], reviews: [], filesSent: [{ name: "v1.wav", category: null, versionLabel: "V1", trackId: null, durationSeconds: 100, size: 5000, uploadedAt: "2026-09-10T10:00:00Z", path: "/Projects/x/Victor/Production/v1.wav", hasShareLink: true, fromMixVersionId: null, structureMarkers: 0 }], filesReceived: [], briefFiles: [], returnedDate: null, outcome: null, quality: null, enteredProject: null, dropboxFolder: "/Projects/x/Victor", hasFolderLink: true }] as never),
     meetings: sec([meet(501, { clientId, clientName: "שם ישן", status: "נקבעה", date: "2026-09-10" }), meet(502, { clientId: "no-such-client", clientName: "זר", status: "בוטלה", hasCalendarEvent: true, date: "2026-10-02" })]),
-    deliveries: sec([{ projectId: P(4), folderPath: "/Projects/x/Delivery", status: "delivered", deliveredAt: "2026-09-21", hasLink: true }, { projectId: P(2), folderPath: "/Projects/y/Delivery", status: "ready", deliveredAt: null, hasLink: true }]),
+    deliveries: sec([{ projectId: "__test_token_check__", folderPath: null, status: "ready", deliveredAt: null, hasLink: true }, { projectId: P(4), folderPath: "/Projects/x/Delivery", status: "delivered", deliveredAt: "2026-09-21", hasLink: true }, { projectId: P(2), folderPath: "/Projects/y/Delivery", status: "ready", deliveredAt: null, hasLink: true }]),
     finalFiles: sec([{ workId: U(170), projectId: P(5), fileName: "final.wav", path: "/Projects/z/Final Files/final.wav", fileType: "wav", fileSize: 9000, uploadedBy: "Steven", createdAt: "2026-09-19T10:00:00Z" }]),
     contentItems: sec([{ id: U(610), projectId: P(1), campaignId: CAMP, title: "טיזר", contentType: "טיזר", status: "idea", platform: "instagram", dueDate: "2026-09-01", publishDate: null, caption: null, hook: null, notes: null, ownerName: null, postedUrl: null, hasAssetLink: false, hasCalendarEvent: false, taskId: null, publishTime: null, createdAt: null, updatedAt: null }]),
     campaigns: sec([{ id: CAMP, projectId: P(1), title: "קמפיין שליו", marketingAngle: null, targetAudience: null, mainMessage: null, platforms: ["instagram"], notes: null, ownerUserId: null, createdAt: null, updatedAt: null }]),
@@ -216,6 +216,7 @@ function main() {
   ok("a completed project with only final files is NOT delivered (flagged)", D.signals.some((s) => s.code === "COMPLETED_NO_DELIVERY_EVIDENCE" && s.project === `project:${P(5)}`));
   ok("delivered + remaining balance is flagged", sig(D, "DELIVERED_BALANCE_OPEN") === 1);
   ok("ready but not marked delivered is flagged", sig(D, "DELIVERY_READY_NOT_MARKED") === 1);
+  ok("a leftover non-project delivery key is counted apart, never a project", D.counts.nonProjectDeliveryRecords === 1 && !D.projects.some((p) => p.key.includes("__test")));
   ok("no recipient is ever claimed", D.projects.every((p) => !p.delivery || p.delivery.recipientRecorded === false));
   section("SOCIAL — the app's checklist as implementation behaviour");
   const SO = buildSocialView(src);
@@ -240,6 +241,7 @@ function main() {
   const SS = buildSunnySelfView(src);
   ok("taught knowledge incl. a withdrawal", SS.knowledge?.records === 2 && SS.knowledge.withdrawn === 1 && SS.knowledge.active === 0);
   ok("the audit is explicitly unreadable (never pretended)", SS.audit.readable === false && /insert-only/.test(SS.audit.why));
+  ok("the audit gap it names is registered", KNOWLEDGE_GAPS.some((g) => SS.audit.closesWith.includes(g.id)));
   ok("no conversation memory is claimed", /NONE/.test(SS.conversationMemory));
   ok("knowledge store off → unknown, not empty", buildSunnySelfView(sources({ knowledge: false })).knowledge === null);
   ok("the connector model carries no secret term", !/secret\s*[:=]|bearer\s+[a-z0-9]|rbmcp_/i.test(JSON.stringify(PD.SUNNY_CONNECTOR_MODEL)));
