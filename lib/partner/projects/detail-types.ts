@@ -54,7 +54,13 @@ export interface DetailProduction {
 }
 export interface DetailBudgetItem { id: string | null; linkedTransactionId: string | null; createdAt: string | null; updatedAt: string | null; productionId: string | null; title: string | null; category: string | null; vendorName: string | null; status: string | null; planned: number | null; actual: number | null; notes: string | null }
 export interface DetailAlbumTrack { projectId: string | null; trackNumber: number | null; title: string | null; notes: string | null }
-export interface DetailClipItem { id: string | null; createdAt: string | null; updatedAt: string | null; projectId: string | null; category: string | null; description: string | null; notes: string | null; status: string | null }
+export interface DetailClipItem { id: string | null; createdAt: string | null; updatedAt: string | null; projectId: string | null; category: string | null; description: string | null; notes: string | null; status: string | null; amount?: number | null; currency?: string | null; linkedTransactionId?: string | null }
+export interface DetailRfCrew { id: string | null; productionId: string | null; name: string | null; role: string | null; hasContact: boolean; arrivalTime: string | null; confirmation: string | null; paymentAmount: number | null; paymentStatus: string | null; notes: string | null; createdAt: string | null }
+export interface DetailRfDocument { id: string | null; productionId: string | null; fileName: string | null; fileType: string | null; mimeType: string | null; path: string | null; hasPublicLink: boolean; notes: string | null; createdAt: string | null; updatedAt: string | null }
+export interface DetailRfScene { id: string | null; productionId: string | null; order: number | null; title: string | null; location: string | null; description: string | null; participants: string | null; status: string | null; notes: string | null; createdAt: string | null }
+export interface DetailRfRefImage { id: string | null; productionId: string | null; fileName: string | null; path: string | null; hasPublicLink: boolean; caption: string | null; tag: string | null; order: number | null; createdAt: string | null }
+export interface DetailRfRefLink { id: string | null; productionId: string | null; provider: string | null; videoId: string | null; title: string | null; hasThumbnail: boolean; hasUrl: boolean; notes: string | null; createdAt: string | null }
+export interface DetailRfEquipment { id: string | null; name: string | null; category: string | null; quantity: number | null; acquiredDate: string | null; purchasePrice: number | null; purchasedFrom: string | null; serialNumber: string | null; notes: string | null; addedBy: string | null; status: string | null; removedAt: string | null; createdAt: string | null }
 export interface DetailProposal { id: string; linkedProjectId: string | null; clientId: string | null; title: string | null; notes: string | null }
 export interface DetailRelease { projectId: string; nextAction: string | null; blocker: string | null; responsible: string | null; stageEnteredAt: string | null; releasedAt: string | null }
 export interface DetailCampaign { id: string; projectId: string | null; title: string | null; marketingAngle: string | null; targetAudience: string | null; mainMessage: string | null; platforms: string[]; notes: string | null; ownerUserId: string | null; createdAt: string | null; updatedAt: string | null }
@@ -96,11 +102,18 @@ export interface ProjectDetailRaw {
   budgetPayments: Maybe<DetailBudgetPayment>;
   agentAlerts: Maybe<DetailAgentAlert>;
   notifications: Maybe<DetailNotification>;
+  /** Red Films Deep Brain (optional so older fixtures stay valid). */
+  rfCrew?: Maybe<DetailRfCrew>;
+  rfDocuments?: Maybe<DetailRfDocument>;
+  rfScenes?: Maybe<DetailRfScene>;
+  rfRefImages?: Maybe<DetailRfRefImage>;
+  rfRefLinks?: Maybe<DetailRfRefLink>;
+  rfEquipment?: Maybe<DetailRfEquipment>;
 }
 
 /** Every table / setting family the detail source reads — the coverage test compares it with the schema map. */
 export const PROJECT_DETAIL_SOURCES = [
   "projects", "settings:finance_", "settings:delivery_", "project_actions", "sessions", "meetings", "tasks", "sound_engineer_work", "mix_versions", "mix_comments",
   "mix_comment_attachments", "mix_targets", "mix_target_notes", "final_files", "vendor_project_work", "red_films_productions", "red_films_budget_items", "album_tracks",
-  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "agent_alerts", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_", "settings:steven_final_files_requested_project:", "settings:steven_final_files_requested:",
+  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "agent_alerts", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_", "settings:steven_final_files_requested_project:", "settings:steven_final_files_requested:", "red_films_crew", "red_films_documents", "red_films_scenes", "red_films_reference_images", "red_films_reference_links", "red_films_equipment",
 ] as const;

@@ -84,7 +84,7 @@ const PUBLIC_REFERENCE = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/
 
 export async function readProjectDetailRaw(client: OperationsReadClient): Promise<ProjectDetailRaw> {
   const r = (table: string, cols: string, f?: Parameters<typeof readSection>[3]) => readSection(client, table, cols, f);
-  const [prj, fin, deliv, acts, sess, meet, tasks, work, vers, comm, att, targ, tnotes, finals, vic, prods, budget, tracks, clip, props, rel, camps, content, sfiles, notif, psettings, txt, bpay, alerts] = await Promise.all([
+  const [prj, fin, deliv, acts, sess, meet, tasks, work, vers, comm, att, targ, tnotes, finals, vic, prods, budget, tracks, clip, props, rel, camps, content, sfiles, notif, psettings, txt, bpay, alerts, rfCrew, rfDocs, rfScenes, rfRefImages, rfRefLinks, rfEquip] = await Promise.all([
     r("projects", "id, created_at, monday_id, notes, work_materials, dropbox_folder, files"),
     r("settings", "key, fnotes:value->>financialNotes, freason:value->>financeExceptionReason, fdate:value->>financeExceptionDate", (q) => q.like("key", "finance_%")),
     r("settings", "key, folder:value->>folderPath, status:value->>deliveryStatus, delivered:value->>deliveredAt, link:value->>deliveryLink", (q) => q.like("key", "delivery_%")),
@@ -103,7 +103,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     r("red_films_productions", "id, project_id, client_name, created_at, updated_at, photographer_name, director_name, editor_name, locations, concept_summary, concept_vibe, ref_links, script_start, script_middle, script_end, director_notes, photographer_notes, fix_notes, notes, published_where, dropbox_folder_path, files_raw_link, files_edit_folder, version_1_link, version_2_link, final_version_link, dropbox_folder_url"),
     r("red_films_budget_items", "id, production_id, title, category, vendor_name, status, planned_amount, actual_amount, linked_transaction_id, notes, created_at, updated_at"),
     r("album_tracks", "id, project_id, track_number, title, notes, created_at, updated_at"),
-    r("clip_items", "id, project_id, category, description, notes, status, created_at, updated_at"),
+    r("clip_items", "id, project_id, category, description, notes, status, created_at, updated_at, amount, currency, linked_transaction_id"),
     r("proposals", "id, linked_project_id, client_id, title, notes"),
     r("project_release_details", "project_id, next_action, blocker, responsible, stage_entered_at, released_at"),
     r("social_campaigns", "id, project_id, title, marketing_angle, target_audience, main_message, platforms, notes, owner_id, created_at, updated_at"),
@@ -114,6 +114,13 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     r("transactions", "id, project_id, type, date, description, notes, payment_method, artist, receipt_ref, created_at"),
     r("red_films_budget_payments", "id, production_id, budget_item_id, amount, payment_date, payment_method, notes, receipt_file_name, receipt_mime_type, receipt_dropbox_path, receipt_dropbox_url, created_at, updated_at"),
     r("agent_alerts", "id, related_project_id, related_client_id, type, severity, title, message, metadata, suggested_actions, status, source, sent_notification, entity_key, created_at, updated_at"),
+    // Red Films Deep Brain: the production satellites (metadata only — storage paths stay internal, public links → booleans).
+    r("red_films_crew", "id, production_id, name, role, contact, arrival_time, confirmation_status, payment_amount, payment_status, notes, created_at, updated_at"),
+    r("red_films_documents", "id, production_id, file_name, file_type, mime_type, dropbox_path, dropbox_url, notes, created_at, updated_at"),
+    r("red_films_scenes", "id, production_id, sort_order, title, location, description, participants, status, notes, created_at, updated_at"),
+    r("red_films_reference_images", "id, production_id, file_name, dropbox_path, dropbox_url, caption, tag, sort_order, created_at, updated_at"),
+    r("red_films_reference_links", "id, production_id, url, provider, video_id, title, thumbnail_url, notes, created_at, updated_at"),
+    r("red_films_equipment", "id, name, category, quantity, acquired_date, purchase_price, purchased_from, serial_number, notes, added_by, status, removed_at, created_at, updated_at"),
   ]);
   const keyId = (k: unknown, prefix: string) => (typeof k === "string" && k.startsWith(prefix) ? k.slice(prefix.length) : null);
   return {
@@ -167,9 +174,15 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
       directorNotes: t(x.director_notes), photographerNotes: t(x.photographer_notes), fixNotes: t(x.fix_notes), notes: t(x.notes), publishedWhere: t(x.published_where), dropboxFolderPath: s(x.dropbox_folder_path),
       links: { references: has(x.ref_links), rawFiles: has(x.files_raw_link), editFolder: has(x.files_edit_folder), version1: has(x.version_1_link), version2: has(x.version_2_link), finalVersion: has(x.final_version_link), folder: has(x.dropbox_folder_url) },
     } : null)),
+    rfCrew: mapSection(rfCrew, (x) => ({ id: s(x.id), productionId: s(x.production_id), name: s(x.name), role: s(x.role), hasContact: has(x.contact), arrivalTime: s(x.arrival_time), confirmation: s(x.confirmation_status), paymentAmount: n(x.payment_amount), paymentStatus: s(x.payment_status), notes: t(x.notes), createdAt: s(x.created_at) })),
+    rfDocuments: mapSection(rfDocs, (x) => ({ id: s(x.id), productionId: s(x.production_id), fileName: s(x.file_name), fileType: s(x.file_type), mimeType: s(x.mime_type), path: s(x.dropbox_path), hasPublicLink: has(x.dropbox_url), notes: t(x.notes), createdAt: s(x.created_at), updatedAt: s(x.updated_at) })),
+    rfScenes: mapSection(rfScenes, (x) => ({ id: s(x.id), productionId: s(x.production_id), order: n(x.sort_order), title: t(x.title), location: t(x.location), description: t(x.description), participants: t(x.participants), status: s(x.status), notes: t(x.notes), createdAt: s(x.created_at) })),
+    rfRefImages: mapSection(rfRefImages, (x) => ({ id: s(x.id), productionId: s(x.production_id), fileName: s(x.file_name), path: s(x.dropbox_path), hasPublicLink: has(x.dropbox_url), caption: t(x.caption), tag: s(x.tag), order: n(x.sort_order), createdAt: s(x.created_at) })),
+    rfRefLinks: mapSection(rfRefLinks, (x) => ({ id: s(x.id), productionId: s(x.production_id), provider: s(x.provider), videoId: s(x.video_id), title: t(x.title), hasThumbnail: has(x.thumbnail_url), hasUrl: has(x.url), notes: t(x.notes), createdAt: s(x.created_at) })),
+    rfEquipment: mapSection(rfEquip, (x) => ({ id: s(x.id), name: s(x.name), category: s(x.category), quantity: n(x.quantity), acquiredDate: s(x.acquired_date), purchasePrice: n(x.purchase_price), purchasedFrom: s(x.purchased_from), serialNumber: s(x.serial_number), notes: t(x.notes), addedBy: s(x.added_by), status: s(x.status), removedAt: s(x.removed_at), createdAt: s(x.created_at) })),
     budgetItems: mapSection(budget, (x) => ({ id: s(x.id), productionId: s(x.production_id), linkedTransactionId: s(x.linked_transaction_id), createdAt: s(x.created_at), updatedAt: s(x.updated_at), title: t(x.title), category: s(x.category), vendorName: s(x.vendor_name), status: s(x.status), planned: n(x.planned_amount), actual: n(x.actual_amount), notes: t(x.notes) })),
     albumTracks: mapSection(tracks, (x) => ({ projectId: s(x.project_id), trackNumber: n(x.track_number), title: s(x.title), notes: t(x.notes) })),
-    clipItems: mapSection(clip, (x) => ({ id: s(x.id), createdAt: s(x.created_at), updatedAt: s(x.updated_at), projectId: s(x.project_id), category: s(x.category), description: t(x.description), notes: t(x.notes), status: s(x.status) })),
+    clipItems: mapSection(clip, (x) => ({ id: s(x.id), createdAt: s(x.created_at), updatedAt: s(x.updated_at), projectId: s(x.project_id), category: s(x.category), description: t(x.description), notes: t(x.notes), status: s(x.status), amount: n(x.amount), currency: s(x.currency), linkedTransactionId: s(x.linked_transaction_id) })),
     proposals: mapSection(props, (x) => (s(x.id) ? { id: String(x.id), linkedProjectId: s(x.linked_project_id), clientId: s(x.client_id), title: t(x.title), notes: t(x.notes) } : null)),
     releases: mapSection(rel, (x) => (s(x.project_id) ? { projectId: String(x.project_id), nextAction: t(x.next_action), blocker: t(x.blocker), responsible: s(x.responsible), stageEnteredAt: s(x.stage_entered_at), releasedAt: s(x.released_at) } : null)),
     campaigns: mapSection(camps, (x) => (s(x.id) ? {

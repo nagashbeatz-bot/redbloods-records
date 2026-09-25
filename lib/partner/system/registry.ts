@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-12";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-13";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -539,7 +539,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Production records (type, status, edit / collection status, project id, client, dates, budget, client price) + budget items + budget payments + documents / references / equipment; files in Dropbox.",
     entityTypes: ["production", "budget_item", "equipment"],
     support: { read: "PARTIAL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["red_films"], learnKinds: ["PROJECT_BLOCKER", "PROCESS_FRICTION"], proposableActions: [],
+    states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["red_films", "video_view", "video_portfolio"], learnKinds: ["PROJECT_BLOCKER", "PROCESS_FRICTION"], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("RF_STATUS_VOCAB", "CANONICAL_BUSINESS_RULE", "Production status: רעיון → הצעה נשלחה → ממתין לאישור → בתכנון → יום צילום נקבע → צולם → חומרי גלם הועלו → בעריכה → נשלחה גרסה → תיקונים → מאושר → פורסם (or בוטל)."),
@@ -548,6 +548,12 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("RF_PUBLIC_RECEIPTS", "POSSIBLE_BUG", "Receipts and documents are uploaded with PUBLIC Dropbox links (privacy)."),
       R("RF_BULK_DELETE_PARTIAL", "POSSIBLE_BUG", "Bulk permanent delete may leave payments, documents and folders behind."),
       R("RF_TYPE_ENCODING", "POSSIBLE_BUG", "Some stored production types are not readable text (encoding damage) — they appear as unknown types."),
+      R("RF_MONEY_LAYERS", "CANONICAL_BUSINESS_RULE", "Video money has layers that are never added: planned (production budget, budget lines, clip planning rows) → Red Films payments (own ledger) → actual Finance expenses with scope קליפ → paid (שולם). Red Films money has no currency column."),
+      R("RF_CREW_FREE_TEXT", "IMPLEMENTATION_BEHAVIOR", "Crew = the photographer / director / editor free-text names on the production; the crew and scenes tables exist but are unused."),
+      R("RF_SHOOT_TWO_CONCEPTS", "IMPLEMENTATION_BEHAVIOR", "A production has one shoot date; the project has clip shoot sessions (with calendar events). A passed date never proves a shoot."),
+      R("RF_VERSIONS_ARE_LINKS", "IMPLEMENTATION_BEHAVIOR", "Editing versions / final video are pasted links + an edit status; no version records, no delivery record."),
+      R("RF_CLIENT_SOURCE_SEND_CLIP", "POSSIBLE_BUG", "'שלח קליפ' always writes client source פנימי - לייבל, even for a client project."),
+      R("RF_ROUTES_PROXY_ONLY", "POSSIBLE_BUG", "Most Red Films and clip-planning routes have no in-route Owner check (the central gate is the only layer)."),
     ],
     sideEffects: [E("RF_CANCEL_TASKS", "A production is cancelled", "Its future / undated tasks are cancelled and their Google Tasks deleted.", ["TASKS", "GOOGLE_CALENDAR"])],
     limitationsHe: ["סאני לא קורא מסמכים, רפרנסים, קבלות ותסריטים — רק סטטוסים, תאריכים וסכומים.", "הוצאות Red Films לא נכנסות לכספים."],
@@ -559,13 +565,15 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Project finance settings (clip agreed price, managed production id) + clip transactions (expense scope קליפ) + clip planning rows + Red Films production.",
     entityTypes: ["clip_deal", "clip_item"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["clip_planning", "red_films", "finance_receivables"], learnKinds: [], proposableActions: [],
+    states: ["READ_ONLY"], readCapabilities: ["clip_planning", "red_films", "finance_receivables", "video_view", "video_portfolio"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("CLIP_DEAL_STATUS", "CANONICAL_BUSINESS_RULE", "Clip deal status: אין עסקה, ממתין, חלקי, שולם, יתרת זכות; remaining = max(0, agreed − paid), overpayment = credit."),
       R("CLIP_SEED_5050", "IMPLEMENTATION_BEHAVIOR", "Seeding a clip deal creates two expected incomes 50/50 (advance today, final +30 days) and switches a שיר project to שיר + קליפ."),
       R("CLIP_ITEMS_PLANNING", "CANONICAL_BUSINESS_RULE", "Clip planning rows are planning only; promoting one creates a Finance expense and removes the row."),
       R("CLIP_PROMOTE_DOUBLE", "POSSIBLE_BUG", "Promoting a planning row has no atomic claim — a double click can create two expenses."),
+      R("CLIP_NO_PROJECT_TYPE", "CANONICAL_BUSINESS_RULE", "There is no clip project type: a clip deal turns a שיר into שיר + קליפ. A clip is never a separate top-level project."),
+      R("CLIP_DEAL_IS_INCOME", "CANONICAL_BUSINESS_RULE", "Expense scope קליפ on INCOME = the artist paying for the clip (clip deal); on an EXPENSE = a clip cost. Clip income never counts toward the song balance."),
       R("CLIP_PROMOTED_ROWS_KEPT", "LEGACY_BEHAVIOR", "Older promoted planning rows still exist with status 'הועבר לכספים' (the current promote deletes the row); they are Finance money, never planning."),
     ],
     sideEffects: [E("CLIP_SEND_PRODUCTION", "The Owner sends a project clip to Red Films", "A managed production is created (idempotent by lookup, no unique guard).", ["RED_FILMS"], "MANUAL")],
@@ -891,4 +899,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-11", date: "2026-09-25", domain: "VICTOR", dimension: "domain", from: "SECURITY_GAPS_OPEN", to: "PORTAL_HARDENED", noteHe: "הפורטל של ויקטור הוקשח בצד השרת: אין לו עריכה של רשומת עבודה, קבצים רק בתוך תיקיית העבודה, מחיקה רק של מה שהוא העלה, בלי נתיבים / קישורים / משכורת בתשובות. סאני יודע מה נסגר ומה נשאר פתוח (סשן העלאה במנות, קישורים ציבוריים, callback)." },
   { version: "2026.09.25-12", date: "2026-09-25", domain: "STEVEN", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מבין את סטיבן לעומק: כל עבודה, גרסאות לפי סבב (האחרונה לפי זמן העלאה), הערות לכל גרסה (פתוחות / טופלו, אחרונה מול קודמות), צרופות, רידים, קבצים סופיים לפי הכלל של המערכת, אצל מי הכדור לפי ראיות, דדליין פנימי מול לקוח, תשלום מול כספים (שני כותבים, יחס קבוע), פורטל, נוכחות ופושים — ומה ייחודי לסטיבן מול כללי." },
   { version: "2026.09.25-12", date: "2026-09-25", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "תמונת מיקס כלל-חברתית: כל אנשי הסאונד (שם חופשי), פרויקטים במיקס בלי איש סאונד, הפקה שהושלמה בלי מיקס, הושלם ≠ אושר ≠ קבצים סופיים ≠ שולם, הוצאות מיקס יתומות — בלי ציון ובלי מדיניות מומצאת." },
+  { version: "2026.09.25-13", date: "2026-09-25", domain: "RED_FILMS", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני מבין את Red Films לעומק: כל הפקה (סטטוס, סטטוס עריכה, צוות, תאריך צילום, קונספט ותסריט, קישורים, מסמכים, רפרנסים, משימות), תקציב ותשלומים בפנקס הנפרד, ושכבות הכסף — תכנון ≠ פנקס Red Films ≠ הוצאה בפועל ≠ שולם — בלי ציון ובלי קביעת מוכנות." },
+  { version: "2026.09.25-13", date: "2026-09-25", domain: "CLIPS", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "תמונת קליפ בפרויקט: עסקת הקליפ (הכנסה מהאמן), שורות תכנון והעבר לכספים, ימי צילום + יומן, הוצאות קליפ בפועל לפי מטבע, הפקות, ריליס ותוכן — שתי המערכות מחוברות רק דרך הפרויקט." },
 ];

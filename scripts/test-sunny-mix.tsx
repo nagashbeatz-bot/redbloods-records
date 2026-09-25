@@ -257,7 +257,7 @@ function main() {
   const servedText = JSON.stringify([q("mix_view", "overview"), q("mix_view", "steven"), q("mix_view", "money"), q("mix_view", "work", { work: U(W_V3), section: "versions" }), q("mix_portfolio", "list", { filter: "all" }), ...["fields", "settings", "money", "actions", "security", "portal"].map((s) => q("system_awareness", "mix_model", { section: s }))]);
   check("no forbidden implementation / secret terms served", FORBIDDEN_SERVED_TERMS.filter((x) => servedText.toLowerCase().includes(x.toLowerCase())), []);
   ok("no storage paths / share links served", !/Mix Versions\/|dropbox\.com|\/x\/a\.png/.test(servedText));
-  ok("STEVEN + MIX_PIPELINE = DEEP_BRAIN_V1; Red Films NOT marked complete", DOMAIN_KNOWLEDGE_DEPTH.STEVEN === "DEEP_BRAIN_V1" && DOMAIN_KNOWLEDGE_DEPTH.MIX_PIPELINE === "DEEP_BRAIN_V1" && DOMAIN_KNOWLEDGE_DEPTH.RED_FILMS === "PENDING_DEEP_MISSION" && ["STEVEN", "MIX_PIPELINE"].every((d) => CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-12" && x.domain === d)));
+  ok("STEVEN + MIX_PIPELINE = DEEP_BRAIN_V1", DOMAIN_KNOWLEDGE_DEPTH.STEVEN === "DEEP_BRAIN_V1" && DOMAIN_KNOWLEDGE_DEPTH.MIX_PIPELINE === "DEEP_BRAIN_V1" && ["STEVEN", "MIX_PIPELINE"].every((d) => CAPABILITY_CHANGES.some((x) => x.version === "2026.09.25-12" && x.domain === d)));
   check("system registry valid", validateSystemRegistry({ capabilityIds: REG.all().map((x) => x.id), knowledgeKinds: KNOWLEDGE_KINDS.map((x) => x.kind) }), []);
   check("gaps valid", validateKnowledgeGaps({ domainIds: DOMAIN_CONTRACTS.map((x) => x.id), capabilityIds: REG.all().map((x) => x.id) }), []);
   const mg = KNOWLEDGE_GAPS.filter((g) => g.id.startsWith("MIX_"));

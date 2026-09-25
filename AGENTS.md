@@ -127,3 +127,16 @@ It is read through `mix_view` / `mix_portfolio` (`lib/partner/mix/view.ts`).
 - A change to an engineer-work / version / comment / attachment / riddim-line / pre-mix-note / final-file column, a status / work type / version status, the Steven page status mapping, the mix setup engineers, a `steven_*` / `final_files_batch:` setting, a mix route, the completion flow, the payment sync or a mix push must update that contract. `scripts/test-sunny-mix.tsx` pins the schema, the vocabularies, the settings literals, the route families + action inventory and `MIX_REVIEWED_FINGERPRINTS`.
 - Reuse the app's own rules (final-files request flags, closed status, newer-version comparison, Finance validation), never a second rule.
 - Completed ≠ approved ≠ final files ≠ paid. The latest version is the newest upload, never the highest number. $ and ₪ are never added. The 3.25 ratio / $200 / PayPal ×1.05 are code working values, not Owner policy. An engineer is a free-text name; only exactly "Steven" is Steven.
+
+## Sunny Awareness Check: Red Films + Clip / Video
+
+Video production is a system contract in `lib/partner/system/red-films.ts`. It covers:
+- fields of the ten video tables, the clip settings keys, vocabularies;
+- the two systems (Red Films production vs the project clip deal), statuses, money layers, crew, shoots + calendar, files;
+- consumers, actions, workflows, signals, security and integrity.
+
+It is read through `video_view` / `video_portfolio` (`lib/partner/redfilms/view.ts`).
+- A change to a Red Films / clip column, a production / edit / collection status, a budget-line / document / equipment / clip category, a video route, the send-clip or promote flow, a writer of expense scope קליפ, or the shoot-session model must update that contract. `scripts/test-sunny-red-films.tsx` pins the schema, the vocabularies, the route families + action inventory, the expense-scope writers and `RF_REVIEWED_FINGERPRINTS`.
+- Planned ≠ spent: production budget, budget lines and clip rows are planning; Red Films payments are a separate ledger; only Finance expenses with scope קליפ are actual spend, and only שולם is paid. Never add currencies; Red Films money has no currency column.
+- Clip income (scope קליפ on income) is revenue, never a video expense.
+- A passed shoot date never proves a shoot. A release never requires a video. Crew names are free text.
