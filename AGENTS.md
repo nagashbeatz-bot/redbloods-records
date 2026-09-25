@@ -69,3 +69,11 @@ Any change that touches **a project field, status / type vocabulary, a table or 
 - **Money:** the connected project view (`lib/partner/projects/money.ts`) reuses the Finance Brain primitives. Never add a second money rule; record conflicts in `PROJECT_MONEY_MODEL.conflictsHe` (report only).
 - **Project semantics files** (`lib/projects-store.ts`, `lib/types.ts`, `app/api/projects/route.ts`, `app/api/projects/[id]/route.ts`, `lib/payment-status.ts`, `lib/clip-finance.ts`, `lib/finance/classify.ts`, `lib/project-paths.ts`, `components/ui/ProjectDrawer.tsx`, `components/AppShell.tsx`): changing any of them fails `scripts/test-sunny-projects.tsx` until the project contract is reviewed and `PROJECT_REVIEWED_FINGERPRINTS` is updated.
 - **Signals are derived, never a score.** Stale is not urgent; quality before speed; label release work is protected. The portfolio is sorted by deadline, not ranked.
+
+## Sunny Awareness Check: the Owner operating model
+
+The Owner-confirmed way of working (deadlines, ball holder, investigate-then-ask, outside communication, cashflow vs label, advance payments, protected label artists, no fixed hours, personal calendar context, aliases, event → workflow) is a versioned system contract in `lib/partner/system/owner-model.ts`. It is applied deterministically in `lib/partner/sunny/operating.ts` and served as capability `operating_model`.
+- Change a rule only when the Owner confirms it. Bump `OWNER_MODEL_VERSION` and never store confirmed rules as free notes or as P2 candidates.
+- A feature that adds a business event (new show / project / payment …) must update its `WORKFLOW_MODELS` entry: what must be known, where Redbloods keeps it, downstream effects, pushes, actions.
+- A new field that removes a repeated Owner question should update `QUESTION_TYPE_TO_MISSING_CONCEPT`.
+- `scripts/test-sunny-operating-model.tsx` must pass.

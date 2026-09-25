@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-5";
+export const SYSTEM_BASELINE_VERSION = "2026.09.25-6";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -99,7 +99,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("SESSION_VOCAB", "CANONICAL_BUSINESS_RULE", "Session status: מתוכנן, התקיים, בוטל, נדחה, לא הגיע. Types: סשן, ניקוי מיקס, חזרה, צילום קליפ, חזרה להופעה."),
       R("SESSION_AUTOMARK", "IMPLEMENTATION_BEHAVIOR", "A planned session whose end time has passed is marked התקיים automatically when the Owner opens the app (uses the device clock)."),
       R("SESSION_CALENDAR_PULL", "IMPLEMENTATION_BEHAVIOR", "An external scheduled job moves session times to match their Google events; it never deletes sessions.", ["GOOGLE_CALENDAR"]),
-      R("SCHEDULING_RULES", "OWNER_POLICY", "Working days Sunday–Thursday 10:00–23:00, 30-minute slots, 30-minute buffer between sessions."),
+      R("SCHEDULING_RULES", "IMPLEMENTATION_BEHAVIOR", "The session-booking picker offers Sunday–Thursday 10:00–23:00 slots in 30-minute steps with a 30-minute buffer. This is a scheduling-UI default — NOT the Owner's working hours (the Owner confirmed there are no fixed work hours)."),
       R("SESSION_DELETE_ORPHAN", "POSSIBLE_BUG", "Deleting a session leaves its rehearsal / shoot-day expense transaction behind.", ["FINANCE"]),
     ],
     sideEffects: [
@@ -631,15 +631,17 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "catalog"],
+    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
       R("OWNER_CONTEXT_APPEND_ONLY", "CANONICAL_BUSINESS_RULE", "Owner answers are append-only; a revision supersedes, history is never rewritten."),
       R("LIVE_BEATS_MEMORY", "CANONICAL_BUSINESS_RULE", "Live canonical state wins over remembered knowledge; memory is context, never a fact."),
       R("PATTERN_LADDER", "OWNER_POLICY", "Single evidence = OBSERVATION; repeated = PATTERN_CANDIDATE; only with Owner confirmation does it become operating knowledge — never an automatic rule or Charter change."),
+      R("OWNER_OPERATING_MODEL", "OWNER_POLICY", "The Owner-confirmed operating model (2026-09-25: client deadlines are commitments, internal deadlines are expectations, old overdue work is historical operational debt, continuous project ownership, investigate then ask, outside communication exists, cashflow is a top priority but money and label are connected, advance-then-later payments without invented terms, label artists are a protected growth track, no fixed work hours, personal calendar context stays personal, aliases learned progressively, events start workflows, Sunny suggests product improvements and the Owner decides) is served by operating_model and applied in its project / show / company modes.", ["PROJECTS", "FINANCE", "LABEL_ARTISTS", "SHOWS", "GOOGLE_CALENDAR"]),
+      R("HISTORICAL_DEBT_CUTOFF", "OWNER_POLICY", "A client deadline that passed on or before 2026-09-25 is HISTORICAL_OPERATIONAL_DEBT (gradual rehabilitation, not a new emergency); one that passes later is a new failure to investigate — never a judgement of the Owner or a team member."),
     ],
-    sideEffects: [], limitationsHe: ["זיכרון ארגוני (P2) עדיין לא פעיל בפרודקשן."],
+    sideEffects: [], limitationsHe: ["זיכרון ארגוני (P2) פעיל אבל נכתב רק דרך ההצעה והאישור שלך; אין סוג ידע לאירוע אישי ביומן, ולכן הוא לא נשמר.", "מודל העבודה של הבעלים הוא חוזה מערכת עם גרסה — סאני לא משנה אותו בעצמו.", "תנאי עסקה (סכום מקדמה, אבן דרך לתשלום) לא נרשמים ב-Redbloods — סאני לא ממציא אותם.", "תקשורת מחוץ ל-Redbloods (וואטסאפ / טלפון) לא נראית לסאני."],
     surfaces: S([], ["partner/actions", "partner/finance", "partner/integrity", "partner/internal", "partner/knowledge", "partner/outcomes"]),
   },
   {
@@ -815,4 +817,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-3", date: "2026-09-25", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע הכול על פרויקט: הערות, הוראות, תגובות מיקס, ביקורות ויקטור, צוות Red Films, קבצים וגרסאות, מסירה, התראות, היסטוריה, ראיות מחיר ומי מחכה למי — בחלקים לפי בקשה. מפת פערים גלובלית ומפת כל פעולות הפרויקט." },
   { version: "2026.09.25-4", date: "2026-09-25", domain: "PLATFORM_ACCESS", dimension: "read", from: "INTENTIONALLY_UNAVAILABLE", to: "PARTIAL", noteHe: "סאני קורא את כל ההגדרות שאינן סודות (הגדרות ויקטור, עוגני מחזורי יתרה, לוח דוחות, מצב תחזוקה, יעדים, זמינות, סימוני פושים, נוכחות בפורטלים, בקשת קבצים סופיים מסטיבן). אסימונים וקישורי שיתוף — אף פעם. אין יותר פעולה ‘אסורה לתמיד’ — רק רמות אישור." },
   { version: "2026.09.25-5", date: "2026-09-25", domain: "GOOGLE_CALENDAR", dimension: "read", from: "PARTIAL", to: "FULL", noteHe: "סאני רואה את היומן החי — כל היומנים, אירועים אישיים, חגים, חוזרים, מוזמנים — ומחבר אותו לפרויקטים, סשנים, פגישות, הופעות וריליסים (קנוני / הסקה / עמום / לא מקושר), כולל זמינות. בלי אסימונים, בלי כתיבה." },
+  { version: "2026.09.25-6", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "—", to: "OWNER_OPERATING_MODEL", noteHe: "סאני מכיר את דרך העבודה שאישרת: דדליין לקוח = התחייבות, דדליין פנימי = ציפייה, איחורים ישנים = חוב תפעולי לשיקום, מי מחזיק את הכדור, מקדמה בלי להמציא תנאים, לייבל מוגן, בלי שעות עבודה קבועות, אירוע = תהליך (הופעה חדשה: מה ידוע ומה לשאול), ושאלות חוזרות = הצעה לשיפור המערכת." },
 ];

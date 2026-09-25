@@ -138,7 +138,7 @@ export const improvementSignals: KnowledgeCapability = {
     for (const [k, c] of Object.entries(f?.state.coverage ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
       if (c.state !== "RELIABLE") push("SYSTEM_GAP", `finance:${k}`, `כיסוי נתוני כספים "${k}" אינו אמין (${c.state}).`, "DERIVED", "FINANCE", { coverage: c.state });
     }
-    push("SYSTEM_GAP", "calendar", "Google Calendar לא נקרא על ידי סאני — היומן העתידי חלקי.", "FACT", "PARTNER_KNOWLEDGE");
+    push("SYSTEM_GAP", "outside_communication", "תקשורת מחוץ ל-Redbloods (וואטסאפ / טלפון) לא נראית לסאני — אין תגובה באפליקציה ≠ אין תקשורת.", "FACT", "PARTNER_KNOWLEDGE");
     push("SYSTEM_GAP", "audit", "אין יומן ביקורת עסקי מלא — ציר הראיות אינו היסטוריה מלאה.", "FACT", "PARTNER_KNOWLEDGE");
     const list = out.filter((i) => !q.params.signal || i.fields.signal === q.params.signal);
     return result(list, {
