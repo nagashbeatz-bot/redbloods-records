@@ -20,6 +20,10 @@ const PUBLIC_BYPASS = [
   // Sunny connector → MAIN live calendar read: authenticates itself with a dedicated service secret (constant-time),
   // never a cookie; read-only; 404 on the MCP-only connector. Exact path only.
   "/api/partner/internal/calendar",
+  // Sunny connector → MAIN Universal Action Layer: authenticates itself with its OWN dedicated service secret
+  // (PARTNER_INTERNAL_ACT_SECRET, constant-time), never a cookie; 404 unless PARTNER_ACT_ENABLED=true; 404 on the
+  // MCP-only connector; every write still needs the Boss's approval of the exact plan. Exact path only.
+  "/api/partner/internal/act",
 ];
 
 // Service-role client (read-only use here) for the global maintenance flag. The

@@ -11,7 +11,7 @@
  *   Token — code exchange and refresh rotation are single atomic DB calls; errors are the RFC error codes.
  *   Bearer — opaque access token → hash → one DB check; audience (resource) and scope enforced here.
  */
-import { canonicalUrl, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE, scopeString, type McpConfig } from "./config";
+import { canonicalUrl, MCP_ACT_SCOPE, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE, scopeString, type McpConfig } from "./config";
 import { newClientId, PKCE_CHALLENGE, PKCE_VERIFIER, pkceS256, randomSecret, sha256Hex, TOKEN_PREFIX } from "./crypto";
 import { classifyConsentRequest, crossSiteSignal, issueConsentToken, verifyConsentToken, type ConsentBinding, type ConsentReplayGuard } from "./consent";
 import type { McpStore } from "./store";
@@ -25,8 +25,8 @@ const oauthError = (status: number, error: string, description: string) => json(
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Scopes this deployment offers. partner:answer / partner:knowledge exist only when their switch is on. */
-export const advertisedScope = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled });
-const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_access" || s === "" || (c.answerEnabled && s === MCP_ANSWER_SCOPE) || (c.knowledgeEnabled && s === MCP_KNOWLEDGE_SCOPE);
+export const advertisedScope = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled, act: c.actEnabled });
+const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_access" || s === "" || (c.answerEnabled && s === MCP_ANSWER_SCOPE) || (c.knowledgeEnabled && s === MCP_KNOWLEDGE_SCOPE) || (c.actEnabled && s === MCP_ACT_SCOPE);
 /**
  * The scope an authorization grants (and the consent screen shows): read, plus answer only when the switch is on AND
  * the client asked for it or asked for nothing specific (the consent screen then lists both permissions explicitly).
@@ -35,7 +35,7 @@ const scopeOk = (c: McpConfig, s: string) => s === MCP_SCOPE || s === "offline_a
 export function grantedScope(c: McpConfig, requested: string | null): string {
   const want = (requested ?? "").split(" ").filter((x) => x && x !== "offline_access");
   const all = want.length === 0;
-  return scopeString({ answer: c.answerEnabled && (all || want.includes(MCP_ANSWER_SCOPE)), knowledge: c.knowledgeEnabled && (all || want.includes(MCP_KNOWLEDGE_SCOPE)) });
+  return scopeString({ answer: c.answerEnabled && (all || want.includes(MCP_ANSWER_SCOPE)), knowledge: c.knowledgeEnabled && (all || want.includes(MCP_KNOWLEDGE_SCOPE)), act: c.actEnabled && (all || want.includes(MCP_ACT_SCOPE)) });
 }
 
 // ── registration ─────────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ const MCP_AUDIENCE = { channel: "EXTERNAL", ownerAuthorized: true } as const;
 let limiter: SlidingWindowLimiter | null = null;
 let answerLimiter: SlidingWindowLimiter | null = null;
 let knowledgeLimiter: SlidingWindowLimiter | null = null;
+let actLimiter: SlidingWindowLimiter | null = null;
 let rejectedLimiter: SlidingWindowLimiter | null = null;
 let registrationLimiter: SlidingWindowLimiter | null = null;
 const consentReplay = new MemoryConsentReplayGuard();
@@ -66,8 +67,16 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
       commit: async (i) => (await commitKnowledgeViaConnector(config.secret, i)) as unknown as Record<string, unknown>,
     };
   }
+  // Universal Action Layer: bound only where the act switch is on; every call is relayed to MAIN (no writer here).
+  let act: McpDeps["act"];
+  if (config.actEnabled) {
+    const { callInternalAct } = await import("@/lib/partner/act/remote");
+    actLimiter ??= new SlidingWindowLimiter(config.actRateLimit);
+    act = { limiter: actLimiter, call: (op, input, actor) => callInternalAct(op, { ownerId: actor.userId, clientId: actor.clientId }, input, process.env) };
+  }
   const mcp: McpDeps = {
     config,
+    ...(act ? { act } : {}),
     ...(answer ? { answer } : {}),
     ...(knowledge ? { knowledge } : {}),
     authenticate: (h) => authenticateBearer(h, oauth),

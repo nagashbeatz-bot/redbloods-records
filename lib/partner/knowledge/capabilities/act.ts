@@ -25,7 +25,7 @@ const APPROVAL_RULE_HE = "כל שינוי, בוס, מחכה לאישור המפ�
 
 export const actionRegistryCap: KnowledgeCapability = {
   id: "action_registry", domain: "PARTNER", titleHe: "מה סאני יכול לעשות — רישום הפעולות",
-  descriptionForModel: "Every Redbloods write, as a typed action contract: availability bucket (SUNNY_EXECUTABLE / SUNNY_NEEDS_HARDENING / SUNNY_BLOCKED / SUNNY_INTENTIONALLY_EXCLUDED) + detail, risk class, confirmation class, declared and possible side effects, phase, reversibility, wave and reason. overview = counts + the exact 'what can the Boss do that Sunny cannot yet do' report; list = filter; record = one action (ref = action id); model = the plan → preview → approval → execute → verify flow. Every write needs the Boss's explicit approval; in Wave 0 nothing executes through Claude.",
+  descriptionForModel: "Every Redbloods write, as a typed action contract: availability bucket (SUNNY_EXECUTABLE / SUNNY_NEEDS_HARDENING / SUNNY_BLOCKED / SUNNY_INTENTIONALLY_EXCLUDED) + detail, risk class, confirmation class, declared and possible side effects, phase, reversibility, wave and reason. overview = counts + the exact 'what can the Boss do that Sunny cannot yet do' report; list = filter; record = one action (ref = action id); model = the plan → preview → approval → execute → verify flow. Every write needs the Boss's explicit approval of the exact preview. Wave 1: 13 internal reversible actions are READY (filter executable); through Claude they run only once the Boss enabled partner:act, each after he approves its plan.",
   examplesHe: ["מה אתה יכול לעשות בשבילי?", "מה אני יכול לעשות ואתה עוד לא?", "אתה יכול לשנות דדליין?", "מה בגל 1?", "למה אתה לא יכול לסגור הופעה?"],
   modes: { overview: { descriptionForModel: "Counts + the Boss-vs-Sunny gap report" }, list: { descriptionForModel: "Actions (param filter / domain)" }, record: { descriptionForModel: "One action contract (param ref = action id)" }, model: { descriptionForModel: "How Sunny acts: plan, preview, approval, execution, verification, idempotency, audit" } }, defaultMode: "overview",
   params: {
@@ -67,7 +67,7 @@ export const actionRegistryCap: KnowledgeCapability = {
         sfact("WAVES", "פעולות לפי גל", byCount(ACTION_CONTRACTS.map((c) => c.wave)), "DERIVED", "SYSTEM_CONTRACTS"),
         sfact("APPROVAL_RULE", "כלל האישור", APPROVAL_RULE_HE, "OWNER_DECISION", "SYSTEM_CONTRACTS"),
       ],
-      coverage: [partner("בגל 0 שום פעולה לא מתבצעת דרך Claude; שתי פעולות מאומתות (דדליין, רישום הוצאה ששולמה) מתבצעות רק בדשבורד אחרי אישורך.")],
+      coverage: [partner("גל 1: 13 פעולות פנימיות והפיכות מוכנות. דרך Claude הן פועלות רק אחרי שהפעלת את הרשאת הפעולות, וכל אחת רק אחרי שאישרת את התצוגה המדויקת שלה. רישום הוצאה ששולמה נשאר בדשבורד בלבד. בלי כספים, יומן, קבצים, מחיקות, Push או הודעות.")],
     });
   },
 };

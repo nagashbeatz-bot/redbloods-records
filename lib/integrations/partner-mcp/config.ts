@@ -22,14 +22,16 @@ export const hasAnswerScope = (scope: string) => scope.split(" ").includes(MCP_A
 export const MCP_KNOWLEDGE_SCOPE = "partner:knowledge";
 export const hasKnowledgeScope = (scope: string) => scope.split(" ").includes(MCP_KNOWLEDGE_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
 /**
- * Universal Action Layer (Wave 0): the act scope is DEFINED but NOT grantable. It never appears in scopeString() and
- * is refused by the stored-scope CHECK until the Boss approves the action-layer DDL and then enables it explicitly.
- * partner:act ≠ autonomy: even with it, every plan executes only after the Boss approves that exact plan.
+ * Universal Action Layer: the act scope. Grantable ONLY when the deployment's act switch is on (actEnabled: the env flag
+ * PARTNER_MCP_ACT_ENABLED=true on an MCP-only connector whose internal action endpoint is configured), and only through
+ * the Owner's explicit consent screen, which lists it separately. A refresh can never add it (the DB copies the family's
+ * scope), so an existing token gains it only by a new consent. partner:act ≠ autonomy: every plan still executes only
+ * after the Boss approves that exact previewed plan.
  */
 export const MCP_ACT_SCOPE = "partner:act";
 export const hasActScope = (scope: string) => scope.split(" ").includes(MCP_ACT_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
-/** The canonical stored scope string for a grant (order fixed: read, answer, knowledge). */
-export const scopeString = (o: { answer: boolean; knowledge: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : [])].join(" ");
+/** The canonical stored scope string for a grant (order fixed: read, answer, knowledge, act — the DB CHECK lists exactly these). */
+export const scopeString = (o: { answer: boolean; knowledge: boolean; act?: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : []), ...(o.act ? [MCP_ACT_SCOPE] : [])].join(" ");
 export const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 
@@ -72,8 +74,13 @@ export interface McpConfig {
   knowledgeRateLimit: Array<{ windowMs: number; max: number }>;
   /** Reserved (P3 business-action proposals through Sunny). NOT wired: no scope, no tool, no DB permission exists. */
   proposeActionEnabled: false;
-  /** Reserved (Universal Action Layer plan / preview / approve / execute tools). NOT wired in Wave 0: no DB tables, no grantable scope, no tool. */
-  actEnabled: false;
+  /**
+   * Universal Action Layer (Wave 1). true ONLY when PARTNER_MCP_ACT_ENABLED is exactly "true" AND the deployment is the
+   * MCP-only connector AND the MAIN internal action endpoint + its dedicated secret are configured. Off → partner:act is
+   * not advertised / consentable / accepted and the five action tools do not exist for anyone.
+   */
+  actEnabled: boolean;
+  actRateLimit: Array<{ windowMs: number; max: number }>;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -114,7 +121,8 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       knowledgeEnabled: env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
       knowledgeRateLimit: [{ windowMs: 3_600_000, max: 20 }, { windowMs: 86_400_000, max: 60 }],
       proposeActionEnabled: false,
-      actEnabled: false,
+      actEnabled: env.PARTNER_MCP_ACT_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true" && !!env.PARTNER_MAIN_BASE_URL && (env.PARTNER_INTERNAL_ACT_SECRET ?? "").length >= 32,
+      actRateLimit: [{ windowMs: 3_600_000, max: 40 }, { windowMs: 86_400_000, max: 150 }],
     },
   };
 }

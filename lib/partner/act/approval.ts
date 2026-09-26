@@ -22,9 +22,11 @@ export function issueApprovalToken(secret: string, o: { planHash: string; ownerI
 }
 
 export type ApprovalRefusal = "TOKEN_MALFORMED" | "TOKEN_TAMPERED" | "TOKEN_EXPIRED" | "TOKEN_REPLAYED" | "WRONG_OWNER" | "WRONG_CLIENT" | "PLAN_MISMATCH" | "CONFIRMATION_VALUES_MISSING";
-export interface NonceStore { consume(nonce: string, expMs: number): Promise<boolean> }
+/** One-time approval consumption. Production: a row in the approvals table (nonce primary key → a second use fails). */
+export interface NonceConsumption { nonce: string; planId: string; planHash: string; ownerId: string; clientId: string; expMs: number }
+export interface NonceStore { consume(c: NonceConsumption): Promise<boolean> }
 
-export async function verifyApproval(secret: string, token: string, o: { planHash: string; ownerId: string; clientId: string; nowMs: number; confirmationText: string; nonces: NonceStore }): Promise<{ ok: true; claims: ApprovalClaims } | { ok: false; refusal: ApprovalRefusal }> {
+export async function verifyApproval(secret: string, token: string, o: { planId: string; planHash: string; ownerId: string; clientId: string; nowMs: number; confirmationText: string; nonces: NonceStore }): Promise<{ ok: true; claims: ApprovalClaims } | { ok: false; refusal: ApprovalRefusal }> {
   const m = TOKEN_RE.exec(token);
   if (!m) return { ok: false, refusal: "TOKEN_MALFORMED" };
   const want = Buffer.from(mac(secret, m[1])), got = Buffer.from(m[2]);
@@ -37,6 +39,7 @@ export async function verifyApproval(secret: string, token: string, o: { planHas
   if (c.ph !== o.planHash) return { ok: false, refusal: "PLAN_MISMATCH" };
   const text = o.confirmationText.normalize("NFKC");
   if ((c.v ?? []).some((v) => !text.includes(v.normalize("NFKC")))) return { ok: false, refusal: "CONFIRMATION_VALUES_MISSING" };
-  if (!(await o.nonces.consume(c.n, c.exp))) return { ok: false, refusal: "TOKEN_REPLAYED" };
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(c.n))) return { ok: false, refusal: "TOKEN_MALFORMED" };
+  if (!(await o.nonces.consume({ nonce: c.n, planId: o.planId, planHash: o.planHash, ownerId: o.ownerId, clientId: o.clientId, expMs: c.exp }))) return { ok: false, refusal: "TOKEN_REPLAYED" };
   return { ok: true, claims: c };
 }

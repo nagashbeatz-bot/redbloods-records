@@ -6,7 +6,7 @@
  */
 import { scopeString, type McpConfig } from "./config";
 
-const scopes = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled }).split(" ");
+const scopes = (c: McpConfig) => scopeString({ answer: c.answerEnabled, knowledge: c.knowledgeEnabled, act: c.actEnabled }).split(" ");
 /** User-facing connector identity: Sunny (the internal names — partner_*, lib/partner — intentionally stay). */
 export const CONNECTOR_DISPLAY_NAME = "Redbloods Sunny";
 

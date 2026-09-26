@@ -21,7 +21,7 @@
 import type { ActionContract, ArgSpec, Plan, PlanStep } from "./types";
 import { EFFECT_KEYS, RISK_ORDER } from "./types";
 
-export const MAX_TEXT_CHARS = 500;
+export const MAX_TEXT_CHARS = 2000;
 export const MAX_INTENT_CHARS = 300;
 export const MAX_STEPS = 20;
 export const MAX_ENTITIES_PER_STEP = 10;
@@ -32,7 +32,7 @@ const PRINCIPAL_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
 const ACTION_ID_RE = /^[A-Z][A-Z0-9_.]{2,80}$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
 /** A canonical entity key: "kind:id". Never a path, URL or free text. */
-export const ENTITY_KEY_RE = /^[a-z][a-z_]{1,30}:[A-Za-z0-9._-]{1,100}$/;
+export const ENTITY_KEY_RE = /^[a-z][a-z_-]{1,30}:[A-Za-z0-9._-]{1,100}$/;
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
@@ -158,7 +158,7 @@ export function toPersistablePlan(plan: Plan, registry: ReadonlyMap<string, Acti
       if (!rawCh || typeof rawCh !== "object") { p.push({ code: "NOT_AN_OBJECT", where: cw }); return; }
       const ch = rawCh as PlanStep["changes"][number];
       for (const k of extraKeys(ch, ALLOWED_CHANGE_KEYS)) p.push({ code: "FIELD_NOT_ALLOWED", where: `${cw}.${k}` });
-      if (!c.args.some((a) => a.name === ch.field)) p.push({ code: "CHANGE_FIELD_NOT_DECLARED", where: `${cw}.field` });
+      if (!c.args.some((a) => a.name === ch.field) && !(c.fields ?? []).includes(String(ch.field))) p.push({ code: "CHANGE_FIELD_NOT_DECLARED", where: `${cw}.field` });
       p.push(...checkScalar(ch.before, `${cw}.before`, known), ...checkScalar(ch.after, `${cw}.after`, known));
     });
     steps.push({
@@ -170,6 +170,19 @@ export function toPersistablePlan(plan: Plan, registry: ReadonlyMap<string, Acti
   });
   if (p.length) return { ok: false, problems: p };
   return { ok: true, json: { planId: plan.planId, ownerId: plan.ownerId, clientId: plan.clientId, intentHe: plan.intentHe, steps, riskClass: plan.riskClass, confirmation: plan.confirmation, effects: [...plan.effects], createdAt: plan.createdAt, expiresAt: plan.expiresAt } };
+}
+
+/** A before / after value as it may be STORED in a plan. Short, clean scalars are kept as-is; long free text or text
+ *  that trips the secret / location scan is stored only as a neutral description (the live text is shown in the preview
+ *  from a fresh read and never persisted; staleness is protected by the fingerprint). Deterministic. */
+export const PLAN_VALUE_MAX = 300;
+export function planSafeValue(v: unknown): string | number | boolean | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "boolean") return v;
+  const s = String(v);
+  if (s.length <= PLAN_VALUE_MAX && !inspectText(s, "value").length) return s;
+  return `[טקסט · ${s.length} תווים]`;
 }
 
 /** Plan-event / outcome detail text: fixed engine vocabulary + sanitized error text. Secrets and locations are

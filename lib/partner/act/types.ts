@@ -36,6 +36,8 @@ export interface ActionContract {
   meaningEn: string;
   businessEvents: readonly string[];
   args: readonly ArgSpec[];
+  /** The live fields a primitive may change (plan `changes[].field` must be an argument or one of these). */
+  fields?: readonly string[];
   preconditions: readonly string[];
   riskClass: RiskClass;
   confirmation: ConfirmationClass;

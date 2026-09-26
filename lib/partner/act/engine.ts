@@ -15,10 +15,11 @@ export interface IdempotencyStore {
   /** The recorded outcome for this execution key, if any (a replay returns it). */
   recorded(key: string): Promise<StepOutcome | null>;
   /** Claim the key once (DB unique constraint in production). false = someone already claimed it. */
-  claim(key: string): Promise<boolean>;
+  claim(key: string, meta: { planId: string; stepIndex: number; actionId: string; actionVersion: number }): Promise<boolean>;
   record(key: string, outcome: StepOutcome): Promise<void>;
 }
-export interface AuditStore { append(e: { planHash: string; type: PlanEventType; step: number | null; detail: string; ownerId: string; clientId: string }): Promise<void> }
+export interface AuditEvent { planId: string; planHash: string; type: PlanEventType; step: number | null; detail: string; ownerId: string; clientId: string }
+export interface AuditStore { append(e: AuditEvent): Promise<void> }
 /** A registered primitive's server side (MAIN). There is no fallback / generic executor. */
 export interface PrimitiveExecutor {
   /** Fresh read → the fingerprint of exactly the state the step was previewed against. */
@@ -43,7 +44,7 @@ const refuse = (p: Plan, hash: string, refusal: string): PlanOutcome => ({ planI
 
 export async function executePlan(plan: Plan, approval: { token: string; ownerId: string; clientId: string; confirmationText: string }, d: EngineDeps): Promise<PlanOutcome> {
   const hash = planHash(plan);
-  const log = (type: PlanEventType, step: number | null, detail: string) => d.audit.append({ planHash: hash, type, step, detail: safeDetail(detail, d.knownSecrets), ownerId: approval.ownerId, clientId: approval.clientId });
+  const log = (type: PlanEventType, step: number | null, detail: string) => d.audit.append({ planId: plan.planId, planHash: hash, type, step, detail: safeDetail(detail, d.knownSecrets), ownerId: approval.ownerId, clientId: approval.clientId });
   // 1. structure + registry (versions, availability, no hidden effects, no security steps)
   const problems = validatePlan(plan, d.registry);
   if (problems.length) { await log("REFUSED", null, `INVALID_PLAN:${problems.map((x) => x.code).join(",")}`); return refuse(plan, hash, `INVALID_PLAN:${problems[0].code}`); }
@@ -57,7 +58,7 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     if (!d.executors.has(s.actionId)) { await log("REFUSED", s.index, `NO_EXECUTOR:${s.actionId}`); return refuse(plan, hash, `NO_EXECUTOR:${s.actionId}`); }
   }
   // 2. the Boss's approval, bound to this exact plan
-  const v = await verifyApproval(d.secret, approval.token, { planHash: hash, ownerId: approval.ownerId, clientId: approval.clientId, nowMs: d.nowMs, confirmationText: approval.confirmationText, nonces: d.nonces });
+  const v = await verifyApproval(d.secret, approval.token, { planId: plan.planId, planHash: hash, ownerId: approval.ownerId, clientId: approval.clientId, nowMs: d.nowMs, confirmationText: approval.confirmationText, nonces: d.nonces });
   if (!v.ok) {
     // a replayed token for an already-executed plan returns the recorded outcome (idempotent), never a second run
     if (v.refusal === "TOKEN_REPLAYED") {
@@ -95,7 +96,7 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
       failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "live state changed immediately before execution", replayed: false };
       results.push(o); await log("STALE", s.index, o.detail); continue;
     }
-    if (!(await d.idem.claim(key))) { failed = true; results.push({ index: s.index, actionId: s.actionId, status: "CONFLICT", detail: "already being executed (duplicate request)", replayed: false }); continue; }
+    if (!(await d.idem.claim(key, { planId: plan.planId, stepIndex: s.index, actionId: s.actionId, actionVersion: s.actionVersion }))) { failed = true; results.push({ index: s.index, actionId: s.actionId, status: "CONFLICT", detail: "already being executed (duplicate request)", replayed: false }); continue; }
     let o: StepOutcome;
     try {
       const r = await ex.execute(s, outputs);
@@ -127,11 +128,11 @@ export function memoryStores() {
   const nonces = new Set<string>();
   const claimed = new Set<string>();
   const recorded = new Map<string, StepOutcome>();
-  const events: Array<{ planHash: string; type: PlanEventType; step: number | null; detail: string }> = [];
+  const events: AuditEvent[] = [];
   return {
-    nonces: { consume: async (n: string) => (nonces.has(n) ? false : (nonces.add(n), true)) } satisfies NonceStore,
+    nonces: { consume: async (c: { nonce: string }) => (nonces.has(c.nonce) ? false : (nonces.add(c.nonce), true)) } satisfies NonceStore,
     idem: { recorded: async (k: string) => recorded.get(k) ?? null, claim: async (k: string) => (claimed.has(k) ? false : (claimed.add(k), true)), record: async (k: string, o: StepOutcome) => { recorded.set(k, o); } } satisfies IdempotencyStore,
-    audit: { append: async (e: { planHash: string; type: PlanEventType; step: number | null; detail: string }) => { events.push(e); } } satisfies AuditStore,
+    audit: { append: async (e: AuditEvent) => { events.push(e); } } satisfies AuditStore,
     events,
   };
 }

@@ -219,3 +219,15 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
 - **What the action layer never has:** a generic SQL / DB / REST / PATCH writer, arbitrary route / code / file-path execution, a security delegation, or a push outside an approved business action.
 - **Discovered unsafe behaviour** is classified in `NEEDS_HARDENING` and fixed only in a separate, approved mission. D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION. Wave 1 is not started without the Boss's GO.
 - **Owner identity:** the Owner is Nagash (נגש), the final authority; Sunny addresses the Owner as "בוס" naturally (not in every sentence). Auth / DB records are not renamed.
+
+### Universal Action Layer — Wave 1 (real hands, built OFF)
+
+- **The 13 READY primitives** live in `lib/partner/act/primitives.ts`. Each is a narrow, internal, reversible edit through the SAME shared writer the UI route uses (`updateProject`, `updateReleaseDetails`, `updateMixCommentStatus`, `updateMixVersion`, `updateLabelArtist`, `updateVictorWork`): no push / email / calendar / Google Tasks / files / finance / delete / bulk.
+- **Adding a primitive means:** a spec there (resolve → read → plan → apply → verify), a READY W1 contract in `registry.ts` with typed args + `fields`, and cases in `scripts/test-sunny-act-wave1.tsx` (happy / invalid / missing / wrong type / stale / no approval / exact verify). Never expose a candidate whose writer is whole-body, full-replacement, unvalidated, or has external side effects: classify it NEEDS_HARDENING / BLOCKED.
+- **The ONE path is:** MCP tool (connector, relay only) → `POST /api/partner/internal/act` on MAIN, secured by its own secret (`PARTNER_INTERNAL_ACT_SECRET`), with the endpoint 404 unless `PARTNER_ACT_ENABLED=true` → `lib/partner/act/service.ts` → the engine → `store-supabase.ts` (the 4 action tables; fail closed; allowlist persistence).
+- **Enabling it needs all of these:**
+  - on MAIN: `PARTNER_ACT_ENABLED=true` and `PARTNER_INTERNAL_ACT_SECRET`;
+  - on the connector: `PARTNER_MCP_ACT_ENABLED=true`, the same secret, and `PARTNER_MAIN_BASE_URL`;
+  - a NEW Owner consent listing `partner:act` (a refresh never adds a scope).
+  It is never switched on without the Boss's explicit approval.
+- **Sunny speaks to the Owner as "בוס":** preview → wait for an explicit "כן" → execute → report the fresh read. Every write needs a new approval, and a changed plan needs a new preview.

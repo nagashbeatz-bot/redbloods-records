@@ -7,7 +7,7 @@
 import { notFound, redirect } from "next/navigation";
 import { consentToken, validateAuthorizeRequest } from "@/lib/integrations/partner-mcp/oauth";
 import { getConsentSession, getMcpRuntime } from "@/lib/integrations/partner-mcp/server";
-import { hasAnswerScope, hasKnowledgeScope, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE } from "@/lib/integrations/partner-mcp/config";
+import { hasActScope, hasAnswerScope, hasKnowledgeScope, MCP_ACT_SCOPE, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE } from "@/lib/integrations/partner-mcp/config";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,8 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
   // The exact permissions this consent grants (bound into the consent token with the rest of the request).
   const answer = hasAnswerScope(r.scope);
   const knowledge = hasKnowledgeScope(r.scope);
-  const writes = answer || knowledge;
+  const act = hasActScope(r.scope);
+  const writes = answer || knowledge || act;
   const csrf = consentToken(r, { userId: session.userId, sessionId: session.sessionId }, rt.oauth);
   const hidden: Record<string, string> = {
     response_type: "code", client_id: r.clientId, redirect_uri: r.redirectUri, code_challenge: r.codeChallenge, code_challenge_method: "S256",
@@ -49,10 +50,13 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
         {knowledge ? (
           <li data-consent-knowledge>הרשאה: <code dir="ltr">{MCP_KNOWLEDGE_SCOPE}</code> — <b>ללמד את סאני ידע ארגוני שאמרת בשיחה</b> (מי זה מי, תפקידים, קשרים, מה תוקע פרויקט, התחייבויות, תשלום שדיווחת עליו). סאני מציג לך קודם מה הבין, ושומר רק אחרי שאתה מאשר בשיחה. זה ידע בלבד — לא משנה פרויקטים, כספים או כל נתון עסקי. <span dir="ltr">Teach Sunny typed organizational knowledge, only after you confirm.</span></li>
         ) : null}
+        {act ? (
+          <li data-consent-act>הרשאה: <code dir="ltr">{MCP_ACT_SCOPE}</code> — <b>לבצע בשבילך פעולות מוגדרות ב-Redbloods, כל אחת רק אחרי שאישרת אותה במפורש בשיחה</b>. סאני מציגה לך קודם בדיוק מה ישתנה (מצב נוכחי ← מצב חדש, ומה לא יקרה), ומבצעת רק את התוכנית שאישרת, פעם אחת, אחרי שבדקה שהמצב לא השתנה. רק פעולות פנימיות והפיכות מהרשימה המאושרת — בלי כספים, יומן, קבצים, מחיקות, Push או הודעות. <span dir="ltr">Perform listed internal actions, each only after you explicitly approve its exact preview.</span></li>
+        ) : null}
         {answer ? (
           <li data-consent-answer>הרשאה: <code dir="ltr">{MCP_ANSWER_SCOPE}</code> — <b>לענות בשמך על שאלה ש־Partner שואל עכשיו</b>, רק באחת מהתשובות הסגורות שלה ורק כשאתה עונה ל־Claude בשיחה. Partner בודק כל תשובה מול המצב החי ושומר אותה כהחלטה שלך (דרך Claude), שאפשר לראות בלוח הבקרה.</li>
         ) : null}
-        <li><b>{writes ? "אין שום כתיבה אחרת" : "אין גישת כתיבה"}</b>: Claude לא יכול לאשר או לבצע פעולות, לשנות פרויקטים, כספים, הגדרות או כל נתון אחר{answer ? "" : ", או לענות על שאלות"}. <span dir="ltr">{writes ? "No other write access." : "No write access."}</span></li>
+        <li><b>{writes ? "אין שום כתיבה אחרת" : "אין גישת כתיבה"}</b>: {act ? "מלבד הפעולות המאושרות שלמעלה, " : ""}Claude לא יכול {act ? "" : "לאשר או לבצע פעולות, "}לשנות פרויקטים, כספים, הגדרות או כל נתון אחר{answer ? "" : ", או לענות על שאלות"}. <span dir="ltr">{writes ? "No other write access." : "No write access."}</span></li>
         <li>אפשר לנתק בכל רגע.</li>
         <li><b>אשר רק אם לחצת עכשיו בעצמך על Connect בחשבון Claude שלך.</b> אם קיבלת את הקישור הזה ממישהו אחר — דחה.</li>
       </ul>
@@ -61,7 +65,7 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
       </p>
       <form method="post" action="/api/mcp-oauth/authorize" style={{ display: "flex", gap: 12 }}>
         {Object.entries(hidden).map(([k, val]) => <input key={k} type="hidden" name={k} value={val} />)}
-        <button type="submit" name="decision" value="allow" style={btn(true)}>{answer && knowledge ? "אשר קריאה, מענה ולמידה" : knowledge ? "אשר קריאה ולמידה" : answer ? "אשר קריאה ומענה על שאלות" : "אשר גישת קריאה"}</button>
+        <button type="submit" name="decision" value="allow" style={btn(true)}>{act ? "אשר קריאה, מענה, למידה ופעולות באישור" : answer && knowledge ? "אשר קריאה, מענה ולמידה" : knowledge ? "אשר קריאה ולמידה" : answer ? "אשר קריאה ומענה על שאלות" : "אשר גישת קריאה"}</button>
         <button type="submit" name="decision" value="deny" style={btn(false)}>דחה</button>
       </form>
     </div>

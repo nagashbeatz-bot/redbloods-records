@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-17";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-18";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -923,4 +923,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-16", date: "2026-09-25", domain: "AGENT_ALERTS", dimension: "domain", from: "LEGACY_AI_PRESENT", to: "LEGACY_AI_REMOVED", noteHe: "העוזר הישן באפליקציה ('מאי') הוסר מהמוצר לפי החלטתך: אין צ'אט, פרומפט, בונה הקשר, נתב מודלים, מעקב תקציב AI או נתיב זיכרון. סאני הוא השותף היחיד. גם האחסון שלו הוסר (טבלת הזיכרון הריקה ומפתחות תקציב/לוג AI) — עם גיבוי לשחזור." },
   { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "תשתית שכבת הפעולות (גל 0): רישום אחד לכל פעולה ב-Redbloods עם סיכון, תופעות לוואי, זמינות וגל; מודל תוכנית → תצוגה → אישורך → ביצוע → אימות. שום פעולה לא מתבצעת עדיין דרך Claude — כל שינוי מחכה לאישור המפורש שלך, בוס." },
   { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע מה הוא יכול ומה עוד לא (action_registry) ואצל מי הכדור / מה הצעד הבא (next_steps) — הצעות בלבד." },
+  { version: "2026.09.27-18", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "גל 1 נבנה ונבדק: 13 פעולות פנימיות והפיכות (הערות / תכנון / סוג / דדליין של פרויקט, פרטי ושלב ריליס, סימון / פתיחה של הערת מיקס, סטטוס / תווית גרסה, הערות / סטטוס אמן, מצב / תוצאה / הערות של עבודת ויקטור) עם תוכנית, תצוגה, אישורך, בדיקת מצב, ביצוע חד-פעמי ואימות. עדיין כבוי — נדלק רק באישורך המפורש." },
 ];

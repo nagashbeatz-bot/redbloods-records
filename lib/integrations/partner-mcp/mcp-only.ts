@@ -62,10 +62,20 @@ export interface McpOnlyWriteOptions {
    * MAIN service — the service-to-service internal calendar read. GET only; any other method / path / host stays blocked.
    */
   internalReadUrls?: readonly string[];
+  /**
+   * Universal Action Layer (only when the deployment's act switch is on): EXACT https URLs the connector may POST to on
+   * the Redbloods MAIN service — the service-to-service internal action endpoint. POST only; nothing else.
+   */
+  internalActUrls?: readonly string[];
 }
 
 export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, opts: McpOnlyWriteOptions = {}): boolean {
-  if (url.host !== dbHost) return method.toUpperCase() === "GET" && url.protocol === "https:" && (opts.internalReadUrls ?? []).includes(`${url.origin}${url.pathname}`);
+  if (url.host !== dbHost) {
+    const exact = `${url.origin}${url.pathname}`;
+    if (url.protocol !== "https:" || url.search) return method.toUpperCase() === "GET" && url.protocol === "https:" && (opts.internalReadUrls ?? []).includes(exact);
+    const m = method.toUpperCase();
+    return (m === "GET" && (opts.internalReadUrls ?? []).includes(exact)) || (m === "POST" && (opts.internalActUrls ?? []).includes(exact));
+  }
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return true;
   if (m !== "POST") return false;

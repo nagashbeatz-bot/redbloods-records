@@ -369,7 +369,11 @@ export const SECURITY_GAPS: readonly SecurityGap[] = [
  */
 export const ACCESS_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/roles.ts": "0f6865361e3ec0940ea697cd3ac15ce24a267e07019d3caf9fa54a34d7b66b1a",
-  "proxy.ts": "3ea7871698926436fa12047c1660f12dbd298622c83f98318ca99f71bcf0af65",
+  // 2026-09-27 review (Universal Action Layer Wave 1): proxy.ts adds ONE exact cookie-bypass path, /api/partner/internal/act — the
+  // connector → MAIN action endpoint. It authenticates with its own dedicated service secret (constant-time), is 404 unless
+  // PARTNER_ACT_ENABLED=true and on the MCP-only connector, re-checks the Owner live, and every write still needs the Boss's
+  // explicit approval of the exact previewed plan. No role, portal or push surface changes.
+  "proxy.ts": "7c037dd7a7c5e5b3cbfcdfe655dffb42020137dbcb89333f30d4190c1f1e44e6",
   "lib/require-auth.ts": "5d28fa016ffe37c1b6c6847ac1ae2aa0f118977bba4c35e658f400a4ad3e5f8a",
   "lib/red-artists/portal-access.ts": "4d5454199c8f846043b3cc0097ec13ba867df5494961e5e7a3b517d35ae14b87",
   "lib/beat-scope.ts": "a14f3dddcae310f4ddf41f71f1b3c05d627095cf3b7b279616a6383580a64163",

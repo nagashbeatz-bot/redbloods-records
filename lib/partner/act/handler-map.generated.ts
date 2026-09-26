@@ -1200,6 +1200,21 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": []
  },
+ "app/api/partner/internal/act/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "70cade06e5de12c4f03343af5a1b7a5eebcf0157c9a1d09262a83a74a960b069",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
+  ],
+  "fields": []
+ },
  "app/api/project-actions/[id]/route.ts": {
   "methods": [
    "DELETE",
