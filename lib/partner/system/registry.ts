@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.25-16";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-17";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -710,7 +710,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self"],
+    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
     rules: [
@@ -921,4 +921,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CORE", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "סאני על עצמו: מה לימדת, מה ענית, מה בוצע, מה פתוח — ומה הוא לא זוכר (אין שיחות שמורות)." },
   { version: "2026.09.25-15", date: "2026-09-25", domain: "SUNNY_CONNECTOR", dimension: "domain", from: "PENDING_DEEP_MISSION", to: "DEEP_BRAIN_V1", noteHe: "החיבור ל-Claude: הרשאות, כלים, מגבלות, ביקורת (לא קריאה), מצבי כשל ודגלים — בלי סודות." },
   { version: "2026.09.25-16", date: "2026-09-25", domain: "AGENT_ALERTS", dimension: "domain", from: "LEGACY_AI_PRESENT", to: "LEGACY_AI_REMOVED", noteHe: "העוזר הישן באפליקציה ('מאי') הוסר מהמוצר לפי החלטתך: אין צ'אט, פרומפט, בונה הקשר, נתב מודלים, מעקב תקציב AI או נתיב זיכרון. סאני הוא השותף היחיד. גם האחסון שלו הוסר (טבלת הזיכרון הריקה ומפתחות תקציב/לוג AI) — עם גיבוי לשחזור." },
+  { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "תשתית שכבת הפעולות (גל 0): רישום אחד לכל פעולה ב-Redbloods עם סיכון, תופעות לוואי, זמינות וגל; מודל תוכנית → תצוגה → אישורך → ביצוע → אימות. שום פעולה לא מתבצעת עדיין דרך Claude — כל שינוי מחכה לאישור המפורש שלך, בוס." },
+  { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע מה הוא יכול ומה עוד לא (action_registry) ואצל מי הכדור / מה הצעד הבא (next_steps) — הצעות בלבד." },
 ];

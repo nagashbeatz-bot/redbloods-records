@@ -86,15 +86,16 @@ const served = (r: QueryResponse) => r.status === "OK";
 
 function main() {
   section("1. Owner-confirmed rules — provenance, coverage, no invented policy");
-  ok("16 rules, every one OWNER_CONFIRMED with a date", OWNER_OPERATING_RULES.length === 16 && OWNER_OPERATING_RULES.every((r) => r.provenance === "OWNER_CONFIRMED" && r.confirmedAt === "2026-09-25"));
+  ok("18 rules, every one OWNER_CONFIRMED with a date (16 on 2026-09-25 + Owner authority / \"בוס\" on 2026-09-27)", OWNER_OPERATING_RULES.length === 18 && OWNER_OPERATING_RULES.every((r) => r.provenance === "OWNER_CONFIRMED" && (r.confirmedAt === "2026-09-25" || (r.confirmedAt === "2026-09-27" && (r.id === "OWNER_IS_FINAL_AUTHORITY" || r.id === "ADDRESS_OWNER_AS_BOSS")))));
   ok("every rule says what Sunny does AND what it does not mean", OWNER_OPERATING_RULES.every((r) => r.sunnyBehavior.length > 0 && r.doesNotMean.length > 0));
   const ids = OWNER_OPERATING_RULES.map((r) => r.id);
   for (const want of ["CLIENT_DEADLINE_IS_COMMITMENT", "INTERNAL_DEADLINE_IS_EXPECTATION", "HISTORICAL_OVERDUE_IS_OPERATIONAL_DEBT", "CONTINUOUS_PROJECT_OWNERSHIP", "INVESTIGATE_THEN_ASK", "OUTSIDE_COMMUNICATION_EXISTS", "LEARNING_LOOP", "CASHFLOW_TOP_OPERATIONAL_PRIORITY", "ADVANCE_THEN_LATER_PAYMENT", "LABEL_ARTISTS_PROTECTED_GROWTH_TRACK", "MONEY_AND_LABEL_ARE_CONNECTED", "NO_FIXED_WORK_HOURS", "PERSONAL_CONTEXT_IS_REAL_SCHEDULE", "ALIASES_LEARNED_PROGRESSIVELY", "EVENT_STARTS_WORKFLOW", "SUGGEST_SYSTEM_IMPROVEMENTS"]) ok(`rule ${want}`, ids.includes(want));
   const rulesText = JSON.stringify(OWNER_OPERATING_RULES);
   ok("no invented payment percentage / amount in the rules", !/\d+\s?%|₪\s?\d|\d+\s?₪/.test(rulesText));
-  ok("open questions are NOT silently answered (Nagash / את היחידה / קרוב אלייך absent from the model)", !/נגש|Nagash|את היחידה|קרוב אלייך/.test(rulesText + JSON.stringify(WORKFLOW_MODELS) + read("lib/partner/sunny/operating.ts")));
+  const rulesExceptIdentity = JSON.stringify(OWNER_OPERATING_RULES.filter((r) => r.id !== "OWNER_IS_FINAL_AUTHORITY"));
+  ok("open questions are NOT silently answered (את היחידה / קרוב אלייך absent; Nagash only in the Owner-answered identity rule, 2026-09-27)", !/נגש|Nagash|את היחידה|קרוב אלייך/.test(rulesExceptIdentity + JSON.stringify(WORKFLOW_MODELS) + read("lib/partner/sunny/operating.ts")) && /Nagash \(נגש\)/.test(JSON.stringify(OWNER_OPERATING_RULES.find((r) => r.id === "OWNER_IS_FINAL_AUTHORITY"))));
   const rr = q("rules");
-  ok("capability serves the rules (Owner)", served(rr) && itemsOf(rr).length === 16 && itemsOf(rr).every((i) => i.epistemic === "OWNER_DECISION"));
+  ok("capability serves the rules (Owner)", served(rr) && itemsOf(rr).length === 18 && itemsOf(rr).every((i) => i.epistemic === "OWNER_DECISION"));
   ok("rules filtered by area", itemsOf(q("rules", { area: "DEADLINES" })).length === 3);
   ok("operating_model is Owner-only", !served(q("rules", {}, sources(), STRANGER)));
   ok("version fact served", served(rr) && rr.summary.some((f) => f.code === "OWNER_MODEL_VERSION" && f.value === OWNER_MODEL_VERSION));

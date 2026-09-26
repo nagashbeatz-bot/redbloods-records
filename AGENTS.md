@@ -198,3 +198,19 @@ The older in-app AI assistant was removed on 2026-09-25 by Owner decision. Sunny
 - The reports keep their deterministic recommendations.
 - Its storage was removed too (2026-09-25, Owner-approved SQL): the empty memory table and the six `ai_budget_*` / `ai_log_*` settings keys.
 - `scripts/test-mai-removed.tsx` must pass.
+
+## Sunny Awareness Check: the Universal Action Layer (Wave 0)
+
+Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/registry.ts`, built from the domain action inventories plus supplementary contracts. Each contract records availability (SUNNY_EXECUTABLE / SUNNY_NEEDS_HARDENING / SUNNY_BLOCKED / SUNNY_INTENTIONALLY_EXCLUDED + detail), risk class, confirmation class, declared and possible side effects, phase, reversibility and wave. There is one engine for all actions: plan → server-side preview → the Boss's approval → fresh read + stale check → execute → verify → outcome → audit. The engine lives in `lib/partner/act/{plan,approval,engine}.ts`.
+- **EVERY write / mutation / execution requires the Boss's explicit approval** of the exact previewed change. Risk classes shape the preview; they never permit execution. `partner:act` ≠ autonomy.
+- **Wave 0 executes nothing through Claude.** The two validated primitives (deadline, paid expense) stay dashboard-approved. The act scope and tools are defined but not grantable or registered until the Boss approves the action-layer DDL and enables them.
+- **A new or changed write route** fails `scripts/test-sunny-act-foundation.tsx` until you run `node scripts/gen-act-handler-map.mjs` and then review the registry:
+  - G1: every handler maps to an action;
+  - G2: every accepted field is classified (`lib/partner/act/fields.ts`);
+  - G5: every reachable side effect is declared.
+- **A new status value** must be in `lib/partner/act/transitions.ts` (G3).
+- **A new background / page-load writer** must be in `lib/partner/act/background.ts` (G4). Never call `/api/push/check` on page load.
+- **A new business action or workflow event** must map in `lib/partner/act/business-events.ts` (G6).
+- **What the action layer never has:** a generic SQL / DB / REST / PATCH writer, arbitrary route / code / file-path execution, a security delegation, or a push outside an approved business action.
+- **Discovered unsafe behaviour** is classified in `NEEDS_HARDENING` and fixed only in a separate, approved mission. D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION. Wave 1 is not started without the Boss's GO.
+- **Owner identity:** the Owner is Nagash (נגש), the final authority; Sunny addresses the Owner as "בוס" naturally (not in every sentence). Auth / DB records are not renamed.

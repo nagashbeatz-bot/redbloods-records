@@ -21,6 +21,13 @@ export const hasAnswerScope = (scope: string) => scope.split(" ").includes(MCP_A
  */
 export const MCP_KNOWLEDGE_SCOPE = "partner:knowledge";
 export const hasKnowledgeScope = (scope: string) => scope.split(" ").includes(MCP_KNOWLEDGE_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
+/**
+ * Universal Action Layer (Wave 0): the act scope is DEFINED but NOT grantable. It never appears in scopeString() and
+ * is refused by the stored-scope CHECK until the Boss approves the action-layer DDL and then enables it explicitly.
+ * partner:act ≠ autonomy: even with it, every plan executes only after the Boss approves that exact plan.
+ */
+export const MCP_ACT_SCOPE = "partner:act";
+export const hasActScope = (scope: string) => scope.split(" ").includes(MCP_ACT_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
 /** The canonical stored scope string for a grant (order fixed: read, answer, knowledge). */
 export const scopeString = (o: { answer: boolean; knowledge: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : [])].join(" ");
 export const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
@@ -65,6 +72,8 @@ export interface McpConfig {
   knowledgeRateLimit: Array<{ windowMs: number; max: number }>;
   /** Reserved (P3 business-action proposals through Sunny). NOT wired: no scope, no tool, no DB permission exists. */
   proposeActionEnabled: false;
+  /** Reserved (Universal Action Layer plan / preview / approve / execute tools). NOT wired in Wave 0: no DB tables, no grantable scope, no tool. */
+  actEnabled: false;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -105,6 +114,7 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       knowledgeEnabled: env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
       knowledgeRateLimit: [{ windowMs: 3_600_000, max: 20 }, { windowMs: 86_400_000, max: 60 }],
       proposeActionEnabled: false,
+      actEnabled: false,
     },
   };
 }
