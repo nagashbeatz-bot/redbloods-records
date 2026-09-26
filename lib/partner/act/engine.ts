@@ -9,6 +9,7 @@
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
 import { verifyApproval, type NonceStore } from "./approval";
+import { safeDetail, toPersistablePlan } from "./persist";
 
 export interface IdempotencyStore {
   /** The recorded outcome for this execution key, if any (a replay returns it). */
@@ -34,16 +35,21 @@ export interface EngineDeps {
   nonces: NonceStore;
   idem: IdempotencyStore;
   audit: AuditStore;
+  /** The server's own secret values (knownSecretValues(process.env)) — never persisted, redacted from every detail. */
+  knownSecrets?: readonly string[];
 }
 
 const refuse = (p: Plan, hash: string, refusal: string): PlanOutcome => ({ planId: p.planId, planHash: hash, status: "REFUSED", refusal, steps: p.steps.map((s) => ({ index: s.index, actionId: s.actionId, status: "NOT_RUN" as StepStatus, detail: refusal, replayed: false })) });
 
 export async function executePlan(plan: Plan, approval: { token: string; ownerId: string; clientId: string; confirmationText: string }, d: EngineDeps): Promise<PlanOutcome> {
   const hash = planHash(plan);
-  const log = (type: PlanEventType, step: number | null, detail: string) => d.audit.append({ planHash: hash, type, step, detail, ownerId: approval.ownerId, clientId: approval.clientId });
+  const log = (type: PlanEventType, step: number | null, detail: string) => d.audit.append({ planHash: hash, type, step, detail: safeDetail(detail, d.knownSecrets), ownerId: approval.ownerId, clientId: approval.clientId });
   // 1. structure + registry (versions, availability, no hidden effects, no security steps)
   const problems = validatePlan(plan, d.registry);
   if (problems.length) { await log("REFUSED", null, `INVALID_PLAN:${problems.map((x) => x.code).join(",")}`); return refuse(plan, hash, `INVALID_PLAN:${problems[0].code}`); }
+  // 1b. the persistence contract: a plan that could not be stored safely is never executed either
+  const persistable = toPersistablePlan(plan, d.registry, { knownSecrets: d.knownSecrets });
+  if (!persistable.ok) { await log("REFUSED", null, `NOT_PERSISTABLE:${[...new Set(persistable.problems.map((x) => x.code))].join(",")}`); return refuse(plan, hash, `NOT_PERSISTABLE:${persistable.problems[0].code}`); }
   if (d.nowMs > Date.parse(plan.expiresAt)) { await log("REFUSED", null, "PLAN_EXPIRED"); return refuse(plan, hash, "PLAN_EXPIRED"); }
   for (const s of plan.steps) {
     const c = d.registry.get(s.actionId)!;
@@ -99,7 +105,7 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
       await log(ok ? "VERIFIED" : "STEP_FAILED", s.index, o.detail);
       if (ok) await log("STEP_EXECUTED", s.index, r.changed ? "changed" : "no change");
     } catch (e) {
-      o = { index: s.index, actionId: s.actionId, status: "FAILED", detail: `execution error: ${(e as Error).message.slice(0, 160)}`, replayed: false };
+      o = { index: s.index, actionId: s.actionId, status: "FAILED", detail: safeDetail(`execution error: ${(e as Error).message}`, d.knownSecrets).slice(0, 200), replayed: false };
       await log("STEP_FAILED", s.index, o.detail);
     }
     await d.idem.record(key, o);

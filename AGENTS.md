@@ -211,6 +211,11 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
 - **A new status value** must be in `lib/partner/act/transitions.ts` (G3).
 - **A new background / page-load writer** must be in `lib/partner/act/background.ts` (G4). Never call `/api/push/check` on page load.
 - **A new business action or workflow event** must map in `lib/partner/act/business-events.ts` (G6).
+- **Plan persistence is allowlist-only** (`lib/partner/act/persist.ts`):
+  - What may be stored is only the plan's fixed fields: the contract's declared typed arguments, canonical entity keys, 64-hex fingerprints, and scalar before / after values.
+  - Anything credential-like, path-like, URL-like or route-like, and any undeclared or nested field, REJECTS the plan. It is never trimmed or redacted into storage, and the engine refuses such a plan before approval.
+  - Event and outcome details are redacted and capped.
+  - A new argument must be typed, and must never be named sql / path / url / token / body / headers.
 - **What the action layer never has:** a generic SQL / DB / REST / PATCH writer, arbitrary route / code / file-path execution, a security delegation, or a push outside an approved business action.
 - **Discovered unsafe behaviour** is classified in `NEEDS_HARDENING` and fixed only in a separate, approved mission. D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION. Wave 1 is not started without the Boss's GO.
 - **Owner identity:** the Owner is Nagash (נגש), the final authority; Sunny addresses the Owner as "בוס" naturally (not in every sentence). Auth / DB records are not renamed.

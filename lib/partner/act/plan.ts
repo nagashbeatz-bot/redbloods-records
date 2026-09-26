@@ -50,7 +50,7 @@ export function validatePlan(p: Plan, registry: ReadonlyMap<string, ActionContra
     if (s.expectedFingerprint === null && !s.dependsOn.length) out.push({ code: "MISSING_FINGERPRINT", step: i, detail: "an independent step must carry its expected live-state fingerprint" });
     for (const a of c.args) if (a.required && !(a.name in s.args)) out.push({ code: "MISSING_ARGUMENT", step: i, detail: a.name });
     for (const a of c.args) if (a.kind === "enum" && a.name in s.args && !(a.values ?? []).includes(String(s.args[a.name]))) out.push({ code: "ENUM_VIOLATION", step: i, detail: `${a.name}=${String(s.args[a.name])}` });
-    for (const k of Object.keys(s.args)) if (c.args.length && !c.args.some((a) => a.name === k)) out.push({ code: "UNKNOWN_ARGUMENT", step: i, detail: k });
+    for (const k of Object.keys(s.args)) if (!c.args.some((a) => a.name === k)) out.push({ code: "UNKNOWN_ARGUMENT", step: i, detail: k });
   });
   const risk = highestRisk(p.steps.map((s) => registry.get(s.actionId)?.riskClass ?? "SECURITY_SENSITIVE"));
   if (p.riskClass !== risk) out.push({ code: "RISK_UNDERSTATED", detail: `plan says ${p.riskClass}, steps require ${risk}` });
