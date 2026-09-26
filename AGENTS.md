@@ -231,3 +231,18 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
   - a NEW Owner consent listing `partner:act` (a refresh never adds a scope).
   It is never switched on without the Boss's explicit approval.
 - **Sunny speaks to the Owner as "בוס":** preview → wait for an explicit "כן" → execute → report the fresh read. Every write needs a new approval, and a changed plan needs a new preview.
+
+### Universal Action Layer — 100% coverage (permanent Owner directive, 2026-09-27)
+
+- **The target is 100% of legitimate Redbloods operations**, each executable by Sunny after the Boss's explicit approval. Sensitivity sets how strong the safeguards are (preview, confirmation, stale check, verification); it never sets whether an operation is supported.
+- **Every operation is in `lib/partner/act/matrix.ts`**, in exactly one class:
+  - EXECUTABLE;
+  - NEEDS_HARDENING, with the required work and a destination wave;
+  - BLOCKED_BY_MISSING_CAPABILITY, with the required work (a product decision or data model);
+  - INTENTIONALLY_SECURITY_EXCLUDED, which is only allowed for secret / credential flows, identity-bound actions of another user, or system machinery. The owner equivalent is named whenever one exists.
+- Waves are sequencing only (`WAVE_PLAN`), never exclusions.
+- **New guards in `scripts/test-sunny-act-foundation.tsx`:**
+  - G7: the matrix has no orphan and no dead end, and the exclusion list is pinned.
+  - G8: every mutating UI fetch (button / form / toggle / upload / delete) maps to a registered write handler.
+  - G9: no server actions and no browser-side database writes.
+- A new mutation anywhere fails these guards until it is registered.

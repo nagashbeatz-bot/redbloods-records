@@ -36,7 +36,8 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
     if (d.support.read !== "MISSING" && d.support.read !== "INTENTIONALLY_UNAVAILABLE" && d.readCapabilities.length === 0) e.push(`${d.id}: read ${d.support.read} but no read capability`);
     if (d.support.read === "FULL" && d.freshness === "NOT_CONNECTED") e.push(`${d.id}: FULL read cannot be NOT_CONNECTED`);
     if (d.support.learn !== "MISSING" && d.support.learn !== "INTENTIONALLY_UNAVAILABLE" && d.learnKinds.length === 0) e.push(`${d.id}: learn ${d.support.learn} but no knowledge kind`);
-    if (d.support.execute !== "NOT_YET_EXECUTABLE" && d.support.execute !== "MISSING") e.push(`${d.id}: Sunny execute is NOT_YET_EXECUTABLE in this baseline (never "forbidden forever")`);
+    // Universal Action Layer Wave 1 (2026-09-27): SUNNY_CORE (the action layer) may be PARTIAL — never FULL / never "forbidden forever".
+    if (d.support.execute !== "NOT_YET_EXECUTABLE" && d.support.execute !== "MISSING" && !(d.id === "SUNNY_CORE" && d.support.execute === "PARTIAL")) e.push(`${d.id}: Sunny execute is NOT_YET_EXECUTABLE in this baseline (never "forbidden forever")`);
     for (const r of d.rules) if (!/^[A-Z][A-Z0-9_]{2,50}$/.test(r.id)) e.push(`${d.id}.${r.id}: bad rule id`);
     for (const n of d.notifications ?? []) if (n.sunnyMayTrigger !== false) e.push(`${d.id}.${n.id}: Sunny may never trigger notifications`);
     if (!d.limitationsHe.every((l) => l.length > 0)) e.push(`${d.id}: empty limitation`);

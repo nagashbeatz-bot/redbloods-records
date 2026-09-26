@@ -353,6 +353,8 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("served action knowledge never includes internal routes", !/route\.ts|app\/api/.test(all));
   const nonOwner = JSON.stringify(queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "action_registry", params: {} }, SRC, { channel: "EXTERNAL", ownerAuthorized: false }));
   ok("action_registry is Owner-only", !nonOwner.includes("SUNNY_BLOCKED"));
+  const cov = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "action_registry", mode: "coverage", params: { filter: "all" } }, SRC, { channel: "EXTERNAL", ownerAuthorized: true });
+  ok("the coverage matrix is served to the Owner (mode coverage) with no implementation term", cov.status === "OK" && cov.summary.some((f) => f.code === "COVERAGE") && !FORBIDDEN_SERVED_TERMS.some((t) => JSON.stringify(cov).toLowerCase().includes(t.toLowerCase())), cov.status);
 
   // ── N. next-step interfaces ──
   console.log("N. Next-step interfaces");
@@ -369,6 +371,58 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("Wave 1: Sunny executes exactly the 13 READY primitives via Claude (with approval)", g.sunnyExecutableViaClaude === 13);
   ok("every gap has a wave", Object.values(g.byWave).flat().length === g.bossActions - g.sunnyExecutableViaClaude);
   console.log(`     Boss actions ${g.bossActions}; buckets ${JSON.stringify(g.byBucket)}; waves ${JSON.stringify(Object.fromEntries(Object.entries(g.byWave).map(([k, v]) => [k, v!.length])))}`);
+
+  // ── G7: the 100% coverage matrix has no orphan and no dead end ──
+  console.log("G7. 100% coverage matrix (no orphan operation, no dead end)");
+  {
+    const { COVERAGE_MATRIX, WORKFLOW_COVERAGE, WAVE_PLAN } = await import("../lib/partner/act/matrix");
+    const CLASSES = ["EXECUTABLE", "NEEDS_HARDENING", "BLOCKED_BY_MISSING_CAPABILITY", "INTENTIONALLY_SECURITY_EXCLUDED"];
+    ok("G7a. every registered operation has exactly one coverage row", COVERAGE_MATRIX.length === ACTION_CONTRACTS.length && new Set(COVERAGE_MATRIX.map((r) => r.id)).size === ACTION_CONTRACTS.length);
+    ok("G7b. every row is in exactly one of the Boss's four classes", COVERAGE_MATRIX.every((r) => CLASSES.includes(r.klass)));
+    const dead = COVERAGE_MATRIX.filter((r) => (r.klass === "NEEDS_HARDENING" || r.klass === "BLOCKED_BY_MISSING_CAPABILITY") && (!r.requiredWork || !["W2", "W3", "W4", "W5", "W6", "W7", "W8"].includes(r.targetWave)));
+    ok("G7c. no dead end: every non-executable, non-excluded operation names its required work and a destination wave", dead.length === 0, dead.map((r) => r.id));
+    ok("G7d. EXECUTABLE rows are live (a registered executable primitive, Sunny's own channel, or fully covered by one)", COVERAGE_MATRIX.filter((r) => r.klass === "EXECUTABLE").every((r) => r.targetWave === "LIVE"));
+    const EXCLUDED_REVIEWED = ["AGENT.CREATE_ALERT", "AGENT.RUN_CHECK", "CALENDAR.CONNECT", "CLIENT.AUTO_CREATE_CLIENT", "LABEL.ARTIST_SKETCH_SELF_EDIT", "LABEL.DJ_CONFIRM", "LABEL.PORTAL_PING", "LABEL.PORTAL_PUSH_SUBSCRIBE", "NOTIFY.LIST_WRITES", "NOTIFY.PUSH_CHECK", "NOTIFY.PUSH_SUBSCRIBE", "PEOPLE.PORTAL_PING", "PROJECT.AUTO_MARK_HELD", "PROJECT.CALENDAR_PULL", "PROJECT.STEVEN_COMPLETION", "SHOW.DJ_CONFIRM", "SUNNY.CONNECTOR_OAUTH", "VICTOR.AVATAR"];
+    const excluded = COVERAGE_MATRIX.filter((r) => r.klass === "INTENTIONALLY_SECURITY_EXCLUDED").map((r) => r.id).sort();
+    ok("G7e. the exclusion list is exactly the reviewed one (a new exclusion needs review here)", JSON.stringify(excluded) === JSON.stringify(EXCLUDED_REVIEWED), excluded);
+    ok("G7f. every exclusion is one of the three allowed kinds (secret / identity-bound other user / system machinery)", COVERAGE_MATRIX.filter((r) => r.klass === "INTENTIONALLY_SECURITY_EXCLUDED").every((r) => ["SECRET_OR_CREDENTIAL_FLOW", "IDENTITY_BOUND_OTHER_USER", "SYSTEM_MACHINERY_NOT_AN_OWNER_OPERATION"].includes(String(r.exclusionKind))));
+    ok("G7g. finance, calendar, files, communication, delete and bulk are NOT excluded (they have destination waves)", COVERAGE_MATRIX.filter((r) => r.effects.some((e) => ["FINANCE", "LEDGER", "CALENDAR", "GOOGLE_TASKS", "FILES", "PUSH", "EMAIL", "DELETION"].includes(e))).every((r) => r.klass !== "INTENTIONALLY_SECURITY_EXCLUDED" || EXCLUDED_REVIEWED.includes(r.id)));
+    ok("G7h. every compound business workflow has a destination (W8, or LIVE once all members are)", WORKFLOW_COVERAGE.length === WORKFLOW_MODELS.length && WORKFLOW_COVERAGE.every((w) => w.availableAfter === "W8" || w.availableAfter === "LIVE"));
+    ok("G7i. the wave plan is dependency-ordered (a wave depends only on earlier waves)", WAVE_PLAN.every((w, i) => w.dependsOn.every((dep) => WAVE_PLAN.findIndex((x) => x.wave === dep) < i)));
+    ok("G7j. every row carries an approval strength and a verification strategy", COVERAGE_MATRIX.every((r) => !!r.approval && r.verification.length > 10));
+  }
+
+  // ── G8: every UI mutation surface is a registered write handler ──
+  console.log("G8. Every UI mutation (button / form / toggle / upload / delete fetch) hits a registered write handler");
+  {
+    const uiFiles: string[] = [];
+    const walkUi = (d: string) => { for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) { if (p !== "app/api") walkUi(p); } else if (/\.(tsx|ts)$/.test(e.name)) uiFiles.push(p); } };
+    walkUi("components"); walkUi("app"); walkUi("lib");
+    const routeRes = Object.entries(HANDLER_MAP).map(([r, v]) => ({ segs: r.replace(/^app/, "").replace(/\/route\.ts$/, "").split("/"), v }));
+    const matches = (url: string, method: string) => routeRes.some(({ segs, v }) => { const u = url.split("/"); return u.length === segs.length && segs.every((s, i) => s === u[i] || /^\[.+\]$/.test(s) || u[i] === "X") && v.methods.includes(method); });
+    const unmatched: string[] = []; let sites = 0;
+    for (const f of uiFiles) {
+      const src = read(f);
+      for (const m of src.matchAll(/fetch\(\s*([`'"])(\/api\/[^`'"]*)\1\s*(?:,\s*\{([\s\S]{0,400}?)\})?/g)) {
+        const mm = /method:\s*["'`]?(POST|PATCH|PUT|DELETE)/.exec(m[3] ?? ""); if (!mm) continue;
+        sites++;
+        const url = m[2].replace(/\?.*$/, "").replace(/\$\{[^}]+\}/g, "X").replace(/\/+$/, "");
+        if (!matches(url, mm[1])) unmatched.push(`${f}: ${mm[1]} ${url}`);
+      }
+    }
+    ok(`G8a. all ${sites} mutating UI fetch sites map to a registered write handler (→ G1 → an action)`, sites > 250 && unmatched.length === 0, unmatched);
+  }
+
+  // ── G9: no mutation path outside the route layer ──
+  console.log("G9. No mutation path outside the registered route layer");
+  {
+    const all: string[] = [];
+    const walkAll = (d: string) => { for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) walkAll(p); else if (/\.(tsx|ts)$/.test(e.name)) all.push(p); } };
+    walkAll("app"); walkAll("components"); walkAll("lib");
+    ok("G9a. no server actions (\"use server\") anywhere", !all.some((f) => /^\s*["']use server["']/m.test(read(f))), all.filter((f) => /^\s*["']use server["']/m.test(read(f))));
+    const clientWriters = all.filter((f) => /^\s*["']use client["']/m.test(read(f)) && /\.from\(\s*["'][a-z_]+["']\s*\)[\s\S]{0,200}?\.(insert|update|upsert|delete)\s*\(/.test(read(f)));
+    ok("G9b. no browser-side database write (client components never write tables directly)", clientWriters.length === 0, clientWriters);
+  }
 
   console.log("AGENTS.md");
   ok("AGENTS.md carries the Universal Action Layer contract", /Sunny Awareness Check: the Universal Action Layer/.test(read("AGENTS.md")));

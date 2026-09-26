@@ -10,6 +10,7 @@
 import type { KnowledgeCapability, KnowledgeItem } from "../types";
 import { ACTION_CONTRACTS, ACTION_REGISTRY, ACTION_REGISTRY_VERSION, WAVE1_CANDIDATES } from "../../act/registry";
 import { bossCanSunnyCannot } from "../../act/coverage";
+import { COVERAGE_MATRIX, WAVE_PLAN, WORKFLOW_COVERAGE, coverageSummary } from "../../act/matrix";
 import { LIFECYCLES } from "../../act/transitions";
 import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, PROCESS_IMPROVEMENT_SIGNALS, nextStepsFor } from "../../act/next-step";
 import type { ActionContract } from "../../act/types";
@@ -27,9 +28,9 @@ export const actionRegistryCap: KnowledgeCapability = {
   id: "action_registry", domain: "PARTNER", titleHe: "מה סאני יכול לעשות — רישום הפעולות",
   descriptionForModel: "Every Redbloods write, as a typed action contract: availability bucket (SUNNY_EXECUTABLE / SUNNY_NEEDS_HARDENING / SUNNY_BLOCKED / SUNNY_INTENTIONALLY_EXCLUDED) + detail, risk class, confirmation class, declared and possible side effects, phase, reversibility, wave and reason. overview = counts + the exact 'what can the Boss do that Sunny cannot yet do' report; list = filter; record = one action (ref = action id); model = the plan → preview → approval → execute → verify flow. Every write needs the Boss's explicit approval of the exact preview. Wave 1: 13 internal reversible actions are READY (filter executable); through Claude they run only once the Boss enabled partner:act, each after he approves its plan.",
   examplesHe: ["מה אתה יכול לעשות בשבילי?", "מה אני יכול לעשות ואתה עוד לא?", "אתה יכול לשנות דדליין?", "מה בגל 1?", "למה אתה לא יכול לסגור הופעה?"],
-  modes: { overview: { descriptionForModel: "Counts + the Boss-vs-Sunny gap report" }, list: { descriptionForModel: "Actions (param filter / domain)" }, record: { descriptionForModel: "One action contract (param ref = action id)" }, model: { descriptionForModel: "How Sunny acts: plan, preview, approval, execution, verification, idempotency, audit" } }, defaultMode: "overview",
+  modes: { overview: { descriptionForModel: "Counts + the Boss-vs-Sunny gap report" }, coverage: { descriptionForModel: "The 100% coverage matrix: class / target wave / required work per operation (param filter = a wave or class)" }, list: { descriptionForModel: "Actions (param filter / domain)" }, record: { descriptionForModel: "One action contract (param ref = action id)" }, model: { descriptionForModel: "How Sunny acts: plan, preview, approval, execution, verification, idempotency, audit" } }, defaultMode: "overview",
   params: {
-    filter: { kind: "enum", values: ["executable", "needs_hardening", "blocked", "excluded", "wave1", "wave2", "wave3", "wave4", "wave5", "wave6", "wave7", "all"], descriptionForModel: "list: which actions" },
+    filter: { kind: "enum", values: ["executable", "needs_hardening", "blocked", "excluded", "wave1", "wave2", "wave3", "wave4", "wave5", "wave6", "wave7", "all", "LIVE", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "NONE", "EXECUTABLE", "NEEDS_HARDENING", "BLOCKED_BY_MISSING_CAPABILITY", "INTENTIONALLY_SECURITY_EXCLUDED"], descriptionForModel: "list: which actions; coverage: a target wave (LIVE / W2…W8 / NONE) or a class" },
     domain: { kind: "text", maxLength: 20, descriptionForModel: "list: a domain (PROJECT / CLIENT / LABEL / MIX / RF / SHOW / VICTOR / CALENDAR / FILES / SOCIAL / NOTIFY / AGENT …)" },
     ref: { kind: "text", maxLength: 80, descriptionForModel: "record: an action id from list" },
   },
@@ -47,6 +48,13 @@ export const actionRegistryCap: KnowledgeCapability = {
       } as Record<string, boolean>)[f] ?? false;
       const d = (q.params.domain ?? "").toUpperCase();
       return result(ACTION_CONTRACTS.filter((c) => pick(c) && (!d || c.domain === d)).map(row), { summary: [sfact("REGISTRY_VERSION", "גרסת רישום הפעולות", ACTION_REGISTRY_VERSION, "FACT", "SYSTEM_CONTRACTS")] });
+    }
+    if (q.mode === "coverage") {
+      const f = (q.params.filter ?? "").toUpperCase();
+      const rows = COVERAGE_MATRIX.filter((r) => !f || f === "ALL" || r.targetWave === f || r.klass === f);
+      return result(rows.map((r) => item({ id: r.id, label: partner(r.meaningEn), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { ...r } })), {
+        summary: [sfact("COVERAGE", "כיסוי פעולות (100%)", coverageSummary(), "DERIVED", "SYSTEM_CONTRACTS"), sfact("WAVE_PLAN", "סדר הגלים (תלות, לא החרגה)", WAVE_PLAN, "FACT", "SYSTEM_CONTRACTS"), sfact("WORKFLOWS", "תהליכים מורכבים", WORKFLOW_COVERAGE, "DERIVED", "SYSTEM_CONTRACTS")],
+      });
     }
     if (q.mode === "model") {
       return result([

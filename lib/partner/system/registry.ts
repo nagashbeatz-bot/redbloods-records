@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-18";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-19";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -708,7 +708,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Sunny's brain in Redbloods: Owner Context (answers), organizational memory, Company Integrity questions, Cases, Partner Actions + Outcomes, Finance Brain, Owner knowledge (P2), system awareness.",
     canonicalSource: "Partner layers (append-only Owner answers, action events, derived memory / cases / outcomes; Owner knowledge when enabled).",
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
     readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
@@ -924,4 +924,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "תשתית שכבת הפעולות (גל 0): רישום אחד לכל פעולה ב-Redbloods עם סיכון, תופעות לוואי, זמינות וגל; מודל תוכנית → תצוגה → אישורך → ביצוע → אימות. שום פעולה לא מתבצעת עדיין דרך Claude — כל שינוי מחכה לאישור המפורש שלך, בוס." },
   { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע מה הוא יכול ומה עוד לא (action_registry) ואצל מי הכדור / מה הצעד הבא (next_steps) — הצעות בלבד." },
   { version: "2026.09.27-18", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "גל 1 נבנה ונבדק: 13 פעולות פנימיות והפיכות (הערות / תכנון / סוג / דדליין של פרויקט, פרטי ושלב ריליס, סימון / פתיחה של הערת מיקס, סטטוס / תווית גרסה, הערות / סטטוס אמן, מצב / תוצאה / הערות של עבודת ויקטור) עם תוכנית, תצוגה, אישורך, בדיקת מצב, ביצוע חד-פעמי ואימות. עדיין כבוי — נדלק רק באישורך המפורש." },
+  { version: "2026.09.27-19", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "גל 1 הופעל: 13 פעולות זמינות דרך Claude אחרי חיבור מחדש ואישורך לכל פעולה. מטריצת כיסוי 100%: כל פעולה ב-Redbloods מסווגת עם גל יעד ומה צריך לבנות — בלי מבוי סתום." },
 ];

@@ -141,7 +141,7 @@ async function main() {
   check("NOTIFY_ARTIST_DJ: external communication needing explicit approval", [act("NOTIFY_ARTIST_DJ").class, act("NOTIFY_ARTIST_DJ").confirmations.includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED"), /recipients/.test(act("NOTIFY_ARTIST_DJ").reason)], ["FUTURE_PRIMITIVE_REQUIRED", true, true]);
   check("SECURITY_RESTRICTED only for auth / roles / credentials", BUSINESS_ACTIONS.filter((a) => a.class === "SECURITY_RESTRICTED").map((a) => a.id), ["SETTINGS_AUTH_PEOPLE"]);
   check("no action executable by Sunny today", BUSINESS_ACTIONS.filter((a) => a.sunnyCanExecuteToday !== false).map((a) => a.id), []);
-  check("every domain's execute support is NOT_YET_EXECUTABLE (never 'forbidden forever')", DOMAIN_CONTRACTS.filter((d) => d.support.execute !== "NOT_YET_EXECUTABLE").map((d) => d.id), []);
+  check("every business domain's execute support is NOT_YET_EXECUTABLE (never 'forbidden forever'); only SUNNY_CORE — the Universal Action Layer, Wave 1 live, each action Owner-approved — is PARTIAL", DOMAIN_CONTRACTS.filter((d) => d.support.execute !== "NOT_YET_EXECUTABLE" && !(d.id === "SUNNY_CORE" && d.support.execute === "PARTIAL")).map((d) => d.id), []);
   check("Sunny proposal primitives unchanged", [...SUPPORTED_ACTIONS], ["UPDATE_PROJECT_DEADLINE"]);
   check("MCP tools unchanged (no new mutation tool)", [...TOOL_NAMES], ["partner_brief", "partner_resolve", "partner_entity", "partner_query", "partner_answer_question", "partner_propose_knowledge"]);
   const del = proposeActionPreviewCore(src as never, { actionType: "DELETE_PROJECT", project: null, newDeadline: null }) as { status: string; known: { class: string } | null };
