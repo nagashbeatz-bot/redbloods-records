@@ -3,29 +3,15 @@
  * DELETE /api/red-films/budget-items/[itemId] — delete item
  */
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { deleteBudgetLine, updateBudgetLine } from "@/lib/writes/redfilms";
 
 type Ctx = { params: Promise<{ itemId: string }> };
-
-const ALLOWED = new Set([
-  "title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "notes",
-]);
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { itemId } = await ctx.params;
     const body = await req.json();
-    const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    for (const [k, v] of Object.entries(body)) {
-      if (ALLOWED.has(k)) fields[k] = v;
-    }
-    const { data, error } = await supabase
-      .from("red_films_budget_items")
-      .update(fields)
-      .eq("id", itemId)
-      .select()
-      .single();
-    if (error) throw error;
+    const data = await updateBudgetLine(itemId, body); // shared writer (lib/writes/redfilms)
     return NextResponse.json({ item: data });
   } catch (e) {
     console.error("[PATCH budget-items]", e);
@@ -36,11 +22,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { itemId } = await ctx.params;
-    const { error } = await supabase
-      .from("red_films_budget_items")
-      .delete()
-      .eq("id", itemId);
-    if (error) throw error;
+    await deleteBudgetLine(itemId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[DELETE budget-items]", e);

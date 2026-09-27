@@ -169,5 +169,13 @@ export const PROJECT_ACTION_EXCLUSIONS: Readonly<Record<string, string>> = {
   "app/api/push/check/route.ts": "legacy push check — reads projects to decide a push, never changes project data (covered by the Push contracts)",
   "app/api/vendor/victor/salary/route.ts": "Victor salary months (finance domain) — not a project mutation",
   "app/api/clients/route.ts": "creates a client only — its shared writer module (lib/writes/clients) also holds the rename cascade, inventoried as CLIENT_RENAME_REWRITES via app/api/clients/[id]",
+  "app/api/red-films/budget-items/[itemId]/payments/route.ts": "Red Films payments ledger only — its shared writer module (lib/writes/redfilms) also holds the clip-row writers (inventoried as CLIP_ITEMS)",
+  "app/api/red-films/budget-items/[itemId]/route.ts": "Red Films budget line only (same shared module as above)",
+  "app/api/red-films/budget-payments/[paymentId]/route.ts": "Red Films payment only (same shared module as above)",
+  "app/api/red-films/documents/[docId]/route.ts": "Red Films document only (same shared module as above)",
+  "app/api/red-films/equipment/route.ts": "company equipment inventory — never a project (same shared module as above)",
+  "app/api/red-films/equipment/[id]/route.ts": "company equipment inventory — never a project (same shared module as above)",
+  "app/api/red-films/productions/[id]/budget-items/route.ts": "Red Films budget line only (same shared module as above)",
+  "app/api/red-films/references/[refId]/route.ts": "Red Films reference image only (same shared module as above)",
   "app/api/proposals/route.ts": "creates a proposal only — its shared writer module (lib/writes/proposals) also holds the conversion, inventoried as CONVERT_PROPOSAL via the convert route",
 };

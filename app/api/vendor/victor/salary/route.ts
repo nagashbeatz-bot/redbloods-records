@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
+import { recordVictorSalaryMonth } from "@/lib/writes/victor";
 
 /**
  * Owner-only — Victor never sees salary in Phase 2A.
@@ -10,9 +11,6 @@ import { requireOwner } from "@/lib/require-auth";
  */
 
 /** 23505 on the Victor salary business key — and nothing else (other unique violations are real errors). */
-function isVictorSalaryKeyConflict(e: { code?: string; message?: string; details?: string | null }): boolean {
-  return e.code === "23505" && /\btransactions_victor_salary_period_uk\b/.test(`${e.message ?? ""} ${e.details ?? ""}`);
-}
 
 export async function GET(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
@@ -40,80 +38,11 @@ export async function POST(req: NextRequest) {
       paidDate?: string;
     };
 
-    const { supabase } = await import("@/lib/supabase");
-    const { salaryLinkedId, salaryDueDate, salaryTransactionDescription } = await import("@/lib/vendor-store");
-
-    const linkedId   = salaryLinkedId(workMonth);
-    const dueDate    = salaryDueDate(workMonth);
-
-    // Guard: no duplicate
-    const { data: existing } = await supabase
-      .from("transactions")
-      .select("id, payment_status")
-      .eq("linked_session_id", linkedId)
-      .maybeSingle();
-
-    if (existing) {
-      const ex = existing as { id: string; payment_status: string };
-      if (ex.payment_status !== "בוטל") {
-        // Active transaction exists — no duplicate
-        return NextResponse.json({ ok: true, transaction: existing, duplicate: true });
-      }
-      // Cancelled transaction — reuse it by updating instead of inserting
-      const { data: updated, error: updateErr } = await supabase
-        .from("transactions")
-        .update({
-          payment_status: historicPaid ? "שולם" : "לא שולם",
-          amount,
-          currency,
-          date:  paidDate ?? dueDate,
-          notes: historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
-        })
-        .eq("id", ex.id)
-        .select()
-        .single();
-      if (updateErr) return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
-      return NextResponse.json({ ok: true, transaction: updated });
-    }
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .insert({
-        scope:             "general",
-        type:              "expense",
-        project_id:        null,
-        artist:            "Victor",
-        description:       salaryTransactionDescription(workMonth),
-        amount:            amount,
-        currency:          currency,
-        payment_status:    historicPaid ? "שולם" : "לא שולם",
-        category:          "צוות",
-        date:              paidDate ?? dueDate,
-        linked_session_id: linkedId,
-        notes:             historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
-        payment_method:    "",
-        receipt_ref:       "",
-        expense_scope:     "כללי",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // A concurrent writer committed the same salary period first. With the (future) DB business-key index
-      // transactions_victor_salary_period_uk the DB — not the read above — is the final guard; only THAT exact
-      // conflict becomes the same safe duplicate answer as the pre-check. Every other error still fails.
-      if (isVictorSalaryKeyConflict(error)) {
-        const { data: winner } = await supabase
-          .from("transactions")
-          .select("id, payment_status")
-          .eq("linked_session_id", linkedId)
-          .maybeSingle();
-        const w = winner as { id: string; payment_status: string } | null;
-        if (w && w.payment_status !== "בוטל") return NextResponse.json({ ok: true, transaction: w, duplicate: true });
-      }
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    }
-    return NextResponse.json({ ok: true, transaction: data });
+    // Shared writer (lib/writes/victor) — duplicate-guarded by the salary key; a cancelled row is reused.
+    const r = await recordVictorSalaryMonth({ workMonth, amount, currency, historicPaid, paidDate });
+    if (r.kind === "error") return NextResponse.json({ ok: false, error: r.message }, { status: 500 });
+    if (r.kind === "duplicate") return NextResponse.json({ ok: true, transaction: r.transaction, duplicate: true });
+    return NextResponse.json({ ok: true, transaction: r.transaction });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }

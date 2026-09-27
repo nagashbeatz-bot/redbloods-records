@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
 
 import { victorMayPatch } from "@/lib/victor-scope";
+import { ownerPatchVictorWork, removeVictorWork } from "@/lib/writes/victor";
 
 /**
  * GET    /api/vendor/victor/work/[id]  — fetch a single work record (victor/owner)
@@ -46,7 +47,7 @@ export async function PATCH(
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
-    const { updateVictorWork, getVictorWorkById } = await import("@/lib/vendor-store");
+    const { getVictorWorkById } = await import("@/lib/vendor-store");
 
     // Fetch existing record before update (needed for linked_task_id + projectName)
     const existingWork = await getVictorWorkById(id);
@@ -57,85 +58,9 @@ export async function PATCH(
     }
 
     // Apply all regular field updates
-    await updateVictorWork(id, body);
-
-    // ── "Project completed" push — Victor + owner confirmation ────────────────
-    // Fires ONLY on a REAL transition of THIS work's own status, established
-    // from existingWork (fetched above, before this write) vs. the new value
-    // actually being written now — never just "the body contains הושלם" (a
-    // repeat PATCH of an already-הושלם row has existingWork.status === "הושלם"
-    // already, so this never re-fires). This is entirely about
-    // vendor_project_work.status; it does not read/write projects.status. Closing
-    // the linked project too is an explicit, opt-in choice the client makes itself
-    // (VictorProfilePage modal → "כן, סמן הכול" → a separate PATCH to
-    // /api/projects/[id]); "הושלם רק אצל Victor" never touches the project. The other
-    // direction (Projects → Victor, StatusDropdown) PATCHes only an open "פעיל" work
-    // to "הושלם" and lands here as a normal transition.
-    if ("status" in body && existingWork && existingWork.status !== "הושלם" && body.status === "הושלם") {
-      try {
-        const updatedWork = await getVictorWorkById(id);
-        if (updatedWork) {
-          const { notifyVictorWorkCompleted } = await import("@/lib/victor-completed-notify");
-          const displayName = (updatedWork.title && updatedWork.title.trim()) ? updatedWork.title : updatedWork.projectName;
-          await notifyVictorWorkCompleted({
-            id: updatedWork.id,
-            displayName,
-            fromUpdatedAt: existingWork.updatedAt,
-          });
-        }
-      } catch (e) {
-        console.error("[vendor/victor/work] completed-notify failed (non-fatal):", e);
-      }
-    }
-
-    // Mode C — no internalDeadline in body → no task sync needed
-    const internalDeadline: string | null =
-      "internalDeadline" in body ? (body.internalDeadline as string | null) : null;
-    if (!("internalDeadline" in body) || !internalDeadline) {
-      return NextResponse.json({ ok: true });
-    }
-
-    const { createTask, patchTask, getTask } = await import("@/lib/tasks-store");
-    const { createGoogleTask, updateGoogleTaskDue, isConnected } = await import(
-      "@/lib/google-calendar"
-    );
-
-    if (!existingWork?.linkedTaskId) {
-      // Mode A — create Task + best-effort Google Task
-      const title = `מעקב ויקטור — ${existingWork?.projectName ?? id}`;
-      const task = await createTask({
-        title,
-        related_type: "project",
-        related_id: existingWork?.projectId ?? null,
-        due_date: internalDeadline,
-        status: "פתוח",
-      });
-
-      try {
-        if (await isConnected()) {
-          const { id: googleId } = await createGoogleTask(title, internalDeadline);
-          await patchTask(task.id, { calendar_event_id: googleId });
-        }
-      } catch {
-        // non-fatal — task saved, Google sync skipped
-      }
-
-      await updateVictorWork(id, { linkedTaskId: task.id });
-    } else {
-      // Mode B — update existing Task due date + best-effort Google Task
-      const existingTask = await getTask(existingWork.linkedTaskId);
-      if (existingTask) {
-        await patchTask(existingTask.id, { due_date: internalDeadline });
-
-        try {
-          if (existingTask.calendar_event_id && (await isConnected())) {
-            await updateGoogleTaskDue(existingTask.calendar_event_id, internalDeadline);
-          }
-        } catch {
-          // non-fatal
-        }
-      }
-    }
+    // Shared writer (lib/writes/victor): the update, the completed push on a real → הושלם transition, and the
+    // internal-deadline follow-up task / Google Task. The Victor-role checks above stay here.
+    await ownerPatchVictorWork(id, body);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -151,9 +76,9 @@ export async function DELETE(
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await params;
-    const { deleteVictorWork } = await import("@/lib/vendor-store");
-    await deleteVictorWork(id);
-    return NextResponse.json({ ok: true });
+    // Shared writer: the follow-up task (+ Google Task) first, then the work (hardened 2026-09-27).
+    const r = await removeVictorWork(id);
+    return NextResponse.json({ ok: true, removedTask: r.removedTask });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

@@ -121,13 +121,13 @@ function main() {
   const actionRoutes = new Set([...RF.RF_ACTIONS.flatMap((a) => a.internal.routes), ...RF.RF_READ_ROUTES]);
   check("every video route is an inventoried action or a known read route", routes.filter((r) => !actionRoutes.has(r)), []);
   ok("every action route exists; executability is served only by the action coverage matrix", RF.RF_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
-  const scopeWriters = [...walk("app/api"), ...fs.readdirSync(path.join(ROOT, "components/ui")).map((f) => `components/ui/${f}`)].filter((f) => fs.statSync(path.join(ROOT, f)).isFile() && /expense_?[sS]cope:\s*(CLIP_SCOPE|"קליפ")|expenseScope:\s*"קליפ"/.test(code(read(f))));
-  check("the known writers of expense scope קליפ (promote, clip payments, shoot-day expense)", scopeWriters.sort(), ["app/api/clip-items/[id]/promote/route.ts", "app/api/projects/[id]/clip/payments/route.ts", "components/ui/ProjectDrawer.tsx", "components/ui/ProjectDrawerV2.tsx" /* a local clip-deal summary preview, not a write */].sort());
+  const scopeWriters = [...walk("app/api"), ...fs.readdirSync(path.join(ROOT, "lib/writes")).map((f) => `lib/writes/${f}`), ...fs.readdirSync(path.join(ROOT, "components/ui")).map((f) => `components/ui/${f}`)].filter((f) => fs.statSync(path.join(ROOT, f)).isFile() && /expense_?[sS]cope:\s*(CLIP_SCOPE|"קליפ")|expenseScope:\s*"קליפ"/.test(code(read(f))));
+  check("the known writers of expense scope קליפ (promote, clip payments, shoot-day expense)", scopeWriters.sort(), ["lib/writes/redfilms.ts" /* promote (since 2026-09-27 the shared writer) */, "lib/writes/clip.ts" /* clip payments */, "components/ui/ProjectDrawer.tsx", "components/ui/ProjectDrawerV2.tsx" /* a local clip-deal summary preview, not a write */].sort());
   for (const [f, want] of Object.entries(RF.RF_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Red Films review (update lib/partner/system/red-films.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   check("fingerprints cover every reviewed file", Object.keys(RF.RF_REVIEWED_FINGERPRINTS).sort(), [...RF.RF_REVIEWED_FILES].sort());
   const view = code(read("lib/partner/redfilms/view.ts"));
   ok("view reuses the app's clip-deal math + Finance validation", /summarizeClipFinance\(/.test(view) && /validateTx\(/.test(view));
-  ok("promote still deletes the row and writes expense scope קליפ (the contract's statement)", /from\("clip_items"\)\.delete\(\)/.test(read("app/api/clip-items/[id]/promote/route.ts")) && /expense_scope:\s*"קליפ"/.test(read("app/api/clip-items/[id]/promote/route.ts")));
+  ok("promote still deletes the row and writes expense scope קליפ (the contract's statement; the shared writer, claim-first since 2026-09-27)", /from\("clip_items"\)\.delete\(\)/.test(read("lib/writes/redfilms.ts")) && /expense_scope:\s*"קליפ"/.test(read("lib/writes/redfilms.ts")) && /promoteClipItem\(id, date\)/.test(read("app/api/clip-items/[id]/promote/route.ts")));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/video-deep.ts"))));
 
   const v = buildVideoView(sources());

@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-23";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-26";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -280,10 +280,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Each registered artist's own page — a VIEW of company state for the artist: home, music (sketches / projects), shows, balance (Shalev), available beats, schedule & updates, performance files & press kit; the Owner can preview any portal.",
     canonicalSource: "Company state filtered per artist (shows by artist name or DJ id, sessions of the artist's projects, ledger, beats assigned to the artist's portal) + the artist's own uploads (sketches manifest, performance files, profile image) in Dropbox + weekly availability settings.",
     entityTypes: ["portal", "sketch"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "READ_ONLY"],
     readCapabilities: ["artist_view", "shows", "sessions", "beats", "releases", "label_roster"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "PARTIAL",
     rules: [
       R("PORTAL_REGISTRY", "CANONICAL_BUSINESS_RULE", "Portals: שליו טסמה (own login, full portal: home, music, shows, balance read-only, beats, schedule, performance files), אבי מולה (own login: home, shows, music, beats), DJ CLEANTONE (own login: home, his DJ shows), נגש ביטס (no login — Owner preview only). A portal's slug drives its folders and settings and never changes."),
       R("PORTAL_IS_VIEW", "CANONICAL_BUSINESS_RULE", "A portal shows company state; it is not a separate source of truth (sketches, performance files, availability and profile images are the artist's own inputs)."),
@@ -371,9 +371,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "What the label owes / paid each artist: a manual + auto-synced ledger, 2-month balance cycles, and cycle reminders.",
     canonicalSource: "Artist balance ledger entries (income, expected income, payments, expenses, expected expenses) + closed cycle snapshots + a per-artist cycle anchor.",
     entityTypes: ["balance_entry", "balance_cycle"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["artist_view", "label_roster", "balance_cycles"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("LEDGER_FORMULA", "CANONICAL_BUSINESS_RULE", "Artist balance = income − payments − expenses (expected rows shown, not counted); no currency is stored."),
       R("CYCLES_TWO_MONTHS", "IMPLEMENTATION_BEHAVIOR", "Cycles are 2-month windows from the artist's anchor (end exclusive); the current cycle = max(today's window, closed count); close is refused before the window ends unless forced; closed cycles are immutable snapshots (unique per artist + index)."),
@@ -397,9 +397,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Streaming / media income per label artist (label share, artist share, recoup against clip investment) and each artist's recoup position.",
     canonicalSource: "Media income records (income / reversal, gross, split and recoup amounts computed by the database) + clip budgets (recoup target).",
     entityTypes: ["media_income"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL"], readCapabilities: ["artist_view", "finance_position"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "PARTIAL",
     rules: [
       R("MEDIA_SPLIT_RECOUP_STORED", "CANONICAL_BUSINESS_RULE", "Media income records are written only by server transactions that store the label / artist split and a recoup snapshot (before / recouped / payable / after); a received record is corrected by an appended reversal; no currency is stored; media income never touches the artist ledger."),
       R("RECOUP_VIEW_DERIVED", "IMPLEMENTATION_BEHAVIOR", "The label page's recoup is derived (artist half of active clip budgets vs paid show artist fees + received media artist share) — not stored and never reconciled with the artist ledger."),
@@ -434,9 +434,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The central beat library and which artist portal sees which beat.",
     canonicalSource: "Beat records (name, genre, key, status) + beat ↔ artist-portal assignments; audio in Dropbox.",
     entityTypes: ["beat"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["artist_view", "beats"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [R("BEAT_SCOPE", "CANONICAL_BUSINESS_RULE", "Each artist sees only beats assigned to their own portal; archived status is never written (legacy).")],
     sideEffects: [],
     notifications: [N("BEAT_ASSIGNED", "The Owner assigns a beat to an artist", "that artist (+ Owner ack)", "EVENT", "only on a brand-new assignment")],
@@ -538,9 +538,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The video production arm: productions (clips, shoot days, social content, live / studio shoots, ads…), budgets and payments, documents, references, equipment.",
     canonicalSource: "Production records (type, status, edit / collection status, project id, client, dates, budget, client price) + budget items + budget payments + documents / references / equipment; files in Dropbox.",
     entityTypes: ["production", "budget_item", "equipment"],
-    support: { read: "PARTIAL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["red_films", "video_view", "video_portfolio"], learnKinds: ["PROJECT_BLOCKER", "PROCESS_FRICTION"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("RF_STATUS_VOCAB", "CANONICAL_BUSINESS_RULE", "Production status: רעיון → הצעה נשלחה → ממתין לאישור → בתכנון → יום צילום נקבע → צולם → חומרי גלם הועלו → בעריכה → נשלחה גרסה → תיקונים → מאושר → פורסם (or בוטל)."),
       R("RF_SEPARATE_LEDGER", "CANONICAL_BUSINESS_RULE", "Red Films budget payments are a separate ledger — they never create Finance transactions (Finance does not see Red Films spend).", ["FINANCE"]),
@@ -564,9 +564,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The clip deal inside a music project: clip price, clip payments (advance / final), clip planning rows, and the managed Red Films production.",
     canonicalSource: "Project finance settings (clip agreed price, managed production id) + clip transactions (expense scope קליפ) + clip planning rows + Red Films production.",
     entityTypes: ["clip_deal", "clip_item"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["clip_planning", "red_films", "finance_receivables", "video_view", "video_portfolio"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("CLIP_DEAL_STATUS", "CANONICAL_BUSINESS_RULE", "Clip deal status: אין עסקה, ממתין, חלקי, שולם, יתרת זכות; remaining = max(0, agreed − paid), overpayment = credit."),
       R("CLIP_SEED_5050", "IMPLEMENTATION_BEHAVIOR", "Seeding a clip deal creates two expected incomes 50/50 (advance today, final +30 days) and switches a שיר project to שיר + קליפ."),
@@ -820,7 +820,7 @@ const A = (id: string, domain: string, meaning: string, cls: BusinessActionContr
   ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval: EXECUTABLE_THROUGH_SUNNY.has(id) ? "OWNER_CONFIRMATION_IN_CONVERSATION" : approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: EXECUTABLE_THROUGH_SUNNY.has(id), reason, ...(primitive ? { primitive } : {}) });
 /** Business actions Sunny executes through Claude today (Universal Action Layer; each only after the Owner approves the
  *  exact preview). Kept equal to lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES by G10. */
-const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["ASSIGN_SHOW_DJ", "CALENDAR_WRITE", "CLOSE_SHOW", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_SHOW", "CREATE_TASK", "CREATE_TRANSACTION", "DELETE_CALENDAR_EVENT", "EDIT_OR_DELETE_TRANSACTION", "MIX_WORKFLOW", "NOTIFY_ARTIST_DJ", "RECORD_RECEIVED_INCOME", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "SET_PROJECT_AGREED_PRICE", "SPLIT_INCOME", "STEVEN_PAYMENT", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS", "UPDATE_SHOW_STATUS"]);
+const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["ASSIGN_SHOW_DJ", "BALANCE_ENTRY", "BEAT_ASSIGN", "CALENDAR_WRITE", "CLIP_PROMOTE", "CLOSE_BALANCE_CYCLE", "CLOSE_SHOW", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_SHOW", "CREATE_TASK", "CREATE_TRANSACTION", "DELETE_CALENDAR_EVENT", "EDIT_OR_DELETE_TRANSACTION", "MEDIA_INCOME_WRITE", "MIX_WORKFLOW", "NOTIFY_ARTIST_DJ", "RECORD_PAID_EXPENSE", "RECORD_RECEIVED_INCOME", "RED_FILMS_WRITE", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "SEND_VICTOR_WORK", "SET_PROJECT_AGREED_PRICE", "SPLIT_INCOME", "STEVEN_PAYMENT", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS", "UPDATE_SHOW_STATUS", "VICTOR_SALARY"]);
 export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("UPDATE_PROJECT_DEADLINE", "PROJECTS", "Change a project's deadline", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Existing validated Partner primitive; Sunny proposes (preview), the Owner approves / executes in the dashboard.", "UPDATE_PROJECT_DEADLINE"),
   A("RECORD_PAID_EXPENSE", "FINANCE", "Record that a known expense was paid (Victor salary month)", "VALIDATED_ACTION_EXISTS", "HIGH", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Executable only from the dashboard; through Sunny it is refused (finance execution via MCP is off).", "RECORD_PAID_EXPENSE"),
@@ -944,4 +944,11 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-22", date: "2026-09-27", domain: "LABEL_DJ", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "DJ: בחירה / החלפה / הסרה עם שכר מפורש (קלינטון 500₪ רק כברירת מחדל שאתה מאשר, אף פעם לא אוטומטית) ושליחת ההופעה לקלינטון." },
   { version: "2026.09.27-23", date: "2026-09-27", domain: "STEVEN", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "Steven: סימון שולם (כמו בדף שלו — הוצאה ששולמה + Push אישור תשלום), 'שלח ל-Steven' ו'שלח הערות' — רק באישורך; העלאת קבצים עוד לא (ערוץ קבצים)." },
   { version: "2026.09.27-23", date: "2026-09-27", domain: "MIX_PIPELINE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מיקס: פתיחת עבודה, פרטים, סטטוס (כולל זרימת ההשלמה), מחיר, סדר, סנכרון הוצאה, הערות, מחיקת גרסה, שורות רידים והערות טרום-מיקס, מחיקת עבודה (הוצאה שלא שולמה נמחקת איתה)." },
+  { version: "2026.09.27-24", date: "2026-09-27", domain: "VICTOR", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ויקטור: פתיחת עבודה, שם / בריף, סטטוס (כולל Push השלמה), דדליין + משימת מעקב, שליחה לויקטור, טיוטת הערות לגרסה ושליחתן, הסרה, הגדרות, שורת משכורת חודשית והצהרות — כל אחת רק באישורך; חודש משולם רק כששורת הכספים 'שולם'." },
+  { version: "2026.09.27-25", date: "2026-09-27", domain: "ARTIST_BALANCES", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "מאזן אמן: רשומות (הוספה / עריכה / סימון הכנסה שהתקבלה / מחיקה), עוגן מחזור, סגירת מחזור (מוקדמת רק עם force) ותזכורת — כל אחת רק באישורך." },
+  { version: "2026.09.27-25", date: "2026-09-27", domain: "MEDIA_INCOME", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "הכנסות מדיה: הוספה / עריכה / ביטול דרך ה-RPC של האפליקציה (חלוקה וקיזוז בבסיס הנתונים)." },
+  { version: "2026.09.27-25", date: "2026-09-27", domain: "BEATS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "ביטים: שיוך (התראה פעם אחת על שיוך חדש) / ביטול שיוך, פרטים, מחיקה; העלאת קובץ עוד לא (ערוץ קבצים)." },
+  { version: "2026.09.27-25", date: "2026-09-27", domain: "ARTIST_PORTALS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "פורטלים: זמינות שבועית בשם האמן, סקיצות (פרטים, דירוג, סדר, הסרה, התראה), העבודה הבאה והריליס הבא." },
+  { version: "2026.09.27-26", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "Red Films: הפקה (יצירה, פרטים, כסף תכנוני, ביטול — נשמר קודם ואז המשימות), שורות תקציב, תשלומים לדג'ר, ציוד, מחיקת מסמך / רפרנס, מחיקה לצמיתות של הפקות מבוטלות; קישורים וקבצים עוד לא." },
+  { version: "2026.09.27-26", date: "2026-09-27", domain: "CLIPS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "קליפ בפרויקט: מחיר, פתיחת עסקה 50/50, תשלום, 'שלח קליפ', שורות תכנון ו'העבר לכספים' (בלי כפילות)." },
 ];

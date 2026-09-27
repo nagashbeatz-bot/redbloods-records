@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
 import { isManagedClipProduction } from "@/lib/clip-production";
+import { updateProduction } from "@/lib/writes/redfilms";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -29,139 +30,19 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 // Fields that may be patched — whitelist to prevent injection
-const ALLOWED_FIELDS = new Set([
-  "title", "production_type", "status",
-  "project_id", "client_id",
-  "artist_name", "client_name", "client_source",
-  "photographer_name", "director_name", "editor_name",
-  "shoot_date", "locations",
-  "concept_summary", "concept_vibe", "ref_links",
-  "script_start", "script_middle", "script_end",
-  "director_notes", "photographer_notes",
-  "general_budget", "client_price", "advance_required", "advance_received",
-  "collection_status",
-  "files_raw_link", "files_edit_folder",
-  "version_1_link", "version_2_link", "final_version_link",
-  "fix_notes", "edit_status", "publish_date", "published_where",
-  "notes",
-]);
-
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     if (!id) return NextResponse.json({ error: "id חסר" }, { status: 400 });
 
     const body = await req.json();
-
-    // Build patch from whitelisted fields only
-    const patch: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    for (const [key, val] of Object.entries(body)) {
-      if (ALLOWED_FIELDS.has(key)) {
-        patch[key] = val;
-      }
-    }
-
-    // ── Single source of truth for a MANAGED clip's budget ───────────────────
-    // Only for a production created by "שלח קליפ" (recorded in the project's
-    // finance settings): general_budget mirrors that project's clipAgreedPrice,
-    // and nothing through THIS endpoint may overwrite it — not "העלה תקציב", not
-    // the budget form, not a direct API call. The project's own route writes the
-    // column directly (lib/clip-production.ts), so the sync still works.
-    //
-    // A legacy production is never managed, so it passes through untouched and
-    // keeps behaving exactly as it did before the clip feature existed.
-    let budgetLocked = false;
-    if ("general_budget" in patch) {
-      const { data: current } = await supabase
-        .from("red_films_productions")
-        .select("id, project_id")
-        .eq("id", id)
-        .maybeSingle();
-      if (current && await isManagedClipProduction(current as { id: string; project_id?: string | null })) {
-        delete patch.general_budget;
-        budgetLocked = true;
-      }
-    }
-
-    if (Object.keys(patch).length === 1) {
-      // Nothing left to update. If the only requested change was the locked
-      // budget, say so explicitly instead of the generic "no fields" error.
-      if (budgetLocked) {
-        return NextResponse.json(
-          { error: `${PROJECT_MANAGED_BUDGET_NOTE} — יש לעדכן את מחיר הקליפ בפרויקט`, budgetLocked: true },
-          { status: 409 },
-        );
-      }
-      // Only updated_at — nothing to update
-      return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
-    }
-
-    // אם הסטטוס משתנה ל"מבוטל" — מטפלים במשימות הקשורות להפקה
-    if (body.status === "בוטל") {
-      try {
-        const today = new Date().toISOString().split("T")[0];
-
-        // שולפים את כל המשימות של ההפקה
-        const { data: allTasks } = await supabase
-          .from("tasks")
-          .select("id, due_date, calendar_event_id, status")
-          .eq("related_type", "red_film_production")
-          .eq("related_id", id);
-
-        if (allTasks && allTasks.length > 0) {
-          let googleClient: { isConnected: () => Promise<boolean>; deleteGoogleTask: (id: string) => Promise<void> } | null = null;
-          let googleConnected = false;
-
-          // נטען פעם אחת
-          try {
-            googleClient = await import("@/lib/google-calendar");
-            googleConnected = await googleClient.isConnected();
-          } catch { /* ignore */ }
-
-          for (const t of allTasks) {
-            const isFuture = t.due_date != null && t.due_date >= today;
-            const isPast   = t.due_date != null && t.due_date < today;
-            const noDate   = t.due_date == null;
-
-            if (isPast) continue; // משימות עבר — לא נוגעים
-
-            if (isFuture) {
-              // עתידית: מבטלים בסופרבייס + מוחקים מגוגל אם יש
-              await supabase.from("tasks").update({ status: "בוטל", updated_at: new Date().toISOString() }).eq("id", t.id);
-              if (t.calendar_event_id && googleConnected && googleClient) {
-                try { await googleClient.deleteGoogleTask(t.calendar_event_id); } catch { /* ignore */ }
-              }
-            } else if (noDate && !t.calendar_event_id) {
-              // ללא תאריך + ללא Google Task — מבטלים בסופרבייס בלבד
-              await supabase.from("tasks").update({ status: "בוטל", updated_at: new Date().toISOString() }).eq("id", t.id);
-            }
-            // ללא תאריך + יש calendar_event_id — לא נוגעים
-          }
-        }
-      } catch (gErr) {
-        console.warn("[PATCH production → בוטל] tasks cleanup failed (ignored):", gErr);
-      }
-    }
-
-    const { data, error } = await supabase
-      .from("red_films_productions")
-      .update(patch)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    if (!data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
-
-    // budgetLocked tells the caller its general_budget was ignored on purpose.
-    // The flag is re-attached so the UI keeps the lock after a save.
-    const stillManaged = await isManagedClipProduction(data as { id: string; project_id?: string | null });
-    return NextResponse.json({
-      production: { ...data, budget_managed_by_project: stillManaged },
-      ...(budgetLocked ? { budgetLocked: true } : {}),
-    });
+    // Shared writer (lib/writes/redfilms): allowed fields, the managed-budget lock, and — HARDENED — a cancel saves the
+    // production first and only then cancels its future tasks / Google Tasks.
+    const r = await updateProduction(id, body);
+    if (r.kind === "budget_locked") return NextResponse.json({ error: `${PROJECT_MANAGED_BUDGET_NOTE} — יש לעדכן את מחיר הקליפ בפרויקט`, budgetLocked: true }, { status: 409 });
+    if (r.kind === "empty") return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
+    if (r.kind === "not_found") return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
+    return NextResponse.json({ production: r.production, ...(r.budgetLocked ? { budgetLocked: true } : {}) });
   } catch (e) {
     console.error("[PATCH /api/red-films/productions/[id]]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

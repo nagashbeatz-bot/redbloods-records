@@ -75,7 +75,7 @@ function main() {
   ok("every push contract: Sunny may NOT trigger it", PUSH_CONTRACTS.every((p) => p.sunnyMayTrigger === false));
   ok("statuses are ACTIVE / DISABLED / LEGACY only; the agent sender is DISABLED and the push check is LEGACY", PUSH_CONTRACTS.find((p) => p.id === "P_AGENT_ALERTS")!.status === "DISABLED" && PUSH_CONTRACTS.find((p) => p.id === "P_PUSH_CHECK_LEGACY")!.status === "LEGACY");
   check("senders WITHOUT a production-only guard are flagged (and match the code)", PUSH_CONTRACTS.filter((p) => !p.productionOnly).map((p) => p.id).sort(), ["P_AGENT_ALERTS", "P_CYCLE_REMIND", "P_EXTERNAL_PUSH_CRON", "P_PUSH_CHECK_LEGACY", "P_SKETCH_NOTIFY_MANUAL"]);
-  ok("the flagged senders really have no production guard in code", ["app/api/push/cron/route.ts", "app/api/push/check/route.ts", "app/api/label/artists/[id]/balance/cycles/remind/route.ts", "app/api/label/artists/[id]/sketches/[sketchId]/notify/route.ts", "lib/agent/notifications.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
+  ok("the flagged senders really have no production guard in code", ["app/api/push/cron/route.ts", "app/api/push/check/route.ts", "lib/writes/label.ts", "lib/agent/notifications.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
 
   section("F. Refresh never sends push for the Owner; page-load beacons are the non-owner roles' own opens");
   const beacons = PUSH_CONTRACTS.filter((p) => p.type === "PAGE_LOAD_BEACON" && p.status === "ACTIVE");

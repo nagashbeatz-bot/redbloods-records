@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assignBeatWithNotify } from "@/lib/writes/label";
 import { requireOwner } from "@/lib/require-auth";
-import { getBeat, listBeatAssignments, assignBeatToArtist, unassignBeatFromArtist, isBeatAssignedTo, type Beat } from "@/lib/beats-store";
+import { getBeat, listBeatAssignments, unassignBeatFromArtist, type Beat } from "@/lib/beats-store";
 import { isPortalSlug } from "@/lib/red-artists/portal-registry";
-import { notifyBeatAssigned, type BeatAssignNotifyResult } from "@/lib/beat-notify";
 
 /**
  * Which artists a beat is shown to. OWNER ONLY on every method — an artist can
@@ -67,19 +67,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // no longer tell us whether this click created the assignment or found it
     // already there. This single read is what makes the notification exactly-once
     // — a re-click on an artist who is already assigned notifies nobody.
-    const alreadyAssigned = await isBeatAssignedTo(id, slug);
-
-    await assignBeatToArtist(id, slug);
-    const artistSlugs = await listBeatAssignments(id);
-
-    // Notify ONLY on a brand-new assignment that is confirmed persisted (the slug
-    // is present in the list we just re-read from the DB). Never on a duplicate,
-    // never before the row exists, never for any artist other than this one.
-    let notification: BeatAssignNotifyResult | null = null;
-    if (!alreadyAssigned && artistSlugs.includes(slug)) {
-      notification = await notifyBeatAssigned(resolved.beat, slug);
-    }
-
+    // Shared writer (lib/writes/label): read BEFORE the write → notify exactly once, only on a brand-new, persisted
+    // assignment (the same writer Sunny's ASSIGN_BEAT uses).
+    const { artistSlugs, notification } = await assignBeatWithNotify(id, slug);
     return NextResponse.json({ ok: true, artistSlugs, notification });
   } catch (err) {
     console.error("[beats/assignments] POST", err instanceof Error ? err.message : err);

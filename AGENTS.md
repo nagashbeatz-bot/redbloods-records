@@ -249,7 +249,7 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
 
 ### Universal Action Layer — primitive families (one mission, 2026-09-27)
 
-- **Primitives live per family in `lib/partner/act/primitives/`** (`core.ts` framework, `wave1.ts`, `projects.ts`, `crm.ts`, `sessions.ts`, `finance.ts`, `shows.ts`, `mix.ts`, …) and are listed once in `primitives/index.ts`. The registry builds each READY contract from the primitive's `meta` — one source.
+- **Primitives live per family in `lib/partner/act/primitives/`** (`core.ts` framework, `wave1.ts`, `projects.ts`, `crm.ts`, `sessions.ts`, `finance.ts`, `shows.ts`, `mix.ts`, `victor.ts`, `label.ts`, `redfilms.ts`, …) and are listed once in `primitives/index.ts`. The registry builds each READY contract from the primitive's `meta` — one source.
 - **Every primitive calls a shared writer in `lib/writes/*`, and the UI route calls the SAME writer.** A route whose logic is inline is refactored into `lib/writes/<family>.ts` first; hardening (validation, CAS claims, calendar follow-through, dependent cleanup) is done there, so the UI benefits too. Record each fix in `HARDENED` (`registry.ts`) and remove it from `NEEDS_HARDENING`.
 - **The action layer reaches integrations only through `lib/writes/*`** (Google via `lib/writes/calendar.ts`); primitives, service, stores and relay never call Google / push / Dropbox / a table directly (H1 / H1b / 27).
 - **External effects are declared and previewed:** CALENDAR / GOOGLE_TASKS / EMAIL (invites) / PUSH (only a push the app's own writer already sends) / DELETION / FINANCE. Deletes, money and invitations list the exact values the Boss must repeat (`requiredValues`); a disconnected integration is refused, never reported as done.

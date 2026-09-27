@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { notifyVictorNewWork } from "@/lib/victor-work-notify";
+import { notifyVictorWork } from "@/lib/writes/victor";
 
 /**
  * POST /api/vendor/victor/notify-work   body: { workId }
@@ -27,41 +27,19 @@ export async function POST(req: NextRequest) {
     const workId = (body.workId ?? "").trim();
     if (!workId) return NextResponse.json({ ok: false, error: "workId חסר" }, { status: 400 });
 
-    const { supabase } = await import("@/lib/supabase");
-    const { data: row } = await supabase
-      .from("vendor_project_work")
-      .select("id, title, vendor_name, project_id")
-      .eq("id", workId)
-      .maybeSingle();
-
-    if (!row) return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
-    // Ownership: only Victor's work rows may be sent from here.
-    if ((row.vendor_name as string) !== "victor") {
-      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-    }
-
-    // The ONLY source of truth for the name.
-    const title = ((row.title as string | null) ?? "").trim();
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "לא ניתן לשלוח — חסר שם עבודה לוויקטור" },
-        { status: 400 },
-      );
-    }
-
-    // project_id links the work to a canonical project (null for standalone work);
-    // passed to the OWNER confirmation only — never to Victor's notification.
-    const projectId = (row.project_id as string | null) ?? null;
-    const result = await notifyVictorNewWork(workId, title, projectId);
+    // Shared writer (lib/writes/victor) — the same one Sunny's NOTIFY_VICTOR_WORK uses.
+    const result = await notifyVictorWork(workId);
     if (!result.ok) {
-      const MSG: Record<typeof result.reason, string> = {
+      if (result.reason === "not_found") return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
+      if (result.reason === "forbidden") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+      if (result.reason === "no_title") return NextResponse.json({ ok: false, error: "לא ניתן לשלוח — חסר שם עבודה לוויקטור" }, { status: 400 });
+      const MSG: Record<string, string> = {
         "no-victor-subscription": "ויקטור עדיין לא הפעיל התראות במכשיר שלו",
         "victor-send-failed":     "השליחה לויקטור נכשלה — נסה שוב",
         "push-disabled":          "שליחת Push מושבתת בסביבה זו",
       };
-      return NextResponse.json({ ok: false, error: MSG[result.reason] }, { status: 409 });
+      return NextResponse.json({ ok: false, error: MSG[result.reason] ?? result.reason }, { status: 409 });
     }
-
     return NextResponse.json({ ok: true, victorSent: result.victorSent, ownerSent: result.ownerSent });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

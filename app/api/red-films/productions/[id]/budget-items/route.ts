@@ -3,6 +3,7 @@
  * POST /api/red-films/productions/[id]/budget-items — create item
  */
 import { NextRequest, NextResponse } from "next/server";
+import { createBudgetLine } from "@/lib/writes/redfilms";
 import { supabase } from "@/lib/supabase";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,24 +28,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const body = await req.json();
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("red_films_budget_items")
-      .insert({
-        production_id: id,
-        title: body.title ?? "",
-        category: body.category ?? "אחר",
-        planned_amount: Number(body.planned_amount) || 0,
-        actual_amount: Number(body.actual_amount) || 0,
-        vendor_name: body.vendor_name ?? "",
-        status: body.status ?? "מתוכנן",
-        notes: body.notes ?? "",
-        created_at: now,
-        updated_at: now,
-      })
-      .select()
-      .single();
-    if (error) throw error;
+    const data = await createBudgetLine(id, body); // shared writer (lib/writes/redfilms)
     return NextResponse.json({ item: data }, { status: 201 });
   } catch (e) {
     console.error("[POST budget-items]", e);

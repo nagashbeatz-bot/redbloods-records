@@ -303,11 +303,14 @@ export async function updateVictorWork(
   if ("linkedTaskId"     in fields) dbFields.linked_task_id     = fields.linkedTaskId;
   if ("versionReviews"   in fields) dbFields.version_reviews    = fields.versionReviews;
 
-  await supabase.from("vendor_project_work").update(dbFields).eq("id", id);
+  // HARDENED 2026-09-27: a failed save is surfaced (it used to fail silently — the caller reported success).
+  const { error } = await supabase.from("vendor_project_work").update(dbFields).eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 export async function deleteVictorWork(id: string): Promise<void> {
-  await supabase.from("vendor_project_work").delete().eq("id", id);
+  const { error } = await supabase.from("vendor_project_work").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

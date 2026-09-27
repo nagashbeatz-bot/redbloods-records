@@ -9,9 +9,12 @@ import { SESSION_PRIMITIVES } from "./sessions";
 import { FINANCE_PRIMITIVES } from "./finance";
 import { SHOW_PRIMITIVES } from "./shows";
 import { MIX_PRIMITIVES } from "./mix";
+import { VICTOR_PRIMITIVES } from "./victor";
+import { LABEL_PRIMITIVES } from "./label";
+import { RF_PRIMITIVES } from "./redfilms";
 
 export * from "./core";
 export { WAVE1_PRIMITIVES } from "./wave1";
 
-export const ALL_PRIMITIVES: readonly PrimitiveSpec[] = [...WAVE1_PRIMITIVES, ...PROJECT_PRIMITIVES, ...CRM_PRIMITIVES, ...SESSION_PRIMITIVES, ...FINANCE_PRIMITIVES, ...SHOW_PRIMITIVES, ...MIX_PRIMITIVES];
+export const ALL_PRIMITIVES: readonly PrimitiveSpec[] = [...WAVE1_PRIMITIVES, ...PROJECT_PRIMITIVES, ...CRM_PRIMITIVES, ...SESSION_PRIMITIVES, ...FINANCE_PRIMITIVES, ...SHOW_PRIMITIVES, ...MIX_PRIMITIVES, ...VICTOR_PRIMITIVES, ...LABEL_PRIMITIVES, ...RF_PRIMITIVES];
 export const PRIMITIVES_BY_ID: ReadonlyMap<string, PrimitiveSpec> = new Map(ALL_PRIMITIVES.map((p) => [p.actionId, p]));

@@ -13,6 +13,9 @@ import type { SessionFamilyWriters } from "./primitives/sessions";
 import type { FinanceFamilyWriters } from "./primitives/finance";
 import type { ShowFamilyWriters } from "./primitives/shows";
 import type { MixFamilyWriters } from "./primitives/mix";
+import type { VictorFamilyWriters } from "./primitives/victor";
+import type { LabelFamilyWriters } from "./primitives/label";
+import type { RedFilmsFamilyWriters } from "./primitives/redfilms";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -22,7 +25,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -264,6 +267,132 @@ async function mixFamilyWriters(): Promise<MixFamilyWriters> {
       const r = await notifyStevenMixNotes({ id: w.id, displayName: SE.stevenDisplayName(w), projectId: w.projectId ?? null }, ctx ? { kind: "version", ...ctx } : null) as { ok: boolean; skipped?: boolean };
       return { ok: r.ok, skipped: r.skipped };
     },
+  };
+}
+
+/** Victor family (lib/vendor-store + lib/writes/victor). */
+async function victorFamilyWriters(): Promise<VictorFamilyWriters> {
+  const VS = await import("@/lib/vendor-store");
+  const W = await import("@/lib/writes/victor");
+  type Init = NonNullable<Parameters<typeof VS.createVictorWork>[1]>;
+  return {
+    async readVictorWorkFull(id) {
+      const w = await VS.getVictorWorkById(id);
+      if (!w) return null;
+      return { title: w.title ?? "", projectId: w.projectId ?? null, projectName: w.projectName ?? "", status: w.status, workState: w.workState ?? null, sentDate: w.sentDate ?? null, internalDeadline: w.internalDeadline ?? null, briefText: w.briefText ?? "", hasTask: !!w.linkedTaskId, reviewKeys: Object.keys(w.versionReviews ?? {}).join(","), vendorName: w.vendorName };
+    },
+    victorWorkForProject: async (pid) => (await VS.getVictorWorkForProject(pid))?.id ?? null,
+    createVictorWorkRecord: async (pid, f) => (await VS.createVictorWork(pid, { title: f.title, sentDate: f.sentDate, notes: f.notes, ...(f.workState ? { workState: f.workState as Init["workState"] } : {}) })).id,
+    ownerPatchVictorWork: (id, body) => W.ownerPatchVictorWork(id, body),
+    removeVictorWork: (id) => W.removeVictorWork(id),
+    async notifyVictorWork(id) { const r = await W.notifyVictorWork(id); return r.ok ? { ok: true } : { ok: false, reason: r.reason }; },
+    async readVictorReview(id, vk) { const w = await VS.getVictorWorkById(id); const r = w?.versionReviews?.[vk]; return r ? { notes: r.notes ?? "", draft: !!r.draft, sent: !!r.sentAt } : null; },
+    saveVictorReviewDraft: (id, vk, notes) => W.saveVictorReviewDraft(id, vk, notes),
+    async sendVictorVersionNotes(id, vk) { const r = await W.sendVictorVersionNotes(id, vk); return r.ok ? { ok: true } : { ok: false, reason: r.reason }; },
+    async readVictorSettings() { const s = await VS.getVictorSettings(); return { monthlyGoal: s.monthlyGoal, monthlySalary: s.monthlySalary, salaryCurrency: s.salaryCurrency, salaryPayDay: s.salaryPayDay, stuckAfterDays: s.stuckAfterDays }; },
+    updateVictorSettings: (p) => VS.updateVictorSettings(p),
+    async readVictorSalaryMonth(m) { return { row: await W.victorSalaryRow(m), ...(await W.victorMonthStatements(m)) }; },
+    async recordVictorSalaryMonth(p) { return (await W.recordVictorSalaryMonth(p)).kind; },
+    async setVictorSalaryOverride(m, p) { if (p.amount !== undefined) await VS.setSalaryAmountOverride(m, p.amount); if (p.status !== undefined) await VS.setSalaryStatusOverride(m, p.status); },
+    setVictorLegacyPaymentMark: (m, s, pd) => VS.setVictorPaymentStatus(m, s, pd),
+  };
+}
+
+/** Label family (label-artists-store, artist-balance-*, media-income-store, availability, beats, sketches, lib/writes/label). */
+async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
+  const LA = await import("@/lib/label-artists-store");
+  const AB = await import("@/lib/artist-balance-store");
+  const CY = await import("@/lib/artist-balance-cycles-store");
+  const MI = await import("@/lib/media-income-store");
+  const AV = await import("@/lib/red-artists/availability");
+  const BS = await import("@/lib/beats-store");
+  const BU = await import("@/lib/beat-upload");
+  const SK = await import("@/lib/red-artists/sketches-store");
+  const PC = await import("@/lib/red-artists/portal-config");
+  const WL = await import("@/lib/writes/label");
+  type EType = Parameters<typeof AB.createArtistBalanceEntry>[0]["entryType"];
+  type AStatus = NonNullable<Parameters<typeof LA.createLabelArtist>[0]["status"]>;
+  type Genre = Parameters<typeof BS.updateBeatMeta>[1]["genre"];
+  const cycle = async (id: string) => CY.getBalanceCycleState(id, await AB.listArtistBalanceEntries(id));
+  return {
+    async readLabelArtistFull(id) { const a = await LA.getLabelArtist(id); if (!a) return null; const pc = await PC.resolvePortalConfig(id); return { name: a.name, status: a.status, notes: a.notes ?? "", portalSlug: pc?.slug ?? null }; },
+    countLabelArtistsNamed: async (name) => (await LA.listLabelArtists()).filter((a) => a.name.trim() === name.trim()).length,
+    async createLabelArtistRecord(a) { const r = await LA.createLabelArtist({ name: a.name, status: a.status as AStatus, imageUrl: null, notes: a.notes }); if (r.status !== "ok") throw new Error("duplicate"); return r.artist.id; },
+    renameLabelArtist: async (id, name) => (await LA.updateLabelArtist(id, { name })).status as "ok" | "duplicate" | "not_found",
+    readLedgerEntry: (id) => WL.readLedgerEntry(id),
+    createLedgerEntry: async (e) => (await AB.createArtistBalanceEntry({ ...e, entryType: e.entryType as EType })).id,
+    updateLedgerEntry: async (id, artistId, e) => !!(await AB.updateArtistBalanceEntry(id, artistId, { ...e, entryType: e.entryType as EType })),
+    deleteLedgerEntry: (id, artistId) => AB.deleteArtistBalanceEntry(id, artistId),
+    async readCycleState(id) { const s = await cycle(id); return { anchorDate: s.anchorDate ?? null, currentIndex: s.current?.index ?? null, currentEnd: s.current?.endDate ?? null, daysUntilClose: s.current?.daysUntilClose ?? null }; },
+    setCycleAnchor: async (id, date, mode) => { if (mode === "SET") await CY.setBalanceCycleAnchor(id, date); else await CY.updateBalanceCycleAnchor(id, date); },
+    closeCycle: async (id, force) => { await CY.closeCurrentBalanceCycle(id, await AB.listArtistBalanceEntries(id), force); },
+    async sendCycleReminder(id, o, a) { const r = await WL.sendCycleReminder(id, o, a); return r.kind === "ok" ? { kind: "ok", ownerSent: r.ownerSent, artistSent: r.artistSent } : { kind: r.kind }; },
+    readMediaRecord: (id) => WL.readMediaRecord(id),
+    async createMediaRecord(artistId, m) { const a = await LA.getLabelArtist(artistId); if (!a) return { ok: false, message: "artist not found" }; const r = await MI.createMedia(artistId, a.name, m); return r.ok ? { ok: true, id: r.id } : { ok: false, message: r.message }; },
+    async updateMediaRecord(id, artistId, exp, m) { const a = await LA.getLabelArtist(artistId); if (!a) return { ok: false, message: "artist not found" }; const r = await MI.updateMedia(id, artistId, a.name, exp, m as Parameters<typeof MI.updateMedia>[4]); return r.ok ? { ok: true } : { ok: false, message: r.message }; },
+    async cancelMediaRecord(id, artistId, exp) { const r = await MI.cancelMedia(id, artistId, exp); return r.ok ? { ok: true } : { ok: false, message: r.message }; },
+    async readAvailability(slug) { const a = await AV.getAvailability(slug); return a ? a.days.filter((x) => x.available).map((x) => `${x.day} ${x.date} ${x.from}`).join(", ") : ""; },
+    saveOwnerAvailability: async (slug, days) => { await AV.saveAvailability(slug, days, "owner"); },
+    async readBeat(id) { const b = await BS.getBeat(id); return b ? { name: b.name, genre: b.genre, musicalKey: b.musicalKey ?? null, assigned: (await BS.listBeatAssignments(id)).sort().join(",") } : null; },
+    async assignBeat(id, slug) { const r = await WL.assignBeatWithNotify(id, slug); const n = r.notification as { status?: string } | null; return { notified: n?.status ?? null }; },
+    unassignBeat: (id, slug) => BS.unassignBeatFromArtist(id, slug),
+    updateBeatDetails: async (id, f) => (await BS.updateBeatMeta(id, { ...f, genre: f.genre as Genre })).status,
+    async deleteBeatFully(id) { const r = await BU.deleteBeatFully(id); return r.ok ? { ok: true } : { ok: false, error: r.error }; },
+    async readSketch(slug, id) {
+      const all = (await SK.listSketches(slug)).filter((s) => !s.archived);
+      const s = (await SK.listSketches(slug)).find((x) => x.id === id);
+      if (!s) return null;
+      const ratings = await SK.getSketchRatings(slug);
+      return { title: s.title, description: s.description, notes: s.notes, latestVersion: s.latestVersion, archived: !!s.archived, position: all.findIndex((x) => x.id === id) + 1, count: all.length, rating: ratings[id] ?? null };
+    },
+    patchSketch: async (slug, id, p) => { await SK.patchDetails(slug, id, p); },
+    rateSketch: async (slug, id, r) => { await SK.setSketchRating(slug, id, r); },
+    archiveSketch: (slug, id) => SK.softDeleteSketch(slug, id),
+    orderSketches: async (slug) => (await SK.listSketches(slug)).filter((s) => !s.archived).map((s) => s.id),
+    reorderSketches: async (slug, ids) => { await SK.reorderSketches(slug, ids); },
+    async notifySketch(artistId, name, slug, sketchId) { const s = (await SK.listSketches(slug)).find((x) => x.id === sketchId); if (!s) return { kind: "not_found" }; return { kind: (await WL.notifySketchToArtist(artistId, name, s)).kind }; },
+    setNextWork: async (slug, id, dl) => { await SK.setNextWorkConfig(slug, id, dl); },
+    setNextRelease: async (slug, id, date) => { await SK.setNextReleaseConfig(slug, id, date); },
+  };
+}
+
+/** Red Films + clip planning family (lib/writes/redfilms). */
+async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
+  const RF = await import("@/lib/writes/redfilms");
+  return {
+    readProductionRow: (id) => RF.readProductionRow(id),
+    countProductionsTitled: (t) => RF.countProductionsTitled(t),
+    isManagedProduction: (id, pid) => RF.isManagedProduction(id, pid),
+    createProductionRecord: async (b) => String((await RF.createProduction(b)).id),
+    updateProductionRecord: async (id, b) => (await RF.updateProduction(id, b)).kind,
+    readBudgetLineRow: (id) => RF.readBudgetLineRow(id),
+    createBudgetLineRecord: async (pid, b) => String((await RF.createBudgetLine(pid, b)).id),
+    updateBudgetLineRecord: async (id, b) => { await RF.updateBudgetLine(id, b); },
+    deleteBudgetLineRecord: (id) => RF.deleteBudgetLine(id),
+    async readBudgetPaymentRow(id) { const r = await RF.readBudgetPaymentRow(id); return r ? { amount: r.amount, payment_date: r.payment_date, payment_method: r.payment_method, notes: r.notes, has_receipt: !!r.receipt_dropbox_path } : null; },
+    async insertBudgetPaymentRecord(itemId, p) { const r = await RF.insertBudgetPayment(itemId, p); if (r.kind !== "ok") throw new Error("budget line not found"); return String(r.payment.id); },
+    updateBudgetPaymentRecord: async (id, b) => { await RF.updateBudgetPayment(id, b); },
+    deleteBudgetPaymentRecord: (id) => RF.deleteBudgetPayment(id),
+    readClipItemRow: (id) => RF.readClipItemRow(id),
+    createClipItemRecord: async (b) => String((await RF.createClipItem(b)).id),
+    updateClipItemRecord: async (id, b) => { await RF.updateClipItem(id, b); },
+    deleteClipItemRecord: (id) => RF.deleteClipItem(id),
+    promoteClipItemRecord: async (id, date) => (await RF.promoteClipItem(id, date)).kind,
+    clipDealOf: async (pid) => (await import("@/lib/writes/clip")).clipDealOf(pid),
+    setClipPrice: async (pid, price) => { await (await import("@/lib/writes/clip")).setClipPrice(pid, price); },
+    addClipPayments: async (pid, body) => (await (await import("@/lib/writes/clip")).addClipPayments(pid, body)).kind,
+    sendClipToRedFilms: async (pid) => (await (await import("@/lib/writes/clip")).sendClipToRedFilms(pid)).kind,
+    readEquipmentRow: (id) => RF.readEquipmentRow(id),
+    countEquipmentNamed: (n) => RF.countEquipmentNamed(n),
+    async createEquipmentRecord(b) { const r = await RF.createEquipment(b); if (r.kind !== "ok") throw new Error(r.error); return String(r.item.id); },
+    async updateEquipmentRecord(id, b) { const r = await RF.updateEquipment(id, b); return r.kind === "ok" ? "ok" : r.status === 404 ? "not_found" : "bad"; },
+    readDocumentRow: (id) => RF.readDocumentRow(id),
+    deleteRfDocumentRecord: async (id) => ((await RF.deleteRfDocument(id)).kind === "ok" ? "ok" : "not_found"),
+    readReferenceRow: (id) => RF.readReferenceRow(id),
+    setRfReferenceTagRecord: async (id, tag) => { await RF.setRfReferenceTag(id, tag); },
+    deleteRfReferenceRecord: async (id) => ((await RF.deleteRfReference(id)).kind === "ok" ? "ok" : "not_found"),
+    productionsByIds: (ids) => RF.productionsByIds(ids),
+    async deleteCancelledProductionsRecord(ids) { const r = await RF.deleteCancelledProductions(ids); return r.kind === "ok" ? { kind: "ok", deleted: r.deleted } : { kind: "bad", error: r.error }; },
   };
 }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClipItem } from "@/lib/writes/redfilms";
 import { supabase } from "@/lib/supabase";
 
 // GET /api/clip-items?projectId=xxx
@@ -22,24 +23,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { projectId, category, description, amount, currency, notes } = body;
-
     if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
-
-    const { data, error } = await supabase
-      .from("clip_items")
-      .insert({
-        project_id:  projectId,
-        category:    category    || "",
-        description: description || "",
-        amount:      Number(amount) || 0,
-        currency:    currency    || "₪",
-        status:      "תכנון בלבד",
-        notes:       notes       || "",
-      })
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const data = await createClipItem({ projectId, category, description, amount, currency, notes }); // shared writer
     return NextResponse.json({ clipItem: data });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });

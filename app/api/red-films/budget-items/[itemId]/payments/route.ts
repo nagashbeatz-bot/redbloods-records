@@ -5,6 +5,7 @@
  *      FormData file:   receipt (optional — uploaded to Dropbox /receipts/)
  */
 import { NextRequest, NextResponse } from "next/server";
+import { insertBudgetPayment } from "@/lib/writes/redfilms";
 import { supabase } from "@/lib/supabase";
 
 export const maxDuration = 300;
@@ -152,28 +153,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       }
     }
 
-    // ── Insert payment ────────────────────────────────────────────────────────
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("red_films_budget_payments")
-      .insert({
-        production_id:        productionId,
-        budget_item_id:       itemId,
-        amount,
-        payment_date:         paymentDate,
-        payment_method:       paymentMethod,
-        notes,
-        receipt_file_name:    receiptFileName,
-        receipt_mime_type:    receiptMimeType,
-        receipt_dropbox_path: receiptDropboxPath,
-        receipt_dropbox_url:  receiptDropboxUrl,
-        created_at:           now,
-        updated_at:           now,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
+    // ── Insert payment — shared writer (lib/writes/redfilms), the same one Sunny's RECORD_RF_BUDGET_PAYMENT uses ──
+    const ins = await insertBudgetPayment(itemId, { amount, paymentDate, paymentMethod, notes, receipt: receiptFileName ? { fileName: receiptFileName, mimeType: receiptMimeType, dropboxPath: receiptDropboxPath, dropboxUrl: receiptDropboxUrl } : undefined });
+    if (ins.kind === "not_found") return NextResponse.json({ error: "פריט תקציב לא נמצא" }, { status: 404 });
+    const data = ins.payment;
 
     return NextResponse.json({ payment: data }, { status: 201 });
   } catch (e) {

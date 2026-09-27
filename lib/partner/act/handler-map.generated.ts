@@ -129,10 +129,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "e8f5e5b7c4eff7c2a694c0ad9946b712875796aa1993cfaa171cbba57baa0043",
+  "sha256": "4f87a5afb8cd87cebec56848c2dd954b395be0600d20016ad117bd72329e18a8",
   "effects": [
    "DELETION",
-   "PUSH"
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "artistSlug"
@@ -315,13 +317,43 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "111af72b150f34a61f84820dd60654bee6198c9bf02e59d2af81eb217ee48784",
+  "sha256": "32eaa2782d56c73614ee2cade0889235fcad9da369b58cefb2697be4ebf97605",
   "effects": [
    "DELETION",
-   "FINANCE"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
-   "date"
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "date",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/clip-items/[id]/route.ts": {
@@ -330,17 +362,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "606395073c492aabbf1efd305d4ee530fbfb90b6b392e5aa6b5a58e654f913dc",
+  "sha256": "bbce3ca960534e7e522e65a70e57e20e1e928a6b9da0aced56a4c002a124a55a",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
    "amount",
+   "artist_name",
    "category",
+   "client_id",
+   "client_name",
    "currency",
    "description",
+   "general_budget",
+   "name",
    "notes",
-   "status"
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/clip-items/route.ts": {
@@ -348,15 +405,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "86e988e3f691cd646641aaa045fc01ed9377d80e98fa41e03b02108a62909f18",
-  "effects": [],
+  "sha256": "c40439dae22f8b175b85c3a35ecbdf3188633a05c225ded96b428c0f0cae6f89",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
    "amount",
+   "artist_name",
    "category",
+   "client_id",
+   "client_name",
    "currency",
    "description",
+   "general_budget",
+   "name",
    "notes",
-   "projectId"
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/delivery/route.ts": {
@@ -585,7 +669,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "a0acc7278a392ca0628dab484ce7bb64737d3f629a2987a77c565d9a1f21a6f5",
+  "sha256": "69ada29555c0c1f0419ce08671f0757cb34093bc28c72c110b9e1abe3c06e004",
   "effects": [
    "DELETION",
    "LEDGER",
@@ -756,10 +840,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "ef92465b882350cc9d161ba6726d5c5db139197848afd140137d761bf697646b",
+  "sha256": "03b0a6b09c93ffc2663ecbb12ac7f6229e23bb072d85704a509b54256083ded8",
   "effects": [
+   "DELETION",
    "FILES",
-   "PUSH"
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -1233,6 +1320,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "CALENDAR",
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -1308,10 +1396,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "8cfa0c27e6c8286194071f95d44fb4bc34c19deb113912765b2709b502ae91e2",
+  "sha256": "702daa9ca700179488d3427137dbe4ffc3daaf2e015b8dacc0acff965aaae3d5",
   "effects": [
    "DELETION",
-   "FINANCE"
+   "FINANCE",
+   "SETTINGS"
   ],
   "fields": [
    "amount",
@@ -1329,12 +1418,21 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "b5d5be2b44bf28d0f2b3c8c632bbdf2da9e9fa8b50cb9c691aa6263fe789c89e",
+  "sha256": "867f75b89941c39425e880ab67c4fe0d6d42706d6796ccfe07594dcd6d478942",
   "effects": [
+   "DELETION",
+   "FINANCE",
    "SETTINGS"
   ],
   "fields": [
-   "clipAgreedPrice"
+   "amount",
+   "category",
+   "clipAgreedPrice",
+   "date",
+   "description",
+   "notes",
+   "paymentStatus",
+   "seed"
   ]
  },
  "app/api/projects/[id]/clip/send/route.ts": {
@@ -1342,11 +1440,22 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "d8928a6da68596e0a1cd029ff1539cd559a116458d252b1e7a9d5ba75b8817af",
+  "sha256": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
   "effects": [
+   "DELETION",
+   "FINANCE",
    "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "amount",
+   "category",
+   "clipAgreedPrice",
+   "date",
+   "description",
+   "notes",
+   "paymentStatus",
+   "seed"
+  ]
  },
  "app/api/projects/[id]/cover/route.ts": {
   "methods": [
@@ -1770,12 +1879,44 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "1706c47992b9ce20a94d661ed8302541b9729e101520e8e1bd8e80aab15aee62",
+  "sha256": "65906950fed4a1321d8c12de8f0da91ae955d1d04cdf5c2ce162f5c131fbfeae",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
+  ]
  },
  "app/api/red-films/budget-items/[itemId]/route.ts": {
   "methods": [
@@ -1783,11 +1924,43 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "8797b537b3217d59a22fa4770af76636a9349a380b874606a24900454c46e24d",
+  "sha256": "89de289fd2ed03acdb2449684d46836dab3b5fdf336e4884d666737e1eb37738",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
+  ]
  },
  "app/api/red-films/budget-payments/[paymentId]/receipt/route.ts": {
   "methods": [
@@ -1807,39 +1980,128 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "7db7d5339fac2a86c7c5a5fea5c5922fabbd58836c6c740a1ab2f44315e5f963",
+  "sha256": "f7ba593b4ac4a20b1b915336c465cf3df5c4f587ca1b4a451c4f42239736e455",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
+  ]
  },
  "app/api/red-films/documents/[docId]/route.ts": {
   "methods": [
    "DELETE"
   ],
   "getWrites": false,
-  "sha256": "bf4dacee22ebe1340e3abede127cc258111d9d5d350e1d2585b16812240c5c9f",
+  "sha256": "1ead82d412831b6430b3f5070d69e4b4e1db88023b93898d5c3618cccf805e5a",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
+  ]
  },
  "app/api/red-films/equipment/[id]/route.ts": {
   "methods": [
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "0ecf4c3721ad47462dde2b3acd79197d1483962e929df9bdcdf04cba6b09f8d0",
-  "effects": [],
+  "sha256": "5ae958bbe4ef9f45436d455b3610404344f0a6a4711fa1216d190c564dc233e8",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
    "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
    "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
    "purchase_price",
+   "purchased_from",
    "quantity",
    "removed_at",
+   "serial_number",
    "status",
-   "updated_at"
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/red-films/equipment/route.ts": {
@@ -1847,18 +2109,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "3df92bde56d045e2b27bc468e946ba753f2db3fcf99b0d6afe246711f9d540c4",
-  "effects": [],
+  "sha256": "7cda72252ef7b6f138d6734079c3329b97d2dfd7df0a801d103358edec91d0d9",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
    "acquired_date",
+   "actual_amount",
    "added_by",
+   "amount",
+   "artist_name",
    "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
    "name",
    "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
    "purchase_price",
    "purchased_from",
    "quantity",
-   "serial_number"
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/red-films/productions/[id]/budget-items/route.ts": {
@@ -1866,15 +2152,41 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "eaf680a5980aca8cd016dff7d134cbcdc8cfe2b92b4880a73b9bbb9f168aec72",
-  "effects": [],
+  "sha256": "53ad9f656d497b338ce62a30c566c3ae92bf0ce9491a6467bbd762f2f0abc8b8",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
+   "acquired_date",
    "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
    "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
    "notes",
+   "photographer_name",
    "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
    "status",
    "title",
+   "updated_at",
    "vendor_name"
   ]
  },
@@ -1935,14 +2247,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "e82cb14dc071233b0ceb71fdf95467d11832d96ee9fda403fef303142937de60",
+  "sha256": "4a3f25efcd25bd3fea3f90e3aa0105bd181b979ab600c8350265077db1ab759d",
   "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
    "GOOGLE_TASKS",
    "SETTINGS"
   ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
    "general_budget",
-   "status"
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/red-films/productions/bulk-permanent-delete/route.ts": {
@@ -1950,14 +2290,43 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "2841dc173279acdac936880523166970c1eb500f04528cc2b914dba95632220e",
+  "sha256": "addc4c59d35d171484e063ebb1eeddc5fa3f08b346f03781ff42cd34e8d2dbb2",
   "effects": [
    "DELETION",
    "FILES",
-   "GOOGLE_TASKS"
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
-   "ids"
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "ids",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/red-films/productions/route.ts": {
@@ -1965,16 +2334,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "b0ab207a985f68d1668239c7f85ea768273c160f0dce46bb860a9d3f898e874f",
-  "effects": [],
+  "sha256": "dd055fbfcdd19fa33cb5d241c7024696a8326b9054e639a420bb5648e2be184a",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
    "artist_name",
+   "category",
    "client_id",
    "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
    "photographer_name",
+   "planned_amount",
    "production_type",
+   "projectId",
    "project_id",
-   "title"
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/red-films/reference-links/[linkId]/route.ts": {
@@ -1995,13 +2390,43 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "94be0ca3426c1a0040a8cd622d2295f6abbc5e7fd60537260c119a5579ba5b0c",
+  "sha256": "b1ba636f8038e73a4078423b9ef9e2689ff9010e628f76d84e712ac2b590a244",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
-   "tag"
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "tag",
+   "title",
+   "updated_at",
+   "vendor_name"
   ]
  },
  "app/api/reports/config/route.ts": {
@@ -3127,13 +3552,17 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "3730457fb42b9be348804a640a259c6fb190dd6d1e3a8ccadfd6d3534e47c69e",
+  "sha256": "81cb517eb74cad66d6437733e90ac8f229d11f0c40251a3b6f1a8b964b13ffd4",
   "effects": [
    "DELETION",
+   "FINANCE",
+   "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "internalDeadline",
+   "status",
    "versionKey",
    "workId"
   ]
@@ -3143,11 +3572,17 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "9c2dca7f0cba92184660bbeed6f96ae328094384c2018897f6f306bc23be3c61",
+  "sha256": "d7210e558545a6c265cdc2dbf00c935c0a094974e4f521c7365c96b5e42cc93d",
   "effects": [
-   "PUSH"
+   "DELETION",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
+   "internalDeadline",
+   "status",
    "workId"
   ]
  },
@@ -3194,13 +3629,18 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "f1f09e33afce9489d40a42b8e740dc5efbaf0be1db1b5c43dd3f0d8f1a23ff48",
+  "sha256": "eccb286ff7725a7e1e2d2169053f20485e97489d2cd8b86c3851cb267598de49",
   "effects": [
    "DELETION",
    "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "internalDeadline",
+   "status"
+  ]
  },
  "app/api/vendor/victor/settings/route.ts": {
   "methods": [
@@ -3251,9 +3691,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "833e7a2c8ea66cf5ebdadb3babb1afc0a3c3b7242c91a00b680ffde0bce026f3",
+  "sha256": "ca778b750b4f26f67b926021d5dffc8e4a2e7ef8bdadd88826929f43e05e9d1f",
   "effects": [
    "DELETION",
+   "FINANCE",
    "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"

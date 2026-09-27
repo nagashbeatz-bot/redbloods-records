@@ -15,7 +15,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
 import { CLIP_SCOPE } from "@/lib/clip-finance";
-import { findLinkedClipProduction, getManagedClipProductionId, syncClipBudget } from "@/lib/clip-production";
+import { findLinkedClipProduction, getManagedClipProductionId } from "@/lib/clip-production";
+import { setClipPrice } from "@/lib/writes/clip";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -81,17 +82,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // Merge into the existing finance settings blob — never overwrite other keys.
-    const existing = await readFinanceSettings(id);
-    const merged   = { ...existing, clipAgreedPrice: price };
-
-    const { error } = await supabase
-      .from("settings")
-      .upsert({ key: `finance_${id}`, value: merged }, { onConflict: "key" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    // Price → budget sync (one-way). Already-linked production only; never creates one.
-    const budgetSynced = await syncClipBudget(id, price);
-
+    const { budgetSynced } = await setClipPrice(id, price); // shared writer (lib/writes/clip)
     return NextResponse.json({ ok: true, clipAgreedPrice: price, budgetSynced });
   } catch (e) {
     console.error("[PATCH /api/projects/[id]/clip]", e);

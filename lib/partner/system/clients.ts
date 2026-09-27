@@ -313,6 +313,7 @@ export const CLIENT_WRITER_INVENTORY: Readonly<Record<string, string>> = {
   "lib/writes/clients.ts": "create / field-level edit / rename cascade / delete (proposals + their follow-up tasks first) / duplicate + link counts",
   "lib/writes/proposals.ts": "create (+ follow-up task) / edit / delete / CAS-claimed conversion / project existence check",
   "lib/writes/shows.ts": "reads the artist client's name for a show's calendar event / quote follow-up (app/api/shows routes)",
+  "lib/writes/clip.ts": "'שלח קליפ' reads the client by the project artist NAME (text match) for the Red Films production (app/api/projects/[id]/clip/send)",
   "lib/writes/projects.ts": "project creation + artist change add missing clients from the artist text (app/api/projects/route.ts, app/api/projects/[id]/route.ts)",
 };
 

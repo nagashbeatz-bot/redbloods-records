@@ -97,9 +97,7 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/delivery/route.ts",
   "app/api/delivery/upload/route.ts",
   "app/api/dropbox/status/route.ts",
-  "app/api/projects/[id]/clip/payments/route.ts",
   "app/api/projects/[id]/clip/route.ts",
-  "app/api/projects/[id]/clip/send/route.ts",
   "app/api/projects/[id]/route.ts",
   "app/api/push/check/route.ts",
   "app/api/sessions/route.ts",
@@ -141,9 +139,11 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/victor-completed-notify.ts",
   "lib/victor-presence-notify.ts",
   "lib/victor-upload-notify.ts",
+  "lib/writes/clip.ts",
   "lib/writes/finance.ts",
   "lib/writes/projects.ts",
   "lib/writes/proposals.ts",
+  "lib/writes/victor.ts",
 ] as const;
 
 export function familyOfKey(key: string): SettingsFamily | null {

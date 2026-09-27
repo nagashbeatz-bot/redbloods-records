@@ -47,9 +47,6 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 // ── classification inputs (discovered 2026-09-26/27; NOT fixed here — Wave 0 classifies, a hardening mission fixes) ──
 /** Known unsafe / non-atomic behaviour: the action must be hardened before Sunny may execute it. */
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
-  "PROJECT.PROMOTE_CLIP_ITEM": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
-  "RF.PROMOTE_CLIP_ROW": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
-  "RF.CANCEL_PRODUCTION": "the cancel side effects (task / calendar cleanup) run before the save succeeds",
   "PROJECT.DELIVERY": "whole-body write of the delivery record",
   "PROJECT.ALBUM_SETTINGS": "whole-body write of the album finance / previous-system settings",
   "PROJECT.SOCIAL": "whole-body writes of campaigns / content",
@@ -57,7 +54,6 @@ export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
   "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
   "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
   "PROJECT.SEND_LOG_DELETE": "the cascade into engineer / Victor work runs in the browser, not the server",
-  "PROJECT.EDIT_VICTOR_WORK": "a Victor save can fail silently (no error surfaced)",
 };
 /** Unsafe behaviour already HARDENED in the shared writers (2026-09-27, Universal Actions) — kept as the audit trail of what changed. */
 export const HARDENED: Readonly<Record<string, string>> = {
@@ -74,6 +70,12 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "SHOW.CLOSE_SHOW": "same ledger guard; the close is one server-side writer (closeShowRecord) with the dialog's exact semantics",
   "SHOW.EDIT_SHOW": "same ledger guard; Sunny's show primitives validate price / payment status / DJ fee before the shared writer (the route itself still accepts raw values)",
   "PROJECT.DELETE_ENGINEER_WORK": "deleting a work removes its UNPAID linked expense; a paid one is kept as history (lib/writes/mix deleteEngineerWorkClean — the route uses it too)",
+  "PROJECT.EDIT_VICTOR_WORK": "a failed Victor save / delete now throws (lib/vendor-store) instead of reporting success; the owner flows live in lib/writes/victor",
+  "PROJECT.DELETE_VICTOR_WORK": "removing a Victor work deletes its follow-up task (+ Google Task) first (lib/writes/victor removeVictorWork; the route uses it)",
+  "UPDATE_VICTOR_VERSION_REVIEW": "one version's review is written per version with an updated_at claim (lib/writes/victor saveVictorReviewDraft), never the whole JSON blindly",
+  "PROJECT.PROMOTE_CLIP_ITEM": "the clip row is claimed (deleted only while unpromoted) before the expense is created; a failed expense restores the row — no double expense (lib/writes/redfilms promoteClipItem; the route uses it)",
+  "RF.PROMOTE_CLIP_ROW": "same claim-first promotion (lib/writes/redfilms promoteClipItem)",
+  "RF.CANCEL_PRODUCTION": "the production is saved first and only then are its future tasks / Google Tasks cancelled (lib/writes/redfilms updateProduction; the route uses it)",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {

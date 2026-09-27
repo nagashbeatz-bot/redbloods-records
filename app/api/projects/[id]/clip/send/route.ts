@@ -14,10 +14,8 @@
  * the source of truth and pushes updates one-way (see /api/projects/[id]/clip).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
-import { CLIP_SCOPE } from "@/lib/clip-finance";
-import { findLinkedClipProduction, setManagedClipProductionId } from "@/lib/clip-production";
+import { sendClipToRedFilms } from "@/lib/writes/clip";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -27,74 +25,10 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
 
     // Guard #1 — already linked?
-    const existing = await findLinkedClipProduction(id);
-    if (existing) {
-      return NextResponse.json({ production: existing, created: false });
-    }
-
-    const { data: project } = await supabase
-      .from("projects")
-      .select("id, name, artist")
-      .eq("id", id)
-      .maybeSingle();
-    if (!project) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
-
-    const { data: settingRow } = await supabase
-      .from("settings").select("value").eq("key", `finance_${id}`).maybeSingle();
-    const settings = (settingRow?.value ?? {}) as Record<string, unknown>;
-    const budget   = Number(settings.clipAgreedPrice ?? 0) || 0;
-
-    const artist = (project.artist as string) ?? "";
-    const title  = (project.name   as string) ?? "קליפ";
-
-    // Match a client by artist name, the same way the Red Films "new production"
-    // modal does when it is opened from an existing project.
-    let clientId: string | null = null;
-    let clientName = "";
-    if (artist) {
-      const { data: client } = await supabase
-        .from("clients").select("id, name").eq("name", artist).maybeSingle();
-      if (client) { clientId = client.id as string; clientName = client.name as string; }
-    }
-
-    // Guard #2 — re-check right before the insert (double click / concurrent retry).
-    const stillNone = await findLinkedClipProduction(id);
-    if (stillNone) {
-      return NextResponse.json({ production: stillNone, created: false });
-    }
-
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("red_films_productions")
-      .insert({
-        title,
-        production_type:   CLIP_SCOPE,
-        status:            "רעיון",
-        project_id:        id,          // ← the link back to the project
-        artist_name:       artist,
-        client_id:         clientId,
-        client_name:       clientName,
-        photographer_name: "",
-        client_source:     "פנימי - לייבל",
-        collection_status: "לא רלוונטי",
-        general_budget:    budget,      // ← clip price becomes the production budget
-        created_at:        now,
-        updated_at:        now,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Record provenance: THIS production was born from the clip flow, so the
-    // project owns its budget from here on. Legacy productions are never
-    // recorded — that is exactly what keeps them outside the new rules.
-    await setManagedClipProductionId(id, data.id as string);
-
-    return NextResponse.json(
-      { production: { ...data, budget_managed_by_project: true }, created: true },
-      { status: 201 },
-    );
+    // Shared writer (lib/writes/clip) — find-or-create the managed production (idempotent by lookup twice).
+    const r = await sendClipToRedFilms(id);
+    if (r.kind === "not_found") return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
+    return r.created ? NextResponse.json({ production: r.production, created: true }, { status: 201 }) : NextResponse.json({ production: r.production, created: false });
   } catch (e) {
     console.error("[POST /api/projects/[id]/clip/send]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

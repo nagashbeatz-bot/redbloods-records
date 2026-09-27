@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { notifyVictorVersionNotes } from "@/lib/victor-version-notes-notify";
+import { sendVictorVersionNotes } from "@/lib/writes/victor";
 import type { VersionReview } from "@/lib/types";
 
 /**
@@ -35,52 +35,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "workId/versionKey חסר" }, { status: 400 });
     }
 
-    const { getVictorWorkById, updateVictorWork } = await import("@/lib/vendor-store");
-    const work = await getVictorWorkById(workId);
-    if (!work) return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
-    // Ownership: only Victor's work rows may be sent from here.
-    if (work.vendorName !== "victor") {
-      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-    }
-
-    // The ONLY source of truth for the name (never project / artist / folder).
-    const title = (work.title ?? "").trim();
-    if (!title) {
-      return NextResponse.json(
-        { ok: false, error: "לא ניתן לשלוח — חסר שם עבודה לוויקטור" },
-        { status: 400 },
-      );
-    }
-
-    const reviews = { ...(work.versionReviews ?? {}) };
-    const review  = reviews[versionKey];
-    const notes   = (review?.notes ?? "").trim();
-    if (!review || !notes) {
-      return NextResponse.json({ ok: false, error: "אין הערות לשליחה בגרסה זו" }, { status: 400 });
-    }
-
-    // Victor FIRST — if he has no active device, send nothing and touch nothing.
-    // The 4th arg is OWNER-facing only (the owner's own confirmation push), so it
-    // may use projectName; Victor still gets `title` and no project identity.
-    const ownerLabel = (work.projectName ?? "").trim() || title;
-    const result = await notifyVictorVersionNotes(workId, title, versionKey, ownerLabel);
-    if (!result.ok) {
-      const MSG: Record<typeof result.reason, string> = {
+    // Shared writer (lib/writes/victor) — the same one Sunny's SEND_VICTOR_VERSION_NOTES uses.
+    const r = await sendVictorVersionNotes(workId, versionKey);
+    if (!r.ok) {
+      if (r.reason === "not_found") return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
+      if (r.reason === "forbidden") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+      if (r.reason === "no_title") return NextResponse.json({ ok: false, error: "לא ניתן לשלוח — חסר שם עבודה לוויקטור" }, { status: 400 });
+      if (r.reason === "no_notes") return NextResponse.json({ ok: false, error: "אין הערות לשליחה בגרסה זו" }, { status: 400 });
+      const MSG: Record<string, string> = {
         "no-victor-subscription": "ויקטור עדיין לא הפעיל התראות במכשיר שלו",
         "victor-send-failed":     "השליחה לויקטור נכשלה — נסה שוב",
         "push-disabled":          "שליחת Push מושבתת בסביבה זו",
       };
-      return NextResponse.json({ ok: false, error: MSG[result.reason] }, { status: 409 });
+      return NextResponse.json({ ok: false, error: MSG[r.reason] ?? r.reason }, { status: 409 });
     }
-
-    // Push delivered → mark this version's review as sent. Only THIS version's
-    // entry changes; every other version passes through untouched.
-    const sentAt = new Date().toISOString();
-    const updated: VersionReview = { ...review, notes, sentNotes: notes, sentAt, draft: false };
-    reviews[versionKey] = updated;
-    await updateVictorWork(workId, { versionReviews: reviews });
-
-    return NextResponse.json({ ok: true, review: updated, victorSent: result.victorSent });
+    return NextResponse.json({ ok: true, review: r.review, victorSent: r.victorSent });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[vendor/victor/notify-version-notes]", msg);

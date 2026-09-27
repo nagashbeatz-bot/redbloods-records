@@ -173,7 +173,7 @@ async function main() {
   console.log("Description consistency (Phase 13)");
   {
     check("canonical Victor salary format (shared by writer + Partner)", [salaryLinkedId("2026-08"), salaryDueDate("2026-08"), salaryMonthLabel("2026-08"), salaryTransactionDescription("2026-08"), salaryDueDate("2026-12")], ["victor_salary_2026-08", "2026-09-10", "אוגוסט 2026", "משכורת Victor — אוגוסט 2026", "2027-01-10"]);
-    ok("the canonical writer uses the shared description builder", /description:\s+salaryTransactionDescription\(workMonth\)/.test(rd("app/api/vendor/victor/salary/route.ts")));
+    ok("the canonical writer uses the shared description builder", /description:\s+salaryTransactionDescription\(workMonth\)/.test(rd("lib/writes/victor.ts")) && /recordVictorSalaryMonth\(/.test(rd("app/api/vendor/victor/salary/route.ts"))); // the writer moved to lib/writes/victor (2026-09-27)
     const raw = productionMirror();
     const v0 = deriveFinanceView(raw, new Date("2026-09-24T09:00:00Z"));
     const q = v0.integrity.top.questions.find((x) => x.questionType === "FINANCE_RECURRING_PAYMENT_STATUS")!;

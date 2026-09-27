@@ -219,7 +219,7 @@ export const VICTOR_REVIEWED_FILES = [
   "lib/victor-scope.ts", "app/api/vendor/victor/route.ts", "app/api/vendor/victor/stream/route.ts", "app/api/vendor/victor/download/route.ts", "app/api/vendor/victor/avatar/route.ts",
 ] as const;
 export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/vendor-store.ts": "abe8ee7f7f0b62bc1c1787c3838853804fe8a8fae1d64869c3654c838cf70a55",
+  "lib/vendor-store.ts": "f585d4789ddfc97ecdd83eed7b71769f985e3f4921c32d52d44a35358a27ff78",
   "lib/vendor-folder.ts": "cbd63b60c770a9a01712464848b32e6d26184bdcfc882750395b0361fd385c0d",
   "lib/victor-files.ts": "4852e479431d23c2403a743b6a22bb06cf61965ec98ce340882c439539f2e272",
   "lib/coo/victor-ball.ts": "90baf51e8c245f368641460819b4e8d7b50c3f6dd71bdc23807ff1f59ba10231",
@@ -230,9 +230,9 @@ export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/victor-version-notes-notify.ts": "cf42862f128758edae5ec620717824ed7f9058b6ecfddfbdf87a049c6b833f86",
   "lib/victor-presence-notify.ts": "2609032407255e16fb29b4250c983b40115702aa435c6a52156f743c64eb323f",
   "app/api/vendor/victor/work/route.ts": "6bbc30e1afe3a6b733b548f95627f368afc198d50af9b13192ce85f98b6c0343",
-  "app/api/vendor/victor/work/[id]/route.ts": "833e7a2c8ea66cf5ebdadb3babb1afc0a3c3b7242c91a00b680ffde0bce026f3",
+  "app/api/vendor/victor/work/[id]/route.ts": "ca778b750b4f26f67b926021d5dffc8e4a2e7ef8bdadd88826929f43e05e9d1f",
   "app/api/vendor/victor/work/[id]/file/route.ts": "a36bbf003246f48f3b2be0ba3a99a8afaab226273aa97ad5f225684792cdc9d5",
-  "app/api/vendor/victor/salary/route.ts": "f1f09e33afce9489d40a42b8e740dc5efbaf0be1db1b5c43dd3f0d8f1a23ff48",
+  "app/api/vendor/victor/salary/route.ts": "eccb286ff7725a7e1e2d2169053f20485e97489d2cd8b86c3851cb267598de49",
   "app/api/dropbox/vendor-upload/route.ts": "3cba9c3f1eebf81583ec1d88af82cc1b544d2792d776e56491ac59696889648e",
   "app/api/dropbox/vendor-upload/chunk/route.ts": "1b47767b820f9fc32a763d9151e124e04c23a71ec46fe2bce03c8159ac76f474",
   "app/api/dropbox/vendor-folder/route.ts": "7da07a75dd3ae46da764c859965f6d64e32bdf3e3cd289ea46671525568da66a",

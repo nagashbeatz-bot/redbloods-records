@@ -8,6 +8,7 @@
  * affects the whole record/quantity, never a partial unit.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { updateEquipment } from "@/lib/writes/redfilms";
 import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
 
@@ -28,61 +29,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const body = await req.json();
-
-    const patch: Record<string, unknown> = {};
-    for (const key of Object.keys(body)) {
-      if (!ALLOWED_FIELDS.has(key)) continue;
-      patch[key] = body[key];
-    }
-
-    if ("name" in patch) {
-      const name = String(patch.name ?? "").trim();
-      if (!name) return NextResponse.json({ error: "שם הציוד חובה" }, { status: 400 });
-      patch.name = name;
-    }
-    if ("category" in patch) {
-      const category = String(patch.category ?? "").trim();
-      if (!category) return NextResponse.json({ error: "קטגוריה חובה" }, { status: 400 });
-      patch.category = category;
-    }
-    if ("quantity" in patch) {
-      const quantity = Number(patch.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        return NextResponse.json({ error: "כמות חייבת להיות גדולה מ-0" }, { status: 400 });
-      }
-      patch.quantity = quantity;
-    }
-    if ("purchase_price" in patch) {
-      if (patch.purchase_price === "" || patch.purchase_price === null || patch.purchase_price === undefined) {
-        patch.purchase_price = null;
-      } else {
-        const price = Number(patch.purchase_price);
-        if (!Number.isFinite(price) || price < 0) {
-          return NextResponse.json({ error: "מחיר קנייה לא תקין" }, { status: 400 });
-        }
-        patch.purchase_price = price;
-      }
-    }
-    if ("status" in patch) {
-      if (patch.status !== "קיים" && patch.status !== "הוסר מהמלאי") {
-        return NextResponse.json({ error: "סטטוס לא תקין" }, { status: 400 });
-      }
-      // Status is the sole driver of removed_at — set/reset together, always,
-      // regardless of what else is in this same patch.
-      patch.removed_at = patch.status === "הוסר מהמלאי" ? new Date().toISOString() : null;
-    }
-
-    patch.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from("red_films_equipment")
-      .update(patch)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    if (!data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
+    const r = await updateEquipment(id, body); // shared writer (lib/writes/redfilms)
+    if (r.kind === "bad") return NextResponse.json({ error: r.error }, { status: r.status });
+    const data = r.item;
     return NextResponse.json({ item: data });
   } catch (e) {
     console.error("[PATCH /api/red-films/equipment/[id]]", e);
