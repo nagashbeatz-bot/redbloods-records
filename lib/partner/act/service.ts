@@ -12,7 +12,7 @@
  *   execute  — the engine; then a fresh read + the derived next step.
  *   status   — recorded outcome / events / detail of a plan (a retry reads this instead of executing again), or the
  *              Boss's own action history (filters + cursor pagination; read-only; tokens / secrets are never stored).
- * A plan is ONE action or ONE compound business event (2–8 registered actions, one preview, one approval bound to the
+ * A plan is ONE action or ONE compound business event (2–20 registered actions, one preview, one approval bound to the
  * exact whole plan hash; the engine re-reads every step before anything runs and reports partial failure truthfully).
  * Every operation re-checks: the caller is the Owner, the plan belongs to this Owner + connector client, the action is
  * registered and EXECUTABLE, and the executor comes ONLY from the registered action id.
@@ -36,6 +36,7 @@ import type { ActionContract, Plan, PlanOutcome, PlanStep, StepOutcome } from ".
 import { buildPreview, confirmationFor, executionKey, highestRisk, planHash, validatePlan } from "./plan";
 import { issueApprovalToken, issueDuplicateAck, verifyDuplicateAck } from "./approval";
 import { inPlanDuplicates, type InPlanDup } from "./primitives/duplicates";
+import { albumPlanConflict } from "./primitives/worklog";
 import { classifyApprovalText } from "./approval-text";
 import { executePlan, type AuditStore, type IdempotencyStore, type PrimitiveExecutor } from "./engine";
 import type { NonceStore } from "./approval";
@@ -219,6 +220,9 @@ async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: C
     if (!isBuilt(b)) return { ...b, step: i, actionId: String(s.actionId) };
     built.push(b);
   }
+  // album rules inside ONE plan: a track number twice / adding + moving tracks of the same album → refused before storage
+  const album = albumPlanConflict(built.map((b) => ({ actionId: b.step.actionId, args: b.step.args, fields: b.fields })));
+  if (album) return refused(album.code, album.messageHe);
   const keys = built.map((b) => b.key).filter((k) => !k.endsWith(":new"));
   const dup = keys.find((k, i) => keys.indexOf(k) !== i);
   if (dup) return refused("SAME_ENTITY_TWICE", "שני שלבים באותו תהליך משנים את אותה רשומה — כל שלב חייב לראות את המצב שהוצג לך. נאחד לשלב אחד או נבצע ברצף", { entity: dup });

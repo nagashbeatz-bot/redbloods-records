@@ -56,7 +56,7 @@ const OPS: OperationsRaw = {
   contentItems: sec([{ campaignId: U(841), status: "draft", contentType: "reel", platform: "instagram", dueDate: "2026-09-20", publishDate: null }, { campaignId: U(841), status: "published", contentType: "reel", platform: "tiktok", dueDate: "2026-09-10", publishDate: "2026-09-10" }]),
   promotions: sec([{ campaignId: U(841), channel: "instagram", plannedAmount: 500, status: "מתוכנן", promoDate: null, hasTransaction: false }]),
   balanceCycles: sec([{ artistId: LA_SHALEV, cycleIndex: 0, startDate: "2026-06-01", endDate: "2026-08-01", income: 4000, payments: 3000, expenses: 0, endingBalance: 1000, closedAt: "2026-08-02T10:00:00Z" }]),
-  albumTracks: sec([{ projectId: P(2), trackNumber: 1, title: "שיר 1", status: "טרום הקלטה", mixStatus: "הושלם", masterStatus: "בתהליך" }]),
+  albumTracks: sec([{ id: "00000000-0000-4000-8000-00000000a001", projectId: P(2), trackNumber: 1, title: "שיר 1", status: "טרום הקלטה", mixStatus: "הושלם", masterStatus: "בתהליך" }]),
   engineerWork: sec([
     { id: U(851), projectId: P(2), engineerName: "Steven", workType: "מיקס + מאסטר", workTitle: null, status: "בתהליך", sentDate: "2026-09-10", internalDeadline: "2026-09-30", agreedPrice: 200, amountPaid: 0, currency: "$", paymentDate: null },
     { id: U(852), projectId: P(4), engineerName: "Bill", workType: "מיקס", workTitle: null, status: "אושר", sentDate: "2026-08-10", internalDeadline: null, agreedPrice: 800, amountPaid: 0, currency: "₪", paymentDate: null },

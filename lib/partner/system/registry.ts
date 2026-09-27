@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-42";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-43";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1026,4 +1026,7 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-42", date: "2026-09-27", domain: "FINANCE", dimension: "read", from: "FULL", to: "FULL", noteHe: "הסטטוס 'לבדיקה' הוסר: אף כתיבה חדשה לא יכולה לקבוע אותו (0 רשומות בפרודקשן); שורה ישנה — לא התקבל ולא צפוי." },
   { version: "2026.09.27-42", date: "2026-09-27", domain: "VICTOR", dimension: "read", from: "FULL", to: "FULL", noteHe: "מחזור הכדור: גרסה → אצלך (ממתין לפידבק שלך); הערות → אצל ויקטור (ממתין לגרסה); הערות על גרסה שכבר הוחלפה לא מזיזות את הכדור. handoff.cycle: אצל מי, למה, האירוע האחרון, כמה ימים." },
   { version: "2026.09.27-42", date: "2026-09-27", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "אותו מחזור כדור ל-Steven / מהנדס: הערה על גרסה שכבר הוחלפה לא מזיזה את הכדור; handoff.cycle עונה אצל מי, למה ומאז מתי." },
+  { version: "2026.09.27-43", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "בקשה אחת = תוכנית אחת: תוכנית מורכבת עד 20 שלבים (למשל 11 שירים לאלבום) — תצוגה אחת, אישור אחד, ביצוע אחד. שירים שנוספו בשלבים קודמים של אותו ביצוע לא הופכים שלב מאוחר ל-STALE; מספר רצועה שמישהו אחר תפס בינתיים — כן. שני שלבים עם אותו מספר רצועה נדחים מראש." },
+  { version: "2026.09.27-43", date: "2026-09-27", domain: "ALBUMS", dimension: "read", from: "FULL", to: "FULL", noteHe: "album_view מציג לכל שיר את המפתח שלו (album-track) ואת ההערות; הוספת שיר מציגה בתצוגה ומאמתת בקריאה טרייה גם סטטוס, מיקס, מאסטר והערות." },
+  { version: "2026.09.27-43", date: "2026-09-27", domain: "SUNNY_CONNECTOR", dimension: "domain", from: "DEEP_BRAIN_V1", to: "DEEP_BRAIN_V1", noteHe: "חוזה החיבור מעודכן: כלי הפעולות פעילים; מגבלות אמיתיות (כללי 30 לדקה / 300 לשעה, פעולות 40 לשעה / 150 ליממה); RATE_LIMITED מחזיר איזו מגבלה חסמה ו-retryAfterSec; בקשה שנדחתה לא נספרת ולא שורפת מכסה כללית; AMBIGUOUS_OPEN_PREVIEWS נשאר חסום — לא מכינים כמה תוכניות מראש." },
 ];

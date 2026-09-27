@@ -308,7 +308,7 @@ const mutations = () => log.filter((l) => !l.startsWith("select"));
   { const { w } = writers(); const { d } = H.mkDeps(w);
     ok("bulk: a project-less clip production → PROJECT_REQUIRED (all-or-nothing)", (await planAction({ intentHe: "x", actionId: "LINK_RF_PAYMENTS_FOR_PRODUCTION", args: { production: `rf-production:${U(2)}` } }, H.OWNER, d)).status === "PROJECT_REQUIRED"); }
   const { MAX_WORKFLOW_STEPS } = await import("../lib/partner/act/mcp-tools");
-  ok(`a compound plan holds ≤ ${MAX_WORKFLOW_STEPS} steps — the 10-payment production needs the bulk primitive`, MAX_WORKFLOW_STEPS < 10);
+  ok(`a compound plan holds ≤ ${MAX_WORKFLOW_STEPS} steps — a production with more payments than that needs the bulk primitive`, MAX_WORKFLOW_STEPS === 20);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

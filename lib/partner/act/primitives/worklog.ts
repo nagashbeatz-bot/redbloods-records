@@ -53,6 +53,30 @@ export const SEND_STATUSES: readonly string[] = ["sent", "pending_feedback", "go
 export const MIX_MASTER_STATUSES: readonly string[] = ["לא התחיל", "בתהליך", "הושלם"];
 export const TRACK_STATUSES: readonly string[] = ALBUM_TRACK_STATUSES as readonly string[];
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+
+/**
+ * Album rules for ONE compound plan (pure; checked at planning, before anything is stored or runs):
+ *   - two ADD_ALBUM_TRACK steps may never take the same track number of the same album (each step's own check sees only
+ *     the live album, and at execution the plan's own new tracks are left out of the order — so the plan checks itself);
+ *   - a plan never both adds and moves tracks of the same album (a move renumbers the whole album 1…n around tracks its
+ *     preview could not show). Plan them one after the other.
+ */
+export function albumPlanConflict(steps: ReadonlyArray<{ actionId: string; args: Readonly<Record<string, unknown>>; fields: Fields }>): PlanRefusal | null {
+  const taken = new Map<string, number>();
+  const adding = new Set<string>();
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (s.actionId !== "ADD_ALBUM_TRACK") continue;
+    const k = parseKey(s.args.project, ["project"]); const n = Number(s.args.trackNumber);
+    if (!k || !Number.isInteger(n)) continue;
+    adding.add(k.id);
+    const prev = taken.get(`${k.id}#${n}`);
+    if (prev !== undefined) return refuse("DUPLICATE_TRACK_NUMBER_IN_PLAN", `בוס, שלב ${prev + 1} ושלב ${i + 1} מוסיפים שניהם שיר במספר ${n} לאותו אלבום — כל מספר רצועה פעם אחת. לא נשמר ולא השתנה כלום`);
+    taken.set(`${k.id}#${n}`, i);
+  }
+  const mix = steps.findIndex((s) => s.actionId === "MOVE_ALBUM_TRACK" && adding.has(String(s.fields.projectId ?? "")));
+  return mix >= 0 ? refuse("ALBUM_ADD_AND_MOVE_IN_PLAN", `בוס, שלב ${mix + 1} מזיז שיר באלבום שאותה תוכנית מוסיפה לו שירים — נוסיף קודם, ואחר כך נזיז בתוכנית נפרדת. לא נשמר ולא השתנה כלום`) : null;
+}
 const K = (name: string, required = true): ArgSpec => ({ name, kind: "entityKey", required });
 const T = (name: string, required = false): ArgSpec => ({ name, kind: "text", required });
 const E = (name: string, values: readonly string[], required = false): ArgSpec => ({ name, kind: "enum", required, values });
@@ -186,13 +210,22 @@ export const WORKLOG_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "ADD_ALBUM_TRACK", kinds: ["album-track"],
-    meta: meta("הוספת שיר לאלבום", "Add a track to an album project", [K("project"), T("title", true), { name: "trackNumber", kind: "number", required: true }, E("status", TRACK_STATUSES), E("mixStatus", MIX_MASTER_STATUSES), E("masterStatus", MIX_MASTER_STATUSES), T("notes")], ["title", "trackNumber"], "createAlbumTrack (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the track" }),
+    meta: meta("הוספת שיר לאלבום", "Add a track to an album project (the preview and the fresh-read verification cover every given field, notes included)", [K("project"), T("title", true), { name: "trackNumber", kind: "number", required: true }, E("status", TRACK_STATUSES), E("mixStatus", MIX_MASTER_STATUSES), E("masterStatus", MIX_MASTER_STATUSES), T("notes")], ["title", "trackNumber", "status", "mixStatus", "masterStatus", "notes"], "createAlbumTrack (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the track" }),
     createContext: async (d, a) => { const k = parseKey(a.project, ["project"]); return { taken: k ? (await d.albumTrackOrder(k.id)).map((t) => t.track_number).join(",") : "" }; },
     async resolve(d, a) { const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)"); const p = await d.readProjectMeta(k.id); if (!p) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט"); return { key: "album-track:new", id: "new", label: `${p.name}: ${String(a.title ?? "")}`, fields: { taken: (await d.albumTrackOrder(k.id)).map((t) => t.track_number).join(",") } }; },
     read: trackFields,
-    plan(a, cur) { const t = text(a.title, 200); if (t === null) return refuse("BAD_TEXT", "שם השיר חסר"); const n = Number(a.trackNumber); if (!Number.isInteger(n) || n < 1) return refuse("BAD_NUMBER", "מספר רצועה שלם ≥ 1"); if (String(cur.taken).split(",").includes(String(n))) return refuse("DUPLICATE", `מספר ${n} כבר תפוס`); return { ok: true, after: { title: t.trim(), trackNumber: n } }; },
-    async apply(d, _id, after, a) { return { createdId: await d.createAlbumTrack({ project_id: parseKey(a.project, ["project"])!.id, track_number: after.trackNumber, title: after.title, status: a.status, mix_status: a.mixStatus, master_status: a.masterStatus, notes: str(a.notes) }) }; },
-    async verify(d, id, after) { const f = await trackFields(d, id); return !!f && f.title === after.title && f.trackNumber === after.trackNumber; },
+    plan(a, cur) {
+      const t = text(a.title, 200); if (t === null) return refuse("BAD_TEXT", "שם השיר חסר");
+      const n = Number(a.trackNumber); if (!Number.isInteger(n) || n < 1) return refuse("BAD_NUMBER", "מספר רצועה שלם ≥ 1");
+      if (String(cur.taken).split(",").includes(String(n))) return refuse("DUPLICATE", `מספר ${n} כבר תפוס`);
+      const after: Fields = { title: t.trim(), trackNumber: n };
+      for (const k of ["status", "mixStatus", "masterStatus"] as const) if (a[k] !== undefined) after[k] = String(a[k]);
+      if (a.notes !== undefined && !(typeof a.notes === "string" && !a.notes.trim())) { const x = text(a.notes, 1000); if (x === null) return refuse("BAD_TEXT", "notes לא תקין"); after.notes = x.trim(); }
+      return { ok: true, after };
+    },
+    async apply(d, _id, after, a) { return { createdId: await d.createAlbumTrack({ project_id: parseKey(a.project, ["project"])!.id, track_number: after.trackNumber, title: after.title, status: str(after.status), mix_status: str(after.mixStatus), master_status: str(after.masterStatus), notes: str(after.notes) }) }; },
+    // every previewed field is checked by a fresh read (notes / statuses included — what Sunny wrote, Sunny can read back)
+    async verify(d, id, after) { const f = await trackFields(d, id); return !!f && Object.entries(after).every(([k, v]) => f[k] === v); },
     disclosuresHe: ["שיר חדש ברשימת האלבום (ברירות מחדל: טרום הקלטה / לא התחיל)", "לא נשלח כלום"],
   },
   {

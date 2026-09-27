@@ -14,7 +14,7 @@ import { hasActScope, hasAnswerScope, hasKnowledgeScope, SUPPORTED_PROTOCOL_VERS
 import { ACT_TOOL_DEFINITIONS, ACT_TOOL_NAMES, HISTORY_OUTCOMES, validateActInput, type ActToolName } from "@/lib/partner/act/mcp-tools";
 import { sha256Hex } from "./crypto";
 import { insufficientScopeResponse, type BearerResult, type HttpOut, type Principal } from "./oauth";
-import type { SlidingWindowLimiter } from "./rate-limit";
+import { gate, type GateResult, type SlidingWindowLimiter } from "./rate-limit";
 import type { AuditRow } from "./store";
 import { ANSWER_TOOL, buildToolDefinitions, guardOutput, KNOWLEDGE_TOOL, validateToolCall, type CapabilityIndexEntry, type KnowledgeItemArgs, type QueryArgs, type ToolArgs } from "./tools";
 
@@ -38,7 +38,7 @@ export const SERVER_INSTRUCTIONS =
   "(1) turn the Boss's words into ONE registered action id + typed args — or, when one business event needs several registered actions (a show + its rehearsal + a task…), into steps: [{ actionId, args }] in execution order, ONE plan (entity keys from partner_resolve / partner_query records; conversation context is only a hint — if the entity is ambiguous or info is missing, ASK; never guess), " +
   "(2) call partner_plan_action — the SERVER resolves every entity, reads live state and builds the plan, (3) show the Boss the preview in plain Hebrew — EVERY step: the entity, current value → new value, amounts with currency, dates, recipients, finance / calendar / push effects, execution order, what will NOT happen — and ask \"לאשר?\", " +
   "(4) ONLY after the Boss explicitly approves THIS preview, call partner_approve_action with his exact words, then partner_execute_plan. \"מאשר\" / \"כן, מאשר\" / \"מאושר\" is enough — NEVER ask him to repeat amounts, dates, recipients or words like \"מחיקה\" (the approval is bound to the exact plan hash). " +
-  "If his reply approves AND changes something (\"מאשר אבל 500 במקום 400\") it is NOT an approval: build a NEW plan, show the new preview and wait. If more than one preview is open and it is unclear which one he approves, ASK — never guess. A compound plan is approved as a whole. A changed request needs a NEW plan and a NEW approval, " +
+  "If his reply approves AND changes something (\"מאשר אבל 500 במקום 400\") it is NOT an approval: build a NEW plan, show the new preview and wait. ONE logical request of the Boss = ONE plan (a compound plan of up to 20 steps, e.g. 11 tracks of one album — never one plan per item); do not prepare several plans in advance. If more than one preview is open and it is unclear which one he approves, ASK — never guess; AMBIGUOUS_OPEN_PREVIEWS is a safety refusal, never work around it (name the exact plan he means, or plan again so it is the newest). A compound plan is approved as a whole. Steps of one plan never make each other STALE (records created by earlier steps of the same execution are expected); STALE always means a real change by someone else since the preview. RATE_LIMITED names the limiter (GENERAL / ACTION) and retryAfterSec: tell the Boss and wait that long — retrying earlier does not help. A changed request needs a NEW plan and a NEW approval, " +
   "POSSIBLE_DUPLICATE / POSSIBLE_DUPLICATE_IN_PLAN (a similar record already exists, or two steps look like the same record): show the Boss the similar record and ASK whether it is the same one or an additional one — ONLY after he explicitly says it is a separate record, plan again with the same args + separateFromSimilar: true + the duplicateAck from that refusal (never set separateFromSimilar on your own, never invent or reuse an ack; DUPLICATE_ACK_REQUIRED → plan without it and ask again). A \"שני שלבים דומים\" preview warning is information for the Boss, not a refusal. " +
   "(5) report the verified result from the fresh read (\"בוצע בוס — …\"), and any next step only as a suggestion (DERIVED). STALE → say the state changed and offer a new preview; OUTCOME_UNKNOWN (e.g. a timeout) → call partner_plan_status before saying anything and NEVER execute the plan again (a plan runs at most once; IN_PROGRESS = still running → check the status again shortly; ALREADY_EXECUTED = report the recorded outcome). EXECUTED only means every step applied. A created record is named by its createdKey. PARTIALLY_APPLIED → say exactly which steps applied, which failed and which did not run, and the live state (never \"done\"). Never execute without approval, never start another plan automatically. For \"what did you do / did you record it / what failed\", call partner_plan_status with history: true (filters since / actionId / entity / outcome; page with nextBefore), then a planId for detail. Keep Partner's epistemic labels: FACT, DERIVED, OWNER_DECISION (never call it a " +
   "database fact), HYPOTHESIS, OBSERVATION, PATTERN_CANDIDATE, UNKNOWN; label anything you add from your own knowledge as GENERAL_KNOWLEDGE. completeness PARTIAL / " +
@@ -113,6 +113,18 @@ const rpcResult = (id: unknown, result: unknown): HttpOut => ({ status: 200, hea
 const rpcError = (id: unknown, code: number, message: string, status = 200): HttpOut => ({ status, headers: JSON_HEADERS, body: JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }) });
 const toolError = (id: unknown, message: string, category: string): HttpOut =>
   rpcResult(id, { isError: true, content: [{ type: "text", text: JSON.stringify({ error: category, message }) }], structuredContent: { error: category, message } });
+/** RATE_LIMITED, naming the limiter that blocked and the real wait (sliding windows; a refused request is never counted). */
+const LIMIT_TEXT: Record<Exclude<GateResult, { ok: true }>["limiter"], string> = {
+  GENERAL: "Too many Redbloods requests right now (the general limit shared by every tool: 30 / minute, 300 / hour)",
+  ACTION: "Too many action requests right now (the action limit: 40 / hour, 150 / 24 hours — plan, preview, approve, execute and status all count)",
+  ANSWER: "Too many answers right now (the answer limit: 10 / hour, 30 / 24 hours)",
+  KNOWLEDGE: "Too many knowledge requests right now (the knowledge limit: 20 / hour, 60 / 24 hours)",
+};
+function rateLimited(id: unknown, g: Exclude<GateResult, { ok: true }>): HttpOut {
+  const wait = g.retryAfterSec >= 120 ? `about ${Math.ceil(g.retryAfterSec / 60)} minutes` : `${g.retryAfterSec} seconds`;
+  const body = { error: "RATE_LIMITED", limiter: g.limiter, retryAfterSec: g.retryAfterSec, message: `${LIMIT_TEXT[g.limiter]} — try again in ${wait}. Retrying earlier does not extend the wait.` };
+  return rpcResult(id, { isError: true, content: [{ type: "text", text: JSON.stringify(body) }], structuredContent: body });
+}
 
 function baseAudit(p: Principal | null, method: string, protocolVersion: string | null): AuditRow {
   return {
@@ -222,9 +234,8 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
       input_fingerprint: a.tool === "partner_resolve" ? sha256Hex(a.query.normalize("NFKC").toLowerCase()) : null,
       input_key: a.tool === "partner_entity" ? a.key : null,
     };
-  if (!deps.limiter.allow(p.tokenId, deps.nowMs())) {
-    return finish(toolError(id, "Too many requests — slow down and try again in a minute.", "RATE_LIMITED"), { ...inputPatch, status: "REJECTED", error_category: "RATE_LIMITED" });
-  }
+  const lim = gate(p.tokenId, deps.nowMs(), [{ name: "GENERAL", limiter: deps.limiter }]);
+  if (!lim.ok) return finish(rateLimited(id, lim), { ...inputPatch, status: "REJECTED", error_category: "RATE_LIMITED" });
   let payload: Record<string, unknown>;
   try {
     const run = a.tool === "partner_brief" ? deps.gateway.brief() : a.tool === "partner_resolve" ? deps.gateway.resolve(a.query) : a.tool === "partner_entity" ? deps.gateway.entity(a.key)
@@ -269,9 +280,8 @@ async function callAnswerTool(id: string | number, params: Record<string, unknow
     return finish(insufficientScopeResponse(deps.config), { ...base, status: "REJECTED", http_status: 403, error_category: "INSUFFICIENT_SCOPE" });
   }
   const now = deps.nowMs();
-  if (!deps.limiter.allow(p.tokenId, now) || !ans.limiter.allow(p.tokenId, now)) {
-    return finish(toolError(id, "Too many answers right now — try again later.", "RATE_LIMITED"), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
-  }
+  const lim = gate(p.tokenId, now, [{ name: "GENERAL", limiter: deps.limiter }, { name: "ANSWER", limiter: ans.limiter }]);
+  if (!lim.ok) return finish(rateLimited(id, lim), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
   const attemptId = ans.newId();
   try {
     await deps.audit({ ...audit, ...base, id: attemptId, method: "answer/attempt", status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
@@ -317,9 +327,8 @@ async function callKnowledgeTool(id: string | number, params: Record<string, unk
   const base: Partial<AuditRow> = { tool: KNOWLEDGE_TOOL, method: `knowledge/${a.stage}`, input_fingerprint: sha256Hex(JSON.stringify(a.items)), input_key: null };
   if (!hasKnowledgeScope(p.scope)) return finish(insufficientScopeResponse(deps.config), { ...base, status: "REJECTED", http_status: 403, error_category: "INSUFFICIENT_SCOPE" });
   const now = deps.nowMs();
-  if (!deps.limiter.allow(p.tokenId, now) || !kn.limiter.allow(p.tokenId, now)) {
-    return finish(toolError(id, "Too many knowledge requests right now — try again later.", "RATE_LIMITED"), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
-  }
+  const lim = gate(p.tokenId, now, [{ name: "GENERAL", limiter: deps.limiter }, { name: "KNOWLEDGE", limiter: kn.limiter }]);
+  if (!lim.ok) return finish(rateLimited(id, lim), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
   const actor = { userId: p.userId, clientId: p.clientId, tokenId: p.tokenId };
   const statusOf = (x: Record<string, unknown>) => (typeof x.status === "string" && /^[A-Z_]{1,60}$/.test(x.status) ? x.status : "FAILED");
   if (a.stage === "preview") {
@@ -383,9 +392,9 @@ async function callActTool(id: string | number, name: ActToolName, params: Recor
   if (!v.ok || !input) return finish(rpcError(id, -32602, `invalid arguments${v.ok ? "" : ` (${v.code})`}`), { ...base, status: "REJECTED", error_category: (v.ok ? "INVALID_ARGS" : v.code).replace(/[^A-Z_]/g, "_").slice(0, 60) });
   if (!hasActScope(p.scope)) return finish(insufficientScopeResponse(deps.config), { ...base, status: "REJECTED", http_status: 403, error_category: "INSUFFICIENT_SCOPE" });
   const now = deps.nowMs();
-  if (!deps.limiter.allow(p.tokenId, now) || !act.limiter.allow(p.tokenId, now)) {
-    return finish(toolError(id, "Too many action requests right now — try again later.", "RATE_LIMITED"), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
-  }
+  // general + action checked together: a request the action limit refuses spends no general quota (and vice versa)
+  const lim = gate(p.tokenId, now, [{ name: "GENERAL", limiter: deps.limiter }, { name: "ACTION", limiter: act.limiter }]);
+  if (!lim.ok) return finish(rateLimited(id, lim), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
   try {
     await deps.audit({ ...audit, ...base, method: `act/${op}_attempt`, status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
   } catch {

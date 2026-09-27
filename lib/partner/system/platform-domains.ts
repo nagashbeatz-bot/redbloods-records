@@ -137,7 +137,7 @@ export const SUNNY_CORE_MODEL = {
 export const SUNNY_CONNECTOR_MODEL = {
   meaningHe: "הגשר Claude ↔ סאני: שרת MCP ב-Redbloods עם OAuth של הבעלים בלבד, כלים מוגבלים, ביקורת לכל קריאה, ומצב 'MCP בלבד' בשירות נפרד.",
   services: "a separate connector deployment in MCP-only mode (no schedulers, database writes limited to the connector's own functions, the audit and — when enabled — the Owner answer / knowledge inserts); the MAIN service owns every integration credential",
-  auth: { flow: "OAuth 2.1 with dynamic client registration (public clients), PKCE S256, exact redirect allowlist, resource binding to the MCP endpoint, Owner-only consent (role check on verified claims)", tokens: "access 1h, refresh 30 days rotating, family 90 days — stored only as hashes; revocation revokes the family", scopes: ["partner:read", "partner:answer (flag + MCP-only)", "partner:knowledge (flag + MCP-only)"] },
+  auth: { flow: "OAuth 2.1 with dynamic client registration (public clients), PKCE S256, exact redirect allowlist, resource binding to the MCP endpoint, Owner-only consent (role check on verified claims)", tokens: "access 1h, refresh 30 days rotating, family 90 days — stored only as hashes; revocation revokes the family", scopes: ["partner:read", "partner:answer (flag + MCP-only)", "partner:knowledge (flag + MCP-only)", "partner:act (flag + MCP-only; a NEW Owner consent)"] },
   tools: [
     { tool: "partner_brief", reads: "what matters now (≤5 items)" },
     { tool: "partner_resolve", reads: "name → entity candidates" },
@@ -146,10 +146,25 @@ export const SUNNY_CONNECTOR_MODEL = {
     { tool: "partner_answer_question", reads: "answers one of Sunny's open questions (writes Owner context) — flag-gated" },
     { tool: "partner_propose_knowledge", reads: "preview → confirm → commit typed Owner knowledge — flag-gated" },
   ],
-  notAvailable: ["action proposal / execution from Claude (flag off, not wired)", "finance answers from Claude (refused)"],
-  limits: "in-memory per token: 30/min, 300/h; answer 10/h 30/day; knowledge 20/h 60/day; 60s tool timeout; 100k-char result cap; 16KB request cap",
+  /** The five action tools (lib/partner/act/mcp-tools.ts) — LIVE in production since 2026-09-27 (act flags on, partner:act consent). */
+  actionTools: [
+    { tool: "partner_plan_action", does: "builds ONE server-side plan + its preview: one action, or one business event of 2–20 steps (one logical request = one plan, e.g. 11 tracks of one album); nothing changes" },
+    { tool: "partner_preview_action", does: "re-reads a plan's preview against live state (STALE when something changed)" },
+    { tool: "partner_approve_action", does: "relays the Boss's explicit approval (\"מאשר\") of THAT exact plan hash — one approval covers every step" },
+    { tool: "partner_execute_plan", does: "runs the approved plan once: fresh re-read + stale check, each step in order through the app's own writer, verified by a fresh read" },
+    { tool: "partner_plan_status", does: "read-only plan detail / action history" },
+  ],
+  actionModel: {
+    flow: "plan → preview → the Boss's approval → execute → fresh read → outcome → history; every write needs a new approval, a changed plan a new preview",
+    compound: "2–20 steps in ONE plan, ONE preview of every step, ONE approval bound to the whole-plan hash, ONE execute; steps run in order, a failure / STALE stops the rest (no automatic rollback)",
+    stale: "STALE = the live state changed since the preview (someone else added / edited a record, a track number was taken elsewhere) → nothing (more) runs and a new plan is needed. Records created by EARLIER steps of the SAME execution never make a later step STALE (the engine leaves out exactly the ids those steps returned: duplicate reader + album track order); an external change — before execution or between steps — still does",
+    inPlanChecks: "planning refuses: two steps on the same record (SAME_ENTITY_TWICE); two ADD_ALBUM_TRACK with the same album + track number (DUPLICATE_TRACK_NUMBER_IN_PLAN); adding and moving tracks of the same album in one plan (ALBUM_ADD_AND_MOVE_IN_PLAN); money creates that look like the same record (POSSIBLE_DUPLICATE_IN_PLAN)",
+    ambiguity: "AMBIGUOUS_OPEN_PREVIEWS is fail-closed: approving a plan while a NEWER open preview exists is refused (never guessed, never bypassed). Sunny prepares ONE plan per request (never several in advance) and, when more than one preview is open, names the exact plan or plans it again",
+  },
+  notAvailable: ["finance answers from Claude (refused)", "a generic writer / SQL / route / file-path execution (never)"],
+  limits: "in-memory per token (a connector restart resets them; sliding windows — each request leaves its window exactly one window after it was made): general 30/min + 300/h (every tool); action 40/h + 150/24h (plan / preview / approve / execute / status all count); answer 10/h 30/day; knowledge 20/h 60/day. A request is counted only when EVERY limiter it belongs to allows it (a request the action limit refuses spends no general quota); a refused request is never counted, so retrying early never extends the wait. RATE_LIMITED names the limiter (GENERAL / ACTION / ANSWER / KNOWLEDGE) and retryAfterSec (the real wait of the blocking window). 60s tool timeout; 100k-char result cap; 16KB request cap (a 20-step plan fits with short notes)",
   audit: "fail-closed: a call whose audit row cannot be written is refused",
-  failureStates: ["MISSING / MALFORMED / UNKNOWN / REVOKED / EXPIRED token", "WRONG_AUDIENCE", "INSUFFICIENT_SCOPE", "RATE_LIMITED", "TIMEOUT", "GATEWAY_ERROR", "AUDIT unavailable", "connector disabled / misconfigured (404)"],
-  flags: ["connector enabled", "answer tool", "knowledge tool", "MCP-only mode", "Owner knowledge read", "action proposal (off)"],
+  failureStates: ["MISSING / MALFORMED / UNKNOWN / REVOKED / EXPIRED token", "WRONG_AUDIENCE", "INSUFFICIENT_SCOPE", "RATE_LIMITED (+ limiter + retryAfterSec)", "TIMEOUT", "GATEWAY_ERROR", "AUDIT unavailable", "connector disabled / misconfigured (404)"],
+  flags: ["connector enabled", "answer tool", "knowledge tool", "MCP-only mode", "Owner knowledge read", "action tools (on — connector + main service switches, partner:act consent)"],
   production20260925: { auditRows: 200, auditFrom: "2026-09-24", rejectedAuth: 21, initialize: 15, queries: "by capability", answerAttempts: 2, knowledgeCommits: 1 },
 } as const;

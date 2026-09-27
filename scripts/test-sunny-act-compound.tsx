@@ -1,6 +1,6 @@
 /**
  * Universal Action Layer — COMPOUND PLANS + ACTION HISTORY through the REAL service on fakes.
- *   Compound: one business event = 2–8 registered actions in ONE plan → one server-built preview of every step → ONE
+ *   Compound: one business event = 2–20 registered actions in ONE plan → one server-built preview of every step → ONE
  *   approval bound to the exact whole-plan hash → every step re-read before anything runs (STALE = nothing runs) →
  *   dependency order, each step at most once (replay returns the record) → truthful partial failure.
  *   History: Owner-scoped, read-only, newest first, filters + cursor pagination, detail by plan id; no token / secret.
@@ -108,8 +108,8 @@ async function approveExec(d: Parameters<typeof planAction>[2], p: Record<string
     const same = await plan(d, [STEPS[0], { actionId: "SET_PRODUCTION_LINKS", args: { production: PR, version1Link: NEW } }]);
     ok("D1. two steps on the same record → refused (each step must match what the Boss saw)", same.status === "SAME_ENTITY_TWICE");
     const one = await plan(d, [STEPS[0]]);
-    const many = await plan(d, Array.from({ length: 9 }, () => STEPS[0]));
-    ok("D2. 1 step or more than 8 → refused", one.status === "INVALID_INPUT" && many.status === "INVALID_INPUT");
+    const many = await plan(d, Array.from({ length: 21 }, () => STEPS[0]));
+    ok("D2. 1 step or more than 20 → refused", one.status === "INVALID_INPUT" && many.status === "INVALID_INPUT");
     const both = await planAction({ intentHe: "x", actionId: STEPS[0].actionId, args: STEPS[0].args, steps: STEPS }, OWNER, d);
     ok("D3. actionId + steps together → refused", both.status === "INVALID_INPUT");
     ok("D4. an unknown / generic / nested step is refused with its index", validateActInput("partner_plan_action", { intentHe: "x", steps: [STEPS[0], { actionId: "SQL_WRITE", args: {} }] }).ok === false && (validateActInput("partner_plan_action", { intentHe: "x", steps: [STEPS[0], { actionId: "UPDATE_VICTOR_REFERENCE", args: { victorWork: VW, referenceId: U(40), sql: "x" } }] }) as { code: string }).code.startsWith("STEP_1:") && validateActInput("partner_plan_action", { intentHe: "x", steps: [STEPS[0], { actionId: "SET_PRODUCTION_LINKS", args: { production: PR }, extra: 1 }] }).ok === false);
@@ -161,7 +161,7 @@ async function approveExec(d: Parameters<typeof planAction>[2], p: Record<string
     const extra = await call({ op: "status", ownerId: OWNER.ownerId, clientId: OWNER.clientId, input: { history: true, sql: "select" } });
     ok("F1. the relay accepts steps + history fields and nothing else", [withSteps.status, withHistory.status, extra.status].join() === "200,200,400" && (withSteps.body as { status?: string }).status === "PREVIEW" && (withHistory.body as { status?: string }).status === "HISTORY", [withSteps.status, withHistory.status, extra.status]);
     const planTool = ACT_TOOL_DEFINITIONS.find((x) => x.name === "partner_plan_action")!;
-    ok("F2. the plan tool advertises steps (2–8, each { actionId, args } only) — still no SQL / route / path / URL field", JSON.stringify(planTool.inputSchema).includes('"steps"') && !/"(sql|route|path|url|body|headers)"/.test(JSON.stringify(planTool.inputSchema)));
+    ok("F2. the plan tool advertises steps (2–20, each { actionId, args } only) — still no SQL / route / path / URL field", JSON.stringify(planTool.inputSchema).includes('"steps"') && !/"(sql|route|path|url|body|headers)"/.test(JSON.stringify(planTool.inputSchema)));
   }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

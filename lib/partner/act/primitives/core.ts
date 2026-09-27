@@ -236,9 +236,12 @@ export async function currentOf(spec: PrimitiveSpec, d: WriterDeps, s: { args: R
 
 /**
  * The writer view a step reads its creation context through: records created by EARLIER steps of the same plan
- * (ctx.excludeCreated — ids the engine collected from this run's outputs) are left out of the duplicate reader, so a
- * plan never goes STALE / trips the duplicate gate on its own creations. Every other change (a record someone else
- * added, an edited record) still changes the fingerprint → STALE. Never used to hide anything from a preview.
+ * (ctx.excludeCreated — ids the engine collected from this run's outputs) are left out of the duplicate reader and the
+ * album track order (ADD_ALBUM_TRACK's "taken" numbers), so a plan never goes STALE / trips the duplicate gate on its
+ * own creations. Only the REAL created ids are left out (never a match by name / amount / number): every other change
+ * (a record someone else added, an edited record, a track number taken elsewhere) still changes the fingerprint → STALE.
+ * Never used to hide anything from a preview. A plan that both adds and moves tracks of one album is refused at planning
+ * (planWorkflow), so the move never renumbers around tracks its preview did not show.
  */
 export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
   const ex = new Set((ctx?.excludeCreated ?? []).filter((x) => typeof x === "string" && x));
@@ -246,6 +249,7 @@ export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
   return new Proxy(d, {
     get(t, k) {
       if (k === "similarRecords") return async (q: Parameters<WriterDeps["similarRecords"]>[0]) => (await t.similarRecords(q)).filter((r) => !r.id || !ex.has(String(r.id)));
+      if (k === "albumTrackOrder") return async (pid: string) => (await t.albumTrackOrder(pid)).filter((r) => !ex.has(String(r.id)));
       const v = Reflect.get(t, k);
       return typeof v === "function" ? v.bind(t) : v;
     },

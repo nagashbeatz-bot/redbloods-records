@@ -66,7 +66,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "social_content_items", "campaign_id, status, content_type, platform, due_date, publish_date"),
     readSection(client, "social_promotions", "id, name, campaign_id, channel, planned_amount, status, promo_date, linked_transaction_id"),
     readSection(client, "artist_balance_cycles", "artist_id, cycle_index, start_date, end_date, income, payments, expenses, ending_balance, closed_at"),
-    readSection(client, "album_tracks", "project_id, track_number, title, status, mix_status, master_status"),
+    readSection(client, "album_tracks", "id, project_id, track_number, title, status, mix_status, master_status"),
     readSection(client, "sound_engineer_work", "id, project_id, engineer_name, work_type, work_title, status, sent_date, internal_deadline, agreed_price, amount_paid, currency, payment_date"),
     readSection(client, "mix_versions", "id, sound_engineer_work_id, status, created_at"),
     readSection(client, "mix_comments", "mix_version_id, status"),
@@ -110,7 +110,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     contentItems: mapSection(content, (r) => ({ campaignId: s(r.campaign_id), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
     promotions: mapSection(promos, (r) => ({ id: s(r.id), name: s(r.name), campaignId: s(r.campaign_id), channel: s(r.channel), plannedAmount: n(r.planned_amount), status: s(r.status), promoDate: s(r.promo_date), hasTransaction: !!s(r.linked_transaction_id) })),
     balanceCycles: mapSection(cycles, (r) => (s(r.artist_id) ? { artistId: String(r.artist_id), cycleIndex: Number(r.cycle_index), startDate: s(r.start_date), endDate: s(r.end_date), income: n(r.income), payments: n(r.payments), expenses: n(r.expenses), endingBalance: n(r.ending_balance), closedAt: s(r.closed_at) } : null)),
-    albumTracks: mapSection(tracks, (r) => ({ projectId: s(r.project_id), trackNumber: n(r.track_number), title: s(r.title) ?? "", status: s(r.status), mixStatus: s(r.mix_status), masterStatus: s(r.master_status) })),
+    albumTracks: mapSection(tracks, (r) => ({ id: s(r.id), projectId: s(r.project_id), trackNumber: n(r.track_number), title: s(r.title) ?? "", status: s(r.status), mixStatus: s(r.mix_status), masterStatus: s(r.master_status) })),
     engineerWork: mapSection(work, (r) => (s(r.id) ? {
       id: String(r.id), projectId: s(r.project_id), engineerName: s(r.engineer_name) ?? "", workType: s(r.work_type), workTitle: s(r.work_title), status: s(r.status), sentDate: s(r.sent_date),
       internalDeadline: s(r.internal_deadline), agreedPrice: n(r.agreed_price), amountPaid: n(r.amount_paid), currency: s(r.currency), paymentDate: s(r.payment_date),

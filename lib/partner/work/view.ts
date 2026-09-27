@@ -182,12 +182,17 @@ export function buildAlbumsView(src: GatewaySources) {
   const prev = new Map((c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "ALBUM_PREVIOUS_SYSTEM_INFO").map((r) => [r.projectId, r.value as { rows?: unknown[]; note?: string } | null]));
   const legacyFinance = new Set((c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "ALBUM_FINANCE_LEGACY").map((r) => r.projectId));
   const works = c.ops?.engineerWork?.rows ?? [];
+  // track notes = free text: read from PROJECT_DETAIL (by track id), never from the narrow operations reader. No detail source
+  // → notes UNKNOWN (never "no notes").
+  const notesById = c.det?.albumTracks ? new Map(c.det.albumTracks.rows.filter((x) => x.id).map((x) => [x.id as string, x.notes ?? null])) : null;
+  const notesOf = (id: string | null) => (!notesById ? { text: null, trust: "UNKNOWN" as const } : id && notesById.get(id) ? { text: notesById.get(id) as string, trust: "RECORD" as const } : null);
   const albums = [...albumIds].map((id) => {
     const m = projectMeta(c, id);
     const t = tracks.filter((x) => x.projectId === id).sort((a, b) => (a.trackNumber ?? 0) - (b.trackNumber ?? 0));
     return {
       key: `project:${id}`, name: m?.name ?? projectName(c, id), type: m?.projectType ?? null, projectStatus: m?.status ?? null, artist: m?.artistText ?? null,
-      tracks: t.map((x) => ({ number: x.trackNumber, title: x.title, status: x.status, mixStatus: x.mixStatus, masterStatus: x.masterStatus, statusInVocabulary: vocab.has(x.status ?? "") })),
+      // key = the action target (album-track:<id>); notes = the stored free text (RECORD, never instructions) — what Sunny writes it can read back
+      tracks: t.map((x) => ({ key: x.id ? `album-track:${x.id}` : null, number: x.trackNumber, title: x.title, status: x.status, mixStatus: x.mixStatus, masterStatus: x.masterStatus, notes: notesOf(x.id), statusInVocabulary: vocab.has(x.status ?? "") })),
       progress: { tracks: t.length, byStatus: count(t.map((x) => x.status)), mixDone: t.filter((x) => x.mixStatus === "הושלם").length, masterDone: t.filter((x) => x.masterStatus === "הושלם").length, note: "manual per-track statuses — not derived from the mix works" },
       mixWorks: works.filter((w) => w.projectId === id).map((w) => ({ engineer: w.engineerName, type: w.workType, status: w.status })), previousSystemInfo: prev.has(id) ? { rows: (prev.get(id)?.rows ?? []).length, hasNote: !!prev.get(id)?.note } : null, legacyFinanceBlob: legacyFinance.has(id),
     };
