@@ -177,7 +177,13 @@ async function main() {
     const legacy = withIdentityAliases(recs.map((r) => ({ ...r, subjectKey: retired, identityKeys: [retired] })), { [retired]: [`dj:${C_CLEAN}`, `client:${C_CLEAN}`] });
     ok("knowledge stored before 2026-09-27 on his RETIRED label-artist key is served under his DJ / client identity (read-time alias; stored keys untouched)",
       legacy.every((r) => r.subjectKey === retired && r.identityKeys[0] === retired && r.identityKeys.includes(`dj:${C_CLEAN}`) && r.identityKeys.includes(`client:${C_CLEAN}`))
+      && queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_knowledge", params: { entity: `dj:${C_CLEAN}` } }, sources(legacy), OWNER_EXT).items.every((i) => i.entity === `dj:${C_CLEAN}`)
       && queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_knowledge", params: { entity: `dj:${C_CLEAN}` } }, sources(legacy), OWNER_EXT).items.length === 2);
+    {
+      const ct = { clientId: C_CLEAN, displayName: "DJ CLEANTONE", retiredKeys: [retired] };
+      const rs = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "relations", params: { entity: `dj:${C_CLEAN}` } }, { ...sources(legacy), identities: { cleantone: ct } }, OWNER_EXT);
+      ok("relations never serve the retired label-artist key as a live entity", rs.items.length > 0 && rs.items.every((i) => i.entity !== retired));
+    }
     const enr = entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, { ...src, audience: OWNER_EXT }, `dj:${C_CLEAN}`);
     ok("partner_entity enrichment for the DJ includes 'מה סאני למד ממך' automatically (no MCP change per kind)", enr.some((s) => s.capability === "owner_knowledge" && s.items.length === 2));
     const rel = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "relations", params: { entity: `dj:${C_CLEAN}` } }, src, OWNER_EXT);

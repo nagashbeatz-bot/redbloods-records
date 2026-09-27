@@ -20,8 +20,10 @@ export interface OwnerKnowledgeRecord {
   createdAt: string;
   kind: string;
   subjectKey: string;
-  /** Every Gateway key of the same identity (e.g. dj:… + label-artist:… for DJ CLEANTONE). */
+  /** Every Gateway key of the same identity (for DJ CLEANTONE: dj:… / client:…, plus his retired label-artist key on older rows). */
   identityKeys: string[];
+  /** Read-time only (withIdentityAliases): the LIVE key to serve when the stored subjectKey is a retired alias. Never stored. */
+  servedSubjectKey?: string;
   slotKey: string;
   value: KnowledgeValue;
   epistemic: KnowledgeEpistemic;
@@ -140,7 +142,8 @@ export function terminalOfSlot(records: readonly OwnerKnowledgeRecord[], slotKey
 export function withIdentityAliases(records: readonly OwnerKnowledgeRecord[], aliases: Readonly<Record<string, readonly string[]>>): OwnerKnowledgeRecord[] {
   return records.map((r) => {
     const extra = [r.subjectKey, ...r.identityKeys].flatMap((k) => aliases[k] ?? []).filter((k) => !r.identityKeys.includes(k));
-    return extra.length ? { ...r, identityKeys: [...r.identityKeys, ...new Set(extra)] } : r;
+    const served = aliases[r.subjectKey]?.[0];
+    return extra.length || served ? { ...r, identityKeys: [...r.identityKeys, ...new Set(extra)], ...(served ? { servedSubjectKey: served } : {}) } : r;
   });
 }
 

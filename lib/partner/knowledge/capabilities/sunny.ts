@@ -27,7 +27,7 @@ const todayOf = (src: KnowledgeSources) => ok(src.state)?.todayIL ?? src.now.toI
 const toItem = (r: OwnerKnowledgeRecord, active: boolean): KnowledgeItem => {
   const k = knowledgeKind(r.kind);
   return item({
-    id: r.id, entity: r.subjectKey.startsWith("company:") ? null : r.subjectKey, label: partnerRecord(r.meaningHe), epistemic: r.epistemic, source: "OWNER_KNOWLEDGE",
+    id: r.id, entity: r.subjectKey.startsWith("company:") ? null : (r.servedSubjectKey ?? r.subjectKey), label: partnerRecord(r.meaningHe), epistemic: r.epistemic, source: "OWNER_KNOWLEDGE",
     freshness: active ? "LIVE" : "HISTORICAL", relationQuality: k?.relationQuality ? "OWNER_CONFIRMED" : undefined,
     fields: {
       kind: r.kind, kindTitle: k ? partner(k.titleHe) : null, status: active ? "ACTIVE" : r.operation === "WITHDRAW" ? "WITHDRAWN" : "SUPERSEDED_OR_EXPIRED",
@@ -81,15 +81,16 @@ export const relations: KnowledgeCapability = {
     const st = ok(src.state);
     if (ct && st) {
       // the label DJ (team): his client + DJ keys, plus the retired label-artist key older Owner knowledge carries
-      const keys = [`client:${ct.clientId}`, `dj:${ct.clientId}`, ...ct.retiredKeys];
-      if (keys.includes(key)) for (const other of keys.filter((k) => k !== key)) {
+      const keys = [`client:${ct.clientId}`, `dj:${ct.clientId}`];
+      // a retired key is only matched (older Owner knowledge / links), never served as a live "same identity" entity
+      if (keys.includes(key) || ct.retiredKeys.includes(key)) for (const other of keys.filter((k) => k !== key)) {
         items.push(item({ id: `canonical:${other}`, entity: other, label: partner("אותה ישות (קישור קנוני באפליקציה)"), epistemic: "FACT", source: "APP_IDENTITY", relationQuality: "ID", fields: { relation: "SAME_IDENTITY", relationQuality: "CANONICAL_RELATION" } }));
       }
     }
     const kn = knowledgeOf(src);
     if (kn) {
       for (const r of activeKnowledge(kn, todayOf(src)).filter((x) => knowledgeKind(x.kind)?.relationQuality && touches(x, key))) {
-        const other = r.identityKeys.includes(key) ? (typeof r.value.object === "string" ? r.value.object : null) : r.subjectKey;
+        const other = r.identityKeys.includes(key) ? (typeof r.value.object === "string" ? r.value.object : null) : (r.servedSubjectKey ?? r.subjectKey);
         items.push(item({ id: `owner:${r.id}`, entity: other && !other.startsWith("company:") ? other : null, label: partnerRecord(r.meaningHe), epistemic: r.epistemic, source: "OWNER_KNOWLEDGE", relationQuality: "OWNER_CONFIRMED",
           fields: { relation: r.kind === "ORGANIZATIONAL_ROLE" ? `ROLE:${r.value.role}` : String(r.value.relation ?? r.kind), frequency: r.value.frequency ?? null, relationQuality: "OWNER_CONFIRMED_RELATION", counterpart: other ? record(String(r.value.objectLabel ?? other)) : null } }));
       }
