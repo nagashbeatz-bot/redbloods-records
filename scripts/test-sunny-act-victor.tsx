@@ -17,9 +17,11 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 type Settings = { monthlyGoal: number; monthlySalary: number; salaryCurrency: string; salaryPayDay: number; stuckAfterDays: number };
-interface W { works: Record<string, VictorWorkView>; reviews: Record<string, Record<string, { notes: string; draft: boolean; sent: boolean }>>; settings: Settings; rows: Record<string, { id: string; status: string; amount: number; currency: string }>; overrides: Record<string, { amount?: number; status?: string }>; marks: Record<string, string>; pushes: string[]; projects: Record<string, string>; byProject: Record<string, string> }
+interface W { vfolders: Set<string>; vfiles: Record<string, Array<{ ref: string; name: string; uploadedBy: string | null }>>; works: Record<string, VictorWorkView>; reviews: Record<string, Record<string, { notes: string; draft: boolean; sent: boolean }>>; settings: Settings; rows: Record<string, { id: string; status: string; amount: number; currency: string }>; overrides: Record<string, { amount?: number; status?: string }>; marks: Record<string, string>; pushes: string[]; projects: Record<string, string>; byProject: Record<string, string> }
 const vv = (o: Partial<VictorWorkView>): VictorWorkView => ({ title: "ביט לשליו", projectId: U(40), projectName: "קרוב אלייך", status: "פעיל", workState: "נשלח לויקטור", sentDate: "2026-09-01", internalDeadline: null, briefText: "", hasTask: false, reviewKeys: "v1", vendorName: "victor", ...o });
 const world = (): W => ({
+  vfolders: new Set<string>(),
+  vfiles: { [U(1)]: [{ ref: "ref_aaaa1111", name: "Beat V1.wav", uploadedBy: "victor" }, { ref: "ref_bbbb2222", name: "Brief.pdf", uploadedBy: "owner" }] },
   works: { [U(1)]: vv({}), [U(2)]: vv({ title: "", projectId: null, projectName: "" }) },
   reviews: { [U(1)]: { v1: { notes: "להאט את הטמפו", draft: true, sent: false } } },
   settings: { monthlyGoal: 12, monthlySalary: 550, salaryCurrency: "$", salaryPayDay: 10, stuckAfterDays: 5 },
@@ -29,6 +31,10 @@ const world = (): W => ({
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const writers = {
+    async victorFolderState(id: string) { return w.works[id] ? { hasFolder: w.vfolders.has(id) } : null; },
+    async setUpVictorFolder(id: string) { calls.push("setUpVictorFolder"); w.vfolders.add(id); },
+    async victorWorkFiles(id: string) { return w.vfiles[id] ? w.vfiles[id].map((f) => ({ ...f })) : (w.works[id] ? [] : null); },
+    async deleteVictorWorkFile(id: string, ref: string) { calls.push("deleteVictorWorkFile"); w.vfiles[id] = w.vfiles[id].filter((f) => f.ref !== ref); return "ok"; },
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id], artist: "", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },
     async readVictorWorkFull(id: string) { return w.works[id] ? { ...w.works[id] } : null; },
     async victorWorkForProject(pid: string) { return w.byProject[pid] ?? null; },
@@ -50,6 +56,8 @@ function mk() {
 }
 const V1 = `victor-work:${U(1)}`, V2 = `victor-work:${U(2)}`;
 const CASES: FamilyCase<W>[] = [
+  { id: "SET_UP_VICTOR_FOLDER", args: { victorWork: V1 }, confirm: "כן בוס, קישור ציבורי", bad: { victorWork: "victor-work:1" }, missing: { victorWork: `victor-work:${U(9)}` }, wrongKind: { victorWork: `project:${U(1)}` }, stale: (w) => { w.vfolders.add(U(1)); }, check: (w) => w.vfolders.has(U(1)) },
+  { id: "DELETE_VICTOR_FILE", args: { victorWork: V1, fileRef: "ref_aaaa1111" }, confirm: "כן בוס, מחיקה", bad: { victorWork: V1, fileRef: "/Projects/x.wav" }, missing: { victorWork: V1, fileRef: "ref_zzzz9999" }, wrongKind: { victorWork: `project:${U(1)}`, fileRef: "ref_aaaa1111" }, stale: (w) => { w.vfiles[U(1)][0].name = "Beat V1b.wav"; }, check: (w) => w.vfiles[U(1)].length === 1 && w.vfiles[U(1)][0].ref === "ref_bbbb2222" },
   { id: "CREATE_VICTOR_WORK", args: { project: `project:${U(41)}`, title: "ביט חדש" }, bad: { project: `project:${U(41)}`, sentDate: "אתמול" }, missing: { project: `project:${U(99)}` }, wrongKind: { project: V1 }, stale: (w) => { w.byProject[U(41)] = U(2); }, check: (w, c) => Object.values(w.works).some((x) => x.projectId === U(41) && x.workState === "נשלח לויקטור") && c.join() === "createVictorWorkRecord" },
   { id: "UPDATE_VICTOR_WORK_DETAILS", args: { victorWork: V1, briefText: "BPM 90, מינורי" }, bad: { victorWork: V1, sentDate: "x" }, missing: { victorWork: `victor-work:${U(9)}`, title: "x" }, wrongKind: { victorWork: `project:${U(40)}`, title: "x" }, stale: (w) => { w.works[U(1)].briefText = "משהו"; }, check: (w) => w.works[U(1)].briefText === "BPM 90, מינורי" },
   { id: "SET_VICTOR_WORK_STATUS", args: { victorWork: V1, status: "הושלם" }, confirm: "כן בוס, הושלם", bad: { victorWork: V1, status: "נסגר" }, missing: { victorWork: `victor-work:${U(9)}`, status: "הושלם" }, stale: (w) => { w.works[U(1)].status = "בוטל"; }, check: (w) => w.works[U(1)].status === "הושלם" && w.pushes.includes(`completed:${U(1)}`) },

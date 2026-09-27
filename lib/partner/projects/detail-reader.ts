@@ -156,7 +156,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     mixComments: mapSection(comm, (x) => (s(x.id) ? {
       id: String(x.id), versionId: s(x.mix_version_id), timestampSeconds: n(x.timestamp_seconds), text: t(x.comment_text), author: s(x.author), role: s(x.role), status: s(x.status), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
     } : null)),
-    commentAttachments: mapSection(att, (x) => ({ commentId: s(x.comment_id), fileName: s(x.file_name), size: n(x.file_size), path: s(x.dropbox_path), mimeType: s(x.mime_type), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at) })),
+    commentAttachments: mapSection(att, (x) => ({ id: s(x.id), commentId: s(x.comment_id), fileName: s(x.file_name), size: n(x.file_size), path: s(x.dropbox_path), mimeType: s(x.mime_type), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at) })),
     mixTargets: mapSection(targ, (x) => (s(x.id) ? { id: String(x.id), workId: s(x.work_id), kind: s(x.target_kind), displayName: s(x.display_name), sortOrder: n(x.sort_order), removedAt: s(x.removed_at), createdAt: s(x.created_at) } : null)),
     mixTargetNotes: mapSection(tnotes, (x) => ({ id: s(x.id), targetId: s(x.mix_target_id), text: t(x.note_text), author: s(x.author), status: s(x.status), createdAt: s(x.created_at), updatedAt: s(x.updated_at) })),
     finalFiles: mapSection(finals, (x) => ({ workId: s(x.work_id), projectId: s(x.project_id), fileName: s(x.file_name), path: s(x.dropbox_path), fileType: s(x.file_type), fileSize: n(x.file_size), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at) })),

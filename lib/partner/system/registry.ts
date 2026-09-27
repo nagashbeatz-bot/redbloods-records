@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-34";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-35";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -965,4 +965,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-32", date: "2026-09-27", domain: "ALBUMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "'מידע קודם' של אלבום (היסטוריה ממאנדיי): הוספה / עדכון / מחיקה של שורה והערה — מבודד מהכספים. דדליין: גם הסרה." },
   { version: "2026.09.27-33", date: "2026-09-27", domain: "PROJECTS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "עדכונים גורפים (אישור חזק, תצוגה של כל מה שישתנה): תאריכי התחלה מהסשן הראשון, כרטיסי לקוח חסרים לאמנים, קיבוע תיקיות פרויקטים." },
   { version: "2026.09.27-34", date: "2026-09-27", domain: "PROJECTS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מחיקת פרויקט דרך סאני (אישור חזק, תצוגה של כל מה שנמחק / מתנתק / נשאר); כל שלב נבדק והפרויקט נמחק אחרון." },
+  { version: "2026.09.27-35", date: "2026-09-27", domain: "VICTOR", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ויקטור: מחיקת קובץ מעבודה (לפי מזהה), הקמת תיקיית העבודה; Red Films: הקמת תיקיית הפקה." },
 ];

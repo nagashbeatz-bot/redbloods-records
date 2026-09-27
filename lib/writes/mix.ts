@@ -77,3 +77,26 @@ export async function deleteEngineerWorkClean(workId: string): Promise<{ removed
   }
   return { removedExpense: false };
 }
+
+/** DELETE /api/sound-engineer/comments/[commentId]/attachments/[attachmentId] semantics: the stored file best-effort
+ *  (a failure is logged, not fatal), then the row. The attachment must belong to that comment. */
+export async function deleteCommentAttachment(commentId: string, attachmentId: string): Promise<"ok" | "not_found"> {
+  const { getAttachmentInternal, deleteAttachment } = await import("@/lib/mix-comment-attachments-store");
+  const a = await getAttachmentInternal(attachmentId);
+  if (!a || a.commentId !== commentId) return "not_found" as const;
+  try {
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    const token = await getDropboxToken();
+    await fetch("https://api.dropboxapi.com/2/files/delete_v2", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ path: a.dropboxPath }) });
+  } catch (e) {
+    console.error("[comments/attachments DELETE] storage cleanup failed:", e);
+  }
+  await deleteAttachment(attachmentId);
+  return "ok";
+}
+/** Sunny: metadata of one attachment (never the path). */
+export async function readCommentAttachment(attachmentId: string): Promise<{ commentId: string; fileName: string } | null> {
+  const { getAttachmentInternal } = await import("@/lib/mix-comment-attachments-store");
+  const a = await getAttachmentInternal(attachmentId);
+  return a ? { commentId: a.commentId, fileName: a.fileName } : null;
+}

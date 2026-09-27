@@ -19,9 +19,10 @@ const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "u
 type Cm = { versionId: string; workId: string; text: string; timestampSeconds: number | null; status: string; attachments: number };
 type Tg = { workId: string; name: string; kind: string; removed: boolean };
 type Nt = { targetId: string; text: string; status: string };
-interface W { works: Record<string, EngineerWorkView>; order: string[]; versions: Record<string, { workId: string; label: string; status: string }>; comments: Record<string, Cm>; targets: Record<string, Tg>; notes: Record<string, Nt>; projects: Record<string, string>; pushes: string[]; skipped: boolean[]; synced: string[]; sentOnce: boolean }
+interface W { atts: Record<string, { commentId: string; fileName: string }>; works: Record<string, EngineerWorkView>; order: string[]; versions: Record<string, { workId: string; label: string; status: string }>; comments: Record<string, Cm>; targets: Record<string, Tg>; notes: Record<string, Nt>; projects: Record<string, string>; pushes: string[]; skipped: boolean[]; synced: string[]; sentOnce: boolean }
 const wv = (o: Partial<EngineerWorkView>): EngineerWorkView => ({ projectId: U(40), projectType: "שיר", title: "קרוב אלייך", engineerName: "Steven", workType: "מיקס", status: "נשלח", agreedPrice: 200, currency: "$", amountPaid: 0, paymentDate: null, sentDate: "2026-09-01", internalDeadline: null, notes: "", expenseStatus: null, ...o });
 const world = (): W => ({
+  atts: { [U(70)]: { commentId: U(30), fileName: "vocal-ref.m4a" } },
   works: { [U(1)]: wv({}), [U(2)]: wv({ engineerName: "Bill", title: "סינגל", agreedPrice: 800, currency: "₪", expenseStatus: "צפוי" }), [U(3)]: wv({ title: "רידים", projectType: "רידים" }) },
   order: [U(1), U(3)], versions: { [U(20)]: { workId: U(1), label: "v2", status: "בבדיקה" } },
   comments: { [U(30)]: { versionId: U(20), workId: U(1), text: "הווקאל חזק מדי", timestampSeconds: 42, status: "open", attachments: 1 } },
@@ -32,6 +33,8 @@ const world = (): W => ({
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const writers = {
+    async readCommentAttachment(id: string) { return w.atts[id] ? { ...w.atts[id] } : null; },
+    async deleteCommentAttachment(cid: string, id: string) { calls.push("deleteCommentAttachment"); if (w.atts[id]?.commentId !== cid) return "not_found"; delete w.atts[id]; return "ok"; },
     async readEngineerWork(id: string) { return w.works[id] ? { ...w.works[id] } : null; },
     async listEngineerOrder(eng: string) { return w.order.filter((id) => w.works[id]?.engineerName === eng); },
     async projectTypeOf(pid: string) { return w.projects[pid] ?? null; },
@@ -63,6 +66,7 @@ function mk() {
 }
 const MW1 = `mix-work:${U(1)}`, MW2 = `mix-work:${U(2)}`, MW3 = `mix-work:${U(3)}`, MV = `mix-version:${U(20)}`, MC = `mix-comment:${U(30)}`, ML = `mix-line:${U(51)}`, PN = `premix-note:${U(60)}`;
 const CASES: FamilyCase<W>[] = [
+  { id: "DELETE_MIX_ATTACHMENT", args: { attachment: `mix-attachment:${U(70)}` }, confirm: "כן בוס, מחיקה", bad: { attachment: "mix-attachment:1" }, missing: { attachment: `mix-attachment:${U(79)}` }, wrongKind: { attachment: MC }, stale: (w) => { w.atts[U(70)].fileName = "x.m4a"; }, check: (w) => !w.atts[U(70)] && !!w.comments[U(30)] },
   { id: "CREATE_ENGINEER_WORK", args: { project: `project:${U(40)}`, engineerName: "Steven", workType: "מיקס", agreedPrice: 250, currency: "$" }, confirm: "כן בוס, Steven $250", bad: { project: `project:${U(40)}`, engineerName: "Steven", workType: "הקלטה" }, missing: { project: `project:${U(99)}`, engineerName: "Bill", workType: "מיקס" }, stale: (w) => { w.projects[U(40)] = "EP"; }, check: (w, c) => Object.values(w.works).some((x) => x.agreedPrice === 250 && x.engineerName === "Steven") && c.join() === "createEngineerWork:true" },
   { id: "UPDATE_ENGINEER_WORK", args: { mixWork: MW2, workType: "מאסטר", internalDeadline: "2026-10-05" }, confirm: "כן בוס, 2026-10-05", bad: { mixWork: MW2, internalDeadline: "מחר" }, missing: { mixWork: `mix-work:${U(9)}`, notes: "x" }, wrongKind: { mixWork: MV, notes: "x" }, stale: (w) => { w.works[U(2)].notes = "x"; }, check: (w, c) => w.works[U(2)].workType === "מאסטר" && c.join() === "updateEngineerWork:false" },
   { id: "SET_ENGINEER_WORK_STATUS", args: { mixWork: MW1, status: "אושר" }, confirm: "כן בוס, אושר", bad: { mixWork: MW1, status: "הושלם" }, missing: { mixWork: `mix-work:${U(9)}`, status: "אושר" }, stale: (w) => { w.works[U(1)].status = "חזר"; }, check: (w, c) => w.works[U(1)].status === "אושר" && c.join() === "updateEngineerWork:true" },

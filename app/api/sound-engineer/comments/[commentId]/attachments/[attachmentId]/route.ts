@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { getAttachmentInternal, deleteAttachment } from "@/lib/mix-comment-attachments-store";
 
 /**
  * DELETE /api/sound-engineer/comments/[commentId]/attachments/[attachmentId]
@@ -15,24 +14,11 @@ export async function DELETE(
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const { commentId, attachmentId } = await params;
-    const attachment = await getAttachmentInternal(attachmentId);
-    if (!attachment || attachment.commentId !== commentId) {
+    // shared writer (lib/writes/mix): the attachment must belong to this comment; stored file best-effort, then the row
+    const { deleteCommentAttachment } = await import("@/lib/writes/mix");
+    if ((await deleteCommentAttachment(commentId, attachmentId)) === "not_found") {
       return NextResponse.json({ ok: false, error: "attachment לא נמצא" }, { status: 404 });
     }
-
-    try {
-      const { getDropboxToken } = await import("@/lib/dropbox-token");
-      const token = await getDropboxToken();
-      await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ path: attachment.dropboxPath }),
-      });
-    } catch (e) {
-      console.error("[comments/attachments DELETE] dropbox cleanup failed:", attachment.dropboxPath, e);
-    }
-
-    await deleteAttachment(attachmentId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

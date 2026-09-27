@@ -17,8 +17,9 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 type Row = Record<string, unknown>;
-interface W { prods: Record<string, Row>; managed: Set<string>; lines: Record<string, Row>; pays: Record<string, Row>; clips: Record<string, Row>; deals: Record<string, { clipAgreedPrice: number; currency: string; paymentCount: number; managedProductionId: string | null }>; expenses: number; projects: Record<string, string>; equip: Record<string, Row>; docs: Record<string, Row>; refs: Record<string, Row> }
+interface W { folders: Set<string>; prods: Record<string, Row>; managed: Set<string>; lines: Record<string, Row>; pays: Record<string, Row>; clips: Record<string, Row>; deals: Record<string, { clipAgreedPrice: number; currency: string; paymentCount: number; managedProductionId: string | null }>; expenses: number; projects: Record<string, string>; equip: Record<string, Row>; docs: Record<string, Row>; refs: Record<string, Row> }
 const world = (): W => ({
+  folders: new Set<string>(),
   prods: { [U(3)]: { id: U(3), title: "הפקה ישנה", status: "בוטל" }, [U(1)]: { id: U(1), title: "קליפ שליו", status: "בתכנון", production_type: "קליפ", project_id: U(40), general_budget: 8000, client_price: 0, advance_required: 0, advance_received: 0, collection_status: "לא רלוונטי", edit_status: "לא התחיל" }, [U(2)]: { id: U(2), title: "צילום הופעה", status: "רעיון", production_type: "צילום הופעה", project_id: null, general_budget: 3000 } },
   managed: new Set([U(1)]),
   lines: { [U(10)]: { id: U(10), production_id: U(2), title: "צלם", category: "צלם", planned_amount: 1500, actual_amount: 0, vendor_name: "", status: "מתוכנן", notes: "" } },
@@ -32,6 +33,8 @@ const world = (): W => ({
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const writers = {
+    async productionFolderState(id: string) { return w.prods[id] ? { hasFolder: w.folders.has(id) } : null; },
+    async createProductionFolder(id: string) { calls.push("createProductionFolder"); w.folders.add(id); },
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id], artist: "", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },
     async readProductionRow(id: string) { return w.prods[id] ? { ...w.prods[id] } : null; },
     async countProductionsTitled(t: string) { return Object.values(w.prods).filter((p) => p.title === t).length; },
@@ -71,6 +74,7 @@ function mk() {
 }
 const P1 = `rf-production:${U(1)}`, P2 = `rf-production:${U(2)}`, L10 = `rf-budget-line:${U(10)}`, Y20 = `rf-payment:${U(20)}`, C30 = `clip-row:${U(30)}`, J40 = `project:${U(40)}`, J41 = `project:${U(41)}`;
 const CASES: FamilyCase<W>[] = [
+  { id: "CREATE_PRODUCTION_FOLDER", args: { production: P2 }, confirm: "כן בוס, קישור ציבורי", bad: { production: "rf-production:1" }, missing: { production: `rf-production:${U(9)}` }, wrongKind: { production: `project:${U(1)}` }, stale: (w) => { w.folders.add(U(2)); }, check: (w) => w.folders.has(U(2)) },
   { id: "CREATE_PRODUCTION", args: { title: "ויזואלייזר", productionType: "ויזואלייזר" }, bad: { title: "" }, stale: (w) => { w.prods[U(77)] = { id: U(77), title: "ויזואלייזר", status: "רעיון" }; }, check: (w) => Object.values(w.prods).some((p) => p.title === "ויזואלייזר" && p.status === "רעיון") },
   { id: "UPDATE_PRODUCTION_DETAILS", args: { production: P2, status: "יום צילום נקבע", shootDate: "2026-10-12", directorName: "דני" }, confirm: "כן בוס, יום צילום נקבע 2026-10-12", bad: { production: P2, status: "בוטל" }, missing: { production: `rf-production:${U(9)}`, notes: "x" }, wrongKind: { production: J40, notes: "x" }, stale: (w) => { w.prods[U(2)].status = "בתכנון"; }, check: (w) => w.prods[U(2)].status === "יום צילום נקבע" && w.prods[U(2)].shoot_date === "2026-10-12" && w.prods[U(2)].director_name === "דני" },
   { id: "SET_PRODUCTION_MONEY", args: { production: P2, clientPrice: 5000, collectionStatus: "צפוי" }, confirm: "כן בוס, ₪5,000 צפוי", bad: { production: P2, clientPrice: -1 }, missing: { production: `rf-production:${U(9)}`, clientPrice: 1 }, stale: (w) => { w.prods[U(2)].client_price = 4000; }, check: (w) => w.prods[U(2)].client_price === 5000 && w.prods[U(2)].collection_status === "צפוי" },

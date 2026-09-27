@@ -48,7 +48,7 @@ Also:
 - Add a `CAPABILITY_CHANGES` entry and bump `SYSTEM_BASELINE_VERSION` when Sunny's support changes.
 - A new page or API group that no domain owns fails the repository-wide awareness test. Either assign it to a domain, or add a `SURFACE_EXCLUSIONS` entry with an explicit `SUNNY IMPACT: NONE` reason.
 - Visual-only changes state `SUNNY IMPACT: NONE` in the commit message.
-- Sunny never inspects source code at runtime and never edits code. Push, Calendar writes, Agent Alerts, settings and auth are never exposed to Sunny.
+- Sunny never inspects source code at runtime and never edits code. Push, Calendar writes, Agent Alerts and settings are reachable ONLY through typed, Owner-approved primitives (never a generic sender or settings writer; a push only when the app's own writer sends it). Auth, users, roles, passwords, tokens and device registration are never exposed to Sunny.
 
 ## Sunny Awareness Check: users, roles, portals, access and Push
 
@@ -257,4 +257,6 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
 - **Each family has a test** (`scripts/test-sunny-act-<family>.tsx`, on `scripts/fixtures/act-harness.ts`): happy path with exact verification, invalid args, missing entity, wrong type, stale → no write, no approval → no write, plus family rules, pinned vocabularies and shared-writer checks.
 - **The `partner:act` consent text and the served coverage line stay accurate** (typed registered actions only, never generic write access; the effects list is derived from the primitives).
 - **Addressability:** an action Sunny cannot target is not an action Sunny can perform. Every key kind a primitive parses must be listed by the `action_targets` capability (`lib/partner/act/targets.ts`, built only from already-loaded sources, no new table reader), resolved by `partner_resolve`, or documented in `NON_KEY_TARGETS` (e.g. a wrong sketch id is refused WITH the artist's sketches). `scripts/test-sunny-act-targets.tsx` fails on an unaddressable kind.
+- **Files:** an existing file is addressed by a server-computed handle (project + fileRef, Victor work + fileRef), never a path. New file bytes (uploads) and URL values are open Boss decisions (the file channel; plans never persist URLs) — register a row's remaining work instead of inventing a channel.
+- **Bulk:** a bulk primitive fingerprints the exact set it will change (any change before execution is STALE) and needs "עדכון גורף" in the approval.
 - **One registry truth:** a census row whose whole outcome live primitives carry out (`COVERAGE_MAP` full) is EXECUTABLE in the registry itself; planning its id answers `USE_PRIMITIVES` with the primitives to plan.

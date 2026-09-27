@@ -103,16 +103,16 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "MIX.RIDDIM_LINES": { by: ["ADD_RIDDIM_LINE", "RENAME_RIDDIM_LINE", "REMOVE_RIDDIM_LINE", "ADD_PREMIX_NOTE", "UPDATE_PREMIX_NOTE", "DELETE_PREMIX_NOTE"], full: true },
   "MIX.SEND_NOTES": { by: ["SEND_MIX_NOTES"], full: true },
   "MIX.SEND_TO_ENGINEER": { by: ["CREATE_ENGINEER_WORK", "NOTIFY_MIX_READY"], full: true },
-  "MIX.COMMENT_ATTACHMENT": { by: ["DELETE_MIX_COMMENT"], full: false, remaining: "attaching an image / audio needs a new file's bytes (upload) — the file channel; deleting one attachment alone" },
+  "MIX.COMMENT_ATTACHMENT": { by: ["DELETE_MIX_COMMENT", "DELETE_MIX_ATTACHMENT"], full: false, remaining: "attaching an image / audio needs a new file's bytes (upload) — the file channel" },
   "MIX.UPLOAD_VERSION": { by: ["DELETE_MIX_VERSION"], full: false, remaining: "a new file's bytes (upload) — the file channel" },
-  "MIX.UPLOAD_FINAL_FILES": { by: ["SET_ENGINEER_WORK_STATUS"], full: false, remaining: "a new file's bytes (upload) — the file channel + finishing the batch" },
+  "MIX.UPLOAD_FINAL_FILES": { by: ["SET_ENGINEER_WORK_STATUS"], full: false, remaining: "a new file's bytes (upload) — the file channel (the batch-complete push is only the tail of that upload)" },
   "PROJECT.REORDER_ENGINEER_WORKS": { by: ["MOVE_ENGINEER_WORK"], full: true },
   "PROJECT.RIDDIM_TARGETS": { by: ["ADD_RIDDIM_LINE", "RENAME_RIDDIM_LINE", "REMOVE_RIDDIM_LINE", "ADD_PREMIX_NOTE", "UPDATE_PREMIX_NOTE", "DELETE_PREMIX_NOTE"], full: true },
   "PROJECT.SEND_TO_ENGINEER": { by: ["CREATE_ENGINEER_WORK", "NOTIFY_MIX_READY"], full: true },
   "PROJECT.EDIT_ENGINEER_WORK": { by: ["UPDATE_ENGINEER_WORK", "SET_ENGINEER_WORK_STATUS", "SET_ENGINEER_WORK_PRICE", "RECORD_ENGINEER_PAYMENT"], full: true },
   "PROJECT.DELETE_ENGINEER_WORK": { by: ["DELETE_ENGINEER_WORK"], full: true },
   "PROJECT.ENGINEER_NOTIFY": { by: ["NOTIFY_MIX_READY", "SEND_MIX_NOTES"], full: true },
-  "PROJECT.MIX_COMMENTS": { by: ["ADD_MIX_COMMENT", "EDIT_MIX_COMMENT", "RESOLVE_MIX_COMMENT", "REOPEN_MIX_COMMENT", "DELETE_MIX_COMMENT"], full: false, remaining: "comment attachments need a new file's bytes (upload) — the file channel" },
+  "PROJECT.MIX_COMMENTS": { by: ["ADD_MIX_COMMENT", "EDIT_MIX_COMMENT", "RESOLVE_MIX_COMMENT", "REOPEN_MIX_COMMENT", "DELETE_MIX_COMMENT", "DELETE_MIX_ATTACHMENT"], full: false, remaining: "attaching a file to a comment needs a new file's bytes (upload) — the file channel" },
   "PROJECT.MIX_VERSION_EDIT": { by: ["UPDATE_MIX_VERSION_STATUS_OR_LABEL", "DELETE_MIX_VERSION"], full: true },
   // ── Victor family ──
   "VICTOR.NEW_STANDALONE_WORK": { by: ["CREATE_VICTOR_WORK"], full: true },
@@ -205,6 +205,14 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "FILES.BACKFILL_PROJECT_FOLDERS": { by: ["FREEZE_PROJECT_FOLDERS"], full: true },
   // ── Project delete ──
   "PROJECT.DELETE_PROJECT": { by: ["DELETE_PROJECT"], full: true },
+  // ── Victor / Red Films folders + Victor files ──
+  "VICTOR.DELETE_FILE": { by: ["DELETE_VICTOR_FILE"], full: true },
+  "VICTOR.FOLDER_LINK": { by: ["SET_UP_VICTOR_FOLDER"], full: true },
+  "RF.STORAGE_FOLDER": { by: ["CREATE_PRODUCTION_FOLDER"], full: true },
+  "PROJECT.VICTOR_FILES": { by: ["SET_UP_VICTOR_FOLDER", "DELETE_VICTOR_FILE"], full: false, remaining: "uploading files for Victor needs a new file's bytes (upload) — the file channel" },
+  "PROJECT.FINAL_FILES": { by: ["SET_ENGINEER_WORK_STATUS"], full: false, remaining: "a new file's bytes (upload) — the file channel (the batch-complete push is only the tail of that upload)" },
+  "PROJECT.INTAKE": { by: ["CREATE_DELIVERY_FOLDER", "DELETE_PROJECT_FILE"], full: false, remaining: "the intake source is a client's shared-link URL — a URL value, which plans never persist by design (Boss decision)" },
+  "LABEL.PRESS_KIT_LINK": { by: ["SET_NEXT_WORK"], full: false, remaining: "the press-kit value IS a link (URL) — plans never persist URL values by design (Boss decision)" },
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every
@@ -411,6 +419,10 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   CREATE_MISSING_ARTIST_CLIENTS: "CLIENTS",
   FREEZE_PROJECT_FOLDERS: "FILES_DROPBOX",
   DELETE_PROJECT: "PROJECTS",
+  DELETE_VICTOR_FILE: "VICTOR",
+  SET_UP_VICTOR_FOLDER: "VICTOR",
+  CREATE_PRODUCTION_FOLDER: "RED_FILMS",
+  DELETE_MIX_ATTACHMENT: "MIX_PIPELINE",
 };
 
 /** The business-action taxonomy (lib/partner/system BUSINESS_ACTIONS) → the primitives that execute it through

@@ -16,6 +16,10 @@ import { VICTOR_WORK_STATES } from "@/lib/types";
 export type VictorWorkView = { title: string; projectId: string | null; projectName: string; status: string; workState: string | null; sentDate: string | null; internalDeadline: string | null; briefText: string; hasTask: boolean; reviewKeys: string; vendorName: string };
 type Send = { ok: boolean; reason?: string };
 export interface VictorFamilyWriters {
+  victorFolderState(workId: string): Promise<{ hasFolder: boolean } | null>;
+  setUpVictorFolder(workId: string): Promise<void>;
+  victorWorkFiles(workId: string): Promise<Array<{ ref: string; name: string; uploadedBy: string | null }> | null>;
+  deleteVictorWorkFile(workId: string, fileRef: string): Promise<string>;
   readVictorWorkFull(id: string): Promise<VictorWorkView | null>;
   victorWorkForProject(projectId: string): Promise<string | null>;
   createVictorWorkRecord(projectId: string | null, f: { title: string | null; workState: string | null; sentDate: string; notes: string }): Promise<string>;
@@ -55,7 +59,40 @@ async function onMonth(d: WriterDeps, a: Readonly<Record<string, unknown>>): Pro
   return { key: `victor-month:${a.workMonth}`, id: String(a.workMonth), label: `משכורת ויקטור ${a.workMonth}`, fields: await monthFields(d, String(a.workMonth)) };
 }
 
+const VFREF = /^[A-Za-z0-9_-]{8,64}$/;
+async function onVictorFile(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const k = parseKey(a.victorWork, ["victor-work"]); if (!k) return refuse("BAD_ENTITY", "צריך עבודת ויקטור (victor-work:…)");
+  const files = await d.victorWorkFiles(k.id); if (!files) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את עבודת ויקטור");
+  const choices = () => (files.length ? ` — קבצי העבודה (fileRef — שם): ${files.slice(0, 40).map((f) => `${f.ref} — ${f.name.slice(0, 60)}${f.uploadedBy ? ` (${f.uploadedBy})` : ""}`).join("; ")}` : " — אין קבצים בעבודה");
+  if (typeof a.fileRef !== "string" || !VFREF.test(a.fileRef)) return refuse("BAD_ENTITY", `fileRef לא תקין${choices()}`);
+  const f = files.find((x) => x.ref === a.fileRef); if (!f) return refuse("ENTITY_NOT_FOUND", `לא מצאתי את הקובץ בעבודה${choices()}`);
+  return { key: `victor-asset:${k.id}.${f.ref}`, id: `${k.id}.${f.ref}`, label: f.name, fields: { fileName: f.name, uploadedBy: f.uploadedBy, exists: true } };
+}
+const vSplit = (id: string) => { const i = id.indexOf("."); return { workId: id.slice(0, i), ref: id.slice(i + 1) }; };
+async function victorFileRead(d: WriterDeps, id: string): Promise<Fields | null> { const { workId, ref } = vSplit(id); const f = ((await d.victorWorkFiles(workId)) ?? []).find((x) => x.ref === ref); return f ? { fileName: f.name, uploadedBy: f.uploadedBy, exists: true } : null; }
+
 export const VICTOR_PRIMITIVES: readonly PrimitiveSpec[] = [
+  {
+    actionId: "SET_UP_VICTOR_FOLDER", kinds: ["victor-work"],
+    meta: meta("הקמת תיקיית העבודה של ויקטור (עם קישור ציבורי)", "Set up the Victor work's folder tree (01_From_Redbloods / 02_From_Victor / 03_Approved / Production, under the project's folder) with a PUBLIC link, stored on the work — names are read server-side", [K("victorWork")], ["hasFolder"], "setUpVictorFolderForWork (lib/writes/victor)", { effects: ["FILES", "EXTERNAL_LINK"], riskClass: "FILE_MUTATION", reversible: "PARTIAL", compensation: null }),
+    async resolve(d, a) { const k = parseKey(a.victorWork, ["victor-work"]); if (!k) return refuse("BAD_ENTITY", "צריך עבודת ויקטור (victor-work:…)"); const s = await d.victorFolderState(k.id); if (!s) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את עבודת ויקטור"); return { key: `victor-work:${k.id}`, id: k.id, label: "תיקיית ויקטור", fields: { hasFolder: s.hasFolder } }; },
+    read: async (d, id) => { const s = await d.victorFolderState(id); return s ? { hasFolder: s.hasFolder } : null; },
+    plan: (_a, cur) => (cur.hasFolder ? refuse("ALREADY_EXISTS", "לעבודה כבר יש תיקייה") : { ok: true, after: { hasFolder: true } }),
+    apply: (d, id) => d.setUpVictorFolder(id),
+    requiredValues: () => ["קישור ציבורי"],
+    disclosuresHe: ["נוצרות תיקיות באחסון ונוצר קישור ציבורי לתיקייה (נשמר בעבודה, לא מוצג לסאני)", "לא נשלח כלום לויקטור"],
+  },
+  {
+    actionId: "DELETE_VICTOR_FILE", kinds: ["victor-asset"],
+    meta: meta("מחיקת קובץ מעבודת ויקטור", "Delete one file of a Victor work (storage first, then only that entry; the version's review goes when it was that version's last file) — the Owner's delete in the Victor screen", [K("victorWork"), T("fileRef", true)], ["exists"], "deleteVictorWorkFileByRef (lib/writes/victor)", { effects: ["FILES", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    resolve: onVictorFile, read: victorFileRead,
+    plan: () => ({ ok: true, after: { exists: false } }),
+    async apply(d, id) { const { workId, ref } = vSplit(id); const r = await d.deleteVictorWorkFile(workId, ref); if (r !== "ok") throw new Error(`victor file delete: ${r}`); },
+    async verify(d, id) { return (await victorFileRead(d, id)) === null; },
+    requiredValues: () => ["מחיקה"],
+    warnings: (c) => [`"${c.fileName}" נמחק מהאחסון לצמיתות${c.uploadedBy === "victor" ? " (קובץ שויקטור העלה)" : ""}`],
+    disclosuresHe: ["רק קובץ ששייך לעבודה הזאת (לפי מזהה, לא נתיב)", "ויקטור לא מקבל Push"],
+  },
   {
     actionId: "CREATE_VICTOR_WORK", kinds: ["victor-work"],
     meta: meta("פתיחת עבודה לויקטור (לפרויקט או עצמאית)", "Create a Victor work, project-linked or standalone (nothing is sent to Victor — that is a separate push)", [K("project", false), T("title"), { name: "workState", kind: "enum", required: false, values: VICTOR_WORK_STATES as readonly string[] }, { name: "sentDate", kind: "ymd", required: false }, T("notes")], ["title", "workState", "sentDate"], "createVictorWork (lib/vendor-store)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "remove the work (separate approved action)" }),

@@ -15,6 +15,8 @@ import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefu
 
 type Row = Record<string, unknown>;
 export interface RedFilmsFamilyWriters {
+  productionFolderState(id: string): Promise<{ hasFolder: boolean } | null>;
+  createProductionFolder(id: string): Promise<void>;
   readProductionRow(id: string): Promise<Row | null>;
   countProductionsTitled(title: string): Promise<number>;
   isManagedProduction(id: string, projectId: string | null): Promise<boolean>;
@@ -117,6 +119,16 @@ const withExists = (r: ResolvedTarget | PlanRefusal) => ("ok" in r ? r : { ...r,
 const snake = (o: Fields) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/[A-Z0-9]/g, (c) => `_${c.toLowerCase()}`).replace(/_(\d)/g, "_$1"), v]));
 
 export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
+  {
+    actionId: "CREATE_PRODUCTION_FOLDER", kinds: ["rf-production"],
+    meta: meta("הקמת תיקיית ההפקה (עם קישור ציבורי)", "Create the production's storage folder (+ references, documents) with a PUBLIC link, saved on the production — the production page's button", [K("production")], ["hasFolder"], "createProductionFolder (lib/writes/redfilms)", { effects: ["FILES", "EXTERNAL_LINK"], riskClass: "FILE_MUTATION", reversible: "PARTIAL", compensation: null }),
+    async resolve(d, a) { const k = parseKey(a.production, ["rf-production"]); if (!k) return refuse("BAD_ENTITY", "צריך הפקה (rf-production:…)"); const s = await d.productionFolderState(k.id); if (!s) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את ההפקה"); return { key: `rf-production:${k.id}`, id: k.id, label: "תיקיית הפקה", fields: { hasFolder: s.hasFolder } }; },
+    read: async (d, id) => { const s = await d.productionFolderState(id); return s ? { hasFolder: s.hasFolder } : null; },
+    plan: (_a, cur) => (cur.hasFolder ? refuse("ALREADY_EXISTS", "להפקה כבר יש תיקייה") : { ok: true, after: { hasFolder: true } }),
+    apply: (d, id) => d.createProductionFolder(id),
+    requiredValues: () => ["קישור ציבורי"],
+    disclosuresHe: ["נוצרות תיקיות באחסון ונוצר קישור ציבורי (נשמר בהפקה, לא מוצג לסאני)", "לא נשלח כלום"],
+  },
   {
     actionId: "CREATE_PRODUCTION", kinds: ["rf-production"],
     meta: meta("פתיחת הפקה ב-Red Films", "Create a Red Films production (status רעיון, internal label source — like the new-production modal)", [T("title", true), E("productionType", RF_TYPES), K("project", false), T("artistName"), T("photographerName")], ["title", "productionType"], "createProduction (lib/writes/redfilms)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "cancel the production" }),

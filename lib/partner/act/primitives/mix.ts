@@ -13,6 +13,8 @@ import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefu
 export type EngineerWorkView = { projectId: string | null; projectType: string; title: string; engineerName: string; workType: string; status: string; agreedPrice: number; currency: string; amountPaid: number; paymentDate: string | null; sentDate: string | null; internalDeadline: string | null; notes: string; expenseStatus: string | null };
 type Res = { ok: boolean; reason?: string };
 export interface MixFamilyWriters {
+  readCommentAttachment(id: string): Promise<{ commentId: string; fileName: string } | null>;
+  deleteCommentAttachment(commentId: string, id: string): Promise<string>;
   readEngineerWork(id: string): Promise<EngineerWorkView | null>;
   listEngineerOrder(engineerName: string): Promise<string[]>;
   projectTypeOf(projectId: string): Promise<string | null>;
@@ -82,6 +84,17 @@ async function onNote(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
 const withExists = (r: ResolvedTarget | PlanRefusal) => ("ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } });
 
 export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
+  {
+    actionId: "DELETE_MIX_ATTACHMENT", kinds: ["mix-attachment"],
+    meta: meta("מחיקת קובץ מצורף מהערת מיקס (רק הקובץ, ההערה נשארת)", "Delete one attachment of a mix comment — the stored file (best-effort) then the row; the comment stays", [K("attachment")], ["exists"], "deleteCommentAttachment (lib/writes/mix)", { effects: ["FILES", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    async resolve(d, a) { const k = parseKey(a.attachment, ["mix-attachment"]); if (!k) return refuse("BAD_ENTITY", "צריך קובץ מצורף (mix-attachment:…)"); const r = await d.readCommentAttachment(k.id); if (!r) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הקובץ המצורף"); return { key: `mix-attachment:${k.id}`, id: k.id, label: r.fileName, fields: { fileName: r.fileName, commentId: r.commentId, exists: true } }; },
+    async read(d, id) { const r = await d.readCommentAttachment(id); return r ? { fileName: r.fileName, commentId: r.commentId, exists: true } : null; },
+    plan: () => ({ ok: true, after: { exists: false } }),
+    async apply(d, id) { const r = await d.readCommentAttachment(id); if (!r) throw new Error("attachment gone"); const res = await d.deleteCommentAttachment(r.commentId, id); if (res !== "ok") throw new Error(res); },
+    async verify(d, id) { return (await d.readCommentAttachment(id)) === null; },
+    requiredValues: () => ["מחיקה"],
+    disclosuresHe: ["ההערה עצמה נשארת; רק הקובץ המצורף נמחק", "לא נשלח כלום לאיש הסאונד"],
+  },
   {
     actionId: "CREATE_ENGINEER_WORK", kinds: ["mix-work"],
     meta: meta("פתיחת עבודת מיקס / מאסטר למהנדס", "Create an engineer work (project-linked or standalone); a price creates its expense (Steven: no finance until paid, like his page)", [K("project", false), T("title"), T("engineerName", true), { name: "workType", kind: "enum", required: true, values: ENGINEER_WORK_TYPES }, { name: "status", kind: "enum", required: false, values: ENGINEER_STATUSES }, { name: "agreedPrice", kind: "money", required: false }, { name: "currency", kind: "enum", required: false, values: MIX_CURRENCIES }, { name: "sentDate", kind: "ymd", required: false }, { name: "internalDeadline", kind: "ymd", required: false }, T("notes")], ["engineerName", "workType", "status", "agreedPrice", "currency"], "createSoundEngineerWork (lib/sound-engineer-store)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the work (separate approved action)" }),

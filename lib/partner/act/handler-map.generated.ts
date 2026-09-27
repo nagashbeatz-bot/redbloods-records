@@ -71,6 +71,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "2362808216e7409e6ce12a8710ff14f08aafeddfb67edcbb3e19b1fc84d60496",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -87,6 +88,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "790afd7199afceac14f7beaf08f841586193b24d6dba0e708ce48dfdddeb9d4a",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -140,6 +142,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "c2a4025b34f06afbf84679fd59903a957dc86ca3e413b456011c27dd6b2d5664",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -192,6 +195,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "1dda54d2f591b8d6097dcea95fb28dca6587945107f97a0de4cd402e281b0727",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -245,6 +249,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "52133168460d025c0b64856ccc4ffd0578b0978477ba88c6286124496725f653",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -484,6 +489,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "32eaa2782d56c73614ee2cade0889235fcad9da369b58cefb2697be4ebf97605",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -529,6 +535,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "bbce3ca960534e7e522e65a70e57e20e1e928a6b9da0aced56a4c002a124a55a",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -572,6 +579,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "c40439dae22f8b175b85c3a35ecbdf3188633a05c225ded96b428c0f0cae6f89",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -739,21 +747,21 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7da07a75dd3ae46da764c859965f6d64e32bdf3e3cd289ea46671525568da66a",
+  "sha256": "0220bc4b0b0171c5f13594b6bd3be812636a2deff0e275bcbe74461d8b101973",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "artistName",
-   "error",
-   "error_summary",
-   "projectId",
    "projectName",
    "useProjectsLayout",
-   "vendorName",
-   "workId",
-   "workTitle"
+   "vendorName"
   ]
  },
  "app/api/dropbox/vendor-upload/chunk/route.ts": {
@@ -1509,6 +1517,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "d30c233c1876b87abe0e66d6c812b6fe2c0020d1d663330ce7a4bb4121af37b1",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -1561,6 +1570,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "7e76b388c5d0a059e76de6edb536a4dcf3f197b7037f782c25721cdb40466895",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -1697,6 +1707,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "CALENDAR",
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2133,6 +2144,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "89de289fd2ed03acdb2449684d46836dab3b5fdf336e4884d666737e1eb37738",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2189,6 +2201,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "f7ba593b4ac4a20b1b915336c465cf3df5c4f587ca1b4a451c4f42239736e455",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2232,6 +2245,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "1ead82d412831b6430b3f5070d69e4b4e1db88023b93898d5c3618cccf805e5a",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2275,6 +2289,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "5ae958bbe4ef9f45436d455b3610404344f0a6a4711fa1216d190c564dc233e8",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2318,6 +2333,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "7cda72252ef7b6f138d6734079c3329b97d2dfd7df0a801d103358edec91d0d9",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2361,6 +2377,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "53ad9f656d497b338ce62a30c566c3ae92bf0ce9491a6467bbd762f2f0abc8b8",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2413,10 +2430,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "ed73b9832f5296e37d2b8fc391edde741aae9edc9fc3a9226f93f5c76e03cc1b",
+  "sha256": "bc33b9a89294c59d81aebe4ddd6f881689b1e2e1bd65adba0a657ee9a5cf0e86",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2456,6 +2477,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "4a3f25efcd25bd3fea3f90e3aa0105bd181b979ab600c8350265077db1ab759d",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2499,6 +2521,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "addc4c59d35d171484e063ebb1eeddc5fa3f08b346f03781ff42cd34e8d2dbb2",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2543,6 +2566,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "dd055fbfcdd19fa33cb5d241c7024696a8326b9054e639a420bb5648e2be184a",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -2599,6 +2623,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "b1ba636f8038e73a4078423b9ef9e2689ff9010e628f76d84e712ac2b590a244",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
@@ -3311,10 +3336,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETE"
   ],
   "getWrites": false,
-  "sha256": "11a3e0dcf39bab5d1d5900c1c224486e8de27f46e60b87f1b15cfb3efe008974",
+  "sha256": "37b30bd8e52e130cf3157fc8c56f234dca0c8ddff63df7a33f11d7b75dccfd7e",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -3747,16 +3775,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "81cb517eb74cad66d6437733e90ac8f229d11f0c40251a3b6f1a8b964b13ffd4",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "artistName",
+   "error",
+   "error_summary",
    "internalDeadline",
+   "projectId",
+   "projectName",
    "status",
+   "useProjectsLayout",
+   "vendorName",
    "versionKey",
-   "workId"
+   "workId",
+   "workTitle"
   ]
  },
  "app/api/vendor/victor/notify-work/route.ts": {
@@ -3767,15 +3805,25 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "d7210e558545a6c265cdc2dbf00c935c0a094974e4f521c7365c96b5e42cc93d",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "artistName",
+   "error",
+   "error_summary",
    "internalDeadline",
+   "projectId",
+   "projectName",
    "status",
-   "workId"
+   "useProjectsLayout",
+   "vendorName",
+   "workId",
+   "workTitle"
   ]
  },
  "app/api/vendor/victor/ping/route.ts": {
@@ -3824,14 +3872,25 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "eccb286ff7725a7e1e2d2169053f20485e97489d2cd8b86c3851cb267598de49",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "artistName",
+   "error",
+   "error_summary",
    "internalDeadline",
-   "status"
+   "projectId",
+   "projectName",
+   "status",
+   "useProjectsLayout",
+   "vendorName",
+   "workId",
+   "workTitle"
   ]
  },
  "app/api/vendor/victor/settings/route.ts": {
@@ -3867,10 +3926,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETE"
   ],
   "getWrites": false,
-  "sha256": "a36bbf003246f48f3b2be0ba3a99a8afaab226273aa97ad5f225684792cdc9d5",
+  "sha256": "d2b6101bb57ffbdcd8e2d4be6857802c287caed2bfe92b0b07602cd1f19b516a",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -3886,14 +3949,25 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "ca778b750b4f26f67b926021d5dffc8e4a2e7ef8bdadd88826929f43e05e9d1f",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
    "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "artistName",
+   "error",
+   "error_summary",
    "internalDeadline",
-   "status"
+   "projectId",
+   "projectName",
+   "status",
+   "useProjectsLayout",
+   "vendorName",
+   "workId",
+   "workTitle"
   ]
  },
  "app/api/vendor/victor/work/route.ts": {

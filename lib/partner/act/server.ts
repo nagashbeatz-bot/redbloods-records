@@ -230,6 +230,8 @@ async function mixFamilyWriters(): Promise<MixFamilyWriters> {
   type WType = Parameters<typeof SE.createSoundEngineerWork>[1]["workType"];
   type WStatus = Parameters<typeof SE.createSoundEngineerWork>[1]["status"];
   return {
+    async readCommentAttachment(id) { const { readCommentAttachment } = await import("@/lib/writes/mix"); return readCommentAttachment(id); },
+    async deleteCommentAttachment(cid, id) { const { deleteCommentAttachment } = await import("@/lib/writes/mix"); return deleteCommentAttachment(cid, id); },
     async readEngineerWork(id) {
       const w = await SE.getSoundEngineerWork(id);
       if (!w) return null;
@@ -285,6 +287,10 @@ async function victorFamilyWriters(): Promise<VictorFamilyWriters> {
   const W = await import("@/lib/writes/victor");
   type Init = NonNullable<Parameters<typeof VS.createVictorWork>[1]>;
   return {
+    victorWorkFiles: (id) => W.victorWorkFiles(id),
+    victorFolderState: (id) => W.victorFolderState(id),
+    setUpVictorFolder: (id) => W.setUpVictorFolderForWork(id),
+    deleteVictorWorkFile: (id, ref) => W.deleteVictorWorkFileByRef(id, ref, () => true), // the Owner may delete any file of the work
     async readVictorWorkFull(id) {
       const w = await VS.getVictorWorkById(id);
       if (!w) return null;
@@ -370,6 +376,8 @@ async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
 async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
   const RF = await import("@/lib/writes/redfilms");
   return {
+    productionFolderState: (id) => RF.productionFolderState(id),
+    createProductionFolder: async (id) => { await RF.createProductionFolder(id); },
     readProductionRow: (id) => RF.readProductionRow(id),
     countProductionsTitled: (t) => RF.countProductionsTitled(t),
     isManagedProduction: (id, pid) => RF.isManagedProduction(id, pid),

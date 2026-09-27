@@ -22,6 +22,7 @@ export const NON_KEY_TARGETS: Readonly<Record<string, string>> = {
   system: "no target (company-level action)",
   "project-asset": "project + fileRef — a wrong / missing fileRef is refused WITH the project's files (fileRef — name); a file path is never used",
   "album-prev": "project (+ rowId) — a wrong rowId is refused WITH the table's rows (rowId — song)",
+  "victor-asset": "victorWork + fileRef — a wrong / missing fileRef is refused WITH the work's files (fileRef — name); never a path",
   notification: "MARK_NOTIFICATIONS_READ with a wrong / missing key is refused WITH your unread notifications (notification:<id> — title)",
 };
 /** Parent kind → the child kinds listed under it (the capability's contract; the test pins it against the primitives). */
@@ -29,7 +30,7 @@ export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {
   project: ["session", "meeting", "task", "send-log", "album-track", "mix-work", "victor-work", "clip-row", "rf-production", "proposal", "transaction", "release", "social-campaign"],
   "social-campaign": ["social-content", "promotion", "social-attachment"],
   "social-content": ["social-attachment"],
-  "mix-work": ["mix-version", "mix-comment", "mix-line", "premix-note"],
+  "mix-work": ["mix-version", "mix-comment", "mix-attachment", "mix-line", "premix-note"],
   "rf-production": ["rf-budget-line", "rf-payment", "rf-document", "rf-reference"],
   "label-artist": ["ledger-entry", "media-income"],
   client: ["proposal", "meeting", "task"],
@@ -82,6 +83,8 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       const vIds = new Set(versions.map((x) => x.id));
       for (const x of versions) add("mix-version", x.id, j(x.label, x.fileName, x.uploadedAt), x.status);
       for (const x of rows(d.mixComments)) if (x.versionId && vIds.has(x.versionId)) add("mix-comment", x.id, j(versions.find((v) => v.id === x.versionId)?.label, x.timestampSeconds !== null ? `${x.timestampSeconds}s` : null, (x.text ?? "").slice(0, 80)), x.status);
+      const commentIds = new Set(rows(d.mixComments).filter((x) => x.versionId && vIds.has(x.versionId)).map((x) => x.id));
+      for (const x of rows(d.commentAttachments)) if (x.commentId && commentIds.has(x.commentId)) add("mix-attachment", x.id ?? null, j(x.fileName, x.mimeType));
       const lines = rows(d.mixTargets).filter((x) => x.workId === pid && !x.removedAt);
       const lIds = new Set(lines.map((x) => x.id));
       for (const x of lines) add("mix-line", x.id, j(x.sortOrder, x.displayName, x.kind));

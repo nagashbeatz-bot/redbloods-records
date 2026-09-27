@@ -316,7 +316,7 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/redfilms.ts": "42a8f18f191e12252456c600b79a5ebfa6b8682b0df2e3c3d73f608caa05779d",
+  "lib/writes/redfilms.ts": "462650efcdb5a27cbeb1b4aba808b9443c9939dc281dfba06ae83f91c6d48b82",
   "lib/writes/clip.ts": "4eccc46270b2b40bcc85692fae9d3e71138f4d13ded0a5519ee0f28196a7af2f",
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
   "lib/clip-production.ts": "9167e4578406e96976576e511bf579dfb10a12ca430616ab107180be0b6e0712",

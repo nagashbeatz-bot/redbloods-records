@@ -13,11 +13,14 @@
  *     JSON column blindly.
  */
 import { supabase } from "@/lib/supabase";
-import type { VersionReview } from "@/lib/types";
+import type { FileLink, VersionReview } from "@/lib/types";
+type VendorWork = NonNullable<Awaited<ReturnType<typeof import("@/lib/vendor-store").getScopedVictorWork>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Body = Record<string, any>;
 const MISSING = "not_found" as const;
+const FILE_MISSING = "file_not_found" as const;
+const STORAGE_FAILED = "storage_error" as const;
 
 export async function ownerPatchVictorWork(id: string, body: Body): Promise<void> {
   const { updateVictorWork, getVictorWorkById } = await import("@/lib/vendor-store");
@@ -175,4 +178,181 @@ export async function victorMonthStatements(workMonth: string): Promise<{ amount
   const st = by.get(keys[1])?.[workMonth];
   const lg = by.get(keys[2])?.status;
   return { amountOverride: typeof a === "number" ? a : null, statusOverride: typeof st === "string" ? st : null, legacyMark: typeof lg === "string" ? lg : null };
+}
+
+// ── Victor work file delete (the route + Sunny) — version-key helpers kept in sync with VictorProfilePage.tsx so the
+//    server prunes a version's review exactly like the owner's client flow does. ──
+function parseVersionKey(name: string): string | null {
+  const n = name.toLowerCase();
+  const m = n.match(/\bv[\s._-]?(\d{1,3})\b/) || n.match(/version[\s._-]?(\d{1,3})/) || n.match(/מיקס[\s._-]?(\d{1,3})/);
+  if (m) return `V${Number(m[1])}`;
+  if (/\bfinal\b|פיינל/.test(n)) return "FINAL";
+  if (/\bfix\b/.test(n))         return "FIX";
+  return null;
+}
+function versionKeysOf(files: FileLink[]): Set<string> {
+  const keys = new Set<string>();
+  if (files.length === 0) return keys;
+  const vkeys = files.map(f => (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel.toUpperCase() : parseVersionKey(f.name));
+  if (!vkeys.some(Boolean)) { keys.add("all"); return keys; }
+  for (const k of vkeys) keys.add(k ?? "__untagged__");
+  return keys;
+}
+
+/** DELETE /api/vendor/victor/work/[id]/file core: resolve the fileRef within THIS work's filesSent only; the caller's
+ *  permission predicate decides (Owner: any; Victor: victorMayDelete); storage first, then only this entry. */
+export async function deleteVictorWorkFileByRef(workId: string, fileRef: string, mayDelete: (work: VendorWork, file: FileLink) => boolean): Promise<"ok" | "not_found" | "file_not_found" | "forbidden" | "storage_error"> {
+  const { getScopedVictorWork, updateVictorWork } = await import("@/lib/vendor-store");
+  const { fileRefOf } = await import("@/lib/victor-files");
+  const work = await getScopedVictorWork(workId);
+  if (!work) return MISSING;
+  const filesSent: FileLink[] = work.filesSent ?? [];
+  const idx = filesSent.findIndex((f) => f.dropboxPath && fileRefOf(f.dropboxPath) === fileRef);
+  if (idx < 0) return FILE_MISSING;
+  if (!mayDelete(work, filesSent[idx])) return "forbidden";
+  const dropboxPath = filesSent[idx].dropboxPath as string;
+  const { getDropboxToken } = await import("@/lib/dropbox-token");
+  const token = await getDropboxToken();
+  const delRes = await fetch("https://api.dropboxapi.com/2/files/delete_v2", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ path: dropboxPath }) });
+  if (!delRes.ok) {
+    const errText = await delRes.text();
+    let summary = errText;
+    try { summary = JSON.parse(errText)?.error_summary ?? errText; } catch { /* keep raw */ }
+    // Already gone in storage → idempotent success: still remove the DB metadata.
+    if (!summary.includes(MISSING)) { console.error("[victor work file delete]", summary); return STORAGE_FAILED; }
+  }
+  const nextFiles = filesSent.filter((_, i) => i !== idx);
+  const remainingKeys = versionKeysOf(nextFiles);
+  const reviews = work.versionReviews ?? {};
+  const prunedReviews = Object.fromEntries(Object.entries(reviews).filter(([k]) => remainingKeys.has(k))) as Record<string, VersionReview>;
+  const reviewsChanged = Object.keys(prunedReviews).length !== Object.keys(reviews).length;
+  await updateVictorWork(workId, reviewsChanged ? { filesSent: nextFiles, versionReviews: prunedReviews } : { filesSent: nextFiles });
+  return "ok";
+}
+/** Sunny: the work's filesSent as handles + names (never a path). */
+export async function victorWorkFiles(workId: string): Promise<Array<{ ref: string; name: string; uploadedBy: string | null }> | null> {
+  const { getScopedVictorWork } = await import("@/lib/vendor-store");
+  const { fileRefOf } = await import("@/lib/victor-files");
+  const w = await getScopedVictorWork(workId);
+  return w ? (w.filesSent ?? []).filter((f) => f.dropboxPath).map((f) => ({ ref: fileRefOf(f.dropboxPath!), name: f.name, uploadedBy: f.uploadedBy ?? null })) : null;
+}
+
+// ── Victor folder set-up (POST /api/dropbox/vendor-folder + Sunny SET_UP_VICTOR_FOLDER) ──
+function sanitizeName(s: string): string {
+  return s
+    .replace(/[<>:"/\\|?*]/g, "") // remove forbidden chars
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** First (primary) artist from a comma/semicolon-separated artist string —
+ *  matches the /Projects folder convention used by /api/dropbox/upload. */
+function primaryArtist(raw: string): string {
+  return (raw || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean)[0] ?? "";
+}
+
+async function createFolder(token: string, path: string): Promise<void> {
+  const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, autorename: false }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error_summary?: string };
+    // Ignore "folder already exists" errors
+    if (typeof body.error_summary === "string" && body.error_summary.startsWith("path/conflict/folder")) return;
+    // Ignore "path/conflict" (already exists)
+    if (typeof body.error_summary === "string" && body.error_summary.includes("conflict")) return;
+    throw new Error(`׳™׳¦׳™׳¨׳× ׳×׳™׳§׳™׳™׳” ׳ ׳›׳©׳׳”: ${JSON.stringify(body)}`);
+  }
+}
+
+async function getOrCreateShareLink(token: string, path: string): Promise<string> {
+  const res = await fetch("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings", {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      path,
+      settings: { requested_visibility: { ".tag": "public" } },
+    }),
+  });
+
+  if (res.ok) {
+    const data = await res.json() as { url: string };
+    return data.url.replace("?dl=0", "?dl=0"); // keep as-is
+  }
+
+  // If link already exists, fetch it
+  const body = await res.json() as { error?: { shared_link_already_exists?: { metadata?: { url?: string } } }; url?: string };
+  const existing = body?.error?.shared_link_already_exists?.metadata?.url;
+  if (existing) return existing;
+
+  // Fallback: list existing links
+  const listRes = await fetch("https://api.dropboxapi.com/2/sharing/list_shared_links", {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, direct_only: true }),
+  });
+  if (listRes.ok) {
+    const listData = await listRes.json() as { links?: { url: string }[] };
+    if (listData.links?.length) return listData.links[0].url;
+  }
+
+  throw new Error("׳׳ ׳ ׳™׳×׳ ׳׳™׳¦׳•׳¨ ׳׳• ׳׳§׳‘׳ ׳׳™׳ ׳§ ׳©׳™׳×׳•׳£ ׳׳×׳™׳§׳™׳™׳× ׳”׳¡׳₪׳§");
+}
+
+/** The base folder, exactly the route's two layouts (projects layout: /Projects/<artist>/<project>/Victor, or
+ *  /Projects/Victor/<work title> for a work without a project; legacy: /Victor/<artist> - <project>). */
+export function victorFolderBasePath(body: { vendorName: string; artistName?: string; projectName?: string; useProjectsLayout?: boolean; projectId?: string | null; workTitle?: string | null; workId?: string | null }): string {
+  const vendor = sanitizeName(body.vendorName);
+  if (body.useProjectsLayout) {
+    const hasProject = !!(body.projectId && (body.projectName ?? "").trim());
+    if (hasProject) {
+      const artistFolder = sanitizeName(primaryArtist(body.artistName ?? ""));
+      const projectFolder = sanitizeName(body.projectName ?? "");
+      return `${artistFolder ? `/Projects/${artistFolder}/${projectFolder}` : `/Projects/ללא אמן/${projectFolder}`}/${vendor}`;
+    }
+    const titleFolder = sanitizeName(body.workTitle ?? "") || `vendor_work_${(body.workId ?? "").slice(0, 8)}`;
+    return `/Projects/${vendor}/${titleFolder}`;
+  }
+  return `/${vendor}/${sanitizeName(body.artistName ?? "")} - ${sanitizeName(body.projectName ?? "")}`;
+}
+/** Creates the base + 01_From_Redbloods / 02_From_<Vendor> / 03_Approved / Production and returns a PUBLIC link. */
+export async function buildVictorFolderTree(vendorName: string, basePath: string): Promise<string> {
+  const { getDropboxToken } = await import("@/lib/dropbox-token");
+  const token = await getDropboxToken();
+  const vendor = sanitizeName(vendorName);
+  const fromThem = `02_From_${vendor.charAt(0).toUpperCase() + vendor.slice(1)}`;
+  await createFolder(token, basePath);
+  await createFolder(token, `${basePath}/01_From_Redbloods`);
+  await createFolder(token, `${basePath}/${fromThem}`);
+  await createFolder(token, `${basePath}/03_Approved`);
+  await createFolder(token, `${basePath}/Production`);
+  return getOrCreateShareLink(token, basePath);
+}
+/** Sunny: set up the work's folder (projects layout, names read server-side) and store it on the work. */
+export async function setUpVictorFolderForWork(workId: string): Promise<void> {
+  const { getScopedVictorWork, updateVictorWork } = await import("@/lib/vendor-store");
+  const w = await getScopedVictorWork(workId);
+  if (!w) throw new Error("work not found");
+  let projectName = "", artistName = "";
+  if (w.projectId) { const { getProject } = await import("@/lib/projects-store"); const p = await getProject(w.projectId); projectName = p?.name ?? ""; artistName = p?.artist ?? ""; }
+  const basePath = victorFolderBasePath({ vendorName: "Victor", useProjectsLayout: true, projectId: w.projectId, projectName, artistName, workTitle: w.title, workId });
+  const shareLink = await buildVictorFolderTree("Victor", basePath);
+  await updateVictorWork(workId, { dropboxFolder: basePath, dropboxShareLink: shareLink });
+}
+export async function victorFolderState(workId: string): Promise<{ hasFolder: boolean } | null> {
+  const { getScopedVictorWork } = await import("@/lib/vendor-store");
+  const w = await getScopedVictorWork(workId);
+  return w ? { hasFolder: !!(w as { dropboxFolder?: string | null }).dropboxFolder } : null;
 }

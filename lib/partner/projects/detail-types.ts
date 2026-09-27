@@ -36,7 +36,7 @@ export interface DetailEngineerWork {
 }
 export interface DetailMixVersion { id: string; workId: string | null; projectId: string | null; label: string | null; fileName: string | null; status: string | null; uploadedBy: string | null; durationSeconds: number | null; uploadedAt: string | null; targetId: string | null; path: string | null; size: number | null; type: string | null; createdAt: string | null; updatedAt: string | null }
 export interface DetailMixComment { id: string; versionId: string | null; timestampSeconds: number | null; text: string | null; author: string | null; role: string | null; status: string | null; createdAt: string | null; updatedAt: string | null }
-export interface DetailCommentAttachment { commentId: string | null; fileName: string | null; size: number | null; path: string | null; mimeType: string | null; uploadedBy: string | null; createdAt: string | null }
+export interface DetailCommentAttachment { id?: string | null; commentId: string | null; fileName: string | null; size: number | null; path: string | null; mimeType: string | null; uploadedBy: string | null; createdAt: string | null }
 export interface DetailMixTarget { id: string; workId: string | null; kind: string | null; displayName: string | null; sortOrder: number | null; removedAt: string | null; createdAt: string | null }
 export interface DetailMixTargetNote { id?: string | null; targetId: string | null; text: string | null; author: string | null; status: string | null; createdAt: string | null; updatedAt: string | null }
 export interface DetailFinalFile { workId: string | null; projectId: string | null; fileName: string | null; path: string | null; fileType: string | null; fileSize: number | null; uploadedBy: string | null; createdAt: string | null }

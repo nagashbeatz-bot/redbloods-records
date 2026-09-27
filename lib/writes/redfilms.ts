@@ -500,3 +500,24 @@ export async function countEquipmentNamed(name: string): Promise<number> {
   if (error) throw new Error(error.message);
   return count ?? 0;
 }
+
+/** POST /api/red-films/productions/[id]/dropbox-folder semantics: /Red Films/Productions/<id> (+ references, documents),
+ *  a PUBLIC folder link, both saved on the production. */
+export async function createProductionFolder(productionId: string): Promise<{ basePath: string; folderUrl: string }> {
+  const { createDropboxFolder, getOrCreateFolderShareLink } = await import("@/lib/dropbox-folder");
+  const { getDropboxToken } = await import("@/lib/dropbox-token");
+  const token = await getDropboxToken();
+  const basePath = `/Red Films/Productions/${productionId}`;
+  await createDropboxFolder(token, basePath);
+  await createDropboxFolder(token, `${basePath}/references`);
+  await createDropboxFolder(token, `${basePath}/documents`);
+  const folderUrl = await getOrCreateFolderShareLink(token, basePath);
+  const { error } = await supabase.from("red_films_productions").update({ dropbox_folder_path: basePath, dropbox_folder_url: folderUrl, updated_at: new Date().toISOString() }).eq("id", productionId);
+  if (error) throw error;
+  return { basePath, folderUrl };
+}
+export async function productionFolderState(productionId: string): Promise<{ hasFolder: boolean } | null> {
+  const { data, error } = await supabase.from("red_films_productions").select("dropbox_folder_path").eq("id", productionId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? { hasFolder: !!data.dropbox_folder_path } : null;
+}
