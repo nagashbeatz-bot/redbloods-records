@@ -9,8 +9,9 @@
  * They are joined only on the stored project id. Money stays in layers (B3 Owner canon 2026-09-27, never added together):
  *   A client clip price / clip income ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance, scope קליפ, paid
  *   only when שולם) ≠ D recoupable (NOT_DEFINED until the artist agreement rule is recorded). Red Films ledger payments
- *   are real company money but NOT linked to Finance (RF_LEDGER_NOT_IN_FINANCE — DB-1 pending); a non-clip production's
- *   payment has no canonical Finance scope (SCOPE_REQUIRED). Line paid state = lib/clip-rf-money-pure budgetLinePaidState
+ *   are real company money: DB-1 (live 2026-09-27) links each payment to exactly ONE Finance expense — a LINKED payment
+ *   is part of C (never counted again); only UNLINKED payments are outside Finance (RF_LEDGER_NOT_IN_FINANCE); a
+ *   non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Line paid state = lib/clip-rf-money-pure budgetLinePaidState
  *   (payments; the stored line status is planning intent; actual_amount is a LEGACY manual mirror, never paid).
  * A plan is never counted as spent; currencies are never added (each Red Films money row carries its own currency since 2026-09-27; totals are per currency). The clip deal
  * uses the app's own summarizeClipFinance; expenses use the Finance Brain's validateTx.
@@ -26,7 +27,7 @@ import { heldIsLegacyPossiblyAutoMarked } from "../../session-duration";
 import { projectOperating } from "../sunny/operating";
 import { summarizeClipFinance, CLIP_SCOPE } from "../../clip-finance";
 import { normalizeCurrency } from "../../finance/currency";
-import { budgetLinePaidState, budgetLineStatusConflict, budgetEqualsOldClipPriceSync, BUDGET_EQUALS_CLIP_PRICE_HE, clipRecoupContribution, isClipItemPlanned, isClipItemPromoted, rfPaymentFinanceScope, RF_LEDGER_LINKAGE, RF_LEDGER_LINKAGE_HE } from "../../clip-rf-money-pure";
+import { budgetLinePaidState, budgetLineStatusConflict, budgetEqualsOldClipPriceSync, BUDGET_EQUALS_CLIP_PRICE_HE, clipRecoupContribution, isClipItemPlanned, isClipItemPromoted, rfPaymentFinanceScope, rfPaymentLinkage, RF_LEDGER_LINKAGE, RF_LEDGER_LINKAGE_HE } from "../../clip-rf-money-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -86,6 +87,11 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
   const lineState = (l: (typeof lines)[number]) => { const lp = pays.filter((x) => x.budgetItemId === l.id).map((x) => ({ amount: x.amount, currency: x.currency })); const ln = { planned_amount: l.planned, currency: l.currency ?? "₪", status: l.status }; return { ...budgetLinePaidState(ln, lp), conflict: l.status === "בוטל" ? null : budgetLineStatusConflict(ln, lp) }; };
   const plannedLines = byCur(lines.filter((l) => l.status !== "בוטל"), (l) => l.currency, (l) => l.planned);
   const paidLedger = byCur(pays, (x) => x.currency, (x) => x.amount);
+  // DB-1: a LINKED payment is its ONE Finance expense (part of the actual cost C) — only the UNLINKED ones are outside Finance
+  const payLinkage = pays.map((x) => rfPaymentLinkage({ linkedTransactionId: x.linkedTransactionId ?? null }, { productionType: p.productionType, projectId: p.projectId }));
+  const paidLinked = byCur(pays.filter((_x, i) => payLinkage[i] === "LINKED"), (x) => x.currency, (x) => x.amount);
+  const paidOutsideFinance = byCur(pays.filter((_x, i) => payLinkage[i] !== "LINKED"), (x) => x.currency, (x) => x.amount);
+  const linkedCount = payLinkage.filter((x) => x === "LINKED").length;
   const manualActual = byCur(lines, (l) => l.currency, (l) => l.actual);
   const clipPrice = Number(projSetting?.clipAgreedPrice ?? 0) || 0;
   const scope = rfPaymentFinanceScope(p.productionType);
@@ -106,12 +112,13 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
     money: { currency: d?.currency ?? "₪", totalsNote: "planned / paid / actual are grouped PER CURRENCY — never added across currencies (no FX)", budget: p.generalBudget,
       budgetIsPlanning: "B — the production's own planning budget; never the client clip price (A), never an actual cost (C), never a recoup (D)",
       budgetEqualsOldClipPriceSync: budgetEqualsOldClipPriceSync({ managedBySendClip: !!p.projectId && managedId === p.id, budget: p.generalBudget, budgetCurrency: d?.currency ?? p.currency, clipAgreedPrice: clipPrice, clipCurrency: typeof projSetting?.currency === "string" ? projSetting.currency : null }) ? { epistemic: "DERIVED", he: BUDGET_EQUALS_CLIP_PRICE_HE } : null,
-      plannedLines, paidRedFilmsLedger: paidLedger, legacyManualActualOnLines: manualActual,
+      plannedLines, paidRedFilmsLedger: paidLedger, paidLinkedInFinance: paidLinked, paidOutsideFinance, legacyManualActualOnLines: manualActual,
+      payments: pays.map((x, i) => ({ key: x.id ? `rf-payment:${x.id}` : null, date: x.date, amount: x.amount, currency: x.currency ?? "₪", method: x.method, line: lines.find((l) => l.id === x.budgetItemId)?.title ?? null, financeLinkage: payLinkage[i] })),
       lines: lines.map((l) => { const s = lineState(l); return { title: l.title, category: l.category, storedStatus: l.status, storedStatusMeaning: "planning intent only", paidState: s.state, paid: s.paid, remaining: s.remaining, over: s.over, statusConflict: s.conflict ? s.conflict.code : null, currency: l.currency ?? "₪", planned: l.planned, legacyManualActual: l.actual, paidFromPayments: linePaid(l.id), vendor: l.vendorName, legacyFinanceLink: !!l.linkedTransactionId }; }),
       clientPrice: p.clientPrice, advanceRequired: p.advanceRequired, advanceReceived: p.advanceReceived, collectionStatus: p.collectionStatus,
-      linkage: { state: RF_LEDGER_LINKAGE, he: RF_LEDGER_LINKAGE_HE },
+      linkage: !pays.length ? { state: "NO_PAYMENTS", he: "אין תשלומים", linked: 0, unlinked: 0 } : linkedCount === pays.length ? { state: "ALL_LINKED", he: "כל התשלומים מקושרים להוצאה בכספים (כל תשלום = הוצאה אחת, שיוך קליפ) — נספרים בכספים בלבד", linked: linkedCount, unlinked: 0 } : { state: RF_LEDGER_LINKAGE, he: RF_LEDGER_LINKAGE_HE, linked: linkedCount, unlinked: pays.length - linkedCount },
       financeScope: scope.scope ? { scope: scope.scope } : { scope: null, state: scope.state, he: scope.he },
-      layers: "budget / lines = PLANNED (B); payments = the Red Films ledger — real company money, NOT linked to Finance (RF_LEDGER_NOT_IN_FINANCE, DB-1 pending: no payment → Finance link exists); actual cost (C) = Finance expenses with scope קליפ only. A line's legacyFinanceLink is the old per-line Finance link, not a payment link. actual_amount is a LEGACY manual mirror — never paid",
+      layers: "budget / lines = PLANNED (B); payments = the Red Films ledger — real company money; DB-1 (live): each payment → exactly ONE linked Finance expense (scope קליפ, שולם), so a LINKED payment is already in the actual cost C (paidLinkedInFinance — never added again) and only paidOutsideFinance is not in Finance yet (RF_LEDGER_NOT_IN_FINANCE); actual cost (C) = Finance expenses with scope קליפ only. A line's legacyFinanceLink is the old per-line Finance link, not a payment link. actual_amount is a LEGACY manual mirror — never paid",
       recoup: clipRecoupContribution() },
     createdAt: d?.createdAt ?? null, updatedAt: d?.updatedAt ?? null,
   };
@@ -180,7 +187,7 @@ export function buildVideoView(src: GatewaySources) {
     if (p.project && ["הושלם", "בוטל"].includes(p.project.status ?? "")) S("PRODUCTION_STATUS_VS_PROJECT", "DERIVED_SIGNAL", `${p.title}: הפרויקט ${p.project.status} וההפקה פעילה (${p.status})`);
     if (p.project?.businessType === "לקוח" && p.clientSource === "פנימי - לייבל") S("CLIENT_SOURCE_MISLABELLED", "DERIVED_SIGNAL", `${p.title}: מסומנת 'פנימי - לייבל' אבל הפרויקט של לקוח`);
     if (anyAmount(p.money.plannedLines) || (p.money.budget ?? 0) > 0) S("PLANNED_NOT_SPENT", "CANONICAL_FACT", `${p.title}: תקציב ${p.money.currency}${p.money.budget ?? 0}, שורות מתוכננות ${fmtByCur(p.money.plannedLines)} — תכנון, לא הוצאה`);
-    if (anyAmount(p.money.paidRedFilmsLedger)) S("RF_LEDGER_NOT_IN_FINANCE", "CANONICAL_FACT", `${p.title}: שולמו ${fmtByCur(p.money.paidRedFilmsLedger)} בפנקס של Red Films — כסף אמיתי של החברה, עדיין לא מקושר לכספים (DB-1 ממתין לאישור)${p.money.financeScope.scope ? "" : " — אין שיוך קנוני בכספים להפקה שאינה קליפ (נדרשת החלטה, לא 'כללי')"}`);
+    if (anyAmount(p.money.paidOutsideFinance)) S("RF_LEDGER_NOT_IN_FINANCE", "CANONICAL_FACT", `${p.title}: ${fmtByCur(p.money.paidOutsideFinance)} שולמו בפנקס של Red Films ועדיין לא מקושרים לכספים (${p.money.linkage.unlinked} תשלומים) — כסף אמיתי של החברה${p.money.financeScope.scope ? (p.project ? "; קישור: LINK_RF_PAYMENT_TO_FINANCE / LINK_RF_PAYMENTS_FOR_PRODUCTION" : " — הפקת קליפ בלי פרויקט: צריך פרויקט לפני קישור (PROJECT_REQUIRED)") : " — אין שיוך קנוני בכספים להפקה שאינה קליפ (SCOPE_REQUIRED: נדרשת החלטה, לא 'כללי')"}`);
     if (fmtByCur(p.money.legacyManualActualOnLines) !== fmtByCur(p.money.paidRedFilmsLedger) && p.money.lines.length) S("LINE_ACTUAL_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title}: 'בפועל' ידני (שדה ישן) ${fmtByCur(p.money.legacyManualActualOnLines)} ≠ תשלומים ${fmtByCur(p.money.paidRedFilmsLedger)} — התשלומים הם הקובעים`);
     for (const l of p.money.lines.filter((x) => x.statusConflict)) S("BUDGET_LINE_STATUS_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title} · ${l.title || l.category || "שורה"}: ${l.statusConflict === "STATUS_PAID_WITHOUT_PAYMENTS" ? "מסומנת 'שולם' ואין עליה תשלום רשום" : `מסומנת 'מתוכנן' והתשלומים כבר מכסים את התכנון (${l.currency}${l.paid})`} — שני מקורות סותרים; התשלומים קובעים מה שולם`);
     if (p.money.budgetEqualsOldClipPriceSync) S("BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC", "DERIVED_SIGNAL", `${p.title}: ${BUDGET_EQUALS_CLIP_PRICE_HE}`);
@@ -204,9 +211,9 @@ export function buildVideoView(src: GatewaySources) {
   const active = prods.filter((p) => p.active);
   if (active.some((p) => p.shoot.datePassed && !p.shoot.statusSaysShot)) questions.push({ kind: "STATUS", questionHe: `${active.filter((p) => p.shoot.datePassed && !p.shoot.statusSaysShot).map((p) => p.title).join(", ")} — תאריך הצילום עבר והסטטוס 'רעיון'. הקליפ צולם? איפה הוא עומד?`, why: "the status is manual; outside progress is invisible" });
   if (projects.some((pv) => pv.planning.rows.some((r) => r.transferred && r.transactionExists === false))) questions.push({ kind: "FINANCE", questionHe: "שורת תכנון קליפ מסומנת 'הועבר לכספים' אבל ההוצאה לא קיימת בכספים — נמחקה בכוונה?", why: "a transferred plan without its expense" });
-  if (active.some((p) => anyAmount(p.money.paidRedFilmsLedger))) questions.push({ kind: "FINANCE", questionHe: "תשלומי Red Films (פנקס נפרד) לא עוברים לכספים — שולמו מכסף החברה? צריכים להופיע גם בכספים?", why: "two money records; never summed by Sunny" });
+  if (active.some((p) => anyAmount(p.money.paidOutsideFinance) && p.money.financeScope.scope && p.project)) questions.push({ kind: "FINANCE", questionHe: "יש תשלומי Red Films של קליפ שעוד לא מקושרים לכספים — לקשר אותם עכשיו (כל תשלום = הוצאה אחת בכספים)?", why: "DB-1: each payment → ONE Finance expense; historical payments are linked by the Owner's typed action" });
   const sumCur = (pick: (p: VideoProduction) => Record<string, number>) => { const m: Record<string, number> = {}; for (const p of active) for (const [c, a] of Object.entries(pick(p))) m[c] = round2((m[c] ?? 0) + a); return m; };
-  const totals = { plannedBudget: sumCur((p) => ({ [p.money.currency]: p.money.budget ?? 0 })), plannedLines: sumCur((p) => p.money.plannedLines), paidRedFilmsLedger: sumCur((p) => p.money.paidRedFilmsLedger), currency: "PER CURRENCY — never added across currencies" };
+  const totals = { plannedBudget: sumCur((p) => ({ [p.money.currency]: p.money.budget ?? 0 })), plannedLines: sumCur((p) => p.money.plannedLines), paidRedFilmsLedger: sumCur((p) => p.money.paidRedFilmsLedger), paidLinkedInFinance: sumCur((p) => p.money.paidLinkedInFinance), paidOutsideFinance: sumCur((p) => p.money.paidOutsideFinance), currency: "PER CURRENCY — never added across currencies; paidLinkedInFinance is already inside actualClipExpenses (never add the two)" };
   const expenses: Record<string, Record<string, number>> = { total: {}, paid: {}, unpaid: {} };
   for (const pv of projects) for (const k of ["total", "paid", "unpaid"] as const) for (const [cur, amt] of Object.entries(pv.expenses[k])) addByCurrency(expenses[k], cur, amt);
   const clipPlanned: Record<string, number> = {};
@@ -216,7 +223,7 @@ export function buildVideoView(src: GatewaySources) {
       withoutProject: prods.filter((p) => !p.project).length, managedBySendClip: prods.filter((p) => p.managedBySendClip).length, videoProjects: projects.length, clipDeals: projects.filter((p) => p.clipDeal.price > 0).length,
       shootSessions: projects.reduce((n, p) => n + p.shoots.length, 0), upcomingShoots: projects.reduce((n, p) => n + p.shoots.filter((s) => !s.datePassed && s.status !== "בוטל").length, 0), note: "recorded counts — no score, no readiness verdict" },
     money: { redFilms: totals, clipPlanningByCurrency: clipPlanned, actualClipExpenses: expenses, clipIncome: clipIncomeByCurrency(projects),
-      rule: "A client clip price / clip income (revenue) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — no artist agreement rule recorded). Red Films payments are real company money in a separate ledger, not linked to Finance (DB-1 pending); a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
+      rule: "A client clip price / clip income (revenue) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — no artist agreement rule recorded). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
       clipRecoup: clipRecoupContribution() },
     productions: prods, projects, signals, questions,
     unavailable: [...(c.ops ? [] : ["OPERATIONS (productions) — unknown, not none"]), ...(c.det ? [] : ["PROJECT_DETAIL (production detail, budget lines, documents, sessions, clip rows)"]), ...(c.fin ? [] : ["FINANCE (clip deal, expenses)"]), "storage itself is not listed — 'no link' ≠ 'no footage'", "calendar event details are read live by the calendar capability"],

@@ -411,7 +411,8 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   sig("MALFORMED_RECORDS", "FACT", malformedTx + malformedSettings, malformedEv);
   sig("LABEL_LEDGER_NO_CURRENCY", "FACT", raw.ledger.length, raw.ledger.map((l, i) => ({ sourceType: "label_ledger" as const, sourceId: `${l.artistId}#${i}`, reasonCode: l.sourceTxId ? "LEDGER_ROW_MIRRORS_TRANSACTION" : "LEDGER_ROW_NO_CURRENCY" })));
   sig("MEDIA_INCOME_NO_CURRENCY", "FACT", raw.mediaIncome.length, raw.mediaIncome.map((m, i) => ({ sourceType: "media_income" as const, sourceId: `${m.labelArtistId}#${i}`, status: m.status, reasonCode: "MEDIA_INCOME_NO_CURRENCY" })));
-  const rfPaid = raw.redFilmsPayments.filter((p) => (num(p.amount) ?? 0) > 0);
+  // DB-1: a LINKED payment is its Finance expense (already counted) — only UNLINKED payments are outside Finance (never both)
+  const rfPaid = raw.redFilmsPayments.filter((p) => (num(p.amount) ?? 0) > 0 && !p.linkedTransactionId);
   sig("RED_FILMS_OUTSIDE_FINANCE", "FACT", rfPaid.length, rfPaid.map((p) => ({ sourceType: "red_films_payment" as const, sourceId: p.id, date: p.paymentDate, ...(p.currency ? { currency: p.currency } : {}), reasonCode: p.currency ? "PAYMENT_OUTSIDE_FINANCE_TRANSACTIONS" : "PAYMENT_WITHOUT_CURRENCY_OR_TRANSACTION" })));
   // Red Films payments carry their line currency since 2026-09-27; only a legacy row without one is a currency gap.
   const rfNoCurrency = rfPaid.filter((p) => !p.currency);

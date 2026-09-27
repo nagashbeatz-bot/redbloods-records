@@ -35,6 +35,8 @@ export interface VictorFamilyWriters {
   recordVictorSalaryMonth(p: { workMonth: string; amount: number; currency: string; historicPaid: boolean; paidDate?: string }): Promise<"ok" | "duplicate" | "error">;
   setVictorSalaryOverride(workMonth: string, p: { amount?: number; status?: string }): Promise<void>;
   setVictorLegacyPaymentMark(month: string, status: string, paidDate?: string): Promise<void>;
+  /** lib/vendor-store clearVictorPaymentStatus — removes the legacy vendor_victor_payment_YYYY_MM key. */
+  clearVictorLegacyPaymentMark(month: string): Promise<void>;
 }
 
 export const VICTOR_STATUS_VALUES: readonly string[] = ["פעיל", "הושלם", "בוטל"];
@@ -258,5 +260,19 @@ export const VICTOR_PRIMITIVES: readonly PrimitiveSpec[] = [
     apply: (d, id, a, args) => d.setVictorLegacyPaymentMark(id, String(a.legacyMark), str(args.paidDate)),
     requiredValues: (a, after) => [String(a.workMonth), String(after.legacyMark)],
     disclosuresHe: ["זה מפתח הגדרות ישן — הצהרה שלך; חודש משולם רק כששורת הכספים 'שולם'", "לא יישלח Push"],
+  },
+  {
+    actionId: "CLEAR_VICTOR_MONTH_PAYMENT_MARK", kinds: ["victor-month"],
+    meta: meta("ניקוי סימון התשלום החודשי הישן של ויקטור", "Clear the legacy monthly payment mark (the old per-month settings key) — refused unless the month's live Finance salary row is שולם, so the payment evidence is never lost", [T("workMonth", true)], ["legacyMark"], "clearVictorPaymentStatus (lib/vendor-store)", { effects: ["SETTINGS"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "SET_VICTOR_MONTH_PAYMENT_MARK with the value shown in the preview" }),
+    resolve: onMonth, read: (d, id) => monthFields(d, id),
+    plan(_a, cur) {
+      if (cur.legacyMark === null) return refuse("NO_CHANGE_NEEDED", "אין לחודש הזה סימון ישן — אין מה לנקות");
+      if (cur.rowStatus !== "שולם") return refuse("NO_PAID_FINANCE_ROW", `אין לחודש שורת משכורת בכספים בסטטוס 'שולם' (${cur.rowStatus ? `היום: ${cur.rowStatus}` : "אין שורה"}) — הסימון הישן נשאר כדי לא לאבד ראיה לתשלום; קודם רושמים / מסמנים את שורת הכספים`);
+      return { ok: true, after: { legacyMark: null } };
+    },
+    apply: (d, id) => d.clearVictorLegacyPaymentMark(id),
+    requiredValues: (a) => [String(a.workMonth), "ניקוי"],
+    warnings: (c) => [`הסימון הישן היום: ${c.legacyMark}`, `שורת הכספים של החודש: ${c.rowStatus} ${c.rowCurrency ?? ""}${c.rowAmount ?? ""} — היא הראיה לתשלום`],
+    disclosuresHe: ["רק מפתח ההגדרות הישן נמחק; שורת הכספים, הצהרות הסכום / הסטטוס והעבודות לא משתנות", "מותר רק כשיש שורת כספים 'שולם' לחודש (הראיה לא אובדת)", "לא יישלח Push"],
   },
 ];

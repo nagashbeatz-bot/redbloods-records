@@ -51,7 +51,7 @@ export const VICTOR_SETTINGS: ReadonlyArray<{ key: string; classification: Field
   { key: "vendor_victor_settings", classification: "CANONICAL", meaning: "{monthlyGoal (code default 10; production 12), monthlySalary (default 550; production 550), salaryCurrency ($), salaryPayDay (10 — IGNORED: due date is hardcoded to the 10th), stuckAfterDays (5), paceMetric}", sunnyReads: "victor_view money + system_settings" },
   { key: "vendor_victor_salary_overrides", classification: "CANONICAL", meaning: "per-month amount overrides (e.g. 2026-06: 500)", sunnyReads: "victor_view money" },
   { key: "vendor_victor_salary_status_overrides", classification: "CONFLICT", meaning: "per-month status overrides — Owner STATEMENTS. Since 2026-09-27 a live Finance row decides the month; an override only fills a month with no live Finance row, and a disagreement is shown as a conflict beside Finance (May–Aug 2026 = שולם while only August has a finance row; Owner decision: May–July were paid $550 each — the Finance reconciliation awaits approval)", sunnyReads: "victor_view money" },
-  { key: "vendor_victor_payment_<YYYY_MM>", classification: "LEGACY", meaning: "old per-month {status, paidDate} (May / June 2026 = צפוי) — still read into the portal stats", sunnyReads: "victor_view money (evidence only)" },
+  { key: "vendor_victor_payment_<YYYY_MM>", classification: "LEGACY", meaning: "old per-month {status, paidDate} (May / June 2026 = צפוי) — still read into the portal stats; set by SET_VICTOR_MONTH_PAYMENT_MARK, cleared (key deleted) only by CLEAR_VICTOR_MONTH_PAYMENT_MARK, which is refused unless the month's live Finance salary row is שולם (the evidence is never lost)", sunnyReads: "victor_view money (evidence only)" },
   { key: "goal_monthly_victor", classification: "CONFLICT", meaning: "agent goal target (default 12) — while its 'expected by now' uses the vendor monthlyGoal", sunnyReads: "system_settings" },
   { key: "victor_visit_last", classification: "LEGACY", meaning: "pre-2026-09-27 presence-push cooldown {at} — no longer written and NOT a last-seen; Victor's presence is the shared portal presence model (portal last-seen + one visit push per real visit)", sunnyReads: "victor_view presence (legacy)" },
   { key: "victor_work_completed_pushed_<workId>", classification: "CANONICAL", meaning: "completion push DELIVERY CLAIM, versioned by the pre-transition row stamp: processing → sent only after Victor's push was delivered, else failed (2026-09-27); an older {fromUpdatedAt} marker is unverified", sunnyReads: "victor_view notifications" },
@@ -220,7 +220,7 @@ export const VICTOR_REVIEWED_FILES = [
   "lib/victor-scope.ts", "app/api/vendor/victor/route.ts", "app/api/vendor/victor/stream/route.ts", "app/api/vendor/victor/download/route.ts", "app/api/vendor/victor/avatar/route.ts",
 ] as const;
 export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/vendor-store.ts": "0a836c163aed63e988707b2050aa8f608bf05f725c875e5465534491739a423b",
+  "lib/vendor-store.ts": "6f16e4f73e5020dcf7f053b0c414031b750f2064be50ba8a4cd85bd720cbebd0",
   "lib/vendor-folder.ts": "cbd63b60c770a9a01712464848b32e6d26184bdcfc882750395b0361fd385c0d",
   "lib/victor-files.ts": "4852e479431d23c2403a743b6a22bb06cf61965ec98ce340882c439539f2e272",
   "lib/coo/victor-ball.ts": "90baf51e8c245f368641460819b4e8d7b50c3f6dd71bdc23807ff1f59ba10231",

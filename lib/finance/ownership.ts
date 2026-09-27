@@ -13,13 +13,16 @@
  *         row is KEPT as provenance and never re-writes its expense — the Finance expense is the canonical actual cost
  *         (a plan ≠ expense difference is the CLIP_PLAN_VS_EXPENSE signal), so only delete / type / project / links stay locked
  *       SHOW_PAYMENT → notes, payment method, date (amount / status corrections go through the show payments flow)
- *       SHOW_BALANCE_EXPECTED / SHOW (legacy show link) → notes only (the show sync recomputes them).
+ *       SHOW_BALANCE_EXPECTED / SHOW (legacy show link) → notes only (the show sync recomputes them)
+ *       RF_PAYMENT (DB-1, 2026-09-27: the ONE Finance expense of a Red Films payment, red_films_budget_payments.
+ *         linked_transaction_id) → notes only: amount / date / method follow the payment (edit it in Red Films); deleting
+ *         the payment deletes it.
  */
 
 export type FinanceOwnerCode =
   | "SHOW_PAYMENT" | "SHOW_BALANCE_EXPECTED" | "DJ_FEE" | "ARTIST_FEE" | "REHEARSAL" | "SHOW"
-  | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | "PROMOTION" | "VICTOR_SALARY";
-export const FINANCE_OWNER_CODES: readonly FinanceOwnerCode[] = ["SHOW_PAYMENT", "SHOW_BALANCE_EXPECTED", "DJ_FEE", "ARTIST_FEE", "REHEARSAL", "SHOW", "MIX_WORK", "CLIP_ROW", "RF_BUDGET", "PROMOTION", "VICTOR_SALARY"];
+  | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | "RF_PAYMENT" | "PROMOTION" | "VICTOR_SALARY";
+export const FINANCE_OWNER_CODES: readonly FinanceOwnerCode[] = ["SHOW_PAYMENT", "SHOW_BALANCE_EXPECTED", "DJ_FEE", "ARTIST_FEE", "REHEARSAL", "SHOW", "MIX_WORK", "CLIP_ROW", "RF_BUDGET", "RF_PAYMENT", "PROMOTION", "VICTOR_SALARY"];
 
 /** Who owns it (Hebrew) and where it is changed instead. */
 export const FINANCE_OWNER_HE: Readonly<Record<FinanceOwnerCode, { labelHe: string; whereHe: string }>> = {
@@ -32,6 +35,7 @@ export const FINANCE_OWNER_HE: Readonly<Record<FinanceOwnerCode, { labelHe: stri
   MIX_WORK: { labelHe: "תשלום עבודת מיקס / מאסטר", whereHe: "בעבודת המיקס (מסך המהנדס)" },
   CLIP_ROW: { labelHe: "שורת תכנון קליפ", whereHe: "בתכנון הקליפ של הפרויקט" },
   RF_BUDGET: { labelHe: "שורת תקציב Red Films", whereHe: "בהפקת Red Films → תקציב" },
+  RF_PAYMENT: { labelHe: "תשלום Red Films", whereHe: "בהפקת Red Films → תקציב → התשלום (סכום / תאריך / אמצעי תשלום; מחיקת התשלום מוחקת גם את ההוצאה)" },
   PROMOTION: { labelHe: "הוצאת קידום (סושיאל)", whereHe: "בקמפיין הסושיאל → קידום ותקציב" },
   VICTOR_SALARY: { labelHe: "שכר חודשי של ויקטור", whereHe: "בכרטיס ויקטור → שכר" },
 };
@@ -49,7 +53,7 @@ export const OWNED_ALLOWED_FIELDS: Readonly<Record<FinanceOwnerCode, readonly Tx
   DJ_FEE: FEE_LIKE, ARTIST_FEE: FEE_LIKE, REHEARSAL: FEE_LIKE, VICTOR_SALARY: FEE_LIKE, MIX_WORK: FEE_LIKE,
   CLIP_ROW: [...FEE_LIKE, "amount", "currency", "description", "category"], PROMOTION: FEE_LIKE, RF_BUDGET: FEE_LIKE,
   SHOW_PAYMENT: ["notes", "paymentMethod", "date"],
-  SHOW_BALANCE_EXPECTED: ["notes"], SHOW: ["notes"],
+  SHOW_BALANCE_EXPECTED: ["notes"], SHOW: ["notes"], RF_PAYMENT: ["notes"],
 };
 const FIELD_HE: Readonly<Record<TxPatchField, string>> = {
   date: "תאריך", description: "תיאור", artist: "צד / אמן", amount: "סכום", currency: "מטבע", paymentStatus: "סטטוס", paymentMethod: "אמצעי תשלום",
@@ -90,9 +94,9 @@ export function transactionEditVerdict(owner: FinanceOwnerCode | null, op: "dele
 export interface TxOwnerLinks {
   showId?: string | null; showMoneyRole?: string | null; linkedSessionId?: string | null;
   legacyShowRole?: "SHOW_PAYMENT" | "DJ_FEE" | "ARTIST_FEE" | null;
-  mixWork?: boolean; clipRow?: boolean; rfBudget?: boolean; promotion?: boolean;
+  mixWork?: boolean; clipRow?: boolean; rfBudget?: boolean; rfPayment?: boolean; promotion?: boolean;
 }
-/** Owner from links (pure). Order: show money role → legacy show link → Victor salary → mix → clip → Red Films → promotion. */
+/** Owner from links (pure). Order: show money role → legacy show link → Victor salary → mix → clip → Red Films payment → Red Films line → promotion. */
 export function ownerFromLinks(l: TxOwnerLinks): FinanceOwnerCode | null {
   if (l.showId) {
     const r = l.showMoneyRole;
@@ -103,6 +107,7 @@ export function ownerFromLinks(l: TxOwnerLinks): FinanceOwnerCode | null {
   if (typeof l.linkedSessionId === "string" && l.linkedSessionId.startsWith("victor_salary_")) return "VICTOR_SALARY";
   if (l.mixWork) return "MIX_WORK";
   if (l.clipRow) return "CLIP_ROW";
+  if (l.rfPayment) return "RF_PAYMENT";
   if (l.rfBudget) return "RF_BUDGET";
   if (l.promotion) return "PROMOTION";
   return null;

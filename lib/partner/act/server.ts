@@ -323,6 +323,7 @@ async function victorFamilyWriters(): Promise<VictorFamilyWriters> {
     async recordVictorSalaryMonth(p) { return (await W.recordVictorSalaryMonth(p)).kind; },
     async setVictorSalaryOverride(m, p) { if (p.amount !== undefined) await VS.setSalaryAmountOverride(m, p.amount); if (p.status !== undefined) await VS.setSalaryStatusOverride(m, p.status); },
     setVictorLegacyPaymentMark: (m, s, pd) => VS.setVictorPaymentStatus(m, s, pd),
+    clearVictorLegacyPaymentMark: (m) => VS.clearVictorPaymentStatus(m),
   };
 }
 
@@ -401,10 +402,14 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
     createBudgetLineRecord: async (pid, b) => String((await RF.createBudgetLine(pid, b)).id),
     updateBudgetLineRecord: async (id, b) => { await RF.updateBudgetLine(id, b); },
     deleteBudgetLineRecord: (id) => RF.deleteBudgetLine(id),
-    async readBudgetPaymentRow(id) { const r = await RF.readBudgetPaymentRow(id); return r ? { amount: r.amount, payment_date: r.payment_date, payment_method: r.payment_method, notes: r.notes, has_receipt: !!r.receipt_dropbox_path } : null; },
+    async readBudgetPaymentRow(id) { const r = await RF.readBudgetPaymentRow(id); return r ? { amount: r.amount, currency: r.currency, payment_date: r.payment_date, payment_method: r.payment_method, notes: r.notes, has_receipt: !!r.receipt_dropbox_path, finance_linked: !!r.linked_transaction_id } : null; },
+    // DB-1: the ONE payment → Finance link writer (lib/writes/rf-finance-link) — the screens' payment writer calls it too
+    rfPaymentLinkPlan: async (id) => { const L = await import("@/lib/writes/rf-finance-link"); const p = await L.readRfLinkPlan(id); return p.kind === "NOT_FOUND" ? null : L.rfLinkPlanView(p); },
+    rfProductionLinkPlans: async (pid) => { const L = await import("@/lib/writes/rf-finance-link"); const ps = await L.readProductionRfLinkPlans(pid); return ps ? ps.flatMap((p) => (p.kind === "NOT_FOUND" ? [] : [L.rfLinkPlanView(p)])) : null; },
+    async linkRfPaymentRecord(id, allowDuplicate) { const r = await (await import("@/lib/writes/rf-finance-link")).linkRfPaymentToFinance(id, { allowDuplicate }); return { kind: r.kind, ...("transactionId" in r ? { transactionId: r.transactionId } : {}) }; },
     async insertBudgetPaymentRecord(itemId, p) { const r = await RF.insertBudgetPayment(itemId, p); if (r.kind !== "ok") throw new Error("budget line not found"); return String(r.payment.id); },
     updateBudgetPaymentRecord: async (id, b) => { await RF.updateBudgetPayment(id, b); },
-    deleteBudgetPaymentRecord: (id) => RF.deleteBudgetPayment(id),
+    deleteBudgetPaymentRecord: async (id) => { await RF.deleteBudgetPayment(id); },
     readClipItemRow: (id) => RF.readClipItemRow(id),
     createClipItemRecord: async (b) => String((await RF.createClipItem(b)).id),
     updateClipItemRecord: async (id, b) => { await RF.updateClipItem(id, b); },

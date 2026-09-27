@@ -25,7 +25,7 @@ const world = (): W => ({
   works: { [U(1)]: vv({}), [U(2)]: vv({ title: "", projectId: null, projectName: "" }) },
   reviews: { [U(1)]: { v1: { notes: "להאט את הטמפו", draft: true, sent: false } } },
   settings: { monthlyGoal: 12, monthlySalary: 550, salaryCurrency: "$", salaryPayDay: 10, stuckAfterDays: 5 },
-  rows: { "2026-06": { id: "tx-6", status: "לא שולם", amount: 550, currency: "$" } }, overrides: {}, marks: {}, pushes: [],
+  rows: { "2026-06": { id: "tx-6", status: "לא שולם", amount: 550, currency: "$" }, "2026-05": { id: "tx-5", status: "שולם", amount: 550, currency: "$" } }, overrides: {}, marks: { "2026-05": "צפוי" }, pushes: [],
   projects: { [U(40)]: "קרוב אלייך", [U(41)]: "סינגל" }, byProject: { [U(40)]: U(1) },
 });
 function mk() {
@@ -51,6 +51,7 @@ function mk() {
     async recordVictorSalaryMonth(p: { workMonth: string; amount: number; currency: string; historicPaid: boolean }) { calls.push("recordVictorSalaryMonth"); w.rows[p.workMonth] = { id: `tx-${p.workMonth}`, status: p.historicPaid ? "שולם" : "לא שולם", amount: p.amount, currency: p.currency }; return "ok" as const; },
     async setVictorSalaryOverride(m: string, p: { amount?: number; status?: string }) { calls.push("setVictorSalaryOverride"); w.overrides[m] = { ...w.overrides[m], ...p }; },
     async setVictorLegacyPaymentMark(m: string, s: string) { calls.push("setVictorLegacyPaymentMark"); w.marks[m] = s; },
+    async clearVictorLegacyPaymentMark(m: string) { calls.push("clearVictorLegacyPaymentMark"); delete w.marks[m]; },
   };
   return { w, calls, writers };
 }
@@ -69,6 +70,7 @@ const CASES: FamilyCase<W>[] = [
   { id: "UPDATE_VICTOR_SETTINGS", args: { monthlySalary: 600, salaryCurrency: "$" }, confirm: "כן בוס, 600 $", bad: { salaryPayDay: 31 }, stale: (w) => { w.settings.monthlySalary = 570; }, check: (w) => w.settings.monthlySalary === 600 && w.settings.monthlyGoal === 12 },
   { id: "RECORD_VICTOR_SALARY_MONTH", args: { workMonth: "2026-08", amount: 550, currency: "$" }, confirm: "כן בוס, 2026-08 $550 לא שולם", bad: { workMonth: "2026-8", amount: 550, currency: "$" }, stale: (w) => { w.overrides["2026-08"] = { amount: 500 }; }, check: (w) => w.rows["2026-08"]?.status === "לא שולם" && w.rows["2026-08"].amount === 550 },
   { id: "SET_VICTOR_SALARY_OVERRIDE", args: { workMonth: "2026-06", amount: 500 }, confirm: "כן בוס, 2026-06 500", bad: { workMonth: "2026-06", status: "ששולם" }, stale: (w) => { w.rows["2026-06"].status = "שולם"; }, check: (w) => w.overrides["2026-06"]?.amount === 500 && w.rows["2026-06"].status === "לא שולם" },
+  { id: "CLEAR_VICTOR_MONTH_PAYMENT_MARK", args: { workMonth: "2026-05" }, bad: { workMonth: "2026-5" }, stale: (w) => { w.marks["2026-05"] = "שולם"; }, check: (w) => !("2026-05" in w.marks) && w.rows["2026-05"].status === "שולם" },
   { id: "SET_VICTOR_MONTH_PAYMENT_MARK", args: { workMonth: "2026-06", status: "שולם", paidDate: "2026-07-10" }, confirm: "כן בוס, 2026-06 שולם", bad: { workMonth: "2026-06", status: "x" }, stale: (w) => { w.marks["2026-06"] = "צפוי"; }, check: (w) => w.marks["2026-06"] === "שולם" && w.rows["2026-06"].status === "לא שולם" },
 ];
 
@@ -84,6 +86,11 @@ const CASES: FamilyCase<W>[] = [
   const nn = mk(); nn.w.reviews[U(1)].v1.notes = "";
   ok("notes are sent only when saved", (await q("SEND_VICTOR_VERSION_NOTES", { victorWork: V1, versionKey: "v1" }, nn)).status === "NO_NOTES");
   ok("a salary month with an active row is refused (mark it paid through its finance status)", (await q("RECORD_VICTOR_SALARY_MONTH", { workMonth: "2026-06", amount: 550, currency: "$" })).status === "DUPLICATE");
+  { const h = mk(); h.w.marks["2026-06"] = "שולם"; const r = await q("CLEAR_VICTOR_MONTH_PAYMENT_MARK", { workMonth: "2026-06" }, h);
+    ok("CLEAR mark: refused while the month's Finance row is not שולם (the evidence is never lost), nothing written", r.status === "NO_PAID_FINANCE_ROW" && h.calls.length === 0, r); }
+  { const h = mk(); h.w.marks["2026-07"] = "שולם"; ok("CLEAR mark: refused when the month has no Finance row at all", (await q("CLEAR_VICTOR_MONTH_PAYMENT_MARK", { workMonth: "2026-07" }, h)).status === "NO_PAID_FINANCE_ROW"); }
+  ok("CLEAR mark: a month without a legacy mark → NO_CHANGE_NEEDED", (await q("CLEAR_VICTOR_MONTH_PAYMENT_MARK", { workMonth: "2026-06" })).status === "NO_CHANGE_NEEDED");
+  { const pv = await q("CLEAR_VICTOR_MONTH_PAYMENT_MARK", { workMonth: "2026-05" }); ok("CLEAR mark: allowed with a paid Finance row; the preview shows the key's current value and the row", pv.status === "PREVIEW" && JSON.stringify(pv).includes("הסימון הישן היום: צפוי") && JSON.stringify(pv).includes("שולם $550"), pv); }
   ok("settings go through the app's own validator", (await q("UPDATE_VICTOR_SETTINGS", { monthlyGoal: 5000 })).status === "INVALID_SETTINGS");
   const ov = await q("SET_VICTOR_SALARY_OVERRIDE", { workMonth: "2026-06", status: "שולם" });
   ok("an override is disclosed as a statement that never changes the finance row", ov.status === "PREVIEW" && JSON.stringify(ov).includes("לא משנה אותה"));

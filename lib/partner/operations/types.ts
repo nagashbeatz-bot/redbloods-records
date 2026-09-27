@@ -16,7 +16,8 @@ export interface OpsRedFilmsProduction {
 /** `actual` = the LEGACY manual actual_amount mirror (never paid — B3); `id` joins the line's payments. */
 export interface OpsBudgetItem { id?: string | null; productionId: string; planned: number | null; actual: number | null; status: string | null; hasTransaction: boolean; currency?: string | null }
 /** `currency` = the payment's currency (= its budget line's currency). */
-export interface OpsBudgetPayment { productionId: string; budgetItemId?: string | null; amount: number | null; paymentDate: string | null; currency?: string | null }
+/** DB-1 (2026-09-27): hasTransaction = linked to its ONE Finance expense (already in Finance — never counted twice). */
+export interface OpsBudgetPayment { productionId: string; budgetItemId?: string | null; amount: number | null; paymentDate: string | null; currency?: string | null; hasTransaction?: boolean }
 export interface OpsClipItem { projectId: string | null; category: string | null; amount: number | null; currency: string | null; status: string | null; hasTransaction: boolean }
 export interface OpsMeeting { id: string; date: string | null; time: string | null; status: string | null; projectId: string | null; clientId: string | null; hasCalendarEvent: boolean }
 export interface OpsProjectAction { id: string; projectId: string | null; actionType: string | null; contentType: string | null; recipientRole: string | null; status: string | null; actionDate: string | null; followupDate: string | null }

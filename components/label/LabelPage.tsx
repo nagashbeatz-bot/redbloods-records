@@ -498,7 +498,7 @@ export default function LabelPage() {
                   { t: "מחיר קליפ ללקוח", disp: byCurText(clips.totals.byCurrency, "clientClipPrice"), c: SUB },
                   { t: "תקציב מתוכנן", disp: byCurText(clips.totals.byCurrency, "plannedBudget"), c: "#60A5FA" },
                   { t: "עלות בפועל (כספים, שולם)", disp: byCurText(clips.totals.byCurrency, "actualCostPaid"), c: "#F87171" },
-                  { t: "שולם בפנקס Red Films", disp: byCurText(clips.totals.byCurrency, "rfLedgerPaid"), c: "#F59E0B" },
+                  { t: "פנקס Red Films — עדיין לא בכספים", disp: byCurText(clips.totals.byCurrency, "rfLedgerPaid"), c: "#F59E0B" },
                   { t: "קיזוז מהאמן", disp: "לא נקבע", c: MUTED },
                 ].map((b) => (
                   <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "16px 16px" }}>
@@ -526,7 +526,7 @@ export default function LabelPage() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>מחיר ללקוח ≠ תקציב מתוכנן ≠ עלות בפועל ≠ קיזוז מהאמן — כל אחד לפי מטבע, בלי חיבור. קיזוז מהאמן: לא נקבע — חסר כלל חוזה: אילו הוצאות קליפ מתקזזות מול האמן. תשלומים בפנקס Red Films עדיין לא מקושרים לכספים.</div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>מחיר ללקוח ≠ תקציב מתוכנן ≠ עלות בפועל ≠ קיזוז מהאמן — כל אחד לפי מטבע, בלי חיבור. קיזוז מהאמן: לא נקבע — חסר כלל חוזה: אילו הוצאות קליפ מתקזזות מול האמן. תשלום Red Films שמקושר לכספים כבר כלול ב"עלות בפועל"; כאן מוצגים רק תשלומים שעדיין לא קושרו — אף סכום לא נספר פעמיים.</div>
             </>
           )}
         </Card>

@@ -178,10 +178,10 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
       clientClipPrices: clipSettings.map((v) => ({ amount: Number(v?.clipAgreedPrice) || 0, currency: typeof v?.currency === "string" ? v.currency : null })),
       plannedBudgets: clipProds.map((r) => ({ amount: r.generalBudget, currency: r.currency ?? null })),
       actualCostsPaid: fin ? fin.raw.transactions.filter((t) => t.type === "expense" && t.expenseScope === "קליפ" && t.projectId && clipProjIds.has(t.projectId) && isExpenseFullyPaidStatus(t.status)).map((t) => ({ amount: Number(t.amount) || 0, currency: t.currency })) : [],
-      rfLedgerPaid: (c.ops?.budgetPayments?.rows ?? []).filter((x) => clipProds.some((r) => r.id === x.productionId)).map((x) => ({ amount: x.amount, currency: x.currency ?? null })),
+      rfLedgerPaid: (c.ops?.budgetPayments?.rows ?? []).filter((x) => !x.hasTransaction && clipProds.some((r) => r.id === x.productionId)).map((x) => ({ amount: x.amount, currency: x.currency ?? null })),
     }),
     financeRead: !!fin,
-    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D is NOT_DEFINED until the artist agreement says which clip costs are recouped — never 50 %, never from the budget or the price. Red Films ledger payments are real money, not linked to Finance (DB-1 pending). The media-income recoup snapshots are still computed with the pre-B3 target (LEGACY) — a conflict for the Owner. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
+    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D is NOT_DEFINED until the artist agreement says which clip costs are recouped — never 50 %, never from the budget or the price. Red Films payments are real money: a LINKED payment is its Finance expense (already in C); rfLedgerPaid shows only the UNLINKED ones (DB-1) — never counted twice. The media-income recoup snapshots are still computed with the pre-B3 target (LEGACY) — a conflict for the Owner. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
   };
   const money = {
     currencyRule: "the artist ledger, cycles and media income store NO currency (screens show ₪); shows carry one currency each and project / show finance rows carry their own currency — nothing is added across these",

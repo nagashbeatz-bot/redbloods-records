@@ -5,9 +5,10 @@
  * Owner canon (four different things, never merged, never derived from each other):
  *   A  the CLIENT clip price / clip income (finance_<project>.clipAgreedPrice + income rows with expense scope קליפ);
  *   B  the PLANNED budget (red_films_productions.general_budget, budget lines, clip planning rows) — planning, not money;
- *   C  the ACTUAL cost (Finance expenses with expense scope קליפ; paid only when שולם). A Red Films budget payment
- *      ("שולם" in the Red Films ledger) is real company money too, but it is NOT linked to Finance yet (DB-1 pending:
- *      red_films_budget_payments.linked_transaction_id, not approved) — shown apart, never added to C;
+ *   C  the ACTUAL cost (Finance expenses with expense scope קליפ; paid only when שולם). A Red Films budget payment is
+ *      real company money: since DB-1 (live 2026-09-27, red_films_budget_payments.linked_transaction_id) each payment of a
+ *      clip production becomes exactly ONE linked Finance expense (scope קליפ, שולם) and is then PART of C. Only an
+ *      UNLINKED payment is "outside Finance" — shown apart, never added to C; a linked one is never counted twice;
  *   D  the RECOUPABLE amount — only what the specific artist agreement says. No agreement rule is recorded today, so the
  *      clip contribution to recoup is NOT_DEFINED (null) with a reason — never 50 %, never from the budget or the price.
  */
@@ -67,11 +68,20 @@ export function budgetLineStatusConflict(line: BudgetLineLike, payments: readonl
 }
 
 // ── 4. Red Films ledger ↔ Finance linkage + scope ────────────────────────────────────────────────────────────────────
-/** Red Films payments are a separate ledger: real company money, NOT in Finance until DB-1 is approved. */
+/** The signal / state of Red Films payments that are NOT linked to Finance yet (DB-1 live: each payment → ONE linked
+ *  Finance expense; the historical payments are linked by the Owner through LINK_RF_PAYMENT_TO_FINANCE). */
 export const RF_LEDGER_LINKAGE = "RF_LEDGER_NOT_IN_FINANCE" as const;
-export const RF_LEDGER_LINKAGE_HE = "שולם בפנקס של Red Films — כסף אמיתי של החברה, עדיין לא מקושר לכספים (DB-1 ממתין לאישור)";
+export const RF_LEDGER_LINKAGE_HE = "שולם בפנקס של Red Films — כסף אמיתי של החברה, עדיין לא מקושר לכספים (קישור: LINK_RF_PAYMENT_TO_FINANCE)";
+/** Per payment: LINKED (its ONE Finance expense exists — counted in Finance, never again), UNLINKED (a clip production
+ *  with a project — linkable), SCOPE_REQUIRED (non-clip — no canonical scope), PROJECT_REQUIRED (clip without project). */
+export type RfPaymentLinkageCode = "LINKED" | "UNLINKED" | "SCOPE_REQUIRED" | "PROJECT_REQUIRED";
+export function rfPaymentLinkage(p: { linkedTransactionId?: string | null; hasTransaction?: boolean }, production: { productionType?: string | null; projectId?: string | null } | null | undefined): RfPaymentLinkageCode {
+  if (p.linkedTransactionId || p.hasTransaction) return "LINKED";
+  if (!rfPaymentFinanceScope(production?.productionType).scope) return "SCOPE_REQUIRED";
+  return production?.projectId ? "UNLINKED" : "PROJECT_REQUIRED";
+}
 /**
- * The Finance expense scope a Red Films payment WOULD carry: a clip production → קליפ. Any other production type has
+ * The Finance expense scope a Red Films payment carries: a clip production → קליפ. Any other production type has
  * no canonical scope → SCOPE_REQUIRED (never a silent "כללי").
  */
 export function rfPaymentFinanceScope(productionType: string | null | undefined): { scope: "קליפ" } | { scope: null; state: "SCOPE_REQUIRED"; he: string } {
@@ -95,7 +105,7 @@ export interface ClipMoneyByCurrency {
   plannedBudget: number;
   /** C — actual clip cost in Finance, paid (שולם) only. */
   actualCostPaid: number;
-  /** Paid in the Red Films ledger (real money, not linked to Finance — DB-1 pending). Never added to C. */
+  /** Paid in the Red Films ledger and NOT linked to Finance (DB-1: a linked payment is already in C). Never added to C. */
   rfLedgerPaid: number;
 }
 /** A / B / C (+ the Red Films ledger) PER CURRENCY — four separate numbers, never added together, never a recoup. */

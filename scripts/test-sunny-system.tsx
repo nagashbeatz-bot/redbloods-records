@@ -154,7 +154,7 @@ async function main() {
   const t = q("tasks", { mode: "all" });
   check("tasks: status OK over the existing canonical state", t.status, "OK");
   const rf = q("red_films");
-  check("red_films: active only, budget planned / legacy manual actual / paid summed, separate-ledger coverage", [rf.items.map((i) => i.id), rf.items[0]?.fields.budgetPlanned, rf.items[0]?.fields.budgetLegacyManualActual, rf.items[0]?.fields.budgetPaid, rf.coverage.some((c) => c.text.includes("ספר נפרד"))], [[U(801)], { "₪": 8000 }, { "₪": 4200 }, { "₪": 2000 }, true]);
+  check("red_films: active only, budget planned / legacy manual actual / paid summed, separate-ledger coverage", [rf.items.map((i) => i.id), rf.items[0]?.fields.budgetPlanned, rf.items[0]?.fields.budgetLegacyManualActual, rf.items[0]?.fields.budgetPaid, rf.coverage.some((c) => c.text.includes("DB-1") && c.text.includes("budgetPaidOutsideFinance"))], [[U(801)], { "₪": 8000 }, { "₪": 4200 }, { "₪": 2000 }, true]);
   check("red_films is FINANCIAL + Owner-only: refused for a caller without Owner authority", q("red_films", {}, sources(), STRANGER).status, "NOT_AUTHORIZED");
   const cp = q("clip_planning", { params: { project: `project:${P(1)}` } });
   check("clip_planning: cancelled + already-promoted ('הועבר לכספים') rows excluded, totals per currency (no FX), planning-only", [cp.items.length, cp.summary[0].value, cp.items.every((i) => i.fields.planningOnly === true)], [2, { "₪": 1500, "$": 200 }, true]);

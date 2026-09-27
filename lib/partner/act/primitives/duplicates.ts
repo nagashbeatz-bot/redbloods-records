@@ -18,7 +18,7 @@ import { refuse, type Fields, type PlanRefusal } from "./core";
 /** One existing record with the same context + amount (from the typed reader; no paths are carried). `id` is INTERNAL:
  *  it only lets the engine leave out records created by earlier steps of the SAME plan (never rendered, never in the
  *  fingerprinted summary). */
-export interface DupRow { id?: string; date: string | null; amount: number; currency: string | null; text: string }
+export interface DupRow { id?: string; date: string | null; amount: number; currency: string | null; text: string; /** always a LIKELY_SAME candidate (e.g. the budget line's legacy Finance row) */ forced?: boolean }
 export type DupKind = "LEDGER_ENTRY" | "TRANSACTION" | "MEDIA_INCOME" | "RF_PAYMENT" | "SHOW_PAYMENT" | "CLIP_PAYMENT";
 /** The focused, context-bound query (exact equality on context + amount; the reader never scans globally). */
 export type DupQuery =
@@ -27,6 +27,22 @@ export type DupQuery =
   | { kind: "MEDIA_INCOME"; artistId: string; grossAmount: number }
   | { kind: "RF_PAYMENT"; budgetLineId: string; amount: number }
   | { kind: "CLIP_PAYMENT"; projectId: string; amount: number };
+/**
+ * RF payment → Finance link (DB-1, 2026-09-27): an UNLINKED Finance expense of the same project, amount and currency,
+ * within ±RF_LINK_DUP_DAYS days AND with a similar description is LIKELY_SAME (the Boss decides; duplicateAck flow);
+ * a same-amount row within ±SIMILAR_DAYS is SIMILAR (shown only). A `forced` row (the budget line's legacy Finance row)
+ * is always LIKELY_SAME. Pure — shared by lib/writes/rf-finance-link (the UI path) and the Sunny primitive.
+ */
+export const RF_LINK_DUP_DAYS = 14;
+export function rfLinkCandidates(rows: readonly DupRow[], n: { date: string | null; text: string }): DupCandidate[] {
+  const out: DupCandidate[] = [];
+  for (const r of rows) {
+    const d = days(r.date, n.date);
+    const level = r.forced || (d !== null && d <= RF_LINK_DUP_DAYS && textsSimilar(r.text, n.text)) ? "LIKELY_SAME" : d !== null && d <= SIMILAR_DAYS ? "SIMILAR" : null;
+    if (level) out.push({ level, date: r.date ? r.date.slice(0, 10) : null, amount: r.amount, currency: r.currency, text: r.text.trim().slice(0, 80), daysApart: d });
+  }
+  return out.sort((a, b) => (a.level === b.level ? (a.daysApart ?? 999) - (b.daysApart ?? 999) : a.level === "LIKELY_SAME" ? -1 : 1)).slice(0, 3);
+}
 export interface DuplicateWriters { similarRecords(q: DupQuery): Promise<DupRow[]> }
 
 export const LIKELY_SAME_DAYS = 45;

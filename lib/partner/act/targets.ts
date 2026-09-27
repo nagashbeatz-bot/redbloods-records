@@ -95,7 +95,7 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
     } else if (pk === "rf-production") {
       const d = needDet();
       for (const x of rows(d.budgetItems)) if (x.productionId === pid) add("rf-budget-line", x.id, j(x.category, x.title, x.vendorName), x.status);
-      for (const x of rows(d.budgetPayments)) if (x.productionId === pid) add("rf-payment", x.id ?? null, j(x.date, x.amount, x.method));
+      for (const x of rows(d.budgetPayments)) if (x.productionId === pid) add("rf-payment", x.id ?? null, j(x.date, x.amount, x.currency, x.method), x.linkedTransactionId ? "LINKED_TO_FINANCE" : "NOT_IN_FINANCE"); // DB-1 link state
       for (const x of rows(d.rfDocuments)) if (x.productionId === pid) add("rf-document", x.id, j(x.fileName, x.fileType));
       for (const x of rows(d.rfRefImages)) if (x.productionId === pid) add("rf-reference", x.id, j(x.fileName, x.caption, x.tag));
       for (const x of rows(d.rfRefLinks)) if (x.productionId === pid) add("rf-video-reference", x.id, j(x.provider, x.title, x.notes));

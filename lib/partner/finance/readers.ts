@@ -50,7 +50,7 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     readAll(client, "label_artists", "id,name"),
     readAll(client, "artist_balance_entries", "artist_id,entry_type,amount,source_tx_id"),
     readAll(client, "label_media_income", "label_artist_id,status,gross_amount"),
-    readAll(client, "red_films_budget_payments", "id,amount,payment_date,currency"),
+    readAll(client, "red_films_budget_payments", "id,amount,payment_date,currency,linked_transaction_id"),
     readAll(client, "settings", "key,value", ["key", "vendor_victor_payment_%"]),
     // F2.31: vendor_victor_settings / _salary_overrides / _salary_status_overrides, raw (the executor never uses code defaults)
     readAll(client, "settings", "key,value", ["key", "vendor_victor_s%"]),
@@ -71,7 +71,7 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
     labelArtists: labelArtists.map((r) => ({ id: String(r.id), name: String(r.name ?? "") })),
     ledger: ledger.map((r) => ({ artistId: String(r.artist_id), entryType: s(r.entry_type), amount: r.amount, sourceTxId: s(r.source_tx_id) })),
     mediaIncome: media.map((r) => ({ labelArtistId: s(r.label_artist_id), status: s(r.status), grossAmount: r.gross_amount })),
-    redFilmsPayments: rfPay.map((r) => ({ id: String(r.id), amount: r.amount, paymentDate: s(r.payment_date), currency: s(r.currency) })),
+    redFilmsPayments: rfPay.map((r) => ({ id: String(r.id), amount: r.amount, paymentDate: s(r.payment_date), currency: s(r.currency), linkedTransactionId: s(r.linked_transaction_id) })),
     victorSalary,
     victorSalaryConfig: {
       settings: victorConfig.find((r) => r.key === "vendor_victor_settings")?.value ?? null,

@@ -7,8 +7,10 @@
  *     expense is created, so a double click can never create two expenses; if the expense insert fails the claim is
  *     released. B3 (2026-09-27): the planning row is KEPT and linked (linked_transaction_id) — plan → actual provenance.
  * Money here is planning unless it is a Finance transaction: production budget / budget lines / clip rows are planning,
- * Red Films payments are their own ledger (real money, not linked to Finance — DB-1 pending), only a Finance expense
- * with scope קליפ is actual spend. B3: no budget lock — a production created by 'שלח קליפ' owns its planning budget
+ * a Red Films payment is REAL money that left the company → exactly ONE linked Finance expense (DB-1 live 2026-09-27:
+ * red_films_budget_payments.linked_transaction_id, lib/writes/rf-finance-link — a new payment links automatically, an
+ * edit propagates, a delete removes its expense; a non-clip production → SCOPE_REQUIRED, left unlinked and reported);
+ * only a Finance expense with scope קליפ is actual spend. B3: no budget lock — a production created by 'שלח קליפ' owns its planning budget
  * like every other production (the clip price is never the budget). client_source of a new production comes from the
  * project's classification (lib/clip-rf-money-pure rfClientSourceFor).
  */
@@ -133,7 +135,9 @@ export async function deleteBudgetLine(itemId: string): Promise<void> {
 }
 
 /** The payment-row insert of POST /budget-items/[itemId]/payments (a receipt, when uploaded by the route, is passed in). */
-export async function insertBudgetPayment(itemId: string, p: { amount: number; paymentDate: string; paymentMethod: string; notes: string; currency?: string; receipt?: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } }): Promise<{ kind: "not_found" } | { kind: "ok"; payment: Record<string, unknown> }> {
+/** The Finance-link outcome reported with a new payment (DB-1): LINKED, or why it stayed unlinked. */
+export type RfNewPaymentLink = { state: "LINKED"; transactionId: string } | { state: "SCOPE_REQUIRED" | "PROJECT_REQUIRED" | "POSSIBLE_DUPLICATE" | "LINK_FAILED"; he: string };
+export async function insertBudgetPayment(itemId: string, p: { amount: number; paymentDate: string; paymentMethod: string; notes: string; currency?: string; receipt?: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } }): Promise<{ kind: "not_found" } | { kind: "ok"; payment: Record<string, unknown>; financeLink: RfNewPaymentLink }> {
   if (!(p.amount > 0)) throw new RfInputError("סכום חייב להיות גדול מ-0");
   const { data: item, error: itemErr } = await supabase.from("red_films_budget_items").select("id, production_id, title, currency").eq("id", itemId).maybeSingle();
   if (itemErr) throw itemErr;
@@ -148,7 +152,22 @@ export async function insertBudgetPayment(itemId: string, p: { amount: number; p
     currency: lineCurrency, created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
-  return { kind: "ok", payment: data as Record<string, unknown> };
+  // DB-1: the new payment becomes its ONE Finance expense (same writer as LINK_RF_PAYMENT_TO_FINANCE). The payment is
+  // real money and stays recorded even when the link cannot be made — the reason is reported, never hidden.
+  const paymentId = String((data as { id: unknown }).id);
+  let financeLink: RfNewPaymentLink;
+  try {
+    const { linkRfPaymentToFinance } = await import("@/lib/writes/rf-finance-link");
+    const r = await linkRfPaymentToFinance(paymentId);
+    financeLink = r.kind === "LINKED" || r.kind === "ALREADY_LINKED" ? { state: "LINKED", transactionId: r.transactionId }
+      : r.kind === "SCOPE_REQUIRED" || r.kind === "PROJECT_REQUIRED" ? { state: r.kind, he: r.he }
+      : r.kind === "POSSIBLE_DUPLICATE" ? { state: "POSSIBLE_DUPLICATE", he: `בכספים כבר קיימת הוצאה דומה (${r.candidates.map((c) => `${c.date ?? "—"} · ${c.currency ?? ""}${c.amount}`).join(", ")}) — התשלום נשמר ולא קושר; הבוס מחליט (LINK_RF_PAYMENT_TO_FINANCE)` }
+      : { state: "LINK_FAILED", he: "התשלום לא נמצא לקישור" };
+  } catch (e) {
+    financeLink = { state: "LINK_FAILED", he: `התשלום נשמר, הקישור לכספים נכשל: ${e instanceof Error ? e.message : "שגיאה"}` };
+  }
+  const { data: fresh } = await supabase.from("red_films_budget_payments").select("*").eq("id", paymentId).maybeSingle();
+  return { kind: "ok", payment: (fresh ?? data) as Record<string, unknown>, financeLink };
 }
 const PAYMENT_ALLOWED = new Set(["amount", "payment_date", "payment_method", "notes", "receipt_file_name", "receipt_mime_type", "receipt_dropbox_path", "receipt_dropbox_url"]);
 export async function updateBudgetPayment(paymentId: string, body: Body): Promise<Record<string, unknown>> {
@@ -156,6 +175,10 @@ export async function updateBudgetPayment(paymentId: string, body: Body): Promis
   for (const [k, v] of Object.entries(body)) if (PAYMENT_ALLOWED.has(k)) fields[k] = v;
   const { data, error } = await supabase.from("red_films_budget_payments").update(fields).eq("id", paymentId).select().single();
   if (error) throw error;
+  // DB-1: the linked Finance expense follows the payment (amount / date / method / currency) — the payment owns it
+  const { propagateRfPaymentToFinance } = await import("@/lib/writes/rf-finance-link");
+  try { await propagateRfPaymentToFinance(data as Record<string, unknown>); }
+  catch (e) { throw new Error(`התשלום עודכן, אבל הוצאת הכספים המקושרת לא עודכנה: ${e instanceof Error ? e.message : "שגיאה"}`); }
   return data as Record<string, unknown>;
 }
 /** How many payments a budget line has (its currency cannot change once it has any — no FX). */
@@ -164,9 +187,20 @@ export async function countBudgetLinePayments(itemId: string): Promise<number> {
   if (error) throw error;
   return count ?? 0;
 }
-export async function deleteBudgetPayment(paymentId: string): Promise<void> {
+/** Delete a payment AND its linked Finance expense (DB-1: one money fact, deleted together; the payment first, then its
+ *  owned expense — a failure there is reported with the expense id, never hidden). */
+export async function deleteBudgetPayment(paymentId: string): Promise<{ deletedTransactionId: string | null }> {
+  const { data: pay, error: readErr } = await supabase.from("red_films_budget_payments").select("id, linked_transaction_id").eq("id", paymentId).maybeSingle();
+  if (readErr) throw readErr;
+  const txId = ((pay as { linked_transaction_id?: string | null } | null)?.linked_transaction_id) ?? null;
   const { error } = await supabase.from("red_films_budget_payments").delete().eq("id", paymentId);
   if (error) throw error;
+  if (txId) {
+    const { deleteTransactionRecord } = await import("@/lib/writes/finance");
+    try { await deleteTransactionRecord(txId); }
+    catch (e) { throw new Error(`התשלום נמחק, אבל הוצאת הכספים המקושרת (${txId}) לא נמחקה: ${e instanceof Error ? e.message : "שגיאה"}`); }
+  }
+  return { deletedTransactionId: txId };
 }
 
 // ── clip planning rows (project clip deal) ──

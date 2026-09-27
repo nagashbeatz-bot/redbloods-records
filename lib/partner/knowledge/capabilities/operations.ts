@@ -11,7 +11,7 @@ import type { GatewayEntityType } from "../../gateway/types";
 import { byCount, clientName, idOf, item, labelArtistName, ok, partner, projectName, record, result, sfact, state, unavailable } from "./common";
 import type { Maybe } from "../../operations/readers";
 import { isEngineerWorkPaid } from "../../../mix-payment-pure";
-import { budgetLinePaidState, budgetLineStatusConflict, isClipItemPlanned, rfPaymentFinanceScope, RF_LEDGER_LINKAGE } from "../../../clip-rf-money-pure";
+import { budgetLinePaidState, budgetLineStatusConflict, isClipItemPlanned, rfPaymentFinanceScope, rfPaymentLinkage } from "../../../clip-rf-money-pure";
 import { normalizeCurrency, type CurrencyTotals } from "../../../finance/currency";
 
 const ops = (src: KnowledgeSources) => ok(src.operations);
@@ -80,13 +80,16 @@ export const redFilms: KnowledgeCapability = {
           budgetPlanned: bi ? sumCur(bi, (x) => x.planned) : null, budgetLegacyManualActual: bi ? sumCur(bi, (x) => x.actual) : null, budgetPaid: bp ? sumCur(bp, (x) => x.amount) : null, budgetItems: bi?.length ?? null,
           budgetLinePaidStates: bi && bp ? byCount(bi.filter((x) => x.status !== "בוטל").map((x) => budgetLinePaidState({ planned_amount: x.planned, currency: x.currency, status: x.status }, bp.filter((y) => y.budgetItemId && y.budgetItemId === x.id)).state)) : null,
           budgetLineStatusConflicts: bi && bp ? bi.filter((x) => x.status !== "בוטל" && budgetLineStatusConflict({ planned_amount: x.planned, currency: x.currency, status: x.status }, bp.filter((y) => y.budgetItemId && y.budgetItemId === x.id))).length : null,
-          ledgerLinkage: RF_LEDGER_LINKAGE, financeScope: rfPaymentFinanceScope(p.productionType).scope ?? "SCOPE_REQUIRED",
+          // DB-1: per payment LINKED (its ONE Finance expense — counted in Finance) / UNLINKED / SCOPE_REQUIRED / PROJECT_REQUIRED
+          ledgerLinkage: bp ? byCount(bp.map((x) => rfPaymentLinkage(x, { productionType: p.productionType, projectId: p.projectId }))) : null,
+          budgetPaidOutsideFinance: bp ? sumCur(bp.filter((x) => !x.hasTransaction), (x) => x.amount) : null,
+          financeScope: rfPaymentFinanceScope(p.productionType).scope ?? "SCOPE_REQUIRED",
         },
       });
     });
     return result(items, { summary: [sfact("BY_STATUS", "הפקות לפי סטטוס", byCount(o.redFilms.rows.map((p) => p.status ?? "—")), "FACT", "RED_FILMS"), sfact("BY_TYPE", "לפי סוג", byCount(o.redFilms.rows.map((p) => p.productionType ?? "—")), "FACT", "RED_FILMS")],
       completeness: o.budgetItems && o.budgetPayments ? "COMPLETE" : "PARTIAL",
-      coverage: [partner("תשלומי תקציב של Red Films הם ספר נפרד — אינם מופיעים בכספים."), partner("שם האמן/הלקוח בהפקה הוא טקסט (TEXT_MATCH); הקישור לפרויקט הוא מזהה."), ...cappedNote(o.redFilms, o.budgetItems, o.budgetPayments)] });
+      coverage: [partner("תשלום של Red Films מקושר להוצאה אחת בכספים (DB-1); budgetPaidOutsideFinance = תשלומים שעדיין לא קושרו. תשלום מקושר כבר נספר בכספים — לא לחבר פעמיים."), partner("שם האמן/הלקוח בהפקה הוא טקסט (TEXT_MATCH); הקישור לפרויקט הוא מזהה."), ...cappedNote(o.redFilms, o.budgetItems, o.budgetPayments)] });
   },
 };
 

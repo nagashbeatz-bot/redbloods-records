@@ -5,7 +5,7 @@
  * an expense is paid only when שולם, currencies are never added.
  *
  * `financeOwnerOf` names the Redbloods writer that OWNS a transaction (a show's payment / expected balance / DJ /
- * artist / rehearsal rows, a mix work's payment row, a clip planning row, a Red Films budget line, a social promotion,
+ * artist / rehearsal rows, a mix work's payment row, a clip planning row, a Red Films budget line or payment (DB-1), a social promotion,
  * Victor's monthly salary). `assertTransactionEditable` is THE guard (lib/finance/ownership): the Finance route and
  * Sunny's finance writers both call it — an owned row is never deleted from Finance and only its allowed fields
  * (status / date / method / notes for fee-like rows; notes / method / date for a show payment) may change (409).
@@ -166,6 +166,7 @@ export async function readOwnerLinks(txs: ReadonlyArray<{ id: string; show_id?: 
   mark(await linked("sound_engineer_work", "linked_transaction_id"), (l) => { l.mixWork = true; });
   mark(await linked("clip_items", "linked_transaction_id"), (l) => { l.clipRow = true; });
   mark(await linked("red_films_budget_items", "linked_transaction_id"), (l) => { l.rfBudget = true; });
+  mark(await linked("red_films_budget_payments", "linked_transaction_id"), (l) => { l.rfPayment = true; }); // DB-1: a payment's ONE Finance expense
   mark(await linked("social_promotions", "linked_transaction_id"), (l) => { l.promotion = true; });
   return out;
 }

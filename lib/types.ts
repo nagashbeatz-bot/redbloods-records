@@ -198,7 +198,7 @@ export interface LabelClipLine {
   clientClipPrice: number | null;          // A — the project's clip price, in clientClipCurrency (null = none recorded)
   clientClipCurrency: string | null;
   actualCostPaid: Record<string, number>;  // C — Finance clip expenses paid (שולם), per currency
-  rfLedgerPaid: Record<string, number>;    // Red Films ledger payments (real money, not linked to Finance — DB-1 pending)
+  rfLedgerPaid: Record<string, number>;    // Red Films ledger payments NOT yet linked to Finance (DB-1: a linked payment is already in actualCostPaid)
   recoupStatus: "NOT_DEFINED";
   artistRecoupBalance: null;               // D — never computed without the artist agreement rule
   recoupReasonHe: string;

@@ -11,7 +11,7 @@
  * Provenance: OWNER_CONFIRMED (the Owner's own words in the Sunny operating-model conversation, 2026-09-25).
  */
 
-export const OWNER_MODEL_VERSION = "2026.09.27-owner-3";
+export const OWNER_MODEL_VERSION = "2026.09.27-owner-4";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -102,8 +102,8 @@ export const OWNER_OPERATING_RULES: readonly OwnerRule[] = [
     ["Until the agreement rule is recorded, the clip recoup is NOT_DEFINED ('לא נקבע'); show the client clip price, planned budget, actual paid cost and Red Films payments per currency as information only."],
     ["Never half of the budget, never the budget, never the client clip price as a recoup.", "No recoup figure may be invented."]), confirmedAt: "2026-09-27" },
   { ...O("RF_PAYMENT_IS_COMPANY_EXPENSE", "CASHFLOW", "A Red Films payment marked שולם is a real company expense.",
-    ["Count it as real money spent, shown apart from Finance until the Finance linkage (DB-1) is approved; a clip production maps to expense scope קליפ, other types need an explicit scope."],
-    ["Planned budget is not spend.", "It is never added to a Finance expense for the same vendor (possible duplicate evidence only)."]), confirmedAt: "2026-09-27" },
+    ["Count it as real money spent: DB-1 (Owner-approved, live 2026-09-27) — exactly ONE linked Finance expense per payment (שולם, scope קליפ for a clip production, the payment's currency); a new payment links automatically, historical ones through the Owner's typed link action; other production types need an explicit scope (SCOPE_REQUIRED, never invented)."],
+    ["Planned budget is not spend.", "A linked payment is counted once (in Finance), never beside its expense.", "A similar unlinked Finance expense is possible-duplicate evidence — the Owner decides, nothing is merged automatically."]), confirmedAt: "2026-09-27" },
   { ...O("TIME_PASSED_IS_NOT_HAPPENED", "TIME", "Time passed ≠ a session happened: a session is held only when the Owner records it.",
     ["Show a passed planned session as 'עבר — לא אושר' and ask; treat a held status written before 2026-09-27 as possibly automatic."],
     ["A calendar event or a passed date never proves a session, a shoot or a meeting happened."]), confirmedAt: "2026-09-27" },

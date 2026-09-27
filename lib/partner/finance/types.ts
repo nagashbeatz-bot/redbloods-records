@@ -38,7 +38,8 @@ export interface FinanceLabelArtistRow { id: string; name: string }
 export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null }
 export interface MediaIncomeRow { labelArtistId: string | null; status: string | null; grossAmount: unknown }
 /** A Red Films budget payment. `currency` = the budget line currency (migration 2026-09-27); null on legacy / unread rows. */
-export interface RedFilmsPaymentRow { id: string; amount: unknown; paymentDate: string | null; currency?: string | null }
+/** DB-1 (2026-09-27): linkedTransactionId = the payment's ONE Finance expense (already counted in Finance) — only an UNLINKED payment is outside Finance. */
+export interface RedFilmsPaymentRow { id: string; amount: unknown; paymentDate: string | null; currency?: string | null; linkedTransactionId?: string | null }
 /** One month of Victor's salary exactly as lib/vendor-store.ts getVictorSalaryMonths() resolves it (canonical). */
 export interface SalaryMonthRow { workMonth: string; dueDate: string; amount: number; currency: string; status: string; transactionId: string | null }
 

@@ -179,13 +179,13 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
   const vv = VIEW.buildVideoView(src);
   ok("BUDGET_LINE_STATUS_VS_PAYMENTS: stored שולם without payments + stored מתוכנן already paid (A: L1 + L2, B: L4) — all flagged, and mapped in ATTENTION_MAP", vv.signals.filter((s) => s.code === "BUDGET_LINE_STATUS_VS_PAYMENTS").length === 3 && vv.signals.filter((s) => s.code === "BUDGET_LINE_STATUS_VS_PAYMENTS" && s.production === "video-production:A").length === 2 && !!ATTENTION_MAP.BUDGET_LINE_STATUS_VS_PAYMENTS && !!ATTENTION_MAP.BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC, vv.signals.map((s) => s.code));
   ok("the old-sync observation (budget 3000 = clip price 3000 on the 'שלח קליפ' production) is DERIVED", vA.money.budgetEqualsOldClipPriceSync?.epistemic === "DERIVED" && vv.signals.some((s) => s.code === "BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC"));
-  ok("no self-contradiction: the layers text says payments are NOT linked to Finance (DB-1) and a line's link is the old per-line link", /NOT linked to Finance/.test(vA.money.layers) && /DB-1/.test(vA.money.layers) && !/no Finance expense is linked to a line/.test(vA.money.layers) && lineA("L1").legacyFinanceLink === false);
+  ok("no self-contradiction: the layers text says a LINKED payment is inside C and only paidOutsideFinance is not in Finance (DB-1); a line's link is the old per-line link", /paidOutsideFinance is not in Finance/.test(vA.money.layers) && /DB-1/.test(vA.money.layers) && !/no Finance expense is linked to a line/.test(vA.money.layers) && lineA("L1").legacyFinanceLink === false);
 
   // ── 4. money truth: RF ledger ≠ Finance, SCOPE_REQUIRED ─────────────────────────────────────────────────────────
   section("4. Red Films ledger ≠ Finance; non-clip → SCOPE_REQUIRED");
   const pvA = VIEW.buildProjectVideo(src, "pA");
   ok("RF ledger paid (₪1000) is never counted as Finance actual cost (Finance paid ₪0, unpaid ₪900)", vA.money.paidRedFilmsLedger["₪"] === 1000 && vA.money.linkage.state === "RF_LEDGER_NOT_IN_FINANCE" && !pvA.expenses.paid["₪"] && pvA.expenses.unpaid["₪"] === 900);
-  ok("the RF_LEDGER_NOT_IN_FINANCE signal says DB-1 pending", vv.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE" && /DB-1/.test(s.he)));
+  ok("the RF_LEDGER_NOT_IN_FINANCE signal names the UNLINKED payments and how to link them (DB-1 live)", vv.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE" && /לא מקושרים לכספים/.test(s.he) && /LINK_RF_PAYMENT_TO_FINANCE/.test(s.he)));
   ok("a non-clip production's payments → SCOPE_REQUIRED (never a silent כללי)", (vB.money.financeScope as { state?: string }).state === "SCOPE_REQUIRED" && vA.money.financeScope.scope === "קליפ" && PURE.rfPaymentFinanceScope("צילום הופעה").scope === null && vv.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE" && /לא 'כללי'/.test(s.he)));
   ok("Sunny's clip recoup is NOT_DEFINED and the view rule names A ≠ B ≠ C ≠ D", vA.money.recoup.status === "NOT_DEFINED" && vv.money.clipRecoup.status === "NOT_DEFINED" && /A client clip price/.test(vv.money.rule) && /NOT_DEFINED/.test(vv.money.rule));
 

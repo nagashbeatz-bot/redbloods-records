@@ -364,6 +364,13 @@ export async function setVictorPaymentStatus(month: string, status: string, paid
     );
 }
 
+/** Remove the legacy monthly mark (settings key vendor_victor_payment_YYYY_MM). Called ONLY by Sunny's
+ *  CLEAR_VICTOR_MONTH_PAYMENT_MARK, which refuses unless the month's Finance salary row is שולם (the evidence stays). */
+export async function clearVictorPaymentStatus(month: string): Promise<void> {
+  const { error } = await supabase.from("settings").delete().eq("key", paymentKey(month));
+  if (error) throw new Error(error.message);
+}
+
 // ── Salary months ─────────────────────────────────────────────────────────────
 
 const SALARY_OVERRIDES_KEY = "vendor_victor_salary_overrides";

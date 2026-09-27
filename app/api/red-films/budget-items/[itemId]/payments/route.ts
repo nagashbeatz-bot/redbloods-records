@@ -3,6 +3,7 @@
  * POST /api/red-films/budget-items/[itemId]/payments — create payment (FormData)
  *      FormData fields: amount, payment_date, payment_method, notes
  *      FormData file:   receipt (optional — uploaded to Dropbox /receipts/)
+ *      DB-1: the new payment is linked to exactly ONE Finance expense (lib/writes/rf-finance-link) — response.financeLink
  */
 import { NextRequest, NextResponse } from "next/server";
 import { insertBudgetPayment } from "@/lib/writes/redfilms";
@@ -74,9 +75,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     // ── Insert payment — shared writer (lib/writes/redfilms), the same one Sunny's RECORD_RF_BUDGET_PAYMENT uses ──
     const ins = await insertBudgetPayment(itemId, { amount, paymentDate, paymentMethod, notes, receipt });
     if (ins.kind === "not_found") return NextResponse.json({ error: "פריט תקציב לא נמצא" }, { status: 404 });
-    const data = ins.payment;
-
-    return NextResponse.json({ payment: data }, { status: 201 });
+    // DB-1: the writer links the payment to its ONE Finance expense (or reports why not: SCOPE_REQUIRED / PROJECT_REQUIRED / POSSIBLE_DUPLICATE)
+    return NextResponse.json({ payment: ins.payment, financeLink: ins.financeLink }, { status: 201 });
   } catch (e) {
     console.error("[POST budget-item payment]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

@@ -91,7 +91,7 @@ const writes = (c: string[]) => c.filter((x) => !x.startsWith("similarRecords"))
   const DUP_ACTIONS = ["ADD_LEDGER_ENTRY", "ADD_TRANSACTION", "ADD_MEDIA_INCOME", "RECORD_RF_BUDGET_PAYMENT", "ADD_CLIP_PAYMENT", "RECORD_SHOW_PAYMENT"];
   ok("B9. one shared layer on every money CREATE: each takes the Boss's 'separate' decision as a typed argument", DUP_ACTIONS.every((id) => ACTION_REGISTRY.get(id)?.args.some((x) => x.name === "separateFromSimilar" && x.kind === "boolean" && !x.required)), DUP_ACTIONS.filter((id) => !ACTION_REGISTRY.get(id)?.args.some((x) => x.name === "separateFromSimilar")));
   const prim = ["label", "finance", "redfilms", "shows"].map((f) => read(`lib/partner/act/primitives/${f}.ts`)).join("\n");
-  ok("B9b. …through the same gate (dupGate) — never a per-feature rule, never hardcoded to אקו\"ם", (prim.match(/dupGate\(/g) ?? []).length === 6 && !/אקו/.test(prim) && !/אקו/.test(read("lib/partner/act/primitives/duplicates.ts").replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
+  ok("B9b. …through the same gate (dupGate) — never a per-feature rule, never hardcoded to אקו\"ם", (prim.match(/dupGate\(/g) ?? []).length === 8 /* the six money CREATEs + the two DB-1 Red Films → Finance links */ && !/אקו/.test(prim) && !/אקו/.test(read("lib/partner/act/primitives/duplicates.ts").replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
   const reader = read("lib/writes/duplicates.ts");
   ok("B10. the reader is SELECT-only, focused (eq on context + amount) and capped", !/\.(insert|update|upsert|delete)\(/.test(reader) && (reader.match(/\.limit\(LIMIT\)/g) ?? []).length === 5 && (reader.match(/\.eq\("amount"|\.eq\("gross_amount"/g) ?? []).length === 5);
 

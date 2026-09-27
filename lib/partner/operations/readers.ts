@@ -55,7 +55,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
   const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta, clSess, clMeet, clShow, clSocial] = await Promise.all([
     readSection(client, "red_films_productions", "id, title, production_type, status, project_id, client_id, artist_name, client_source, shoot_date, publish_date, edit_status, collection_status, general_budget, client_price, advance_required, advance_received, currency"),
     readSection(client, "red_films_budget_items", "id, production_id, planned_amount, actual_amount, status, linked_transaction_id, currency"),
-    readSection(client, "red_films_budget_payments", "production_id, budget_item_id, amount, payment_date, currency"),
+    readSection(client, "red_films_budget_payments", "production_id, budget_item_id, amount, payment_date, currency, linked_transaction_id"),
     readSection(client, "red_films_equipment", "category, status"),
     readSection(client, "clip_items", "project_id, category, amount, currency, status, linked_transaction_id"),
     readSection(client, "meetings", "id, date, time, status, project_id, client_id, calendar_event_id"),
@@ -99,7 +99,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
       generalBudget: n(r.general_budget), clientPrice: n(r.client_price), advanceRequired: n(r.advance_required), advanceReceived: n(r.advance_received), currency: s(r.currency),
     } : null)),
     budgetItems: mapSection(items, (r) => (s(r.production_id) ? { id: s(r.id), productionId: String(r.production_id), planned: n(r.planned_amount), actual: n(r.actual_amount), status: s(r.status), hasTransaction: !!s(r.linked_transaction_id), currency: s(r.currency) } : null)),
-    budgetPayments: mapSection(pays, (r) => (s(r.production_id) ? { productionId: String(r.production_id), budgetItemId: s(r.budget_item_id), amount: n(r.amount), paymentDate: s(r.payment_date), currency: s(r.currency) } : null)),
+    budgetPayments: mapSection(pays, (r) => (s(r.production_id) ? { productionId: String(r.production_id), budgetItemId: s(r.budget_item_id), amount: n(r.amount), paymentDate: s(r.payment_date), currency: s(r.currency), hasTransaction: !!s(r.linked_transaction_id) } : null)),
     equipment: mapSection(equip, (r) => ({ category: s(r.category), status: s(r.status) })),
     clipItems: mapSection(clip, (r) => ({ projectId: s(r.project_id), category: s(r.category), amount: n(r.amount), currency: s(r.currency), status: s(r.status), hasTransaction: !!s(r.linked_transaction_id) })),
     meetings: mapSection(meet, (r) => (s(r.id) ? { id: String(r.id), date: s(r.date), time: s(r.time), status: s(r.status), projectId: s(r.project_id), clientId: s(r.client_id), hasCalendarEvent: !!s(r.calendar_event_id) } : null)),

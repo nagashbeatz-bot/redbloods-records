@@ -30,7 +30,7 @@ export interface ArtistClip {
   clientClipCurrency: string | null;
   /** C — Finance expenses with scope קליפ on the linked project, paid (שולם) only, PER CURRENCY. Empty without a project. */
   actualCostPaid: Record<string, number>;
-  /** Red Films ledger payments of the production, PER CURRENCY — real money, not linked to Finance (DB-1 pending). */
+  /** Red Films ledger payments of the production NOT linked to Finance, PER CURRENCY (DB-1: a linked payment is its Finance expense, already in actualCostPaid — never counted twice). */
   rfLedgerPaid: Record<string, number>;
   /** D — always NOT_DEFINED (null + reason) until the artist agreement rule exists. */
   recoup: ClipRecoupContribution;
@@ -56,13 +56,14 @@ export async function listArtistClips(artistName: string): Promise<ArtistClip[]>
   const [settingsRes, txRes, payRes] = await Promise.all([
     projectIds.length ? supabase.from("settings").select("key, value").in("key", projectIds.map((id) => `finance_${id}`)) : Promise.resolve({ data: [], error: null }),
     projectIds.length ? supabase.from("transactions").select("project_id, amount, currency, payment_status").eq("type", "expense").eq("expense_scope", CLIP_SCOPE).in("project_id", projectIds) : Promise.resolve({ data: [], error: null }),
-    supabase.from("red_films_budget_payments").select("production_id, amount, currency").in("production_id", prodIds),
+    supabase.from("red_films_budget_payments").select("production_id, amount, currency, linked_transaction_id").in("production_id", prodIds),
   ]);
   for (const r of [settingsRes, txRes, payRes]) if (r.error) throw new Error(r.error.message);
   const setting = new Map(((settingsRes.data ?? []) as Array<{ key: string; value: Record<string, unknown> | null }>).map((s) => [s.key.slice("finance_".length), s.value ?? {}]));
   const byCur = (rows: Array<{ amount: unknown; currency: unknown }>) => rows.reduce<Record<string, number>>((m, r) => { const c = normalizeCurrency(r.currency as string | null); m[c] = round2((m[c] ?? 0) + (Number(r.amount) || 0)); return m; }, {});
   const txs = (txRes.data ?? []) as Array<{ project_id: string; amount: unknown; currency: unknown; payment_status: string | null }>;
-  const pays = (payRes.data ?? []) as Array<{ production_id: string; amount: unknown; currency: unknown }>;
+  // DB-1: a linked payment IS its Finance expense (in C when paid) — only the unlinked ones are the separate ledger amount
+  const pays = ((payRes.data ?? []) as Array<{ production_id: string; amount: unknown; currency: unknown; linked_transaction_id?: string | null }>).filter((x) => !x.linked_transaction_id);
   return prods.map((p) => {
     const s = p.project_id ? setting.get(p.project_id) ?? null : null;
     const price = s ? Number(s.clipAgreedPrice) : NaN;

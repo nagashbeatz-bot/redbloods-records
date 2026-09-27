@@ -176,7 +176,7 @@ export const PROJECT_INTEGRITY = {
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
-  "lib/types.ts": "3f3e72ac40b78e73ea21cd5e84e1c7636061e8bfece4dfcdbddc907eb658e5a7",
+  "lib/types.ts": "7324ef073281be727639acb0aa7772895b77665fae2809e5e4bb7dd7834b3c82",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
