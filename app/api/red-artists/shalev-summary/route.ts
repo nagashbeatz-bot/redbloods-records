@@ -3,6 +3,7 @@ import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
 import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists/week";
+import { summarizeArtistFeeRows, SHOW_MONEY_ROLES } from "@/lib/shows-types";
 
 /**
  * GET /api/red-artists/shalev-summary  (owner-only, READ-ONLY)
@@ -16,10 +17,11 @@ import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists
  *   (show_price / dj_fee) are intentionally NOT returned — the portal's shows
  *   tab shows no money.
  *
- * Balance: derived ONLY from the artist-fee expense transactions the shows
- *   Finance-sync already creates — category="שכר אמן", artist="שליו טסמה",
- *   expense_scope="הופעה" (Shalev's cut of a show, = (price−dj)/2). From the
- *   ARTIST's point of view this is income:
+ * Balance: derived ONLY from the show ARTIST_FEE rows (transactions.show_money_role
+ *   = 'ARTIST_FEE' — the canonical show link, never category / text), artist="שליו טסמה"
+ *   (Shalev's cut of a show). A1: "paid" = that fee row's own status, never the client
+ *   payment. Totals PER CURRENCY (byCurrency); paidTotal / expectedTotal are ₪ only.
+ *   From the ARTIST's point of view this is income:
  *     • payment_status "שולם" → paid to Shalev (current balance + history)
  *     • payment_status "צפוי" → owed to Shalev (expected)
  *     • payment_status "בוטל" → ignored
@@ -99,44 +101,15 @@ export async function GET() {
     // ── Balance (artist-fee transactions only) — OWNER ONLY ─────────────────
     // For the shalev role we NEVER query or return financial data. The block is
     // skipped entirely and balance is null (the portal also hides the UI).
-    type Balance = {
-      paidTotal: number; expectedTotal: number; currency: string;
-      payments: { id: string; date: string | null; description: string; amount: number; currency: string }[];
-      hasData: boolean;
-    };
-    let balance: Balance | null = null;
+    let balance: ReturnType<typeof summarizeArtistFeeRows> | null = null;
     if (!isShalev) {
-      const { data: txRows } = await supabase
+      const { data: txRows, error: txErr } = await supabase
         .from("transactions")
         .select("id, date, description, amount, currency, payment_status")
-        .eq("category", "שכר אמן")
-        .eq("artist", SHALEV)
-        .eq("expense_scope", "הופעה");
-
-      const rows = txRows ?? [];
-      const sum = (status: string) =>
-        rows
-          .filter((t) => t.payment_status === status)
-          .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-
-      const payments = rows
-        .filter((t) => t.payment_status === "שולם")
-        .sort((a, b) => ((a.date ?? "") > (b.date ?? "") ? -1 : (a.date ?? "") < (b.date ?? "") ? 1 : 0))
-        .map((t) => ({
-          id: t.id as string,
-          date: (t.date as string | null) ?? null,
-          description: (t.description as string) ?? "",
-          amount: Number(t.amount) || 0,
-          currency: (t.currency as string) || "₪",
-        }));
-
-      balance = {
-        paidTotal: sum("שולם"),
-        expectedTotal: sum("צפוי"),
-        currency: (rows[0]?.currency as string) || "₪",
-        payments,
-        hasData: rows.length > 0,
-      };
+        .eq("show_money_role", SHOW_MONEY_ROLES.ARTIST)
+        .eq("artist", SHALEV);
+      if (txErr) throw new Error(txErr.message);
+      balance = summarizeArtistFeeRows((txRows ?? []) as Parameters<typeof summarizeArtistFeeRows>[0]);
     }
 
     // ── Weekly schedule + updates ────────────────────────────────────────────

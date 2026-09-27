@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { deleteShowRecord, updateShowRecord } from "@/lib/writes/shows";
+import { deleteShowRecord, deleteShowCompletely, updateShowRecord } from "@/lib/writes/shows";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -22,19 +22,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         show: r.show,
       }, { status: 502 });
     }
-    return NextResponse.json({ show: r.show, ...(r.calendarWarning ? { calendarWarning: r.calendarWarning } : {}), ...(r.paymentReversalNeeded ? { paymentReversalNeeded: r.paymentReversalNeeded } : {}) });
+    return NextResponse.json({ show: r.show, ...(r.calendarWarning ? { calendarWarning: r.calendarWarning } : {}), ...(r.paymentReversalNeeded ? { paymentReversalNeeded: r.paymentReversalNeeded } : {}), ...(r.financeWarning ? { financeWarning: r.financeWarning } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
-// DELETE /api/shows/[id] — shared writer: blocked while rehearsals exist (409); finance rows hard-deleted, then the show.
-export async function DELETE(_req: NextRequest, ctx: Ctx) {
+// DELETE /api/shows/[id] — shared writer: blocked while rehearsals / received payments / paid DJ-artist fees exist (409);
+// the still-expected finance rows are hard-deleted, then the show.
+export async function DELETE(req: NextRequest, ctx: Ctx) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await ctx.params;
-    const r = await deleteShowRecord(id);
+    // ?complete=1 — the hub delete (calendar event + linked tasks + show), every refusal checked BEFORE any write
+    const complete = req.nextUrl.searchParams.get("complete") === "1";
+    const r = complete ? await deleteShowCompletely(id) : await deleteShowRecord(id);
+    if (r.kind === "not_found") return NextResponse.json({ error: "ההופעה לא נמצאה" }, { status: 404 });
     if (r.kind === "has_rehearsals") {
       return NextResponse.json({
         error: `להופעה יש ${r.rehearsalCount} חזרות מקושרות עם הוצאות — יש לטפל בהן לפני מחיקת ההופעה`,
@@ -44,6 +48,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     if (r.kind === "has_payments") {
       return NextResponse.json({ error: `להופעה יש ${r.paymentCount} תשלומים שהתקבלו — כסף שהתקבל לא נמחק. אפשר לבטל את ההופעה`, paymentCount: r.paymentCount }, { status: 409 });
     }
+    if (r.kind === "has_paid_fees") return NextResponse.json({ error: r.messageHe, code: "HAS_PAID_FEES" }, { status: 409 });
     return NextResponse.json({ ok: true, deletedTransactions: r.deletedTransactions });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

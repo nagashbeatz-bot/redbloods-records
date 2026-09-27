@@ -558,7 +558,6 @@ function ShowFormModal({
         contact_person:   contact,
         phone:            form.phone.trim(),
         status:           quoteStatus,
-        payment_status:   "לא שולם",
         show_price:       Number(form.show_price) || 0,
         // no addToCalendar → no Google Calendar; server keeps Finance clear for pipeline
       };
@@ -567,6 +566,7 @@ function ShowFormModal({
         payload.booker_name      = contact;
       }
       const isUpdate = savedId != null; // dedup: PATCH the existing quote, never a new POST
+      if (!isUpdate) payload.payment_status = "לא שולם"; // A1: a quote re-save never re-sends a payment status
       const res = await fetch(isUpdate ? `/api/shows/${savedId}` : "/api/shows", {
         method:  isUpdate ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -636,7 +636,6 @@ function ShowFormModal({
         contact_person:   form.contact_person.trim(),
         phone:            form.phone.trim(),
         status:           form.status,
-        payment_status:   form.payment_status,
         show_price:       Number(form.show_price) || 0,
         dj_fee:           Number(form.dj_fee) || 0,
         artist_fee:       Number(form.artist_fee) || 0,
@@ -657,6 +656,9 @@ function ShowFormModal({
 
       // savedId set → PATCH the same record (edit OR a converted quote); else POST.
       const isUpdate = savedId != null;
+      // A1: the client payment status is INTENT, sent only when the user actually changed it ("שולם" = the client paid
+      // the rest → the server records the remainder once). An unrelated edit never re-sends it (no invented income).
+      if (!isUpdate || form.payment_status !== initForm.payment_status) payload.payment_status = form.payment_status;
       // D5: a deposit typed on a NEW show is money received → recorded as a Finance payment by the server.
       // On an existing show the received amount comes from Finance (use 'רשום תשלום' in the show panel).
       if (!isUpdate && (Number(form.advance_payment) || 0) > 0) payload.advance_payment = Number(form.advance_payment) || 0;
@@ -1733,9 +1735,10 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
 }
 
 // ─── Close-show modal ────────────────────────────────────────────────────────
-// Lightweight "סגירת הופעה" form. Toggles are documentation only (saved into
-// show.notes); they map to a SINGLE payment_status. One PATCH on the show —
-// syncShowFinance then runs server-side as usual. No per-party DB status.
+// Lightweight "סגירת הופעה" form. One PATCH on the show (closeShow) — the server
+// records the client remainder when 'received', and marks ONLY the fee rows the
+// Owner ticked as paid (A1: client paid ≠ DJ paid ≠ artist paid; an unticked
+// party is left exactly as it is — never downgraded). A summary line goes to notes.
 function CloseShowModal({ show, trigger, onClose, onDone }: {
   show: Show;
   trigger: "done" | "paid";
@@ -1748,8 +1751,9 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
   const preset       = trigger === "paid"; // "שולם" was picked → assume settled
 
   const [incomeReceived, setIncomeReceived] = useState(preset);
-  const [djPaid,         setDjPaid]         = useState(preset);
-  const [artistPaid,     setArtistPaid]     = useState(preset);
+  // A1: the client paying never presets the DJ / artist as paid — each is the Owner's own tick
+  const [djPaid,         setDjPaid]         = useState(false);
+  const [artistPaid,     setArtistPaid]     = useState(false);
   // Real payment date to the artist — separate from the show's own date, since
   // the artist's balance-ledger "תשלומים" entry must reflect when the money
   // actually moved, not when the show happened.
@@ -2071,47 +2075,9 @@ export default function ShowsHubPreview() {
   async function deleteShow(show: Show) {
     setDeletingId(show.id);
     try {
-      // Safety: block deletion when the show has linked rehearsals (they carry
-      // their own sessions + Finance transactions). Abort BEFORE any destructive
-      // side effect (calendar removal / task cleanup). The server DELETE also
-      // returns 409 as a backstop.
-      try {
-        const rRes = await fetch(`/api/sessions?showId=${show.id}`);
-        if (rRes.ok) {
-          const rCount = ((await rRes.json()).rehearsals ?? []).length;
-          if (rCount > 0) {
-            setToast({ message: `להופעה יש ${rCount} חזרות מקושרות — יש לטפל בהן לפני מחיקת ההופעה`, type: "error" });
-            setDeletingId(null);
-            return;
-          }
-        }
-      } catch { /* fall through to the server-side 409 guard */ }
-
-      if (show.calendar_event_id) {
-        const calRes = await fetch(`/api/shows/${show.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ removeFromCalendar: true }),
-        });
-        const calData = await calRes.json().catch(() => ({}));
-        if (!calRes.ok) throw new Error(calData.error ?? "שגיאה בהסרה מהיומן");
-      }
-
-      // Delete linked tasks (only those with show_id matching this show)
-      try {
-        const linkedTasksRes = await fetch(`/api/tasks?show_id=${show.id}`);
-        if (linkedTasksRes.ok) {
-          const linkedTasksData = await linkedTasksRes.json();
-          const linkedTasks: { id: string }[] = linkedTasksData.tasks ?? [];
-          await Promise.allSettled(
-            linkedTasks.map(t => fetch(`/api/tasks/${t.id}`, { method: "DELETE" }))
-          );
-        }
-      } catch {
-        // Task cleanup failed — non-fatal, continue with show deletion
-      }
-
-      const res = await fetch(`/api/shows/${show.id}`, { method: "DELETE" });
+      // One server call: every refusal (rehearsals / received payments / paid DJ-artist fees) is checked BEFORE the
+      // calendar event, the linked tasks or any finance row is touched — nothing is removed when the delete is refused.
+      const res = await fetch(`/api/shows/${show.id}?complete=1`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "שגיאה");

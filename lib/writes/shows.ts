@@ -8,7 +8,7 @@
 import { supabase } from "@/lib/supabase";
 import { createShow, getShow, patchShow, deleteShow, showCalendarSummary, showCalendarTimes, showCalendarDescription } from "@/lib/shows-store";
 import type { PatchShowInput, ShowStatus, PaymentStatus, Show } from "@/lib/shows-store";
-import { isMoneyCurrency, SHOW_MONEY_ROLES } from "@/lib/shows-types";
+import { isMoneyCurrency, paymentIntentFromBody, SHOW_MONEY_ROLES, SHOW_NO_MONEY_LABELS } from "@/lib/shows-types";
 
 /** D5: a show whose Finance holds money actually received (SHOW_PAYMENT rows) is never deleted or reverted to a lead. */
 async function receivedPaymentsOf(showId: string): Promise<number> {
@@ -50,7 +50,9 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       contact_person:   body.contact_person?.trim()    ?? "",
       phone:            body.phone?.trim()             ?? "",
       status:           body.status                    ?? "ליד חדש",
-      payment_status:   body.payment_status            ?? "לא שולם",
+      // A1: only a no-money label is stored as typed; "שולם" is INTENT (recorded below as a real payment), and
+      // מקדמה / חלקי / בוטל are derived from Finance — never persisted from the form.
+      payment_status:   SHOW_NO_MONEY_LABELS.includes(body.payment_status) ? body.payment_status : "לא שולם",
       show_price:       Number(body.show_price)        || 0,
       dj_fee:           body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
       dj_client_id:     body.dj_client_id          ?? null,
@@ -61,7 +63,7 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       notes:            body.notes?.trim()             ?? "",
     });
 
-    // Sync canonical Finance transactions (no-op unless created as "שולם").
+    // Sync canonical Finance transactions (confirmed shows: expected balance + DJ / artist rows "צפוי").
     const { syncShowFinance } = await import("@/lib/shows-finance-sync");
     await syncShowFinance(show);
     // D5: an advance typed on creation is money received — it becomes a SHOW_PAYMENT row (never a number on the show)
@@ -72,7 +74,14 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       const r = await recordShowPayment(show.id, { amount: advance, date: typeof body.advance_date === "string" ? body.advance_date : new Date().toISOString().slice(0, 10), method: typeof body.payment_method === "string" ? body.payment_method : "" });
       if (r.kind === "refused") paymentWarning = `ההופעה נשמרה, אבל המקדמה לא נרשמה: ${r.messageHe}`;
     }
-    const saved = advance > 0 ? (await getShow(show.id)) ?? show : show;
+    // A1: created as "שולם" = the client paid → the REMAINDER (after an advance given here) is recorded once, as a
+    // real payment row. DJ / artist fee rows stay "צפוי" (their own obligations).
+    const paidIntent = body.payment_status === "שולם";
+    if (paidIntent) {
+      const fresh = await getShow(show.id);
+      if (fresh) await syncShowFinance(fresh, { markRemainderReceived: true });
+    }
+    const saved = advance > 0 || paidIntent ? (await getShow(show.id)) ?? show : show;
 
     // Google Calendar — only if explicitly requested and date exists
     let calendarWarning: string | undefined;
@@ -108,9 +117,9 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
 
 export type UpdateShowResult =
   | { kind: "not_found" }
-  | { kind: "ok"; show: Show; calendarWarning?: string; paymentReversalNeeded?: { amount: number; entryDate: string } }
+  | { kind: "ok"; show: Show; calendarWarning?: string; paymentReversalNeeded?: { amount: number; entryDate: string }; financeWarning?: string }
   | { kind: "balance_sync_failed"; show: Show; balanceSyncError: string }
-  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS"; messageHe: string };
+  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS" | "HAS_PAID_FEES"; messageHe: string };
 
 /** PATCH /api/shows/[id] semantics. */
 export async function updateShowRecord(id: string, body: Body): Promise<UpdateShowResult> {
@@ -129,7 +138,6 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     if (body.contact_person   !== undefined) patch.contact_person   = body.contact_person?.trim()  ?? "";
     if (body.phone            !== undefined) patch.phone            = body.phone?.trim()           ?? "";
     if (body.status           !== undefined) patch.status           = body.status      as ShowStatus;
-    if (body.payment_status   !== undefined) patch.payment_status   = body.payment_status as PaymentStatus;
     if (body.show_price       !== undefined) patch.show_price       = Number(body.show_price)      || 0;
     if (body.dj_fee           !== undefined) patch.dj_fee           = Number(body.dj_fee);
     if (body.dj_client_id    !== undefined) patch.dj_client_id     = body.dj_client_id    ?? null;
@@ -154,13 +162,32 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
       const { isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
       if (!isConfirmedShowStatus(patch.status) && patch.status !== "בוטל") return { kind: "refused", code: "HAS_PAYMENTS", messageHe: "להופעה יש תשלומים שהתקבלו — אי אפשר להחזיר אותה לליד (התשלומים לא נמחקים). אפשר לבטל אותה" };
     }
+    // A paid DJ / artist fee is money that went out: a revert to a lead (which removes the show's finance rows) is
+    // refused BEFORE any write — same canon as received money (client paid ≠ DJ / artist paid; both are never deleted).
+    if (patch.status) {
+      const { isConfirmedShowStatus, paidShowFeeRows, paidFeesRefusalHe } = await import("@/lib/shows-finance-sync");
+      if (!isConfirmedShowStatus(patch.status) && patch.status !== "בוטל") {
+        const paidFees = await paidShowFeeRows(existing);
+        if (paidFees.length) return { kind: "refused", code: "HAS_PAID_FEES", messageHe: paidFeesRefusalHe(paidFees) };
+      }
+    }
+
+    // A1: payment_status in the body is INTENT, never truth. "שולם" moving from a stored non-"שולם" = the client paid
+    // the rest → the sync records the REMAINDER once. A no-money label (לא שולם / צפוי) is kept only while Finance holds
+    // no payment; everything else is derived from Finance by the sync. Undoing a payment is an explicit Finance
+    // correction — never a picker value (a SHOW_PAYMENT row is never turned back into "expected" by a save).
+    const intent = paymentIntentFromBody(body.payment_status, existing.payment_status);
+    if (SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0) patch.payment_status = body.payment_status as PaymentStatus;
 
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);
-    // A new currency (no payments yet): the show's expected / DJ / artist / rehearsal rows carry it too — no conversion
+    // A new currency (no payments yet): the show's expected / rehearsal rows and its UNPAID DJ / artist rows carry it
+    // too — no conversion. A paid fee row keeps the currency it was paid in (A1: a paid row is never re-currencied).
     if (patch.currency && patch.currency !== (existing.currency || "₪")) {
-      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).neq("show_money_role", SHOW_MONEY_ROLES.PAYMENT);
+      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.REHEARSAL]);
+      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST]).neq("payment_status", "שולם");
     }
+    let financeWarning: string | undefined;
     // Set when unchecking "שולם לאמן" would otherwise silently leave a stale
     // payment record — surfaced to the client instead of ever auto-deleting it.
     let paymentReversalNeeded: { amount: number; entryDate: string } | undefined;
@@ -186,7 +213,8 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
         // Finance transactions entirely (not "בוטל"); keep the show itself.
         await fin.clearShowFinance(show);
       } else {
-        await fin.syncShowFinance(show);
+        const report = await fin.syncShowFinance(show, intent);
+        if (report.feeConflicts.length) financeWarning = report.feeConflicts.join(" · ");
         // Close-show modal: apply per-party paid/expected statuses to the 3
         // linked transactions (after sync created/linked them).
         if (body.closeShow && typeof body.closeShow === "object") {
@@ -382,20 +410,33 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     }
 
     if (balanceSyncError) return { kind: "balance_sync_failed", show, balanceSyncError };
-    return { kind: "ok", show, calendarWarning, paymentReversalNeeded };
+    return { kind: "ok", show, calendarWarning, paymentReversalNeeded, financeWarning };
 }
 
 /** DELETE /api/shows/[id] semantics: blocked while rehearsals exist; the show's finance rows are hard-deleted first. */
-export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; deletedTransactions: number } | { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "has_payments"; paymentCount: number }> {
+export type ShowDeleteRefusal = { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "has_payments"; paymentCount: number } | { kind: "has_paid_fees"; messageHe: string };
+/** The delete preconditions, read-only (rehearsals, received payments, paid DJ / artist fees) — checked BEFORE any write. */
+async function showDeleteRefusal(id: string): Promise<ShowDeleteRefusal | null> {
+  const { countShowRehearsals, paidShowFeeRows, paidFeesRefusalHe } = await import("@/lib/shows-finance-sync");
+  const rehearsalCount = await countShowRehearsals(id);
+  if (rehearsalCount > 0) return { kind: "has_rehearsals", rehearsalCount };
+  // D5: money actually received is never deleted with its show
+  const paymentCount = await receivedPaymentsOf(id);
+  if (paymentCount > 0) return { kind: "has_payments", paymentCount };
+  // Money paid out (a DJ / artist fee row "שולם") is never deleted with its show either
+  const show = await getShow(id);
+  const paidFees = show ? await paidShowFeeRows(show) : [];
+  if (paidFees.length) return { kind: "has_paid_fees", messageHe: paidFeesRefusalHe(paidFees) };
+  return null;
+}
+
+export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; deletedTransactions: number } | ShowDeleteRefusal> {
     // Safety: block deletion when the show has linked rehearsals (they carry
     // their own sessions + Finance transactions). No auto-delete — the owner
     // must handle the rehearsals first. 409 with a clear message.
-    const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
-    const rehearsalCount = await countShowRehearsals(id);
-    if (rehearsalCount > 0) return { kind: "has_rehearsals", rehearsalCount };
-    // D5: money actually received is never deleted with its show
-    const paymentCount = await receivedPaymentsOf(id);
-    if (paymentCount > 0) return { kind: "has_payments", paymentCount };
+    // D5 + paid fees: money that actually moved (received or paid out) is never deleted with its show.
+    const refusal = await showDeleteRefusal(id);
+    if (refusal) return refusal;
     // Real delete: hard-delete the show's linked Finance transactions (NOT
     // cancel — don't leave them as "בוטל"), then remove the show. No
     // syncShowFinance here. (status="בוטל" cancellation is handled separately
@@ -445,14 +486,12 @@ export async function showTaskIds(showId: string): Promise<string[]> {
 
 /** The Shows hub delete, server-side: its calendar event first, then its linked tasks (and their Google Tasks), then the
  *  show (blocked while rehearsals exist; its finance rows hard-deleted by deleteShowRecord). */
-export async function deleteShowCompletely(id: string): Promise<{ kind: "ok"; deletedTransactions: number; deletedTasks: number } | { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "has_payments"; paymentCount: number } | { kind: "not_found" }> {
+export async function deleteShowCompletely(id: string): Promise<{ kind: "ok"; deletedTransactions: number; deletedTasks: number } | ShowDeleteRefusal | { kind: "not_found" }> {
   const show = await getShow(id);
   if (!show) return { kind: "not_found" };
-  const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
-  const rehearsalCount = await countShowRehearsals(id);
-  if (rehearsalCount > 0) return { kind: "has_rehearsals", rehearsalCount };
-  const paymentCount = await receivedPaymentsOf(id);
-  if (paymentCount > 0) return { kind: "has_payments", paymentCount };
+  // Every refusal (rehearsals / received payments / paid DJ-artist fees) BEFORE the calendar / tasks / finance writes
+  const refusal = await showDeleteRefusal(id);
+  if (refusal) return refusal;
   if (show.calendar_event_id) {
     const r = await updateShowRecord(id, { removeFromCalendar: true });
     if (r.kind !== "ok") throw new Error("calendar removal failed");
@@ -502,4 +541,50 @@ export async function notifyShowDj(id: string) {
 export async function readShow(id: string): Promise<Show | null> { return getShow(id); }
 export async function showFinanceRowCount(show: Show): Promise<number> {
   return [show.linked_income_transaction_id, show.linked_dj_expense_transaction_id, show.linked_artist_expense_transaction_id].filter(Boolean).length;
+}
+
+// ── A1: DJ / artist fees are their own obligations (Owner canon 2026-09-27) ─────────────────────────────────────────
+export type ShowFeeRole = typeof SHOW_MONEY_ROLES.DJ | typeof SHOW_MONEY_ROLES.ARTIST;
+export type { ShowFeeRow } from "@/lib/shows-finance-sync";
+/** READ-ONLY: a show's DJ / artist fee rows in Finance (the shared batched reader; null = no row). */
+export async function showFeeRows(show: Pick<Show, "id" | "linked_dj_expense_transaction_id" | "linked_artist_expense_transaction_id">) {
+  const { getShowFeeRowsMap } = await import("@/lib/shows-finance-sync");
+  return (await getShowFeeRowsMap([show]))[show.id];
+}
+
+export type SetShowFeePaidResult =
+  | { kind: "not_found" }
+  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED"; messageHe: string }
+  | { kind: "ok"; transactionId: string; before: string | null; after: string };
+
+/**
+ * The explicit "the DJ / the artist was paid" (or the explicit undo back to "צפוי") on the show's EXISTING fee row —
+ * the one writer for it outside the close dialog (Sunny MARK_SHOW_FEE_PAID; the Finance page's own row edit stays a
+ * valid path because the show sync never overwrites a fee status). Never creates a row, never touches the client
+ * payment, the other fee, or the artist balance ledger.
+ */
+export async function setShowFeePaid(showId: string, role: unknown, paid: unknown, opts: { date?: unknown; method?: unknown } = {}): Promise<SetShowFeePaidResult> {
+  if (role !== SHOW_MONEY_ROLES.DJ && role !== SHOW_MONEY_ROLES.ARTIST) return { kind: "refused", code: "BAD_ROLE", messageHe: "DJ_FEE או ARTIST_FEE" };
+  if (typeof paid !== "boolean") return { kind: "refused", code: "BAD_ARGS", messageHe: "שולם: כן / לא" };
+  const date = opts.date === undefined || opts.date === null || opts.date === "" ? null : opts.date;
+  if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))) return { kind: "refused", code: "BAD_DATE", messageHe: "תאריך לא תקין (YYYY-MM-DD)" };
+  const method = opts.method === undefined || opts.method === null ? "" : opts.method;
+  const { PAYMENT_METHODS } = await import("@/lib/writes/show-payments");
+  if (typeof method !== "string" || !(PAYMENT_METHODS as readonly string[]).includes(method)) return { kind: "refused", code: "BAD_METHOD", messageHe: "אמצעי תשלום לא מוכר" };
+  const show = await getShow(showId);
+  if (!show) return { kind: "not_found" };
+  const row = (await showFeeRows(show))[role];
+  const who = role === SHOW_MONEY_ROLES.DJ ? "ה-DJ" : "האמן";
+  if (!row) return { kind: "refused", code: "NO_FEE_ROW", messageHe: `להופעה אין שורת שכר ${who} בפיננסים` };
+  if (paid && row.status === "שולם") return { kind: "refused", code: "ALREADY_PAID", messageHe: `שכר ${who} כבר מסומן שולם` };
+  if (paid && row.status === "בוטל") return { kind: "refused", code: "FEE_CANCELLED", messageHe: `שורת שכר ${who} מבוטלת (הופעה מבוטלת / שכר 0) — אם שולם בכל זאת, מתקנים בפיננסים` };
+  if (!paid && row.status !== "שולם") return { kind: "refused", code: "NOT_PAID", messageHe: `שכר ${who} לא מסומן שולם` };
+  const upd: Record<string, unknown> = paid
+    ? { payment_status: "שולם", date: date ?? new Date().toISOString().slice(0, 10), ...(method ? { payment_method: method } : {}) }
+    : { payment_status: "צפוי", date: show.date || row.date };
+  const { error } = await supabase.from("transactions").update(upd).eq("id", row.id);
+  if (error) throw new Error(error.message);
+  // Back to "צפוי": the row is unpaid again, so the show's own rule re-prices it (the sync never touches a paid row)
+  if (!paid) { const { syncShowFinance } = await import("@/lib/shows-finance-sync"); await syncShowFinance(show); }
+  return { kind: "ok", transactionId: row.id, before: row.status, after: String(upd.payment_status) };
 }

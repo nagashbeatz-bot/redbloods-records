@@ -35,8 +35,10 @@ export function showCalendarSummary(show: Pick<Show, "name" | "artist">): string
 export function showCalendarDescription(show: Pick<Show,
   "name" | "artist" | "booker_name" | "contact_person" | "phone" |
   "location" | "show_price" | "dj_name" | "notes"
->): string {
-  const fmt = (n: number) => `₪${n.toLocaleString("he-IL")}`;
+> & { currency?: string | null }): string {
+  // The show's own currency (shows.currency); a blank / missing one normalizes to ₪ — never a silent ₪ for a $ show.
+  const cur = (show.currency ?? "").trim() || "₪";
+  const fmt = (n: number) => `${cur}${n.toLocaleString("he-IL")}`;
   const lines = [
     `שם ההופעה: ${show.name}`,
     show.artist         ? `אמן מופיע: ${show.artist}`        : null,

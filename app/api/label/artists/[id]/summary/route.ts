@@ -3,6 +3,7 @@ import { resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
 import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists/week";
+import { summarizeArtistFeeRows, SHOW_MONEY_ROLES } from "@/lib/shows-types";
 
 /**
  * GET /api/label/artists/[id]/summary  (owner-only, READ-ONLY)
@@ -15,11 +16,12 @@ import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists
  *   upcoming (אושרה|נסגר, date ≥ today) and done (בוצע). Money fields are
  *   intentionally NOT returned.
  *
- * Balance: derived ONLY from the artist-fee expense transactions the shows
- *   Finance-sync already creates — category="שכר אמן", artist=<this artist's
- *   exact name>, expense_scope="הופעה". Exact artist match (not collaborations)
- *   — a multi-artist "שכר אמן" row is ambiguous to attribute, so it is not
- *   counted. Always shown here (this route is owner-only).
+ * Balance: derived ONLY from the show ARTIST_FEE rows (transactions.show_money_role
+ *   = 'ARTIST_FEE', the canonical show link — never category / text), artist=<this
+ *   artist's exact name>. A1: "paid" = that fee row's own status (never the client
+ *   payment). Totals PER CURRENCY (byCurrency); paidTotal / expectedTotal are ₪ only
+ *   (never a mixed sum, never a rows[0] currency label). Exact artist match (not
+ *   collaborations). Always shown here (this route is owner-only).
  *
  * Weekly: this artist's real schedule for the UPCOMING Sunday–Saturday week —
  *   sessions from `sessions` belonging to their projects (project.artist token
@@ -78,35 +80,14 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
       .map(slim);
 
     // ── Balance (artist-fee transactions only) — always shown (owner-only route) ──
-    const { data: txRows } = await supabase
+    const { data: txRows, error: txErr } = await supabase
       .from("transactions")
       .select("id, date, description, amount, currency, payment_status")
-      .eq("category", "שכר אמן")
-      .eq("artist", artistName)
-      .eq("expense_scope", "הופעה");
+      .eq("show_money_role", SHOW_MONEY_ROLES.ARTIST)
+      .eq("artist", artistName);
+    if (txErr) throw new Error(txErr.message);
 
-    const rows = txRows ?? [];
-    const sum = (status: string) =>
-      rows.filter((t) => t.payment_status === status).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-
-    const payments = rows
-      .filter((t) => t.payment_status === "שולם")
-      .sort((a, b) => ((a.date ?? "") > (b.date ?? "") ? -1 : (a.date ?? "") < (b.date ?? "") ? 1 : 0))
-      .map((t) => ({
-        id: t.id as string,
-        date: (t.date as string | null) ?? null,
-        description: (t.description as string) ?? "",
-        amount: Number(t.amount) || 0,
-        currency: (t.currency as string) || "₪",
-      }));
-
-    const balance = {
-      paidTotal: sum("שולם"),
-      expectedTotal: sum("צפוי"),
-      currency: (rows[0]?.currency as string) || "₪",
-      payments,
-      hasData: rows.length > 0,
-    };
+    const balance = summarizeArtistFeeRows((txRows ?? []) as Parameters<typeof summarizeArtistFeeRows>[0]);
 
     // ── Weekly schedule + updates ────────────────────────────────────────────
     const { data: projRows } = await supabase.from("projects").select("id, name, artist, is_hidden");
@@ -184,7 +165,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     // just hidden in the UI. (The מאזן tab + home balance card are already
     // owner-gated client-side; this closes the direct-API read.)
     const safeBalance = access.role === "avi"
-      ? { paidTotal: 0, expectedTotal: 0, currency: balance.currency, payments: [], hasData: false }
+      ? { paidTotal: 0, expectedTotal: 0, currency: balance.currency, byCurrency: [], payments: [], hasData: false }
       : balance;
 
     // nextSession = the soonest still-upcoming session (date >= today), across

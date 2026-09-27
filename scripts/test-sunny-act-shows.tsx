@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runCases, mkDeps, fullFlow, U, OWNER, type FamilyCase } from "./fixtures/act-harness";
 import { approveAction, executeAction, planAction, previewAction } from "../lib/partner/act/service";
-import { CLEANTONE_DEFAULT_FEE, CLEANTONE_ID, REHEARSAL_STATUSES, SHOW_PAYMENT_STATUSES, SHOW_PRIMITIVES, SHOW_STATUSES, type ShowView } from "../lib/partner/act/primitives/shows";
+import { CLEANTONE_DEFAULT_FEE, CLEANTONE_ID, REHEARSAL_STATUSES, SHOW_FEE_ROLES, SHOW_PAYMENT_STATUSES, SHOW_PRIMITIVES, SHOW_STATUSES, type ShowView } from "../lib/partner/act/primitives/shows";
 import { ACTION_REGISTRY } from "../lib/partner/act/registry";
 
 let pass = 0, fail = 0;
@@ -20,7 +20,7 @@ type Sess = { projectId: string | null; showId: string | null; title: string; da
 type NS = { status: "sent" | "failed" | "processing"; version: string; sentAt?: string };
 interface W { shows: Record<string, ShowView>; clients: Record<string, string>; sessions: Record<string, Sess>; connected: boolean; sent: string[]; quote: string[]; closed: string[]; notify: { artist: Record<string, NS>; dj: Record<string, NS> }; pushOk: boolean }
 const FUT = "2099-05-01";
-const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
+const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", djFeeStatus: "צפוי", djFeeAmount: 500, artistFeeStatus: "צפוי", artistFeeAmount: 3750, ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
 const world = (): W => ({
   shows: { [U(1)]: sv({}), [U(2)]: sv({ name: "ליד", status: "ליד חדש", financeRows: 0, hasCalendarEvent: false, djClientId: null, djName: "", djFee: 0 }) },
   clients: { [U(60)]: "שליו טסמה", [CLEANTONE_ID]: "CLEANTONE", [U(61)]: "DJ אחר" },
@@ -61,6 +61,7 @@ function mk() {
     async markShowQuoteSent(id: string) { calls.push("markShowQuoteSent"); w.quote.push(id); return "ok" as const; },
     async notifyShowArtist(id: string) { calls.push("notifyShowArtist"); return fakeSend(w, "artist", id); },
     async notifyShowDj(id: string) { calls.push("notifyShowDj"); return fakeSend(w, "dj", id); },
+    async setShowFeePaid(id: string, role: string, paid: boolean) { calls.push("setShowFeePaid"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const }; const k = role === "DJ_FEE" ? "djFeeStatus" : "artistFeeStatus"; s[k] = paid ? "שולם" : "צפוי"; return { kind: "ok" as const }; },
     async showNotifyStates(id: string) { const s = w.shows[id]; if (!s) return null; const v = versionOf(s); return { artist: stateOf(w.notify.artist[id], v), dj: stateOf(w.notify.dj[id], v) }; },
     async readSession(id: string) { return w.sessions[id] ? { ...w.sessions[id] } : null; },
     async countSessionTransactions() { return 1; },
@@ -76,6 +77,7 @@ const CASES: FamilyCase<W>[] = [
   { id: "UPDATE_SHOW_DETAILS", args: { show: S1, location: "חיפה — אודיטוריום", startTime: "20:30" }, confirm: "כן בוס, 20:30", bad: { show: S1, startTime: "8pm" }, missing: { show: `show:${U(9)}`, location: "x" }, wrongKind: { show: `client:${U(60)}`, location: "x" }, stale: (w) => { w.shows[U(1)].location = "טבריה"; }, check: (w) => w.shows[U(1)].location === "חיפה — אודיטוריום" && w.shows[U(1)].startTime === "20:30" },
   { id: "SET_SHOW_MONEY", args: { show: S1, showPrice: 8500 }, confirm: "כן בוס, 8500", bad: { show: S1, paymentStatus: "חלקי" }, missing: { show: `show:${U(9)}`, showPrice: 1 }, stale: (w) => { w.shows[U(1)].showPrice = 7000; }, check: (w) => w.shows[U(1)].showPrice === 8500 && w.shows[U(1)].remaining === 8500 },
   { id: "RECORD_SHOW_PAYMENT", args: { show: S1, amount: 3000, date: "2099-04-01", paymentMethod: "העברה בנקאית" }, confirm: "כן בוס, 3000 2099-04-01", bad: { show: S1, amount: -5, date: "2099-04-01" }, missing: { show: `show:${U(9)}`, amount: 1, date: "2099-04-01" }, wrongKind: { show: `client:${U(60)}`, amount: 1, date: "2099-04-01" }, stale: (w) => { w.shows[U(1)].received = 500; }, check: (w, c) => w.shows[U(1)].received === 3000 && w.shows[U(1)].remaining === 5000 && c.join() === "recordShowPayment" },
+  { id: "MARK_SHOW_FEE_PAID", args: { show: S1, role: "DJ_FEE", paid: true, date: "2099-05-02", paymentMethod: "ביט" }, bad: { show: S1, role: "HOST_FEE", paid: true }, missing: { show: `show:${U(9)}`, role: "DJ_FEE", paid: true }, wrongKind: { show: `client:${U(60)}`, role: "DJ_FEE", paid: true }, stale: (w) => { w.shows[U(1)].djFeeStatus = "בוטל"; }, check: (w, c) => w.shows[U(1)].djFeeStatus === "שולם" && w.shows[U(1)].artistFeeStatus === "צפוי" && w.shows[U(1)].received === 0 && c.join() === "setShowFeePaid" },
   { id: "SET_SHOW_CURRENCY", args: { show: S1, currency: "$" }, confirm: "כן בוס, $", bad: { show: S1, currency: "GBP" }, missing: { show: `show:${U(9)}`, currency: "$" }, stale: (w) => { w.shows[U(1)].showPrice = 1; }, check: (w) => w.shows[U(1)].currency === "$" },
   { id: "ASSIGN_SHOW_DJ", args: { show: S1, djClient: `client:${U(61)}`, djFee: 700 }, confirm: "כן בוס, DJ אחר ₪700", bad: { show: S1, djClient: `client:${U(61)}` }, missing: { show: `show:${U(9)}`, remove: true }, stale: (w) => { w.shows[U(1)].djFee = 600; }, check: (w) => w.shows[U(1)].djClientId === U(61) && w.shows[U(1)].djName === "DJ אחר" && w.shows[U(1)].djFee === 700 },
   { id: "CONFIRM_SHOW", args: { show: S2, status: "אושרה" }, confirm: "כן בוס, אושרה", bad: { show: S2, status: "בוצע" }, missing: { show: `show:${U(9)}`, status: "אושרה" }, stale: (w) => { w.shows[U(2)].status = "צריך פולואפ"; }, check: (w) => w.shows[U(2)].status === "אושרה" },
@@ -109,6 +111,37 @@ const CASES: FamilyCase<W>[] = [
   const pp = await q("MOVE_SHOW_TO_PIPELINE", { show: S1, status: "ליד חדש" });
   ok("the pipeline preview says received money is never deleted (D5)", pp.status === "PREVIEW" && JSON.stringify(pp).includes("כסף שהתקבל לא נמחק לעולם"));
   ok("full payment only through the close (SET_SHOW_MONEY שולם on an open show is refused)", (await q("SET_SHOW_MONEY", { show: S1, paymentStatus: "שולם" })).status === "USE_CLOSE");
+
+  console.log("\nA1 — show money independence (client paid ≠ DJ paid ≠ artist paid)");
+  for (const ps of ["לא שולם", "צפוי", "בוטל"]) {
+    const r = await q("SET_SHOW_MONEY", { show: S1, paymentStatus: ps });
+    ok(`A1. SET_SHOW_MONEY '${ps}' (an implicit undo / typed truth) is refused and points to Finance`, r.status !== "PREVIEW" && (r.status === "USE_FINANCE" || /פיננסים|Finance/.test(JSON.stringify(r))), r.status);
+  }
+  ok("A1. SET_SHOW_MONEY accepts only 'שולם' as the payment value (intent)", JSON.stringify(ACTION_REGISTRY.get("SET_SHOW_MONEY")!.args.find((x) => x.name === "paymentStatus")?.values) === JSON.stringify(["שולם"]));
+  { const h = mk(); h.w.shows[U(1)].status = "בוצע"; h.w.shows[U(1)].paymentStatus = "שולם"; h.w.shows[U(1)].received = 8000; h.w.shows[U(1)].remaining = 0;
+    ok("A1. 'שולם' with nothing left to collect → refused (no invented income)", (await q("SET_SHOW_MONEY", { show: S1, paymentStatus: "שולם" }, h)).status === "NOTHING_TO_RECORD"); }
+  { const h = mk(); h.w.shows[U(1)].status = "בוצע"; h.w.shows[U(1)].paymentStatus = "שולם"; h.w.shows[U(1)].received = 8000; h.w.shows[U(1)].remaining = 500;
+    ok("A1. a stale 'שולם' mirror with a remainder → refused, pointing to RECORD_SHOW_PAYMENT (the writer would not record it)", (await q("SET_SHOW_MONEY", { show: S1, paymentStatus: "שולם" }, h)).status === "USE_RECORD_PAYMENT"); }
+  { const h = mk(); h.w.shows[U(1)].status = "בוצע"; h.w.shows[U(1)].received = 3000; h.w.shows[U(1)].remaining = 5000; h.w.shows[U(1)].paymentStatus = "מקדמה";
+    const r = await fullFlow(mkDeps(h.writers).d, "SET_SHOW_MONEY", { show: S1, paymentStatus: "שולם" }, "מאשר");
+    ok("A1. SET_SHOW_MONEY 'שולם' on a done show with a remainder → the remainder is received; DJ / artist fee statuses untouched", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.shows[U(1)].remaining === 0 && h.w.shows[U(1)].djFeeStatus === "צפוי" && h.w.shows[U(1)].artistFeeStatus === "צפוי", r.e?.status); }
+  const sm = await q("SET_SHOW_MONEY", { show: S1, showPrice: 9000 });
+  const smj = JSON.stringify(sm);
+  ok("A1. SET_SHOW_MONEY preview discloses the calendar update (price in the event) and that realized ledger income is not re-synced after the close", sm.status === "PREVIEW" && smj.includes("שינוי מחיר מעדכן אותו") && smj.includes("לא מסונכרנת מחדש אחרי הסגירה"));
+  ok("A1. SET_SHOW_MONEY preview says received payments never change and DJ / artist fee statuses never change", smj.includes("תשלומים שהתקבלו לא משתנים") && smj.includes("סטטוס התשלום של שכר ה-DJ ושל שכר האמן לא משתנה") && smj.includes("שינוי מחיר לעולם לא רושם הכנסה"));
+  const cl = JSON.stringify(await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: false, artistPaid: false }));
+  ok("A1. CLOSE_SHOW preview: a flag left false never downgrades an already-paid fee", cl.includes("שכר ששולם כבר נשאר שולם"));
+  { const h = mk(); h.w.shows[U(1)].djFeeStatus = "שולם";
+    ok("A1. MARK_SHOW_FEE_PAID on an already-paid fee → ALREADY_PAID", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "ALREADY_PAID");
+    const r = await fullFlow(mkDeps(h.writers).d, "MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: false }, "מאשר");
+    ok("A1. MARK_SHOW_FEE_PAID paid=false = the explicit undo (שולם → צפוי); nothing else changes", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.shows[U(1)].djFeeStatus === "צפוי" && h.calls.join() === "setShowFeePaid", r.e?.status); }
+  { const h = mk(); h.w.shows[U(1)].artistFeeStatus = null;
+    ok("A1. MARK_SHOW_FEE_PAID with no fee row → NO_FEE_ROW (never creates one)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "NO_FEE_ROW"); }
+  { const h = mk(); h.w.shows[U(1)].djFeeStatus = "בוטל";
+    ok("A1. MARK_SHOW_FEE_PAID on a cancelled fee row → FEE_CANCELLED", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "FEE_CANCELLED"); }
+  { const h = mk(); const p = await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h);
+    const pj = JSON.stringify(p);
+    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE only, and the preview shows the fee row before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)"), pj.slice(0, 400)); }
   const past = mk(); past.w.shows[U(1)].date = "2020-01-01";
   ok("notify only an upcoming show", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, past)).status === "NOT_UPCOMING");
   const other = mk(); other.w.shows[U(1)].artist = "אבי"; other.w.shows[U(1)].djClientId = U(61);
@@ -166,11 +199,12 @@ const CASES: FamilyCase<W>[] = [
   }
   const nsrc = read("lib/show-notify.ts") + read("lib/dj-show-notify.ts");
   ok("A8. the real senders still mark 'sent' only after classifyPushResult === sent, and the state readers only SELECT", /status: "sent", fingerprint/.test(nsrc) && /export async function readShalevShowNotifyState[\s\S]{0,600}\.select\("value"\)/.test(nsrc) && /export async function readDjShowNotifyState[\s\S]{0,600}\.select\("value"\)/.test(nsrc) && !/export async function read(Shalev|Dj)ShowNotifyState[\s\S]{0,700}\.(insert|update|upsert)\(/.test(nsrc));
-  ok("A9. show_view / label view / operating model read the same claim rows by their status (a failed send is never 'sent')", /"\^show_notify:"/.test(read("lib/partner/system/settings.ts")) && /"\^dj_show_notify:"/.test(read("lib/partner/system/settings.ts")) && [read("lib/partner/shows/view.ts"), read("lib/partner/label/view.ts"), read("lib/partner/sunny/operating.ts")].every((x) => /status === "failed" \? "FAILED"/.test(x)));
+  ok("A9. show_view / label view / operating model read the same claim rows by their status (a failed send is never 'sent')", /"\^show_notify:"/.test(read("lib/partner/system/settings.ts")) && /"\^dj_show_notify:"/.test(read("lib/partner/system/settings.ts")) && [read("lib/partner/label/view.ts"), read("lib/partner/sunny/operating.ts")].every((x) => /showNotifyStateOf\(/.test(x) && /computeShowNotifyFingerprint\(/.test(x) && !/status === "failed" \? "FAILED"/.test(x)) && /showNotifyStateOf\(v, currentFp\)/.test(read("lib/partner/shows/view.ts")) /* all three readers: the app's own read rule with the show's current version (failed → FAILED; older version → SENT_PREVIOUS_VERSION) */);
 
   console.log("\nVocabularies pinned to the code");
   const st = read("lib/shows-types.ts");
   ok("show statuses = lib/shows-types SHOW_STATUSES", st.includes(`SHOW_STATUSES = [${SHOW_STATUSES.map((x) => `"${x}"`).join(",")}]`));
+  ok("show fee roles = lib/shows-types SHOW_MONEY_ROLES DJ / ARTIST", st.includes(`DJ: "${SHOW_FEE_ROLES[0]}", ARTIST: "${SHOW_FEE_ROLES[1]}"`));
   ok("show payment statuses = lib/shows-types PAYMENT_STATUSES", st.includes(`PAYMENT_STATUSES = [${SHOW_PAYMENT_STATUSES.map((x) => `"${x}"`).join(",")}]`));
   ok("rehearsal statuses = RehearsalModal OP_STATUSES", read("components/shows/RehearsalModal.tsx").includes(`OP_STATUSES = [${REHEARSAL_STATUSES.map((x) => `"${x}"`).join(", ")}]`));
   ok("CLEANTONE id = lib/red-artists/cleantone.ts", read("lib/red-artists/cleantone.ts").includes(`CLEANTONE_CLIENT_ID = "${CLEANTONE_ID}"`));

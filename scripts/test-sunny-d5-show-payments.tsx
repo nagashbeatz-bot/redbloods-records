@@ -92,7 +92,7 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   ok("6. partial 500: received 1,500, remaining 1,500", receivedTotal(id) === 1500 && income(id).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED")?.amount === 1500);
   await recordShowPayment(id, { amount: 1500, date: "2026-10-15" });
   const exp = income(id).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED");
-  ok("7. the rest 1,500: the expected row BECOMES that payment → received 3,000, remaining 0, status שולם, DJ + artist rows paid", receivedTotal(id) === 3000 && !exp && getShow(id).payment_status === "שולם" && txOf(id).find((r) => r.show_money_role === "DJ_FEE")?.payment_status === "שולם" && txOf(id).find((r) => r.show_money_role === "ARTIST_FEE")?.payment_status === "שולם", income(id));
+  ok("7. the rest 1,500: the expected row BECOMES that payment → received 3,000, remaining 0, status שולם; A1: the DJ + artist fee rows stay צפוי (client paid ≠ DJ / artist paid)", receivedTotal(id) === 3000 && !exp && getShow(id).payment_status === "שולם" && txOf(id).find((r) => r.show_money_role === "DJ_FEE")?.payment_status === "צפוי" && txOf(id).find((r) => r.show_money_role === "ARTIST_FEE")?.payment_status === "צפוי", income(id));
   ok("8. NEVER 1,000 + 3,000 = 4,000 fake revenue: Σ received income = the price exactly", income(id).filter((r) => r.payment_status === "התקבל").reduce((s, r) => s + Number(r.amount), 0) === 3000);
   await recordShowPayment(id, { amount: 200, date: "2026-10-16", note: "טיפ" });
   const money = await fin.showMoneyForShow(getShow(id));
@@ -107,16 +107,15 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   await recordShowPayment(id2, { amount: 1000, date: "2026-09-27" });
   await fin.applyShowClosureStatuses(getShow(id2), { incomeReceived: false, djPaid: false, artistPaid: false });
   ok("11. close 'not received': the deposit stays; nothing downgraded", receivedTotal(id2) === 1000 && getShow(id2).payment_status === "מקדמה");
-  Object.assign(getShow(id2), { payment_status: "שולם" });
-  await fin.syncShowFinance(getShow(id2));
-  ok("12. 'שולם' (the client paid the rest): ONE payment for the remaining 2,000 — total received 3,000, never 4,000", receivedTotal(id2) === 3000 && income(id2).filter((r) => r.show_money_role === "SHOW_PAYMENT").length === 2);
+  await fin.syncShowFinance(getShow(id2), { markRemainderReceived: true });
+  ok("12. 'שולם' intent (the client paid the rest): ONE payment for the remaining 2,000 — total received 3,000, never 4,000", receivedTotal(id2) === 3000 && income(id2).filter((r) => r.show_money_role === "SHOW_PAYMENT").length === 2);
   const s3 = SHOW(); t("shows").push(s3); const id3 = String(s3.id);
   await fin.syncShowFinance(getShow(id3));
   await fin.applyShowClosureStatuses(getShow(id3), { incomeReceived: true, djPaid: true, artistPaid: false });
   ok("13. close 'received' with no deposit: the expected row becomes the full payment (one row)", receivedTotal(id3) === 3000 && income(id3).length === 1 && getShow(id3).payment_status === "שולם");
   Object.assign(getShow(id3), { payment_status: "לא שולם" });
   await fin.syncShowFinance(getShow(id3));
-  ok("14. undo of that single 'שולם' click → back to expected (like before D5)", receivedTotal(id3) === 0 && income(id3)[0].show_money_role === "SHOW_BALANCE_EXPECTED" && income(id3)[0].payment_status === "צפוי");
+  ok("14. A1: no implicit undo — a 'לא שולם' mirror never turns a received payment back into expected (reversal = an explicit Finance correction)", receivedTotal(id3) === 3000 && income(id3)[0].show_money_role === "SHOW_PAYMENT" && getShow(id3).payment_status === "שולם");
 
   console.log("\nCancel / delete / revert / lead");
   Object.assign(getShow(id2), { status: "בוטל" });

@@ -5,6 +5,7 @@
  */
 import {
   singleArtistToken,
+  showArtistIdentity,
   AUTO_SYNC_ENTRY_TYPE,
   decideSyncAction,
   decideRemovalAction,
@@ -84,6 +85,12 @@ check("synced + already received (manually confirmed) → keep_received", decide
 
   // 8) A collab show (2 tokens) never resolves to a single artist → caller must skip before even reaching decideSyncAction.
   check("QA: collab show artist field never yields a single token", singleArtistToken("שליו טסמה, אמן אחר"), null);
+
+  // 9) B4 identity evidence: shows carry no label-artist id — the name link is reported honestly; collab = AMBIGUOUS.
+  check("B4: single show artist → TEXT_MATCH", [showArtistIdentity("שליו טסמה").status, showArtistIdentity("שליו טסמה").quality], ["SINGLE", "TEXT_MATCH"]);
+  check("B4: collab show → COLLAB_AMBIGUOUS (never attributed)", [showArtistIdentity("שליו טסמה ، אבי מולה").status, showArtistIdentity("שליו טסמה ، אבי מולה").quality], ["COLLAB_AMBIGUOUS", "AMBIGUOUS"]);
+  check("B4: empty show artist → EMPTY / UNKNOWN", [showArtistIdentity("  ").status, showArtistIdentity(null).quality], ["EMPTY", "UNKNOWN"]);
+  check("B4: identity agrees with the money path's own token rule", ["שליו טסמה", "a, b", ""].map((x) => (showArtistIdentity(x).status === "SINGLE") === (singleArtistToken(x) !== null)), [true, true, true]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

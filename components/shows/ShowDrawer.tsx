@@ -210,7 +210,8 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
           contact_person:   draft.contact_person,
           phone:            draft.phone,
           status:           draft.status,
-          payment_status:   draft.payment_status,
+          // A1: the client payment status is INTENT — sent only when the user changed it (never on unrelated edits)
+          ...(draft.payment_status !== show.payment_status ? { payment_status: draft.payment_status } : {}),
           show_price:       draft.show_price,
           dj_fee:           draft.dj_fee,
           advance_payment:  draft.advance_payment,

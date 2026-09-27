@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireCleantoneAccess } from "@/lib/require-auth";
 import { listShows } from "@/lib/shows-store";
 import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
+import { getShowFeeRowsMap } from "@/lib/shows-finance-sync";
 
 /**
  * GET /api/red-artists/cleantone-summary  (DJ CLEANTONE or owner, READ-ONLY)
@@ -9,10 +10,12 @@ import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
  * Scoped to shows where dj_client_id = CLEANTONE_CLIENT_ID (never dj_name —
  * that field is display-only). Unlike shalev-summary, money IS returned here:
  * dj_fee is literally DJ CLEANTONE's own fee, not another artist's finances.
- * payment_status is the canonical shows column (owner-managed, no new write
- * surface for the DJ) — surfaced READ-ONLY so he can see whether a show is
- * settled. Only "שולם" counts as paid; every other value ("לא שולם", "צפוי",
- * "מקדמה", legacy "חלקי") reads as not-yet-paid in his portal.
+ * A1 (Owner canon 2026-09-27): paymentStatus is HIS OWN fee — the show's DJ_FEE row
+ * in Finance (owner-managed, no new write surface for the DJ), surfaced READ-ONLY —
+ * never the client's payment (client paid ≠ DJ paid). Only "שולם" counts as paid;
+ * every other value ("צפוי", "בוטל", no row) reads as not-yet-paid in his portal.
+ * The client's payment status is not returned (another party's finances).
+ * djFee carries its currency (the show's; a paid row's own amount + currency).
  * Cancelled shows (בוטל) are excluded — nothing for him to act on there.
  * shows.notes is intentionally NEVER returned — it's an internal free-text
  * field (payment/approval/coordination history), not DJ-facing content; the
@@ -26,6 +29,7 @@ export async function GET() {
   try {
     const allShows = await listShows();
     const mine = allShows.filter((s) => s.dj_client_id === CLEANTONE_CLIENT_ID && s.status !== "בוטל");
+    const fees = await getShowFeeRowsMap(mine);
 
     const toRow = (s: (typeof mine)[number]) => ({
       id: s.id,
@@ -34,9 +38,11 @@ export async function GET() {
       date: s.date,
       startTime: s.start_time,
       location: s.location,
-      djFee: s.dj_fee,
+      // a paid fee row is what he actually received (its own amount / currency); otherwise the agreed fee
+      djFee: fees[s.id]?.DJ_FEE?.status === "שולם" ? fees[s.id].DJ_FEE!.amount : s.dj_fee,
+      currency: fees[s.id]?.DJ_FEE?.status === "שולם" ? fees[s.id].DJ_FEE!.currency : (s.currency || "₪"),
       status: s.status,
-      paymentStatus: s.payment_status,
+      paymentStatus: fees[s.id]?.DJ_FEE?.status ?? "לא שולם",
       confirmationStatus: s.dj_confirmation_status,
     });
 
