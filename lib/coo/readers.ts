@@ -60,7 +60,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
     track("steven", async () => (await listSoundEngineerWork(cfg.stevenEngineerName)).map((w) => ({
       id: w.id, projectId: w.projectId, title: (w.workTitle && w.workTitle.trim()) || w.projectName || "עבודה", status: w.status as string,
       agreedPrice: w.agreedPrice, currency: w.currency, amountPaid: w.amountPaid, sentDate: w.sentDate, internalDeadline: w.internalDeadline,
-      hasMixVersion: w.hasMixVersion, lastUploadAt: w.lastUploadAt,
+      hasMixVersion: w.hasMixVersion, lastUploadAt: w.lastUploadAt, paymentDate: w.paymentDate ?? null,
       createdAt: w.createdAt || null, updatedAt: w.updatedAt || null,
     })), (v) => v.length),
     track("victor", async () => {

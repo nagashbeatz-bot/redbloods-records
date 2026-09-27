@@ -128,3 +128,20 @@ export function otherCurrencyLines(totals: CurrencyTotals | undefined, headline:
 export function formatCurrencyAmounts(items: readonly CurrencyAmount[]): string[] {
   return items.map((x) => formatOtherAmount(x.amount, x.currency));
 }
+
+/**
+ * One inline text for a per-currency totals map: "1,200₪ · $300" — each currency on its own, in display order,
+ * zero buckets skipped. Never a mixed sum (no FX). An empty map renders as `fmt(0, emptyCurrency)`.
+ * `fmt` lets each surface keep its own number format.
+ */
+export function formatTotalsInline(
+  totals: CurrencyTotals | undefined,
+  fmt: (amount: number, currency: string) => string = (a, c) => `${a.toLocaleString("he-IL", { maximumFractionDigits: 0 })}${c}`,
+  emptyCurrency: string = DEFAULT_CURRENCY,
+): string {
+  const keys = orderCurrencies(Object.keys(totals ?? {})).filter((c) => !isZero(totals![c]));
+  return keys.length ? keys.map((c) => fmt(totals![c], c)).join(" · ") : fmt(0, emptyCurrency);
+}
+
+/** Sum `amountOf(row)` per currency over rows (alias of sumByCurrency kept for readability at call sites). */
+export const totalsByCurrency = sumByCurrency;

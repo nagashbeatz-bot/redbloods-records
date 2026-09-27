@@ -87,7 +87,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
   const [prj, fin, deliv, acts, sess, meet, tasks, work, vers, comm, att, targ, tnotes, finals, vic, prods, budget, tracks, clip, props, rel, camps, content, sfiles, notif, psettings, txt, bpay, alerts, rfCrew, rfDocs, rfScenes, rfRefImages, rfRefLinks, rfEquip] = await Promise.all([
     r("projects", "id, created_at, monday_id, notes, work_materials, dropbox_folder, files"),
     r("settings", "key, fnotes:value->>financialNotes, freason:value->>financeExceptionReason, fdate:value->>financeExceptionDate", (q) => q.like("key", "finance_%")),
-    r("settings", "key, folder:value->>folderPath, status:value->>deliveryStatus, delivered:value->>deliveredAt, link:value->>deliveryLink", (q) => q.like("key", "delivery_%")),
+    r("settings", "key, folder:value->>folderPath, status:value->>deliveryStatus, delivered:value->>deliveredAt, lastDelivered:value->>lastDeliveredAt, link:value->>deliveryLink", (q) => q.like("key", "delivery_%")),
     r("project_actions", "id, project_id, action_type, content_type, version_label, recipient_role, recipient_name, recipient_client_id, recipient_phone, dropbox_url, status, action_date, followup_date, notes, linked_work_id, linked_task_id, created_at, updated_at"),
     r("sessions", "id, project_id, show_id, date, start_time, end_time, status, session_type, title, notes, location, photographer, cost, calendar_event_id, created_at"),
     r("meetings", "id, project_id, client_id, client_name, date, time, duration, location, notes, status, calendar_event_id, created_at"),
@@ -129,7 +129,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
       workMaterials: obj(x.work_materials) ? { bpm: s(obj(x.work_materials)!.bpm), key: s(obj(x.work_materials)!.key), instructions: t(obj(x.work_materials)!.instructions) } : null,
     } : null)),
     financeNotes: mapSection(fin, (x) => { const id = keyId(x.key, "finance_"); return id ? { projectId: id, financialNotes: t(x.fnotes), exceptionReason: t(x.freason), exceptionDate: s(x.fdate), hasSetting: true as const } : null; }),
-    deliveries: mapSection(deliv, (x) => { const id = keyId(x.key, "delivery_"); return id ? { projectId: id, folderPath: s(x.folder), status: s(x.status), deliveredAt: s(x.delivered), hasLink: has(x.link) } : null; }),
+    deliveries: mapSection(deliv, (x) => { const id = keyId(x.key, "delivery_"); return id ? { projectId: id, folderPath: s(x.folder), status: s(x.status), deliveredAt: s(x.delivered), lastDeliveredAt: s(x.lastDelivered), hasLink: has(x.link) } : null; }),
     actions: mapSection(acts, (x) => (s(x.id) ? {
       id: String(x.id), projectId: s(x.project_id), actionType: s(x.action_type), contentType: s(x.content_type), versionLabel: s(x.version_label), recipientRole: s(x.recipient_role),
       recipientName: s(x.recipient_name), recipientClientId: s(x.recipient_client_id), recipientPhone: s(x.recipient_phone), hasLink: has(x.dropbox_url), status: s(x.status),

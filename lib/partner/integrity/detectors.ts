@@ -357,13 +357,13 @@ export function detectStevenPaymentSources(input: IntegrityInput): FindingDraft[
   return [f("STEVEN_PAYMENT_SOURCE_CONFLICT", { type: "vendor", key: "vendor:STEVEN:payment-writers", label: "Steven — מקורות תשלום" }, {
     severity: both || shapes.LINK_MISSING_TX ? "MEDIUM" : "LOW", epistemic: "DERIVED", stance: both ? "CONFLICT" : "KNOWN",
     evidence: [
-      { source: "code", fact: "two writers of sound_engineer_work.linked_transaction_id", value: STEVEN_PAYMENT_WRITERS.map((w) => ({ name: w.name, shape: w.shape })) },
+      { source: "code", fact: "one current writer of sound_engineer_work.linked_transaction_id + two retired writers whose shapes remain in historical data", value: STEVEN_PAYMENT_WRITERS.map((w) => ({ name: w.name, status: w.status, shape: w.shape })) },
       { source: "sound_engineer_work × transactions (live)", fact: "linked-transaction shapes", value: shapes },
     ],
-    canonical: ["transactions (Finance Brain)"], conflicting: STEVEN_PAYMENT_WRITERS.map((w) => w.name),
+    canonical: ["transactions (Finance Brain)"], conflicting: STEVEN_PAYMENT_WRITERS.filter((w) => w.status === "RETIRED_HISTORICAL").map((w) => w.name),
     he: both
-      ? `בנתונים יש סימנים לשני מסלולי סנכרון תשלום של מהנדסי סאונד (${shapes.PAYMENT_EXPENSE_SHAPE} בהמרה קבועה ל־₪, ${shapes.LEGACY_SYNC_SHAPE} במטבע העבודה). שום תנועה לא נוצרה או שונתה.`
-      : "בקוד יש שני מסלולים שכותבים את קישור התשלום של עבודות מהנדסי סאונד; בנתונים הנוכחיים רואים רק צורה אחת. מידע בלבד — שום תנועה לא נוצרה.",
+      ? `בנתונים ההיסטוריים יש סימנים לשני מסלולי סנכרון תשלום של מהנדסי סאונד (${shapes.PAYMENT_EXPENSE_SHAPE} בהמרה קבועה ל־₪, ${shapes.LEGACY_SYNC_SHAPE} במטבע העבודה). מאז 2026-09-27 יש כותב אחד (במטבע העבודה); השורות הישנות לא שונו. שום תנועה לא נוצרה או שונתה.`
+      : "מאז 2026-09-27 יש כותב אחד לקישור התשלום של עבודות מהנדסי סאונד (במטבע העבודה, שורה ששולמה לא נדרסת); בנתונים רואים צורה אחת. מידע בלבד — שום תנועה לא נוצרה.",
   })];
 }
 

@@ -12,8 +12,14 @@ import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
 import { validateTx } from "../finance/core";
 import { buildProjectView } from "../projects/view";
+import { isLabelProject } from "../../project-classification";
+import { engineerHandoff } from "../mix/handoff";
 import { availability, dayList } from "../calendar/availability";
+import { isProjectOverdue, isStrictYmd } from "../../project-deadline";
+import { sendEntryCurrent, evidenceFor } from "../work/send-log";
 import { HISTORICAL_DEBT_CUTOFF, QUESTION_TYPE_TO_MISSING_CONCEPT, WORKFLOW_MODELS } from "../system/owner-model";
+import type { LabelDetailRaw } from "../label/detail-types";
+import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -23,7 +29,8 @@ const tokens = (t: string | null | undefined) => (t ?? "").split(/[,،;]/).map((
 const CLOSED = new Set(["הושלם", "בוטל"]);
 const PROGRESSED = new Set(["מחכה למיקס", "במיקס", "הושלם"]);
 
-export type ClientDeadlineClass = "NO_DEADLINE" | "UPCOMING" | "APPROACHING" | "AT_RISK" | "PASSED_NEW_FAILURE" | "HISTORICAL_OPERATIONAL_DEBT" | "CLOSED";
+/** ON_HOLD (B5, Owner): a בהשהייה project is never overdue — its passed deadline is not a failure / debt. HIDDEN: a hidden project is never overdue (not assessed). UNPARSEABLE_DEADLINE: the stored text is not YYYY-MM-DD. */
+export type ClientDeadlineClass = "NO_DEADLINE" | "UPCOMING" | "APPROACHING" | "AT_RISK" | "PASSED_NEW_FAILURE" | "HISTORICAL_OPERATIONAL_DEBT" | "CLOSED" | "ON_HOLD" | "HIDDEN" | "UNPARSEABLE_DEADLINE";
 export interface BallEvidence { holder: string; basis: string; confidence: "RECORDED" | "IN_APP_TIMESTAMPS" | "OWNER_REPORTED" | "UNKNOWN"; outsideCommunicationPossible: boolean }
 export interface OwnerQuestion { questionHe: string; why: string; kind: "PROJECT_STATE" | "OUTSIDE_COMMUNICATION" | "PAYMENT_EVIDENCE" | "DEADLINE_REALITY" | "MISSING_DETAIL" }
 
@@ -49,17 +56,32 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   const artists = tokens(id.artistText);
   const { roster, ownerLabel } = labelContext(st, integrity);
   const rosterHits = roster.filter((r) => artists.includes(r.name));
-  const labelWork = id.businessType === "לייבל" || !!v.work.release || rosterHits.some((r) => ownerLabel.has(r.key));
+  // B2 (Owner canon 2026-09-27): the stored project_business_type is the ONLY classifier. A release row, an Owner
+  // LABEL_SONGS answer or a roster-name match are evidence (labelEvidence), never a second classifier.
+  const labelWork = isLabelProject(id);
+  const labelEvidence = { classifier: "STORED_BUSINESS_TYPE" as const, releaseRow: !!v.work.release, ownerLabelSongsAnswer: rosterHits.some((r) => ownerLabel.has(r.key)), rosterNameMatch: rosterHits.length > 0, ownerRuleMismatch: v.signals.some((s) => s.code === "MISMATCH_OWNER_RULE") };
   const labelArtistInvolved = rosterHits.length > 0;
 
   // ── ball holder (evidence, never certainty) ──
   const ball: BallEvidence[] = [];
-  for (const w of ops?.engineerWork?.rows.filter((x) => x.projectId === projectId && !["אושר", "בוטל"].includes(x.status ?? "")) ?? [])
-    ball.push(w.status === "חזר" ? { holder: "OWNER", basis: `${w.engineerName} returned the work (engineer status חזר)`, confidence: "RECORDED", outsideCommunicationPossible: true }
-      : { holder: `ENGINEER:${w.engineerName}`, basis: `engineer work status ${w.status}`, confidence: "RECORDED", outsideCommunicationPossible: false });
+  // Engineer works: THE mix handoff evidence rule (lib/partner/mix/handoff — the same answer as mix_view), never the
+  // engineer status alone (a חזר status with newer Owner feedback is CONFLICTING evidence, not "the Owner holds it").
+  for (const w of ops?.engineerWork?.rows.filter((x) => x.projectId === projectId && !["אושר", "בוטל"].includes(x.status ?? "")) ?? []) {
+    const h = engineerHandoff(src, { id: w.id, projectId: w.projectId, engineerName: w.engineerName, status: w.status, sentDate: w.sentDate });
+    const conf: BallEvidence["confidence"] = h.timestampEvidence ? "IN_APP_TIMESTAMPS" : h.state === "UNKNOWN" || h.state === "CONFLICTING_EVIDENCE" ? "UNKNOWN" : "RECORDED";
+    if (!h.detailRead) { ball.push({ holder: "UNKNOWN", basis: `${w.engineerName}: engineer status ${w.status} — the mix evidence (versions / feedback) was not read, and a status alone is not the ball`, confidence: "UNKNOWN", outsideCommunicationPossible: true }); continue; }
+    ball.push(h.state === "WAITING_ON_OWNER" ? { holder: "OWNER", basis: `${w.engineerName}: ${h.basis}`, confidence: conf, outsideCommunicationPossible: true }
+      : h.state === "WAITING_ON_ENGINEER" ? { holder: `ENGINEER:${w.engineerName}`, basis: `${w.engineerName}: ${h.basis}`, confidence: conf, outsideCommunicationPossible: true }
+      : { holder: "UNKNOWN", basis: `${w.engineerName}: ${h.basis}${h.detailRead ? "" : " (mix evidence not read)"}`, confidence: "UNKNOWN", outsideCommunicationPossible: true });
+  }
   for (const w of st?.domains.victor.data?.active.filter((x) => x.projectId === projectId) ?? [])
     ball.push({ holder: w.ball.holder === "owner" ? "OWNER" : w.ball.holder === "victor" ? "VICTOR" : "UNKNOWN", basis: "Victor uploads vs the Owner's recorded responses (in-app timestamps)", confidence: "IN_APP_TIMESTAMPS", outsideCommunicationPossible: true });
-  for (const a of ops?.projectActions?.rows.filter((x) => x.projectId === projectId && ["pending_feedback", "pending_version", "got_notes"].includes(x.status ?? "")) ?? [])
+  // B5: a pending send-log entry superseded by LATER in-app evidence (engineer → mix versions of this project's works;
+  // external producer → Victor uploads / sent notes) is history — never a ball holder (lib/partner/work/send-log).
+  const projEngIds = new Set((ops?.engineerWork?.rows ?? []).filter((x) => x.projectId === projectId).map((x) => x.id));
+  const projVictor = st?.domains.victor.data?.active.filter((x) => x.projectId === projectId) ?? [];
+  const sendEvidence = { mixVersionCreatedAt: (ops?.mixVersions?.rows ?? []).filter((x) => x.workId && projEngIds.has(x.workId)).map((x) => x.createdAt), victorUploads: projVictor.map((x) => x.lastUploadAt), victorNotesSentAt: projVictor.map((x) => x.lastNotesSentAt) };
+  for (const a of ops?.projectActions?.rows.filter((x) => x.projectId === projectId && ["pending_feedback", "pending_version", "got_notes"].includes(x.status ?? "") && (x.status === "got_notes" || sendEntryCurrent(x, evidenceFor(x, sendEvidence)).state !== "SUPERSEDED")) ?? [])
     ball.push(a.status === "got_notes" ? { holder: "OWNER", basis: `send log: notes received (${a.contentType ?? "?"})`, confidence: "RECORDED", outsideCommunicationPossible: true }
       : { holder: (a.recipientRole ?? "UNKNOWN").toUpperCase(), basis: `send log: ${a.status} (${a.contentType ?? "?"}, sent ${a.actionDate ?? "?"})`, confidence: "RECORDED", outsideCommunicationPossible: true });
   for (const k of kn.filter((x) => x.kind === "PROJECT_BLOCKER" && (x.subjectKey === `project:${projectId}` || x.identityKeys.includes(`project:${projectId}`))))
@@ -94,17 +116,21 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   const dl = id.deadline;
   if (closed) deadlineClass = "CLOSED";
   else if (!dl) deadlineClass = "NO_DEADLINE";
-  else if (dl < today) deadlineClass = dl <= HISTORICAL_DEBT_CUTOFF ? "HISTORICAL_OPERATIONAL_DEBT" : "PASSED_NEW_FAILURE";
+  else if (!isStrictYmd(dl)) deadlineClass = "UNPARSEABLE_DEADLINE";
+  else if (id.status === "בהשהייה") deadlineClass = "ON_HOLD";
+  else if (id.hidden === true) deadlineClass = "HIDDEN";
+  // The ONE overdue rule (lib/project-deadline.ts) — same answer as every screen, report and push.
+  else if (isProjectOverdue({ deadline: dl, status: id.status, isHidden: id.hidden }, today)) deadlineClass = dl <= HISTORICAL_DEBT_CUTOFF ? "HISTORICAL_OPERATIONAL_DEBT" : "PASSED_NEW_FAILURE";
   else deadlineClass = daysBetween(today, dl) <= 7 ? (risks.length ? "AT_RISK" : "APPROACHING") : "UPCOMING";
 
   // ── owner occupancy until the deadline (personal time counts; free ≠ work time) ──
   const calUsable = !!cal && (cal.status === "CALENDAR_DATA_AVAILABLE" || cal.status === "CALENDAR_PARTIAL");
   const winEnd = cal ? cal.window.end.slice(0, 10) : today;
-  const occupancy = dl && dl >= today && calUsable ? (() => {
+  const occupancy = isStrictYmd(dl) && dl >= today && calUsable ? (() => {
     const to = dl < winEnd ? dl : winEnd;
     const av = availability(cal!.events, dayList(today, to), cal!.status);
     return { from: today, to, calendarStatus: cal!.status, occupiedMinutes: av.reduce((s, d) => s + (d.occupiedMinutes ?? 0), 0), personalOrOtherEvents: cal!.events.filter((e) => !e.allDay && e.start.slice(0, 10) >= today && e.start.slice(0, 10) <= to).length, note: "includes personal time; free calendar time is not automatically work time" };
-  })() : dl && dl >= today ? { calendarStatus: cal?.status ?? "NOT_LOADED", note: "calendar not readable — availability unknown" } : null;
+  })() : isStrictYmd(dl) && dl >= today ? { calendarStatus: cal?.status ?? "NOT_LOADED", note: "calendar not readable — availability unknown" } : null;
 
   // ── questions (only what evidence cannot answer) ──
   const questions: OwnerQuestion[] = [];
@@ -116,11 +142,11 @@ export function projectOperating(src: GatewaySources, projectId: string) {
 
   return {
     project: { key: `project:${projectId}`, name: id.name, status: id.status, businessType: id.businessType },
-    clientDeadline: { date: dl, class: deadlineClass, daysTo: dl ? daysBetween(today, dl) : null, risks, meaning: "a client commitment (Owner rule)", historicalCutoff: HISTORICAL_DEBT_CUTOFF },
+    clientDeadline: { date: dl, class: deadlineClass, daysTo: isStrictYmd(dl) ? daysBetween(today, dl) : null, risks, meaning: "a client commitment (Owner rule)", historicalCutoff: HISTORICAL_DEBT_CUTOFF },
     internalDeadlines: internal.map((i) => ({ ...i, meaning: "the team member's expected completion — not the client commitment" })),
     ballHolder: { holders, evidence: ball, certainty: ball.length === 0 ? "UNKNOWN" : ball.every((b) => b.confidence === "RECORDED" || b.confidence === "OWNER_REPORTED") ? "RECORDED" : "PARTLY_INFERRED" },
     advance,
-    label: { labelWork, labelArtistInvolved, protected: labelArtistInvolved, continuity: labelWork && (id.daysSinceUpdate ?? 0) >= 30 ? "ATTENTION_NO_RECENT_ACTIVITY" : labelWork ? "ACTIVE" : "NOT_LABEL" },
+    label: { labelWork, labelEvidence, labelArtistInvolved, protected: labelArtistInvolved, continuity: labelWork && (id.daysSinceUpdate ?? 0) >= 30 ? "ATTENTION_NO_RECENT_ACTIVITY" : labelWork ? "ACTIVE" : "NOT_LABEL" },
     occupancyUntilDeadline: occupancy,
     questions,
     epistemic: "DERIVED",
@@ -145,8 +171,18 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
   const existing = date ? shows.find((s) => s.dateYmd === date) ?? null : null;
   const labelDj = kn.find((k) => k.kind === "ORGANIZATIONAL_ROLE" && (k.value as Record<string, unknown>).role === "LABEL_DJ");
   const djFreq = kn.find((k) => k.kind === "ENTITY_RELATIONSHIP" && (k.value as Record<string, unknown>).relation === "PARTICIPATES_IN_SHOWS");
-  // the claim row's own status: "sent" only after a successful push; a failed / in-flight send is never shown as sent
-  const marker = (fam: string, showId: string) => { const sec = settings?.families[fam]; if (!settings || !sec) return "UNKNOWN"; const row = sec.rows.find((r) => r.key.endsWith(`:${showId}`)); if (!row) return "NOT_SENT"; const v = ((row as { value?: unknown }).value ?? {}) as { status?: string }; return v.status === "failed" ? "FAILED" : v.status === "processing" ? "PROCESSING" : "SENT"; };
+  // THE app's own read rule (showNotifyStateOf with the show's CURRENT fingerprint — the same answer as the send button,
+  // the notify writers, show_view and artist_view): SENT only for the current version; an older version is
+  // SENT_PREVIOUS_VERSION. The version needs the show's time + place (LABEL_DETAIL); without them the state is UNKNOWN.
+  const ld = ok(src.labelDetail) as LabelDetailRaw | null;
+  const marker = (fam: string, showId: string) => {
+    const sec = settings?.families[fam]; if (!settings || !sec) return "UNKNOWN";
+    const row = sec.rows.find((r) => r.key.endsWith(`:${showId}`)); if (!row) return "NOT_SENT";
+    const s = ld?.shows?.rows.find((x) => x.id === showId); if (!s) return "UNKNOWN";
+    return showNotifyStateOf(((row as { value?: unknown }).value ?? null) as ShowNotifyClaimValue | null, computeShowNotifyFingerprint({ name: s.name ?? "", date: s.date, startTime: s.startTime, location: s.location })).state;
+  };
+  /** Propose asking the Owner to send when nothing current was sent: never sent, failed, or sent for an older version. */
+  const proposeSend = (state: string) => ["NOT_SENT", "FAILED", "SENT_PREVIOUS_VERSION"].includes(state);
   const known: Array<{ item: string; value: unknown; source: string }> = [{ item: "artist", value: { key: artistKey, name, labelArtist: !!la }, source: "CANONICAL_DATA" }];
   const questions: OwnerQuestion[] = [];
   if (!date) questions.push({ kind: "MISSING_DETAIL", questionHe: `באיזה תאריך ההופעה של ${name}?`, why: "no date given" });
@@ -167,8 +203,8 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
     ? { status: cal!.status, events: cal!.events.filter((e) => (e.allDay ? e.start <= date && date < e.end : e.start.slice(0, 10) === date)).map((e) => ({ title: e.title, allDay: e.allDay, start: e.start, holiday: e.holidayCalendar })) }
     : { status: cal?.status ?? "NOT_LOADED", events: null, note: "date outside the loaded window or calendar unreadable — conflicts unknown" }) : null;
   const notifications = existing ? [
-    { push: "P_SHOW_TO_ARTIST", state: marker("SHOW_SENT_TO_ARTIST", existing.id), proposal: ["NOT_SENT", "FAILED"].includes(marker("SHOW_SENT_TO_ARTIST", existing.id)) ? "ask the Owner whether to send the artist notification (NOTIFY_SHOW_ARTIST — preview + his approval)" : null },
-    { push: "P_SHOW_TO_DJ", state: existing.djClientId ? marker("SHOW_SENT_TO_DJ", existing.id) : "NOT_APPLICABLE_NO_DJ", proposal: existing.djClientId && ["NOT_SENT", "FAILED"].includes(marker("SHOW_SENT_TO_DJ", existing.id)) ? "ask the Owner whether to send the DJ notification (NOTIFY_SHOW_DJ — preview + his approval)" : null },
+    { push: "P_SHOW_TO_ARTIST", state: marker("SHOW_SENT_TO_ARTIST", existing.id), proposal: proposeSend(marker("SHOW_SENT_TO_ARTIST", existing.id)) ? "ask the Owner whether to send the artist notification (NOTIFY_SHOW_ARTIST — preview + his approval)" : null },
+    { push: "P_SHOW_TO_DJ", state: existing.djClientId ? marker("SHOW_SENT_TO_DJ", existing.id) : "NOT_APPLICABLE_NO_DJ", proposal: existing.djClientId && proposeSend(marker("SHOW_SENT_TO_DJ", existing.id)) ? "ask the Owner whether to send the DJ notification (NOTIFY_SHOW_DJ — preview + his approval)" : null },
   ] : [{ push: "P_SHOW_TO_ARTIST", state: "NOT_APPLICABLE_YET", proposal: "after the show is registered and its details are complete, ask the Owner whether to notify the artist" }, { push: "P_SHOW_TO_DJ", state: "NOT_APPLICABLE_YET", proposal: "after a DJ is assigned, ask the Owner whether to notify the DJ" }];
   const rehearsals = existing ? (ok(src.operations) as OperationsRaw | null)?.calendarLinks?.rows.filter((l) => l.kind === "SESSION" && l.showId === existing.id).length ?? null : null;
   return { resolved: true as const, workflow: "NEW_SHOW", artist: name, date, existingShow: existing ? `show:${existing.id}` : null, known, questions, rehearsalsLinked: rehearsals, calendarOnDate, downstream: model.downstream, notifications, actions: model.actions, epistemic: "DERIVED" };
@@ -187,7 +223,7 @@ export function companyOperating(src: GatewaySources) {
   const releases = st?.domains.releasesFull.data?.items ?? [];
   return {
     cashflow: { collectibleByCurrency: collect, overdueReceivables: overdue, openProposals, clientProjectsMissingAdvanceEvidence: assessed.filter((a) => a.advance.state === "ADVANCE_EVIDENCE_MISSING").map((a) => a.project.name), rule: "top operational priority — within the canonical finance rules" },
-    label: { labelProjectsOpen: assessed.filter((a) => a.label.labelWork).length, labelProjectsNoRecentActivity: assessed.filter((a) => a.label.continuity === "ATTENTION_NO_RECENT_ACTIVITY").map((a) => a.project.name), releasesPlanned: releases.filter((r) => !r.releasedAt).length, releaseTargetsPassed: releases.filter((r) => !r.releasedAt && r.targetYmd && r.targetYmd < today).length, rule: "protected growth track — many releases wanted" },
+    label: { labelProjectsOpen: assessed.filter((a) => a.label.labelWork).length, labelProjectsNoRecentActivity: assessed.filter((a) => a.label.continuity === "ATTENTION_NO_RECENT_ACTIVITY").map((a) => a.project.name), releasesPlanned: releases.filter((r) => r.stage !== "יצא").length, releaseTargetsPassed: releases.filter((r) => r.stage !== "יצא" && r.targetYmd && r.targetYmd < today).length, rule: "protected growth track — many releases wanted" },
     deadlines: { atRisk: assessed.filter((a) => a.clientDeadline.class === "AT_RISK").map((a) => a.project.name), approaching: assessed.filter((a) => a.clientDeadline.class === "APPROACHING").map((a) => a.project.name), newFailures: assessed.filter((a) => a.clientDeadline.class === "PASSED_NEW_FAILURE").map((a) => a.project.name), historicalDebt: assessed.filter((a) => a.clientDeadline.class === "HISTORICAL_OPERATIONAL_DEBT").length, noDeadline: assessed.filter((a) => a.clientDeadline.class === "NO_DEADLINE").length },
     tradeoffGuidance: "Money and label are connected (cashflow funds the label). When they compete: weigh cashflow, client commitments, label continuity, deadlines, release plans, calendar, team state, risk and impact — and explain; never drop one side blindly; no universal score.",
     epistemic: "DERIVED",

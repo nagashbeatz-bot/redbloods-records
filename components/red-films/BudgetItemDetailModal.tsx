@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type DragEvent, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
+import { budgetLinePaidState } from "@/lib/clip-rf-money-pure";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ export interface BudgetPayment {
   receipt_dropbox_url: string;
   created_at: string;
   updated_at: string;
+  /** always the line's currency (the writer refuses another one) */
+  currency?: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -56,13 +59,14 @@ function fmtDate(d: string | null | undefined) {
   return `${parseInt(day, 10)}.${parseInt(m, 10)}.${y}`;
 }
 
-function computedStatus(paid: number, planned: number, hasPayments: boolean): {
+/** Display of the ONE paid rule (lib/clip-rf-money-pure budgetLinePaidState) — the stored status never decides. */
+function computedStatus(s: ReturnType<typeof budgetLinePaidState>): {
   label: string; color: string; bg: string; border: string;
 } {
-  if (!hasPayments) return { label: "מתוכנן", color: "#60A5FA", bg: "rgba(96,165,250,0.1)", border: "rgba(96,165,250,0.3)" };
-  if (planned > 0 && paid >= planned * 1.01) return { label: "חריגה", color: "#F87171", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" };
-  if (planned > 0 && paid >= planned * 0.99) return { label: "שולם", color: "#22C55E", bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.3)" };
-  return { label: "חלקי", color: "#F59E0B", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" };
+  if (s.state === "PAID" && s.over > 0) return { label: "חריגה", color: "#F87171", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" };
+  if (s.state === "PAID") return { label: "שולם", color: "#22C55E", bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.3)" };
+  if (s.state === "PARTIAL" || (s.state === "NO_PLAN" && s.paid > 0)) return { label: s.state === "NO_PLAN" ? "שולם — ללא תכנון" : "חלקי", color: "#F59E0B", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" };
+  return { label: s.state === "NO_PLAN" ? "ללא תכנון" : "לא שולם", color: "#60A5FA", bg: "rgba(96,165,250,0.1)", border: "rgba(96,165,250,0.3)" };
 }
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -417,9 +421,10 @@ export default function BudgetItemDetailModal({
 
   useEffect(() => { load(); }, [load]);
 
-  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+  const lineState = budgetLinePaidState({ ...item, currency: cur }, payments);
+  const totalPaid = lineState.paid;
   const balance   = item.planned_amount - totalPaid;
-  const status    = computedStatus(totalPaid, item.planned_amount, payments.length > 0);
+  const status    = computedStatus(lineState);
 
   function handleAdded(p: BudgetPayment) {
     setPayments(prev => [...prev, p].sort((a, b) => a.payment_date.localeCompare(b.payment_date)));

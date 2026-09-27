@@ -8,10 +8,17 @@ import { ALL_STATUSES, PROJECT_BUSINESS_TYPES, PROJECT_TYPES, RELEASE_STAGES } f
 import { COVER_THEMES } from "@/lib/project-cover";
 import { COMMON_NO, finishPlan, parseKey, projectFields, realYmd, refuse, resolveProject, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 
-export type ProjectDeleteImpactView = { sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; transactionsUnlinked: number; proposalsReset: number; engineerWorks: number; albumTracks: number; openAlerts: number; tasksKept: number; meetingsKept: number; productionsKept: number };
+/** lib/writes/project-delete ProjectDeleteImpact (the preflight counts — every one is a preview field, so any change is STALE). */
+export type ProjectDeleteImpactView = {
+  finalFilesBlocking: number;
+  sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; settingsKeys: number; coverCustomImage: number; proposalFollowUpTasks: number;
+  engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number; openAlerts: number;
+  transactionsUnlinked: number; sessionLinkedTransactions: number; proposalsReset: number; socialCampaignsUnlinked: number; finalFilesUnlinked: number;
+  tasksKept: number; meetingsKept: number; productionsKept: number; storageFolderKept: number;
+};
 export interface ProjectFamilyWriters {
   projectDeleteImpact(id: string): Promise<ProjectDeleteImpactView>;
-  deleteProjectCompletely(id: string): Promise<void>;
+  deleteProjectCompletely(id: string): Promise<unknown>;
   readProjectMeta(id: string): Promise<{ name: string; artist: string; status: string; isHidden: boolean; businessType: string; projectType: string; hasRelease: boolean } | null>;
   writeProjectStatus(id: string, status: string): Promise<void>;
   writeProjectHidden(id: string, hidden: boolean): Promise<void>;
@@ -25,6 +32,8 @@ export interface ProjectFamilyWriters {
   setSessionLimit(id: string, limit: number): Promise<void>;
   countProjectsNamed(name: string): Promise<number>;
   createClientProject(f: { name: string; artist?: string; status?: string; deadline?: string | null; notes?: string; projectType?: string; parentProject?: string }): Promise<string>;
+  /** B2: the business type the shared create writer will store for this artist text (the Owner rule; same function). */
+  newProjectBusinessType?(artist: string): Promise<string>;
   createLabelSong(f: { labelArtistId: string; name: string; deadline?: string | null; notes?: string; parentProject?: string; releaseStage?: string; releaseTargetDate?: string | null; nextAction?: string; blocker?: string; responsible?: string }): Promise<string>;
   convertToLabelRelease(projectId: string, labelArtistId: string, input: { releaseStage?: string; releaseTargetDate?: string | null; nextAction?: string; blocker?: string; responsible?: string }): Promise<string>;
 }
@@ -54,24 +63,35 @@ const onProject = (read: (d: WriterDeps, id: string) => Promise<Fields | null>) 
   return f && m ? { key: `project:${k.id}`, id: k.id, label: m.name, fields: f } : refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט");
 };
 const coverFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const m = await d.readProjectMeta(id); if (!m) return null; const c = await d.readProjectCover(id); return { theme: c?.theme ?? "redbloods", customImage: c?.customImage ?? false, hasCover: !!c }; };
+/** B2: the preview shows the type the shared writer will store (the same Owner rule function behind both paths). */
+async function createBusinessType(d: WriterDeps, args: Readonly<Record<string, unknown>>): Promise<Fields> {
+  const artist = typeof args.artist === "string" ? args.artist.trim() : "";
+  return { newBusinessType: d.newProjectBusinessType ? await d.newProjectBusinessType(artist) : "לקוח" };
+}
 const limitFields = async (d: WriterDeps, id: string): Promise<Fields | null> => (await d.readProjectMeta(id)) ? { sessionLimit: await d.readSessionLimit(id) } : null;
 
 export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "DELETE_PROJECT", kinds: ["project"],
-    meta: meta("מחיקת פרויקט (עם כל מה שהוא מחזיק)", "Delete a project the way the app does — sessions (+ events), send log, clip rows, Victor works (+ tasks), finance / delivery / cover settings; transactions unlinked, proposals back to 'לא נסגר', alerts closed; the database removes release details, album tracks and engineer work — checked step by step, project row last", [K("project")], ["exists"], "deleteProjectCompletely (lib/writes/project-delete)", { effects: ["DELETION", "CASCADE", "UNLINK", "CALENDAR", "GOOGLE_TASKS", "FINANCE", "FILES"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await resolveProjectMeta(d, a); if ("ok" in r) return r; return { ...r, fields: { name: r.fields.name, exists: true, ...(await d.projectDeleteImpact(r.id)) } }; },
+    meta: meta("מחיקת פרויקט (עם כל מה שהוא מחזיק)", "Delete a project the way the app does — READ-ONLY preflight first (refused with BLOCKED_BY_DEPENDENTS while final files sit on its mix works, zero writes); then sessions, send log, clip rows, Victor works (+ tasks), every per-project settings key; transactions unlinked, proposals back to 'לא נסגר', alerts closed; a fresh blocker re-check; the project row (the database cascades release details, album tracks, engineer works + versions / comments / attachments); Google Calendar events / Google Tasks / the cover file only AFTER the database commit, reported", [K("project")], ["exists"], "deleteProjectCompletely (lib/writes/project-delete, projectDeletePreflight first)", { effects: ["DELETION", "CASCADE", "UNLINK", "CALENDAR", "GOOGLE_TASKS", "FINANCE", "FILES"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    async resolve(d, a) {
+      const r = await resolveProjectMeta(d, a); if ("ok" in r) return r;
+      const c = await d.projectDeleteImpact(r.id);
+      if (c.finalFilesBlocking > 0) return refuse("BLOCKED_BY_DEPENDENTS", `אי אפשר למחוק את הפרויקט: יש ${c.finalFilesBlocking} קבצים סופיים (Final Files) על עבודות המיקס שלו — מסד הנתונים לא מאפשר למחוק עבודה עם קבצים סופיים. קודם מוחקים את הקבצים הסופיים, ואז מתכננים מחדש`);
+      return { ...r, fields: { name: r.fields.name, exists: true, ...c } };
+    },
     async read(d, id) { const m = await d.readProjectMeta(id); return m ? { name: m.name, exists: true, ...(await d.projectDeleteImpact(id)) } : null; },
-    plan: () => ({ ok: true, after: { exists: false } }),
-    apply: (d, id) => d.deleteProjectCompletely(id),
+    plan: (_a, cur) => (Number(cur.finalFilesBlocking) > 0 ? refuse("BLOCKED_BY_DEPENDENTS", `יש ${cur.finalFilesBlocking} קבצים סופיים על עבודות המיקס של הפרויקט — קודם מוחקים אותם`) : { ok: true, after: { exists: false } }),
+    async apply(d, id) { await d.deleteProjectCompletely(id); },
     async verify(d, id) { return (await d.readProjectMeta(id)) === null; },
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [
-      `נמחקים: ${c.sessions} סשנים (${c.calendarEvents} אירועי יומן), ${c.sendLog} רשומות שליחה, ${c.clipRows} שורות קליפ, ${c.victorWorks} עבודות ויקטור (+ המשימות שלהן), ${c.engineerWorks} עבודות מיקס, ${c.albumTracks} שירי אלבום`,
-      `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'`,
-      `נשארים כמו שהם: ${c.tasksKept} משימות, ${c.meetingsKept} פגישות, ${c.productionsKept} הפקות Red Films, תיקיות וקבצים באחסון`,
+      `נמחקים: ${c.sessions} סשנים (${c.calendarEvents} אירועי יומן), ${c.sendLog} רשומות שליחה, ${c.clipRows} שורות קליפ, ${c.victorWorks} עבודות ויקטור (+ המשימות שלהן), ${c.settingsKeys} הגדרות פרויקט${Number(c.coverCustomImage) > 0 ? ", קובץ תמונת הנושא" : ""}, ${c.proposalFollowUpTasks} משימות מעקב של הצעות`,
+      `נמחקים עם הפרויקט (מסד הנתונים): ${c.engineerWorks} עבודות מיקס (${c.mixVersions} גרסאות, ${c.mixComments} הערות, ${c.mixAttachments} צרופות — הקבצים עצמם נשארים באחסון), ${c.albumTracks} שירי אלבום, ${c.releaseDetails} רשומות ריליס; ${c.openAlerts} התראות פתוחות נסגרות`,
+      `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.sessionLinkedTransactions} רשומות כספים מקושרות לסשנים שנמחקים (הקישור לסשן לא יצביע על כלום); ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'; ${c.socialCampaignsUnlinked} קמפייני סושיאל; ${c.finalFilesUnlinked} קבצים סופיים שמקושרים רק לפרויקט`,
+      `נשארים כמו שהם: ${c.tasksKept} משימות, ${c.meetingsKept} פגישות, ${c.productionsKept} הפקות Red Films${Number(c.storageFolderKept) > 0 ? ", תיקיית הפרויקט באחסון" : ""}`,
     ],
-    disclosuresHe: ["כמו כפתור המחיקה באפליקציה — אבל כל שלב נבדק, וכשל עוצר לפני מחיקת הפרויקט עצמו (אפשר לנסות שוב)", "לקוחות לא נמחקים לעולם", "לא נשלח Push / מייל"],
+    disclosuresHe: ["בדיקה מקדימה לפני כל כתיבה: קבצים סופיים על עבודות המיקס חוסמים את המחיקה (בלי שום שינוי)", "כל שלב נבדק; כשל עוצר לפני מחיקת הפרויקט עצמו (אפשר לנסות שוב); בדיקת חסימה נוספת רגע לפני מחיקת השורה", "אירועי יומן, Google Tasks וקובץ תמונת הנושא נמחקים רק אחרי שהמחיקה במסד הנתונים הצליחה — וכשל שם מדווח", "לא טרנזקציה אחת במסד הנתונים (דורש פונקציית SQL מאושרת)", "לקוחות לא נמחקים לעולם", "לא נשלח Push / מייל"],
   },
   {
     actionId: "CLEAR_PROJECT_DEADLINE", kinds: ["project"],
@@ -148,11 +168,11 @@ export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "CREATE_PROJECT", warnings: (c) => (Number(c.sameNameProjects) > 0 ? [`כבר קיים פרויקט באותו שם (${c.sameNameProjects}) — לוודא שזה לא כפול`] : []), kinds: ["project"],
-    meta: meta("יצירת פרויקט לקוח", "Create a client project", [T("name"), T("artist", false), E("projectType", PROJECT_TYPES, false), D("deadline"), T("notes", false), E("status", ALL_STATUSES, false), T("parentProject", false)], ["name", "artist", "projectType", "deadline", "status"], "createClientProject (lib/writes/projects)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the new project (a separate approved destructive action)" }),
-    async createContext(d, args) { return { sameNameProjects: typeof args.name === "string" ? await d.countProjectsNamed(args.name.trim()) : 0 }; },
+    meta: meta("יצירת פרויקט (לקוח, או לייבל לפי כלל הבעלים)", "Create a project — business type by the Owner rule (שליו טסמה / אבי מולה credited → לייבל, else לקוח), shown in the preview", [T("name"), T("artist", false), E("projectType", PROJECT_TYPES, false), D("deadline"), T("notes", false), E("status", ALL_STATUSES, false), T("parentProject", false)], ["name", "artist", "projectType", "deadline", "status", "businessType"], "createClientProject (lib/writes/projects)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the new project (a separate approved destructive action)" }),
+    async createContext(d, args) { return { sameNameProjects: typeof args.name === "string" ? await d.countProjectsNamed(args.name.trim()) : 0, ...(await createBusinessType(d, args)) }; },
     async resolve(d, args) {
       const n = text(args.name, 200); if (n === null) return refuse("BAD_TEXT", "שם הפרויקט חסר");
-      return { key: "project:new", id: "new", label: n.trim(), fields: { sameNameProjects: await d.countProjectsNamed(n.trim()) } };
+      return { key: "project:new", id: "new", label: n.trim(), fields: { sameNameProjects: await d.countProjectsNamed(n.trim()), ...(await createBusinessType(d, args)) } };
     },
     read: metaFields,
     plan(args, cur) {
@@ -160,12 +180,11 @@ export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (args.deadline !== undefined && !realYmd(args.deadline)) return refuse("BAD_DATE", "דדליין לא תקין");
       if (args.projectType !== undefined && !(PROJECT_TYPES as readonly string[]).includes(String(args.projectType))) return refuse("BAD_ENUM", "סוג פרויקט לא מוכר");
       if (args.status !== undefined && !(ALL_STATUSES as readonly string[]).includes(String(args.status))) return refuse("BAD_ENUM", "סטטוס לא מוכר");
-      void cur;
-      return { ok: true, after: { name: n.trim(), artist: typeof args.artist === "string" ? args.artist.trim() : "", projectType: args.projectType !== undefined ? String(args.projectType) : "", deadline: (args.deadline as string | undefined) ?? null, status: args.status !== undefined ? String(args.status) : "לא התחיל" } };
+      return { ok: true, after: { name: n.trim(), artist: typeof args.artist === "string" ? args.artist.trim() : "", projectType: args.projectType !== undefined ? String(args.projectType) : "", deadline: (args.deadline as string | undefined) ?? null, status: args.status !== undefined ? String(args.status) : "לא התחיל", businessType: String(cur.newBusinessType ?? "לקוח") } };
     },
     async apply(d, _id, a, args) { return { createdId: await d.createClientProject({ name: String(a.name), artist: String(a.artist ?? ""), status: String(a.status), deadline: (a.deadline as string | null) ?? null, notes: typeof args.notes === "string" ? args.notes : "", projectType: String(a.projectType ?? ""), parentProject: typeof args.parentProject === "string" ? args.parentProject : "" }) }; },
-    async verify(d, id, after) { const p = await d.readProjectMeta(id); return !!p && p.name === after.name && p.status === after.status && p.businessType === "לקוח"; },
-    disclosuresHe: ["נוצר פרויקט חדש מסוג 'לקוח' עם תאריך התחלה היום", "אמן שלא קיים כלקוח יתווסף ללקוחות", "לא יישלח Push או הודעה; לא נוצרת תיקייה, אירוע יומן או רשומה כספית"],
+    async verify(d, id, after) { const p = await d.readProjectMeta(id); return !!p && p.name === after.name && p.status === after.status && p.businessType === String(after.businessType ?? "לקוח"); },
+    disclosuresHe: ["נוצר פרויקט חדש עם תאריך התחלה היום; הסוג (לקוח / לייבל) לפי כלל הבעלים — שליו טסמה או אבי מולה בקרדיט (לבד או בשיתוף) → לייבל, אחרת לקוח; הסוג מוצג בתצוגה המקדימה", "אמן שלא קיים כלקוח יתווסף ללקוחות", "לא יישלח Push או הודעה; לא נוצרת תיקייה, אירוע יומן או רשומה כספית"],
   },
   {
     actionId: "CREATE_LABEL_SONG", warnings: (c) => (Number(c.sameNameProjects) > 0 ? [`כבר קיים פרויקט באותו שם (${c.sameNameProjects}) — לוודא שזה לא כפול`] : []), kinds: ["label-artist"],

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
-import { listArtistClips, round2 } from "@/lib/label-clips";
+import { listArtistClips, artistClipMoney } from "@/lib/label-clips";
+import { CLIP_RECOUP_NOT_DEFINED_HE } from "@/lib/clip-rf-money-pure";
 import type { LabelClipLine, ArtistClipsSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/label/artists/[id]/clips — clip label investment for one artist.
-// Single source: red_films_productions.general_budget via the shared clip helper
-// (labelInvestment = round(budget/2,2); artistRecoup = budget − labelInvestment).
+// GET /api/label/artists/[id]/clips — the artist's clips with A / B / C per currency (B3, Owner canon 2026-09-27):
+// A client clip price, B planned budget, C actual cost (Finance, paid), + the Red Films ledger (not in Finance).
+// Never added together; the recoup (D) is NOT_DEFINED (no artist agreement rule) — never 50 % of the budget.
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -22,15 +23,11 @@ export async function GET(
     const clips = await listArtistClips(artist.name);
     const lines: LabelClipLine[] = clips.map((c) => ({
       id: c.id, title: c.title, status: c.status, projectId: c.projectId,
-      fullBudget: c.fullBudget, labelInvestment: c.labelInvestment, artistRecoupBalance: c.artistRecoupTarget,
+      plannedBudget: c.plannedBudget, currency: c.currency, clientClipPrice: c.clientClipPrice, clientClipCurrency: c.clientClipCurrency,
+      actualCostPaid: c.actualCostPaid, rfLedgerPaid: c.rfLedgerPaid,
+      recoupStatus: "NOT_DEFINED", artistRecoupBalance: null, recoupReasonHe: c.recoup.reasonHe,
     }));
-    const totals = {
-      fullBudget: round2(clips.reduce((s, c) => s + c.fullBudget, 0)),
-      labelInvestment: round2(clips.reduce((s, c) => s + c.labelInvestment, 0)),
-      artistRecoupBalance: round2(clips.reduce((s, c) => s + c.artistRecoupTarget, 0)),
-      count: clips.length,
-    };
-    const payload: ArtistClipsSummary = { totals, clips: lines };
+    const payload: ArtistClipsSummary = { totals: { count: clips.length, byCurrency: artistClipMoney(clips) }, recoupStatus: "NOT_DEFINED", recoupReasonHe: CLIP_RECOUP_NOT_DEFINED_HE, clips: lines };
     return NextResponse.json(payload);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

@@ -15,6 +15,7 @@ import { slugForPortalArtistName, isNotifyEnabledArtistName, shortArtistName, NA
 import { saveFileAs } from "@/lib/download-file";
 import ProjectCover from "@/components/ui/ProjectCover";
 import type { ProjectCoverConfig } from "@/lib/project-cover";
+import { usePortalPresence } from "@/components/team/usePortalPresence";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -321,8 +322,10 @@ type LoadState = "loading" | "ready" | "error";
 export type CleantoneShow = {
   id: string; name: string; artist: string; date: string | null; startTime: string | null;
   location: string; djFee: number; status: string;
-  // Canonical shows.payment_status (owner-managed). Only "שולם" = paid; any
-  // other value renders as "לא שולם" in his portal. Read-only for the DJ.
+  /** The currency of djFee (never assumed ₪). */
+  currency?: string;
+  // A1: HIS OWN fee row status in Finance (DJ_FEE) — never the client's payment.
+  // Only "שולם" = paid; any other value renders as "לא שולם". Read-only for the DJ.
   paymentStatus: string;
   confirmationStatus: "ממתין לאישור" | "אושר" | null;
 };
@@ -557,30 +560,20 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // fetches are skipped below rather than fetched and hidden.
   const isNagashPortal = artistName === NAGASH_NAME;
 
-  // Entry beacon — fires once per real app session (a fresh tab, or the app
-  // reopened after being fully closed), never on a reload or in-app navigation
-  // within the same tab. sessionStorage is the client-side session boundary:
-  // it survives reloads but is empty again in a new tab; the server still
-  // applies its own short race-guard (see notifyShalevEntry / notifyAviEntry /
-  // notifyCleantoneEntry).
+  // Portal presence — the ONE shared presence model (components/team/usePortalPresence.ts →
+  // lib/push-presence-pure.ts): ping on open + a visible-page heartbeat; the SERVER records last-seen
+  // and sends the Owner ONE push only for a claimed new visit (30 minutes without any ping). A reload,
+  // in-app navigation, a second tab or a heartbeat never pushes.
   //
-  // Gated on the VIEWER'S OWN ROLE, so the owner previewing either portal never
-  // fires it — his role is "owner", and the routes re-check that server-side
-  // anyway. Each artist gets his OWN sessionStorage key and his OWN endpoint, so
-  // one artist's session can neither trigger nor suppress the other's.
-  useEffect(() => {
-    const beacon =
-      isShalev ? { key: "rb_shalev_entry_pinged", url: "/api/red-artists/ping" }
-      : isAvi && artistId ? { key: "rb_avi_entry_pinged", url: `/api/label/artists/${artistId}/ping` }
-      : isCleantone ? { key: "rb_cleantone_entry_pinged", url: "/api/red-artists/cleantone/ping" }
-      : null;
-    if (!beacon) return;
-    try {
-      if (sessionStorage.getItem(beacon.key)) return;
-      sessionStorage.setItem(beacon.key, "1");
-    } catch { /* sessionStorage unavailable — fall through, server race-guard still applies */ }
-    fetch(beacon.url, { method: "POST" }).catch(() => {});
-  }, [isShalev, isAvi, isCleantone, artistId]);
+  // Gated on the VIEWER'S OWN ROLE, so the owner previewing either portal never pings — his role is
+  // "owner", and the routes re-check that server-side anyway. Each artist has his OWN endpoint (and
+  // his OWN server-side presence keys), so one artist's session can neither trigger nor suppress the other's.
+  usePortalPresence(
+    isShalev ? "/api/red-artists/ping"
+    : isAvi && artistId ? `/api/label/artists/${artistId}/ping`
+    : isCleantone ? "/api/red-artists/cleantone/ping"
+    : null,
+  );
 
   // DJ CLEANTONE gets exactly 2 of the 7 tabs — enforced here (not just in the
   // tab bar below) so a crafted `?tab=balance` deep link can never select a
@@ -3146,7 +3139,7 @@ function BalanceCycleRemindModal({ artistId, onClose }: { artistId: string; onCl
 // this is a pure additive extension with zero effect on their rendering.
 type Show = {
   id: string; name: string; date: string; time: string; location: string; status: string;
-  artist?: string; djFee?: number; paymentStatus?: string; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
+  artist?: string; djFee?: number; currency?: string; paymentStatus?: string; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
 };
 // Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
@@ -3165,10 +3158,10 @@ function ShowStatusPill({ status }: { status: string }) {
   );
 }
 
-// DJ CLEANTONE's payment-status pill (read-only). Binary by design: the canonical
-// shows.payment_status "שולם" → paid (green); every other value ("לא שולם",
-// "צפוי", "מקדמה", legacy "חלקי") → "לא שולם" (red). The DJ only needs to know
-// "settled or not" — owner keeps full control of the real value in the Shows UI.
+// DJ CLEANTONE's payment-status pill (read-only). Binary by design: HIS OWN DJ fee
+// row (A1 — never the client's payment) "שולם" → paid (green); every other value
+// ("צפוי", "בוטל", no row) → "לא שולם" (red). The DJ only needs to know "was I
+// paid" — the Owner marks it (close dialog / Finance / Sunny MARK_SHOW_FEE_PAID).
 const PAYMENT_RED = "#F87171";
 function PaymentStatusPill({ status }: { status?: string }) {
   const paid = status === "שולם";
@@ -3423,7 +3416,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               {isCleantoneVariant && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>עבור: {s.artist || "—"}</div>}
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "start" }}>{s.date} · {s.time}</div>
               <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
-              {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0)}</div>}
+              {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0, s.currency)}</div>}
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {!isCleantoneVariant && <ShowStatusPill status={s.status} />}
                 {isCleantoneVariant && <PaymentStatusPill status={s.paymentStatus} />}
@@ -3451,7 +3444,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
-              {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0)}</div>}
+              {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0, s.currency)}</div>}
               {isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><PaymentStatusPill status={s.paymentStatus} /></div>}
               {!isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>}
               {showSendButton && !isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
@@ -3477,7 +3470,7 @@ function toShowRow(s: PortalShow): Show {
 function toCleantoneShowRow(s: CleantoneShow): Show {
   return {
     id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status,
-    artist: s.artist || "—", djFee: s.djFee, paymentStatus: s.paymentStatus, confirmationStatus: s.confirmationStatus,
+    artist: s.artist || "—", djFee: s.djFee, currency: s.currency, paymentStatus: s.paymentStatus, confirmationStatus: s.confirmationStatus,
   };
 }
 

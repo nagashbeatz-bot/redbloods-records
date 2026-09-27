@@ -23,6 +23,8 @@ import { buildProjectView, type ProjectView } from "./view";
 import type { CalendarWindowResult } from "../calendar/types";
 import { buildCalendarLinkIndex, eventsForEntity, linkCalendarEvent } from "../calendar/links";
 import { availability, dayList } from "../calendar/availability";
+import { engineerHandoff } from "../mix/handoff";
+import { sendEntryCurrent, evidenceFor } from "../work/send-log";
 
 export const PROJECT_SECTIONS = [
   "summary", "identity", "people", "money", "notes", "files", "materials", "sessions", "calendar", "proposal", "tasks", "meetings", "waiting",
@@ -176,12 +178,22 @@ function filesOf(c: Ctx): SectionRow[] {
 
 function waitingOf(c: Ctx): SectionRow[] {
   const d = c.det; const id = c.id; const out: SectionRow[] = [];
+  // B5: a pending send-log entry answered by LATER in-app evidence (engineer → this project's mix versions; external
+  // producer / linked Victor work → Victor uploads / sent notes) is HISTORY, not a wait (lib/partner/work/send-log).
+  const projVictor = rows(d?.victor).filter((x) => x.projectId === id);
+  const sendEvidence = { mixVersionCreatedAt: rows(d?.mixVersions).filter((v) => c.versionIds.has(v.id)).map((v) => v.createdAt ?? v.uploadedAt), victorUploads: projVictor.flatMap((w) => w.filesSent.map((f) => f.uploadedAt)), victorNotesSentAt: projVictor.flatMap((w) => w.reviews.filter((r) => !r.draft).map((r) => r.sentAt)) };
   for (const a of rows(d?.actions).filter((x) => x.projectId === id && !["approved", "closed", "cancelled"].includes(x.status ?? ""))) {
+    const cur = sendEntryCurrent(a, evidenceFor(a, sendEvidence));
+    if (cur.state === "SUPERSEDED") continue;
     const on = a.status === "got_notes" ? "OWNER" : a.recipientRole ? a.recipientRole.toUpperCase() : "UNKNOWN";
-    out.push(R(`send-log:${a.id}`, `${a.recipientName ?? a.recipientRole ?? "?"} · ${a.status ?? "?"}`, "DERIVED", { waitingOn: on, evidence: "send log entry", status: a.status, recipient: a.recipientName, role: a.recipientRole, sentOn: a.actionDate, followup: a.followupDate, followupOverdue: !!(a.followupDate && a.followupDate < c.today), content: a.contentType, version: a.versionLabel }));
+    out.push(R(`send-log:${a.id}`, `${a.recipientName ?? a.recipientRole ?? "?"} · ${a.status ?? "?"}`, "DERIVED", { waitingOn: on, evidence: "send log entry", current: cur.state, currentBasis: cur.basis, status: a.status, recipient: a.recipientName, role: a.recipientRole, sentOn: a.actionDate, followup: a.followupDate, followupOverdue: !!(a.followupDate && a.followupDate < c.today), content: a.contentType, version: a.versionLabel }));
   }
+  // B5: the engineer ball = THE mix handoff evidence rule (lib/partner/mix/handoff — the same answer as mix_view and the
+  // operating model), never the engineer status alone.
   for (const w of rows(c.ops?.engineerWork).filter((x) => x.projectId === id && !["אושר", "בוטל"].includes(x.status ?? ""))) {
-    out.push(R(`engineer:${w.id}`, `${w.engineerName} · ${w.status}`, "DERIVED", { waitingOn: w.status === "חזר" ? "OWNER" : "ENGINEER", evidence: "engineer work status", engineer: w.engineerName, status: w.status, internalDeadline: w.internalDeadline, deadlinePassed: !!(w.internalDeadline && w.internalDeadline < c.today) }));
+    const h = engineerHandoff(c.src, { id: w.id, projectId: w.projectId, engineerName: w.engineerName, status: w.status, sentDate: w.sentDate });
+    const waitingOn = h.state === "WAITING_ON_OWNER" ? "OWNER" : h.state === "WAITING_ON_ENGINEER" ? "ENGINEER" : h.state === "CONFLICTING_EVIDENCE" ? "CONFLICTING_EVIDENCE" : "UNKNOWN";
+    out.push(R(`engineer:${w.id}`, `${w.engineerName} · ${w.status}`, "DERIVED", { waitingOn, evidence: `mix handoff evidence: ${h.basis}${h.detailRead ? "" : " (mix evidence not read — a status alone is not the ball)"}`, handoffState: h.state, engineer: w.engineerName, status: w.status, internalDeadline: w.internalDeadline, deadlinePassed: !!(w.internalDeadline && w.internalDeadline < c.today) }));
   }
   const openComments = rows(d?.mixComments).filter((x) => x.versionId && c.versionIds.has(x.versionId) && x.status === "open").length;
   if (openComments) out.push(R("open-mix-comments", `${openComments} הערות מיקס פתוחות`, "DERIVED", { waitingOn: "ENGINEER", evidence: "open mix comments", count: openComments }));
@@ -243,7 +255,7 @@ function historyOf(c: Ctx): SectionRow[] {
   for (const w of rows(d?.victor).filter((x) => x.projectId === id)) { for (const r of w.reviews) if (r.sentAt) ev.push({ at: r.sentAt, what: `הערות ${r.version} נשלחו לויקטור`, kind: "VICTOR_NOTES_SENT" }); if (w.returnedDate) ev.push({ at: w.returnedDate, what: "ויקטור החזיר", kind: "VICTOR_RETURNED" }); }
   const rel = rows(d?.releases).find((x) => x.projectId === id);
   if (rel?.stageEnteredAt) ev.push({ at: rel.stageEnteredAt, what: "נכנס לשלב הריליס הנוכחי", kind: "RELEASE_STAGE" });
-  if (rel?.releasedAt) ev.push({ at: rel.releasedAt, what: "יצא (ריליס)", kind: "RELEASED" });
+  if (rel?.releasedAt) ev.push({ at: rel.releasedAt, what: "יצא לראשונה (ריליס)", kind: "RELEASED" });
   for (const n of rows(d?.notifications).filter((x) => x.projectId === id)) ev.push({ at: n.createdAt ?? "", what: n.title ?? "התראה", kind: "NOTIFICATION" });
   for (const a of rows(d?.agentAlerts).filter((x) => x.projectId === id)) ev.push({ at: a.createdAt ?? "", what: `התראת סוכן: ${a.title ?? a.type ?? "?"} (${a.status ?? "?"})`, kind: "AGENT_ALERT" });
   for (const o of (ok(c.src.outcomes) ?? []).filter((x) => "projectId" in x && x.projectId === id)) ev.push({ at: (o as { executedAt: string }).executedAt, what: `פעולת סאני בוצעה: ${o.actionType}`, kind: "SUNNY_ACTION_OUTCOME" });

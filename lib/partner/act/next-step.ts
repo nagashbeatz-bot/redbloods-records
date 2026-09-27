@@ -68,7 +68,11 @@ export const STATE_MEANINGS: Readonly<Record<string, string>> = {
   "REHEARSAL_OPERATIONAL:בוצע": "D6: the rehearsal happened — its cost counts toward the show split",
   "REHEARSAL_OPERATIONAL:מתוכנן": "D6: planned — does not count toward the show split (even if paid) until the Owner marks it בוצע",
   "REHEARSAL_OPERATIONAL:בוטל": "D6: cancelled — does not count toward the show split",
-  "REHEARSAL_OPERATIONAL:התקיים": "D6 legacy: written by the old page-load auto-mark, not by the Owner — keeps the pre-D6 rule (counts only if paid) until the Owner confirms בוצע / בוטל",
+  "REHEARSAL_OPERATIONAL:התקיים": "D6 legacy: written by the old page-load auto-mark (retired 2026-09-27, A3), not by the Owner — keeps the pre-D6 rule (counts only if paid) until the Owner confirms בוצע / בוטל",
+  "SESSION_STATUS:מתוכנן": "A3 (Owner canon 2026-09-27): planned — once its end passed (overnight-aware) and nobody confirmed it, it reads 'עבר — לא אושר' (passed, not confirmed); time passed never makes it held and nothing writes התקיים automatically",
+  "SESSION_STATUS:התקיים": "A3: recorded as happened — an explicit Owner record for a session ending after AUTO_MARK_RETIRED_AT (2026-09-27); on / before it the status may have been written by the retired page-load auto-mark (legacy, not proof)",
+  "SESSION_STATUS:נדחה": "a recorded outcome: postponed (not held)",
+  "SESSION_STATUS:לא הגיע": "a recorded outcome: no-show (not held)",
 };
 export interface StageCard {
   lifecycle: string; currentStage: string; meaningEn: string | null; terminal: boolean;

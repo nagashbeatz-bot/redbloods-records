@@ -453,6 +453,8 @@ export interface RawTask {
 export interface RawStevenWork {
   id: string; projectId: string | null; title: string; status: string; agreedPrice: number; currency: string;
   amountPaid: number; sentDate: string | null; internalDeadline: string | null; hasMixVersion: boolean; lastUploadAt: string | null;
+  /** Additive (integrity fix A2): the payment date — THE shared paid rule needs it. Optional so older fixtures keep working. */
+  paymentDate?: string | null;
   /** Additive (Partner Phase C.3, change-readiness) — already fetched by listSoundEngineerWork()'s select("*"), not read by any Phase 1a signal/case/priority/brief logic. Optional so existing fixtures never need to change. */
   createdAt?: string | null;
   updatedAt?: string | null;

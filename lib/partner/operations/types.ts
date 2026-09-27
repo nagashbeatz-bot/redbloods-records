@@ -9,9 +9,14 @@ export interface OpsRedFilmsProduction {
   id: string; title: string; productionType: string | null; status: string | null; projectId: string | null; clientId: string | null;
   artistName: string | null; clientSource: string | null; shootDate: string | null; publishDate: string | null; editStatus: string | null;
   collectionStatus: string | null; generalBudget: number | null; clientPrice: number | null; advanceRequired: number | null; advanceReceived: number | null;
+  /** The production's own currency (migration 2026-09-27). Blank = ₪ via normalizeCurrency. */
+  currency?: string | null;
 }
-export interface OpsBudgetItem { productionId: string; planned: number | null; actual: number | null; status: string | null; hasTransaction: boolean }
-export interface OpsBudgetPayment { productionId: string; amount: number | null; paymentDate: string | null }
+/** `currency` = the budget line's own currency (never added across currencies). */
+/** `actual` = the LEGACY manual actual_amount mirror (never paid — B3); `id` joins the line's payments. */
+export interface OpsBudgetItem { id?: string | null; productionId: string; planned: number | null; actual: number | null; status: string | null; hasTransaction: boolean; currency?: string | null }
+/** `currency` = the payment's currency (= its budget line's currency). */
+export interface OpsBudgetPayment { productionId: string; budgetItemId?: string | null; amount: number | null; paymentDate: string | null; currency?: string | null }
 export interface OpsClipItem { projectId: string | null; category: string | null; amount: number | null; currency: string | null; status: string | null; hasTransaction: boolean }
 export interface OpsMeeting { id: string; date: string | null; time: string | null; status: string | null; projectId: string | null; clientId: string | null; hasCalendarEvent: boolean }
 export interface OpsProjectAction { id: string; projectId: string | null; actionType: string | null; contentType: string | null; recipientRole: string | null; status: string | null; actionDate: string | null; followupDate: string | null }

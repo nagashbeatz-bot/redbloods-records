@@ -6,7 +6,7 @@ type Ctx = { params: Promise<{ id: string }> };
 /**
  * POST /api/clip-items/[id]/promote
  * Creates a real transaction from a planning clip_item.
- * Sets clip_item.status = "הועבר לכספים" and stores the new transaction ID.
+ * Sets clip_item.status = "הועבר לכספים" and stores the new transaction ID — the planning row is KEPT (B3 provenance).
  */
 export async function POST(req: NextRequest, ctx: Ctx) {
   try {
@@ -17,12 +17,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
     // Fetch the clip_item
     // Shared writer (lib/writes/redfilms) — HARDENED: the row is claimed before the expense is created (no double
-    // expense on a double click); a failed expense restores the row.
+    // expense on a double click); a failed expense releases the claim. B3: the row is kept and linked to the expense.
     const r = await promoteClipItem(id, date);
     if (r.kind === "not_found") return NextResponse.json({ error: "clip item not found" }, { status: 404 });
     if (r.kind === "already_promoted") return NextResponse.json({ error: "already_promoted", linked_transaction_id: r.transactionId }, { status: 409 });
-    const tx = r.transaction;
-    return NextResponse.json({ deleted: true, transaction: tx });
+    return NextResponse.json({ promoted: true, transaction: r.transaction, clipItem: r.clipItem });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
   }

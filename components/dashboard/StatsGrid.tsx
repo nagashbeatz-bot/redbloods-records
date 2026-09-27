@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/types";
 import { daysUntilDeadline } from "@/lib/utils";
+import { sumByCurrency, type CurrencyTotals } from "@/lib/finance";
 
 // ── Proposal stats ────────────────────────────────────────────────────────────
 
@@ -12,14 +14,15 @@ interface ProposalStats {
   open: number;
   followupToday: number;
   overdue: number;
-  totalAmount: number;
+  /** Open proposal value PER CURRENCY (potential money; $ / € are never dropped or added into ₪). */
+  totalByCurrency: CurrencyTotals;
 }
 
 const CLOSED_STATUSES = new Set(["נסגר", "לא נסגר"]);
 
 function useProposalData(): { stats: ProposalStats; items: ProposalItem[]; today: string; refresh: () => void } {
   const today = new Date().toISOString().split("T")[0];
-  const [stats, setStats] = useState<ProposalStats>({ open: 0, followupToday: 0, overdue: 0, totalAmount: 0 });
+  const [stats, setStats] = useState<ProposalStats>({ open: 0, followupToday: 0, overdue: 0, totalByCurrency: {} });
   const [items, setItems] = useState<ProposalItem[]>([]);
   const [tick,  setTick]  = useState(0);
 
@@ -31,8 +34,8 @@ function useProposalData(): { stats: ProposalStats; items: ProposalItem[]; today
         const open          = all.filter((p) => !CLOSED_STATUSES.has(p.status));
         const followupToday = open.filter((p) => p.followup_date === today).length;
         const overdue       = open.filter((p) => p.followup_date && p.followup_date < today).length;
-        const totalAmount   = open.filter((p) => p.currency === "₪").reduce((s, p) => s + (p.amount ?? 0), 0);
-        setStats({ open: open.length, followupToday, overdue, totalAmount });
+        const totalByCurrency = sumByCurrency(open, (p) => p.amount ?? 0);
+        setStats({ open: open.length, followupToday, overdue, totalByCurrency });
         setItems(open);
       })
       .catch(() => {});
@@ -480,7 +483,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
   const onHold   = projects.filter((p) => p.status === "בהשהייה").length;
   const done     = projects.filter((p) => p.status === "הושלם").length;
   // Consistent with DashboardContent: exclude "בהשהייה" from overdue count
-  const overdue  = projects.filter((p) => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה").length;
+  const overdue  = projects.filter((p) => isProjectOverdue(p)).length;
   const dueSoon  = projects.filter((p) => {
     const d = daysUntilDeadline(p.deadline);
     return d !== null && d >= 0 && d <= 7 && p.status !== "הושלם";

@@ -242,7 +242,7 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
     async verify(d, id) { const p = await d.readProposal(id); return !!p && p.status === "נסגר" && !!p.linkedProjectId; },
     requiredValues: () => [],
     warnings: (c) => (Number(c.amount) > 0 ? [`המחיר המוסכם של הפרויקט החדש יירשם: ${money(Number(c.amount), String(c.currency))}`] : ["סכום ההצעה 0 — לא יירשם מחיר מוסכם"]),
-    disclosuresHe: ["נוצר פרויקט חדש (שם: ההצעה או השם שציינת; אמן: הלקוח)", "ההצעה מסומנת 'נסגר' ומקושרת לפרויקט", "משימת המעקב נסגרת (וגם ב-Google Tasks אם מחובר)", "הגנה מכפילות: שתי בקשות במקביל לא יוצרות שני פרויקטים"],
+    disclosuresHe: ["נוצר פרויקט חדש (שם: ההצעה או השם שציינת; אמן: הלקוח)", "סוג הפרויקט לפי כלל הבעלים: שליו טסמה / אבי מולה → לייבל, אחרת לקוח", "ההצעה מסומנת 'נסגר' ומקושרת לפרויקט", "משימת המעקב נסגרת (וגם ב-Google Tasks אם מחובר)", "הגנה מכפילות: שתי בקשות במקביל לא יוצרות שני פרויקטים"],
   },
   {
     actionId: "DELETE_PROPOSAL", kinds: ["proposal"],

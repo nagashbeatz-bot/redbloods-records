@@ -16,6 +16,7 @@ export interface DeliveryFamilyWriters {
 /** Pinned to components/ui/ProjectDrawer.tsx + lib/writes/delivery by the family test. */
 export const DELIVERY_STATUS_VALUES: readonly string[] = ["not_created", "ready", "delivered"];
 const K = (name: string): ArgSpec => ({ name, kind: "entityKey", required: true });
+const ilToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const meta = (he: string, en: string, args: readonly ArgSpec[], fields: readonly string[], writer: string, o: Partial<PrimitiveMeta>): PrimitiveMeta =>
   ({ domain: "PROJECT", he, en, args, fields, effects: [], riskClass: "SAFE_REVERSIBLE", reversible: "YES", writer, compensation: "a new approved plan restoring the previous status shown in the preview", ...o });
 
@@ -48,13 +49,14 @@ export const DELIVERY_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (!cur.hasFolder || cur.status === "not_created") return refuse("NO_DELIVERY", "אין עדיין תיקיית מסירה לפרויקט");
       if (a.status === "delivered") {
         if (a.deliveredAt !== undefined && !realYmd(a.deliveredAt)) return refuse("BAD_DATE", "תאריך לא תקין");
-        return finishPlan(cur, { status: "delivered", deliveredAt: String(a.deliveredAt ?? new Date().toISOString().slice(0, 10)) });
+        // B5: delivered always carries a date — the given one, else today in Israel (the writer's own default)
+        return finishPlan(cur, { status: "delivered", deliveredAt: String(a.deliveredAt ?? ilToday()) });
       }
       if (a.deliveredAt !== undefined) return refuse("BAD_ARGS", "תאריך מסירה רק כשמסמנים 'נמסר'");
       return finishPlan(cur, { status: "ready", deliveredAt: null });
     },
-    apply: (d, id, a) => d.setDeliveryStatus(id, { deliveryStatus: String(a.status), deliveredAt: (a.deliveredAt as string | null) ?? null }),
-    disclosuresHe: ["רק הסטטוס ותאריך המסירה משתנים — התיקייה והקישור לא", "לא נשלח כלום ללקוח"],
+    apply: (d, id, a) => d.setDeliveryStatus(id, { deliveryStatus: String(a.status), deliveredAt: a.status === "delivered" ? String(a.deliveredAt ?? ilToday()) : null }),
+    disclosuresHe: ["רק הסטטוס ותאריך המסירה משתנים — התיקייה והקישור לא", "חזרה ל'מוכן' מנקה את תאריך המסירה הנוכחי; תאריך המסירה האחרון נשמר כהיסטוריה", "לא נשלח כלום ללקוח"],
   },
   {
     actionId: "DELETE_DELIVERY_FOLDER", kinds: ["project"],
@@ -64,6 +66,6 @@ export const DELIVERY_PRIMITIVES: readonly PrimitiveSpec[] = [
     apply: (d, id) => d.deleteDeliveryFolder(id),
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [c.status === "delivered" ? "הפרויקט מסומן 'נמסר' — הלקוח אולי עוד משתמש בקישור" : "כל הקבצים שבתיקיית המסירה נמחקים", "הקישור הציבורי מפסיק לעבוד"],
-    disclosuresHe: ["התיקייה וכל הקבצים שבה נמחקים מהאחסון; המסירה חוזרת ל'לא נוצרה'", "לא נשלח כלום"],
+    disclosuresHe: ["התיקייה וכל הקבצים שבה נמחקים מהאחסון; המסירה חוזרת ל'לא נוצרה'", "אם הפרויקט נמסר בעבר — תאריך המסירה האחרון נשמר (עובדת המסירה לא נמחקת)", "לא נשלח כלום"],
   },
 ];

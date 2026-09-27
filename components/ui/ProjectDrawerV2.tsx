@@ -14,15 +14,16 @@ import {
   CLIP_PAYMENT_STATUSES, isClipIncome, isSongIncome,
   summarizeClipFinance, clipStatusColor,
 } from "@/lib/clip-finance";
-import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus } from "@/lib/finance";
+import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, isReceivedStatus, isExpectedStatus, normalizeCurrency, formatTotalsInline } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import ProjectCover from "@/components/ui/ProjectCover";
 import ProjectCoverModal from "@/components/ui/ProjectCoverModal";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
-import { sessionDurationMinutes } from "@/lib/session-duration";
+import { sessionDurationMinutes, isPastUnconfirmed, localNowString, PAST_UNCONFIRMED_LABEL } from "@/lib/session-duration";
 import type { Project } from "@/lib/types";
+import { classificationSignal, rosterIdByNameOf, OWNER_LABEL_RULE_HE } from "@/lib/project-classification";
 import ScheduleModal from "@/components/project/ScheduleModal";
 import StevenIntakeModal from "@/components/project/StevenIntakeModal";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
@@ -867,7 +868,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   // any other currency is never added to them; it is summed on its own and shown on a second line.
   const txParts     = partitionByCurrency(transactions, currency);
   const received    = txParts.same
-    .filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status))
+    .filter(t => isSongIncome(t) && isReceivedStatus(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   const cancelledIncome = txParts.same
     .filter(t => isSongIncome(t) && isCancelledPayment(t.payment_status))
@@ -887,8 +888,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const collectionRemaining = financeException ? 0 : collectibleAmount(agreedPrice, received, cancelledIncome, project.status);
 
   // Other-currency lines (display only) for the summary card and the Finance tab.
-  const otherReceivedTotals = sumByCurrency(txParts.other.filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status)), t => t.amount);
-  const otherExpPaidTotals  = sumByCurrency(txParts.other.filter(t => t.type === "expense" && t.payment_status === "שולם"), t => t.amount);
+  const otherReceivedTotals = sumByCurrency(txParts.other.filter(t => isSongIncome(t) && isReceivedStatus(t.payment_status)), t => t.amount);
+  const otherExpPaidTotals  = sumByCurrency(txParts.other.filter(t => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)), t => t.amount);
   const otherCurCodes = orderCurrencies(Array.from(new Set([...Object.keys(otherReceivedTotals), ...Object.keys(otherExpPaidTotals)])));
   const nzAmt = (n: number) => Math.round(n * 100) !== 0;
   const otherCur: OtherCurLines = {
@@ -901,7 +902,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   };
 
   // Reminder to set a due date for an open balance that has no expected payment yet.
-  const hasExpectedIncome = txParts.same.some(t => isSongIncome(t) && t.payment_status === "צפוי");
+  const hasExpectedIncome = txParts.same.some(t => isSongIncome(t) && isExpectedStatus(t.payment_status));
   const showBalanceReminder =
     finLoaded &&
     !financeException &&
@@ -1073,6 +1074,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   onMouseLeave={e => { e.currentTarget.style.color = TEXT2; e.currentTarget.style.borderColor = BORDER2; }}
                 >✎ שייך אמן</button>
               </div>
+
+              {/* B2: לקוח / לייבל — the ONE canonical classification (projects.project_business_type) */}
+              <BusinessTypeControl project={project} onChanged={refresh} />
 
               {/* Stats — 2×2 grid */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 165px))", gap: 10 }}>
@@ -3708,6 +3712,14 @@ function SessionsContent({ sessions, sessDone, onStatusChange, onEditSession }: 
                     {s.start_time ? <span style={{ color: MUTED, fontWeight: 500 }}> · {s.start_time}</span> : null}
                   </div>
                 </div>
+                {/* A3: display-only "passed, not confirmed" + explicit Owner confirmation (never counted as held) */}
+                {isPastUnconfirmed(s, localNowString()) && (
+                  <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: "#F59E0B", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 8, padding: "3px 7px" }}>{PAST_UNCONFIRMED_LABEL}</span>
+                    <button onClick={() => onStatusChange(s.id, "התקיים")} title="סמן התקיים" style={{ fontSize: 10, fontWeight: 700, color: "#10B981", background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontFamily: "inherit" }}>התקיים</button>
+                    <button onClick={() => onStatusChange(s.id, "בוטל")} title="סמן בוטל" style={{ fontSize: 10, fontWeight: 700, color: "#8A8A99", background: "rgba(85,85,104,0.14)", border: "1px solid rgba(85,85,104,0.40)", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontFamily: "inherit" }}>בוטל</button>
+                  </div>
+                )}
                 <div onClick={e => e.stopPropagation()}>
                   <SessionStatusControl status={s.status} onChange={(ns) => onStatusChange(s.id, ns)} />
                 </div>
@@ -4352,6 +4364,8 @@ interface ClipPayment {
   payment_status: string;
   description:    string | null;
   notes:          string | null;
+  /** The row's own currency (blank = ₪). Only rows in the clip deal currency count against the clip price. */
+  currency?:      string | null;
 }
 
 interface ClipProduction {
@@ -4359,6 +4373,8 @@ interface ClipProduction {
   title:          string;
   status:         string;
   general_budget: number | null;
+  /** The production's own currency — general_budget is in it (never shown in the project currency). */
+  currency?:      string | null;
   /** True only when this production came from "שלח קליפ" — legacy ones are not synced. */
   budget_managed_by_project?: boolean;
 }
@@ -4408,11 +4424,15 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
-  // Summary comes from the transactions themselves — never from a stored total.
+  // Summary comes from the transactions themselves — never from a stored total. Only payments in the clip deal
+  // currency (the project finance currency) count; any other currency is reported apart (sum.otherCurrency), no FX.
   const sum = summarizeClipFinance(
-    payments.map(p => ({ type: "income", amount: p.amount, payment_status: p.payment_status, expense_scope: "קליפ" })),
+    payments.map(p => ({ type: "income", amount: p.amount, payment_status: p.payment_status, expense_scope: "קליפ", currency: p.currency })),
     price,
+    currency,
   );
+  const otherCurrencyClip = Object.entries(sum.otherCurrency);
+  const paymentsTotalByCurrency = sumByCurrency(payments, p => p.amount);
   const hasDeal = price > 0 || payments.length > 0;
 
   async function openDeal() {
@@ -4455,10 +4475,7 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
       if (!res.ok) throw new Error(d.error || "שמירה נכשלה");
       setPrice(val);
       setEditingPrice(false);
-      // The production's budget follows the price — reflect it without a reload.
-      if (d.budgetSynced && production) {
-        setProduction({ ...production, general_budget: d.budgetSynced.general_budget });
-      }
+      // B3: the clip price never changes the production's planned budget (A ≠ B).
     } catch (e) {
       setErr(e instanceof Error ? e.message : "שגיאה");
     } finally {
@@ -4596,10 +4613,8 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
       {production && (
         <div style={{ fontSize: 12, color: TEXT2, background: `${CLIP_ACCENT}12`, border: `1px solid ${CLIP_ACCENT}30`, borderRadius: 10, padding: "9px 12px" }}>
           כבר קיימת הפקת קליפ לפרויקט הזה — <span style={{ color: TEXT, fontWeight: 700 }}>{production.title}</span>
-          {" · "}תקציב ב-Red Films: <span style={{ color: TEXT, fontWeight: 700 }}>{money(Number(production.general_budget) || 0)}</span>
-          {!production.budget_managed_by_project && (
-            <span style={{ color: MUTED }}>{" · "}הפקה קיימת מ-Red Films — התקציב שלה מנוהל שם</span>
-          )}
+          {" · "}תקציב ב-Red Films: <span style={{ color: TEXT, fontWeight: 700 }}>{`${normalizeCurrency(production.currency)}${(Number(production.general_budget) || 0).toLocaleString("he-IL")}`}</span>
+          <span style={{ color: MUTED }}>{" · "}התקציב הוא תכנון של ההפקה ומנוהל ב-Red Films — לא מחיר הקליפ</span>
         </div>
       )}
 
@@ -4684,9 +4699,7 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
                     </div>
                     {production && (
                       <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
-                        {production.budget_managed_by_project
-                          ? "עדכון המחיר יעדכן גם את התקציב בהפקה ב-Red Films"
-                          : "ההפקה המקושרת נוצרה ב-Red Films ולא דרך שליחת קליפ — התקציב שלה מנוהל שם ולא יושפע"}
+                        מחיר הקליפ ללקוח בלבד — תקציב ההפקה ב-Red Films (תכנון) לא משתנה
                       </div>
                     )}
                   </div>
@@ -4764,7 +4777,7 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
                       className="v2-select"
                       style={{
                         ...cellInput, fontWeight: 800,
-                        color: ["שולם", "התקבל"].includes(p.payment_status) ? GREEN
+                        color: isReceivedStatus(p.payment_status) ? GREEN
                              : p.payment_status === "בוטל" ? MUTED : AMBER,
                       }}
                       value={p.payment_status}
@@ -4805,12 +4818,18 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
                 }}>
                   <div />
                   <div style={{ color: TEXT2 }}>סה״כ</div>
-                  <div style={{ color: TEXT }}>{money(payments.reduce((s, p) => s + p.amount, 0))}</div>
+                  <div style={{ color: TEXT }}>{formatTotalsInline(paymentsTotalByCurrency, (a, c) => `${c}${a.toLocaleString("he-IL")}`, currency)}</div>
                   <div />
                   <div style={{ color: GREEN }}>{money(sum.paid)}</div>
                   <div style={{ color: AMBER }}>{money(sum.expected)}</div>
                   <div />
                 </div>
+                {otherCurrencyClip.length > 0 && (
+                  <div style={{ fontSize: 11.5, color: AMBER, paddingTop: 8 }}>
+                    ⚠ תשלומים במטבע אחר ממטבע העסקה ({currency}) — לא נספרים מול מחיר הקליפ ולא מומרים:{" "}
+                    {otherCurrencyClip.map(([c, o]) => `${c}${o.paid.toLocaleString("he-IL")} התקבל · ${c}${o.expected.toLocaleString("he-IL")} צפוי`).join(" | ")}
+                  </div>
+                )}
               </div>
             )}
 
@@ -4861,6 +4880,60 @@ function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: 
         </div>,
         document.body,
       )}
+    </div>
+  );
+}
+
+// ── B2: client / label classification control ────────────────────────────────
+// The stored project_business_type is the only classifier. The Owner rule (שליו טסמה / אבי מולה credited → לייבל) is
+// shown as a HINT when it disagrees with the stored value; nothing is written until the Owner clicks. Writes go
+// through the existing owner-only route PATCH /api/label/projects/[id]/business-type.
+function BusinessTypeControl({ project, onChanged }: { project: Project; onChanged: () => void | Promise<void> }) {
+  const [roster, setRoster] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/label/artists").then((r) => (r.ok ? r.json() : [])).then((rows: Array<{ id: string; name: string }>) => { if (alive) setRoster(Array.isArray(rows) ? rows.map((a) => ({ id: a.id, name: a.name })) : []); }).catch(() => { if (alive) setRoster([]); });
+    return () => { alive = false; };
+  }, []);
+  const stored = project.businessType;
+  const mismatch = roster ? classificationSignal({ businessType: stored, artistText: project.artist }, rosterIdByNameOf(roster)) : null;
+  async function setType(t: "לקוח" | "לייבל") {
+    if (busy || t === stored) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/projects/${project.id}/business-type`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessType: t }) });
+      if (!res.ok) { const d = await res.json().catch(() => null); setErr(d?.error || "השינוי נכשל"); return; }
+      await onChanged();
+    } catch { setErr("שגיאת רשת"); } finally { setBusy(false); }
+  }
+  const pill = (t: "לקוח" | "לייבל") => {
+    const active = stored === t;
+    return (
+      <button key={t} type="button" disabled={busy} onClick={() => void setType(t)} aria-pressed={active}
+        style={{ fontSize: 12, fontWeight: 800, borderRadius: 8, padding: "4px 12px", cursor: busy ? "default" : "pointer", fontFamily: "inherit",
+          color: active ? "#fff" : TEXT2, background: active ? (t === "לייבל" ? "#7C3AED" : "rgba(255,255,255,0.14)") : "rgba(255,255,255,0.04)", border: `1px solid ${active ? "transparent" : BORDER2}` }}>
+        {t}
+      </button>
+    );
+  };
+  return (
+    <div style={{ marginTop: -12, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 700 }}>סיווג:</span>
+        {pill("לקוח")}{pill("לייבל")}
+      </div>
+      {mismatch && (
+        <div title={OWNER_LABEL_RULE_HE} style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "#F59E0B", fontWeight: 700 }}>
+          <span>לפי כלל הבעלים זה פרויקט לייבל</span>
+          <button type="button" disabled={busy} onClick={() => void setType("לייבל")}
+            style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 8, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit", color: "#F59E0B", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)" }}>
+            סמן כלייבל
+          </button>
+        </div>
+      )}
+      {err && <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#F87171" }}>{err}</div>}
     </div>
   );
 }

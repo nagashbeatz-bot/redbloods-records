@@ -30,14 +30,15 @@ export interface FinanceTxRow {
 export interface FinanceProjectRow { id: string; name: string; status: string; isHidden: boolean; businessType: string | null; artist: string | null; updatedAt: string | null }
 /** settings key `finance_<projectId>` (any projectId — orphans included). */
 export interface FinanceSettingRow { projectId: string; value: unknown }
-export interface EngineerWorkRow { id: string; projectId: string | null; engineerName: string | null; status: string | null; agreedPrice: unknown; amountPaid: unknown; currency: string | null; linkedTransactionId: string | null }
+export interface EngineerWorkRow { id: string; projectId: string | null; engineerName: string | null; status: string | null; agreedPrice: unknown; amountPaid: unknown; currency: string | null; linkedTransactionId: string | null; paymentDate?: string | null }
 export interface FinanceShowRow { id: string; date: string | null; status: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }
 export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null }
 export interface MediaIncomeRow { labelArtistId: string | null; status: string | null; grossAmount: unknown }
-export interface RedFilmsPaymentRow { id: string; amount: unknown; paymentDate: string | null }
+/** A Red Films budget payment. `currency` = the budget line currency (migration 2026-09-27); null on legacy / unread rows. */
+export interface RedFilmsPaymentRow { id: string; amount: unknown; paymentDate: string | null; currency?: string | null }
 /** One month of Victor's salary exactly as lib/vendor-store.ts getVictorSalaryMonths() resolves it (canonical). */
 export interface SalaryMonthRow { workMonth: string; dueDate: string; amount: number; currency: string; status: string; transactionId: string | null }
 

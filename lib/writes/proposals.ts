@@ -135,10 +135,15 @@ export async function convertProposal(id: string, overrideName?: string): Promis
 
   const clientName = (proposal.clients as { name: string } | null)?.name ?? "";
   const today = new Date().toISOString().split("T")[0];
-  const project = await createProject({ name: overrideName ?? proposal.title, artist: clientName, status: "לא התחיל", start_date: today, deadline: null, notes: proposal.notes || "", project_type: "", parent_project: "" });
+  // B2: the Owner classification rule applies to a converted proposal too (the same rule as createClientProject).
+  const { newProjectBusinessType } = await import("@/lib/project-classification-server");
+  const { businessType } = await newProjectBusinessType(clientName);
+  const project = await createProject({ name: overrideName ?? proposal.title, artist: clientName, status: "לא התחיל", start_date: today, deadline: null, notes: proposal.notes || "", project_type: "", parent_project: "", project_business_type: businessType });
   if (clientName) upsertArtistsFromProject(clientName).catch(() => {});
   if (Number(proposal.amount) > 0) {
-    await supabase.from("settings").upsert({ key: `finance_${project.id}`, value: { agreedPrice: Number(proposal.amount), currency: proposal.currency ?? "₪", financialNotes: "" }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    // compare-and-swap merge (lib/writes/settings-merge): never overwrites a concurrent finance-settings write
+    const { mergeSettingsKey } = await import("@/lib/writes/settings-merge");
+    await mergeSettingsKey(`finance_${project.id}`, (existing) => ({ financialNotes: "", ...existing, agreedPrice: Number(proposal.amount), currency: proposal.currency ?? "₪" }));
   }
   await supabase.from("proposals").update({ status: "נסגר", linked_project_id: project.id, updated_at: new Date().toISOString() }).eq("id", id);
   try {

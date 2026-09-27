@@ -31,6 +31,7 @@ import { buildReleaseCandidates } from "../../release-candidates";
 import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { SECURITY_GAPS } from "../system/people";
 import { ATTENTION_DIMENSIONS, ATTENTION_MAP, EXECUTABLE_TODAY, FUTURE_PRIMITIVES, GAP_ROOTS, STILL_PENDING, gapRootOf, type AttentionDimension, type AttentionNature, type AttentionSide, type GapRoot } from "../system/company";
+import { isClientProject, isLabelProject } from "../../project-classification";
 
 const CLOSED = new Set(["הושלם", "בוטל"]);
 const DAY = 86_400_000;
@@ -198,15 +199,17 @@ export function buildCompanyView(src: GatewaySources) {
   ).filter((x) => x.block === null) : null;
   const metaById = new Map(meta.map((p) => [p.id, p]));
   const label = {
-    artists: (artists ?? []).map((a) => ({ key: a.key, name: a.identity.name, status: a.identity.status, openProjects: a.projects.filter((p) => p.open).length, activeReleases: a.releases.filter((r) => r.active).length, nextRelease: a.nextRelease ? { name: a.nextRelease.projectName, stage: a.nextRelease.stage, target: a.nextRelease.targetDate } : null, released: a.cadence.releasedDates.length, lastReleased: a.cadence.releasedDates.slice().sort().pop() ?? null, upcomingShows: a.shows.filter((s) => s.upcoming && s.status !== "בוטל").length, lastRecordedActivity: a.lastRecordedActivity, signals: [...new Set(a.signals.map((s) => s.code))] })).sort((x, y) => x.name.localeCompare(y.name)),
+    artists: (artists ?? []).map((a) => ({ key: a.key, name: a.identity.name, status: a.identity.status, openProjects: a.projects.filter((p) => p.open).length, activeReleases: a.releases.filter((r) => r.active).length, nextRelease: a.nextRelease ? { name: a.nextRelease.projectName, stage: a.nextRelease.stage, target: a.nextRelease.targetDate } : null, released: a.cadence.releasedCount, releasedUnknownDate: a.cadence.releasedUnknownDate, lastReleased: a.cadence.releasedDates.slice().sort().pop() ?? null, upcomingShows: a.shows.filter((s) => s.upcoming && s.status !== "בוטל").length, lastRecordedActivity: a.lastRecordedActivity, signals: [...new Set(a.signals.map((s) => s.code))] })).sort((x, y) => x.name.localeCompare(y.name)),
     releaseCandidates: candidates ? candidates.map((x) => ({ project: `project:${x.project.id}`, name: x.project.name, type: x.project.projectType, projectStatus: metaById.get(x.project.id)?.status ?? null, owners: x.owners.map((o) => o.name), ownerChoiceNeeded: x.owners.length > 1 })) : null,
     rule: "release candidate = the app's own rule (label artist credited, releasable type, no release row; project status not considered). No cadence / readiness policy exists — facts only.",
   };
   const releaseView = {
-    upcoming: releases.filter((r) => !r.releasedAt && r.targetYmd && r.targetYmd >= c.today).map((r) => ({ project: `project:${r.projectId}`, name: idx[r.projectId]?.name ?? null, stage: r.stage, target: r.targetYmd })).sort((a, b) => (a.target ?? "").localeCompare(b.target ?? "")),
-    targetPassed: releases.filter((r) => !r.releasedAt && r.targetYmd && r.targetYmd < c.today).map((r) => ({ project: `project:${r.projectId}`, name: idx[r.projectId]?.name ?? null, stage: r.stage, target: r.targetYmd })),
-    noTarget: releases.filter((r) => !r.releasedAt && !r.targetYmd).length,
-    releasedLast90: releases.filter((r) => r.releasedAt && r.releasedAt.slice(0, 10) >= addDays(c.today, -90)).length,
+    // B5: current state = the stage (יצא); released_at is only the first-release date (kept when the stage moves back).
+    upcoming: releases.filter((r) => r.stage !== "יצא" && r.targetYmd && r.targetYmd >= c.today).map((r) => ({ project: `project:${r.projectId}`, name: idx[r.projectId]?.name ?? null, stage: r.stage, target: r.targetYmd })).sort((a, b) => (a.target ?? "").localeCompare(b.target ?? "")),
+    targetPassed: releases.filter((r) => r.stage !== "יצא" && r.targetYmd && r.targetYmd < c.today).map((r) => ({ project: `project:${r.projectId}`, name: idx[r.projectId]?.name ?? null, stage: r.stage, target: r.targetYmd })),
+    noTarget: releases.filter((r) => r.stage !== "יצא" && !r.targetYmd).length,
+    releasedLast90: releases.filter((r) => r.stage === "יצא" && r.releasedAt && r.releasedAt.slice(0, 10) >= addDays(c.today, -90)).length,
+    releasedUnknownDate: releases.filter((r) => r.stage === "יצא" && !r.releasedAt).length,
   };
 
   // ── delivery ──
@@ -257,10 +260,10 @@ export function buildCompanyView(src: GatewaySources) {
   const kn = (ok(src.ownerKnowledge) ?? []) as Array<{ subjectKey: string; operation?: string }>;
   const decided = (subject: string) => kn.some((k) => k.subjectKey === subject && k.operation !== "WITHDRAW");
   const known: Array<{ id: string; questionHe: string; why: string; kind: string; domain: CompanyDecision["domain"]; supersedes?: { domain: CompanyDecision["domain"]; text: RegExp }; state: () => { s: NonNullable<CompanyDecision["liveState"]>; e: string } }> = [
-    { id: "known:victor-june-500", questionHe: "משכורת ויקטור יוני: הסכום $500 מול $550 הגלובלי — מה נכון?", why: "salary sources disagree; kept for later by the Owner", kind: "PAYMENT", domain: "VICTOR", supersedes: { domain: "VICTOR", text: /2026-06/ }, state: () => victor ? ((victor.money.months.find((m) => m.month.startsWith("2026-06"))?.conflicts.length ?? 0) > 0 ? { s: "STILL_OBSERVED", e: victor.money.months.find((m) => m.month.startsWith("2026-06"))!.conflicts.join("; ") } : { s: "NO_LONGER_OBSERVED", e: "no June salary conflict in the live read" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "Victor view unavailable" } },
+    { id: "known:victor-june-500", questionHe: "משכורת ויקטור יוני: הסכום $500 מול $550 הגלובלי — מה נכון?", why: "salary sources disagree; kept for later by the Owner", kind: "PAYMENT", domain: "VICTOR", supersedes: { domain: "VICTOR", text: /2026-06/ }, state: () => victor ? ((() => { const jm = victor.money.months.find((m) => m.month.startsWith("2026-06")); const ev = jm ? [...jm.conflicts, ...(jm.ownerNotes ?? [])] : []; return ev.length ? { s: "STILL_OBSERVED", e: `2026-06: ${ev.join("; ")}` } : null; })() ?? { s: "NO_LONGER_OBSERVED", e: "no June salary conflict / Owner amount statement in the live read" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "Victor view unavailable" } },
     { id: "known:mix-orphan-expenses", questionHe: "הוצאות מיקס שלא מקושרות לשום עבודה — לשייך או שאריות?", why: "never fuzzy-linked by Sunny", kind: "FINANCE", domain: "MIX", supersedes: { domain: "MIX", text: /לא מקושרות לשום עבודה/ }, state: () => mix ? (mix.money.orphanExpenses.length ? { s: "STILL_OBSERVED", e: `${mix.money.orphanExpenses.length} orphan mix expenses` } : { s: "NO_LONGER_OBSERVED", e: "no orphan mix expense now" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "mix view unavailable" } },
-    { id: "known:redfilms-ledger-vs-finance", questionHe: "תשלומי Red Films בפנקס הנפרד — צריכים להופיע גם בכספים?", why: "two money records; never summed", kind: "FINANCE", domain: "VIDEO", supersedes: { domain: "VIDEO", text: /פנקס נפרד/ }, state: () => video ? (Object.values(video.money.redFilms.paidRedFilmsLedger).some((x) => x > 0) ? { s: "STILL_OBSERVED", e: `Red Films ledger ${Object.entries(video.money.redFilms.paidRedFilmsLedger).map(([c, x]) => `${c}${x}`).join(" · ")}} (currency not recorded), not in Finance` } : { s: "NO_LONGER_OBSERVED", e: "no active Red Films ledger payment" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "video view unavailable" } },
-    { id: "known:recoup-basis", questionHe: "החזר השקעה בקליפ לאמן מחושב לפי התקציב המתוכנן (50/50) — זה הבסיס הנכון?", why: "an existing accounting rule never confirmed by the Owner", kind: "OWNER_POLICY", domain: "LABEL", state: () => ({ s: "POLICY_OPEN", e: "policy question — not decidable from data" }) },
+    { id: "known:redfilms-ledger-vs-finance", questionHe: "תשלומי Red Films בפנקס הנפרד — צריכים להופיע גם בכספים?", why: "two money records; never summed", kind: "FINANCE", domain: "VIDEO", supersedes: { domain: "VIDEO", text: /פנקס נפרד/ }, state: () => video ? (Object.values(video.money.redFilms.paidRedFilmsLedger).some((x) => x > 0) ? { s: "STILL_OBSERVED", e: `Red Films ledger ${Object.entries(video.money.redFilms.paidRedFilmsLedger).map(([c, x]) => `${c}${x}`).join(" · ")} (per line currency), not in Finance` } : { s: "NO_LONGER_OBSERVED", e: "no active Red Films ledger payment" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "video view unavailable" } },
+    { id: "known:recoup-basis", questionHe: "חסר כלל חוזה: אילו הוצאות קליפ מתקזזות מול האמן (לפי ההסכם של כל אמן)?", why: "B3 (Owner canon 2026-09-27): the old 50/50-of-budget rule is retired; the clip recoup is NOT_DEFINED until the artist agreement rule is recorded (the media-income recoup snapshots still use the legacy target)", kind: "OWNER_POLICY", domain: "LABEL", state: () => ({ s: "POLICY_OPEN", e: "policy question — not decidable from data" }) },
     { id: "known:artist-accounting-canonical", questionHe: "חשבון אמן: מאזן / מחזורים / הכנסות מדיה / החזר קליפ הם תצוגות נפרדות — מה הקנוני?", why: "several unreconciled artist-money views", kind: "OWNER_POLICY", domain: "LABEL", state: () => ({ s: "POLICY_OPEN", e: "policy question" }) },
     { id: "known:release-cadence", questionHe: "יש קצב ריליסים רצוי לכל אמן לייבל? (היום אין מדיניות — רק עובדות)", why: "cadence / readiness are never invented", kind: "OWNER_POLICY", domain: "LABEL", state: () => ({ s: "POLICY_OPEN", e: "no cadence policy recorded" }) },
     { id: "known:working-hours", questionHe: "בוחר הסשנים מניח שעות עבודה א׳–ה׳ 10:00–23:00, והמודל שלך אומר שאין שעות קבועות — להשאיר?", why: "implementation assumption vs Owner policy", kind: "OWNER_POLICY", domain: "SYSTEM", state: () => ({ s: "POLICY_OPEN", e: "implementation constant vs Owner rule" }) },
@@ -297,6 +300,7 @@ export function buildCompanyView(src: GatewaySources) {
     projectsUpdated: meta.filter((p) => (p.updatedAt ?? "").slice(0, 10) >= since).map((p) => ({ project: `project:${p.id}`, name: p.name, status: p.status, updatedAt: p.updatedAt })).slice(0, 40),
     projectsCreated: (c.det?.projects?.rows ?? []).filter((p) => (p.createdAt ?? "").slice(0, 10) >= since).length,
     financeRowsDated: fin ? fin.raw.transactions.filter((t) => (t.date ?? "") >= since && (t.date ?? "") <= c.today).length : null,
+    // a recorded (first-)release event in the window — history, even if the stage later moved back
     releasesReleased: releases.filter((r) => r.releasedAt && r.releasedAt.slice(0, 10) >= since).map((r) => ({ project: `project:${r.projectId}`, name: idx[r.projectId]?.name ?? null })),
     ownerKnowledgeRecorded: (ok(src.ownerKnowledge) ?? []).filter((k) => ((k as { learnedAt?: string }).learnedAt ?? "").slice(0, 10) >= since).length,
     rule: "only 'when' is recorded (updated-at); 'what changed' has no history in most tables — never invented; notifications are deleted weekly and are not history",
@@ -323,7 +327,7 @@ export function buildCompanyView(src: GatewaySources) {
   const executive = {
     today: c.today,
     money: cashflow ? { ilsNet: cashflow.realized.ils.net, position: cashflow.realized.targetPosition, distanceToFloor: cashflow.realized.distanceToFloor, otherCurrencies: Object.keys(cashflow.realized.byCurrency).filter((k) => k !== "₪" && k !== "ILS") } : null,
-    openProjects: openProjects.length, clientProjectsOpen: openProjects.filter((p) => p.businessType === "לקוח").length, labelProjectsOpen: openProjects.filter((p) => p.businessType !== "לקוח").length,
+    openProjects: openProjects.length, clientProjectsOpen: openProjects.filter((p) => isClientProject(p)).length, labelProjectsOpen: openProjects.filter((p) => isLabelProject(p)).length, unclassifiedProjectsOpen: openProjects.filter((p) => !isClientProject(p) && !isLabelProject(p)).length,
     openProposals: c.st?.domains.proposalsFull.data?.items.filter((p) => !["נסגר", "לא נסגר"].includes(p.status)).length ?? null,
     upcomingShows14: (shows ?? []).filter((s) => s.identity.date && s.identity.date >= c.today && s.identity.date <= addDays(c.today, 14) && s.identity.status !== "בוטל").length,
     releasesUpcoming: releaseView.upcoming.length, releaseTargetsPassed: releaseView.targetPassed.length,

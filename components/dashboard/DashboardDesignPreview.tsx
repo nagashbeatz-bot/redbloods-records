@@ -5,12 +5,14 @@
 // No writes, no drawer, no dispatch.
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
-import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency, normalizeCurrency, addToTotals, otherCurrencyLines, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import { collectibleAmount } from "@/lib/payment-status";
+import { normalizeCurrency, addToTotals, formatTotalsInline, isExpectedStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import { buildProjectFinanceSummary } from "@/lib/finance/project-summary";
+import { showExpectedIncome, mergeCurrencyTotals } from "@/lib/finance/expected-income";
 import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
@@ -478,7 +480,8 @@ const STAT_CACHE_TTL = 10 * 60 * 1000; // 10 min
 
 type StatCacheData = {
   openTasks: number;
-  pendingPayments: number;
+  /** Per currency (Finance single truth). An old cache holding a plain number is read as ₪. */
+  pendingPayments: CurrencyTotals | number;
   openProposals: number;
   upcomingSessions: number;
   upcomingShows: number;
@@ -488,7 +491,7 @@ type StatCacheData = {
 
 let _statCache = {
   openTasks:        null as number | null,
-  pendingPayments:  null as number | null,
+  pendingPayments:  null as CurrencyTotals | null,
   openProposals:    null as number | null,
   upcomingSessions: null as number | null,
   upcomingShows:    null as number | null,
@@ -502,7 +505,7 @@ function loadStatCacheFromStorage(): void {
     const parsed: StatCacheData = JSON.parse(raw);
     if (Date.now() - parsed.ts > STAT_CACHE_TTL) return;
     if (parsed.openTasks        != null) _statCache.openTasks        = parsed.openTasks;
-    if (parsed.pendingPayments  != null) _statCache.pendingPayments  = parsed.pendingPayments;
+    if (parsed.pendingPayments  != null) _statCache.pendingPayments  = typeof parsed.pendingPayments === "number" ? { [DEFAULT_CURRENCY]: parsed.pendingPayments } : parsed.pendingPayments;
     if (parsed.openProposals    != null) _statCache.openProposals    = parsed.openProposals;
     if (parsed.upcomingSessions != null) _statCache.upcomingSessions = parsed.upcomingSessions;
     if (parsed.upcomingShows    != null) _statCache.upcomingShows    = parsed.upcomingShows;
@@ -515,7 +518,7 @@ function updateStatCache(partial: Partial<Omit<StatCacheData, "ts">>): void {
   try {
     localStorage.setItem(STAT_CACHE_KEY, JSON.stringify({
       openTasks:        _statCache.openTasks        ?? 0,
-      pendingPayments:  _statCache.pendingPayments  ?? 0,
+      pendingPayments:  _statCache.pendingPayments  ?? {},
       openProposals:    _statCache.openProposals    ?? 0,
       upcomingSessions: _statCache.upcomingSessions ?? 0,
       upcomingShows:    _statCache.upcomingShows    ?? 0,
@@ -592,7 +595,7 @@ export default function DashboardDesignPreview() {
   const [openProposals, setOpenProposals] = useState<number | null>(_statCache.openProposals);
 
   // ── Live-3: payments, sessions, tasks (read-only counts) ──────────────
-  const [pendingPayments, setPendingPayments] = useState<number | null>(_statCache.pendingPayments);
+  const [pendingPayments, setPendingPayments] = useState<CurrencyTotals | null>(_statCache.pendingPayments);
   const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
   const [upcomingShows, setUpcomingShows] = useState<number | null>(_statCache.upcomingShows);
@@ -614,8 +617,8 @@ export default function DashboardDesignPreview() {
   const [incomeDueToday, setIncomeDueToday] = useState<{ id: string; project_id: string | null; amount: number; currency?: string }[]>([]);
   // Expected income from shows — income transactions tagged category="הופעה" + "צפוי".
   // Counted separately from project balances so the two never double-count.
-  const [showsExpected, setShowsExpected] = useState(0);
-  const [showsExpectedItems, setShowsExpectedItems] = useState<{ id: string; description: string; artist: string; amount: number; date?: string | null }[]>([]);
+  const [showsExpected, setShowsExpected] = useState<CurrencyTotals>({});
+  const [showsExpectedItems, setShowsExpectedItems] = useState<{ id: string; description: string; artist: string; amount: number; date?: string | null; currency: string }[]>([]);
 
   // ── KPI hover popover (same state machine as the Projects page) ──
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] } | null>(null);
@@ -681,46 +684,27 @@ export default function DashboardDesignPreview() {
       .then(d => {
         // Same logic as the Projects page: agreed from settings, paid from
         // actually-received income (שולם / התקבל). NOT based on "צפוי" rows.
-        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number; financeException?: boolean; currency?: string | null }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
-          map[s.project_id].agreed = s.agreedPrice ?? 0;
-          map[s.project_id].currency = s.currency; // R5: transactions below only count in this currency
-          map[s.project_id].financeException = s.financeException ?? false;
-        });
-        // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string; currency?: string | null }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
-          if (!isSongIncome(t)) return;
-          if (!sameCurrency(t.currency, map[t.project_id].currency)) return; // R5: compare only within the project currency
-          if (["התקבל", "שולם"].includes(t.payment_status))
-            map[t.project_id].paid += t.amount;
-          if (isCancelledPayment(t.payment_status))
-            map[t.project_id].cancelled += t.amount;
-        });
-        setFinanceSummary(map);
+        // R5: song-deal income only, in the project's own currency; clip income is a separate deal
+        // (lib/finance/project-summary.ts — the same rule as the Projects page).
+        setFinanceSummary(buildProjectFinanceSummary(d.settings ?? [], d.transactions ?? []));
         setFinanceLoaded(true);
 
         // Expected income whose due date is today (for "מה קורה היום").
         const todayStr = new Date().toISOString().slice(0, 10);
         const dueToday = (d.transactions ?? [])
           .filter((t: { type: string; payment_status: string; date?: string | null }) =>
-            t.type === "income" && t.payment_status === "צפוי" && t.date === todayStr)
+            t.type === "income" && isExpectedStatus(t.payment_status) && t.date === todayStr)
           .map((t: { id: string; project_id: string | null; amount: number; currency?: string }) => ({
             id: t.id, project_id: t.project_id, amount: t.amount, currency: t.currency,
           }));
         setIncomeDueToday(dueToday);
 
-        // Expected income from shows: income "צפוי" tagged category="הופעה".
-        // Filtered by category so project balances aren't double-counted.
-        const showItems = (d.transactions ?? [])
-          .filter((t: { type: string; payment_status: string; category?: string }) =>
-            t.type === "income" && t.payment_status === "צפוי" && t.category === "הופעה")
-          .map((t: { id: string; description?: string; artist?: string; amount?: number; date?: string | null }) => ({
-            id: t.id, description: t.description ?? "הופעה", artist: t.artist ?? "", amount: t.amount ?? 0, date: t.date,
-          }));
-        setShowsExpectedItems(showItems);
-        setShowsExpected(showItems.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0));
+        // Expected income from shows: still-expected Finance income of a show (show_id, D5) or a legacy
+        // category="הופעה" row — each in its own currency, totals per currency (lib/finance/expected-income.ts).
+        // Project balances are song income only, so shows are never double-counted.
+        const shows = showExpectedIncome(d.transactions ?? []);
+        setShowsExpectedItems(shows.items);
+        setShowsExpected(shows.totals);
       })
       .catch(() => {});
   }, []);
@@ -789,7 +773,7 @@ export default function DashboardDesignPreview() {
   }, []);
 
   // ── Real KPI filters ──────────────────────────────────────────────────
-  const overdueProjects = projects.filter(p => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה");
+  const overdueProjects = projects.filter(p => isProjectOverdue(p));
   const activeProjects  = projects.filter(p => ["בעבודה", "מחכה למיקס", "במיקס"].includes(p.status));
 
   // Open tasks due today or overlate — surfaced as one consolidated "דורש טיפול"
@@ -885,17 +869,16 @@ export default function DashboardDesignPreview() {
     // Per currency — never added together (Finance contract). The KPI headline is ₪; others are listed apart.
     const byCurrency: CurrencyTotals = {};
     for (const p of items) addToTotals(byCurrency, p.currency, p.remaining);
-    const total = byCurrency[DEFAULT_CURRENCY] ?? 0;
-    return { total, items, otherLines: otherCurrencyLines(byCurrency, DEFAULT_CURRENCY) };
+    return { byCurrency, items };
   }, [projects, financeSummary]);
 
-  // Drive the cached "תשלומים צפויים" signal: project balances + shows' expected income.
+  // Drive the cached "תשלומים צפויים" signal: project balances + shows' expected income, PER CURRENCY.
   useEffect(() => {
     if (!financeLoaded) return;
-    const total = expectedIncome.total + showsExpected;
-    updateStatCache({ pendingPayments: total });
-    setPendingPayments(total);
-  }, [financeLoaded, expectedIncome.total, showsExpected]);
+    const totals = mergeCurrencyTotals(expectedIncome.byCurrency, showsExpected);
+    updateStatCache({ pendingPayments: totals });
+    setPendingPayments(totals);
+  }, [financeLoaded, expectedIncome.byCurrency, showsExpected]);
 
   // ── KPI cards — 7 cards: תמונת מצב מהירה ──────────────────────────────
   const KPI = [
@@ -903,7 +886,7 @@ export default function DashboardDesignPreview() {
     { label: "דחופים",          count: loading ? 0 : overdueProjects.length,   sub: "דורש טיפול",                                                  color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
     { label: "סשנים קרובים",    count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...",                color: "#8B5CF6", iconBg: "rgba(139,92,246,0.15)",  icon: "🎙" },
     { label: "הופעות קרובות",   count: upcomingShows ?? 0,                      sub: upcomingShows !== null ? "עתידיות" : "...",                    color: "#06B6D4", iconBg: "rgba(6,182,212,0.15)",   icon: "🎤" },
-    { label: "תשלומים צפויים",  count: pendingPayments !== null ? `₪${pendingPayments.toLocaleString()}` : "…", sub: pendingPayments !== null ? (expectedIncome.otherLines.length ? `יתרה לגבייה · ${expectedIncome.otherLines.join(" · ")}` : "יתרה לגבייה") : "...",     color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
+    { label: "תשלומים צפויים",  count: pendingPayments !== null ? formatTotalsInline(pendingPayments, (a, c) => `${c}${a.toLocaleString()}`) : "…", sub: pendingPayments !== null ? (Object.keys(pendingPayments).length > 1 ? "יתרה לגבייה + הופעות · לפי מטבע" : "יתרה לגבייה + הופעות") : "...",     color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
     { label: "הצעות פתוחות",    count: openProposals ?? 0,                      sub: openProposals !== null ? "ממתינות לאישור" : "...",             color: "#F97316", iconBg: "rgba(249,115,22,0.15)",  icon: "📋" },
     { label: "קמפיינים פעילים", count: activeCampaigns ?? 0,                    sub: activeCampaigns !== null ? "בהרצה" : "...",                    color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "🎯" },
   ];
@@ -957,13 +940,13 @@ export default function DashboardDesignPreview() {
           id: p.id,
           primary: p.name,
           secondary: p.artist || undefined,
-          value: privacyHidden ? "••••" : `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
+          value: privacyHidden ? "••••" : `${p.currency}${p.remaining.toLocaleString()} מתוך ${p.currency}${p.agreed.toLocaleString()}`,
         })),
         ...showsExpectedItems.map(s => ({
           id: s.id,
           primary: s.description,
           secondary: `🎤 הופעה צפויה${s.artist ? ` · ${s.artist}` : ""}${s.date ? ` · ${shortDate(s.date)}` : ""}`,
-          value: privacyHidden ? "••••" : `₪${s.amount.toLocaleString()}`,
+          value: privacyHidden ? "••••" : `${s.currency}${s.amount.toLocaleString()}`,
         })),
       ],
     },
@@ -1362,19 +1345,19 @@ export default function DashboardDesignPreview() {
                       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                         <span style={{
                           fontSize: 11.5,
-                          color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
-                          fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
+                          color: isProjectOverdue(p) ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
+                          fontWeight: isProjectOverdue(p) || (days !== null && days <= 7) ? 700 : 400,
                           fontStyle: p.deadline ? "normal" : "italic",
                         }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
                         {days !== null && (
                           <span style={{
                             fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 99,
-                            background: p.isOverdue ? "rgba(239,68,68,0.12)" : days <= 7 ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.04)",
-                            color: p.isOverdue ? "#EF4444" : days <= 7 ? "#F97316" : SUB,
-                            border: `1px solid ${p.isOverdue ? "rgba(239,68,68,0.25)" : days <= 7 ? "rgba(249,115,22,0.2)" : BORDER2}`,
+                            background: isProjectOverdue(p) ? "rgba(239,68,68,0.12)" : days <= 7 ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.04)",
+                            color: isProjectOverdue(p) ? "#EF4444" : days <= 7 ? "#F97316" : SUB,
+                            border: `1px solid ${isProjectOverdue(p) ? "rgba(239,68,68,0.25)" : days <= 7 ? "rgba(249,115,22,0.2)" : BORDER2}`,
                             whiteSpace: "nowrap",
                           }}>
-                            {p.isOverdue ? `+${Math.abs(days)}` : days}d
+                            {isProjectOverdue(p) ? `+${Math.abs(days)}` : days}d
                           </span>
                         )}
                       </div>
@@ -1477,8 +1460,8 @@ export default function DashboardDesignPreview() {
                   </span>
                   <span style={{
                     fontSize: 11.5,
-                    color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
-                    fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
+                    color: isProjectOverdue(p) ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
+                    fontWeight: isProjectOverdue(p) || (days !== null && days <= 7) ? 700 : 400,
                     fontStyle: p.deadline ? "normal" : "italic",
                   }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
                   <div style={{ display: "flex", justifyContent: "center" }}>
@@ -1486,12 +1469,12 @@ export default function DashboardDesignPreview() {
                       <span style={{
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
                         fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 99,
-                        background: p.isOverdue ? "rgba(239,68,68,0.12)" : days <= 7 ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.04)",
-                        color: p.isOverdue ? "#EF4444" : days <= 7 ? "#F97316" : SUB,
-                        border: `1px solid ${p.isOverdue ? "rgba(239,68,68,0.25)" : days <= 7 ? "rgba(249,115,22,0.2)" : BORDER2}`,
+                        background: isProjectOverdue(p) ? "rgba(239,68,68,0.12)" : days <= 7 ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.04)",
+                        color: isProjectOverdue(p) ? "#EF4444" : days <= 7 ? "#F97316" : SUB,
+                        border: `1px solid ${isProjectOverdue(p) ? "rgba(239,68,68,0.25)" : days <= 7 ? "rgba(249,115,22,0.2)" : BORDER2}`,
                         whiteSpace: "nowrap",
                       }}>
-                        {p.isOverdue ? `+${Math.abs(days)}` : days}d
+                        {isProjectOverdue(p) ? `+${Math.abs(days)}` : days}d
                       </span>
                     ) : (
                       <span style={{ fontSize: 11, color: DIM }}>—</span>

@@ -1,6 +1,6 @@
 /**
  * Universal Action Layer — Red Films + clip family: every primitive through the REAL service on fakes (6 standard checks
- * each) + family rules (managed budget locked, planning ≠ spend, promote never twice, clip deal seeded once, cancel via
+ * each) + family rules (B3: no managed-budget lock, price ≠ budget, planning ≠ spend, promote keeps the linked row and never twice, clip deal seeded once, cancel via
  * its own action, D7 unchanged), pinned vocabularies, shared writers + hardening in the routes.
  * Run with:   npx tsx scripts/test-sunny-act-redfilms.tsx      Pure; never touches production.
  */
@@ -55,7 +55,8 @@ function mk() {
     async createClipItemRecord(b: Row) { calls.push("createClipItemRecord"); const id = U(++n); w.clips[id] = { id, project_id: b.projectId, ...b, status: "תכנון בלבד", linked_transaction_id: null }; return id; },
     async updateClipItemRecord(id: string, b: Row) { calls.push("updateClipItemRecord"); Object.assign(w.clips[id], b); },
     async deleteClipItemRecord(id: string) { calls.push("deleteClipItemRecord"); delete w.clips[id]; },
-    async promoteClipItemRecord(id: string) { calls.push("promoteClipItemRecord"); if (!w.clips[id]) return "not_found" as const; delete w.clips[id]; w.expenses++; return "ok" as const; },
+    // B3: the planning row is kept, marked הועבר לכספים and linked to the new expense
+    async promoteClipItemRecord(id: string) { calls.push("promoteClipItemRecord"); if (!w.clips[id]) return "not_found" as const; w.expenses++; w.clips[id].linked_transaction_id = `tx-${w.expenses}`; w.clips[id].status = "הועבר לכספים"; return "ok" as const; },
     async clipDealOf(pid: string) { return { ...w.deals[pid] }; },
     async setClipPrice(pid: string, price: number) { calls.push("setClipPrice"); w.deals[pid].clipAgreedPrice = price; },
     async addClipPayments(pid: string, b: Row) { calls.push("addClipPayments"); w.deals[pid].paymentCount += b.seed ? 2 : 1; return "ok" as const; },
@@ -70,6 +71,7 @@ function mk() {
     async deleteRfReferenceRecord(id: string) { calls.push("deleteRfReferenceRecord"); delete w.refs[id]; return "ok" as const; },
     async productionsByIds(ids: string[]) { return ids.filter((i) => w.prods[i]).map((i) => ({ id: i, title: String(w.prods[i].title), status: String(w.prods[i].status) })); },
     async deleteCancelledProductionsRecord(ids: string[]) { calls.push("deleteCancelledProductionsRecord"); for (const i of ids) delete w.prods[i]; return { kind: "ok" as const, deleted: ids.length }; },
+    async rfDeletePreflight(ids: string[]) { const ps = Object.values(w.pays).filter((p) => ids.includes(String(p.production_id))); const byCur: Record<string, number> = {}; for (const p of ps) byCur[String(p.currency ?? "₪")] = (byCur[String(p.currency ?? "₪")] ?? 0) + Number(p.amount); return { payments: ps.length, paymentsByCurrency: byCur, productionsWithPayments: [...new Set(ps.map((p) => String(p.production_id)))], budgetLines: 0, budgetLinesWithTransaction: 0, documents: Object.values(w.docs).filter((d) => ids.includes(String(d.production_id))).length, referenceImages: 0, referenceLinks: 0, scenes: 0, crew: 0, tasks: 0, googleTasks: 0, storageFiles: 0, foldersKept: 0, clipMarkers: 0 }; },
     async sendClipToRedFilms(pid: string) { calls.push("sendClipToRedFilms"); w.deals[pid].managedProductionId = "new-prod"; return "ok" as const; },
   };
   return { w, calls, writers };
@@ -91,7 +93,7 @@ const CASES: FamilyCase<W>[] = [
   { id: "ADD_CLIP_ROW", args: { project: J40, category: "תאורה", amount: 600, currency: "₪" }, confirm: "כן בוס, ₪600", bad: { project: J40, category: "תאורה", amount: -2, currency: "₪" }, missing: { project: `project:${U(99)}`, category: "תאורה", amount: 1, currency: "₪" }, stale: (w) => { w.projects[U(40)] = "שם אחר"; }, check: (w) => Object.values(w.clips).some((c) => c.category === "תאורה" && c.amount === 600) },
   { id: "UPDATE_CLIP_ROW", args: { clipRow: C30, amount: 1300 }, confirm: "כן בוס, 1,300", bad: { clipRow: C30, amount: -1 }, missing: { clipRow: `clip-row:${U(9)}`, notes: "x" }, stale: (w) => { w.clips[U(30)].notes = "q"; }, check: (w) => w.clips[U(30)].amount === 1300 && w.clips[U(30)].currency === "₪" },
   { id: "DELETE_CLIP_ROW", args: { clipRow: C30 }, confirm: "כן בוס, מחיקה", bad: { clipRow: "x" }, missing: { clipRow: `clip-row:${U(9)}` }, stale: (w) => { w.clips[U(30)].amount = 1; }, check: (w) => !w.clips[U(30)] },
-  { id: "PROMOTE_CLIP_ROW", args: { clipRow: C30, date: "2026-09-26" }, confirm: "כן בוס, 2026-09-26", bad: { clipRow: C30, date: "מחר" }, missing: { clipRow: `clip-row:${U(9)}`, date: "2026-09-26" }, stale: (w) => { w.clips[U(30)].amount = 999; }, check: (w) => !w.clips[U(30)] && w.expenses === 1 },
+  { id: "PROMOTE_CLIP_ROW", args: { clipRow: C30, date: "2026-09-26" }, confirm: "כן בוס, 2026-09-26", bad: { clipRow: C30, date: "מחר" }, missing: { clipRow: `clip-row:${U(9)}`, date: "2026-09-26" }, stale: (w) => { w.clips[U(30)].amount = 999; }, check: (w) => !!w.clips[U(30)] && !!w.clips[U(30)].linked_transaction_id && w.clips[U(30)].status === "הועבר לכספים" && w.expenses === 1 },
   { id: "SET_CLIP_PRICE", args: { project: J40, clipAgreedPrice: 9000 }, confirm: "כן בוס, 9,000", bad: { project: J40, clipAgreedPrice: -5 }, missing: { project: `project:${U(99)}`, clipAgreedPrice: 1 }, stale: (w) => { w.deals[U(40)].clipAgreedPrice = 8500; }, check: (w) => w.deals[U(40)].clipAgreedPrice === 9000 },
   { id: "OPEN_CLIP_DEAL", args: { project: J40 }, confirm: "כן בוס, פתיחת עסקה", bad: { project: J41 }, missing: { project: `project:${U(99)}` }, stale: (w) => { w.deals[U(40)].clipAgreedPrice = 7000; }, check: (w) => w.deals[U(40)].paymentCount === 2 },
   { id: "ADD_CLIP_PAYMENT", args: { project: J40, amount: 2000, paymentStatus: "התקבל" }, confirm: "כן בוס, 2,000 התקבל", bad: { project: J40, amount: 0 }, missing: { project: `project:${U(99)}`, amount: 1 }, stale: (w) => { w.deals[U(40)].paymentCount = 1; }, check: (w) => w.deals[U(40)].paymentCount === 1 },
@@ -111,7 +113,13 @@ const CASES: FamilyCase<W>[] = [
 
   console.log("\nRed Films rules");
   const q = (id: string, args: Record<string, unknown>, h = mk()) => planAction({ intentHe: "x", actionId: id, args }, OWNER, mkDeps(h.writers).d);
-  ok("a managed production's budget is locked (the app's rule) — set the clip price instead", (await q("SET_PRODUCTION_MONEY", { production: P1, generalBudget: 9000 })).status === "BUDGET_LOCKED");
+  // B3 (Owner canon 2026-09-27): no budget lock — a production created by 'שלח קליפ' owns its planning budget + currency
+  { const mp = await q("SET_PRODUCTION_MONEY", { production: P1, generalBudget: 9000 });
+    ok("B3: a 'שלח קליפ' production's budget is plannable (no BUDGET_LOCKED) and the preview says the clip price does not change", mp.status === "PREVIEW" && /מחיר הקליפ ללקוח בפרויקט לא משתנה/.test(JSON.stringify(mp)), mp); }
+  ok("B3: a 'שלח קליפ' production's currency is its own (no MANAGED_BY_PROJECT refusal)", (await q("SET_RF_CURRENCY", { target: P1, currency: "$" })).status === "PREVIEW");
+  { const cp = mk(); const r = await fullFlow(mkDeps(cp.writers).d, "SET_CLIP_PRICE", { project: J40, clipAgreedPrice: 9000 }, "כן בוס, 9,000");
+    ok("B3: SET_CLIP_PRICE changes the price only — the production budget stays (A ≠ B)", r.e?.status === "APPLIED_AS_EXPECTED" && cp.w.deals[U(40)].clipAgreedPrice === 9000 && cp.w.prods[U(1)].general_budget === 8000 && !cp.calls.includes("updateProductionRecord") && /תקציב ההפקה ב-Red Films לא משתנה/.test(JSON.stringify(r.p)), r.e); }
+  ok("B3: SEND_CLIP discloses budget 0 (planning) — never the clip price", /תקציב תכנון 0/.test(JSON.stringify(await q("SEND_CLIP_TO_RED_FILMS", { project: J41 }))));
   ok("cancel is its own action (details refuse בוטל)", (await q("UPDATE_PRODUCTION_DETAILS", { production: P2, status: "בוטל" })).status !== "PREVIEW");
   const pr = mk(); pr.w.clips[U(30)].linked_transaction_id = "tx";
   ok("a promoted clip row is never promoted twice", (await q("PROMOTE_CLIP_ROW", { clipRow: C30, date: "2026-09-26" }, pr)).status === "NO_CHANGE_NEEDED");
@@ -121,9 +129,13 @@ const CASES: FamilyCase<W>[] = [
   const pv = await q("SET_PRODUCTION_MONEY", { production: P2, clientPrice: 5000 });
   ok("planning ≠ spend is disclosed", pv.status === "PREVIEW" && JSON.stringify(pv).includes("תכנון ≠ הוצאה בפועל"));
   ok("status מאושר = D7 stage approval: plannable through the status primitive, and 'mark approved' is executable through it", (await q("UPDATE_PRODUCTION_DETAILS", { production: P2, status: "מאושר" })).status === "PREVIEW" && ACTION_REGISTRY.get("RF.MARK_PRODUCTION_APPROVED")?.availabilityDetail === "EXECUTABLE");
+  { const hp = mk(); hp.w.pays[U(88)] = { id: U(88), production_id: U(3), amount: 1200, currency: "$" }; const r = await q("DELETE_CANCELLED_PRODUCTIONS", { productions: `rf-production:${U(3)}` }, hp);
+    ok("A5: a cancelled production WITH Red Films payments is refused (HAS_PAYMENTS, per currency, nothing written)", r.status === "HAS_PAYMENTS" && JSON.stringify(r).includes("$1,200") && hp.calls.length === 0, r); }
+  { const pv = await q("DELETE_CANCELLED_PRODUCTIONS", { productions: `rf-production:${U(3)}` });
+    ok("A5: the preview lists exactly what is deleted (documents / references / scenes / crew / lines / tasks) and that Finance rows stay", pv.status === "PREVIEW" && /מסמכים/.test(JSON.stringify(pv)) && /סצנות/.test(JSON.stringify(pv)) && /כסף אמיתי לא נמחק|תשלומי Red Films/.test(JSON.stringify(pv)), pv); }
   ok("only cancelled productions are deleted permanently", (await q("DELETE_CANCELLED_PRODUCTIONS", { productions: `rf-production:${U(3)}, rf-production:${U(2)}` })).status === "NOT_CANCELLED");
   ok("no primitive writes a link / URL field", !RF_PRIMITIVES.some((p) => p.meta.args.some((a) => /link|url/i.test(a.name))));
-  ok("money primitives are FINANCIAL; deletes are C3", ["SET_PRODUCTION_MONEY", "RECORD_RF_BUDGET_PAYMENT", "SET_CLIP_PRICE", "OPEN_CLIP_DEAL", "ADD_CLIP_PAYMENT"].every((id) => ACTION_REGISTRY.get(id)!.riskClass === "FINANCIAL") && ["DELETE_RF_BUDGET_LINE", "DELETE_RF_BUDGET_PAYMENT", "DELETE_CLIP_ROW", "PROMOTE_CLIP_ROW"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
+  ok("money primitives are FINANCIAL (promote creates an expense and deletes nothing since B3); deletes are C3", ["SET_PRODUCTION_MONEY", "RECORD_RF_BUDGET_PAYMENT", "SET_CLIP_PRICE", "OPEN_CLIP_DEAL", "ADD_CLIP_PAYMENT", "PROMOTE_CLIP_ROW"].every((id) => ACTION_REGISTRY.get(id)!.riskClass === "FINANCIAL") && !ACTION_REGISTRY.get("PROMOTE_CLIP_ROW")!.effects.includes("DELETION" as never) && ["DELETE_RF_BUDGET_LINE", "DELETE_RF_BUDGET_PAYMENT", "DELETE_CLIP_ROW"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
 
   console.log("\nVocabularies pinned (to the red-films contract, which its own test pins to the code)");
   ok("production statuses / types / budget categories / clip categories", JSON.stringify(RF_STATUSES) === JSON.stringify(RF_VOCABULARIES.productionStatus) && JSON.stringify(RF_TYPES) === JSON.stringify(RF_VOCABULARIES.productionType) && JSON.stringify(RF_BUDGET_CATEGORY) === JSON.stringify(RF_VOCABULARIES.budgetItemCategory) && JSON.stringify(CLIP_ITEM_CATEGORY) === JSON.stringify(RF_VOCABULARIES.clipItemCategory) && JSON.stringify(RF_EQUIPMENT_CATEGORY) === JSON.stringify(RF_VOCABULARIES.equipmentCategory));
@@ -132,7 +144,11 @@ const CASES: FamilyCase<W>[] = [
   ok("RF / clip routes use lib/writes/redfilms + lib/writes/clip", /createProduction\(/.test(read("app/api/red-films/productions/route.ts")) && /updateProduction\(id, body\)/.test(read("app/api/red-films/productions/[id]/route.ts")) && /promoteClipItem\(id, date\)/.test(read("app/api/clip-items/[id]/promote/route.ts")) && /setClipPrice\(id, price\)/.test(read("app/api/projects/[id]/clip/route.ts")) && /sendClipToRedFilms\(id\)/.test(read("app/api/projects/[id]/clip/send/route.ts")) && /addClipPayments\(id, body\)/.test(read("app/api/projects/[id]/clip/payments/route.ts")));
   const wr = read("lib/writes/redfilms.ts");
   ok("HARDENED: a production cancel saves first, then cleans its tasks", wr.indexOf('.from("red_films_productions").update(patch)') < wr.indexOf('if (body.status === "בוטל")'));
-  ok("HARDENED: clip promote claims the row (delete while unpromoted) before the expense, restores it on failure", wr.indexOf('.is("linked_transaction_id", null).select("id")') < wr.indexOf('.from("transactions").insert(') && /restore the planning row/.test(wr));
+  const del = wr.slice(wr.indexOf("export async function deleteCancelledProductions"));
+  ok("A5: RF permanent delete = preflight first → payments refuse → DB rows (each step checked) → productions → verify → storage / Google Tasks last", del.indexOf("redFilmsDeletePreflight(") < del.indexOf("HAS_PAYMENTS") && del.indexOf("HAS_PAYMENTS") < del.indexOf("await step(") && del.indexOf('await step("red_films_productions"') < del.indexOf("files/delete_v2") && del.indexOf('await step("red_films_productions"') < del.indexOf("deleteGoogleTask") && /clearClipMarkerIfEqual/.test(del) && !/catch \{ \/\* non-fatal/.test(del));
+  ok("A5: the bulk-permanent-delete route checks the Owner in-route", /requireOwner\(\)/.test(read("app/api/red-films/productions/bulk-permanent-delete/route.ts")));
+  { const pc = wr.slice(wr.indexOf("export async function promoteClipItem"));
+    ok("HARDENED + B3: clip promote claims the row (status → הועבר לכספים while unlinked) before the expense, releases the claim on failure, then KEEPS + links the row (never deletes it)", pc.indexOf('.is("linked_transaction_id", null).eq("status", prevStatus).select("id")') > 0 && pc.indexOf('.is("linked_transaction_id", null).eq("status", prevStatus).select("id")') < pc.indexOf('.from("transactions").insert(') && /release the claim/.test(pc) && /linked_transaction_id: txId/.test(pc) && !/\.delete\(\)/.test(pc.slice(0, pc.indexOf("// ── narrow readers")))); }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

@@ -10,6 +10,7 @@ import LinkifiedText from "@/components/ui/LinkifiedText";
 import { saveFileAs } from "@/lib/download-file";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, victorMonthName, type VictorLang } from "@/lib/victor-i18n";
+import { usePortalPresence } from "@/components/team/usePortalPresence";
 import {
   IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
   IconArrowUpRight, IconChevronLeft, IconChevronRight, IconX, IconPencil, IconTrash,
@@ -206,13 +207,16 @@ function WorkStatusDropdown({
       if (!res.ok) throw new Error(`PATCH work ${res.status}`);
 
       if (projectToo && workProjectId) {
+        // The server rule (completeProjectIfAllowed): a cancelled / on-hold / already completed project is refused.
         const projRes = await fetch(`/api/projects/${workProjectId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ field: "status", value: "הושלם" }),
+          body: JSON.stringify({ field: "status", value: "הושלם", completeIfAllowed: true }),
         });
         if (!projRes.ok) {
-          console.warn(`[WorkStatusDropdown] עדכון פרויקט נכשל: PATCH /api/projects/${workProjectId} → ${projRes.status}`);
+          const d = await projRes.json().catch(() => ({} as { error?: string }));
+          // The work itself is completed; the project was NOT — tell the Owner explicitly (never a silent console.warn).
+          window.alert(`העבודה סומנה כהושלמה, אבל הפרויקט לא עודכן: ${d?.error ?? `שגיאה ${projRes.status}`}`);
         }
       }
 
@@ -3848,14 +3852,10 @@ export default function VictorProfilePage() {
       .finally(() => setRoleChecked(true)); // lift the loader gate even if /api/me failed
   }, []);
 
-  // Presence beacon — fire once when Victor lands on his page. The SERVER
-  // decides whether to actually push (30-min visit cooldown), so a refresh,
-  // a second tab, or in-page navigation never spams; owner never fires this.
-  // NOT /api/push/check.
-  useEffect(() => {
-    if (!isVictor) return;
-    fetch("/api/vendor/victor/ping", { method: "POST" }).catch(() => {});
-  }, [isVictor]);
+  // Portal presence — ping on open + a visible-page heartbeat (components/team/usePortalPresence.ts). The SERVER
+  // records last-seen and pushes the Owner once per claimed new visit (30 minutes without any ping), so a refresh,
+  // a second tab, in-page navigation or a heartbeat never pushes; owner never pings. NOT /api/push/check.
+  usePortalPresence(isVictor ? "/api/vendor/victor/ping" : null);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);

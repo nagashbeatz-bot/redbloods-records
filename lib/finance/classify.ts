@@ -13,16 +13,27 @@
  * "מקדמה") are intentionally given NO special behaviour here: they are simply not
  * "received". Existing per-surface handling of them is left exactly as it was.
  *
- * Reuses the existing single-source helpers instead of redefining them:
- *   - CLIP_PAID_STATUSES (lib/clip-finance.ts — "same set used system-wide")
- *   - isCancelledPayment (lib/payment-status.ts)
+ * THIS FILE IS THE ONE STATUS RULE (Finance single truth, 2026-09-27): every other module
+ * (clip-finance, shows-types, agent, health, stats, UI surfaces) imports these helpers instead of
+ * restating a literal set. Reuses isCancelledPayment (lib/payment-status.ts).
  */
-import { CLIP_PAID_STATUSES } from "../clip-finance";
 import { isCancelledPayment, CANCELLED_PAYMENT_STATUS } from "../payment-status";
 
-/** The statuses that count as money received / paid. */
-export const RECEIVED_STATUSES: readonly string[] = CLIP_PAID_STATUSES;
+/** The statuses that count as INCOME money received. */
+export const RECEIVED_STATUSES = ["שולם", "התקבל"] as const;
 const RECEIVED = new Set<string>(RECEIVED_STATUSES);
+
+/**
+ * Statuses that mean money is still EXPECTED (not received, not cancelled). "חלקי" is expected:
+ * a partial row is never fully paid.
+ */
+export const EXPECTED_STATUSES = ["צפוי", "לא שולם", "חלקי"] as const;
+const EXPECTED = new Set<string>(EXPECTED_STATUSES);
+
+/** True when a payment_status means money is still expected (צפוי / לא שולם / חלקי). */
+export function isExpectedStatus(status: string | null | undefined): boolean {
+  return EXPECTED.has(status ?? "");
+}
 
 /** True when a payment_status means the money actually changed hands. */
 export function isReceivedStatus(status: string | null | undefined): boolean {
@@ -60,4 +71,14 @@ export function isIncomeTx(tx: { type?: string | null }): boolean {
 }
 export function isExpenseTx(tx: { type?: string | null }): boolean {
   return tx.type === "expense";
+}
+
+/**
+ * The one "is this row actual money?" rule for BOTH sides: income counts when שולם | התקבל,
+ * expense counts only when שולם (an expense "התקבל" is invalid data, never paid).
+ */
+export function isActualMoneyTx(tx: { type?: string | null; payment_status?: string | null }): boolean {
+  if (tx.type === "income") return isReceivedStatus(tx.payment_status);
+  if (tx.type === "expense") return isExpenseFullyPaidStatus(tx.payment_status);
+  return false;
 }

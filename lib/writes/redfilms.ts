@@ -3,13 +3,18 @@
  * here verbatim (same allowed-field lists, defaults and validations), with two HARDENINGS (2026-09-27):
  *   • updateProduction: a cancel (status בוטל) now saves the production FIRST and only then cancels its future tasks /
  *     Google Tasks (they used to be cancelled even when the save then failed);
- *   • promoteClipItem: the clip row is CLAIMED (deleted only while it has no linked expense) before the expense is
- *     created, so a double click can never create two expenses; if the expense insert fails the row is restored.
+ *   • promoteClipItem: the clip row is CLAIMED (status → הועבר לכספים only while it has no linked expense) before the
+ *     expense is created, so a double click can never create two expenses; if the expense insert fails the claim is
+ *     released. B3 (2026-09-27): the planning row is KEPT and linked (linked_transaction_id) — plan → actual provenance.
  * Money here is planning unless it is a Finance transaction: production budget / budget lines / clip rows are planning,
- * Red Films payments are their own ledger, only a Finance expense with scope קליפ is actual spend.
+ * Red Films payments are their own ledger (real money, not linked to Finance — DB-1 pending), only a Finance expense
+ * with scope קליפ is actual spend. B3: no budget lock — a production created by 'שלח קליפ' owns its planning budget
+ * like every other production (the clip price is never the budget). client_source of a new production comes from the
+ * project's classification (lib/clip-rf-money-pure rfClientSourceFor).
  */
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
+import { CLIP_ITEM_PROMOTED_STATUS, CLIP_ITEM_STATUSES, isClipItemStatus, rfClientSourceFor, RF_CLIENT_SOURCES } from "@/lib/clip-rf-money-pure";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Body = Record<string, any>;
@@ -22,14 +27,23 @@ function rfCurrency(v: unknown, fallback: string): string {
   return v;
 }
 
+/** The client_source of a NEW production: an explicit valid value, else derived from the linked project's classification. */
+export async function rfClientSourceForNew(projectId: string | null | undefined, explicit?: unknown): Promise<string> {
+  if (typeof explicit === "string" && (RF_CLIENT_SOURCES as readonly string[]).includes(explicit)) return explicit;
+  if (!projectId) return rfClientSourceFor(null);
+  const { data } = await supabase.from("projects").select("project_business_type").eq("id", projectId).maybeSingle();
+  return rfClientSourceFor(data ? { businessType: (data as { project_business_type?: string | null }).project_business_type ?? null } : null);
+}
+
 export async function createProduction(body: Body): Promise<Record<string, unknown>> {
   const title = body.title;
   if (!title || typeof title !== "string" || !title.trim()) throw new RfInputError("שם ההפקה חובה");
+  const clientSource = await rfClientSourceForNew(body.project_id ?? null, body.client_source);
   const now = new Date().toISOString();
   const { data, error } = await supabase.from("red_films_productions").insert({
     title: title.trim(), production_type: body.production_type ?? "קליפ", status: "רעיון", project_id: body.project_id ?? null,
     artist_name: body.artist_name ?? "", client_id: body.client_id ?? null, client_name: body.client_name ?? "", photographer_name: body.photographer_name ?? "",
-    client_source: "פנימי - לייבל", collection_status: "לא רלוונטי", currency: rfCurrency(body.currency, "₪"), created_at: now, updated_at: now,
+    client_source: clientSource, collection_status: "לא רלוונטי", currency: rfCurrency(body.currency, "₪"), created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
   return data as Record<string, unknown>;
@@ -43,21 +57,15 @@ export const PRODUCTION_ALLOWED_FIELDS = new Set([
   "version_2_link", "final_version_link", "fix_notes", "edit_status", "publish_date", "published_where", "notes", "currency",
 ]);
 
-export type UpdateProductionResult = { kind: "ok"; production: Record<string, unknown>; budgetLocked: boolean } | { kind: "budget_locked" } | { kind: "empty" } | { kind: "not_found" };
+export type UpdateProductionResult = { kind: "ok"; production: Record<string, unknown> } | { kind: "empty" } | { kind: "not_found" };
 
-/** PATCH semantics; HARDENED ordering for a cancel (save first, then the task cleanup). */
+/** PATCH semantics; HARDENED ordering for a cancel (save first, then the task cleanup). B3: no managed-budget lock. */
 export async function updateProduction(id: string, body: Body): Promise<UpdateProductionResult> {
   const { isManagedClipProduction } = await import("@/lib/clip-production");
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [key, val] of Object.entries(body)) if (PRODUCTION_ALLOWED_FIELDS.has(key)) patch[key] = val;
   if ("currency" in patch) patch.currency = rfCurrency(patch.currency, "₪");
-  let budgetLocked = false;
-  if ("general_budget" in patch || "currency" in patch) {
-    const { data: current } = await supabase.from("red_films_productions").select("id, project_id").eq("id", id).maybeSingle();
-    // a clip production's budget (and its currency) mirror the project's clip deal
-    if (current && await isManagedClipProduction(current as { id: string; project_id?: string | null })) { delete patch.general_budget; delete patch.currency; budgetLocked = true; }
-  }
-  if (Object.keys(patch).length === 1) return budgetLocked ? { kind: "budget_locked" } : { kind: "empty" };
+  if (Object.keys(patch).length === 1) return { kind: "empty" };
 
   const { data, error } = await supabase.from("red_films_productions").update(patch).eq("id", id).select().single();
   if (error) throw error;
@@ -88,8 +96,9 @@ export async function updateProduction(id: string, body: Body): Promise<UpdatePr
       console.warn("[production → בוטל] tasks cleanup failed (ignored):", gErr);
     }
   }
-  const stillManaged = await isManagedClipProduction(data as { id: string; project_id?: string | null });
-  return { kind: "ok", production: { ...(data as Record<string, unknown>), budget_managed_by_project: stillManaged }, budgetLocked };
+  // provenance flag only (created by the project's 'שלח קליפ'); it locks nothing
+  const createdBySendClip = await isManagedClipProduction(data as { id: string; project_id?: string | null });
+  return { kind: "ok", production: { ...(data as Record<string, unknown>), budget_managed_by_project: createdBySendClip } };
 }
 
 export async function createBudgetLine(productionId: string, body: Body): Promise<Record<string, unknown>> {
@@ -169,7 +178,9 @@ export async function createClipItem(body: Body): Promise<Record<string, unknown
   if (error) throw new Error(error.message);
   return data as Record<string, unknown>;
 }
+/** clip_items.status is validated against the drawer's vocabulary (lib/clip-rf-money-pure CLIP_ITEM_STATUSES). */
 export async function updateClipItem(id: string, body: Body): Promise<Record<string, unknown>> {
+  if (body.status !== undefined && !isClipItemStatus(body.status)) throw new RfInputError(`סטטוס לא תקין (${CLIP_ITEM_STATUSES.join(" / ")})`);
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.category !== undefined) patch.category = body.category;
   if (body.description !== undefined) patch.description = body.description;
@@ -186,13 +197,21 @@ export async function deleteClipItem(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** 'העבר לכספים': the clip row becomes ONE unpaid Finance expense (scope קליפ) and the row is removed. HARDENED claim. */
-export async function promoteClipItem(id: string, date: string): Promise<{ kind: "not_found" } | { kind: "already_promoted"; transactionId: string } | { kind: "ok"; transaction: Record<string, unknown> }> {
+/**
+ * 'העבר לכספים': the clip row becomes ONE unpaid Finance expense (scope קליפ). HARDENED claim. B3 (2026-09-27): the
+ * planning row is KEPT, marked הועבר לכספים and linked to the expense (linked_transaction_id) — plan → actual
+ * provenance. Readers count only UNLINKED rows as planned (lib/clip-rf-money-pure isClipItemPlanned).
+ */
+export async function promoteClipItem(id: string, date: string): Promise<{ kind: "not_found" } | { kind: "already_promoted"; transactionId: string } | { kind: "ok"; transaction: Record<string, unknown>; clipItem: Record<string, unknown> }> {
   const { data: item, error: fetchErr } = await supabase.from("clip_items").select("*").eq("id", id).maybeSingle();
   if (fetchErr || !item) return { kind: "not_found" };
   if (item.linked_transaction_id) return { kind: "already_promoted", transactionId: String(item.linked_transaction_id) };
-  // Claim: remove the row only while it is still unpromoted — a concurrent second click deletes nothing and stops here.
-  const { data: claimed, error: claimErr } = await supabase.from("clip_items").delete().eq("id", id).is("linked_transaction_id", null).select("id");
+  if (item.status === "בוטל" || item.status === CLIP_ITEM_PROMOTED_STATUS) return { kind: "not_found" };
+  // Claim: mark the row only while it is still unpromoted (same status, no link) — a concurrent second click claims
+  // nothing and stops here.
+  const prevStatus = String(item.status ?? "תכנון בלבד");
+  const { data: claimed, error: claimErr } = await supabase.from("clip_items").update({ status: CLIP_ITEM_PROMOTED_STATUS, updated_at: new Date().toISOString() })
+    .eq("id", id).is("linked_transaction_id", null).eq("status", prevStatus).select("id");
   if (claimErr) throw new Error(claimErr.message);
   if (!claimed || claimed.length === 0) return { kind: "not_found" };
   const { data: tx, error: txErr } = await supabase.from("transactions").insert({
@@ -201,12 +220,15 @@ export async function promoteClipItem(id: string, date: string): Promise<{ kind:
     linked_session_id: "", expense_scope: "קליפ",
   }).select().single();
   if (txErr || !tx) {
-    const { id: _drop, ...rest } = item as Record<string, unknown>; void _drop;
-    await supabase.from("clip_items").insert({ id, ...rest }); // restore the planning row
+    // release the claim (the row goes back to its planning status)
+    await supabase.from("clip_items").update({ status: prevStatus, updated_at: new Date().toISOString() }).eq("id", id).is("linked_transaction_id", null);
     throw new Error(txErr?.message ?? "failed to create transaction");
   }
+  const txId = String((tx as { id: unknown }).id);
+  const { data: linked, error: linkErr } = await supabase.from("clip_items").update({ linked_transaction_id: txId, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (linkErr) throw new Error(`the expense was created (${txId}) but the planning row was not linked: ${linkErr.message}`);
   touchProject(item.project_id as string).catch(() => {});
-  return { kind: "ok", transaction: tx as Record<string, unknown> };
+  return { kind: "ok", transaction: tx as Record<string, unknown>, clipItem: linked as Record<string, unknown> };
 }
 
 // ── narrow readers for the typed primitives ──
@@ -415,105 +437,153 @@ export async function setRfReferenceTag(refId: string, rawTag: string): Promise<
   return data as Record<string, unknown>;
 }
 
-/** POST /api/red-films/productions/bulk-permanent-delete semantics: ONLY cancelled productions; reference images (+ files),
- *  budget lines, tasks (+ Google Tasks) and the productions are removed; the rest are skipped. */
-export async function deleteCancelledProductions(ids: unknown[]): Promise<{ kind: "bad"; status: number; error: string } | { kind: "ok"; deleted: number; skipped: number }> {
-    const productionIds = ids.filter((id): id is string => typeof id === "string");
-    if (productionIds.length === 0) {
-      return { kind: "bad" as const, status: 400, error: "ids לא תקינים" };
-    }
+/** Red Films permanent-delete PREFLIGHT (READ-ONLY, integrity fix A5 2026-09-27). Per requested production: status (must
+ *  be בוטל), Red Films PAYMENTS (count + sum per currency — real money: HAS_PAYMENTS refuses the whole delete), budget
+ *  lines (+ how many carry a linked Finance transaction — the transaction stays), documents / reference images (+ their
+ *  stored files), reference links, scenes, crew, tasks (+ Google Tasks), the storage folder (kept) and every
+ *  finance_<project>.clipProductionId marker that points at it. */
+export interface RfDeletePreflight {
+  requested: number; found: number; missing: string[];
+  cancelledIds: string[]; notCancelled: Array<{ id: string; title: string; status: string }>; titles: string;
+  payments: number; paymentsByCurrency: Record<string, number>; productionsWithPayments: string[];
+  budgetLines: number; budgetLinesWithTransaction: number; documents: number; referenceImages: number; referenceLinks: number; scenes: number; crew: number;
+  tasks: number; googleTasks: number; storageFiles: number; foldersKept: number; clipMarkers: number;
+}
+const RF_CHILD_TABLES = ["red_films_reference_images", "red_films_documents", "red_films_reference_links", "red_films_scenes", "red_films_crew", "red_films_budget_items"] as const;
+async function rfRows(table: string, cols: string, ids: string[]): Promise<Array<Record<string, unknown>>> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from(table).select(cols).in("production_id", ids);
+  if (error) throw new Error(`${table}: ${error.message}`);
+  return (data ?? []) as unknown as Array<Record<string, unknown>>;
+}
+async function clipMarkersFor(ids: string[]): Promise<Array<{ key: string; value: Record<string, unknown> }>> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from("settings").select("key, value").like("key", "finance_%").in("value->>clipProductionId", ids);
+  if (error) throw new Error(`settings: ${error.message}`);
+  return ((data ?? []) as Array<{ key: string; value: Record<string, unknown> | null }>).filter((r) => r.value && ids.includes(String(r.value.clipProductionId))).map((r) => ({ key: r.key, value: r.value as Record<string, unknown> }));
+}
+export async function redFilmsDeletePreflight(rawIds: unknown[]): Promise<RfDeletePreflight> {
+  const ids = [...new Set(rawIds.filter((id): id is string => typeof id === "string" && !!id))];
+  let rows: Array<{ id: string; title: string | null; status: string | null; dropbox_folder_path: string | null }> = [];
+  if (ids.length) {
+    const { data: prods, error } = await supabase.from("red_films_productions").select("id, title, status, dropbox_folder_path").in("id", ids);
+    if (error) throw new Error(`red_films_productions: ${error.message}`);
+    rows = (prods ?? []) as typeof rows;
+  }
+  const cancelled = rows.filter((p) => p.status === "בוטל");
+  const cIds = cancelled.map((p) => p.id);
+  const pays = await rfRows("red_films_budget_payments", "id, production_id, amount, currency", cIds);
+  const byCur: Record<string, number> = {};
+  for (const p of pays) { const c = String(p.currency ?? "₪"); byCur[c] = (byCur[c] ?? 0) + (Number(p.amount) || 0); }
+  const [refs, docs, links, scenes, crew, lines] = await Promise.all(RF_CHILD_TABLES.map((t) => rfRows(t, t === "red_films_budget_items" ? "id, linked_transaction_id" : t === "red_films_reference_images" || t === "red_films_documents" ? "id, dropbox_path" : "id", cIds)));
+  let tasks: Array<{ id: string; calendar_event_id: string | null }> = [];
+  if (cIds.length) {
+    const { data: t, error: te } = await supabase.from("tasks").select("id, calendar_event_id").eq("related_type", "red_film_production").in("related_id", cIds);
+    if (te) throw new Error(`tasks: ${te.message}`);
+    tasks = (t ?? []) as typeof tasks;
+  }
+  return {
+    requested: ids.length, found: rows.length, missing: ids.filter((i) => !rows.some((r) => r.id === i)),
+    cancelledIds: cIds, notCancelled: rows.filter((p) => p.status !== "בוטל").map((p) => ({ id: p.id, title: p.title ?? "", status: p.status ?? "" })),
+    titles: cancelled.map((p) => p.title ?? "").sort().join(", "),
+    payments: pays.length, paymentsByCurrency: byCur, productionsWithPayments: [...new Set(pays.map((p) => String(p.production_id)))],
+    budgetLines: lines.length, budgetLinesWithTransaction: lines.filter((l) => !!l.linked_transaction_id).length,
+    documents: docs.length, referenceImages: refs.length, referenceLinks: links.length, scenes: scenes.length, crew: crew.length,
+    tasks: tasks.length, googleTasks: tasks.filter((t) => !!t.calendar_event_id).length,
+    storageFiles: [...refs, ...docs].filter((r) => !!r.dropbox_path).length, foldersKept: cancelled.filter((p) => !!p.dropbox_folder_path).length,
+    clipMarkers: (await clipMarkersFor(cIds)).length,
+  };
+}
+export const rfPaymentsText = (byCur: Record<string, number>) => Object.entries(byCur).map(([c, n]) => `${c}${Number(n).toLocaleString("en-US")}`).join(" + ");
 
-    // ── 1. Guard: only allow "בוטל" productions ────────────────────────────────
-    const { data: productions, error: fetchErr } = await supabase
-      .from("red_films_productions")
-      .select("id, status")
-      .in("id", productionIds);
+/** Clear finance_<project>.clipProductionId ONLY when it still equals the deleted production (compare-and-swap on the
+ *  whole stored value; one retry on a concurrent change). Returns true when a marker was cleared. */
+export async function clearClipMarkerIfEqual(key: string, productionId: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
+    if (error) throw new Error(`settings ${key}: ${error.message}`);
+    const existing = (data?.value ?? null) as Record<string, unknown> | null;
+    if (!existing || existing.clipProductionId !== productionId) return false; // not ours (any more) — never touched
+    const next = { ...existing }; delete next.clipProductionId;
+    const { data: upd, error: ue } = await supabase.from("settings").update({ value: next }).eq("key", key).eq("value", JSON.stringify(existing)).select("key");
+    if (ue) throw new Error(`settings ${key}: ${ue.message}`);
+    if ((upd ?? []).length === 1) return true;
+  }
+  throw new Error(`settings ${key}: the clip marker changed concurrently — not cleared`);
+}
 
-    if (fetchErr) throw fetchErr;
+/** Integration modules for the permanent delete (overridable ONLY by the fake-backed test scripts/test-deletes-ownership.tsx). */
+export const RF_DELETE_IO = {
+  dropbox: () => import("@/lib/dropbox-token"),
+  google: () => import("@/lib/google-calendar"),
+};
+export type RfDeleteResult =
+  | { kind: "bad"; status: number; error: string; code?: string }
+  | { kind: "ok"; deleted: number; skipped: number; storageFailures: number; googleTaskFailures: number; clearedMarkers: number; warningHe: string | null };
 
-    const allowedIds = (productions ?? [])
-      .filter(p => p.status === "בוטל")
-      .map(p => p.id);
+/** POST /api/red-films/productions/bulk-permanent-delete semantics (HARDENED A5 2026-09-27): ONLY cancelled productions;
+ *  preflight first (payments → HAS_PAYMENTS refusal, zero writes); then DB rows (every step's error checked — a failure
+ *  stops BEFORE the productions are deleted): reference images, documents, reference links, scenes, crew, budget lines,
+ *  tasks, clip markers (CAS), the productions; verified by a re-read; stored files + Google Tasks LAST, failures reported. */
+export async function deleteCancelledProductions(ids: unknown[]): Promise<RfDeleteResult> {
+  const productionIds = ids.filter((id): id is string => typeof id === "string");
+  if (productionIds.length === 0) return { kind: "bad", status: 400, error: "ids לא תקינים" };
 
-    if (allowedIds.length === 0) {
-      return { kind: "bad" as const, status: 400, error: "אין הפקות מבוטלות למחיקה" };
-    }
+  // ── 0. Preflight (read-only) ──────────────────────────────────────────────
+  const pre = await redFilmsDeletePreflight(productionIds);
+  const allowedIds = pre.cancelledIds;
+  if (allowedIds.length === 0) return { kind: "bad", status: 400, error: "אין הפקות מבוטלות למחיקה" };
+  if (pre.payments > 0) {
+    return { kind: "bad", status: 409, code: "HAS_PAYMENTS", error: `אי אפשר למחוק לצמיתות: ל-${pre.productionsWithPayments.length} מההפקות יש ${pre.payments} תשלומי Red Films (${rfPaymentsText(pre.paymentsByCurrency)}) — כסף אמיתי לא נמחק. קודם מטפלים בתשלומים (או משאירים את ההפקה בארכיון המבוטלות)` };
+  }
+  const skipped = productionIds.length - allowedIds.length;
 
-    const skipped = productionIds.length - allowedIds.length;
+  // collect external targets (read-only)
+  const storagePaths = [
+    ...(await rfRows("red_films_reference_images", "dropbox_path", allowedIds)),
+    ...(await rfRows("red_films_documents", "dropbox_path", allowedIds)),
+  ].map((r) => r.dropbox_path).filter((p): p is string => typeof p === "string" && !!p);
+  const { data: gt, error: gte } = await supabase.from("tasks").select("id, calendar_event_id").eq("related_type", "red_film_production").in("related_id", allowedIds).not("calendar_event_id", "is", null);
+  if (gte) throw new Error(`tasks: ${gte.message}`);
+  const googleIds = ((gt ?? []) as Array<{ calendar_event_id: string | null }>).map((t) => t.calendar_event_id).filter((x): x is string => !!x);
 
-    // ── 2. Reference images — delete from Dropbox (non-fatal) + DB ────────────
-    const { data: refImages } = await supabase
-      .from("red_films_reference_images")
-      .select("id, dropbox_path")
-      .in("production_id", allowedIds);
+  // ── 1. DB rows — every error checked; a failure stops BEFORE the productions ──
+  const step = async (label: string, run: () => PromiseLike<{ error: { message: string } | null }>) => {
+    const { error } = await run();
+    if (error) throw new Error(`${label}: ${error.message} — ההפקות לא נמחקו (אפשר לנסות שוב)`);
+  };
+  for (const t of RF_CHILD_TABLES) await step(t, () => supabase.from(t).delete().in("production_id", allowedIds));
+  await step("tasks", () => supabase.from("tasks").delete().eq("related_type", "red_film_production").in("related_id", allowedIds));
+  let clearedMarkers = 0;
+  for (const m of await clipMarkersFor(allowedIds)) if (await clearClipMarkerIfEqual(m.key, String(m.value.clipProductionId))) clearedMarkers++;
+  await step("red_films_productions", () => supabase.from("red_films_productions").delete().in("id", allowedIds));
+  // verify: the productions are really gone
+  const { data: still, error: ve } = await supabase.from("red_films_productions").select("id").in("id", allowedIds);
+  if (ve) throw new Error(`verify: ${ve.message}`);
+  if ((still ?? []).length) throw new Error(`${(still ?? []).length} הפקות עדיין קיימות אחרי המחיקה`);
 
-    if (refImages && refImages.length > 0) {
-      try {
-        const { getDropboxToken } = await import("@/lib/dropbox-token");
-        const token = await getDropboxToken();
-        await Promise.all(
-          refImages.map(r =>
-            fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ path: r.dropbox_path }),
-            }).catch(() => { /* non-fatal */ })
-          )
-        );
-      } catch { /* non-fatal — DB rows will still be deleted */ }
-
-      await supabase
-        .from("red_films_reference_images")
-        .delete()
-        .in("production_id", allowedIds);
-    }
-
-    // ── 3. Budget items ────────────────────────────────────────────────────────
-    await supabase
-      .from("red_films_budget_items")
-      .delete()
-      .in("production_id", allowedIds);
-
-    // ── 4. Tasks (all — production is gone permanently) ────────────────────────
-    // Google Tasks cleanup: future tasks should already be cancelled when moved to trash.
-    // We attempt cleanup for any remaining calendar_event_ids before deleting from DB.
+  // ── 2. External — stored files + Google Tasks, AFTER the DB, failures reported ──
+  let storageFailures = 0;
+  if (storagePaths.length) {
     try {
-      const { data: tasksWithGoogle } = await supabase
-        .from("tasks")
-        .select("id, calendar_event_id")
-        .eq("related_type", "red_film_production")
-        .in("related_id", allowedIds)
-        .not("calendar_event_id", "is", null);
-
-      if (tasksWithGoogle && tasksWithGoogle.length > 0) {
-        const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
-        if (await isConnected()) {
-          await Promise.all(
-            tasksWithGoogle.map(t =>
-              t.calendar_event_id
-                ? deleteGoogleTask(t.calendar_event_id).catch(() => { /* non-fatal */ })
-                : Promise.resolve()
-            )
-          );
-        }
-      }
-    } catch { /* non-fatal */ }
-
-    await supabase
-      .from("tasks")
-      .delete()
-      .eq("related_type", "red_film_production")
-      .in("related_id", allowedIds);
-
-    // ── 5. Delete productions ──────────────────────────────────────────────────
-    const { error: delErr } = await supabase
-      .from("red_films_productions")
-      .delete()
-      .in("id", allowedIds);
-
-    if (delErr) throw delErr;
-
-  return { kind: "ok", deleted: allowedIds.length, skipped };
+      const { getDropboxToken } = await RF_DELETE_IO.dropbox();
+      const token = await getDropboxToken();
+      const res = await Promise.all(storagePaths.map((path) =>
+        fetch("https://api.dropboxapi.com/2/files/delete_v2", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ path }) })
+          .then(async (r) => r.ok || /not_found/.test(await r.text().catch(() => "")), () => false)));
+      storageFailures = res.filter((x) => !x).length;
+    } catch { storageFailures = storagePaths.length; }
+  }
+  let googleTaskFailures = 0;
+  if (googleIds.length) {
+    try {
+      const { isConnected, deleteGoogleTask } = await RF_DELETE_IO.google();
+      if (await isConnected()) googleTaskFailures = (await Promise.allSettled(googleIds.map((g) => deleteGoogleTask(g)))).filter((x) => x.status === "rejected").length;
+      else googleTaskFailures = googleIds.length;
+    } catch { googleTaskFailures = googleIds.length; }
+  }
+  const warn = [storageFailures ? `${storageFailures} קבצים לא נמחקו מהאחסון` : "", googleTaskFailures ? `${googleTaskFailures} משימות Google לא נמחקו` : ""].filter(Boolean).join("; ");
+  return { kind: "ok", deleted: allowedIds.length, skipped, storageFailures, googleTaskFailures, clearedMarkers, warningHe: warn ? `ההפקות נמחקו, אבל: ${warn}` : null };
 }
 export async function readEquipmentRow(id: string) { return one("red_films_equipment", id); }
 export async function readDocumentRow(id: string) { return one("red_films_documents", id); }

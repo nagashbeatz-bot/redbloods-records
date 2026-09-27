@@ -6,10 +6,52 @@ import { supabase } from "@/lib/supabase";
 import { createProject, getProject, updateProject } from "@/lib/projects-store";
 import { projectBaseFolder } from "@/lib/project-paths";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
+import { newProjectBusinessType } from "@/lib/project-classification-server";
+import { israelTodayYmd } from "@/lib/project-deadline";
+import { PROJECT_PROTECTED_STATUSES, decideProjectSync } from "@/lib/steven-completed-pure";
+/** B2: the business type a NEW project gets — the Owner rule (Shalev / Avi credited → לייבל), else לקוח. */
+export { newProjectBusinessType };
 
-/** Status change: "הושלם" stamps today's end date; any other status clears it (the app's single rule). */
-export function statusPatch(status: string, today = new Date().toISOString().split("T")[0]): { status: string; end_date: string | null } {
-  return { status, end_date: status === "הושלם" ? today : null };
+/**
+ * Status change — the app's single end-date rule (B5, 2026-09-27): end_date is stamped only on a REAL transition into
+ * "הושלם" (Israel day). Re-saving "הושלם" on a project that is already הושלם with an end date keeps that end date (no
+ * end_date key in the patch); any other status clears it. `current` = the project as read just before the write
+ * (null when unknown → treated as a transition).
+ */
+export function statusPatch(status: string, current: { status?: string | null; endDate?: string | null } | null, today: string = israelTodayYmd()): { status: string; end_date?: string | null } {
+  if (status !== "הושלם") return { status, end_date: null };
+  if (current?.status === "הושלם" && current.endDate) return { status };
+  return { status, end_date: today };
+}
+
+/** A project is completed by a team hand-off never from בוטל / בהשהייה (Owner protected — the SAME set and decision as
+ *  the Steven completion, lib/steven-completed-pure.ts) and never twice. */
+export const COMPLETION_PROTECTED_STATUSES: readonly string[] = PROJECT_PROTECTED_STATUSES;
+export type CompleteProjectResult =
+  | { ok: true; status: "הושלם"; endDate: string | null }
+  | { ok: false; refused: "NOT_FOUND" | "PROTECTED_STATUS" | "ALREADY_COMPLETED"; status: string | null };
+
+/** Pure decision for completeProjectIfAllowed (tests drive it directly). */
+export function completionDecision(current: { status?: string | null } | null): { allowed: true } | { allowed: false; refused: "NOT_FOUND" | "PROTECTED_STATUS" | "ALREADY_COMPLETED" } {
+  if (!current) return { allowed: false, refused: "NOT_FOUND" };
+  const d = decideProjectSync(current.status);
+  if (d === "already_completed") return { allowed: false, refused: "ALREADY_COMPLETED" };
+  if (d === "protected") return { allowed: false, refused: "PROTECTED_STATUS" };
+  return { allowed: true };
+}
+
+/**
+ * Mark a project הושלם because a team hand-off finished (Victor "projectToo") — the server rule, never the client:
+ * refused for a protected status (בוטל / בהשהייה — the same set as the Steven completion) or an already completed
+ * project; otherwise the shared statusPatch (end date stamped on the real transition). Re-reads after writing.
+ */
+export async function completeProjectIfAllowed(projectId: string): Promise<CompleteProjectResult> {
+  const current = await getProject(projectId);
+  const d = completionDecision(current);
+  if (!d.allowed) return { ok: false, refused: d.refused, status: current?.status ?? null };
+  await updateProject(projectId, statusPatch("הושלם", current ? { status: current.status, endDate: current.endDate } : null));
+  const after = await getProject(projectId);
+  return { ok: true, status: "הושלם", endDate: after?.endDate ?? null };
 }
 
 /**
@@ -33,12 +75,17 @@ export async function changeProjectArtist(id: string, artist: string): Promise<v
   if (artist.trim()) await upsertArtistsFromProject(artist).catch(() => {});
 }
 
-/** Create a client project the way the Projects UI does (business type לקוח, start date today, artists → clients). */
+/**
+ * Create a project the way the Projects UI does (start date today, artists → clients). Business type: B2 Owner rule —
+ * לייבל when שליו טסמה / אבי מולה is credited (solo or collab, by roster id), else לקוח. The UI route and Sunny's
+ * CREATE_PROJECT both come through here, so the two paths can never classify differently.
+ */
 export async function createClientProject(f: { name: string; artist?: string; status?: string; deadline?: string | null; notes?: string; projectType?: string; parentProject?: string }): Promise<Awaited<ReturnType<typeof createProject>>> {
   const today = new Date().toISOString().split("T")[0];
+  const { businessType } = await newProjectBusinessType(f.artist);
   const project = await createProject({
     name: f.name.trim(), artist: f.artist?.trim() || "", status: f.status || "לא התחיל", start_date: today, deadline: f.deadline || null,
-    notes: f.notes?.trim() || "", project_type: f.projectType || "", parent_project: f.parentProject || "", project_business_type: "לקוח",
+    notes: f.notes?.trim() || "", project_type: f.projectType || "", parent_project: f.parentProject || "", project_business_type: businessType,
   });
   if (f.artist?.trim()) upsertArtistsFromProject(f.artist).catch(() => {});
   return project;

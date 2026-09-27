@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "./supabase";
 import { CLIP_SCOPE } from "./clip-finance";
+import { mergeSettingsKey } from "./writes/settings-merge";
 
 /**
  * Server-side helpers linking a Project's clip deal to its Red Films production.
@@ -12,15 +13,15 @@ import { CLIP_SCOPE } from "./clip-finance";
  *     a SECOND production and to offer "פתח ב-Red Films". It says nothing about
  *     who owns the budget.
  *
- *  2. "Is this production managed by the project's clip deal?" → the managed marker
+ *  2. "Was this production created by the project's 'שלח קליפ'?" → the managed marker
  *     Answered from settings["finance_<projectId>"].clipProductionId, which is
  *     written ONLY when "שלח קליפ" creates the production. That marker is the
- *     provenance record for the new flow.
+ *     PROVENANCE record of the flow — nothing more.
  *
- * The distinction exists because a production may carry a project_id and still be
- * a legacy Red Films production created long before the clip deal existed. Those
- * keep their own budget: never synced, never locked, never migrated. Only
- * productions born from "שלח קליפ" follow the project's clipAgreedPrice.
+ * B3 (Owner canon 2026-09-27): the client clip price (A) is never the planned budget (B). The price → budget sync
+ * and the budget lock are RETIRED: every production — managed or legacy — owns its own planning budget and currency.
+ * A managed production created before B3 may still carry a budget equal to the clip price (the old sync); readers
+ * report that as a DERIVED observation (lib/clip-rf-money-pure budgetEqualsOldClipPriceSync), never as a rule.
  */
 
 export interface LinkedClipProduction {
@@ -30,9 +31,11 @@ export interface LinkedClipProduction {
   general_budget: number | null;
   production_type: string | null;
   project_id: string | null;
+  /** The production's own currency (general_budget is in it; migration 2026-09-27). */
+  currency: string | null;
 }
 
-const PRODUCTION_FIELDS = "id, title, status, general_budget, production_type, project_id";
+const PRODUCTION_FIELDS = "id, title, status, general_budget, production_type, project_id, currency";
 
 /**
  * Any clip production linked to a project — legacy ones included. Cancelled
@@ -70,20 +73,13 @@ export async function getManagedClipProductionId(projectId: string): Promise<str
  * rest are preserved. Never called for a production the flow did not create.
  */
 export async function setManagedClipProductionId(projectId: string, productionId: string): Promise<void> {
-  const { data } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", `finance_${projectId}`)
-    .maybeSingle();
-  const existing = (data?.value ?? {}) as Record<string, unknown>;
-  await supabase
-    .from("settings")
-    .upsert({ key: `finance_${projectId}`, value: { ...existing, clipProductionId: productionId } }, { onConflict: "key" });
+  // Compare-and-swap merge (lib/writes/settings-merge.ts): never overwrites a concurrent finance-settings write.
+  await mergeSettingsKey(`finance_${projectId}`, { clipProductionId: productionId });
 }
 
 /**
- * The production whose budget this project owns — the marked one, and only if it
- * still exists and is not cancelled. Returns null for legacy links.
+ * The production the project's 'שלח קליפ' created — the marked one, and only if it
+ * still exists and is not cancelled. Returns null for legacy links. Provenance only.
  */
 export async function getManagedClipProduction(projectId: string): Promise<LinkedClipProduction | null> {
   const managedId = await getManagedClipProductionId(projectId);
@@ -99,8 +95,8 @@ export async function getManagedClipProduction(projectId: string): Promise<Linke
 }
 
 /**
- * Is THIS production budget-managed by its linked project? Used by the Red Films
- * PATCH guard and by the UI lock. False for every legacy production.
+ * Was THIS production created by its linked project's 'שלח קליפ'? Provenance only (B3: no budget lock).
+ * False for every legacy production.
  */
 export async function isManagedClipProduction(production: {
   id: string;
@@ -111,26 +107,4 @@ export async function isManagedClipProduction(production: {
   return managedId === production.id;
 }
 
-/**
- * Push the project's agreed clip price onto the budget of the production it
- * manages. One-way by design, and ONLY for a production created by "שלח קליפ" —
- * a legacy production's budget is never touched from here.
- */
-/** The project's clip deal currency (finance settings) — the managed production's budget carries it (no FX). */
-async function clipDealCurrency(projectId: string): Promise<string> {
-  const { data } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
-  const c = (data?.value as { currency?: unknown } | null)?.currency;
-  return c === "$" || c === "€" || c === "₪" ? c : "₪";
-}
-export async function syncClipBudget(projectId: string, price: number): Promise<{ productionId: string; general_budget: number } | null> {
-  const production = await getManagedClipProduction(projectId);
-  if (!production) return null;
-  const { data } = await supabase
-    .from("red_films_productions")
-    .update({ general_budget: price, currency: await clipDealCurrency(projectId), updated_at: new Date().toISOString() })
-    .eq("id", production.id)
-    .select("id, general_budget")
-    .maybeSingle();
-  if (!data) return null;
-  return { productionId: data.id as string, general_budget: (data.general_budget as number) ?? price };
-}
+// syncClipBudget (price → budget) and its currency helper were removed in B3 — the clip price never writes the budget.

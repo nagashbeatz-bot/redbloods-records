@@ -33,8 +33,12 @@ import type { Project } from "@/lib/types";
  * projects.artist is free text that may hold several names split by /[,،;]/ (the
  * same split used across the app — see ClientDrawer / ArtistPortalPage), so ANY
  * exact token match counts, which catches collaborations too. Full-name match
- * only, never a substring. project_business_type is NOT used: every project in
- * the table is "לקוח" today, so it identifies nobody.
+ * only, never a substring.
+ *
+ * B2 (Owner canon 2026-09-27): isLabelArtist is a SORT HINT ONLY — it is NOT a
+ * client / label classification. The one classifier is the stored
+ * projects.project_business_type (lib/project-classification.ts isLabelProject);
+ * a roster artist (e.g. נגש ביטס / DJ CLEANTONE) does not make a project label work.
  *
  * Both fields are hints. Any failure here degrades the ORDER of the list, never
  * the list itself — the callers still get their projects.

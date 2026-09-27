@@ -1,7 +1,8 @@
 import "server-only";
 import { supabase } from "./supabase";
 import type { Project, ProjectStatus, ProjectType, ProjectBusinessType, FileLink, WorkMaterialsMeta } from "./types";
-import { isOverdue, isDueSoon } from "./utils";
+import { isDueSoon } from "./utils";
+import { isProjectOverdue } from "./project-deadline";
 
 // ─── DB row shape ──────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function dbToProject(db: DbProject): Project {
     endDate:       db.end_date ?? null,
     notes:         db.notes,
     files,
-    isOverdue:     isOverdue(db.deadline),
+    isOverdue:     isProjectOverdue({ deadline: db.deadline, status: db.status, isHidden: db.is_hidden ?? false }),
     isDueSoon:     isDueSoon(db.deadline),
     projectType:   db.project_type as ProjectType,
     parentProject: db.parent_project,

@@ -7,9 +7,9 @@
  *   • payments  → real transactions rows, expense_scope = "קליפ"
  *   • Red Films → red_films_productions.project_id (already existed)
  *
- * The project's clipAgreedPrice is the SINGLE SOURCE OF TRUTH for the price.
- * When it changes and a linked Red Films production exists, that production's
- * general_budget (תקציב) is pushed to match — one direction only, never back.
+ * The project's clipAgreedPrice is the SINGLE SOURCE OF TRUTH for the CLIENT clip price (A).
+ * B3 (Owner canon 2026-09-27): it never writes a Red Films production's general_budget — the planned budget (B) is
+ * the production's own planning; the old price → budget sync is retired.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 
     // A linked production may be LEGACY — created in Red Films before this flow
     // existed. It still answers "don't create a second one" and "open it", but
-    // its budget is not ours to sync, and the UI must not claim otherwise.
+    // budget_managed_by_project = created by "שלח קליפ" (provenance only; B3: never a budget sync or lock).
     const budgetManaged = !!production && production.id === managedId;
 
     return NextResponse.json({
@@ -82,8 +82,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // Merge into the existing finance settings blob — never overwrite other keys.
-    const { budgetSynced } = await setClipPrice(id, price); // shared writer (lib/writes/clip)
-    return NextResponse.json({ ok: true, clipAgreedPrice: price, budgetSynced });
+    await setClipPrice(id, price); // shared writer (lib/writes/clip) — B3: the price only, never the production budget
+    return NextResponse.json({ ok: true, clipAgreedPrice: price });
   } catch (e) {
     console.error("[PATCH /api/projects/[id]/clip]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

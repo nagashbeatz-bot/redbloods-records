@@ -9,9 +9,10 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/proposal-followups";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, isReceivedStatus, isExpectedStatus, formatTotalsInline, sumByCurrency, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import { PROJECT_TYPES } from "@/lib/types";
+import { isPastUnconfirmed, localNowString, PAST_UNCONFIRMED_LABEL } from "@/lib/session-duration";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,9 +180,9 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
         const inProjectCurrency = sameCurrency(t.currency, fin.currency); // R5
         // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
         if (isSongIncome(t)) {
-          if (["שולם","התקבל"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalPaid += t.amount; else addToTotals(fin.otherPaid, t.currency, t.amount); }
+          if (isReceivedStatus(t.payment_status)) { if (inProjectCurrency) fin.totalPaid += t.amount; else addToTotals(fin.otherPaid, t.currency, t.amount); }
           else if (isCancelledPayment(t.payment_status)) { if (inProjectCurrency) fin.cancelledIncome += t.amount; }
-          else if (["צפוי","חלקי"].includes(t.payment_status)) { if (inProjectCurrency) fin.totalExpected += t.amount; else addToTotals(fin.otherExpected, t.currency, t.amount); }
+          else if (isExpectedStatus(t.payment_status)) { if (inProjectCurrency) fin.totalExpected += t.amount; else addToTotals(fin.otherExpected, t.currency, t.amount); }
         } else if (t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)) { if (inProjectCurrency) fin.totalExpenses += t.amount; else addToTotals(fin.otherExpenses, t.currency, t.amount); }
       }
 
@@ -377,8 +378,8 @@ function ModalContent({
   // ── Summary KPIs (from existing data only) ──
   const OPEN_PROPOSAL = new Set(["הצעה נשלחה", "ממתין לתשובה", "צריך פולואפ", "לחזור בעתיד"]);
   const openProposals  = proposals.filter((p) => OPEN_PROPOSAL.has(p.status));
-  const openValue      = openProposals.reduce((s, p) => s + (p.amount || 0), 0);
-  const propCurrency   = proposals[0]?.currency ?? "₪";
+  // Open proposal value PER CURRENCY (POTENTIAL money; never one mixed sum, no FX).
+  const openValueByCurrency = sumByCurrency(openProposals, (p) => p.amount || 0);
   const activeProjects = projects.filter((p) => !["הושלם", "בוטל"].includes(p.status)).length;
   const nextFollowup   = openProposals
     .map((p) => p.followup_date).filter(Boolean).sort()[0] ?? null;
@@ -437,7 +438,7 @@ function ModalContent({
         {/* Summary KPI cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           <KpiCard icon="📄" label='סה"כ הצעות'     value={String(proposals.length)}            color="#60A5FA" />
-          <KpiCard icon="💰" label="שווי פתוח"       value={fmtMoney(openValue, propCurrency)}   color="#34D399" />
+          <KpiCard icon="💰" label="שווי פתוח"       value={formatTotalsInline(openValueByCurrency, (a, c) => fmtMoney(a, c))}   color="#34D399" />
           <KpiCard icon="📁" label="פרויקטים פעילים" value={String(activeProjects)}              color="#A855F7" />
           <KpiCard icon="📅" label="פולואפ הבא"       value={nextFollowup ? fmtDate(nextFollowup) : "—"} color="#FBBF24" />
         </div>
@@ -941,6 +942,12 @@ function SessionRow({ session: s, projects, onUpdate, onDelete, dim }: {
             <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30` }}>
               {s.status}
             </span>
+            {/* A3: display-only "passed, not confirmed" — the ✓ / ✕ buttons are the explicit Owner confirmation */}
+            {isPastUnconfirmed(s, localNowString()) && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "rgba(245,158,11,0.12)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.35)" }}>
+                {PAST_UNCONFIRMED_LABEL}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 11, color: "#555" }}>
             {proj?.name ?? s.title ?? "—"}
@@ -997,7 +1004,11 @@ function ProjectRow({ project: p, balance, fin, statusColor, onOpen, onRestore }
         {p.deadline && <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>דדליין: {fmtDate(p.deadline)}</div>}
       </div>
 
-      {fin && fin.agreedPrice > 0 && (() => {
+      {fin && fin.financeException && (
+        <span style={{ fontSize: 11, color: "#6B7280", flexShrink: 0, fontWeight: 600 }}>חריג כספים</span>
+      )}
+      {fin && !fin.financeException && fin.agreedPrice > 0 && (() => {
+        // isFullyPaid requires agreed > 0 (a missing price is PRICE_UNKNOWN, never "שולם").
         const paid = isFullyPaid(fin.agreedPrice, fin.totalPaid);
         return (
           <span style={{ fontSize: 11, color: paid ? "#10B981" : "#EF4444", flexShrink: 0, fontWeight: 600 }}>

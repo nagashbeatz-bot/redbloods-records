@@ -81,24 +81,39 @@ export const OWNER_COMPANY_DEFINITIONS: readonly OwnerCompanyDefinition[] = [
 /**
  * Session status vocabulary — a CODE fact (verified by the integrity test against the files named here):
  * what the sessions writers store vs what other modules still read.
+ * A3 (2026-09-27): the readers that looked for נקבע / הושלם (Agent rules + snapshot + goals, daily + weekly reports)
+ * now read the real vocabulary (מתוכנן / התקיים, + בוצע for show rehearsals), so there is no legacy reader left and the
+ * SESSION_STATUS_VOCABULARY_CONFLICT finding no longer fires. The clock auto-mark route is retired (no writer of
+ * התקיים except an explicit Owner action).
  */
-export const SESSION_STATUS_VOCABULARY = {
+export const SESSION_STATUS_VOCABULARY: {
+  writers: { statuses: readonly string[]; files: readonly string[] };
+  legacyReaders: readonly { file: string; expects: readonly string[] }[];
+  alignedReaders: readonly { file: string; reads: readonly string[] }[];
+} = {
   writers: {
     statuses: ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"],
-    files: ["lib/writes/sessions.ts", "app/api/sessions/route.ts", "app/api/sessions/auto-mark/route.ts", "components/ui/ProjectDrawer.tsx"],
+    files: ["lib/writes/sessions.ts", "app/api/sessions/route.ts", "components/ui/ProjectDrawer.tsx"],
   },
-  legacyReaders: [
-    { file: "lib/agent/rules.ts", expects: ["נקבע"] },
-    { file: "lib/agent/snapshot.ts", expects: ["נקבע", "בוצע", "הושלם"] },
-    { file: "lib/reports/data.ts", expects: ["נקבע", "בוצע", "הושלם"] },
-    { file: "lib/reports/weekly.ts", expects: ["נקבע", "בוצע", "הושלם"] },
+  legacyReaders: [],
+  alignedReaders: [
+    { file: "lib/agent/rules.ts", reads: ["מתוכנן"] },
+    { file: "lib/agent/snapshot.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },
+    { file: "lib/agent/goals.ts", reads: ["התקיים", "בוצע"] },
+    { file: "lib/reports/data.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },
+    { file: "lib/reports/weekly.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },
   ],
-} as const;
+};
 
-/** Steven payment: two code paths write sound_engineer_work.linked_transaction_id — a CODE fact (verified by test). */
+/**
+ * Engineer payment writers of sound_engineer_work.linked_transaction_id — a CODE fact (verified by test). Since the
+ * integrity fix A2 (2026-09-27) there is ONE current writer; the two retired writers are listed because their SHAPES
+ * still exist in historical data (untouched — the Owner deferred whether the ₪ rows are real).
+ */
 export const STEVEN_PAYMENT_WRITERS = [
-  { name: "LEGACY_SYNC_TRANSACTION", file: "lib/sound-engineer-store.ts", marker: "syncTransaction", shape: "work currency; status from amounts (צפוי / חלקי / שולם)" },
-  { name: "PAYMENT_EXPENSE_SYNC", file: "lib/sound-engineer-store.ts", marker: "syncStevenPaymentExpense", shape: "fixed-rate ₪ conversion; always שולם; deleted when unpaid" },
+  { name: "RECONCILE_ENGINEER_EXPENSE", status: "CURRENT", file: "lib/writes/mix.ts", marker: "reconcileEngineerExpense", shape: "work currency + agreed amount; שולם rows never overwritten / deleted; expected row for non-Steven engineers" },
+  { name: "LEGACY_SYNC_TRANSACTION", status: "RETIRED_HISTORICAL", file: "lib/sound-engineer-store.ts", marker: "syncTransaction", shape: "work currency; status from amounts (צפוי / חלקי / שולם); date nulled" },
+  { name: "PAYMENT_EXPENSE_SYNC", status: "RETIRED_HISTORICAL", file: "lib/sound-engineer-store.ts", marker: "syncStevenPaymentExpense", shape: "fixed-rate ₪ conversion; always שולם; deleted when unpaid" },
 ] as const;
 
 /** A Victor "active" work with no recorded activity for this many days looks stale (NOT abandoned). */

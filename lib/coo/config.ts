@@ -10,6 +10,7 @@
  * An LLM never sets or changes anything in this file (Phase 1b would not either).
  */
 import type { Tier } from "./types";
+import { NOT_OVERDUE_STATUSES } from "../project-deadline";
 
 export type Cond = {
   daysOverdueGte?: number;   // overdue by at least N days
@@ -39,7 +40,8 @@ export const COO_CONFIG = {
 
   // ── project statuses ──
   closedProjectStatuses: ["הושלם", "בוטל"] as string[],
-  inactiveProjectStatuses: ["הושלם", "בוטל", "בהשהייה"] as string[],
+  /** = lib/project-deadline.ts NOT_OVERDUE_STATUSES (the ONE closed / on-hold set; never overdue). */
+  inactiveProjectStatuses: [...NOT_OVERDUE_STATUSES] as string[],
 
   // ── windows (days) — PROVISIONAL ──
   dueSoonDays: 7,

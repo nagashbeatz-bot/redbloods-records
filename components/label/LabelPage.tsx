@@ -26,7 +26,7 @@ type WithRelease = LabelRelease & { release: ProjectReleaseDetails };
 
 // ── Mark an existing song project as a label release (pick project + artist) ──
 interface SlimProject { id: string; name: string; artist: string; projectType: string; businessType: string; }
-function MarkExistingModal({ artists, onClose, onSaved }: { artists: LabelArtist[]; onClose: () => void; onSaved: () => void }) {
+function MarkExistingModal({ artists, releasedProjectIds, onClose, onSaved }: { artists: LabelArtist[]; releasedProjectIds: ReadonlySet<string>; onClose: () => void; onSaved: () => void }) {
   const [projects, setProjects] = useState<SlimProject[] | null>(null);
   const [artistId, setArtistId] = useState<string>(artists[0]?.id ?? "");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,10 +34,13 @@ function MarkExistingModal({ artists, onClose, onSaved }: { artists: LabelArtist
 
   useEffect(() => {
     fetch("/api/projects").then((r) => r.json()).then((rows: SlimProject[]) => {
-      // Same type rule as the server guard and the dashboard's "הוסף ריליס" (isReleasableType).
-      setProjects(Array.isArray(rows) ? rows.filter((p) => p.businessType !== "לייבל" && isReleasableType(p.projectType)) : []);
+      // Same type rule as the server guard and the dashboard's "הוסף ריליס" (isReleasableType). B2: filter on "no
+      // release row yet" (the server's own guard), NOT on businessType — a project already classified לייבל (e.g. by
+      // the Owner rule for שליו / אבי) that has no release must stay convertible. A dormant release on a לקוח
+      // project is not in this list; the server answers "exists" for it.
+      setProjects(Array.isArray(rows) ? rows.filter((p) => !releasedProjectIds.has(p.id) && isReleasableType(p.projectType)) : []);
     }).catch(() => setProjects([]));
-  }, []);
+  }, [releasedProjectIds]);
 
   // The server rejects linking an artist who isn't credited on the project, so list only the
   // selected artist's projects (same normalized exact-name match as the server guard).
@@ -100,7 +103,11 @@ export default function LabelPage() {
   const [editItem, setEditItem] = useState<LabelRelease | null>(null);
 
   type ShowLine = LabelShowLine & { artistName: string };
-  const [shows, setShows] = useState<{ totals: ArtistShowsSummary["totals"]; lines: ShowLine[] } | null>(null);
+  // A1: `totals` are ₪ only; shows in another currency are listed (in their own currency) and flagged, never added.
+  const [shows, setShows] = useState<{ totals: ArtistShowsSummary["totals"]; lines: ShowLine[]; otherCurrencies?: string[] } | null>(null);
+
+  // B2: the convert-to-release list excludes projects that already HAVE a release row (not "already לייבל").
+  const releasedProjectIds = useMemo(() => new Set((releases ?? []).filter((r) => r.release).map((r) => r.projectId)), [releases]);
 
   const reload = useCallback(() => {
     Promise.all([
@@ -147,32 +154,39 @@ export default function LabelPage() {
         if (!alive) return;
         const t = { ...empty };
         const lines: ShowLine[] = [];
+        const other = new Set<string>();
         results.forEach((res, i) => {
           if (!res) return;
           (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
+          for (const c of res.excludedCurrencies ?? []) other.add(c);
           for (const s of res.shows) lines.push({ ...s, artistName: roster[i].name });
         });
         lines.sort((a, b) => (a.date && b.date ? (a.date > b.date ? -1 : 1) : a.date ? -1 : 1));
-        setShows({ totals: t, lines });
+        setShows({ totals: t, lines, otherCurrencies: [...other] });
       });
     return () => { alive = false; };
   }, [artists]);
 
-  // Clip investment: fetch per roster artist and aggregate. Single source =
-  // red_films_productions.general_budget (live, no-store). labelInvestment = budget/2.
+  // Clips: fetch per roster artist and aggregate PER CURRENCY (B3, Owner canon 2026-09-27): A client clip price,
+  // B planned budget, C actual cost (Finance, paid), Red Films ledger — four separate numbers, never added together.
+  // The artist recoup of clips is NOT_DEFINED (no artist agreement rule) — never 50 % of the budget.
   useEffect(() => {
     const roster = artists ?? [];
-    const empty = { fullBudget: 0, labelInvestment: 0, artistRecoupBalance: 0, count: 0 };
-    if (roster.length === 0) { setClips({ totals: empty, lines: [] }); return; }
+    const empty = (): ArtistClipsSummary["totals"] => ({ count: 0, byCurrency: {} });
+    if (roster.length === 0) { setClips({ totals: empty(), lines: [] }); return; }
     let alive = true;
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/clips`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistClipsSummary | null)[]) => {
         if (!alive) return;
-        const t = { ...empty };
+        const t = empty();
         const lines: ClipLine[] = [];
         results.forEach((res, i) => {
           if (!res) return;
-          (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
+          t.count += res.totals.count;
+          for (const [cur, b] of Object.entries(res.totals.byCurrency ?? {})) {
+            const x = (t.byCurrency[cur] ??= { clientClipPrice: 0, plannedBudget: 0, actualCostPaid: 0, rfLedgerPaid: 0 });
+            x.clientClipPrice += b.clientClipPrice; x.plannedBudget += b.plannedBudget; x.actualCostPaid += b.actualCostPaid; x.rfLedgerPaid += b.rfLedgerPaid;
+          }
           for (const c of res.clips) lines.push({ ...c, artistName: roster[i].name });
         });
         setClips({ totals: t, lines });
@@ -232,7 +246,8 @@ export default function LabelPage() {
       .sort((a, b) => (a.release.releaseTargetDate! < b.release.releaseTargetDate! ? -1 : 1));
     const upcomingSoon = upcoming.filter((r) => (daysUntil(r.release.releaseTargetDate) ?? -1) >= 0);
 
-    const released = withRel.filter((r) => r.release.releasedAt)
+    // B5: released = the current stage יצא; released_at (first-release date) dates it where present.
+    const released = withRel.filter((r) => r.release.releaseStage === "יצא" && r.release.releasedAt)
       .sort((a, b) => (a.release.releasedAt! > b.release.releasedAt! ? -1 : 1));
     const daysSinceLast = released[0] ? Math.max(0, daysBetween(released[0].release.releasedAt!.slice(0, 10), todayYmd())) : null;
 
@@ -250,9 +265,12 @@ export default function LabelPage() {
   const busy = state === "loading";
 
   // Top financial KPIs — LABEL P&L only (never artist share / recoup). Balance =
-  // actual income − actual clip investment; projected adds only expected income.
+  // actual income − actual clip spend; projected adds only expected income.
+  // B3: the clip investment is the ACTUAL paid clip cost in Finance (C, ₪ — this P&L is ₪-only), never the planned
+  // budget and never "50 % of the budget". Red Films ledger payments are not in Finance yet (DB-1 pending) and are shown
+  // in the clips section, not here.
   const finReady = shows != null && clips != null && media != null;
-  const investActual = clips?.totals.labelInvestment ?? 0;   // clip label investment (budget/2)
+  const investActual = clips?.totals.byCurrency["₪"]?.actualCostPaid ?? 0;
   const incomeActual = (shows?.totals.labelReceived ?? 0) + (media?.totals.labelShareReceived ?? 0);
   const incomeExpected = (shows?.totals.labelExpected ?? 0) + (media?.totals.labelShareExpected ?? 0);
   const balanceActual = incomeActual - investActual;         // label balance (distinct from artistActualBalance)
@@ -263,6 +281,10 @@ export default function LabelPage() {
     return `₪${n.toLocaleString("en-US", { minimumFractionDigits: hasFrac ? 2 : 0, maximumFractionDigits: 2 })}`;
   };
   const signedMoney = (n: number) => (n < -0.001 ? "−" : "") + money(Math.abs(n));
+  // per-currency display (B3): each currency on its own, never summed
+  const curMoney = (n: number, c: string) => `${c}${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  const mapText = (m: Record<string, number>) => { const e = Object.entries(m ?? {}).filter(([, v]) => v); return e.length ? e.map(([c, v]) => curMoney(v, c)).join(" · ") : "—"; };
+  const byCurText = (m: ArtistClipsSummary["totals"]["byCurrency"], k: "clientClipPrice" | "plannedBudget" | "actualCostPaid" | "rfLedgerPaid") => mapText(Object.fromEntries(Object.entries(m ?? {}).map(([c, b]) => [c, b[k]])));
   const signColor = (n: number) => (n < -0.001 ? "#F87171" : n > 0.001 ? GREEN : SUB);
 
   return (
@@ -356,7 +378,7 @@ export default function LabelPage() {
         <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${!finReady ? BORDER : balanceActual < -0.001 ? "rgba(248,113,113,0.4)" : balanceActual > 0.001 ? "rgba(52,211,153,0.4)" : BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: SUB }}>מאזן הלייבל בפועל</span>
           <span style={{ fontSize: 38, fontWeight: 900, color: finReady ? signColor(balanceActual) : TEXT, letterSpacing: "-0.02em", lineHeight: 1.05, direction: "ltr", textAlign: "right" }}>{finReady ? signedMoney(balanceActual) : "…"}</span>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: finReady ? signColor(balanceActual) : MUTED }}>הכנסות שהתקבלו פחות השקעות הלייבל</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: finReady ? signColor(balanceActual) : MUTED }}>הכנסות שהתקבלו פחות עלות קליפים ששולמה בכספים (₪)</span>
         </div>
         {/* 2 · Expected income */}
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -414,12 +436,18 @@ export default function LabelPage() {
                 <div style={{ marginTop: 14, fontSize: 12, color: "#F59E0B", fontWeight: 700 }}>⚠ {shows.totals.needsAttribution} הופעות קולאב דורשות שיוך ואינן נכללות בסכומים</div>
               )}
 
+              {(shows.otherCurrencies?.length ?? 0) > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#F59E0B", fontWeight: 700 }}>⚠ הסכומים למעלה ב-₪ בלבד — הופעות ב-{shows.otherCurrencies!.join(" / ")} מוצגות ברשימה במטבע שלהן ולא נוספות לסכום</div>
+              )}
+
               {shows.lines.length === 0 ? (
                 <div style={{ marginTop: 16, color: MUTED, textAlign: "center", padding: "10px 0", fontSize: 13.5 }}>אין הופעות משויכות לאמני הלייבל.</div>
               ) : (
                 <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
                   {shows.lines.map((s) => {
-                    const paid = s.paymentStatus === "שולם";
+                    const paid = s.paymentStatus === "שולם";           // the CLIENT paid
+                    const artistPaid = s.artistFeeStatus === "שולם";   // A1: the artist's own fee row
+                    const cur = s.currency || "₪";
                     return (
                       <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 12, padding: "11px 14px", flexWrap: "wrap" }}>
                         <div style={{ flex: 1, minWidth: 140 }}>
@@ -428,15 +456,16 @@ export default function LabelPage() {
                         </div>
                         {s.included ? (
                           <>
-                            <span style={{ fontSize: 11.5, fontWeight: 700, color: paid ? GREEN : "#F59E0B", background: paid ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${paid ? "rgba(52,211,153,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 100, padding: "3px 10px" }}>{s.paymentStatus}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: paid ? GREEN : "#F59E0B", background: paid ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${paid ? "rgba(52,211,153,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 100, padding: "3px 10px" }}>לקוח: {s.paymentStatus}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: artistPaid ? GREEN : SUB, background: artistPaid ? "rgba(52,211,153,0.12)" : "transparent", border: `1px solid ${artistPaid ? "rgba(52,211,153,0.3)" : BORDER2}`, borderRadius: 100, padding: "3px 10px" }}>אמן: {artistPaid ? "שולם" : (s.artistFeeStatus ?? "—")}</span>
                             <div style={{ display: "flex", gap: 18, textAlign: "left" }}>
                               <div style={{ minWidth: 84 }}>
                                 <div style={{ fontSize: 10, color: DIM }}>רווח לייבל</div>
-                                <div style={{ fontSize: 15, fontWeight: 900, color: paid ? GREEN : SUB }}>₪{Math.round(s.labelProfit).toLocaleString()}</div>
+                                <div style={{ fontSize: 15, fontWeight: 900, color: paid ? GREEN : SUB }}>{cur}{Math.round(s.labelProfit).toLocaleString()}</div>
                               </div>
                               <div style={{ minWidth: 84 }}>
                                 <div style={{ fontSize: 10, color: DIM }}>רווח אמן</div>
-                                <div style={{ fontSize: 15, fontWeight: 900, color: SUB }}>₪{Math.round(s.artistFee).toLocaleString()}</div>
+                                <div style={{ fontSize: 15, fontWeight: 900, color: artistPaid ? GREEN : SUB }}>{cur}{Math.round(s.artistFee).toLocaleString()}</div>
                               </div>
                             </div>
                           </>
@@ -453,9 +482,9 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Clips — real label investment (Red Films general_budget; 50/50) */}
+      {/* Clips — A / B / C per currency (B3); recoup NOT_DEFINED */}
       <div style={{ marginBottom: 20 }}>
-        <SectionHeader title="קליפים (השקעת לייבל)" />
+        <SectionHeader title="קליפים" />
         <Card>
           {!clips ? (
             <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
@@ -463,16 +492,14 @@ export default function LabelPage() {
             <div style={{ color: MUTED, textAlign: "center", padding: "22px 0", fontSize: 13.5, lineHeight: 1.7 }}>אין הפקות קליפ פעילות משויכות לאמני הלייבל.<br />תקציב קליפ מנוהל בעמוד Red Films.</div>
           ) : (
             <>
-              {/* Recoup figures reuse the already-loaded per-artist recoupRows (no extra fetch).
-                  Σ actualRecouped / Σ actualRecoupBalance is a safe non-mixing roll-up
-                  (both fields ≥0, per-artist capped; יעד = קוזז + נותר holds). "…" while loading. */}
+              {/* Four separate layers per currency — never added together (B3). */}
               <div className="rb-lab-shows-kpis">
                 {[
-                  { t: "תקציב מלא (שולם)", disp: money(clips.totals.fullBudget), c: SUB },
-                  { t: "השקעת לייבל (50%)", disp: money(clips.totals.labelInvestment), c: "#F87171" },
-                  { t: "יעד קיזוז אמן (50%)", disp: money(clips.totals.artistRecoupBalance), c: "#F59E0B" },
-                  { t: "קוזז בפועל מהאמן", disp: recoupRows ? money(recoupRows.reduce((a, r) => a + r.summary.actualRecouped, 0)) : "…", c: GREEN },
-                  { t: "נותר לקיזוז מהאמן", disp: recoupRows ? money(recoupRows.reduce((a, r) => a + r.summary.actualRecoupBalance, 0)) : "…", c: "#F87171" },
+                  { t: "מחיר קליפ ללקוח", disp: byCurText(clips.totals.byCurrency, "clientClipPrice"), c: SUB },
+                  { t: "תקציב מתוכנן", disp: byCurText(clips.totals.byCurrency, "plannedBudget"), c: "#60A5FA" },
+                  { t: "עלות בפועל (כספים, שולם)", disp: byCurText(clips.totals.byCurrency, "actualCostPaid"), c: "#F87171" },
+                  { t: "שולם בפנקס Red Films", disp: byCurText(clips.totals.byCurrency, "rfLedgerPaid"), c: "#F59E0B" },
+                  { t: "קיזוז מהאמן", disp: "לא נקבע", c: MUTED },
                 ].map((b) => (
                   <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "16px 16px" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: b.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.t}</div>
@@ -489,15 +516,17 @@ export default function LabelPage() {
                       <div style={{ fontSize: 11.5, color: MUTED }}>{c.artistName} · {c.status}</div>
                     </div>
                     <div style={{ display: "flex", gap: 16, textAlign: "left", flexWrap: "wrap" }}>
-                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>תקציב</div><div style={{ fontSize: 14, fontWeight: 800, color: SUB }}>{money(c.fullBudget)}</div></div>
-                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>לייבל 50%</div><div style={{ fontSize: 14, fontWeight: 900, color: "#F87171" }}>{money(c.labelInvestment)}</div></div>
-                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>קיזוז אמן</div><div style={{ fontSize: 14, fontWeight: 800, color: "#F59E0B" }}>{money(c.artistRecoupBalance)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>מחיר ללקוח</div><div style={{ fontSize: 14, fontWeight: 800, color: SUB }}>{c.clientClipPrice != null ? curMoney(c.clientClipPrice, c.clientClipCurrency ?? "₪") : "—"}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>תקציב (תכנון)</div><div style={{ fontSize: 14, fontWeight: 800, color: "#60A5FA" }}>{curMoney(c.plannedBudget, c.currency)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>עלות בפועל</div><div style={{ fontSize: 14, fontWeight: 900, color: "#F87171" }}>{mapText(c.actualCostPaid)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>פנקס Red Films</div><div style={{ fontSize: 14, fontWeight: 800, color: "#F59E0B" }}>{mapText(c.rfLedgerPaid)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>קיזוז מהאמן</div><div style={{ fontSize: 14, fontWeight: 800, color: MUTED }} title={c.recoupReasonHe}>לא נקבע</div></div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים — לתצוגה בלבד, אינו מקוזז אוטומטית מהכנסות האמן. התקציב נקרא חי מ-Red Films.</div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>מחיר ללקוח ≠ תקציב מתוכנן ≠ עלות בפועל ≠ קיזוז מהאמן — כל אחד לפי מטבע, בלי חיבור. קיזוז מהאמן: לא נקבע — חסר כלל חוזה: אילו הוצאות קליפ מתקזזות מול האמן. תשלומים בפנקס Red Films עדיין לא מקושרים לכספים.</div>
             </>
           )}
         </Card>
@@ -592,7 +621,10 @@ export default function LabelPage() {
             <div style={{ color: MUTED, textAlign: "center", padding: "26px 0", fontSize: 13.5 }}>אין אמני לייבל להצגה.</div>
           ) : (() => {
             const NEU = SUB, ORANGE = "#F59E0B", RED = "#F87171";
-            type Col = { header: string; get: (s: ArtistRecoupSummary) => number; color: (v: number) => string; fmt: (v: number) => string; strong?: boolean };
+            // B3: a debt figure is null while the clip recoup is NOT_DEFINED → "לא נקבע" (never a guessed 0).
+            type Col = { header: string; get: (s: ArtistRecoupSummary) => number | null; color: (v: number) => string; fmt: (v: number) => string; strong?: boolean };
+            const show = (c: Col, v: number | null) => (v === null ? "לא נקבע" : c.fmt(v));
+            const tint = (c: Col, v: number | null) => (v === null ? MUTED : c.color(v));
             const colsByTab: Record<typeof bottomTab, Col[]> = {
               actual: [
                 { header: "הופעות", get: (s) => s.showsArtistPaid, color: () => NEU, fmt: money },
@@ -607,7 +639,7 @@ export default function LabelPage() {
                 { header: "סה״כ", get: (s) => s.expectedArtistIncome, color: () => ORANGE, fmt: money, strong: true },
                 { header: "קיזוז צפוי", get: (s) => s.projectedRecoup, color: () => ORANGE, fmt: money },
                 // Signed balance derived from existing fields (NOT projectedRecoupBalance):
-                { header: "יתרה צפויה אחרי קיזוז", get: (s) => s.artistActualBalance + s.expectedArtistIncome, color: signColor, fmt: signedMoney, strong: true },
+                { header: "יתרה צפויה אחרי קיזוז", get: (s) => (s.artistActualBalance === null ? null : s.artistActualBalance + s.expectedArtistIncome), color: signColor, fmt: signedMoney, strong: true },
               ],
               debt: [
                 { header: "חוב התחלתי", get: (s) => s.clipRecoupTarget, color: () => NEU, fmt: money },
@@ -618,7 +650,7 @@ export default function LabelPage() {
               ],
             };
             const cols = colsByTab[bottomTab];
-            const totals = cols.map((c) => recoupRows.reduce((a, r) => a + c.get(r.summary), 0));
+            const totals = cols.map((c) => recoupRows.reduce<number | null>((a, r) => { const v = c.get(r.summary); return a === null || v === null ? null : a + v; }, 0));
             const cell: React.CSSProperties = { fontSize: 13, textAlign: "left", direction: "ltr" };
             const hdr: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" };
             return (
@@ -630,12 +662,12 @@ export default function LabelPage() {
                 {recoupRows.map((r, i) => (
                   <div key={r.artistId} className="rb-lab-income-row" style={{ padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", borderBottom: `1px solid ${BORDER2}` }}>
                     <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.artistName}</span>
-                    {cols.map((c) => { const v = c.get(r.summary); return <span key={c.header} style={{ ...cell, fontWeight: c.strong ? 900 : 800, color: c.color(v) }}>{c.fmt(v)}</span>; })}
+                    {cols.map((c) => { const v = c.get(r.summary); return <span key={c.header} title={v === null ? r.summary.clipRecoupReasonHe ?? undefined : undefined} style={{ ...cell, fontWeight: c.strong ? 900 : 800, color: tint(c, v) }}>{show(c, v)}</span>; })}
                   </div>
                 ))}
                 <div className="rb-lab-income-row" style={{ padding: "13px 18px", background: "rgba(255,255,255,0.02)" }}>
                   <span style={{ fontSize: 12.5, fontWeight: 900, color: TEXT }}>סה״כ כל האמנים</span>
-                  {cols.map((c, ci) => { const v = totals[ci]; return <span key={c.header} style={{ ...cell, fontSize: c.strong ? 15 : 13, fontWeight: 900, color: c.color(v) }}>{c.fmt(v)}</span>; })}
+                  {cols.map((c, ci) => { const v = totals[ci]; return <span key={c.header} style={{ ...cell, fontSize: c.strong ? 15 : 13, fontWeight: 900, color: tint(c, v) }}>{show(c, v)}</span>; })}
                 </div>
               </div>
             );
@@ -713,7 +745,7 @@ export default function LabelPage() {
 
       {createOpen && <CreateReleaseModal artists={d.roster} onClose={() => setCreateOpen(false)} onSaved={reload} onNeedArtist={() => setAddArtistOpen(true)} />}
       {addArtistOpen && <AddArtistModal onClose={() => setAddArtistOpen(false)} onSaved={() => reload()} />}
-      {markOpen && <MarkExistingModal artists={d.roster} onClose={() => setMarkOpen(false)} onSaved={reload} />}
+      {markOpen && <MarkExistingModal artists={d.roster} releasedProjectIds={releasedProjectIds} onClose={() => setMarkOpen(false)} onSaved={reload} />}
       {editItem && editItem.release && <EditReleaseModal item={editItem} onClose={() => setEditItem(null)} onSaved={reload} />}
 
       {mediaCreate && <MediaModal artists={d.roster} mode="create" onClose={() => setMediaCreate(false)} onSaved={onMediaSaved} />}

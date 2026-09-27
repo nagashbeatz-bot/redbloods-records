@@ -10,7 +10,9 @@ import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
-import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY } from "@/lib/finance";
+import { isClipItemPlanned, isClipItemPromoted, txEditScopePatch, type ClipItemStatus } from "@/lib/clip-rf-money-pure";
+import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY, isReceivedStatus, isExpectedStatus, isExpenseFullyPaidStatus, isActualMoneyTx, formatTotalsInline } from "@/lib/finance";
+import { mergeCurrencyTotals } from "@/lib/finance/expected-income";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
@@ -22,6 +24,7 @@ import ActionMenu from "@/components/project/ActionMenu";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
 import { saveFileAs } from "@/lib/download-file";
+import { isPastUnconfirmed, localNowString, PAST_UNCONFIRMED_LABEL } from "@/lib/session-duration";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
@@ -61,7 +64,7 @@ interface TxDraft {
   expenseScope: string;
 }
 
-type ClipItemStatus = "תכנון בלבד" | "הועבר לכספים" | "שולם" | "בוטל";
+// ClipItemStatus — the clip_items.status vocabulary, lib/clip-rf-money-pure CLIP_ITEM_STATUSES (validated by the writer).
 
 interface ClipItem {
   id: string;
@@ -143,7 +146,7 @@ const CYCLE_TYPES:      SessionType[]     = ["סשן", "ניקוי מיקס", "�
 // Quick-change options shown in the status dropdown (income)
 const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל", "לבדיקה"];
 // Statuses that count as "paid" in totalPaid calculation
-const PAID_STATUSES = new Set<PaymentStatus>(["שולם", "התקבל"]);
+// Received income = lib/finance/classify.ts isReceivedStatus (שולם | התקבל) — the one status rule (no local copy).
 // Payment method options
 const PMT_METHOD_OPTS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 
@@ -287,18 +290,18 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
 }) {
   const today = new Date().toISOString().split("T")[0];
 
-  const PAID_S    = new Set(["שולם", "התקבל"]);
-  const EXPECT_S  = new Set(["צפוי", "חלקי"]);
+  // Received = isReceivedStatus, expected = isExpectedStatus (lib/finance/classify.ts) — the one status rule, as every screen + Sunny.
 
   // R5: only money in the project's finance currency is measured against its agreedPrice.
   const txs = partitionByCurrency(transactions, currency).same;
 
   // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
-  const totalPaid     = txs.filter((t) => isSongIncome(t) && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpected = txs.filter((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalPaid     = txs.filter((t) => isSongIncome(t) && isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpected = txs.filter((t) => isSongIncome(t) && isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const cancelledIncome = txs.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = txs.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const overduePayment = txs.some((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
+  // Finance contract: an expense is money only when PAID ("שולם"); expected / cancelled / "התקבל" expenses are not.
+  const totalExpenses = txs.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const overduePayment = txs.some((t) => isSongIncome(t) && isExpectedStatus(t.payment_status) && t.date && t.date < today);
 
   const summary: FinanceSummary = {
     projectId:    project.id,
@@ -582,39 +585,18 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [editingLimit,   setEditingLimit]   = useState(false);
   const [limitDraft,     setLimitDraft]     = useState("");
 
-  // ── Local auto-mark helper ─────────────────────────────────────────────────
-  // Marks sessions that have passed as "התקיים" — optimistic update + background PATCH
-  function localAutoMark(list: Session[]): Session[] {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const clientNow =
-      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-      `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
-    const toMark = list.filter((s) => {
-      if (s.status !== "מתוכנן") return false;
-      if (String(s.session_type) === "חזרה להופעה") return false; // D6: a show rehearsal is never auto-marked (money meaning)
-      if (!s.date || !s.end_time) return false;
-      const sessionEnd = `${s.date}T${s.end_time}:00`;
-      return sessionEnd < clientNow;
-    });
-
-    if (toMark.length === 0) return list;
-
-    // Fire PATCH requests in the background (non-blocking)
-    toMark.forEach((s) => {
-      fetch(`/api/sessions/${s.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "התקיים" }),
-      }).catch(() => {});
-    });
-
-    // Return updated list immediately (optimistic)
-    return list.map((s) =>
-      toMark.some((m) => m.id === s.id) ? { ...s, status: "התקיים" as SessionStatus } : s
-    );
-  }
+  // ── No page-load status writes (A3, Owner canon "time passed ≠ session happened") ──
+  // The drawer used to mark passed sessions התקיים on open (and PATCH the project start date). Both are retired:
+  // a passed planned session is shown as "עבר — לא אושר" and only the Owner's explicit התקיים / בוטל changes it;
+  // the project start date is set by the session writer on create (ensureProjectStartDate).
+  const markSessionOutcome = async (id: string, status: SessionStatus) => {
+    const res = await fetch(`/api/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).catch(() => null);
+    if (res && res.ok) setSessions((prev) => prev.map((s) => s.id === id ? { ...s, status } : s));
+  };
 
   // ── Fetch sessions ─────────────────────────────────────────────────────────
   const fetchSessions = (withSync = false) => {
@@ -622,27 +604,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     fetch(`/api/sessions?projectId=${projectId}`)
       .then((r) => r.json())
       .then((d) => {
-        // Auto-mark passed sessions immediately (optimistic + background PATCH)
-        const marked = localAutoMark(d.sessions ?? []);
-        setSessions(marked);
+        setSessions(d.sessions ?? []);
         setSessionLimit(d.limit ?? 3);
         setSessionsLoaded(true);
-
-        // Auto-fill startDate from earliest session if not yet set
-        const proj = projects.find((p) => p.id === projectId);
-        if (!proj?.startDate && marked.length > 0) {
-          const earliest = marked
-            .filter((s) => s.date)
-            .map((s) => s.date!)
-            .sort()[0];
-          if (earliest) {
-            fetch(`/api/projects/${projectId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ startDate: earliest }),
-            }).then(() => refresh()).catch(() => {});
-          }
-        }
 
         // After loading, run calendar sync in background to remove deleted events
         if (withSync) {
@@ -653,7 +617,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 // Some sessions were removed — reload the list
                 fetch(`/api/sessions?projectId=${projectId}`)
                   .then((r) => r.json())
-                  .then((d2) => setSessions(localAutoMark(d2.sessions ?? [])));
+                  .then((d2) => setSessions(d2.sessions ?? []));
               }
             })
             .catch(() => {});
@@ -1365,8 +1329,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       });
       const data = await res.json();
       if (data.error === "already_promoted") return;
-      if (data.deleted) {
-        setClipItems((prev) => prev.filter((i) => i.id !== id));
+      // B3: the planning row is kept, marked הועבר לכספים and linked to the expense (provenance)
+      if (data.clipItem) {
+        setClipItems((prev) => prev.map((i) => (i.id === id ? data.clipItem : i)));
       }
       if (data.transaction) {
         setTransactions((prev) => [data.transaction, ...prev]);
@@ -1510,15 +1475,16 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           notes:           editTxDraft.notes,
           category:        editTxDraft.category,
           linkedSessionId: editTxDraft.linkedSessionId || "",
-          expenseScope:    editTxDraft.type === "expense" ? (editTxDraft.expenseScope || "כללי") : "כללי",
+          // B3: an income edit never sends a scope (clip income keeps קליפ) — lib/clip-rf-money-pure txEditScopePatch
+          ...txEditScopePatch(editTxDraft.type, editTxDraft.expenseScope),
         }),
       });
       const data = await res.json();
       if (data.transaction) {
         setTransactions((prev) => prev.map((t) => t.id === editingTxId ? data.transaction : t));
-        // Auto-sync clip item status if transaction marked as paid
-        const PAID = new Set(["שולם", "התקבל"]);
-        if (PAID.has(data.transaction.payment_status)) {
+        // Auto-sync clip item status if the transaction is actual money (an expense only when "שולם" —
+        // an expense "התקבל" is not a paid expense; lib/finance/classify.ts isActualMoneyTx).
+        if (isActualMoneyTx(data.transaction)) {
           setClipItems((prev) => prev.map((ci) =>
             ci.linked_transaction_id === editingTxId ? { ...ci, status: "שולם" as ClipItemStatus } : ci
           ));
@@ -1577,9 +1543,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           : t
       )
     );
-    // Auto-sync clip item if marked as paid
-    const PAID_SET = new Set<PaymentStatus>(["שולם", "התקבל"]);
-    if (PAID_SET.has(newStatus)) {
+    // Auto-sync clip item if the row is now actual money (expense: "שולם" only — isActualMoneyTx)
+    if (isActualMoneyTx({ type: tx.type, payment_status: newStatus })) {
       setClipItems((prev) => prev.map((ci) =>
         ci.linked_transaction_id === tx.id ? { ...ci, status: "שולם" as ClipItemStatus } : ci
       ));
@@ -1609,7 +1574,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     if (newStatus === tx.payment_status) return;
     const today = new Date().toISOString().split("T")[0];
     // Show past-date warning only when switching to a "received" status with a past date
-    if (PAID_STATUSES.has(newStatus) && tx.date && tx.date < today) {
+    if (isReceivedStatus(newStatus) && tx.date && tx.date < today) {
       setDateConfirm({ tx, newStatus });
       return;
     }
@@ -1643,15 +1608,16 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   // Money in any other currency is never added to them — it is summed on its own (per currency)
   // and shown on a second line under the matching row.
   const songIncomeParts  = partitionByCurrency(songIncomeList, finCurrency);
-  const expenseParts     = partitionByCurrency(expenseList, finCurrency);
-  const totalPaid        = songIncomeParts.same.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  // A cancelled ("בוטל") expense is never money — it never enters the expense total / estimated profit.
+  const expenseParts     = partitionByCurrency(expenseList.filter((t) => !isCancelledPayment(t.payment_status)), finCurrency);
+  const totalPaid        = songIncomeParts.same.filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExp         = expenseParts.same.reduce((s, t) => s + t.amount, 0);
   const totalClipExp     = clipExpenseList.filter((t) => expenseParts.same.includes(t)).reduce((s, t) => s + t.amount, 0);
   // Actual payment truth — never nets out cancelled ("בוטל") income (Finance
   // Semantics Unification audit, 2026-09-22).
   const balance          = actualBalanceAgainstAgreedPrice(agreedPrice, totalPaid);
   const profit           = totalPaid - totalExp;
-  const otherPaidTotals  = sumByCurrency(songIncomeParts.other.filter((t) => PAID_STATUSES.has(t.payment_status)), (t) => t.amount);
+  const otherPaidTotals  = sumByCurrency(songIncomeParts.other.filter((t) => isReceivedStatus(t.payment_status)), (t) => t.amount);
   const otherExpTotals   = sumByCurrency(expenseParts.other, (t) => t.amount);
   const otherCurCodes    = orderCurrencies(Array.from(new Set([...Object.keys(otherPaidTotals), ...Object.keys(otherExpTotals)])).filter((c) => c !== finCurrency));
   const nzAmt = (n: number) => Math.round(n * 100) !== 0;
@@ -2403,7 +2369,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             {[
               { label: "שולם עד עכשיו",    value: totalPaid,    color: "#10B981", prefix: "",  sub: null, extra: otherPaidLines },
               { label: "יתרה לתשלום",       value: balance,      color: balance > 0 ? "#EF4444" : "#10B981", prefix: "", sub: null, extra: [] as CurrencyLine[] },
-              { label: "הוצאות סה״כ",       value: totalExp,     color: "#F59E0B", prefix: "−", sub: totalClipExp > 0 ? `מתוכן קליפ: ${totalClipExp.toLocaleString()}₪` : null, extra: otherExpLines },
+              { label: "הוצאות סה״כ",       value: totalExp,     color: "#F59E0B", prefix: "−", sub: totalClipExp > 0 ? `מתוכן קליפ: ${totalClipExp.toLocaleString()}${finCurrency}` : null, extra: otherExpLines },
               { label: "רווח משוער",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "", sub: null, extra: otherProfitLines },
             ].map(({ label, value, color, prefix, sub, extra }) => (
               <div key={label} style={{ padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
@@ -2562,7 +2528,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                   {tx.linked_session_id && (() => {
                                     const linked = sessions.find((s) => s.id === tx.linked_session_id);
                                     if (!linked) return null;
-                                    const isPaid = PAID_STATUSES.has(tx.payment_status);
+                                    const isPaid = isReceivedStatus(tx.payment_status);
                                     const dateShort = linked.date ? linked.date.slice(5).split("-").reverse().join(".") : "—";
                                     const color  = isPaid ? "#A78BFA" : "#3B82F6";
                                     const bg     = isPaid ? "rgba(167,139,250,0.1)" : "rgba(59,130,246,0.1)";
@@ -2800,6 +2766,29 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             }}>
                               {s.status}
                             </span>
+                            {/* A3: display-only "passed, not confirmed" — never counted as held; the Owner confirms explicitly */}
+                            {isPastUnconfirmed(s, localNowString()) && (() => {
+                              const heldStatus = (String(s.session_type) === "חזרה להופעה" ? "בוצע" : "התקיים") as SessionStatus;
+                              return (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 700, color: "#F59E0B",
+                                    background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)",
+                                    borderRadius: 5, padding: "1px 6px",
+                                  }}>{PAST_UNCONFIRMED_LABEL}</span>
+                                  <button
+                                    onClick={() => markSessionOutcome(s.id, heldStatus)}
+                                    title={`סמן ${heldStatus}`}
+                                    style={{ fontSize: 10, fontWeight: 600, cursor: "pointer", borderRadius: 5, padding: "1px 6px", color: "#10B981", background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.35)", fontFamily: "inherit" }}
+                                  >{heldStatus}</button>
+                                  <button
+                                    onClick={() => markSessionOutcome(s.id, "בוטל")}
+                                    title="סמן בוטל"
+                                    style={{ fontSize: 10, fontWeight: 600, cursor: "pointer", borderRadius: 5, padding: "1px 6px", color: "#6B7280", background: "rgba(107,114,128,0.10)", border: "1px solid rgba(107,114,128,0.35)", fontFamily: "inherit" }}
+                                  >בוטל</button>
+                                </span>
+                              );
+                            })()}
                             {/* Clickable type badge — cycles through types */}
                             <button
                               onClick={async () => {
@@ -4090,18 +4079,25 @@ function ClipSection({
   onDeleteTx: (id: string) => void;
 }) {
   const clipExp = transactions.filter((t) => t.type === "expense" && t.expense_scope === "קליפ");
-  const PAID = new Set<string>(["שולם", "התקבל"]);
-  const paid    = clipExp.filter((t) => PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const pending = clipExp.filter((t) => !PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  // Finance single truth: a clip EXPENSE is paid only when "שולם" (an expense "התקבל" is not paid); a cancelled
+  // expense is never money; every sum is PER CURRENCY (no FX, never one mixed number).
+  const paid    = sumByCurrency(clipExp.filter((t) => isExpenseFullyPaidStatus(t.payment_status)), (t) => t.amount);
+  const pending = sumByCurrency(clipExp.filter((t) => !isExpenseFullyPaidStatus(t.payment_status) && !isCancelledPayment(t.payment_status)), (t) => t.amount);
+  const clipExpTotal = mergeCurrencyTotals(paid, pending);
 
-  // Clip item (planning) computed values
-  const activeItems   = clipItems.filter((i) => i.status !== "בוטל" && i.status !== "הועבר לכספים");
-  const totalPlanned  = activeItems.reduce((s, i) => s + i.amount, 0);
-  const totalSynced   = activeItems.filter((i) => i.linked_transaction_id).reduce((s, i) => s + i.amount, 0);
-  const totalUnsynced = activeItems.filter((i) => i.status === "תכנון בלבד").reduce((s, i) => s + i.amount, 0);
+  // Clip item (planning) computed values — per the item's own currency. B3 (lib/clip-rf-money-pure): planned = the
+  // UNLINKED rows only; a promoted row (linked to its Finance expense) is kept as provenance and never counted as planned.
+  const plannedItems  = clipItems.filter((i) => isClipItemPlanned(i));
+  const promotedItems = clipItems.filter((i) => i.status !== "בוטל" && isClipItemPromoted(i));
+  const activeItems   = [...plannedItems, ...promotedItems];
+  const totalPlanned  = sumByCurrency(plannedItems, (i) => i.amount);
+  const totalSynced   = sumByCurrency(promotedItems, (i) => i.amount);
+  const totalUnsynced = sumByCurrency(plannedItems.filter((i) => i.status === "תכנון בלבד"), (i) => i.amount);
+  const anyAmount = (m: Record<string, number>) => Object.values(m).some((v) => v > 0);
+  const fmtCur = (m: Record<string, number>) => formatTotalsInline(m, (a, c) => `${a.toLocaleString()}${c}`);
 
   const badgeParts: string[] = [];
-  if (activeItems.length > 0)      badgeParts.push(`${activeItems.length} תכנון`);
+  if (plannedItems.length > 0)     badgeParts.push(`${plannedItems.length} תכנון`);
   if (filmingSessions.length > 0)  badgeParts.push(`${filmingSessions.length} ימי צילום`);
   if (clipExp.length > 0)          badgeParts.push(`${clipExp.length} הוצאות`);
   const badge = badgeParts.length > 0 ? badgeParts.join(" · ") : undefined;
@@ -4112,8 +4108,6 @@ function ClipSection({
     "שולם":           "#10B981",
     "בוטל":           "#6B7280",
   };
-
-  const today = new Date().toISOString().split("T")[0];
 
   return (
     <CollapsibleCard label="קליפ / צילום" badge={badge} open={open} onToggle={onToggle}>
@@ -4132,10 +4126,10 @@ function ClipSection({
               { label: "הועבר לכספים",   value: totalSynced,   color: "#F59E0B" },
               { label: "שולם",           value: paid,          color: "#10B981" },
               { label: "לא מסונכרן",     value: totalUnsynced, color: "#6B7280" },
-            ].map(({ label, value, color }) => value > 0 ? (
+            ].map(({ label, value, color }) => anyAmount(value) ? (
               <div key={label} style={{ background: "#1A1A1A", borderRadius: 7, padding: "5px 9px", border: "1px solid #252525" }}>
                 <div style={{ fontSize: 9, color: "#555", marginBottom: 1 }}>{label}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color }}>{fmtCur(value)}</div>
               </div>
             ) : null)}
           </div>
@@ -4189,13 +4183,13 @@ function ClipSection({
                         >→ כספים</button>
                       )
                     )}
-                    <button
+                    {!isClipItemPromoted(item) && <button
                       onClick={() => onSoftCancelClipItem(item.id, item.description ?? item.category ?? "פריט")}
                       style={{ background: "none", border: "none", color: "#555", fontSize: 13, cursor: "pointer", padding: "0 2px" }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
                       onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
                       title="העבר לסל"
-                    >🗑️</button>
+                    >🗑️</button>}
                   </div>
                 </div>
               );
@@ -4237,7 +4231,7 @@ function ClipSection({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
             {filmingSessions.map((s) => {
-              const isPast = s.date && s.date < today;
+              const isPast = isPastUnconfirmed(s, localNowString()); // A3: end passed (overnight-aware), still מתוכנן — display only
               const statusColor = s.status === "התקיים" ? "#10B981"
                 : s.status === "בוטל" || s.status === "נדחה" ? "#6B7280"
                 : isPast ? "#F59E0B" : "#3B82F6";
@@ -4258,7 +4252,7 @@ function ClipSection({
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}35`, borderRadius: 5, padding: "1px 6px" }}>
-                      {s.status}
+                      {isPast ? PAST_UNCONFIRMED_LABEL : s.status}
                     </span>
                     <button
                       onClick={() => onDeleteFilmingDay(s.id)}
@@ -4313,18 +4307,18 @@ function ClipSection({
             {[
               { label: "שולם", value: paid, color: "#10B981" },
               { label: "צפוי / לא שולם", value: pending, color: "#F59E0B" },
-              { label: "סה״כ", value: paid + pending, color: "#F0F0F0" },
+              { label: "סה״כ", value: clipExpTotal, color: "#F0F0F0" },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ flex: 1, minWidth: 80, background: "#1A1A1A", borderRadius: 8, padding: "8px 10px", border: "1px solid #252525" }}>
                 <div style={{ fontSize: 10, color: "#666", marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color }}>{fmtCur(value)}</div>
               </div>
             ))}
           </div>
           {/* Expense list */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
             {clipExp.map((t) => {
-              const isPaid = PAID.has(t.payment_status);
+              const isPaid = isExpenseFullyPaidStatus(t.payment_status);
               return (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -5280,21 +5274,33 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
       });
-      const data = await res.json() as { ok: boolean; work: SoundEngineerWork };
-      if (data.ok) setWork(data.work);
+      const data = await res.json() as { ok: boolean; work: SoundEngineerWork; error?: string };
+      // The server runs THE one expense writer; a 409 = un-pay refused because the linked expense is "שולם".
+      if (data.ok) { setWork(data.work); setError(null); } else setError(data.error ?? "השמירה נכשלה");
     } finally {
       setSaving(false);
     }
   };
 
+  // The drawer's "שולם" amount: reaching the full price records it as PAID now (THE shared rule needs a payment date);
+  // a paid work keeps its existing date.
+  const patchPaid = (n: number) => {
+    if (!work) return;
+    const fullyPaid = work.agreedPrice > 0 && n >= work.agreedPrice;
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    patch(fullyPaid && !work.paymentDate ? { amountPaid: n, paymentDate: today } : { amountPaid: n });
+  };
+
+  // Explicit "sync" = THE one writer with force: a paid ("שולם") row is never overwritten, a standalone work is refused.
   const handleSync = async () => {
     if (!work) return;
     setSyncing(true); setError(null);
     try {
       const res = await fetch(`/api/sound-engineer/${work.id}`, { method: "POST" });
-      const data = await res.json() as { ok: boolean; txId: string | null; error?: string };
+      const data = await res.json() as { ok: boolean; txId: string | null; error?: string; outcome?: string; messageHe?: string; conflictHe?: string | null };
       if (!data.ok) throw new Error(data.error ?? "סנכרון נכשל");
       if (data.txId) setWork((prev) => prev ? { ...prev, linkedTransactionId: data.txId } : prev);
+      if (data.outcome === "PROTECTED_PAID" || data.outcome === "REFUSED") setError([data.messageHe, data.conflictHe].filter(Boolean).join(" — "));
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
@@ -5489,8 +5495,8 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
                   {editingPaid ? (
                     <input autoFocus type="number" min="0" value={paidDraft}
                       onChange={(e) => setPaidDraft(e.target.value)}
-                      onBlur={() => { const n = Number(paidDraft); if (!isNaN(n)) patch({ amountPaid: n }); setEditingPaid(false); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") { const n = Number(paidDraft); if (!isNaN(n)) patch({ amountPaid: n }); setEditingPaid(false); } if (e.key === "Escape") setEditingPaid(false); }}
+                      onBlur={() => { const n = Number(paidDraft); if (!isNaN(n)) patchPaid(n); setEditingPaid(false); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { const n = Number(paidDraft); if (!isNaN(n)) patchPaid(n); setEditingPaid(false); } if (e.key === "Escape") setEditingPaid(false); }}
                       style={{ width: 70, background: "#0D0D0D", border: "1px solid #3B82F6", borderRadius: 5, color: "#E0E0E0", fontSize: 12, padding: "2px 5px", fontFamily: "inherit", textAlign: "center" }}
                     />
                   ) : (
@@ -5519,6 +5525,7 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
                   {syncing ? "מסנכרן..." : hasTransaction ? "↻ עדכן" : "סנכרן ←"}
                 </button>
               </div>
+              {error && <div style={{ fontSize: 11, color: "#F59E0B" }}>{error}</div>}
 
               {/* Dates */}
               <div style={{ display: "flex", gap: 8 }}>

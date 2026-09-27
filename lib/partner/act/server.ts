@@ -109,7 +109,7 @@ async function projectFamilyWriters(): Promise<ProjectFamilyWriters> {
       const p = await getProject(id);
       return p ? { name: p.name ?? "", artist: p.artist ?? "", status: p.status ?? "", isHidden: !!p.isHidden, businessType: p.businessType ?? "", projectType: p.projectType ?? "", hasRelease: !!(await getReleaseDetails(id)) } : null;
     },
-    writeProjectStatus: (id, status) => updateProject(id, W.statusPatch(status)),
+    writeProjectStatus: async (id, status) => { const cur = await getProject(id); await updateProject(id, W.statusPatch(status, cur ? { status: cur.status, endDate: cur.endDate } : null)); },
     writeProjectHidden: (id, hidden) => updateProject(id, { is_hidden: hidden }),
     renameProject: (id, name) => W.renameProject(id, name),
     changeProjectArtist: (id, artist) => W.changeProjectArtist(id, artist),
@@ -121,6 +121,7 @@ async function projectFamilyWriters(): Promise<ProjectFamilyWriters> {
     setSessionLimit: (id, n) => W.setSessionLimit(id, n),
     countProjectsNamed: (name) => W.countProjectsNamed(name),
     createClientProject: async (f) => (await W.createClientProject(f)).id,
+    newProjectBusinessType: async (artist) => (await W.newProjectBusinessType(artist)).businessType,
     createLabelSong: (f) => createLabelSongRelease({ ...f, releaseStage: f.releaseStage as RelIn["releaseStage"] }),
     convertToLabelRelease: async (pid, aid, input) => (await convertProjectToLabelRelease(pid, aid, { ...input, releaseStage: input.releaseStage as RelIn["releaseStage"] })).status,
   };
@@ -194,11 +195,13 @@ async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
     readTransaction: (id) => F.readTransaction(id),
     financeOwnerOf: (id) => F.financeOwnerOf(id),
     createTransaction: async (t) => String((await F.createTransactionRecord(t)).id),
-    updateTransaction: async (id, patch) => { await F.updateTransactionRecord(id, patch as Parameters<typeof F.updateTransactionRecord>[1]); },
-    deleteTransaction: (id) => F.deleteTransactionRecord(id),
-    async splitIncome(id, paid, date, method) { const r = await F.splitIncome(id, paid, date, method); return r.status === "ok" ? "ok" : r.code === "TX404" ? "not_found" : r.code === "TX409" ? "conflict" : "invalid"; },
+    // the SAME ownership guard as the Finance route (lib/finance/ownership via assertTransactionEditable) — at execution too
+    updateTransaction: async (id, patch) => { await F.assertTransactionEditable(id, patch); await F.updateTransactionRecord(id, patch as Parameters<typeof F.updateTransactionRecord>[1]); },
+    deleteTransaction: async (id) => { await F.assertTransactionEditable(id, "delete"); await F.deleteTransactionRecord(id); },
+    async splitIncome(id, paid, date, method) { if (await F.financeOwnerOf(id)) return "invalid"; const r = await F.splitIncome(id, paid, date, method); return r.status === "ok" ? "ok" : r.code === "TX404" ? "not_found" : r.code === "TX409" ? "conflict" : "invalid"; },
     readFinanceSettings: (id) => F.readFinanceSettings(id),
     setFinanceSettings: async (id, patch) => { await F.setFinanceSettings(id, patch); },
+    readProjectIncomeContext: (pid) => F.readProjectIncomeContext(pid),
   };
 }
 
@@ -212,7 +215,7 @@ async function showFamilyWriters(): Promise<ShowFamilyWriters> {
     async readShow(id) {
       const s = await W.readShow(id);
       if (!s) return null;
-      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id), ...(await (async () => { const m = await showMoneyForShow(s); return { currency: m.currency, received: m.received, remaining: m.remaining, credit: m.credit, payments: m.payments.map((x) => `${x.amount}@${x.date ?? ""}`).sort().join(";") }; })()) };
+      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id), ...(await (async () => { const m = await showMoneyForShow(s); return { currency: m.currency, received: m.received, remaining: m.remaining, credit: m.credit, payments: m.payments.map((x) => `${x.amount}@${x.date ?? ""}`).sort().join(";") }; })()), ...(await (async () => { const f = await W.showFeeRows(s); return { djFeeStatus: f.DJ_FEE?.status ?? null, djFeeAmount: f.DJ_FEE ? f.DJ_FEE.amount : null, artistFeeStatus: f.ARTIST_FEE?.status ?? null, artistFeeAmount: f.ARTIST_FEE ? f.ARTIST_FEE.amount : null }; })()) };
     },
     async createShow(body) { const r = await W.createShowRecord(body); return { id: r.show.id, calendarWarning: r.calendarWarning ?? null, paymentWarning: r.paymentWarning ?? null }; },
     async recordShowPayment(id, p) { const { recordShowPayment } = await import("@/lib/writes/show-payments"); const r = await recordShowPayment(id, { amount: p.amount, date: p.date, currency: p.currency || undefined, method: p.method, note: p.note }); return r.kind === "ok" ? { kind: "ok", transactionId: r.transactionId } : r.kind === "refused" ? { kind: "refused", messageHe: r.messageHe } : { kind: "not_found" }; },
@@ -223,6 +226,7 @@ async function showFamilyWriters(): Promise<ShowFamilyWriters> {
     async notifyShowArtist(id) { const r = await W.notifyShowArtist(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
     async notifyShowDj(id) { const r = await W.notifyShowDj(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
     showNotifyStates: (id) => W.showNotifyStates(id),
+    async setShowFeePaid(id, role, paid, o) { const r = await W.setShowFeePaid(id, role, paid, { date: o.date, method: o.method }); return r.kind === "ok" ? { kind: "ok" } : r.kind === "refused" ? { kind: "refused", messageHe: r.messageHe } : { kind: "not_found" }; },
   };
 }
 
@@ -420,7 +424,8 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
     setRfReferenceTagRecord: async (id, tag) => { await RF.setRfReferenceTag(id, tag); },
     deleteRfReferenceRecord: async (id) => ((await RF.deleteRfReference(id)).kind === "ok" ? "ok" : "not_found"),
     productionsByIds: (ids) => RF.productionsByIds(ids),
-    async deleteCancelledProductionsRecord(ids) { const r = await RF.deleteCancelledProductions(ids); return r.kind === "ok" ? { kind: "ok", deleted: r.deleted } : { kind: "bad", error: r.error }; },
+    async deleteCancelledProductionsRecord(ids) { const r = await RF.deleteCancelledProductions(ids); return r.kind === "ok" ? { kind: "ok", deleted: r.deleted, storageFailures: r.storageFailures, googleTaskFailures: r.googleTaskFailures, warningHe: r.warningHe } : { kind: "bad", error: r.error, code: r.code }; },
+    rfDeletePreflight: (ids) => RF.redFilmsDeletePreflight(ids),
   };
 }
 

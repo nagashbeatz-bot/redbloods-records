@@ -6,6 +6,10 @@
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
 import { isCancelledPayment, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
 import { CLIP_SCOPE } from "@/lib/clip-finance";
+import { isExpectedStatus, isReceivedStatus } from "@/lib/finance/classify";
+import { normalizeCurrency, orderCurrencies, type CurrencyTotals } from "@/lib/finance/currency";
+import { sessionEndLocal, israelNowString } from "@/lib/session-duration";
+import { NOT_OVERDUE_STATUSES, isProjectOverdue, isStrictYmd, israelTodayYmd } from "@/lib/project-deadline";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -13,7 +17,17 @@ function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / 86400000);
 }
 
-const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
+/**
+ * A row that is no longer "overdue": received (lib/finance/classify — the one status rule) or the legacy
+ * legacy partial-paid label below (absent in production; kept so behaviour is unchanged — it is still never FULLY paid).
+ */
+const LEGACY_PARTIAL_PAID_STATUS = "שולם חלקית";
+const isNotOverdueStatus = (s: string | null | undefined) => isReceivedStatus(s) || s === LEGACY_PARTIAL_PAID_STATUS;
+
+/** "1,200₪ · $300" — each currency on its own, never a mixed sum (no FX). */
+function formatByCurrency(totals: CurrencyTotals): string {
+  return orderCurrencies(Object.keys(totals)).map((c) => `${totals[c].toLocaleString("he-IL")}${c}`).join(" · ");
+}
 
 /** Aggregate: if many items of same type, return one combined alert */
 function aggregate<T extends { id?: string; name: string; artist?: string }>(
@@ -32,11 +46,9 @@ function aggregate<T extends { id?: string; name: string; artist?: string }>(
 export function checkOverdueProjects(
   projects: Array<{ id: string; name: string; artist: string; status: string; deadline: string | null }>
 ): AlertInput[] {
-  const today = new Date().toISOString().split("T")[0];
-  const DONE_STATUSES = new Set(["הושלם", "בהשהייה", "בוטל"]);
-  const overdue = projects.filter(
-    (p) => p.deadline && p.deadline < today && !DONE_STATUSES.has(p.status)
-  );
+  // Read parity (B5): THE project-overdue rule (lib/project-deadline.ts) — Israel day, strict date, closed / on hold never.
+  const today = israelTodayYmd();
+  const overdue = projects.filter((p) => isProjectOverdue(p, today));
   return aggregate(
     overdue,
     (p) => ({
@@ -66,10 +78,10 @@ export function checkDueSoonProjects(
   projects: Array<{ id: string; name: string; artist: string; status: string; deadline: string | null }>
 ): AlertInput[] {
   const now = new Date();
-  const today = now.toISOString().split("T")[0];
-  const DONE_STATUSES = new Set(["הושלם", "בהשהייה", "בוטל"]);
+  const today = israelTodayYmd();
+  const DONE_STATUSES = new Set<string>(NOT_OVERDUE_STATUSES);
   const soon = projects.filter((p) => {
-    if (!p.deadline || p.deadline <= today || DONE_STATUSES.has(p.status)) return false;
+    if (!isStrictYmd(p.deadline) || p.deadline <= today || DONE_STATUSES.has(p.status)) return false;
     const diff = daysBetween(now, new Date(p.deadline));
     return diff >= 1 && diff <= 3;
   });
@@ -102,18 +114,15 @@ export function checkDueSoonProjects(
 // ── 3. Sessions needing update ────────────────────────────────────────────────
 
 export function checkSessionsNeedingUpdate(
-  sessions: Array<{ id: string; projectName: string; date: string; startTime: string | null; status: string }>
+  sessions: Array<{ id: string; projectName: string; date: string; startTime: string | null; endTime?: string | null; status: string }>
 ): AlertInput[] {
-  const now = new Date();
-  const today = now.toISOString().split("T")[0];
+  // Read parity with the real session vocabulary (A3): a planned (מתוכנן) session whose END passed (overnight-aware,
+  // Israel wall clock; no times → end of its day) still needs the Owner's update. Passed ≠ happened.
+  const nowIL = israelNowString();
   const stale = sessions.filter((s) => {
-    if (s.status !== "נקבע") return false;
-    if (s.date > today) return false;
-    if (s.date < today) return true; // past date, still "נקבע"
-    // today: check if time passed
-    if (!s.startTime) return true;
-    const [h, m] = s.startTime.split(":").map(Number);
-    return now.getHours() > h || (now.getHours() === h && now.getMinutes() >= m);
+    if (s.status !== "מתוכנן" || !s.date) return false;
+    const end = sessionEndLocal(s.date, s.startTime, s.endTime ?? null) ?? `${s.date}T23:59:59`;
+    return end < nowIL;
   });
   if (stale.length === 0) return [];
   if (stale.length === 1) {
@@ -122,7 +131,7 @@ export function checkSessionsNeedingUpdate(
       type: "session_needs_update",
       severity: "warning",
       title: `📅 סשן עבר — ${s.projectName}`,
-      message: `סשן של "${s.projectName}" מתאריך ${s.date} עדיין מסומן כ"נקבע". יש לסמן התקיים / בוטל / לא הגיע.`,
+      message: `סשן של "${s.projectName}" מתאריך ${s.date} עדיין מסומן כ"מתוכנן" (עבר — לא אושר). יש לסמן התקיים / בוטל / לא הגיע.`,
       metadata: { sessionId: s.id, date: s.date },
       entityKey: `session_needs_update:${s.id}`,
       suggestedActions: ["סמן התקיים", "סמן בוטל"],
@@ -132,7 +141,7 @@ export function checkSessionsNeedingUpdate(
     type: "session_needs_update",
     severity: "warning",
     title: `📅 ${stale.length} סשנים דורשים עדכון`,
-    message: `יש ${stale.length} סשנים שעברו ועדיין מסומנים כ"נקבע". יש לעדכן סטטוס לכל אחד.`,
+    message: `יש ${stale.length} סשנים שעברו ועדיין מסומנים כ"מתוכנן" (עבר — לא אושר). יש לעדכן סטטוס לכל אחד.`,
     metadata: { sessionIds: stale.map((s) => s.id), count: stale.length },
     entityKey: "session_needs_update:bulk",
     suggestedActions: ["פתח יומן", "עדכן סשנים"],
@@ -141,52 +150,72 @@ export function checkSessionsNeedingUpdate(
 
 // ── 4. Overdue payments ───────────────────────────────────────────────────────
 
-const FULLY_PAID_STATUSES = new Set(["שולם", "התקבל"]);
+/** Finance setting fields the rules read. `currency` = the agreed price's currency (blank = ₪). */
+export type RuleFinanceSetting = { agreedPrice?: number | null; financeException?: boolean; currency?: string | null };
+
+/**
+ * Received SONG income per project, counted ONLY in the project's own finance currency (Finance single truth:
+ * income in another currency is never compared with the agreed price — no FX). Clip income is a separate deal.
+ */
+function paidSongIncomeByProject(
+  transactions: ReadonlyArray<{ projectId: string | null; amount: number; type: string; paymentStatus: string; expenseScope?: string | null; currency?: string | null }>,
+  financeMap: Map<string, RuleFinanceSetting>,
+  isIncome: (type: string) => boolean,
+): Map<string, number> {
+  const paid = new Map<string, number>();
+  for (const t of transactions) {
+    if (!t.projectId || !isIncome(t.type) || (t.expenseScope ?? "") === CLIP_SCOPE || !isReceivedStatus(t.paymentStatus)) continue;
+    if (normalizeCurrency(t.currency) !== normalizeCurrency(financeMap.get(t.projectId)?.currency)) continue;
+    paid.set(t.projectId, (paid.get(t.projectId) ?? 0) + t.amount);
+  }
+  return paid;
+}
 
 export function checkOverduePayments(
   transactions: Array<{ id: string; projectId: string | null; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string; expenseScope?: string | null }>,
-  financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
+  financeMap: Map<string, RuleFinanceSetting>
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
 
-  // Compute total paid income per project (same statuses as ProjectDrawer).
+  // Received song income per project, in the project's currency (same statuses as ProjectDrawer).
   // Clip income (expense_scope="קליפ") is a separate deal — it is not measured
   // against the project's agreed price, so it never enters this total.
   const isClip = (t: { expenseScope?: string | null }) => (t.expenseScope ?? "") === CLIP_SCOPE;
-  const paidByProject = new Map<string, number>();
-  for (const t of transactions) {
-    if (t.projectId && t.type !== "הוצאה" && !isClip(t) && FULLY_PAID_STATUSES.has(t.paymentStatus)) {
-      paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
-    }
-  }
+  // Income = the explicit income types only (an "expense" row is never income, never overdue income).
+  const paidByProject = paidSongIncomeByProject(transactions, financeMap, (type) => INCOME_TYPES.has(type));
 
   const overdue = transactions.filter((t) => {
     // Cancelled ("בוטל") income is never overdue — it counts as no income at all.
-    if (t.type === "הוצאה" || !t.date || t.date >= today || PAID_STATUSES.has(t.paymentStatus) || isCancelledPayment(t.paymentStatus)) return false;
+    if (!INCOME_TYPES.has(t.type) || !t.date || t.date >= today || isNotOverdueStatus(t.paymentStatus) || isCancelledPayment(t.paymentStatus)) return false;
     if (t.projectId) {
       // Skip projects flagged as a finance exception (no charge / favor).
       if (financeMap.get(t.projectId)?.financeException) return false;
       // Skip if project is already fully paid or overpaid. A clip payment is
       // owed regardless of the song's price, so it skips this comparison.
+      // A missing / zero agreed price is PRICE_UNKNOWN — never "fully paid".
       if (!isClip(t)) {
-        const agreedPrice = financeMap.get(t.projectId)?.agreedPrice ?? null;
+        const agreedPrice = Number(financeMap.get(t.projectId)?.agreedPrice ?? 0) || 0;
         const paidIncome  = paidByProject.get(t.projectId) ?? 0;
-        if (agreedPrice != null && paidIncome >= agreedPrice) return false;
+        if (agreedPrice > 0 && paidIncome >= agreedPrice) return false;
       }
     }
     return true;
   });
   if (overdue.length === 0) return [];
-  const total = overdue.reduce((s, t) => s + t.amount, 0);
-  const currency = overdue[0]?.currency ?? "₪";
+  // Totals PER CURRENCY — never one mixed number.
+  const totalsByCurrency: CurrencyTotals = {};
+  for (const t of overdue) { const c = normalizeCurrency(t.currency); totalsByCurrency[c] = (totalsByCurrency[c] ?? 0) + t.amount; }
+  const currencies = Object.keys(totalsByCurrency);
+  const total = currencies.length === 1 ? totalsByCurrency[currencies[0]] : null;
+  const currency = currencies.length === 1 ? currencies[0] : null;
   if (overdue.length === 1) {
     const t = overdue[0];
     return [{
       type: "payment_overdue",
       severity: "important",
       title: `💸 תשלום בפיגור — ${t.projectName}`,
-      message: `תשלום של ${t.amount.toLocaleString("he-IL")}${t.currency} מפרויקט "${t.projectName}" לא עודכן כהתקבל. האם התשלום הגיע?`,
-      metadata: { transactionId: t.id, amount: t.amount, currency: t.currency },
+      message: `תשלום של ${t.amount.toLocaleString("he-IL")}${normalizeCurrency(t.currency)} מפרויקט "${t.projectName}" לא עודכן כהתקבל. האם התשלום הגיע?`,
+      metadata: { transactionId: t.id, amount: t.amount, currency: normalizeCurrency(t.currency) },
       entityKey: `payment_overdue:${t.id}`,
       suggestedActions: ["סמן כהתקבל", "שלח תזכורת"],
     }];
@@ -195,8 +224,8 @@ export function checkOverduePayments(
     type: "payment_overdue",
     severity: "important",
     title: `💸 ${overdue.length} תשלומים בפיגור`,
-    message: `יש ${overdue.length} תשלומים שלא עודכנו כהתקבלו, סה״כ ${total.toLocaleString("he-IL")}${currency}. כדאי לבדוק מה הגיע.`,
-    metadata: { transactionIds: overdue.map((t) => t.id), total, currency, count: overdue.length },
+    message: `יש ${overdue.length} תשלומים שלא עודכנו כהתקבלו, סה״כ ${formatByCurrency(totalsByCurrency)}. כדאי לבדוק מה הגיע.`,
+    metadata: { transactionIds: overdue.map((t) => t.id), total, currency, totalsByCurrency, count: overdue.length },
     entityKey: "payment_overdue:bulk",
     suggestedActions: ["פתח עמוד כספים", "עדכן תשלומים"],
   }];
@@ -211,11 +240,11 @@ const INCOME_TYPES = new Set(["income", "הכנסה"]);
 
 export function checkBalanceMissingDueDate(
   projects: Array<{ id: string; name: string; artist: string; status: string }>,
-  transactions: Array<{ projectId: string | null; amount: number; type: string; paymentStatus: string; date: string | null; expenseScope?: string | null }>,
-  financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
+  transactions: Array<{ projectId: string | null; amount: number; type: string; paymentStatus: string; date: string | null; expenseScope?: string | null; currency?: string | null }>,
+  financeMap: Map<string, RuleFinanceSetting>
 ): AlertInput[] {
-  // Paid income per project — same income predicate + statuses as the UI balance.
-  const paidByProject = new Map<string, number>();
+  // Paid income per project — same income predicate + statuses as the UI balance, in the project's currency only.
+  const paidByProject = paidSongIncomeByProject(transactions, financeMap, (type) => INCOME_TYPES.has(type));
   // Projects that already have an expected ("צפוי") income carrying a date.
   const hasDatedExpected = new Set<string>();
   for (const t of transactions) {
@@ -223,10 +252,7 @@ export function checkBalanceMissingDueDate(
     // Clip income belongs to the clip deal — it neither pays down the song's
     // balance nor counts as a scheduled payment for it.
     if ((t.expenseScope ?? "") === CLIP_SCOPE) continue;
-    if (FULLY_PAID_STATUSES.has(t.paymentStatus)) {
-      paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
-    }
-    if (t.paymentStatus === "צפוי" && t.date) {
+    if (isExpectedStatus(t.paymentStatus) && t.date) {
       hasDatedExpected.add(t.projectId);
     }
   }
@@ -254,9 +280,9 @@ export function checkBalanceMissingDueDate(
       type: "balance_missing_due_date",
       severity: "warning",
       title: "חסר תאריך לתשלום יתרה",
-      message: `לפרויקט ${p.name} נשארה יתרה של ${balance.toLocaleString("he-IL")}₪ ללא תאריך תשלום.`,
+      message: `לפרויקט ${p.name} נשארה יתרה של ${balance.toLocaleString("he-IL")}${normalizeCurrency(setting?.currency)} ללא תאריך תשלום.`,
       relatedProjectId: p.id,
-      metadata: { projectId: p.id, balance, agreedPrice: agreed, paidIncome },
+      metadata: { projectId: p.id, balance, agreedPrice: agreed, paidIncome, currency: normalizeCurrency(setting?.currency) },
       entityKey: `balance_missing_due_date:${p.id}`,
       suggestedActions: ["קבע תאריך תשלום", "סמן כחריג", "עדכן תשלום"],
     });
@@ -470,11 +496,16 @@ export function checkGoalsProgress(progress: GoalsProgress | null): AlertInput[]
 // ── 10. Completed projects with no delivery folder ────────────────────────────
 
 export function checkCompletedNoDelivery(
-  projects: Array<{ id: string; name: string; status: string; files?: Array<{ dropboxPath?: string }> }>
+  projects: Array<{ id: string; name: string; status: string }>,
+  deliveries: ReadonlyMap<string, { deliveryStatus?: string; folderPath?: string; lastDeliveredAt?: string }>,
 ): AlertInput[] {
-  const completed = projects.filter(
-    (p) => p.status === "הושלם" && (!p.files || !p.files.some((f) => f.dropboxPath))
-  );
+  // Read parity (B5): the DELIVERY RECORD (settings delivery_<project>) decides — not projects.files. A completed project
+  // is flagged only when it has no delivery folder in its record, is not delivered and was never delivered before.
+  const completed = projects.filter((p) => {
+    if (p.status !== "הושלם") return false;
+    const d = deliveries.get(p.id);
+    return !d || (!d.folderPath && d.deliveryStatus !== "delivered" && !d.lastDeliveredAt);
+  });
   return aggregate(
     completed,
     (p) => ({

@@ -15,6 +15,13 @@ import type { OperationsRaw } from "../operations/types";
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { activeKnowledge } from "../owner-knowledge/store";
 import { projectMoney, type ProjectMoney } from "./money";
+import { classificationSignal, rosterIdByNameOf } from "../../project-classification";
+import { AUTO_MARK_RETIRED_AT } from "../../session-duration";
+import { isEngineerWorkPaid } from "../../mix-payment-pure";
+import { normalizeCurrency } from "../../finance/currency";
+import { isClipItemPlanned } from "../../clip-rf-money-pure";
+import { NOT_OVERDUE_STATUSES, isProjectOverdue, deadlineParseIssue } from "../../project-deadline";
+import { sendEntryCurrent, evidenceFor, isOpenSendState } from "../work/send-log";
 
 type Q = "CANONICAL_RELATION" | "TEXT_MATCH" | "OWNER_CONFIRMED_RELATION" | "DERIVED_RELATION" | "UNKNOWN";
 export interface Link<T> { quality: Q; basis: string; value: T }
@@ -22,7 +29,8 @@ export interface Signal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const CLOSED = new Set(["הושלם", "בוטל"]);
-const INACTIVE = new Set(["הושלם", "בוטל", "בהשהייה"]);
+/** The shared closed set (lib/project-deadline.ts): completed / cancelled / on hold are never overdue nor "active". */
+const INACTIVE = new Set<string>(NOT_OVERDUE_STATUSES);
 const tokens = (text: string | null | undefined) => (text ?? "").split(/[,،;]/).map((t) => t.trim()).filter(Boolean);
 const norm = (t: string) => t.normalize("NFKC").trim().toLowerCase();
 
@@ -36,14 +44,15 @@ export interface ProjectView {
   money: ProjectMoney | null;
   moneyBrain: { receivables: Array<{ id: string; source: string; amount: number; currency: string; dueDate: string | null; collectible: boolean }>; credits: Array<{ amount: number; currency: string; kind: string }> } | null;
   work: {
-    sessions: { total: number; upcoming: number; held: number; cancelled: number; next: string | null; last: string | null } | null;
+    sessions: { total: number; upcoming: number; held: number; heldPossiblyAutoMarkedLegacy: number; passedStillPlanned: number; cancelled: number; next: string | null; last: string | null; heldNote: string } | null;
     proposal: Link<{ title: string; status: string; amount: number; currency: string }> | null;
     tasksOpen: number | null; tasksOverdue: number | null;
-    projectActions: { open: number; waitingFeedback: number; waitingVersion: number; followupOverdue: number } | null;
+    projectActions: { open: number; waitingFeedback: number; waitingVersion: number; superseded: number; followupOverdue: number; rule: string } | null;
     meetings: { upcoming: number; total: number } | null;
     victor: Array<{ title: string; workState: string | null; ball: string; stuck: boolean; daysSinceSent: number | null }> | null;
     engineers: Array<{ engineer: string; workType: string | null; status: string | null; versions: number; openComments: number; finalFiles: number; internalDeadline: string | null; paid: boolean }> | null;
-    redFilms: Array<{ title: string; type: string | null; status: string | null; shootDate: string | null; budgetPaid: number }> | null;
+    /** budgetPaid is per currency (payments carry their line currency; no FX). */
+    redFilms: Array<{ title: string; type: string | null; status: string | null; shootDate: string | null; budgetPaid: Record<string, number> }> | null;
     clipPlanning: { rows: number; byCurrency: Record<string, number> } | null;
     social: { status: string | null; releaseDate: string | null } | null;
     release: { stage: string; targetDate: string | null; releasedAt: string | null; labelArtistKey: string | null } | null;
@@ -113,8 +122,16 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
   const tasks = st?.domains.tasksFull.data?.items.filter((t) => t.relatedType === "project" && t.relatedId === projectId && t.status === "פתוח") ?? null;
   const acts = ops?.projectActions?.rows.filter((a) => a.projectId === projectId) ?? null;
   const openActs = acts?.filter((a) => !["approved", "closed", "cancelled"].includes(a.status ?? "")) ?? null;
+  // B5: a pending send-log entry is superseded by LATER in-app evidence (engineer → mix versions of this project's works;
+  // external producer → Victor uploads / sent notes) — historical, never a WAITING_* signal (lib/partner/work/send-log).
+  const engIds = new Set((engineerWorks ?? []).map((w) => w.id));
+  const sendEvidence = { mixVersionCreatedAt: (ops?.mixVersions?.rows ?? []).filter((v) => v.workId && engIds.has(v.workId)).map((v) => v.createdAt), victorUploads: (victorWorks ?? []).map((w) => w.lastUploadAt), victorNotesSentAt: (victorWorks ?? []).map((w) => w.lastNotesSentAt) };
+  const actState = new Map((openActs ?? []).map((a) => [a, sendEntryCurrent(a, evidenceFor(a, sendEvidence)).state] as const));
+  const liveActs = openActs ? openActs.filter((a) => a.status === "got_notes" || !["pending_version", "pending_feedback"].includes(a.status ?? "") || isOpenSendState(actState.get(a) ?? "CURRENT")) : null;
+  const supersededActs = openActs ? openActs.filter((a) => actState.get(a) === "SUPERSEDED") : null;
   const meetings = ops?.meetings?.rows.filter((m) => m.projectId === projectId) ?? null;
-  const clipRows = ops?.clipItems?.rows.filter((c) => c.projectId === projectId && c.status !== "בוטל" && c.status !== "הועבר לכספים" && !c.hasTransaction) ?? null;
+  // planned = UNLINKED rows only (B3: the ONE rule, lib/clip-rf-money-pure isClipItemPlanned — promoted rows are provenance)
+  const clipRows = ops?.clipItems?.rows.filter((c) => c.projectId === projectId && isClipItemPlanned(c)) ?? null;
   const campaign = ops?.campaigns?.rows.find((c) => c.projectId === projectId) ?? null;
   const tracks = ops?.albumTracks?.rows.filter((t) => t.projectId === projectId) ?? null;
   const delivery = ops?.deliveries?.rows.find((d) => d.projectId === projectId) ?? null;
@@ -133,9 +150,16 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
     if (identity.deadline) certain.push(`דדליין: ${identity.deadline}`);
     const active = status ? !INACTIVE.has(status) : false;
     if (active && !identity.deadline) signals.push({ code: "NO_DEADLINE", kind: "CANONICAL_FACT", he: "לפרויקט פעיל אין דדליין." });
-    if (active && identity.deadline && identity.deadline < today) signals.push({ code: "DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `הדדליין עבר (${identity.deadline}). דדליין לבדו לא קובע דחיפות — איכות לפני מהירות.` });
+    // The ONE overdue rule (lib/project-deadline.ts): strict YYYY-MM-DD, Israel day, not closed / on hold, not hidden.
+    if (deadlineParseIssue(identity.deadline)) signals.push({ code: "DEADLINE_UNPARSEABLE", kind: "UNKNOWN", he: `הדדליין השמור ("${identity.deadline}") אינו תאריך YYYY-MM-DD — אי אפשר לדעת אם עבר.` });
+    if (isProjectOverdue({ deadline: identity.deadline, status, isHidden: identity.hidden }, today)) signals.push({ code: "DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `הדדליין עבר (${identity.deadline}). דדליין לבדו לא קובע דחיפות — איכות לפני מהירות.` });
     if (identity.daysSinceUpdate !== null && identity.daysSinceUpdate >= 30 && active) signals.push({ code: "STALE", kind: "DERIVED_SIGNAL", he: `לא עודכן ${identity.daysSinceUpdate} ימים — ישן זה לא דחוף; צריך הקשר מהבעלים.` });
-    if (identity.businessType === "לקוח" && labelArtists.some((l) => l.quality === "TEXT_MATCH")) signals.push({ code: "LABEL_CLASSIFICATION_UNCLEAR", kind: "UNKNOWN", he: "הפרויקט שמור כ'לקוח' אבל האמן בשמו הוא אמן לייבל — הסיווג תלוי בהחלטת הבעלים." });
+    // B2 (Owner canon 2026-09-27): the stored type is the classifier. The Owner rule (שליו טסמה / אבי מולה credited →
+    // לייבל, by roster id) disagreeing with a stored non-label type is a DERIVED signal with an explicit Owner fix —
+    // never an automatic write. Any other roster-name match is only weak evidence (no "roster artist = label" rule).
+    const mismatch = classificationSignal(identity, rosterIdByNameOf(st?.domains.labelArtists.data?.items ?? []));
+    if (mismatch) signals.push({ code: mismatch.code, kind: mismatch.kind, he: mismatch.he });
+    else if (identity.businessType === "לקוח" && labelArtists.some((l) => l.quality === "TEXT_MATCH")) signals.push({ code: "LABEL_CLASSIFICATION_UNCLEAR", kind: "UNKNOWN", he: "רמז חלש בלבד: הפרויקט שמור כ'לקוח' ואחד האמנים בקרדיט נמצא ברוסטר הלייבל (התאמת שם). אין כלל 'אמן רוסטר = לייבל' — זה לקוח אלא אם הבעלים מחליט אחרת." });
     if (identity.hidden) signals.push({ code: "HIDDEN_PROJECT", kind: "CANONICAL_FACT", he: "הפרויקט מוסתר — רוב המסכים לא מציגים אותו." });
   }
   if (money) {
@@ -148,10 +172,12 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
   if (engineerWorks?.some((w) => w.status === "נשלח" || w.status === "בתהליך")) signals.push({ code: "AT_ENGINEER", kind: "CANONICAL_FACT", he: "יש עבודת מיקס/מאסטר פתוחה אצל מהנדס." });
   if (victorWorks?.some((w) => w.ball.holder === "owner")) signals.push({ code: "VICTOR_WAITING_OWNER", kind: "DERIVED_SIGNAL", he: "ויקטור מסר ואין תגובה מתועדת של הבעלים אחריו (לא מוכיח שלא טופל)." });
   if (victorWorks?.some((w) => w.ball.holder === "victor")) signals.push({ code: "AT_VICTOR", kind: "DERIVED_SIGNAL", he: "הכדור אצל ויקטור." });
-  if (openActs?.some((a) => a.status === "pending_feedback")) signals.push({ code: "WAITING_FEEDBACK", kind: "CANONICAL_FACT", he: "נשלח משהו ומחכים לתגובה (מעקב שליחות)." });
-  if (openActs?.some((a) => a.status === "pending_version")) signals.push({ code: "WAITING_VERSION", kind: "CANONICAL_FACT", he: "מחכים לגרסה חדשה (מעקב שליחות)." });
+  if (liveActs?.some((a) => a.status === "pending_feedback")) signals.push({ code: "WAITING_FEEDBACK", kind: "DERIVED_SIGNAL", he: "נשלח משהו ומחכים לתגובה (מעקב שליחות; אין תגובה רשומה אחריו)." });
+  if (liveActs?.some((a) => a.status === "pending_version")) signals.push({ code: "WAITING_VERSION", kind: "DERIVED_SIGNAL", he: "מחכים לגרסה חדשה (מעקב שליחות; לא הועלתה גרסה אחריו)." });
+  if (supersededActs?.length) signals.push({ code: "SEND_LOG_SUPERSEDED", kind: "DERIVED_SIGNAL", he: `${supersededActs.length} רישומי שליחה 'מחכים' כבר נענו לפי ראיות מאוחרות יותר (גרסה / הערות שהועלו אחריהם) — היסטוריה, לא המתנה.` });
   if (status === "הושלם" && delivery && delivery.status !== "delivered") signals.push({ code: "COMPLETED_DELIVERY_OPEN", kind: "DERIVED_SIGNAL", he: `הושלם, סטטוס מסירה: ${delivery.status ?? "?"}.` });
-  if (release && release.targetYmd && release.targetYmd < today && !release.releasedAt) signals.push({ code: "RELEASE_TARGET_PASSED", kind: "DERIVED_SIGNAL", he: "תאריך יעד הריליס עבר והוא לא יצא. ריליסים של הלייבל מוגנים (מדיניות בעלים)." });
+  // B5: "not released" = the current stage is not יצא (released_at is only the first-release date).
+  if (release && release.targetYmd && release.targetYmd < today && release.stage !== "יצא") signals.push({ code: "RELEASE_TARGET_PASSED", kind: "DERIVED_SIGNAL", he: "תאריך יעד הריליס עבר והוא לא יצא. ריליסים של הלייבל מוגנים (מדיניות בעלים)." });
   if (prods?.some((p) => !["פורסם", "בוטל"].includes(p.status ?? ""))) signals.push({ code: "CLIP_IN_PRODUCTION", kind: "CANONICAL_FACT", he: "יש הפקת קליפ/Red Films פעילה לפרויקט." });
   if (sessions && identity && !INACTIVE.has(status ?? "") && sessions.length === 0) signals.push({ code: "NO_SESSIONS", kind: "CANONICAL_FACT", he: "אין סשנים רשומים לפרויקט (ייתכן שהעבודה לא דורשת סשן)." });
   for (const k of ownerKnowledge) inferred.push(`ידע מהבעלים: ${k.meaningHe}`);
@@ -172,19 +198,20 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
     },
     money, moneyBrain,
     work: {
-      sessions: sessions ? { total: sessions.length, upcoming: upcomingSessions.length, held: sessions.filter((s) => s.status === "התקיים").length, cancelled: sessions.filter((s) => s.status === "בוטל").length, next: upcomingSessions.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd))[0]?.dateYmd ?? null, last: dated.filter((s) => s.dateYmd < today).at(-1)?.dateYmd ?? null } : null,
+      sessions: sessions ? { total: sessions.length, upcoming: upcomingSessions.length, held: sessions.filter((s) => s.status === "התקיים").length, heldPossiblyAutoMarkedLegacy: sessions.filter((s) => s.status === "התקיים" && s.dateYmd <= AUTO_MARK_RETIRED_AT).length, passedStillPlanned: sessions.filter((s) => s.status === "מתוכנן" && s.dateYmd < today).length, cancelled: sessions.filter((s) => s.status === "בוטל").length, next: upcomingSessions.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd))[0]?.dateYmd ?? null, last: dated.filter((s) => s.dateYmd < today && s.status !== "בוטל").at(-1)?.dateYmd ?? null,
+        heldNote: `held = recorded התקיים. Sessions dated on / before ${AUTO_MARK_RETIRED_AT} may have been auto-marked by the retired page-load writer (legacy, not proof); after it התקיים is an explicit Owner record. A passed מתוכנן is 'עבר — לא אושר' (passed ≠ happened). last ignores cancelled sessions.` } : null,
       proposal: proposal ? { quality: "CANONICAL_RELATION", basis: "proposal linked project id", value: { title: proposal.title, status: proposal.status, amount: proposal.amount, currency: proposal.currency } } : null,
       tasksOpen: tasks ? tasks.length : null, tasksOverdue: tasks ? tasks.filter((t) => t.dueYmd && t.dueYmd < today).length : null,
-      projectActions: openActs ? { open: openActs.length, waitingFeedback: openActs.filter((a) => a.status === "pending_feedback").length, waitingVersion: openActs.filter((a) => a.status === "pending_version").length, followupOverdue: openActs.filter((a) => a.followupDate && a.followupDate < today).length } : null,
+      projectActions: openActs && liveActs ? { open: openActs.length, waitingFeedback: liveActs.filter((a) => a.status === "pending_feedback").length, waitingVersion: liveActs.filter((a) => a.status === "pending_version").length, superseded: supersededActs?.length ?? 0, followupOverdue: liveActs.filter((a) => a.followupDate && a.followupDate < today).length, rule: "waiting = a pending entry with no later version / response recorded (the shared send-log rule); a superseded entry is history" } : null,
       meetings: meetings ? { upcoming: meetings.filter((m) => (m.date ?? "") >= today && m.status !== "בוטלה").length, total: meetings.length } : null,
       victor: victorWorks ? victorWorks.map((w) => ({ title: w.title, workState: w.workState, ball: w.ball.holder, stuck: w.isStuck, daysSinceSent: w.daysSinceSent })) : null,
       engineers: engineerWorks ? engineerWorks.map((w) => {
         const vs = ops?.mixVersions?.rows.filter((v) => v.workId === w.id) ?? [];
         const ids = new Set(vs.map((v) => v.id));
         return { engineer: w.engineerName, workType: w.workType, status: w.status, versions: vs.length, openComments: ops?.mixComments?.rows.filter((c) => c.versionId && ids.has(c.versionId) && c.status === "open").length ?? 0,
-          finalFiles: ops?.finalFiles?.rows.filter((f) => f.workId === w.id).length ?? 0, internalDeadline: w.internalDeadline, paid: (w.agreedPrice ?? 0) > 0 && (w.amountPaid ?? 0) >= (w.agreedPrice ?? 0) && !!w.paymentDate };
+          finalFiles: ops?.finalFiles?.rows.filter((f) => f.workId === w.id).length ?? 0, internalDeadline: w.internalDeadline, paid: isEngineerWorkPaid(w) };
       }) : null,
-      redFilms: prods ? prods.map((p) => ({ title: p.title, type: p.productionType, status: p.status, shootDate: p.shootDate, budgetPaid: ops?.budgetPayments?.rows.filter((b) => b.productionId === p.id).reduce((s, b) => s + (b.amount ?? 0), 0) ?? 0 })) : null,
+      redFilms: prods ? prods.map((p) => ({ title: p.title, type: p.productionType, status: p.status, shootDate: p.shootDate, budgetPaid: (ops?.budgetPayments?.rows ?? []).filter((b) => b.productionId === p.id).reduce<Record<string, number>>((m, b) => { const c = normalizeCurrency(b.currency); m[c] = (m[c] ?? 0) + (b.amount ?? 0); return m; }, {}) })) : null,
       clipPlanning: clipRows ? { rows: clipRows.length, byCurrency: clipRows.reduce<Record<string, number>>((m, c) => ({ ...m, [c.currency ?? "₪"]: (m[c.currency ?? "₪"] ?? 0) + (c.amount ?? 0) }), {}) } : null,
       social: campaign ? { status: campaign.status, releaseDate: campaign.releaseDate } : null,
       release: release ? { stage: release.stage, targetDate: release.targetYmd, releasedAt: release.releasedAt, labelArtistKey: release.labelArtistId ? `label-artist:${release.labelArtistId}` : null } : null,

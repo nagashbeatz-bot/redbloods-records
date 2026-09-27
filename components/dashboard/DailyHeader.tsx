@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useRadio } from "@/components/radio/RadioProvider";
 
@@ -30,7 +31,7 @@ export default function DailyHeader() {
   }, []);
 
   const overdue = projects.filter(
-    (p) => p.isOverdue && p.status !== "הושלם"
+    (p) => isProjectOverdue(p)
   ).length;
 
   const active = projects.filter(

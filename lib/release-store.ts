@@ -153,7 +153,18 @@ export async function createLabelSongRelease(fields: {
     p_responsible:         fields.responsible ?? "",
   });
   if (error) throw new Error(error.message);
-  return data as string; // uuid
+  const newId = data as string; // uuid
+  // B5: a release created directly as "יצא" gets its released_at stamp (the RPC itself is DB-side and not changed —
+  // this is an app follow-up on the row it just created; only when released_at is still empty).
+  if ((fields.releaseStage ?? "רעיון") === "יצא") {
+    const { error: stampErr } = await supabase
+      .from("project_release_details")
+      .update({ released_at: new Date().toISOString() })
+      .eq("project_id", newId)
+      .is("released_at", null);
+    if (stampErr) console.error("[createLabelSongRelease] released_at stamp failed:", stampErr.message);
+  }
+  return newId;
 }
 
 export type ReleaseWriteResult =
@@ -212,6 +223,8 @@ export async function convertProjectToLabelRelease(
       next_action:         input.nextAction ?? "",
       blocker:             input.blocker ?? "",
       responsible:         input.responsible ?? "",
+      // B5: created directly as released → stamp "first released at" now.
+      ...(input.releaseStage === "יצא" ? { released_at: new Date().toISOString() } : {}),
     })
     .select()
     .single();
@@ -316,9 +329,9 @@ export async function updateReleaseDetails(
     if (newStage !== current.releaseStage) {
       // Real stage change → reset the "time in stage" clock.
       set.stage_entered_at = nowIso;
-      // released_at reflects the CURRENT release state (no history):
+      // B5 (2026-09-27): released_at = "FIRST released at" — stamped on the first move into יצא and NEVER cleared when
+      // the stage later leaves יצא (the current state is the stage; released_at is only the date).
       if (newStage === "יצא" && current.releasedAt == null) set.released_at = nowIso;
-      else if (newStage !== "יצא") set.released_at = null;
     }
   }
 
@@ -347,4 +360,17 @@ export async function setProjectBusinessType(
     .select("id");
   if (error) throw new Error(error.message);
   return !!(data && data.length > 0);
+}
+
+/**
+ * B4 identity: the label artist a project belongs to — the release row's label_artist_id (CANONICAL) first, else an
+ * exact credit → roster-name match (TEXT_MATCH for a single credit, AMBIGUOUS for a collab). Read-only; for callers
+ * that still match by name (recoup clips — B3). Null when the project does not exist.
+ */
+export async function labelArtistIdForProject(projectId: string): Promise<import("./label-identity").ProjectLabelArtistIdentity | null> {
+  const proj = await fetchProject(projectId);
+  if (!proj) return null;
+  const [rel, { listLabelArtists }, { labelArtistIdForProject: resolve }] = await Promise.all([getReleaseDetails(projectId), import("./label-artists-store"), import("./label-identity")]);
+  const roster = rel?.labelArtistId ? [] : (await listLabelArtists()).map((a) => ({ id: a.id, name: a.name }));
+  return resolve({ releaseLabelArtistId: rel?.labelArtistId ?? null, artistText: proj.artist }, roster);
 }

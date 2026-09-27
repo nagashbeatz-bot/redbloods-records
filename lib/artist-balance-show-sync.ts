@@ -1,7 +1,8 @@
 import "server-only";
 import { supabase } from "./supabase";
 import { getLabelArtistByName } from "./label-artists-store";
-import { singleArtistToken, AUTO_SYNC_ENTRY_TYPE, decideSyncAction, decideRemovalAction } from "./artist-balance-show-sync-pure";
+import { singleArtistToken, showArtistIdentity, AUTO_SYNC_ENTRY_TYPE, decideSyncAction, decideRemovalAction, type ShowArtistIdentity } from "./artist-balance-show-sync-pure";
+import { SHALEV_ARTIST_ID } from "./red-artists/portal-registry";
 
 /**
  * Live (one-way, read-derived) sync: a show's artist-fee transaction
@@ -38,7 +39,7 @@ import { singleArtistToken, AUTO_SYNC_ENTRY_TYPE, decideSyncAction, decideRemova
 // skipped entirely (no write). No fallback to Shalev on ambiguity — the id
 // must come from an exact, unambiguous canonical name resolution below.
 const SYNC_ENABLED_ARTIST_IDS = new Set<string>([
-  "8806fe5e-1238-4228-8078-b3db3ccc9b46", // שליו טסמה
+  SHALEV_ARTIST_ID, // שליו טסמה (8806fe5e-…)
 ]);
 
 /**
@@ -66,7 +67,19 @@ async function resolveSyncEnabledArtistId(showArtist: string): Promise<string | 
  * only when the transaction represents a real, still-standing fee — never
  * for "בוטל" (use removeSyncedArtistBalanceEntry for that).
  */
-export async function syncArtistBalanceFromShow(params: {
+/**
+ * B4: returns the show artist's IDENTITY evidence (shows store no label-artist id — the link is the exact name; a
+ * collab is AMBIGUOUS and never attributed). Money behaviour is unchanged: the same single-token, exact-name,
+ * Shalev-only resolution as before; callers that ignore the result behave exactly as they did.
+ */
+export async function syncArtistBalanceFromShow(params: Parameters<typeof syncArtistBalanceFromShowInner>[0]): Promise<ShowArtistIdentity> {
+  const identity = showArtistIdentity(params.showArtist);
+  if (identity.status === "COLLAB_AMBIGUOUS") console.warn(`[artist-balance-show-sync] tx ${params.transactionId}: collab show ("${params.showArtist}") — AMBIGUOUS artist identity, no ledger row written`);
+  await syncArtistBalanceFromShowInner(params);
+  return identity;
+}
+
+async function syncArtistBalanceFromShowInner(params: {
   showArtist: string;
   showName: string;
   showDate: string | null;

@@ -20,7 +20,7 @@ import RedFilmsStatusBadge, {
   CLIENT_SOURCES,
 } from "./RedFilmsStatusBadge";
 import { useProductionLayout } from "@/lib/production-layout";
-import { isProjectManagedClipBudget, PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
+import { isCreatedBySendClip, SEND_CLIP_PROVENANCE_NOTE } from "@/lib/clip-finance";
 import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -329,18 +329,14 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   }
   async function saveBudget() {
     if (!draftBudget) return;
-    // A project-managed budget is never sent from here — the linked project's
-    // clip price owns it. The other budget fields stay editable.
+    // B3: the budget is the production's own planning (never the clip price) — always editable.
     const r = await patch({
-      ...(isProjectManagedClipBudget(draftBudget)
-        ? {}
-        : { general_budget: Number(draftBudget.general_budget) || 0 }),
+      general_budget: Number(draftBudget.general_budget) || 0,
       client_price: Number(draftBudget.client_price) || 0,
       advance_required: Number(draftBudget.advance_required) || 0,
       advance_received: Number(draftBudget.advance_received) || 0,
       collection_status: draftBudget.collection_status,
-      // a clip production's currency follows the project's clip deal (like its budget)
-      ...(isProjectManagedClipBudget(draftBudget) ? {} : { currency: draftBudget.currency ?? "₪" }),
+      currency: draftBudget.currency ?? "₪",
     });
     if (r) setEditing(null);
   }
@@ -612,24 +608,22 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
           {editing === "budget" && draftBudget ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
               {([
-                ["general_budget",`תקציב כללי ${draftBudget.currency ?? "₪"}`],
+                ["general_budget",`תקציב כללי (תכנון) ${draftBudget.currency ?? "₪"}`],
                 ["client_price",`מחיר ללקוח ${draftBudget.currency ?? "₪"}`],
                 ["advance_required",`מקדמה נדרשת ${draftBudget.currency ?? "₪"}`],
                 ["advance_received",`מקדמה התקבלה ${draftBudget.currency ?? "₪"}`],
               ] as const).map(([field, label]) => {
-                // general_budget is read-only while the linked project owns it.
-                const locked = field === "general_budget" && isProjectManagedClipBudget(draftBudget);
+                // B3: every field is editable — the budget is planning, never the clip price.
+                const provenance = field === "general_budget" && isCreatedBySendClip(draftBudget);
                 return (
                   <div key={field}>
-                    <SLabel>{locked ? `${label} 🔒` : label}</SLabel>
-                    <input type="number" style={locked ? { ...INPUT_S, opacity: 0.6, cursor: "not-allowed" } : INPUT_S}
-                      readOnly={locked} disabled={locked}
-                      title={locked ? PROJECT_MANAGED_BUDGET_NOTE : undefined}
+                    <SLabel>{label}</SLabel>
+                    <input type="number" style={INPUT_S}
                       value={(draftBudget as unknown as Record<string,number>)[field] ?? 0}
                       onChange={e => setDraftBudget(d => d ? { ...d, [field]: +e.target.value } : d)} />
-                    {locked && (
+                    {provenance && (
                       <div style={{ fontSize: 10.5, color: "#8A8A92", marginTop: 4, lineHeight: 1.5 }}>
-                        {PROJECT_MANAGED_BUDGET_NOTE}
+                        {SEND_CLIP_PROVENANCE_NOTE}
                       </div>
                     )}
                   </div>
@@ -637,7 +631,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
               })}
               <div>
                 <SLabel>מטבע</SLabel>
-                <select style={SELECT_S} value={draftBudget.currency ?? "₪"} disabled={isProjectManagedClipBudget(draftBudget)}
+                <select style={SELECT_S} value={draftBudget.currency ?? "₪"}
                   onChange={e => setDraftBudget(d => d ? { ...d, currency: e.target.value } : d)}>
                   {["₪", "$", "€"].map(c => <option key={c}>{c}</option>)}
                 </select>
@@ -677,7 +671,6 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         <SCard key="budgetItems">
           <SectionHeader title="תקציב מפורט" />
           <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget} currency={prod.currency ?? "₪"}
-            budgetLocked={isProjectManagedClipBudget(prod)}
             onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)} />
         </SCard>
       );

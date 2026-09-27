@@ -91,9 +91,32 @@ export function overpaymentAmount(agreedPrice: number, paidIncome: number): numb
   return Math.max(paidIncome - agreedPrice, 0);
 }
 
-/** paidIncome >= agreedPrice — the ONLY correct test for a "paid" / "שולם ✓" indicator. */
+/**
+ * agreedPrice > 0 && paidIncome >= agreedPrice — the ONLY correct test for a "paid" / "שולם ✓"
+ * indicator. A missing / zero agreed price is PRICE_UNKNOWN (see isPriceUnknown), never "paid"
+ * (Finance single truth, 2026-09-27). A partial payment is never fully paid.
+ */
 export function isFullyPaid(agreedPrice: number, paidIncome: number): boolean {
-  return paidIncome >= agreedPrice;
+  const agreed = Number(agreedPrice) || 0;
+  return agreed > 0 && (Number(paidIncome) || 0) >= agreed;
+}
+
+/** True when there is no usable agreed price (missing / 0 / negative / NaN) — PRICE_UNKNOWN, never "paid". */
+export function isPriceUnknown(agreedPrice: number | null | undefined): boolean {
+  return !((Number(agreedPrice) || 0) > 0);
+}
+
+/** The canonical payment verdict of one agreed price against the income actually received. */
+export type PaymentPosition = "PRICE_UNKNOWN" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID";
+
+/** PRICE_UNKNOWN when there is no agreed price; OVERPAID = credit; PAID = exactly covered. */
+export function paymentPosition(agreedPrice: number | null | undefined, paidIncome: number | null | undefined): PaymentPosition {
+  const agreed = Number(agreedPrice) || 0;
+  const paid = Number(paidIncome) || 0;
+  if (agreed <= 0) return "PRICE_UNKNOWN";
+  if (paid > agreed) return "OVERPAID";
+  if (paid >= agreed) return "PAID";
+  return paid > 0 ? "PARTIAL" : "UNPAID";
 }
 
 // ── B. COLLECTION INTENT — a separate, narrower, deliberately scoped concept ──

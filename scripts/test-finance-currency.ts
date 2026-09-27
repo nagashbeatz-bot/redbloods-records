@@ -32,14 +32,16 @@ function check(name: string, actual: unknown, expected: unknown) {
 const cents = (n: number) => Math.round(n * 100) / 100; // fixture rows are averaged, so compare to the cent
 type Tx = { type: string; payment_status: string; amount: number; currency?: string | null; scope?: string | null; expense_scope?: string | null };
 
-// ── The pre-change inline formulas, verbatim (FinancePage.calcStats / InsightsPage) ──
+// ── The pre-change inline formulas (FinancePage.calcStats / InsightsPage), verbatim EXCEPT income "expected": since 2026-09-27 it is
+// the ONE status rule (lib/finance/classify EXPECTED_STATUSES = צפוי / לא שולם / חלקי); the old literal צפוי / חלקי / לבדיקה was the
+// registered EXPECTED_INCOME_CONFLICT (now closed). ──
 function OLD_calcStats(txList: Tx[]) {
   const income          = txList.filter((t) => t.type === "income");
   const expenses        = txList.filter((t) => t.type === "expense");
   const projectExpenses = expenses.filter((t) => (t.scope ?? "project") === "project");
   const generalExpenses = expenses.filter((t) => t.scope === "general");
   const incomeReceived    = income.filter((t) => ["התקבל", "שולם"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected    = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeExpected    = income.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const projExpPaid       = projectExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
   const genExpPaid        = generalExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
   const expensesPaid      = projExpPaid + genExpPaid;
@@ -53,7 +55,7 @@ function OLD_insights(txList: Tx[]) {
   const periodExpenses = txList.filter((t) => t.type === "expense");
   const PAID = new Set(["שולם", "התקבל"]);
   const incomeReceived   = periodIncome.filter((t) => PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected   = periodIncome.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeExpected   = periodIncome.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expensesPaid     = periodExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
   const expensesExpected = periodExpenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   return { incomeReceived, incomeExpected, expensesPaid, expensesExpected, profitReal: incomeReceived - expensesPaid, profitEst: incomeReceived + incomeExpected - expensesPaid - expensesExpected };

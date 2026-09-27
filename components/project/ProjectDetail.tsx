@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import Link from "next/link";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
@@ -134,7 +135,7 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
               ← {project.parentProject}
             </span>
           )}
-          {project.isOverdue && project.status !== "הושלם" && <OverdueTag />}
+          {isProjectOverdue(project) && <OverdueTag />}
           {showDueSoon && <DueSoonTag days={days!} />}
         </div>
       </div>
@@ -316,7 +317,7 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
               {project.deadline && (
                 <div
                   className="text-sm"
-                  style={{ color: project.isOverdue ? "#EF4444" : showDueSoon ? "#F97316" : "#666" }}
+                  style={{ color: isProjectOverdue(project) ? "#EF4444" : showDueSoon ? "#F97316" : "#666" }}
                 >
                   {deadlineLabel(project.deadline)}
                 </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjects } from "@/components/ProjectsProvider";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import StatsGrid from "@/components/dashboard/StatsGrid";
 import ProjectSection from "@/components/dashboard/ProjectSection";
 import DailyHeader from "@/components/dashboard/DailyHeader";
@@ -85,7 +86,7 @@ export default function DashboardContent() {
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const overdueRaw = projects.filter(
-    (p) => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה"
+    (p) => isProjectOverdue(p)
   );
   // Most overdue first (most negative daysUntil)
   const overdue = [...overdueRaw].sort((a, b) => {
@@ -102,7 +103,7 @@ export default function DashboardContent() {
       d <= 7 &&
       p.status !== "הושלם" &&
       p.status !== "בהשהייה" &&
-      !p.isOverdue
+      !isProjectOverdue(p)
     );
   });
   // Soonest deadline first

@@ -6,6 +6,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 import { isCancelledPayment } from "@/lib/payment-status";
+import { isExpectedStatus } from "@/lib/finance/classify";
 import { isSongIncome } from "@/lib/clip-finance";
 import { sameCurrency } from "@/lib/finance";
 
@@ -273,7 +274,7 @@ export default function HealthAlert() {
               s.totalPaid += t.amount;
             } else if (isCancelledPayment(t.payment_status)) {
               s.cancelledIncome += t.amount;
-            } else if (t.payment_status === "צפוי" || t.payment_status === "חלקי") {
+            } else if (isExpectedStatus(t.payment_status)) {
               s.totalExpected += t.amount;
               if (t.date && t.date < today) s.overduePayment = true;
             }

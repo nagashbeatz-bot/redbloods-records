@@ -1,5 +1,6 @@
 import "server-only";
-import { PORTAL_ARTISTS, isLinkEnabledArtistName } from "@/lib/red-artists/portal-registry";
+import { PORTAL_ARTISTS, PORTAL_ARTISTS_BY_ID, isLinkEnabledArtistName } from "@/lib/red-artists/portal-registry";
+import { getReleaseDetails } from "@/lib/release-store";
 import { primaryArtist } from "@/lib/project-paths";
 import { getProject } from "@/lib/projects-store";
 import { unlinkProjectFile, type UnlinkResult } from "@/lib/red-artists/sketches-store";
@@ -40,6 +41,8 @@ export interface LinkableProject {
   artistName: string;
   /** That artist's isolated manifest slug ("avi-molla" | "shalev-tasama"). */
   slug: string;
+  /** B4: RELEASE_ID = the project's release label_artist_id (canonical); PRIMARY_ARTIST_NAME = exact primary-name match (fallback). */
+  identity?: "RELEASE_ID" | "PRIMARY_ARTIST_NAME";
 }
 
 /** The project + its resolved portal artist, but only when its PRIMARY artist is
@@ -48,11 +51,17 @@ export async function resolveLinkableProject(projectId: string): Promise<Linkabl
   if (!projectId) return null;
   const project = await getProject(projectId);
   if (!project) return null;
+  // B4 identity: the release's label_artist_id is the canonical owner — it wins over the free-text primary artist
+  // (so a collab where the portal artist is credited second, or a renamed artist, still resolves). Only an id the code
+  // registered (PORTAL_ARTISTS_BY_ID) AND link-enabled counts; anything else falls back to the exact primary name.
+  const release = await getReleaseDetails(projectId).catch(() => null);
+  const byId = release?.labelArtistId ? PORTAL_ARTISTS_BY_ID[release.labelArtistId] : undefined;
+  if (byId && isLinkEnabledArtistName(byId.name)) return { project, artistName: byId.name, slug: byId.slug, identity: "RELEASE_ID" };
   const artistName = primaryArtist(project.artist ?? "");
   if (!isLinkEnabledArtistName(artistName)) return null;
   const slug = PORTAL_ARTISTS[artistName]?.slug;
   if (!slug) return null;                    // registry/list drift — refuse rather than guess
-  return { project, artistName, slug };
+  return { project, artistName, slug, identity: "PRIMARY_ARTIST_NAME" };
 }
 
 /**

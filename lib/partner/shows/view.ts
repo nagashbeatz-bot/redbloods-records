@@ -18,8 +18,8 @@ import type { CalendarWindowResult } from "../calendar/types";
 import { validateTx } from "../finance/core";
 import { buildCalendarLinkIndex, linkCalendarEvent } from "../calendar/links";
 import { availability, dayList } from "../calendar/availability";
-import { computeShowSplit, rehearsalCountedAmount, showMoneyOf } from "../../shows-types";
-import { computeShowNotifyFingerprint } from "../../show-notify-pure";
+import { computeShowSplit, feeRowPaidConflicts, rehearsalCountedAmount, showMoneyOf } from "../../shows-types";
+import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -46,9 +46,11 @@ const marker = (c: Ctx, family: string, showId: string, currentFp: string) => {
   if (!rows) return { state: "UNKNOWN" as const };
   const row = rows.find((r) => r.key.endsWith(`:${showId}`));
   if (!row) return { state: "NOT_SENT" as const };
-  const v = (row.value ?? {}) as { status?: string; fingerprint?: string; sentAt?: string; claimedAt?: string };
-  const status = v.status === "sent" ? "SENT" : v.status === "failed" ? "FAILED" : v.status === "processing" ? "PROCESSING" : "SENT";
-  return { state: status as "SENT" | "FAILED" | "PROCESSING", sentAt: v.sentAt ?? null, outdated: !!v.fingerprint && v.fingerprint !== currentFp, note: "outdated = name / date / time / place changed since it was sent" };
+  // THE app's own read rule (showNotifyStateOf — the same answer as the send button / the notify writers): SENT only for
+  // the show's CURRENT version; a row sent for an older version is SENT_PREVIOUS_VERSION (outdated), never a silent SENT.
+  const v = (row.value ?? {}) as ShowNotifyClaimValue;
+  const r = showNotifyStateOf(v, currentFp);
+  return { state: r.state, sentAt: r.sentAt, outdated: r.state === "SENT_PREVIOUS_VERSION", note: "outdated = name / date / time / place changed since it was sent (the writer would send again)" };
 };
 
 export function buildShowView(src: GatewaySources, showId: string) {
@@ -86,7 +88,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
     const tx = (fin?.raw.transactions ?? []).find((t) => t.linkedSessionId === x.id) ?? null;
     const pay = tx?.status ?? null;
     return { date: x.date, start: x.startTime, status: x.status, type: x.type, cost: x.cost, paymentStatus: pay, counted: rehearsalCountedAmount(x.status, pay, x.cost), hasCalendarEvent: x.hasCalendarEvent, financeRow: !!tx,
-      note: x.status === "התקיים" ? "legacy auto-marked 'התקיים' (before D6) — counts only if paid; the Owner should confirm בוצע / בוטל" : x.status === "מתוכנן" && x.cost ? "planned — does not count toward the split until marked בוצע (D6)" : null };
+      note: x.status === "התקיים" ? "legacy auto-marked 'התקיים' (before D6; the page-load auto-mark is retired since 2026-09-27 — nothing writes it any more) — counts only if paid; the Owner should confirm בוצע / בוטל" : x.status === "מתוכנן" && x.cost ? "planned — does not count toward the split until marked בוצע (D6)" : null };
   }).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
   const counted = r2(rehearsals.reduce((t, x) => t + x.counted, 0));
   const split = computeShowSplit({ show_price: s.price ?? 0, dj_fee: s.djFee ?? 0 }, counted);
@@ -153,7 +155,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (isCleantone && s.djConfirmationStatus === "אושר" && s.djConfirmedAt && s.updatedAt && s.updatedAt > s.djConfirmedAt) signals.push({ code: "DJ_CONFIRMED_BEFORE_CHANGE", kind: "DERIVED_SIGNAL", he: "ההופעה שונתה אחרי אישור ה-DJ (שינוי תאריך לא מאפס אישור)" });
   const na = notifications.artist as { state: string; outdated?: boolean; eligibleNow?: boolean };
   if (na.state === "NOT_SENT" && na.eligibleNow) signals.push({ code: "ARTIST_NOT_NOTIFIED", kind: "CANONICAL_FACT", he: "האמן עוד לא קיבל הודעה על ההופעה" });
-  if (na.state === "SENT" && na.outdated && upcoming) signals.push({ code: "ARTIST_NOTIFIED_OUTDATED", kind: "DERIVED_SIGNAL", he: "האמן קיבל הודעה, אבל פרטי ההופעה השתנו מאז" });
+  if (na.state === "SENT_PREVIOUS_VERSION" && upcoming) signals.push({ code: "ARTIST_NOTIFIED_OUTDATED", kind: "DERIVED_SIGNAL", he: "האמן קיבל הודעה, אבל פרטי ההופעה השתנו מאז" });
   const nd = notifications.dj as { state: string; eligibleNow?: boolean };
   if (nd.state === "NOT_SENT" && nd.eligibleNow) signals.push({ code: "DJ_NOT_NOTIFIED", kind: "CANONICAL_FACT", he: "ה-DJ עוד לא קיבל הודעה על ההופעה" });
   if (rehearsals.length) signals.push({ code: "REHEARSALS_RECORDED", kind: "CANONICAL_FACT", he: `${rehearsals.length} חזרות רשומות` });
@@ -166,6 +168,14 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (s.status === "בוטל" && ledger.some((l) => l.type === "הכנסות" || l.type === "תשלומים")) signals.push({ code: "LEDGER_KEPT_AFTER_CANCEL", kind: "DERIVED_SIGNAL", he: "הופעה מבוטלת שעדיין יש לה הכנסה / תשלום במאזן האמן" });
   if (s.status === "בוצע" && finance.artistFee.exists && (finance.artistFee as { status?: string | null }).status === "צפוי") signals.push({ code: "ARTIST_ROW_UNPAID_AFTER_DONE", kind: "CANONICAL_FACT", he: "שורת שכר האמן עדיין צפוי — לא נרשם תשלום לאמן בכספים" });
   const openTasks = tasks.filter((t) => t.status === "פתוח");
+  // A1: a PAID fee row is never re-priced by the sync — when it no longer matches the show (amount / currency / cancelled),
+  // the app's own rule (feeRowPaidConflicts) reports it; Sunny surfaces it as a conflict, never resolves it
+  for (const [label, row, amount] of [["DJ", finance.djFee, split.djFee], ["אמן", finance.artistFee, split.artistFee]] as const) {
+    if (!row.exists) continue;
+    const r = row as { status?: string | null; amount?: number | null; currency?: string | null };
+    const why = feeRowPaidConflicts({ status: r.status, amount: Number(r.amount) || 0, currency: r.currency }, { amount, currency, cancelled: s.status === "בוטל" });
+    if (why.length) signals.push({ code: "PAID_FEE_ROW_MISMATCH", kind: "DERIVED_SIGNAL", he: `שורת שכר ${label} שולמה ולא תואמת את ההופעה: ${why.join(" · ")} — לא נדרסת; החלטה שלך` });
+  }
   if (openTasks.length) signals.push({ code: "OPEN_SHOW_TASKS", kind: "CANONICAL_FACT", he: `${openTasks.length} משימות פתוחות: ${openTasks.map((t) => t.title).join(" · ")}` });
   if (upcoming && !s.location) questions.push({ kind: "PLACE", questionHe: "איפה ההופעה?", why: "no place recorded" });
   if (upcoming && !s.startTime) questions.push({ kind: "TIME", questionHe: "באיזו שעה ההופעה?", why: "no time recorded (calendar assumes 20:00)" });

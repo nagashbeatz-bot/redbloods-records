@@ -7,6 +7,8 @@
  * trip. `slug` drives Dropbox folder names and settings keys, so it must
  * NEVER change once an artist has real data.
  */
+import { AVI_ARTIST_ID } from "../roles";
+
 export const PORTAL_ARTISTS: Record<string, { slug: string }> = {
   "שליו טסמה": { slug: "shalev-tasama" },
   "אבי מולה":   { slug: "avi-molla" },
@@ -20,6 +22,52 @@ export const SHALEV_SLUG = "shalev-tasama";
 export const AVI_NAME = "אבי מולה";
 export const CLEANTONE_NAME = "DJ CLEANTONE";
 export const NAGASH_NAME = "נגש ביטס";
+
+/** Shalev Tasama's label_artists.id (stable identity; the name is a display snapshot). Not secret. */
+export const SHALEV_ARTIST_ID = "8806fe5e-1238-4228-8078-b3db3ccc9b46";
+
+/**
+ * B4 identity (2026-09-27): portal artists keyed by their STABLE label_artists.id. Resolution is id-first, so a
+ * renamed artist (same id, new name) keeps his portal / slug. Only the ids the code actually knows are here —
+ * DJ CLEANTONE's and נגש ביטס's label_artists ids are not recorded in code, so they still resolve by exact name
+ * (a NAME_FALLBACK, reported as AMBIGUOUS identity quality, never silently equal to an id match).
+ */
+export const PORTAL_ARTISTS_BY_ID: Record<string, { name: string; slug: string }> = {
+  [SHALEV_ARTIST_ID]: { name: SHALEV_NAME, slug: SHALEV_SLUG },
+  [AVI_ARTIST_ID]:    { name: AVI_NAME,    slug: "avi-molla" },
+};
+
+export interface PortalIdentity {
+  slug: string;
+  /** The name the code registered (PORTAL_ARTISTS key) — NOT necessarily the artist's current DB name. */
+  registeredName: string;
+  basis: "ID" | "NAME_FALLBACK";
+  /** ID = CANONICAL; a name-only match is AMBIGUOUS (another row could carry the same name after a rename). */
+  quality: "CANONICAL" | "AMBIGUOUS";
+}
+
+/**
+ * Resolve a label artist's portal: by label_artists.id first; by exact registered name only when the id is not an
+ * id-registered portal artist AND the name is not the registered name of a DIFFERENT id-registered artist (so a
+ * second row reusing "שליו טסמה" can never inherit Shalev's portal). Null = no portal.
+ */
+export function resolvePortalIdentity(artist: { id?: string | null; name?: string | null }, opts: { strict?: boolean } = {}): PortalIdentity | null {
+  const byId = artist.id ? PORTAL_ARTISTS_BY_ID[artist.id] : undefined;
+  if (byId) return { slug: byId.slug, registeredName: byId.name, basis: "ID", quality: "CANONICAL" };
+  const name = artist.name ?? "";
+  if (!isPortalArtistName(name)) return null;
+  const idOwner = Object.entries(PORTAL_ARTISTS_BY_ID).find(([, v]) => v.name === name)?.[0];
+  // strict (default — every ACCESS path): the name belongs to another (id-registered) artist → no portal.
+  // Non-strict is for read-only DISPLAY (Sunny views): the name match is still returned, flagged AMBIGUOUS.
+  if ((opts.strict ?? true) && idOwner && artist.id && idOwner !== artist.id) return null;
+  return { slug: PORTAL_ARTISTS[name].slug, registeredName: name, basis: "NAME_FALLBACK", quality: "AMBIGUOUS" };
+}
+
+/** The label_artists.id registered in code for a portal NAME (only Shalev / Avi today), else null. */
+export function registeredIdForPortalName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  return Object.entries(PORTAL_ARTISTS_BY_ID).find(([, v]) => v.name === name)?.[0] ?? null;
+}
 
 /** True iff this exact label_artists.name has a registered portal. */
 export function isPortalArtistName(name: string | null | undefined): boolean {

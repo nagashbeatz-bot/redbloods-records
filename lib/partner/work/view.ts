@@ -3,7 +3,9 @@
  *
  * Views over sources the Gateway already loads (company state, operations, project detail, finance raw, settings).
  * Every rule here is the APP's rule or a recorded fact; nothing is Owner policy:
- *   - a passed date never means "happened"; a session marked התקיים may have been auto-marked by the app on page load;
+ *   - a passed time never means "happened" (A3, Owner canon): a מתוכנן session whose END passed (overnight-aware) is
+ *     "עבר — לא אושר" (passed, not confirmed); התקיים on a session that ended on / before AUTO_MARK_RETIRED_AT may
+ *     have been auto-marked by the retired page-load writer (legacy), after it התקיים is an explicit Owner record;
  *   - a task linked by a notes marker / title text stays TEXT_MATCH — never promoted to a canonical link;
  *   - a meeting's client id is text (no FK) + a name snapshot;
  *   - album track statuses are manual and separate from the mix works;
@@ -20,6 +22,9 @@ import { validateTx } from "../finance/core";
 import { checkMissing } from "../../social-missing-checker";
 import { getRecommendations } from "../../social-recommendations";
 import type { SocialCampaign, SocialContentItem } from "../../types";
+import { sessionEndLocal, sessionEndPassed, israelNowString, heldIsLegacyPossiblyAutoMarked, AUTO_MARK_RETIRED_AT } from "../../session-duration";
+import { socialPhaseOf, isSocialItemOverdue } from "../../types";
+import { computeFinalFilesFlags } from "../../steven-completed-pure";
 
 export interface WorkSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string; entity?: string; project?: string }
 export interface WorkQuestion { questionHe: string; why: string; kind: string; entity?: string }
@@ -38,8 +43,8 @@ const count = (xs: Array<string | null | undefined>) => xs.reduce<Record<string,
 // ═══════════════════════════════ SESSIONS ═══════════════════════════════
 export const SESSION_KIND: Readonly<Record<string, string>> = { "סשן": "STUDIO_SESSION", "ניקוי מיקס": "MIX_CHANNEL_CLEANING", "חזרה": "REHEARSAL", "חזרה להופעה": "SHOW_REHEARSAL", "צילום קליפ": "CLIP_SHOOT" };
 export const SESSION_STATUS_MEANING: Readonly<Record<string, string>> = {
-  "מתוכנן": "scheduled", "התקיים": "recorded as happened — may be set automatically by the app when the end time passes (page load), so it is NOT proof", "בוטל": "cancelled (its calendar event is NOT removed by a status change)",
-  "נדחה": "postponed", "לא הגיע": "no-show", "בוצע": "rehearsal vocabulary 'done' (the only status the show split counts)",
+  "מתוכנן": "scheduled (once its end passed and nobody confirmed: 'עבר — לא אושר' — passed ≠ happened)", "התקיים": `recorded as happened — an explicit Owner record for sessions ending after ${AUTO_MARK_RETIRED_AT}; on / before it may have been written by the retired page-load auto-mark (legacy, not proof)`, "בוטל": "cancelled (its calendar event is NOT removed by a status change)",
+  "נדחה": "postponed (a recorded outcome)", "לא הגיע": "no-show (a recorded outcome)", "בוצע": "rehearsal vocabulary 'done' (the only status the show split counts)",
 };
 export function buildSessionsView(src: GatewaySources) {
   const c = ctxOf(src);
@@ -53,12 +58,19 @@ export function buildSessionsView(src: GatewaySources) {
   }
   const ids = new Set(rows.map((r) => r.id));
   const shows = new Map(((ok(src.labelDetail) as { shows?: { rows?: Array<{ id: string; name?: string | null; date?: string | null }> } } | null)?.shows?.rows ?? []).map((s) => [s.id, s]));
+  const nowIL = israelNowString(src.now);
   const sessions = rows.map((s) => {
     const datePassed = !!s.date && s.date < c.today;
+    // End passed (overnight-aware; no times → the end of its day). Passed ≠ happened.
+    const endLocal = s.date ? sessionEndLocal(s.date, s.startTime, s.endTime) ?? `${s.date}T23:59:59` : null;
+    const endPassed = sessionEndPassed({ date: s.date, start_time: s.startTime, end_time: s.endTime }, nowIL); // THE shared rule (the drawers' 'עבר — לא אושר')
+    const legacyHeld = heldIsLegacyPossiblyAutoMarked({ status: s.status, date: s.date, start_time: s.startTime, end_time: s.endTime });
     const kind = SESSION_KIND[s.type ?? "סשן"] ?? "UNKNOWN_TYPE";
     return {
-      key: `session:${s.id}`, id: s.id, type: s.type, kind, status: s.status, statusMeaning: SESSION_STATUS_MEANING[s.status ?? ""] ?? "unknown status", date: s.date, start: s.startTime, end: s.endTime, datePassed,
-      happened: s.status === "התקיים" || s.status === "בוצע" ? "RECORDED_AS_HAPPENED (possibly auto-marked)" : s.status === "בוטל" ? "CANCELLED" : datePassed ? "UNKNOWN — date passed, not recorded" : "NOT_YET",
+      key: `session:${s.id}`, id: s.id, type: s.type, kind, status: s.status, statusMeaning: SESSION_STATUS_MEANING[s.status ?? ""] ?? "unknown status", date: s.date, start: s.startTime, end: s.endTime, datePassed, endPassed, endLocal,
+      happened: s.status === "התקיים" ? (legacyHeld ? "RECORDED_AS_HAPPENED (possibly auto-marked — legacy, before the auto-mark was retired)" : "RECORDED_AS_HAPPENED (explicit record)")
+        : s.status === "בוצע" ? "RECORDED_AS_HAPPENED (explicit record)" : s.status === "בוטל" ? "CANCELLED" : s.status === "נדחה" ? "POSTPONED (recorded outcome)" : s.status === "לא הגיע" ? "NO_SHOW (recorded outcome)"
+        : s.status === "מתוכנן" && endPassed ? "PASSED_NOT_CONFIRMED — עבר — לא אושר (end passed, not recorded; passed ≠ happened)" : s.status === "מתוכנן" ? "NOT_YET" : "UNKNOWN — unrecognized status",
       project: s.projectId ? { key: `project:${s.projectId}`, name: projectName(c, s.projectId) } : null, show: s.showId ? { key: `show:${s.showId}`, name: shows.get(s.showId)?.name ?? null, date: shows.get(s.showId)?.date ?? null } : null,
       title: s.title, location: s.location, photographer: s.photographer, cost: s.cost, costCurrency: s.cost ? "NOT_RECORDED (the linked transaction carries the currency)" : null, hasNotes: !!s.notes,
       calendar: s.hasCalendarEvent ? "EVENT_ID_STORED" : "NO_EVENT", finance: txBySession.get(s.id) ?? [], createdAt: s.createdAt,
@@ -70,18 +82,18 @@ export function buildSessionsView(src: GatewaySources) {
     const S = (code: string, kind: WorkSignal["kind"], he: string) => signals.push({ code, kind, he, entity: s.key, project: s.project?.key });
     const label = `${s.type ?? "סשן"} ${s.date ?? ""}${s.project?.name ? ` (${s.project.name})` : s.title ? ` (${s.title})` : ""}`;
     if (s.kind === "UNKNOWN_TYPE") S("SESSION_TYPE_UNKNOWN", "CANONICAL_FACT", `${label}: סוג סשן לא מוכר לאפליקציה`);
-    if (s.datePassed && s.status === "מתוכנן") { S("SESSION_PASSED_STILL_PLANNED", "DERIVED_SIGNAL", `${label}: התאריך עבר והסטטוס עדיין 'מתוכנן' — לא ידוע אם התקיים`); questions.push({ kind: "SESSION_STATE", questionHe: `${label} — התקיים?`, why: "date passed; status not updated", entity: s.key }); }
-    if (!s.datePassed && s.status === "מתוכנן") S("SESSION_UPCOMING", "CANONICAL_FACT", `${label}${s.start ? ` ${s.start.slice(0, 5)}` : ""}`);
-    if (!s.datePassed && s.status === "מתוכנן" && s.calendar === "NO_EVENT") S("SESSION_NO_CALENDAR_EVENT", "CANONICAL_FACT", `${label}: אין אירוע יומן שמור`);
+    if (s.endPassed && s.status === "מתוכנן") { S("SESSION_PASSED_STILL_PLANNED", "DERIVED_SIGNAL", `${label}: עבר — לא אושר (הסשן הסתיים והסטטוס עדיין 'מתוכנן') — לא ידוע אם התקיים`); questions.push({ kind: "SESSION_STATE", questionHe: `${label} — התקיים?`, why: "end passed; status not updated (passed ≠ happened)", entity: s.key }); }
+    if (!s.endPassed && s.status === "מתוכנן") S("SESSION_UPCOMING", "CANONICAL_FACT", `${label}${s.start ? ` ${s.start.slice(0, 5)}` : ""}`);
+    if (!s.endPassed && s.status === "מתוכנן" && s.calendar === "NO_EVENT") S("SESSION_NO_CALENDAR_EVENT", "CANONICAL_FACT", `${label}: אין אירוע יומן שמור`);
     if (s.status === "בוטל" && s.calendar === "EVENT_ID_STORED") S("SESSION_CANCELLED_EVENT_KEPT", "DERIVED_SIGNAL", `${label}: בוטל אבל אירוע היומן נשאר (שינוי סטטוס לא מוחק אירוע)`);
-    if (s.kind === "SHOW_REHEARSAL" && s.status === "התקיים" && (s.cost ?? 0) > 0) S("REHEARSAL_STATUS_NOT_COUNTED", "DERIVED_SIGNAL", `${label}: חזרה בסטטוס 'התקיים' (סימון אוטומטי) — חלוקת ההופעה סופרת רק 'בוצע'`);
+    if (s.kind === "SHOW_REHEARSAL" && s.status === "התקיים" && (s.cost ?? 0) > 0) S("REHEARSAL_STATUS_NOT_COUNTED", "DERIVED_SIGNAL", `${label}: חזרה בסטטוס 'התקיים' (מורשת — סימון אוטומטי לפני D6) — חלוקת ההופעה סופרת רק 'בוצע'`);
     if (!s.project && !s.show && !s.title) S("SESSION_UNLINKED", "CANONICAL_FACT", `${label}: סשן בלי פרויקט, הופעה או כותרת`);
   }
   const orphanTx = [...txBySession.entries()].filter(([sid]) => !ids.has(sid)).flatMap(([sid, txs]) => txs.map((t) => ({ sessionId: sid, ...t })));
   for (const t of orphanTx) signals.push({ code: "SESSION_EXPENSE_ORPHAN", kind: "CANONICAL_FACT", he: `עסקה (${t.category ?? "—"} ${t.currency ?? ""}${t.amount ?? "?"}, ${t.status ?? "—"}) מקושרת לסשן שכבר לא קיים` });
   const limits = (c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "SESSION_LIMIT").map((r) => ({ project: `project:${r.projectId}`, name: projectName(c, r.projectId), limit: Number((r.value as { limit?: unknown } | null)?.limit ?? NaN) || null, studioSessions: sessions.filter((s) => s.project?.key === `project:${r.projectId}` && s.type === "סשן").length }));
   return {
-    counts: { total: sessions.length, byType: count(sessions.map((s) => s.type)), byStatus: count(sessions.map((s) => s.status)), upcoming: sessions.filter((s) => !s.datePassed && s.status === "מתוכנן").length, withCalendarEvent: sessions.filter((s) => s.calendar === "EVENT_ID_STORED").length, withoutProject: sessions.filter((s) => !s.project).length, showRehearsals: sessions.filter((s) => s.kind === "SHOW_REHEARSAL").length, clipShoots: sessions.filter((s) => s.kind === "CLIP_SHOOT").length, note: "recorded counts; happened ≠ date passed" },
+    counts: { total: sessions.length, byType: count(sessions.map((s) => s.type)), byStatus: count(sessions.map((s) => s.status)), upcoming: sessions.filter((s) => !s.endPassed && s.status === "מתוכנן").length, passedNotConfirmed: sessions.filter((s) => s.endPassed && s.status === "מתוכנן").length, withCalendarEvent: sessions.filter((s) => s.calendar === "EVENT_ID_STORED").length, withoutProject: sessions.filter((s) => !s.project).length, showRehearsals: sessions.filter((s) => s.kind === "SHOW_REHEARSAL").length, clipShoots: sessions.filter((s) => s.kind === "CLIP_SHOOT").length, note: "recorded counts; happened ≠ time passed (a passed מתוכנן is 'עבר — לא אושר', never counted as held)" },
     sessions, limits, orphanTransactions: orphanTx, signals, questions,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (sessions) — unknown, not none"]), ...(c.fin ? [] : ["FINANCE (session expenses)"]), "Google event details are read live by the calendar capability"],
   };
@@ -193,7 +205,8 @@ export function buildAlbumsView(src: GatewaySources) {
 
 // ═══════════════════════════════ DELIVERY ═══════════════════════════════
 export const DELIVERY_EVIDENCE_LADDER = [
-  { level: "DELIVERY_RECORDED", meaning: "the project's delivery record is marked delivered with a date — the strongest recorded evidence (still no recipient / confirmation)" },
+  { level: "DELIVERY_RECORDED", meaning: "the project's delivery record is CURRENTLY marked delivered (status delivered, with its date) — the strongest recorded evidence (still no recipient / confirmation)" },
+  { level: "DELIVERED_BEFORE", meaning: "the record is not delivered now, but a past delivery date is kept (lastDeliveredAt) — historical evidence it was delivered once (status later changed or the folder was deleted)" },
   { level: "LINK_SENT_LOGGED", meaning: "a send-log entry with a link exists for the project (the delivery link can pre-fill it) — evidence something was sent, not what" },
   { level: "DELIVERY_READY", meaning: "a delivery folder + public link exist (status ready) — prepared, not delivered" },
   { level: "FINAL_FILES_EXIST", meaning: "final mix files were uploaded by the engineer — materials exist, not delivered" },
@@ -210,6 +223,14 @@ export function buildDeliveryView(src: GatewaySources) {
   const finals = c.det?.finalFiles?.rows ?? [];
   const actions = c.det?.actions?.rows ?? [];
   const requests = (c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "STEVEN_FINAL_FILES_REQUESTED_PROJECT");
+  // B5: an OPEN final-files request = the app's own rule (computeFinalFilesFlags, like mix_view): requested and not yet
+  // satisfied by a final file uploaded after the request time — never "a request row exists".
+  const requestRows = requests.map((r) => ({ key: `steven_final_files_requested_project:${r.projectId}`, value: r.value }));
+  const finalRows = finals.map((f) => ({ work_id: f.workId, project_id: f.projectId, created_at: f.createdAt }));
+  const requestOpenOf = (projectId: string) => {
+    const fl = computeFinalFilesFlags([{ id: `project:${projectId}`, projectId }], { finalRows, requestRows });
+    return fl.finalFilesRequested.has(`project:${projectId}`) && !fl.hasCurrentFinalFiles.has(`project:${projectId}`);
+  };
   const receivables = ok(src.finance)?.state.receivables ?? null;
   const meta = c.ops?.projectsMeta?.rows ?? [];
   const relevant = new Set([...deliveries.keys(), ...finals.map((f) => f.projectId).filter((x): x is string => !!x), ...meta.filter((p) => p.status === "הושלם").map((p) => p.id)]);
@@ -218,19 +239,19 @@ export function buildDeliveryView(src: GatewaySources) {
     const d = deliveries.get(id) ?? null;
     const ff = finals.filter((f) => f.projectId === id);
     const sent = actions.filter((a) => a.projectId === id && a.hasLink && (a.actionType === "sent" || a.status === "pending_feedback"));
-    const level = d?.status === "delivered" ? "DELIVERY_RECORDED" : sent.length ? "LINK_SENT_LOGGED" : d?.status === "ready" ? "DELIVERY_READY" : ff.length ? "FINAL_FILES_EXIST" : m?.status === "הושלם" ? "PROJECT_COMPLETED" : "NONE_RECORDED";
+    const level = d?.status === "delivered" ? "DELIVERY_RECORDED" : d?.lastDeliveredAt ? "DELIVERED_BEFORE" : sent.length ? "LINK_SENT_LOGGED" : d?.status === "ready" ? "DELIVERY_READY" : ff.length ? "FINAL_FILES_EXIST" : m?.status === "הושלם" ? "PROJECT_COMPLETED" : "NONE_RECORDED";
     const recv = receivables ? receivables.filter((r) => r.projectId === id && r.collection.state !== "NOT_COLLECTIBLE" && r.collection.state !== "SETTLED").reduce<Record<string, number>>((acc, r) => { add(acc, r.currency, r.amount); return acc; }, {}) : null;
     return {
       key: `project:${id}`, name: m?.name ?? projectName(c, id), projectStatus: m?.status ?? null, businessType: m?.businessType ?? null,
-      delivery: d ? { status: d.status, deliveredAt: d.deliveredAt, hasPublicLink: d.hasLink, recipientRecorded: false, history: "NOT_RECORDED (one overwritable record)" } : null,
-      finalFiles: { count: ff.length, last: ff.map((f) => f.createdAt ?? "").sort().pop() || null, requestOpen: requests.some((r) => r.projectId === id) },
+      delivery: d ? { status: d.status, deliveredAt: d.status === "delivered" ? d.deliveredAt : null, lastDeliveredAt: d.lastDeliveredAt ?? null, hasPublicLink: d.hasLink, recipientRecorded: false, history: "only the last delivered date is kept (lastDeliveredAt); no recipient / per-send history" } : null,
+      finalFiles: { count: ff.length, last: ff.map((f) => f.createdAt ?? "").sort().pop() || null, requested: requests.some((r) => r.projectId === id), requestOpen: requestOpenOf(id) },
       sendLog: sent.map((a) => ({ date: a.actionDate, recipientRole: a.recipientRole, status: a.status })), evidence: level, remainingToCollect: recv,
     };
   }).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
   const signals: WorkSignal[] = [];
   for (const p of projects) {
     const S = (code: string, kind: WorkSignal["kind"], he: string) => signals.push({ code, kind, he, entity: p.key, project: p.key });
-    if (p.projectStatus === "הושלם" && p.businessType === "לקוח" && p.evidence !== "DELIVERY_RECORDED" && p.evidence !== "LINK_SENT_LOGGED") S("COMPLETED_NO_DELIVERY_EVIDENCE", "DERIVED_SIGNAL", `${p.name ?? "פרויקט"}: הושלם ואין רישום מסירה (${p.evidence}) — לא יודע אם נמסר מחוץ למערכת`);
+    if (p.projectStatus === "הושלם" && p.businessType === "לקוח" && p.evidence !== "DELIVERY_RECORDED" && p.evidence !== "DELIVERED_BEFORE" && p.evidence !== "LINK_SENT_LOGGED") S("COMPLETED_NO_DELIVERY_EVIDENCE", "DERIVED_SIGNAL", `${p.name ?? "פרויקט"}: הושלם ואין רישום מסירה (${p.evidence}) — לא יודע אם נמסר מחוץ למערכת`);
     if (p.delivery?.status === "ready") S("DELIVERY_READY_NOT_MARKED", "CANONICAL_FACT", `${p.name ?? "פרויקט"}: תיקיית מסירה + קישור מוכנים, לא סומן 'נמסר'`);
     if (p.evidence === "DELIVERY_RECORDED" && p.remainingToCollect && Object.values(p.remainingToCollect).some((v) => v > 0)) S("DELIVERED_BALANCE_OPEN", "DERIVED_SIGNAL", `${p.name ?? "פרויקט"}: סומן נמסר ועדיין יש יתרה לגבייה (${Object.entries(p.remainingToCollect).map(([k, v]) => `${k}${v}`).join(", ")})`);
   }
@@ -253,10 +274,10 @@ export function buildSocialView(src: GatewaySources) {
     const asItems = its.map((i) => ({ id: i.id, campaign_id: i.campaignId, project_id: i.projectId, title: i.title ?? "", content_type: i.contentType ?? "", status: i.status ?? "", platform: i.platform, due_date: i.dueDate, publish_date: i.publishDate, owner_name: i.ownerName ?? "", asset_link: (i as { hasAssetLink?: boolean }).hasAssetLink ? "x" : "", dropbox_link: (i as { hasDropboxLink?: boolean }).hasDropboxLink ? "x" : "", posted_url: i.postedUrl ?? "" })) as unknown as SocialContentItem[];
     let appMissing: Array<{ label: string; severity: string }> = [];
     let appRecommendations: string[] = [];
-    try { appMissing = checkMissing(asCampaign, asItems); appRecommendations = getRecommendations(asCampaign, asItems); } catch { /* the app rule could not run — reported below */ }
+    try { appMissing = checkMissing(asCampaign, asItems, c.today); appRecommendations = getRecommendations(asCampaign, asItems); } catch { /* the app rule could not run — reported below */ }
     return {
       key: `social-campaign:${k.id}`, title: k.title, status: k.status, artist: k.artistName, releaseDate: k.releaseDate, project: k.projectId ? { key: `project:${k.projectId}`, name: projectName(c, k.projectId) } : null, promotionBudget: k.promotionBudget,
-      content: { total: its.length, byStatus: count(its.map((i) => i.status)), byType: count(its.map((i) => i.contentType)), byPlatform: count(its.map((i) => i.platform)), posted: its.filter((i) => !!i.postedUrl).length, overdue: its.filter((i) => i.dueDate && i.dueDate < c.today && !["posted", "published", "cancelled"].includes(i.status ?? "")).length },
+      content: { total: its.length, byStatus: count(its.map((i) => i.status)), byType: count(its.map((i) => i.contentType)), byPlatform: count(its.map((i) => i.platform)), posted: its.filter((i) => !!i.postedUrl).length, byPhase: count(its.map((i) => socialPhaseOf(i.status))), ready: its.filter((i) => socialPhaseOf(i.status) === "READY").length, overdue: its.filter((i) => isSocialItemOverdue({ status: i.status, due_date: i.dueDate }, c.today)).length },
       files: files.filter((f) => f.campaignId === k.id).length, promotions: promos.filter((p) => p.campaignId === k.id).map((p) => ({ channel: p.channel, planned: p.plannedAmount, status: p.status, date: p.promoDate, financeExpenseLinked: p.hasTransaction })),
       appReadiness: { missing: appMissing, recommendations: appRecommendations, classification: "IMPLEMENTATION_BEHAVIOR — what the app's social checklist flags; never a verdict that a release cannot happen" },
     };

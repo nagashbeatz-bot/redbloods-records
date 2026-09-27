@@ -140,7 +140,7 @@ export interface ProjectReleaseDetails {
   blocker: string;
   responsible: string;
   stageEnteredAt: string;           // ISO — when the current stage was entered
-  releasedAt: string | null;        // ISO — set when stage becomes "יצא"
+  releasedAt: string | null;        // ISO — FIRST released at: set on the first move into "יצא" (or a direct create as יצא); never cleared (B5)
   createdAt: string;
   updatedAt: string;                // ISO — optimistic-lock token
 }
@@ -158,33 +158,57 @@ export interface LabelShowLine {
   artistFee: number;
   isCollab: boolean;
   included: boolean;       // false for collab (needs attribution) — excluded from totals
+  /** The show's currency (amounts above are in it; never converted). */
+  currency?: string;
+  /** A1: the artist's / DJ's OWN fee row status in Finance (null = no row) — never the client payment. */
+  artistFeeStatus?: string | null;
+  djFeeStatus?: string | null;
 }
 
+/** Show money totals of one artist in ONE currency. */
+export interface ArtistShowsTotals {
+  labelReceived: number; labelExpected: number;
+  artistPaid: number;    artistExpected: number;
+  djPaid: number;        djExpected: number;
+  count: number;         needsAttribution: number;
+}
 /** Aggregated show finances for one label artist. */
 export interface ArtistShowsSummary {
-  totals: {
-    labelReceived: number; labelExpected: number;
-    artistPaid: number;    artistExpected: number;
-    djPaid: number;        djExpected: number;
-    count: number;         needsAttribution: number;
-  };
+  /** ₪ shows only (the existing ₪ consumers). */
+  totals: ArtistShowsTotals;
+  /** A1: every currency on its own — never added together. */
+  totalsByCurrency?: Record<string, ArtistShowsTotals>;
+  /** Currencies present besides ₪ (not in `totals`). */
+  excludedCurrencies?: string[];
   shows: LabelShowLine[];
 }
 
-/** Per-clip label investment (Red Films general_budget; 50/50 label vs artist recoup). */
+/**
+ * One clip of a label artist — B3 (Owner canon 2026-09-27): A client clip price ≠ B planned budget ≠ C actual cost ≠
+ * D recoupable. A / B / C are information PER CURRENCY; the recoup (D) is NOT_DEFINED until the artist agreement rule
+ * is recorded — never 50 %, never derived from the budget or the price.
+ */
 export interface LabelClipLine {
   id: string;
   title: string;
   status: string;
   projectId: string | null;
-  fullBudget: number;          // red_films_productions.general_budget (paid in full)
-  labelInvestment: number;     // fullBudget / 2
-  artistRecoupBalance: number; // fullBudget / 2 — display-only, never auto-offset
+  plannedBudget: number;                   // B — red_films_productions.general_budget (planning, not paid), in `currency`
+  currency: string;
+  clientClipPrice: number | null;          // A — the project's clip price, in clientClipCurrency (null = none recorded)
+  clientClipCurrency: string | null;
+  actualCostPaid: Record<string, number>;  // C — Finance clip expenses paid (שולם), per currency
+  rfLedgerPaid: Record<string, number>;    // Red Films ledger payments (real money, not linked to Finance — DB-1 pending)
+  recoupStatus: "NOT_DEFINED";
+  artistRecoupBalance: null;               // D — never computed without the artist agreement rule
+  recoupReasonHe: string;
 }
 
-/** Aggregated clip investment for one label artist. */
+/** Clip information for one label artist — PER CURRENCY, never added across currencies or layers. */
 export interface ArtistClipsSummary {
-  totals: { fullBudget: number; labelInvestment: number; artistRecoupBalance: number; count: number };
+  totals: { count: number; byCurrency: Record<string, { clientClipPrice: number; plannedBudget: number; actualCostPaid: number; rfLedgerPaid: number }> };
+  recoupStatus: "NOT_DEFINED";
+  recoupReasonHe: string;
   clips: LabelClipLine[];
 }
 
@@ -234,19 +258,25 @@ export interface ArtistMediaSummary {
  * Purely derived at read time — writes nothing, changes no snapshot, offsets no prior record.
  */
 export interface ArtistRecoupSummary {
-  clipRecoupTarget: number;        // Σ artistRecoupTarget of active clips — the initial debt
+  /** D — the clip contribution to the artist's recoup: null = NOT_DEFINED (no artist agreement rule recorded, B3). */
+  clipRecoupTarget: number | null;
+  clipRecoupStatus: "NOT_DEFINED" | "DEFINED";
+  clipRecoupReasonHe: string | null;
+  /** A / B / C (+ the Red Films ledger) per currency — information only, never recoup. */
+  clipMoneyInfo: Record<string, { clientClipPrice: number; plannedBudget: number; actualCostPaid: number; rfLedgerPaid: number }>;
   mediaArtistShareReceived: number;// signed Σ artist_share_gross of received media (full, uncapped)
   showsArtistPaid: number;         // artist share of PAID shows
   mediaExpectedArtistShare: number;
   showsArtistExpected: number;     // artist share of not-yet-paid shows
   actualArtistIncome: number;      // showsArtistPaid + mediaArtistShareReceived (flows through the debt)
-  actualRecouped: number;          // min(target, max(0, actualArtistIncome)) — applied to the debt
-  expectedArtistIncome: number;    // showsArtistExpected + mediaExpectedArtistShare
-  actualRecoupBalance: number;     // max(0, target − actualArtistIncome) — חוב נוכחי
-  projectedRecoup: number;         // min(expectedArtistIncome, actualRecoupBalance)
-  projectedRecoupBalance: number;  // max(0, actualRecoupBalance − expectedArtistIncome) — חוב צפוי
-  artistCredit: number;            // max(0, actualArtistIncome − target) — יתרה לזכות האמן
-  artistActualBalance: number;     // actualArtistIncome − target (signed debt: <0 owes label, >0 credit)
+  // Every debt figure below is null while the clip target is NOT_DEFINED (never a guessed 0 or 50 %).
+  actualRecouped: number | null;          // min(target, max(0, actualArtistIncome)) — applied to the debt
+  expectedArtistIncome: number;           // showsArtistExpected + mediaExpectedArtistShare
+  actualRecoupBalance: number | null;     // max(0, target − actualArtistIncome) — חוב נוכחי
+  projectedRecoup: number | null;         // min(expectedArtistIncome, actualRecoupBalance)
+  projectedRecoupBalance: number | null;  // max(0, actualRecoupBalance − expectedArtistIncome) — חוב צפוי
+  artistCredit: number | null;            // max(0, actualArtistIncome − target) — יתרה לזכות האמן
+  artistActualBalance: number | null;     // actualArtistIncome − target (signed debt: <0 owes label, >0 credit)
 }
 
 /** A label project joined with its (optional) release details — the /label list item. */
@@ -727,6 +757,10 @@ export interface VictorSalaryMonth {
   status: SalaryStatus;
   transactionId: string | null;
   transactionPaymentStatus: string | null;
+  /** B5: where the month's values come from — a live Finance row wins; an Owner statement only fills a month without one. */
+  source?: "FINANCE" | "OWNER_STATEMENT" | "CONFIGURED_DEFAULT";
+  /** B5: Finance vs the Owner's statement disagree, or two live Finance rows for the month — shown, never merged. */
+  conflict?: import("./victor-salary-format").SalaryConflict | null;
 }
 
 // ── Agent / Proactive intelligence types ──────────────────────────────────────
@@ -950,6 +984,34 @@ export const SOCIAL_CONTENT_STATUS_COLORS: Record<SocialContentStatus, string> =
   posted: "#10B981",
   cancelled: "#EF4444",
 };
+
+/**
+ * B5 (2026-09-27): the shared PHASES of BOTH social content vocabularies — the current one (draft / in_progress /
+ * ready_to_post / published) and the legacy one (idea … / ready / scheduled / posted). The same grouping as
+ * SOCIAL_CONTENT_STATUS_LABELS. Every reader (the missing checker, the social screens, Sunny) uses these sets, so a
+ * published item is never overdue and ready_to_post counts as ready everywhere.
+ */
+export const SOCIAL_PHASE_IDEA: readonly SocialContentStatus[] = ["draft", "idea", "needs_shoot", "shot"];
+export const SOCIAL_PHASE_WORK: readonly SocialContentStatus[] = ["in_progress", "in_edit", "needs_review"];
+export const SOCIAL_PHASE_READY: readonly SocialContentStatus[] = ["ready_to_post", "ready", "scheduled"];
+export const SOCIAL_PHASE_PUBLISHED: readonly SocialContentStatus[] = ["published", "posted"];
+export const SOCIAL_PHASE_CANCELLED: readonly SocialContentStatus[] = ["cancelled"];
+export type SocialPhase = "IDEA" | "WORK" | "READY" | "PUBLISHED" | "CANCELLED" | "UNKNOWN";
+export function socialPhaseOf(status: string | null | undefined): SocialPhase {
+  const s = (status ?? "") as SocialContentStatus;
+  if (SOCIAL_PHASE_IDEA.includes(s)) return "IDEA";
+  if (SOCIAL_PHASE_WORK.includes(s)) return "WORK";
+  if (SOCIAL_PHASE_READY.includes(s)) return "READY";
+  if (SOCIAL_PHASE_PUBLISHED.includes(s)) return "PUBLISHED";
+  if (SOCIAL_PHASE_CANCELLED.includes(s)) return "CANCELLED";
+  return "UNKNOWN";
+}
+/** A social item may be overdue only while it is not published and not cancelled (strict YYYY-MM-DD due date < today). */
+export function isSocialItemOverdue(i: { status?: string | null; due_date?: string | null }, todayYmd: string): boolean {
+  const ph = socialPhaseOf(i.status);
+  if (ph === "PUBLISHED" || ph === "CANCELLED") return false;
+  return typeof i.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(i.due_date) && i.due_date < todayYmd;
+}
 
 export type SocialPlatform = "tiktok" | "instagram" | "youtube" | "spotify" | "other";
 export const SOCIAL_PLATFORMS: SocialPlatform[] = ["tiktok", "instagram", "youtube", "spotify", "other"];

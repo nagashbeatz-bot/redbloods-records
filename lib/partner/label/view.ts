@@ -24,7 +24,12 @@ import { projectMoney } from "../projects/money";
 import { buildProjectView } from "../projects/view";
 import { projectOperating } from "../sunny/operating";
 import { buildCalendarLinkIndex, eventsForEntity, linkCalendarEvent } from "../calendar/links";
-import { PORTAL_ARTISTS } from "../../red-artists/portal-registry";
+import { resolvePortalIdentity } from "../../red-artists/portal-registry";
+import { isLabelProject } from "../../project-classification";
+import { presenceFactsOf } from "../../push-presence-pure";
+import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
+import { clipMoneyByCurrency, clipRecoupContribution } from "../../clip-rf-money-pure";
+import { isExpenseFullyPaidStatus } from "../../finance/classify";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -63,7 +68,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const name = eyes?.name ?? rec?.name ?? null;
   if (!name) return null;
   const key = `label-artist:${artistId}`;
-  const slug = PORTAL_ARTISTS[name]?.slug ?? null;
+  // B4: portal by stable id first (a renamed artist keeps his portal); exact-name fallback is AMBIGUOUS identity.
+  const portalIdentity = resolvePortalIdentity({ id: artistId, name }, { strict: false });
+  const slug = portalIdentity?.slug ?? null;
   const fin = ok(src.finance);
   const unavailable: string[] = [];
   if (!c.ld) unavailable.push("LABEL_DETAIL (ledger text, cycles, media income, beats, shows in full) was not read — those sections are unknown, not empty");
@@ -76,7 +83,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const isCleantone = !!src.identities?.cleantone && low(src.identities.cleantone.labelArtistName) === low(name);
   const ownerLabel = (c.integrity?.learned ?? []).filter((l) => l.status === "APPLIES" && l.entityKey === key).map((l) => ({ question: l.decision.questionType, answer: l.decision.answerCode, basis: "OWNER_CONFIRMED" }));
   const identity = { key, name, status: rec?.status ?? eyes?.status ?? null, hasImage: rec?.hasImage ?? null, notes: rec?.notes ?? null, createdAt: rec?.createdAt ?? eyes?.createdAt ?? null, updatedAt: rec?.updatedAt ?? eyes?.updatedAt ?? null,
-    portal: slug ? { slug, loginRole: LOGIN_ROLE[slug] ?? "NONE (portal page, no login)", link: "CANONICAL (app name → slug table)" } : { slug: null, loginRole: "NONE", link: "no portal (name not in the app's slug table)" },
+    portal: slug ? { slug, loginRole: LOGIN_ROLE[slug] ?? "NONE (portal page, no login)", link: portalIdentity?.basis === "ID" ? "CANONICAL (label_artists.id → slug table)" : "AMBIGUOUS (exact name → slug table; no id registered in code)" } : { slug: null, loginRole: "NONE", link: "no portal (name not in the app's slug table)" },
     clientRecords: clientRecords.map((x) => ({ key: `client:${x.id}`, type: x.type, status: x.status, link: "TEXT_MATCH (same name — a separate record of the same person; never merged; client money stays client money)" })),
     labelDj: isCleantone ? { clientId: src.identities!.cleantone!.clientId, link: "CANONICAL (app identity)" } : null, ownerLabelClassification: ownerLabel };
   const labelWorkByOwner = ownerLabel.some((o) => o.answer === "LABEL_SONGS");
@@ -96,9 +103,12 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     const p = idx[pid];
     const v = buildProjectView(src, pid);
     const a = projectOperating(src, pid);
-    const labelWork = p?.businessType === "לייבל" || l.basis === "RELEASE" || labelWorkByOwner;
+    // B2: the stored type is the ONLY classifier; a release row / an Owner LABEL_SONGS answer / the Owner-rule
+    // mismatch are evidence shown next to it (labelEvidence), never a second classifier.
+    const labelWork = isLabelProject(p);
     return { key: `project:${pid}`, id: pid, name: p?.name ?? v.identity?.name ?? "(לא נמצא)", status: p?.status ?? v.identity?.status ?? null, businessType: p?.businessType ?? null, basis: l.basis, quality: l.quality,
-      labelWork, labelBasis: p?.businessType === "לייבל" ? "STORED_BUSINESS_TYPE" : l.basis === "RELEASE" ? "RELEASE_ROW" : labelWorkByOwner ? "OWNER_CONFIRMED (Company Integrity)" : "CLIENT_WORK_OR_UNCLASSIFIED",
+      labelWork, labelBasis: isLabelProject(p) ? "STORED_BUSINESS_TYPE" : p?.businessType === "לקוח" ? "STORED_CLIENT" : "UNCLASSIFIED",
+      labelEvidence: { releaseRow: l.basis === "RELEASE", ownerLabelSongsAnswer: labelWorkByOwner, ownerRuleMismatch: v.signals.some((s) => s.code === "MISMATCH_OWNER_RULE"), note: "evidence only — the stored project_business_type is the classifier" },
       open: !CLOSED_PROJECT.has(p?.status ?? ""), deadline: a?.clientDeadline.date ?? null, deadlineClass: a?.clientDeadline.class ?? null, internalDeadlines: a?.internalDeadlines ?? [], ballHolders: a?.ballHolder.holders ?? [], ballEvidence: a?.ballHolder.evidence ?? [],
       victor: v.work.victor, engineers: v.work.engineers, sessions: v.work.sessions, delivery: v.work.delivery, redFilms: v.work.redFilms, social: v.work.social, clipPlanning: v.work.clipPlanning, waiting: v.work.projectActions, tasksOpen: v.work.tasksOpen };
   }).sort((a, b) => Number(b.open) - Number(a.open) || a.name.localeCompare(b.name));
@@ -111,7 +121,11 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
       nextAction: d?.nextAction ?? null, blocker: d?.blocker ?? null, responsible: d?.responsible ?? null, targetPassed: active && !!r.targetYmd && r.targetYmd < c.today, link: "CANONICAL (artist id)" };
   }).sort((a, b) => (a.targetDate ?? "9999").localeCompare(b.targetDate ?? "9999"));
   const nextRelease = releaseRows.filter((r) => r.active && r.targetDate && r.targetDate >= c.today)[0] ?? null;
-  const releasedDates = releaseRows.map((r) => r.releasedAt).filter((x): x is string => !!x).sort();
+  // B5: "released" is the CURRENT stage (יצא); released_at is only the (first-)release DATE. A released row without a
+  // date is still counted (UNKNOWN_DATE); a row that left יצא keeps its released_at as history, not as "released".
+  const releasedRows = releaseRows.filter((r) => r.stage === "יצא");
+  const releasedDates = releasedRows.map((r) => r.releasedAt).filter((x): x is string => !!x).sort();
+  const releasedUnknownDate = releasedRows.filter((r) => !r.releasedAt).length;
 
   // ── beats ──
   const beats = slug ? (c.ld?.beats?.rows ?? []).filter((b) => b.assignedTo.some((a) => a.artistSlug === slug)).map((b) => ({ name: b.name, genre: b.genre, key: b.musicalKey, status: b.status, assignedAt: b.assignedTo.find((a) => a.artistSlug === slug)?.at ?? null, durationSeconds: b.durationSeconds, path: b.path, link: "DERIVED (portal slug)" })) : [];
@@ -122,8 +136,10 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const mapShow = (s: DetailShow, role: "ARTIST" | "DJ") => {
     const rehearsals = (c.det?.sessions?.rows ?? []).filter((x) => x.showId === s.id);
     const net = Math.max(0, (s.price ?? 0) - (s.djFee ?? 0));
-    // the claim row's own status: "sent" only after a successful push; a failed / in-flight send is never shown as sent
-    const notify = (fam: string) => { const rows = settingRows(c, fam); if (rows === null) return "UNKNOWN"; const row = rows.find((r) => r.key.endsWith(`:${s.id}`)); if (!row) return "NOT_SENT"; const v = ((row as { value?: unknown }).value ?? {}) as { status?: string }; return v.status === "failed" ? "FAILED" : v.status === "processing" ? "PROCESSING" : "SENT"; };
+    // THE app's own read rule (showNotifyStateOf — the same answer as the send button, the notify writers and show_view):
+    // SENT only for the show's CURRENT version (name / date / time / place); an older version is SENT_PREVIOUS_VERSION
+    const fp = computeShowNotifyFingerprint({ name: s.name ?? "", date: s.date, startTime: s.startTime, location: s.location });
+    const notify = (fam: string) => { const rows = settingRows(c, fam); if (rows === null) return "UNKNOWN"; const row = rows.find((r) => r.key.endsWith(`:${s.id}`)); if (!row) return "NOT_SENT"; return showNotifyStateOf(((row as { value?: unknown }).value ?? null) as ShowNotifyClaimValue | null, fp).state; };
     return { key: `show:${s.id}`, role, name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, paymentStatus: s.paymentStatus, price: s.price, djFee: s.djFee, artistFee: s.artistFee, advancePayment: s.advancePayment,
       splitNote: `net before rehearsals = ${r2(net)} (price − DJ fee); artist fee = half of net after counted rehearsal costs (stored artist fee ${s.artistFee ?? "—"})`, currency: "NOT_STORED (screens show ₪)",
       dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : null,
@@ -151,15 +167,31 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     const m = projectMoney(fin.raw, { id: p.id, status: p.status ?? "" });
     (labelWorkMoney[m.price.currency] ??= []).push({ received: m.song?.received ?? 0, openExpected: m.song?.openExpected ?? 0, agreed: m.price.agreed });
   }
+  // ── clips: A / B / C per currency (information) — the recoup contribution is NOT_DEFINED (B3, Owner canon 2026-09-27) ──
+  const artistProjIds = new Set(projects.map((p) => p.id));
+  const clipProds = (c.ops?.redFilms?.rows ?? []).filter((r) => r.productionType === "קליפ" && r.status !== "בוטל" && ((r.projectId && artistProjIds.has(r.projectId)) || tokens(r.artistName).some((t) => low(t) === low(name))));
+  const clipProjIds = new Set(clipProds.map((r) => r.projectId).filter((x): x is string => !!x));
+  const clipSettings = (fin?.raw.financeSettings ?? []).filter((s) => clipProjIds.has(s.projectId)).map((s) => s.value as Record<string, unknown> | null);
+  const clipRecoup = {
+    clipContribution: clipRecoupContribution(),
+    clipMoneyByCurrency: clipMoneyByCurrency({
+      clientClipPrices: clipSettings.map((v) => ({ amount: Number(v?.clipAgreedPrice) || 0, currency: typeof v?.currency === "string" ? v.currency : null })),
+      plannedBudgets: clipProds.map((r) => ({ amount: r.generalBudget, currency: r.currency ?? null })),
+      actualCostsPaid: fin ? fin.raw.transactions.filter((t) => t.type === "expense" && t.expenseScope === "קליפ" && t.projectId && clipProjIds.has(t.projectId) && isExpenseFullyPaidStatus(t.status)).map((t) => ({ amount: Number(t.amount) || 0, currency: t.currency })) : [],
+      rfLedgerPaid: (c.ops?.budgetPayments?.rows ?? []).filter((x) => clipProds.some((r) => r.id === x.productionId)).map((x) => ({ amount: x.amount, currency: x.currency ?? null })),
+    }),
+    financeRead: !!fin,
+    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D is NOT_DEFINED until the artist agreement says which clip costs are recouped — never 50 %, never from the budget or the price. Red Films ledger payments are real money, not linked to Finance (DB-1 pending). The media-income recoup snapshots are still computed with the pre-B3 target (LEGACY) — a conflict for the Owner. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
+  };
   const money = {
-    currencyRule: "the artist ledger, cycles, media income and shows store NO currency (screens show ₪); project finance rows carry their own currency — nothing is added across these",
+    currencyRule: "the artist ledger, cycles and media income store NO currency (screens show ₪); shows carry one currency each and project / show finance rows carry their own currency — nothing is added across these",
     ledger: ledger.length || c.ld ? { entries: ledger.length, allTime: totals(), formula: "balance = income − payments − expenses (expected rows shown, not counted)", fromShows: ledger.filter((e) => e.sourceShowId || e.sourceTxId).length, rows: ledger.slice(0, 40).map((e) => ({ type: e.entryType, amount: e.amount, date: e.entryDate, description: e.description, note: e.note, source: e.sourceShowId ? `show:${e.sourceShowId}` : e.sourceTxId ? "show artist-fee finance row" : "manual" })) } : null,
     cycles: { anchor, anchorSource: anchorRow ? "settings" : c.settings ? "NOT_SET" : "UNKNOWN", closed: cycles.map((y) => ({ index: y.cycleIndex, start: y.startDate, endExclusive: y.endDate, income: y.income, payments: y.payments, expenses: y.expenses, endingBalance: y.endingBalance, closedAt: y.closedAt })),
       current: win ? { ...win, totals: totals(ledger.filter((e) => !!e.entryDate && e.entryDate >= win.start && e.entryDate < win.endExclusive)), rule: "app rule: 2-month windows from the anchor; early close advances the cycle" } : null },
     mediaIncome: { records: media.length, receivedGross: r2(received.reduce((s, m) => s + signed(m, "grossAmount"), 0)), receivedArtistShare: r2(received.reduce((s, m) => s + signed(m, "artistShareGross"), 0)), receivedLabelShare: r2(received.reduce((s, m) => s + signed(m, "labelShare"), 0)), artistPayable: r2(received.reduce((s, m) => s + signed(m, "artistPayable"), 0)), expected: media.filter((m) => m.status === "צפוי").length, lastRecoupAfter,
       rows: media.map((m) => ({ type: m.recordType, status: m.status, gross: m.grossAmount, source: m.source, period: m.reportPeriod, received: m.receivedDate, labelShare: m.labelShare, artistShare: m.artistShareGross, recoupBefore: m.recoupBefore, recouped: m.recouped, payable: m.artistPayable, recoupAfter: m.recoupAfter, notes: m.notes })),
-      note: "stored split + recoup snapshots written by the server at record time; media income never touches the ledger" },
-    recoup: "the label page derives recoup (artist half of active clip budgets vs paid show artist fees + received media artist share) — not stored, not reconciled with the ledger; Sunny shows the inputs, never a second formula result",
+      note: "stored split + recoup snapshots written by the server at record time — computed against the RETIRED budget-based target (a registered conflict: the clip recoup itself is NOT_DEFINED); media income never touches the ledger" },
+    recoup: clipRecoup,
     labelWorkProjects: fin ? labelWorkMoney : null,
     clientWork: "the same person's client-work projects are NOT artist money (client_view)",
   };
@@ -193,9 +225,13 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const availRow = availKey ? settingRows(c, "ARTIST_WEEKLY_AVAILABILITY")?.find((r) => r.key === availKey) ?? null : null;
   const av = availRow?.value as { days?: Array<{ day?: string; date?: string; available?: boolean; from?: string }>; sentBy?: string; sentAt?: string } | undefined;
   const availability = !c.settings ? { state: "UNKNOWN" } : !availRow ? { state: "NONE_RECORDED" } : { state: "RECORDED", sentBy: av?.sentBy ?? null, sentAt: av?.sentAt ?? null, days: (av?.days ?? []).map((d) => ({ day: d.day, date: d.date, available: d.available, from: d.from })), meaning: "the artist's stated free days (week opens Thu 08:00 Israel); not a booking" };
-  const presKey = slug === "shalev-tasama" ? "shalev_entry_last" : slug === "avi-molla" ? "avi_entry_last" : slug === "dj-cleantone" ? "cleantone_entry_last" : null;
-  const presRow = presKey ? settingRows(c, "PORTAL_PRESENCE")?.find((r) => r.key === presKey) ?? null : null;
-  const presence = !presKey ? { state: "NO_LOGIN_OR_NO_PORTAL" } : !c.settings ? { state: "UNKNOWN" } : { state: presRow ? "RECORDED" : "NONE_RECORDED", lastPortalEntry: (presRow?.value as { at?: string } | undefined)?.at ?? null, meaning: "portal activity evidence only — not work done" };
+  // The ONE shared presence model (2026-09-27): last-seen = the artist's last ping / heartbeat of his own portal; the
+  // visit push claim is shown separately; the old *_entry_last row is the pre-2026-09-27 push guard, not a last-seen.
+  const presPortal = slug === "shalev-tasama" ? "shalev" as const : slug === "avi-molla" ? "avi" as const : slug === "dj-cleantone" ? "cleantone" as const : null;
+  const presRows = settingRows(c, "PORTAL_PRESENCE");
+  const pres = presPortal ? presenceFactsOf(presRows, presPortal) : null;
+  const legacyEntry = presPortal ? (presRows?.find((r) => r.key === `${presPortal}_entry_last`)?.value as { at?: string } | undefined)?.at ?? null : null;
+  const presence = !presPortal || !pres ? { state: "NO_LOGIN_OR_NO_PORTAL" } : !c.settings ? { state: "UNKNOWN" } : { state: pres.lastSeenAt ? "RECORDED" : "NONE_RECORDED", lastPortalEntry: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedEntryAt: legacyEntry, meaning: "portal activity evidence only — not work done. lastSeenAt = the last ping / heartbeat of his own portal; visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedEntryAt = the pre-2026-09-27 push guard, not a last-seen" };
   const reminderRows = slug ? (settingRows(c, "AVAILABILITY_REMINDER_SENT") ?? []).filter((r) => r.key.includes(`:${slug}:`)).length : 0;
 
   // ── owner knowledge ──
@@ -219,7 +255,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     if (r.targetPassed) signals.push({ code: "RELEASE_TARGET_PASSED", kind: "DERIVED_SIGNAL", he: `יעד הריליס "${r.projectName}" (${r.targetDate}) עבר — יעד, לא התחייבות ללקוח.`, entity: r.key });
     if (r.blocker) signals.push({ code: "RELEASE_BLOCKER", kind: "CANONICAL_FACT", he: `חסם: ${r.blocker}`, entity: r.key });
     if (r.stage === "מוכן ליציאה") signals.push({ code: "READY_FOR_RELEASE", kind: "CANONICAL_FACT", he: `"${r.projectName}" מסומן מוכן ליציאה.`, entity: r.key });
-    if (r.stage === "יצא") signals.push({ code: "RELEASED", kind: "CANONICAL_FACT", he: `"${r.projectName}" יצא${r.releasedAt ? ` (${r.releasedAt.slice(0, 10)})` : ""}.`, entity: r.key });
+    if (r.stage === "יצא") signals.push({ code: "RELEASED", kind: "CANONICAL_FACT", he: `"${r.projectName}" יצא${r.releasedAt ? ` (${r.releasedAt.slice(0, 10)})` : " (UNKNOWN_DATE — אין תאריך יציאה רשום)"}.`, entity: r.key });
     if (r.active) nextSteps.push({ step: `ריליס "${r.projectName}": ${r.stage}`, evidence: [r.nextAction && `הצעד הבא: ${r.nextAction}`, r.blocker && `חסם: ${r.blocker}`, r.responsible && `אחראי: ${r.responsible}`, r.targetDate && `יעד: ${r.targetDate}`].filter(Boolean).join(" · ") || "אין צעד הבא / חסם / אחראי רשומים", entity: r.key });
     if (r.active && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
   }
@@ -243,7 +279,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
 
   const history = [
     { at: identity.createdAt, event: "joined the roster", kind: "RECORDED" },
-    ...releaseRows.flatMap((r) => [{ at: r.stageSince, event: `release "${r.projectName}" entered ${r.stage}`, kind: "RECORDED" }, ...(r.releasedAt ? [{ at: r.releasedAt, event: `release "${r.projectName}" released`, kind: "RECORDED" }] : [])]),
+    ...releaseRows.flatMap((r) => [{ at: r.stageSince, event: `release "${r.projectName}" entered ${r.stage}`, kind: "RECORDED" }, ...(r.releasedAt ? [{ at: r.releasedAt, event: `release "${r.projectName}" first released`, kind: "RECORDED" }] : [])]),
     ...ledger.slice(0, 20).map((e) => ({ at: e.entryDate, event: `ledger ${e.entryType} ${e.amount}${e.description ? ` — ${e.description}` : ""}`, kind: "RECORDED" })),
     ...cycles.map((y) => ({ at: y.closedAt, event: `cycle ${y.cycleIndex} closed (ending ${y.endingBalance})`, kind: "RECORDED" })),
     ...media.map((m) => ({ at: m.receivedDate ?? m.createdAt, event: `media ${m.recordType} ${m.grossAmount} (${m.status})`, kind: "RECORDED" })),
@@ -252,7 +288,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   ].filter((h) => h.at).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const lastRecorded = history.map((h) => String(h.at).slice(0, 10)).filter((d) => d <= c.today).sort().pop() ?? null;
 
-  return { key, found: true as const, identity, projects, releases: releaseRows, nextRelease, cadence: { releasedDates, planned: releaseRows.filter((r) => r.active && r.targetDate).map((r) => r.targetDate), note: "evidence only — Redbloods has no cadence target" },
+  return { key, found: true as const, identity, projects, releases: releaseRows, nextRelease, cadence: { releasedDates, releasedCount: releasedRows.length, releasedUnknownDate, planned: releaseRows.filter((r) => r.active && r.targetDate).map((r) => r.targetDate), note: "evidence only — Redbloods has no cadence target" },
     beats, shows, money, sessions, calendar, tasks, meetings, redFilms, social, availability, presence, notifications: { availabilityRemindersClaimed: reminderRows, pushes: "see system_awareness artist_model pushes; Sunny never sends" },
     portal: { slug, loginRole: identity.portal.loginRole, storedOutsideDb: "sketches, ratings, next-work, press kit, performance files, profile image live in the artist's storage folder — not readable by Sunny" },
     ownerKnowledge: knowledge, signals, nextSteps, questions, history, lastRecordedActivity: lastRecorded, unavailable };

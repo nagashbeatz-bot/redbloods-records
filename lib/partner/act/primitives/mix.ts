@@ -3,9 +3,11 @@
  * order, finance re-sync, comments, versions, riddim lines, pre-mix notes and the two Steven pushes. Every write goes
  * through the existing stores + lib/writes/mix — the writers the Steven page / drawer use.
  *
- * App rules only: an engineer is a free-text name and only exactly "Steven" is Steven (his page's finance semantics:
- * skipFinanceSync + the id-linked payment expense; any other engineer: the drawer's auto-synced expense). Completed ≠
- * approved ≠ final files ≠ paid. $ and ₪ are never added. The latest version is the newest upload.
+ * App rules only: an engineer is a free-text name and only exactly "Steven" is Steven. The linked expense has ONE writer
+ * (lib/writes/mix reconcileEngineerExpense, integrity fix A2 2026-09-27): Steven = no expected row until paid; other
+ * engineers = an expected row that follows the price; the expense is in the WORK currency and amount (no silent 3.25
+ * conversion); a "שולם" row is never overwritten or deleted. Completed ≠ approved ≠ final files ≠ paid. $ and ₪ are never
+ * added. The latest version is the newest upload.
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
@@ -142,12 +144,12 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_ENGINEER_WORK_STATUS", kinds: ["mix-work"],
-    meta: meta("שינוי סטטוס עבודת מיקס", "Change an engineer work's status (a Steven work → אושר runs the app's completion flow: project sync, final-files request, push)", [K("mixWork"), { name: "status", kind: "enum", required: true, values: ENGINEER_STATUSES }], ["status"], "updateSoundEngineerWork (lib/sound-engineer-store)", { effects: ["PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "PARTIAL" }),
+    meta: meta("שינוי סטטוס עבודת מיקס", "Change an engineer work's status (a Steven work → אושר runs the app's completion flow: final-files request + push; the project is NOT auto-completed)", [K("mixWork"), { name: "status", kind: "enum", required: true, values: ENGINEER_STATUSES }], ["status"], "updateSoundEngineerWork (lib/sound-engineer-store)", { effects: ["PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "PARTIAL" }),
     resolve: onWork, read: workFields,
     plan: (a, cur) => (ENGINEER_STATUSES.includes(String(a.status)) ? finishPlan(cur, { status: String(a.status) }) : refuse("BAD_ENUM", "סטטוס לא מוכר")),
     apply: async (d, id, a) => { const cur = await d.readEngineerWork(id); await d.updateEngineerWork(id, { status: a.status, skipFinanceSync: cur?.engineerName === STEVEN }); },
     requiredValues: (_a, after) => [String(after.status)],
-    warnings: (c) => (isSteven(c) ? ["עבודה של Steven: 'אושר' מפעיל את זרימת ההשלמה של האפליקציה — אם זו העבודה הפתוחה האחרונה, הפרויקט עובר להושלם, נפתחת בקשת קבצים סופיים ונשלח Push; פתיחה מחדש משחררת את הבקשה"] : []),
+    warnings: (c) => (isSteven(c) ? ["עבודה של Steven: 'אושר' מפעיל את זרימת ההשלמה של האפליקציה — אם זו העבודה הפתוחה האחרונה נפתחת בקשת קבצים סופיים ונשלח Push; הפרויקט לא עובר להושלם אוטומטית (השלמת מהנדס ≠ השלמת פרויקט — פעולה נפרדת של הבוס); פתיחה מחדש משחררת את הבקשה"] : []),
     disclosuresHe: ["הושלם ≠ אושר ≠ קבצים סופיים ≠ שולם — הסטטוס לא משנה כסף", "Push נשלח רק במעבר אמיתי להשלמה של Steven (כמו באפליקציה)"],
   },
   {
@@ -168,12 +170,13 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (typeof a.paid !== "boolean") return refuse("BAD_ARGS", "שולם: כן / לא");
       if (a.paid && !(Number(cur.agreedPrice) > 0)) return refuse("NO_PRICE", "לעבודה אין מחיר — קובעים מחיר קודם");
       if (a.paid && !realYmd(a.paymentDate)) return refuse("BAD_DATE", "צריך תאריך תשלום");
+      if (!a.paid && cur.expenseStatus === "שולם") return refuse("PAID_EXPENSE_PROTECTED", "ההוצאה המקושרת בכספים כבר שולם — שורה ששולמה לא נמחקת ולא נדרסת; ביטול תשלום מתחיל בשינוי השורה ב-Finance");
       return finishPlan(cur, a.paid ? { amountPaid: Number(cur.agreedPrice), paymentDate: String(a.paymentDate) } : { amountPaid: 0, paymentDate: null });
     },
     apply: (d, id, a) => d.recordEngineerPayment(id, Number(a.amountPaid) > 0, (a.paymentDate as string | null) ?? null),
     requiredValues: (_a, after) => (Number(after.amountPaid) > 0 ? ["שולם", String(after.paymentDate)] : ["לא שולם"]),
-    warnings: (c) => [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))}`, ...(isSteven(c) ? ["Steven: הוצאה ששולמה נרשמת בכספים (או נמחקת בביטול), ו-Push 'התשלום אושר' נשלח במעבר לשולם"] : [])],
-    disclosuresHe: ["שולם רק כשהסכום ששולם ≥ המחיר ויש תאריך — הכלל של האפליקציה", "$ ו-₪ לא מחוברים"],
+    warnings: (c) => [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))}`, ...(isSteven(c) ? ["Steven: Push 'התשלום אושר' נשלח במעבר לשולם"] : []), ...(c.expenseStatus === "שולם" ? ["ההוצאה המקושרת כבר 'שולם' — היא לא תשתנה (שורה ששולמה לא נדרסת)"] : [])],
+    disclosuresHe: ["שולם רק כשהסכום ששולם ≥ המחיר ויש תאריך — הכלל המשותף של האפליקציה", "ההוצאה נרשמת בכספים במטבע העבודה ובסכום שסוכם — בלי המרה ל-₪ (הערכת ₪ מופיעה רק בהערות)", "ביטול תשלום לא מוחק שורה ששולמה", "$ ו-₪ לא מחוברים"],
   },
   {
     actionId: "DELETE_ENGINEER_WORK", kinds: ["mix-work"],
@@ -203,15 +206,18 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "FORCE_ENGINEER_FINANCE_SYNC", kinds: ["mix-work"],
-    meta: meta("סנכרון מחדש של הוצאת עבודת מיקס", "Re-run the engineer work's expense sync (the drawer's 'sync' — for a failed auto-sync)", [K("mixWork")], ["synced"], "forceSyncTransaction (lib/sound-engineer-store)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: null }),
+    meta: meta("סנכרון מחדש של הוצאת עבודת מיקס", "Re-run the engineer work's expense through the ONE writer (the drawer's 'sync') — a paid row is never overwritten; standalone works refused", [K("mixWork")], ["synced"], "forceSyncTransaction → reconcileEngineerExpense (lib/writes/mix)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: null }),
     async resolve(d, a) { const r = await onWork(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, synced: false } }; },
     async read(d, id) { const f = await workFields(d, id); return f ? { ...f, synced: false } : null; },
-    plan: (_a, cur) => (isSteven(cur) ? refuse("STEVEN_FLOW", "ל-Steven הכסף נרשם דרך סימון שולם (RECORD_ENGINEER_PAYMENT)") : Number(cur.agreedPrice) > 0 ? { ok: true, after: { synced: true } } : refuse("NO_PRICE", "אין מחיר לסנכרן")),
+    plan: (_a, cur) => (isSteven(cur) ? refuse("STEVEN_FLOW", "ל-Steven הכסף נרשם דרך סימון שולם (RECORD_ENGINEER_PAYMENT)")
+      : !cur.projectId ? refuse("STANDALONE", "עבודה עצמאית (בלי פרויקט) — אין סנכרון כפוי לכספים")
+      : cur.expenseStatus === "שולם" ? refuse("PAID_EXPENSE_PROTECTED", "ההוצאה המקושרת כבר 'שולם' — שורה ששולמה לא נדרסת, אין מה לסנכרן")
+      : Number(cur.agreedPrice) > 0 ? { ok: true, after: { synced: true } } : refuse("NO_PRICE", "אין מחיר לסנכרן")),
     async apply(d, id) { return { receipt: await d.forceEngineerFinanceSync(id) }; },
     verify: async (_d, _id, _a, out) => typeof out.receipt === "string" && out.receipt.length > 0,
     requiredValues: (_a, _after) => ["סנכרון"],
-    warnings: (c) => [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))} — שורת ההוצאה המקושרת תיווצר / תתעדכן`],
-    disclosuresHe: ["שורה אחת מקושרת לפי המזהה — בלי כפילויות", "לא יישלח Push"],
+    warnings: (c) => [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))} — שורת ההוצאה המקושרת תיווצר / תתעדכן במטבע העבודה`],
+    disclosuresHe: ["שורה אחת מקושרת לפי המזהה — בלי כפילויות", "שורה ששולמה לא נדרסת", "לא יישלח Push"],
   },
   {
     actionId: "ADD_MIX_COMMENT", kinds: ["mix-comment"],

@@ -10,8 +10,9 @@
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
-import { dupContext, dupGate, dupWarnings, SEPARATE_ARG, type DupQuery } from "./duplicates";
+import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./duplicates";
 import { weekDaysFor } from "@/lib/red-artists/week";
+import { LABEL_ARTIST_RENAME_NAME_KEYED_DEPENDENTS_HE } from "@/lib/label-identity";
 import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
 
 type Ledger = { artistId: string; entryType: string; amount: number; entryDate: string; description: string; note: string; sourceShowId: string | null; sourceTxId: string | null };
@@ -146,13 +147,15 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
     plan(a, cur) { const n = text(a.name, 120); if (n === null) return refuse("BAD_TEXT", "שם חסר"); return finishPlan(cur, { name: n.trim() }); },
     async apply(d, id, a) { const r = await d.renameLabelArtist(id, String(a.name)); if (r !== "ok") throw new Error(`rename refused: ${r}`); },
     requiredValues: (_a, after) => [String(after.name)],
-    warnings: (c) => [`הופעות מקושרות לאמן לפי השם המדויק "${c.name}" — אחרי השינוי, סגירת הופעה על השם הישן לא תזוהה כאמן הלייבל`, ...(c.portalSlug ? ["לאמן יש פורטל — השם שלו בפורטל מוגדר בקוד (לא משתנה כאן)"] : [])],
+    // B4: the id-based parts (Shalev / Avi portals, the release owner's Projects link, the Owner classification ids)
+    // survive a rename; everything still keyed on the NAME is listed (the same shared list any rename surface shows).
+    warnings: (c) => [`תלויות שעדיין לפי השם "${c.name}" — אחרי השינוי הן לא יזהו את האמן:`, ...LABEL_ARTIST_RENAME_NAME_KEYED_DEPENDENTS_HE, ...(c.portalSlug ? ["לאמן יש פורטל — ה-slug שלו (תיקיות / הגדרות) לא משתנה כאן"] : [])],
     disclosuresHe: ["רק השם ברשימת הלייבל משתנה; טקסט האמן בפרויקטים / הופעות לא משתנה", "לא יישלח Push"],
   },
   // ── ledger ──
   {
     actionId: "ADD_LEDGER_ENTRY", kinds: ["ledger-entry"],
-    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note"), SEPARATE_ARG], ["entryType", "amount", "entryDate", "description", "note"], "createArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action)" }),
+    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note"), ...DUP_ARGS], ["entryType", "amount", "entryDate", "description", "note"], "createArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action)" }),
     createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await ledgerDup(d, a)) }; },
     async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "ledger-entry:new", id: "new", label: `מאזן ${r.label}`, fields: { artistName: r.label, ...(await ledgerDup(d, a)) } }; },
     read: ledgerFields,
@@ -244,7 +247,7 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── media income ──
   {
     actionId: "ADD_MEDIA_INCOME", kinds: ["media-income"],
-    meta: meta("הכנסת מדיה לאמן (סטרימינג / זכויות)", "Record media income for an artist (the app's RPC splits label / artist share and recoup)", [K("labelArtist"), { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), SEPARATE_ARG], ["grossAmount", "reportPeriod", "status", "source", "notes"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
+    meta: meta("הכנסת מדיה לאמן (סטרימינג / זכויות)", "Record media income for an artist (the app's RPC splits label / artist share and recoup)", [K("labelArtist"), { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), ...DUP_ARGS], ["grossAmount", "reportPeriod", "status", "source", "notes"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
     createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await mediaDup(d, a)) }; },
     async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "media-income:new", id: "new", label: `מדיה ${r.label}`, fields: { artistName: r.label, ...(await mediaDup(d, a)) } }; },
     read: mediaFields,

@@ -21,6 +21,22 @@ export function singleArtistToken(showArtist: string | null | undefined): string
 }
 
 /**
+ * B4 identity of a show's artist for the show → ledger sync. Shows carry NO label_artists id (shows.artist_client_id
+ * is a CLIENTS id, not a label identity), so the only link is the exact name — reported honestly: a single credit is
+ * NAME_TEXT_MATCH, a collaboration is COLLAB_AMBIGUOUS (never attributed), an empty field is EMPTY.
+ */
+export type ShowArtistIdentity =
+  | { status: "SINGLE"; token: string; quality: "TEXT_MATCH"; basis: string }
+  | { status: "COLLAB_AMBIGUOUS"; tokens: string[]; quality: "AMBIGUOUS"; basis: string }
+  | { status: "EMPTY"; quality: "UNKNOWN"; basis: string };
+export function showArtistIdentity(showArtist: string | null | undefined): ShowArtistIdentity {
+  const tokens = (showArtist ?? "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
+  if (tokens.length === 0) return { status: "EMPTY", quality: "UNKNOWN", basis: "no artist on the show" };
+  if (tokens.length > 1) return { status: "COLLAB_AMBIGUOUS", tokens, quality: "AMBIGUOUS", basis: "collaboration show — no single artist to attribute the fee to (shows store no label-artist id)" };
+  return { status: "SINGLE", token: tokens[0], quality: "TEXT_MATCH", basis: "exact show artist name → label_artists.name (shows store no label-artist id)" };
+}
+
+/**
  * The automatic sync NEVER creates or promotes a "הכנסות" (realized) row —
  * that transition is manual-only, via the balance page's "סמן כהתקבל" action.
  * Regardless of the show/transaction's payment_status (שולם or צפוי), the

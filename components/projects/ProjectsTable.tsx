@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation, matchesTypeFilter } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
-import { isCancelledPayment, actualOutstandingAgainstAgreedPrice, isFullyPaid, collectibleAmount } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency } from "@/lib/finance";
+import { actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
+import { formatTotalsInline } from "@/lib/finance";
+import { buildProjectFinanceSummary, projectMoneyBadge, projectCollectible, collectionTotalsByCurrency, type ProjectFinSummary } from "@/lib/finance/project-summary";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import ProjectTypeDropdown from "@/components/ui/ProjectTypeDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -54,7 +55,7 @@ const FILTER_OPTIONS: FilterStatus[] = [
 function urgencyTier(p: Project, days: number | null): number {
   // Cancelled is terminal — never "urgent/overdue"; it sinks to the bottom tier.
   if (p.status === "בוטל") return 8;
-  if (p.isOverdue && p.status !== "הושלם") return 0;
+  if (isProjectOverdue(p)) return 0;
   if (days !== null && days >= 0 && days <= 7 && p.status !== "הושלם") return 1;
   const STATUS_TIER: Partial<Record<ProjectStatus, number>> = {
     "בעבודה":      2,
@@ -328,15 +329,16 @@ function MobileProjectCard({
 }: {
   p: import("@/lib/types").Project;
   openProject: (id: string) => void;
-  financeSummary: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>;
+  financeSummary: Record<string, ProjectFinSummary>;
 }) {
   const days = daysUntilDeadline(p.deadline);
-  const overdue = p.isOverdue && p.status !== "הושלם";
+  const overdue = isProjectOverdue(p);
   const dueSoon = days !== null && days >= 0 && days <= 7 && p.status !== "הושלם";
   const fin = financeSummary[p.id];
   // Actual payment truth — never nets out cancelled income (Finance Semantics
   // Unification audit, 2026-09-22).
-  const balance = fin ? actualOutstandingAgainstAgreedPrice(fin.agreed, fin.paid) : 0;
+  // A finance-exception (no-charge) project never owes; a missing price is unknown, not a balance.
+  const balance = fin && !fin.financeException && fin.agreed > 0 ? actualOutstandingAgainstAgreedPrice(fin.agreed, fin.paid) : 0;
   const sc = STATUS_COLORS[p.status] ?? { bg: "rgba(75,85,99,0.15)", color: "#6B7280" };
 
   const player = usePlayerSafe();
@@ -633,7 +635,7 @@ function CollectionDetailModal({
   projects,
   onClose,
 }: {
-  financeSummary: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>;
+  financeSummary: Record<string, ProjectFinSummary>;
   projects: import("@/lib/types").Project[];
   onClose: () => void;
 }) {
@@ -644,8 +646,8 @@ function CollectionDetailModal({
   const allRows = Object.entries(financeSummary)
     .map(([projectId, fin]) => {
       const project = projects.find((p) => p.id === projectId);
-      // COLLECTION INTENT — see lib/payment-status.ts module doc.
-      const remaining = collectibleAmount(fin.agreed, fin.paid, fin.cancelled, project?.status);
+      // COLLECTION INTENT — see lib/payment-status.ts module doc. A finance exception never owes.
+      const remaining = projectCollectible(fin, project?.status);
       return { projectId, project, fin, remaining, isKnown: knownIds.has(projectId) };
     })
     .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0);
@@ -655,8 +657,8 @@ function CollectionDetailModal({
   // Orphaned = settings/transactions for deleted or hidden projects
   const orphaned = allRows.filter((r) => !r.isKnown).sort((a, b) => b.remaining - a.remaining);
 
-  // Total = only known projects (matches the card value exactly)
-  const total = rows.reduce((s, r) => s + r.remaining, 0);
+  // Total = only known projects, PER CURRENCY, finance exceptions excluded (matches the card value exactly)
+  const totalByCurrency = collectionTotalsByCurrency(financeSummary, new Map(rows.map((r) => [r.projectId, r.project?.status])));
 
   const cell: React.CSSProperties = {
     padding: "10px 12px", fontSize: 12, borderBottom: "1px solid #1E1E1E", verticalAlign: "middle",
@@ -687,7 +689,7 @@ function CollectionDetailModal({
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>סה״כ לגבייה</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#F59E0B" }}>₪{total.toLocaleString()}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#F59E0B" }}>{formatTotalsInline(totalByCurrency, (a, c) => `${c}${a.toLocaleString()}`)}</div>
             </div>
             <button
               onClick={onClose}
@@ -710,11 +712,11 @@ function CollectionDetailModal({
               {rows.length === 0 ? (
                 <tr><td colSpan={6} style={{ ...cell, textAlign: "center", color: "#555" }}>אין נתונים</td></tr>
               ) : rows.map(({ projectId, project, fin, remaining }) => {
-                const overpaid = fin.paid > fin.agreed && fin.agreed > 0;
-                const fullyPaid = !overpaid && fin.paid >= fin.agreed && fin.agreed > 0;
-                const noAgreed = fin.agreed === 0;
-                const statusLabel = overpaid ? "שולם ביתר" : fullyPaid ? "שולם ✓" : noAgreed ? "אין מחיר מוסכם" : "יתרה פתוחה";
-                const statusColor = overpaid ? "#A855F7" : fullyPaid ? "#34D399" : noAgreed ? "#555" : "#F59E0B";
+                const badge = projectMoneyBadge(fin);
+                const overpaid = badge.kind === "OVERPAID";
+                const fullyPaid = badge.kind === "PAID";
+                const statusLabel = badge.kind === "EXCEPTION" ? "חריג כספים" : overpaid ? "שולם ביתר" : fullyPaid ? "שולם ✓" : badge.kind === "PRICE_UNKNOWN" ? "אין מחיר מוסכם" : "יתרה פתוחה";
+                const statusColor = overpaid ? "#A855F7" : fullyPaid ? "#34D399" : badge.kind === "BALANCE" ? "#F59E0B" : "#555";
                 const rowBg = remaining > 0 ? "transparent" : fullyPaid ? "rgba(52,211,153,0.03)" : "transparent";
 
                 return (
@@ -798,8 +800,10 @@ export default function ProjectsTable() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
+  const [deleteBusy,        setDeleteBusy]        = useState(false);
+  const [deleteErr,         setDeleteErr]         = useState<string | null>(null);
   const [clientNames, setClientNames] = useState<string[]>([]);
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, ProjectFinSummary>>({});
   const [showCollectionDetail, setShowCollectionDetail] = useState(false);
 
   // ── Hidden-projects mode ────────────────────────────────────────────────────
@@ -858,24 +862,9 @@ export default function ProjectsTable() {
     fetch("/api/transactions?all=1")
       .then((r) => r.json())
       .then((d) => {
-        const map: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }> = {};
-        // Settings first: the project's finance currency must be known before its transactions are
-        // classified (R5 — only money in that currency is compared against the agreed price).
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; currency: string }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };
-          map[s.project_id].agreed = s.agreedPrice ?? 0;
-          map[s.project_id].currency = s.currency ?? "₪";
-        });
-        // Song-deal income only — clip income (expense_scope="קליפ") is a separate
-        // deal and never counts against the project's agreed price.
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string; currency?: string | null }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };
-          if (!isSongIncome(t)) return;
-          if (!sameCurrency(t.currency, map[t.project_id].currency)) return;
-          if (["התקבל", "שולם"].includes(t.payment_status)) map[t.project_id].paid += t.amount;
-          if (isCancelledPayment(t.payment_status)) map[t.project_id].cancelled += t.amount;
-        });
-        setFinanceSummary(map);
+        // Settings first (the project's finance currency + financeException), then song-deal income in that
+        // currency only (R5; clip income is its own deal) — lib/finance/project-summary.ts, the one rule.
+        setFinanceSummary(buildProjectFinanceSummary(d.settings ?? [], d.transactions ?? []));
       })
       .catch(() => {});
   };
@@ -945,7 +934,7 @@ export default function ProjectsTable() {
       if (parentFilter && parentFilter !== NO_AFFILIATION && p.parentProject !== parentFilter) return false;
       if (statusFilter === "פעילים") return p.status !== "הושלם";
       if (statusFilter === "כל הסטטוסים") return true;
-      if (statusFilter === "באיחור") return p.isOverdue && p.status !== "הושלם";
+      if (statusFilter === "באיחור") return isProjectOverdue(p);
       if (statusFilter === "קרובים לדדליין") {
         const d = daysUntilDeadline(p.deadline);
         return d !== null && d >= 0 && d <= 7 && p.status !== "הושלם";
@@ -1120,8 +1109,8 @@ export default function ProjectsTable() {
                 },
                 {
                   label: "באיחור",
-                  value: String(projects.filter((p) => p.isOverdue && p.status !== "הושלם").length),
-                  color: projects.some((p) => p.isOverdue && p.status !== "הושלם") ? "#EF4444" : "#555",
+                  value: String(projects.filter((p) => isProjectOverdue(p)).length),
+                  color: projects.some((p) => isProjectOverdue(p)) ? "#EF4444" : "#555",
                 },
                 {
                   label: "לגבייה",
@@ -1131,11 +1120,10 @@ export default function ProjectsTable() {
                     // settings/transactions are excluded. See lib/payment-status.ts
                     // module doc: a cancelled TRANSACTION on a non-cancelled project
                     // never reduces this; only a formally-cancelled PROJECT can.
+                    // Per currency; finance-exception projects excluded (lib/finance/project-summary.ts).
                     const statusById = new Map(projects.map((p) => [p.id, p.status]));
-                    const total = Object.entries(financeSummary)
-                      .filter(([id]) => statusById.has(id))
-                      .reduce((s, [id, f]) => s + collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)), 0);
-                    return total > 0 ? `₪${total.toLocaleString()}` : "—";
+                    const totals = collectionTotalsByCurrency(financeSummary, statusById);
+                    return Object.keys(totals).length ? formatTotalsInline(totals, (a, c) => `${c}${a.toLocaleString()}`) : "—";
                   })(),
                   color: "#F59E0B",
                 },
@@ -1512,7 +1500,7 @@ export default function ProjectsTable() {
                     <span
                       className="text-xs"
                       style={{
-                        color: p.isOverdue && p.status !== "הושלם" ? "#EF4444"
+                        color: isProjectOverdue(p) ? "#EF4444"
                           : showDueSoon ? "#F97316"
                           : "#555",
                         whiteSpace: "nowrap",
@@ -1533,11 +1521,15 @@ export default function ProjectsTable() {
                       // collectibleBalance, never cancelled income (confirmed live bug,
                       // Finance Semantics Unification audit, 2026-09-22: a cancelled
                       // transaction on an active/completed project must never show "שולם ✓").
-                      if (isFullyPaid(fin.agreed, fin.paid)) return <span style={{ fontSize: 11, color: "#34D399" }}>שולם ✓</span>;
-                      const bal = actualOutstandingAgainstAgreedPrice(fin.agreed, fin.paid);
+                      // projectMoneyBadge: exception → "חריג", no agreed price → "אין מחיר" (PRICE_UNKNOWN, never
+                      // "שולם ✓"), fully paid only when agreed > 0 && paid ≥ agreed (isFullyPaid).
+                      const badge = projectMoneyBadge(fin);
+                      if (badge.kind === "EXCEPTION") return <span style={{ fontSize: 11, color: "#6B7280" }}>חריג</span>;
+                      if (badge.kind === "PRICE_UNKNOWN") return <span style={{ fontSize: 11, color: "#6B7280" }}>אין מחיר</span>;
+                      if (badge.kind === "PAID" || badge.kind === "OVERPAID") return <span style={{ fontSize: 11, color: "#34D399" }}>שולם ✓</span>;
                       return (
                         <span style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", whiteSpace: "nowrap" }}>
-                          {fin.currency}{bal.toLocaleString()}
+                          {badge.currency}{badge.balance.toLocaleString()}
                         </span>
                       );
                     })()}
@@ -1562,6 +1554,7 @@ export default function ProjectsTable() {
                         e.stopPropagation();
                         setConfirmDeleteId(p.id);
                         setConfirmDeleteName(p.name);
+                        setDeleteErr(null);
                       }}
                       title="מחק פרויקט"
                       style={{
@@ -1593,7 +1586,7 @@ export default function ProjectsTable() {
       {/* ── Delete confirmation popup ── */}
       {confirmDeleteId && typeof document !== "undefined" && createPortal(
         <div
-          onClick={() => setConfirmDeleteId(null)}
+          onClick={() => { if (!deleteBusy) { setConfirmDeleteId(null); setDeleteErr(null); } }}
           style={{
             position: "fixed", inset: 0, zIndex: 99999,
             background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
@@ -1618,9 +1611,13 @@ export default function ProjectsTable() {
               למחוק את <strong style={{ color: "#CCC" }}>{confirmDeleteName}</strong>?<br />
               <span style={{ fontSize: 11, color: "#555" }}>פעולה זו אינה ניתנת לביטול</span>
             </p>
+            {deleteErr && (
+              <p style={{ color: "#F87171", fontSize: 12, margin: "0 0 14px", lineHeight: 1.5 }}>{deleteErr}</p>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={() => setConfirmDeleteId(null)}
+                onClick={() => { setConfirmDeleteId(null); setDeleteErr(null); }}
+                disabled={deleteBusy}
                 style={{
                   flex: 1, padding: "9px 0", borderRadius: 10,
                   border: "1px solid #2A2A2A", background: "transparent",
@@ -1630,11 +1627,21 @@ export default function ProjectsTable() {
                 ביטול
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  // awaited: the modal stays open until the server confirms; a refusal (409) is shown here
                   const id = confirmDeleteId;
-                  setConfirmDeleteId(null);
-                  deleteProject(id);
+                  setDeleteBusy(true);
+                  setDeleteErr(null);
+                  try {
+                    await deleteProject(id);
+                    setConfirmDeleteId(null);
+                  } catch (e) {
+                    setDeleteErr(e instanceof Error && e.message ? e.message : "המחיקה נכשלה — נסה שוב");
+                  } finally {
+                    setDeleteBusy(false);
+                  }
                 }}
+                disabled={deleteBusy}
                 style={{
                   flex: 1, padding: "9px 0", borderRadius: 10,
                   border: "1px solid rgba(239,68,68,0.4)",
@@ -1643,7 +1650,7 @@ export default function ProjectsTable() {
                   fontWeight: 700, fontFamily: "inherit",
                 }}
               >
-                כן, מחק
+                {deleteBusy ? "מוחק..." : "כן, מחק"}
               </button>
             </div>
           </div>

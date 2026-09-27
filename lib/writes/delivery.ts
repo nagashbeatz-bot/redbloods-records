@@ -6,6 +6,11 @@
  *     merged into the current record — it used to merge the whole request body (folderPath / deliveryLink could be
  *     overwritten by any key). Unknown keys / values are refused.
  *   • createDeliveryFolder / deleteDeliveryFolder check the settings write (it used to be ignored on create).
+ * B5 (2026-09-27) — status / date coherence:
+ *   • "delivered" always carries deliveredAt (the given YYYY-MM-DD, default = today in Israel); any other status clears
+ *     deliveredAt. Every delivered date is also kept as `lastDeliveredAt` (history in the SAME settings value): leaving
+ *     "delivered", re-creating the folder or deleting it never erases the fact that it was delivered once.
+ *   • deleteDeliveryFolder resets the record to not_created (the drawer UI) but keeps lastDeliveredAt.
  */
 import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
@@ -15,6 +20,34 @@ export const DELIVERY_STATUSES = ["not_created", "ready", "delivered"] as const;
 export type DeliveryStatus = typeof DELIVERY_STATUSES[number];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const key = (projectId: string) => `delivery_${projectId}`;
+const ilTodayYmd = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+/** The history field that survives status changes and folder deletion (only when there is one). */
+function keepHistory(current: Record<string, unknown>): { lastDeliveredAt?: string } {
+  const last = typeof current.lastDeliveredAt === "string" && current.lastDeliveredAt ? current.lastDeliveredAt
+    : current.deliveryStatus === "delivered" && typeof current.deliveredAt === "string" && current.deliveredAt ? current.deliveredAt : null;
+  return last ? { lastDeliveredAt: last } : {};
+}
+
+/**
+ * Pure: the next delivery record for a status / date patch (B5 coherence). delivered ⇒ deliveredAt (given or today)
+ * (null / missing → the record's own date on a re-save, else today) and lastDeliveredAt = that date; any other status
+ * ⇒ deliveredAt null, lastDeliveredAt kept. A date is refused unless the record is (or becomes) delivered.
+ */
+export function nextDeliveryRecord(current: Record<string, unknown>, patch: { deliveryStatus?: string; deliveredAt?: string | null }, today: string = ilTodayYmd()): Record<string, unknown> {
+  const status = patch.deliveryStatus ?? String(current.deliveryStatus ?? "not_created");
+  if (status === "delivered") {
+    // the given date; else the record's own delivered date (a re-save); else today (Israel) — never delivered without a date
+    const at = typeof patch.deliveredAt === "string" ? patch.deliveredAt
+      : (current.deliveryStatus === "delivered" && typeof current.deliveredAt === "string" && current.deliveredAt ? current.deliveredAt : null);
+    const date = at ?? today;
+    return { ...current, deliveryStatus: "delivered", deliveredAt: date, lastDeliveredAt: date };
+  }
+  if (typeof patch.deliveredAt === "string") throw new DeliveryInputError("תאריך מסירה נשמר רק כשהסטטוס 'נמסר'");
+  const { lastDeliveredAt: _drop, ...rest } = current;
+  void _drop;
+  return { ...rest, deliveryStatus: status, deliveredAt: null, ...keepHistory(current) };
+}
 
 async function createFolder(token: string, path: string): Promise<void> {
   const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
@@ -48,6 +81,8 @@ async function createShareLink(token: string, path: string): Promise<string> {
   throw new Error((err.error_summary as string) ?? "Failed to create share link");
 }
 
+export { ilTodayYmd as deliveryTodayYmd };
+
 export async function readDeliveryRecord(projectId: string): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.from("settings").select("value").eq("key", key(projectId)).maybeSingle();
   if (error) throw new Error(error.message);
@@ -55,9 +90,9 @@ export async function readDeliveryRecord(projectId: string): Promise<Record<stri
 }
 
 /** Metadata only (the folder path and the public link never leave as values). */
-export async function readDeliveryState(projectId: string): Promise<{ status: string; deliveredAt: string | null; hasFolder: boolean; hasLink: boolean }> {
+export async function readDeliveryState(projectId: string): Promise<{ status: string; deliveredAt: string | null; lastDeliveredAt: string | null; hasFolder: boolean; hasLink: boolean }> {
   const v = await readDeliveryRecord(projectId);
-  return { status: String(v.deliveryStatus ?? "not_created"), deliveredAt: (v.deliveredAt as string | null) ?? null, hasFolder: !!v.folderPath, hasLink: !!v.deliveryLink };
+  return { status: String(v.deliveryStatus ?? "not_created"), deliveredAt: (v.deliveredAt as string | null) ?? null, lastDeliveredAt: (v.lastDeliveredAt as string | null) ?? null, hasFolder: !!v.folderPath, hasLink: !!v.deliveryLink };
 }
 
 /** POST /api/delivery semantics: the Delivery folder (frozen folder wins) + a public share link; status "ready". */
@@ -68,7 +103,8 @@ export async function createDeliveryFolder(projectId: string, artist: string, pr
   const folderPath = deliveryFolder(artist ?? "", projectName, projectId, frozen);
   await createFolder(token, folderPath);
   const deliveryLink = await createShareLink(token, folderPath);
-  const { error } = await supabase.from("settings").upsert({ key: key(projectId), value: { folderPath, deliveryLink, deliveryStatus: "ready", deliveredAt: null } }, { onConflict: "key" });
+  const history = keepHistory(await readDeliveryRecord(projectId));
+  const { error } = await supabase.from("settings").upsert({ key: key(projectId), value: { folderPath, deliveryLink, deliveryStatus: "ready", deliveredAt: null, ...history } }, { onConflict: "key" });
   if (error) throw new Error(error.message);
   return { folderPath, deliveryLink };
 }
@@ -79,16 +115,16 @@ export async function setDeliveryStatus(projectId: string, patch: Record<string,
   const allowed = new Set(["deliveryStatus", "deliveredAt"]);
   const extra = Object.keys(patch).filter((k) => !allowed.has(k));
   if (extra.length) throw new DeliveryInputError(`שדות לא מותרים: ${extra.join(", ")}`);
-  const next: Record<string, unknown> = {};
+  const next: { deliveryStatus?: string; deliveredAt?: string | null } = {};
   if (patch.deliveryStatus !== undefined) {
     if (!(DELIVERY_STATUSES as readonly string[]).includes(String(patch.deliveryStatus))) throw new DeliveryInputError("סטטוס מסירה לא תקין");
-    next.deliveryStatus = patch.deliveryStatus;
+    next.deliveryStatus = String(patch.deliveryStatus);
   }
   if (patch.deliveredAt !== undefined) {
     if (patch.deliveredAt !== null && !(typeof patch.deliveredAt === "string" && YMD.test(patch.deliveredAt))) throw new DeliveryInputError("תאריך מסירה לא תקין");
-    next.deliveredAt = patch.deliveredAt;
+    next.deliveredAt = patch.deliveredAt as string | null;
   }
-  const merged = { ...(await readDeliveryRecord(projectId)), ...next };
+  const merged = nextDeliveryRecord(await readDeliveryRecord(projectId), next);
   const { error } = await supabase.from("settings").upsert({ key: key(projectId), value: merged }, { onConflict: "key" });
   if (error) throw new Error(error.message);
   return merged;
@@ -97,7 +133,8 @@ export async function setDeliveryStatus(projectId: string, patch: Record<string,
 /** DELETE /api/delivery semantics: the Delivery folder is deleted and the record reset to not_created. */
 export async function deleteDeliveryFolder(projectId: string): Promise<void> {
   const token = await getDropboxToken();
-  const folderPath = String((await readDeliveryRecord(projectId)).folderPath ?? "");
+  const before = await readDeliveryRecord(projectId);
+  const folderPath = String(before.folderPath ?? "");
   if (folderPath) {
     const delRes = await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
       method: "POST",
@@ -119,6 +156,7 @@ export async function deleteDeliveryFolder(projectId: string): Promise<void> {
       }
     }
   }
-  const { error } = await supabase.from("settings").upsert({ key: key(projectId), value: { deliveryStatus: "not_created" } }, { onConflict: "key" });
+  // B5: the folder is gone (status not_created for the drawer), but a past delivery is a fact — lastDeliveredAt stays.
+  const { error } = await supabase.from("settings").upsert({ key: key(projectId), value: { deliveryStatus: "not_created", ...keepHistory(before) } }, { onConflict: "key" });
   if (error) throw new Error(error.message);
 }

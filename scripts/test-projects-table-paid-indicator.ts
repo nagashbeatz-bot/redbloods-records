@@ -33,10 +33,14 @@ console.log("Static source check: ProjectsTable.tsx's \"שולם ✓\" is gated 
   const file = path.join(path.resolve(__dirname, ".."), "components/projects/ProjectsTable.tsx");
   const src = fs.readFileSync(file, "utf8");
   ok("no collectibleBalance call remains anywhere in the file", !/collectibleBalance\s*\(/.test(src));
-  ok("isFullyPaid is imported from lib/payment-status", /import\s*\{[^}]*isFullyPaid[^}]*\}\s*from\s*"@\/lib\/payment-status"/.test(src));
-  // The one desktop "כסף" column checkmark, extracted with enough context to see its own gate.
-  const checkmarkBlock = src.slice(src.indexOf('if (isFullyPaid(fin.agreed, fin.paid))'), src.indexOf('if (isFullyPaid(fin.agreed, fin.paid))') + 200);
-  ok("the checkmark's own if-condition calls isFullyPaid(fin.agreed, fin.paid)", checkmarkBlock.includes("שולם ✓"));
+  // B1 (2026-09-27): the badge comes from lib/finance/project-summary.ts projectMoneyBadge (paymentPosition → isFullyPaid
+  // semantics: agreed > 0 && paid ≥ agreed); a missing price shows "אין מחיר", an exception "חריג".
+  ok("projectMoneyBadge is imported from lib/finance/project-summary", /import\s*\{[^}]*projectMoneyBadge[^}]*\}\s*from\s*"@\/lib\/finance\/project-summary"/.test(src));
+  const at = src.indexOf('if (badge.kind === "PAID" || badge.kind === "OVERPAID")');
+  const checkmarkBlock = src.slice(at, at + 200);
+  ok("the checkmark is gated by the PAID / OVERPAID badge only", at > 0 && checkmarkBlock.includes("שולם ✓"));
+  ok("no price → \"אין מחיר\" (PRICE_UNKNOWN, never \"שולם ✓\")", /badge\.kind === "PRICE_UNKNOWN"\) return <span[^>]*>אין מחיר</.test(src));
+  ok("isFullyPaid(0, 0) is false — no price is never paid", !isFullyPaid(0, 0));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

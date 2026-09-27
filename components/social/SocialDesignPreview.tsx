@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
+import { SOCIAL_PHASE_IDEA, SOCIAL_PHASE_WORK, SOCIAL_PHASE_READY, SOCIAL_PHASE_PUBLISHED } from "@/lib/types";
 import type { Client } from "@/lib/clients-store";
 import ClientDrawer from "@/components/clients/ClientDrawer";
 import SocialPromotions from "./SocialPromotions";
@@ -1168,10 +1169,11 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
     return items.sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 3);
   })();
 
-  const DRAFT_STATUSES   = new Set(["draft", "idea", "needs_shoot", "shot"]);
-  const WORK_STATUSES    = new Set(["in_progress", "in_edit", "needs_review"]);
-  const READY_STATUSES   = new Set(["ready_to_post", "ready", "scheduled"]);
-  const PUB_STATUSES     = new Set(["published", "posted"]);
+  // B5: the shared phase sets (lib/types.ts) — both social vocabularies, one grouping.
+  const DRAFT_STATUSES   = new Set<string>(SOCIAL_PHASE_IDEA);
+  const WORK_STATUSES    = new Set<string>(SOCIAL_PHASE_WORK);
+  const READY_STATUSES   = new Set<string>(SOCIAL_PHASE_READY);
+  const PUB_STATUSES     = new Set<string>(SOCIAL_PHASE_PUBLISHED);
 
   const countDraft     = socialLoading ? null : rows.filter(r => DRAFT_STATUSES.has(r.status)).length;
   const countWork      = socialLoading ? null : rows.filter(r => WORK_STATUSES.has(r.status)).length;
@@ -1221,7 +1223,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
       : `${s} ${HEB_MONTHS[sm]} – ${e} ${HEB_MONTHS[em]}`;
   })();
 
-  const SHOW_IN_WEEK: Set<string> = new Set(["ready_to_post","ready","scheduled","published","posted"]);
+  const SHOW_IN_WEEK: Set<string> = new Set<string>([...SOCIAL_PHASE_READY, ...SOCIAL_PHASE_PUBLISHED]);
 
   type WeekItem     = { t: string; c: string; time?: string; icon: string };
   type WeekDayEntry = { label: string; date: string; today: boolean; items: WeekItem[] };

@@ -1,5 +1,6 @@
 import type { Project } from "./types";
 import { actualOutstandingAgainstAgreedPrice } from "./payment-status";
+import { isProjectOverdue } from "./project-deadline";
 
 export type IssuePriority = "high" | "medium";
 
@@ -67,11 +68,7 @@ export function checkHealth(projects: Project[]): ProjectIssue[] {
 
     // Active / in-mix project that's overdue
     if (
-      p.isOverdue &&
-      p.status !== "הושלם" &&
-      p.status !== "בהשהייה" &&
-      p.status !== "בוטל" &&
-      p.deadline
+      isProjectOverdue(p)
     ) {
       issues.push({
         id: p.id,
@@ -132,8 +129,7 @@ export function checkHealth(projects: Project[]): ProjectIssue[] {
 
 // ── Finance health checks ─────────────────────────────────────────────────────
 const MIX_STATUSES    = new Set(["מחכה למיקס", "במיקס"]);
-const PAID_STATUSES   = new Set(["שולם", "התקבל"]);
-const EXPECT_STATUSES = new Set(["צפוי", "חלקי"]);
+// (received / expected status sets live ONLY in lib/finance/classify.ts — the unused local copies were removed.)
 
 export function checkFinanceHealth(
   projects: Project[],

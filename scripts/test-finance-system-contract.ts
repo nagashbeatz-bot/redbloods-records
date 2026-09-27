@@ -40,7 +40,7 @@ const countBy = (re: RegExp) => Object.fromEntries(SOURCES.map((f) => [rel(f), (
  */
 const KNOWN_LOCALIZED_TYPE_COMPARISONS: Record<string, number> = {
   "components/ui/StatusDropdown.tsx": 1,   // LEGACY: accepts both ("income" || "הכנסה") — harmless
-  "lib/agent/rules.ts": 2,                 // NOT CHANGED: agent ALERT generation (kill-switched) — alert lifecycle is out of scope
+  // lib/agent/rules.ts: FIXED in B1 (2026-09-27) — income = the explicit income types, an expense row is never overdue income
   "lib/reports/data.ts": 1,                // LEGACY: isExpenseType accepts both ("הוצאה" || "expense") — harmless
   "lib/reports/templates.ts": 1,           // LEGACY: isExpenseRow tolerance ("expense" || "הוצאה") — harmless
 };

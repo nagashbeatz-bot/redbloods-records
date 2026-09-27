@@ -6,7 +6,7 @@ import { ALL_STATUSES } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import { isSongIncome } from "@/lib/clip-finance";
-import { isExpenseFullyPaidStatus, isReceivedStatus, sameCurrency } from "@/lib/finance";
+import { isExpectedStatus, isExpenseFullyPaidStatus, isReceivedStatus, isCancelledStatus as isCancelledPayment, sameCurrency } from "@/lib/finance";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 
 interface ProjectAction {
@@ -166,6 +166,8 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const [modalEditingId,  setModalEditingId]  = useState<string | null>(null);
   const [modalSaving,     setModalSaving]     = useState(false);
   const [modalDeletingId, setModalDeletingId] = useState<string | null>(null);
+  // the server's refusal (e.g. 409 — a row owned by a show / mix / clip writer) is shown, never swallowed
+  const [modalTxErr, setModalTxErr] = useState<string | null>(null);
   const [actions,        setActions]        = useState<ProjectAction[]>([]);
   const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -203,19 +205,23 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   };
 
   const handleModalDeleteTx = async (txId: string) => {
-    await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    setModalTxErr(null);
+    const res = await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setModalTxErr(d.error || "המחיקה נכשלה — הרשומה לא נמחקה"); }
     setModalDeletingId(null);
     load();
   };
 
   const handleTxStatusChange = async (txId: string, newStatus: string) => {
     setModalSaving(true);
+    setModalTxErr(null);
     try {
-      await fetch(`/api/transactions/${txId}`, {
+      const res = await fetch(`/api/transactions/${txId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paymentStatus: newStatus }),
       });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setModalTxErr(d.error || "העדכון נכשל — הסטטוס לא השתנה"); }
       setModalEditingId(null);
       load();
     } finally {
@@ -333,16 +339,16 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const inCur        = (t: Transaction) => sameCurrency(t.currency, currency);
   const isReceivedSong = (t: Transaction) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inCur(t);
   const received     = transactions.filter(isReceivedSong).reduce((s, t) => s + t.amount, 0);
-  const expected     = transactions.filter((t) => isSongIncome(t) && t.payment_status === "צפוי" && inCur(t)).reduce((s, t) => s + t.amount, 0);
+  const expected     = transactions.filter((t) => isSongIncome(t) && isExpectedStatus(t.payment_status) && inCur(t)).reduce((s, t) => s + t.amount, 0);
   const expenses     = transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && inCur(t)).reduce((s, t) => s + t.amount, 0);
   const balance      = agreedPrice - received;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
   const MODAL_ROWS: Record<FilterKey, Transaction[]> = {
     received: transactions.filter(isReceivedSong),
-    expected: transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי"),
+    expected: transactions.filter((t) => t.type === "income" && isExpectedStatus(t.payment_status)),
     expenses: transactions.filter((t) => t.type === "expense"),
-    balance:  transactions.filter((t) => t.type === "income" && !["שולם", "התקבל", "בוטל"].includes(t.payment_status)),
+    balance:  transactions.filter((t) => t.type === "income" && !isReceivedStatus(t.payment_status) && !isCancelledPayment(t.payment_status)),
   };
 
   // ── Files per track ─────────────────────────────────────────────────────────
@@ -923,6 +929,11 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
               style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer", fontFamily: "inherit", lineHeight: 1, padding: "2px 6px" }}
             >✕</button>
           </div>
+          {modalTxErr && (
+            <div role="alert" style={{ fontSize: 12.5, color: "#F87171", background: "rgba(239,68,68,0.08)", borderBottom: "1px solid rgba(239,68,68,0.3)", padding: "8px 20px", flexShrink: 0 }}>
+              {modalTxErr}
+            </div>
+          )}
 
           {/* Balance summary row */}
           {filterModal === "balance" && (

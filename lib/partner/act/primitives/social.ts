@@ -38,7 +38,6 @@ const CAMPAIGN_STATUS = SOCIAL_CAMPAIGN_STATUSES as readonly string[];
 const CONTENT_STATUS = SOCIAL_CONTENT_STATUSES as readonly string[];
 const CONTENT_TYPES = SOCIAL_CONTENT_TYPES as readonly string[];
 const PLATFORMS = SOCIAL_PLATFORMS as readonly string[];
-const ils = (n: number) => `₪${Number(n).toLocaleString("en-US")}`;
 
 const K = (name: string, required = true): ArgSpec => ({ name, kind: "entityKey", required });
 const T = (name: string, required = false): ArgSpec => ({ name, kind: "text", required });
@@ -74,7 +73,9 @@ async function onContent(d: WriterDeps, a: Readonly<Record<string, unknown>>): P
   const f = await contentFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את פריט התוכן");
   return { key: `social-content:${k.id}`, id: k.id, label: `${f.contentType} · ${f.title}`, fields: f };
 }
-const promoFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readPromotion(id); return r ? { campaignId: s(r.campaign_id), name: String(r.name ?? ""), channel: String(r.channel ?? ""), promoType: String(r.promo_type ?? ""), plannedAmount: Number(r.planned_amount) || 0, status: String(r.status ?? ""), promoDate: s(r.promo_date), notes: String(r.notes ?? ""), actualAmount: Number(r.actual_amount) || 0, hasExpense: !!r.linked_transaction_id } : null; };
+const promoFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readPromotion(id); return r ? { campaignId: s(r.campaign_id), name: String(r.name ?? ""), channel: String(r.channel ?? ""), promoType: String(r.promo_type ?? ""), plannedAmount: Number(r.planned_amount) || 0, status: String(r.status ?? ""), promoDate: s(r.promo_date), notes: String(r.notes ?? ""), actualAmount: Number(r.linked_amount ?? r.actual_amount) || 0, paidSpend: Number(r.actual_amount) || 0, spendCurrency: String(r.actual_currency ?? "₪"), linkedStatus: s(r.linked_status), hasExpense: !!r.linked_transaction_id } : null; };
+/** A5: the actual spend counts only when the linked expense is שולם, in its own currency (lib/social-promotions-store promotionSpend). */
+const cur$ = (c: Fields, n: number) => `${String(c.spendCurrency ?? "₪")}${Number(n).toLocaleString("en-US")}`;
 async function onPromo(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.promotion, ["promotion"]); if (!k) return refuse("BAD_ENTITY", "צריך פעולת קידום (promotion:…)");
   const f = await promoFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את פעולת הקידום");
@@ -164,8 +165,8 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
     apply: (d, id) => d.deleteSocialCampaign(id),
     async verify(d, id) { return (await d.readSocialCampaign(id)) === null; },
     requiredValues: () => ["מחיקה"],
-    warnings: (c) => [`לקמפיין ${c.contentCount} פריטי תוכן, ${c.promotionCount} פעולות קידום ו-${c.fileCount} קבצים — מה שמסד הנתונים מקשר לקמפיין נמחק / מתנתק איתו`, "הוצאות קידום שכבר נרשמו בכספים נשארות"],
-    disclosuresHe: ["מחיקה לצמיתות, כמו במסך"],
+    warnings: (c) => [`לקמפיין ${c.contentCount} פריטי תוכן, ${c.promotionCount} פעולות קידום ו-${c.fileCount} קבצים — מה שמסד הנתונים מקשר לקמפיין נמחק / מתנתק איתו`, "הוצאות קידום שכבר נרשמו בכספים נשארות — כל אחת מקבלת קודם סימון מקור בהערות (\"[קידום נמחק …]\")"],
+    disclosuresHe: ["מחיקה לצמיתות, כמו במסך", "אם סימון המקור של הוצאה כלשהי נכשל — הקמפיין לא נמחק"],
   },
   {
     actionId: "ADD_SOCIAL_CONTENT", kinds: ["social-content"],
@@ -230,13 +231,16 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_PROMOTION_ACTUAL_SPEND", kinds: ["promotion"],
-    meta: meta("רישום ההוצאה בפועל של קידום (הוצאה ששולמה בכספים)", "Record a promotion's ACTUAL spend: creates ONE paid ₪ Finance expense (scope שיווק) or updates the linked one — the app's CAS-guarded sync", [K("promotion"), M("amount", true)], ["actualAmount"], "syncActualExpense (lib/social-promotions-store via lib/writes/social)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "a new approved plan setting the previous amount" }),
+    meta: meta("רישום ההוצאה בפועל של קידום (הוצאה ששולמה בכספים)", "Record a promotion's ACTUAL spend: creates ONE paid ₪ Finance expense (scope שיווק) or updates the linked one's amount (in its own currency) — the app's CAS-guarded sync; it counts as spend only while שולם", [K("promotion"), M("amount", true)], ["actualAmount", "spendCurrency"], "syncActualExpense (lib/social-promotions-store via lib/writes/social)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "a new approved plan setting the previous amount" }),
     resolve: onPromo, read: promoFields,
-    plan(a, cur) { const n = Number(a.amount); if (!Number.isFinite(n) || n < 0) return refuse("BAD_AMOUNT", "סכום ≥ 0"); if (!cur.hasExpense && n === 0) return refuse("NO_CHANGE_NEEDED", "אין הוצאה לרשום"); return finishPlan(cur, { actualAmount: n }); },
+    plan(a, cur) { const n = Number(a.amount); if (!Number.isFinite(n) || n < 0) return refuse("BAD_AMOUNT", "סכום ≥ 0"); if (!cur.hasExpense && n === 0) return refuse("NO_CHANGE_NEEDED", "אין הוצאה לרשום"); return finishPlan(cur, { actualAmount: n, spendCurrency: String(cur.spendCurrency ?? "₪") }); },
     apply: (d, id, after) => d.syncActualExpense(id, Number(after.actualAmount)),
-    requiredValues: (_c, after) => [ils(Number(after.actualAmount))],
-    warnings: (c) => [c.hasExpense ? "משנה את סכום ההוצאה הקיימת בכספים (לא יוצרת שנייה)" : "נוצרת הוצאה חדשה בכספים: ₪, שולם, היקף שיווק"],
-    disclosuresHe: ["מטבע ₪ בלבד (כמו במסך)", "0 על הוצאה קיימת מאפס את הסכום — לא מוחק את הרשומה"],
+    requiredValues: (_a, after) => [cur$(after, Number(after.actualAmount))],
+    warnings: (c) => [
+      c.hasExpense ? `משנה את סכום ההוצאה הקיימת בכספים (לא יוצרת שנייה) — במטבע שלה (${c.spendCurrency})` : "נוצרת הוצאה חדשה בכספים: ₪, שולם, היקף שיווק",
+      ...(c.hasExpense && c.linkedStatus !== "שולם" ? [`ההוצאה המקושרת במצב '${c.linkedStatus ?? "—"}' — היא לא נספרת כהוצאה בפועל עד שהיא 'שולם'`] : []),
+    ],
+    disclosuresHe: ["הוצאה חדשה נרשמת ב-₪ (כמו במסך); הוצאה קיימת נשארת במטבע שלה — מטבעות לא מחוברים", "הוצאה בפועל = רק הוצאה מקושרת בסטטוס 'שולם'", "0 על הוצאה קיימת מאפס את הסכום — לא מוחק את הרשומה"],
   },
   {
     actionId: "DELETE_PROMOTION", kinds: ["promotion"],
@@ -247,7 +251,7 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
     apply: (d, id) => d.deletePromotion(id),
     async verify(d, id) { return (await d.readPromotion(id)) === null; },
     requiredValues: () => ["מחיקה"],
-    warnings: (c) => [c.hasExpense ? `ההוצאה בכספים (${ils(Number(c.actualAmount))}) נשארת — למחוק אותה זו פעולה כספית נפרדת` : "אין לקידום הוצאה בכספים"],
-    disclosuresHe: ["רק רשומת התכנון נמחקת"],
+    warnings: (c) => [c.hasExpense ? `ההוצאה בכספים (${cur$(c, Number(c.actualAmount))}, ${c.linkedStatus ?? "—"}) נשארת, ובהערות שלה נרשם "[קידום נמחק …: ${c.name} · ${c.channel}]" — למחוק אותה זו פעולה כספית נפרדת` : "אין לקידום הוצאה בכספים"],
+    disclosuresHe: ["רק רשומת התכנון נמחקת", "לפני המחיקה נרשם סימון מקור בהערות ההוצאה (הוספה, לא דריסה); אם הרישום נכשל — הקידום לא נמחק"],
   },
 ];

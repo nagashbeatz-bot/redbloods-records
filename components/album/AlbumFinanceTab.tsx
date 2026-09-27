@@ -5,7 +5,7 @@ import type { Project } from "@/lib/types";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 import AlbumPrevInfoBlock from "./AlbumPrevInfoBlock";
 import { isSongIncome } from "@/lib/clip-finance";
-import { isExpenseFullyPaidStatus, isReceivedStatus, sameCurrency } from "@/lib/finance";
+import { isExpectedStatus, isExpenseFullyPaidStatus, isReceivedStatus, sameCurrency } from "@/lib/finance";
 
 // Scoped ONLY to Maor Ahron's EP for now (not a global feature — see task scope).
 // The "מידע קודם" block appears only for this project id.
@@ -63,24 +63,30 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const [savingStatus,    setSavingStatus]    = useState(false);
   const [deletingId,      setDeletingId]      = useState<string | null>(null);
+  // the server's refusal (e.g. 409 — a row owned by a show / mix / clip writer) is shown, never swallowed
+  const [txErr,           setTxErr]           = useState<string | null>(null);
 
   const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
   const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
 
   const handleDeleteTx = async (txId: string) => {
-    await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    setTxErr(null);
+    const res = await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setTxErr(d.error || "המחיקה נכשלה — הרשומה לא נמחקה"); }
     setDeletingId(null);
     load();
   };
 
   const handleStatusChange = async (txId: string, newStatus: string) => {
     setSavingStatus(true);
+    setTxErr(null);
     try {
-      await fetch(`/api/transactions/${txId}`, {
+      const res = await fetch(`/api/transactions/${txId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paymentStatus: newStatus }),
       });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setTxErr(d.error || "העדכון נכשל — הסטטוס לא השתנה"); }
       setEditingStatusId(null);
       load();
     } finally {
@@ -112,7 +118,7 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
     .reduce((s, t) => s + t.amount, 0);
 
   const expected = transactions
-    .filter((t) => isSongIncome(t) && t.payment_status === "צפוי" && inCur(t))
+    .filter((t) => isSongIncome(t) && isExpectedStatus(t.payment_status) && inCur(t))
     .reduce((s, t) => s + t.amount, 0);
 
   const expenses = transactions
@@ -252,6 +258,11 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
         direction: "rtl",
       }}
     >
+      {txErr && (
+        <div role="alert" style={{ fontSize: 12.5, color: "#F87171", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "8px 12px", marginBottom: 14 }}>
+          {txErr}
+        </div>
+      )}
       {/* "מידע קודם" — manual historical Monday data. Scoped to this EP only;
           fully isolated from the canonical finance below (no transactions). */}
       {PREV_INFO_PROJECT_IDS.has(project.id) && (

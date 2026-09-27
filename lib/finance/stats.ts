@@ -8,7 +8,7 @@
  * here converts or adds across currencies.
  */
 import { DEFAULT_CURRENCY, groupByCurrency } from "./currency";
-import { isExpenseFullyPaidStatus, isExpenseTx, isIncomeTx } from "./classify";
+import { isExpectedStatus, isExpenseFullyPaidStatus, isExpenseTx, isIncomeTx, isReceivedStatus } from "./classify";
 
 export interface StatsTx {
   type: string;
@@ -39,12 +39,12 @@ export function calcStatsForRows(txList: readonly StatsTx[]): PeriodStats {
   const projectExpenses = expenses.filter((t) => (t.scope ?? "project") === "project");
   const generalExpenses = expenses.filter((t) => t.scope === "general");
 
-  const incomeReceived    = income.filter((t) => ["התקבל", "שולם"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected    = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeReceived    = income.filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeExpected    = income.filter((t) => isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const projExpPaid       = projectExpenses.filter((t) => isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const genExpPaid        = generalExpenses.filter((t) => isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expensesPaid      = projExpPaid + genExpPaid;
-  const expensesExpected  = expenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const expensesExpected  = expenses.filter((t) => isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const profitReal        = incomeReceived - expensesPaid;
   const profitEst         = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
   return { incomeReceived, incomeExpected, projExpPaid, genExpPaid, expensesPaid, expensesExpected, profitReal, profitEst };
@@ -74,10 +74,10 @@ export interface PeriodTotals {
 export function calcTotalsForRows(txList: readonly StatsTx[]): PeriodTotals {
   const periodIncome   = txList.filter(isIncomeTx);
   const periodExpenses = txList.filter(isExpenseTx);
-  const incomeReceived   = periodIncome.filter((t) => ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const incomeExpected   = periodIncome.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeReceived   = periodIncome.filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const incomeExpected   = periodIncome.filter((t) => isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expensesPaid     = periodExpenses.filter((t) => isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const expensesExpected = periodExpenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const expensesExpected = periodExpenses.filter((t) => isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const profitReal       = incomeReceived - expensesPaid;
   const profitEst        = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
   return { incomeReceived, incomeExpected, expensesPaid, expensesExpected, profitReal, profitEst };

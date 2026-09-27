@@ -471,6 +471,8 @@ export default function RedFilmsPage() {
       if (!res.ok) throw new Error(data.error || "שגיאה במחיקה");
       await load();
       setSelectedIds(new Set());
+      // the productions are deleted; stored files / Google Tasks that could not be removed are reported, never hidden
+      if (data.warningHe) setBulkError(data.warningHe);
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : "שגיאה במחיקה");
     } finally {

@@ -19,7 +19,8 @@ export interface DetailFile {
 }
 export interface DetailProject { id: string; createdAt: string | null; legacyMondayId: string | null; notes: string | null; workMaterials: { bpm: string | null; key: string | null; instructions: string | null } | null; dropboxFolder: string | null; files: DetailFile[] }
 export interface DetailFinanceNote { projectId: string; financialNotes: string | null; exceptionReason: string | null; exceptionDate: string | null; hasSetting: true }
-export interface DetailDelivery { projectId: string; folderPath: string | null; status: string | null; deliveredAt: string | null; hasLink: boolean }
+/** B5: deliveredAt = the CURRENT delivered date (only while status is delivered); lastDeliveredAt = the last recorded delivery (history — survives a status change / folder delete). */
+export interface DetailDelivery { projectId: string; folderPath: string | null; status: string | null; deliveredAt: string | null; lastDeliveredAt?: string | null; hasLink: boolean }
 export interface DetailAction {
   id: string; projectId: string | null; actionType: string | null; contentType: string | null; versionLabel: string | null; recipientRole: string | null; recipientName: string | null;
   recipientClientId: string | null; recipientPhone: string | null; hasLink: boolean; status: string | null; actionDate: string | null; followupDate: string | null; notes: string | null;

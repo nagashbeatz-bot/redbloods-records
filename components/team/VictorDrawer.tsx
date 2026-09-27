@@ -788,12 +788,10 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
               // ── משכורות ─────────────────────────────────────────────────────
               activeTab === "משכורות" ? (() => {
-                const paidTotal = salaryMonths
-                  .filter((m) => m.status === "שולם")
-                  .reduce((s, m) => s + m.amount, 0);
-                const openTotal = salaryMonths
-                  .filter((m) => m.status !== "שולם" && m.status !== "בוטל")
-                  .reduce((s, m) => s + m.amount, 0);
+                // B5: totals PER CURRENCY (each month's currency comes from its Finance row) — $ and ₪ are never added.
+                const byCurrency = (rows: typeof salaryMonths) => rows.reduce<Record<string, number>>((acc, m) => { acc[m.currency] = (acc[m.currency] ?? 0) + m.amount; return acc; }, {});
+                const fmtTotals = (t: Record<string, number>) => Object.entries(t).map(([c, v]) => `${c}${v.toLocaleString()}`).join(" · ") || "—";
+                const paidTotal = byCurrency(salaryMonths.filter((m) => m.status === "שולם"));
                 const nextDue = salaryMonths
                   .filter((m) => m.status !== "שולם" && m.status !== "בוטל")
                   .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
@@ -821,7 +819,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                     {/* Summary boxes */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
                       {[
-                        { label: "שולם השנה",     val: `${defCurrency}${paidTotal.toLocaleString()}`, color: "#10B981" },
+                        { label: "שולם השנה",     val: fmtTotals(paidTotal), color: "#10B981" },
                         { label: "התשלום הבא",    val: nextDue ? fmtDueDate(nextDue.dueDate) + `.${nextDue.dueDate.slice(0,4)}` : "—", color: "#F59E0B" },
                         { label: "משכורת חודשית", val: `${defCurrency}${stats?.monthlySalary ?? 550}`, color: "#A855F7" },
                       ].map(({ label, val, color }) => (
@@ -902,6 +900,13 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                                     </button>
                                   )}
                                 </div>
+                                {m.conflict && (
+                                  <div title={m.conflict.he} style={{ fontSize: 10, color: "#F59E0B", maxWidth: 220, lineHeight: 1.4 }}>
+                                    ⚠ {m.conflict.kind === "DUPLICATE_FINANCE_ROWS"
+                                      ? `${m.conflict.finance.length} שורות כספים לחודש: ${m.conflict.finance.map((f) => `${f.currency ?? ""}${f.amount ?? "?"} (${f.paymentStatus ?? "?"})`).join(" · ")}`
+                                      : `כספים: ${m.conflict.finance.map((f) => `${f.currency ?? ""}${f.amount ?? "?"} (${f.paymentStatus ?? "?"})`).join(" · ")} · הצהרת בעלים: ${[m.conflict.owner?.amount != null ? `${m.currency}${m.conflict.owner.amount}` : null, m.conflict.owner?.status ?? null].filter(Boolean).join(" ")}`}
+                                  </div>
+                                )}
 
                                 {/* Action */}
                                 <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>

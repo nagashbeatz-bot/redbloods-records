@@ -5,16 +5,22 @@
  * Canonical rules are the app's own (never restated as a second rule): received = שולם / התקבל; an expense is paid
  * only when שולם; חלקי is not paid; צפוי / לא שולם / בוטל are not received; currencies are never added or converted.
  * Every money write repeats the exact amount + currency (and the status) in the Boss's approval. Rows OWNED by another
- * writer's sync (show income / DJ / artist rows, a mix work's payment row, a Red Films budget line) are changed only
- * through that family's action — a direct edit would be silently re-written.
+ * writer (lib/finance/ownership: show payment / balance / DJ / artist / rehearsal rows, a mix work's payment row, a clip
+ * row, a Red Films budget line, a social promotion, Victor's salary) follow the SAME rule the Finance route enforces:
+ * never deleted here; only status / date / method / notes on fee-like rows (notes / method / date on a show payment).
+ * B3 (2026-09-27): an INCOME row of a project may be scoped קליפ (clip money) or כללי (song money) — only a free-standing
+ * (unowned) row with a project; the preview shows song money vs clip money before / after (the clip price may be unknown).
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
-import { dupContext, dupGate, dupWarnings, SEPARATE_ARG, type DupQuery } from "./duplicates";
+import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./duplicates";
+import { FINANCE_OWNER_HE, transactionEditVerdict, type FinanceOwnerCode, type TxPatchField } from "@/lib/finance/ownership";
+import { INCOME_SCOPES, songClipSplitBeforeAfter, songClipSplitText, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 
 type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string };
 type FinSettings = { agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string };
-export type FinanceOwner = "SHOW" | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | null;
+/** lib/finance/ownership FinanceOwnerCode — the SAME rule the Finance route enforces (assertTransactionEditable). */
+export type FinanceOwner = FinanceOwnerCode | null;
 export interface FinanceFamilyWriters {
   readTransaction(id: string): Promise<Tx | null>;
   financeOwnerOf(id: string): Promise<FinanceOwner>;
@@ -24,6 +30,8 @@ export interface FinanceFamilyWriters {
   splitIncome(id: string, paid: number, receivedDate: string, method: string): Promise<"ok" | "not_found" | "conflict" | "invalid">;
   readFinanceSettings(projectId: string): Promise<FinSettings>;
   setFinanceSettings(projectId: string, patch: Partial<FinSettings>): Promise<void>;
+  /** lib/writes/finance readProjectIncomeContext — the project's income rows + clip price (read-only, for the scope preview). */
+  readProjectIncomeContext(projectId: string): Promise<{ clipAgreedPrice: number | null; clipCurrency: string; incomes: IncomeRowLike[] }>;
 }
 
 /** Pinned to components/finance/QuickTxModal.tsx + components/ui/ProjectDrawer.tsx by scripts/test-sunny-act-finance.tsx. */
@@ -32,10 +40,8 @@ export const EXPENSE_STATUSES: readonly string[] = ["שולם", "צפוי", "ל�
 export const TX_CURRENCIES: readonly string[] = ["$", "₪", "€"];
 export const EXPENSE_SCOPES: readonly string[] = ["כללי", "קליפ", "מיקס / מאסטר", "שיווק", "סשן", "נסיעות", "ציוד", "אחר"];
 export const PAYMENT_METHODS: readonly string[] = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
-const OWNER_HE: Record<string, string> = { SHOW: "ההופעה (סנכרון הכספים של ההופעה)", MIX_WORK: "עבודת המיקס (סנכרון התשלום למהנדס)", CLIP_ROW: "שורת תכנון הקליפ", RF_BUDGET: "שורת התקציב של Red Films" };
 /** Display words only (never compared against stored data — the type column is income / expense). */
 const typeHe = (t: unknown) => (t === "income" ? "הכנסה " : "הוצאה ").trim();
-const RECEIVED = new Set(["שולם", "התקבל"]);
 const money = (n: number, c: string) => `${c}${Number(n).toLocaleString("en-US")}`;
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 const K = (name: string, required = true): ArgSpec => ({ name, kind: "entityKey", required });
@@ -57,8 +63,26 @@ async function onTx(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promis
   if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הרשומה הכספית");
   return { key: `transaction:${k.id}`, id: k.id, label: `${typeHe(f.type)} ${money(Number(f.amount), String(f.currency))} — ${f.description || f.artist || ""}`.trim(), fields: f };
 }
-const ownedRefusal = (cur: Fields, allow: readonly string[] = []) =>
-  cur.owner && !allow.includes(String(cur.owner)) ? refuse("USE_OWNER_ACTION", `הרשומה הזאת שייכת ל${OWNER_HE[String(cur.owner)]} — שינוי ישיר יידרס בסנכרון; משנים דרך הפעולה של ${OWNER_HE[String(cur.owner)]}`) : null;
+/** A5: the ONE ownership rule (lib/finance/ownership transactionEditVerdict) — the Finance route enforces the same one.
+ *  `op` = "delete" or the plan's changed fields (after keys; projectId → project_id). */
+const AFTER_TO_TX: Readonly<Record<string, TxPatchField>> = { projectId: "project_id" };
+function ownedRefusal(cur: Fields, op: "delete" | Fields): PlanRefusal | null {
+  const owner = cur.owner ? (String(cur.owner) as FinanceOwnerCode) : null;
+  if (!owner || !FINANCE_OWNER_HE[owner]) return null;
+  const v = transactionEditVerdict(owner, op === "delete" ? "delete" : Object.keys(op).filter((k) => op[k] !== cur[k]).map((k) => AFTER_TO_TX[k] ?? (k as TxPatchField)));
+  return v.ok ? null : refuse("USE_OWNER_ACTION", v.messageHe);
+}
+/** Income scope (B3): the song ↔ clip split before / after moving THIS row — preview context, read the same way at plan and at the stale check. */
+async function incomeScopeContext(d: WriterDeps, id: string, t: Fields, a: Readonly<Record<string, unknown>> | undefined): Promise<Fields> {
+  if (!a || a.expenseScope === undefined || t.type !== "income" || !t.projectId || !INCOME_SCOPES.includes(String(a.expenseScope))) return {};
+  const ctx = await d.readProjectIncomeContext(String(t.projectId));
+  const s = songClipSplitBeforeAfter(ctx.incomes, id, String(a.expenseScope));
+  return { splitBefore: songClipSplitText(s.before), splitAfter: songClipSplitText(s.after), clipPriceKnown: ctx.clipAgreedPrice !== null && ctx.clipAgreedPrice > 0, clipPrice: ctx.clipAgreedPrice ?? 0, clipCurrency: ctx.clipCurrency };
+}
+async function txFieldsScoped(d: WriterDeps, id: string, a?: Readonly<Record<string, unknown>>): Promise<Fields | null> {
+  const f = await txFields(d, id);
+  return f ? { ...f, ...(await incomeScopeContext(d, id, f, a)) } : null;
+}
 async function onProjectFinance(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.project, ["project"]);
   if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
@@ -79,7 +103,7 @@ async function addContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): 
 export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "ADD_TRANSACTION", kinds: ["transaction"],
-    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false), SEPARATE_ARG], ["type", "amount", "currency", "paymentStatus", "date", "description"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
+    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false), ...DUP_ARGS], ["type", "amount", "currency", "paymentStatus", "date", "description", "expenseScope"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
     createContext: addContext,
     async resolve(d, a) {
       if (a.project !== undefined && !parseKey(a.project, ["project"])) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
@@ -95,48 +119,66 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (!TX_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "מטבע לא מוכר — אין המרה ואין ברירת מחדל");
       if (!statusesFor(type).includes(String(a.paymentStatus))) return refuse("BAD_ENUM", `סטטוס לא מתאים ל${typeHe(type)}: ${statusesFor(type).join(" / ")}`);
       if (!realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין");
-      if (a.expenseScope !== undefined && type !== "expense") return refuse("BAD_ARGS", "שיוך הוצאה רק להוצאה");
+      // B3: income may carry scope קליפ (clip money) or כללי (song money) — only on a project row
+      if (a.expenseScope !== undefined && type === "income") {
+        if (!INCOME_SCOPES.includes(String(a.expenseScope))) return refuse("BAD_ARGS", "שיוך הכנסה: קליפ או כללי בלבד");
+        if (a.project === undefined) return refuse("BAD_ARGS", "שיוך קליפ להכנסה רק בהכנסה של פרויקט");
+      }
       for (const k of ["description", "artist", "category", "notes", "receiptRef"]) if (a[k] !== undefined && text(a[k], 500) === null) return refuse("BAD_TEXT", `${k} לא תקין`);
       if (a.session !== undefined && !parseKey(a.session, ["session"])) return refuse("BAD_ENTITY", "סשן לא תקין");
       const g = dupGate(a, cur, typeHe(type)); if (g) return g;
-      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date), description: str(a.description)?.trim() ?? "" } };
+      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date), description: str(a.description)?.trim() ?? "", ...(a.expenseScope !== undefined ? { expenseScope: String(a.expenseScope) } : {}) } };
     },
     async apply(d, _id, after, a) {
       const k = parseKey(a.project, ["project"]);
       return { createdId: await d.createTransaction({ projectId: k?.id ?? null, scope: k ? "project" : "general", type: String(after.type), date: String(after.date), description: str(a.description) ?? "", artist: str(a.artist) ?? "", amount: Number(after.amount), currency: String(after.currency), paymentStatus: String(after.paymentStatus), paymentMethod: str(a.paymentMethod) ?? "", receiptRef: str(a.receiptRef) ?? "", notes: str(a.notes) ?? "", category: str(a.category) ?? "", expenseScope: str(a.expenseScope) ?? "כללי", linkedSessionId: parseKey(a.session, ["session"])?.id ?? "" }) };
     },
     async verify(d, id, after) { const t = await d.readTransaction(id); return !!t && t.amount === after.amount && t.currency === after.currency && t.paymentStatus === after.paymentStatus && t.type === after.type; },
-    requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus)],
-    warnings: (c, a) => dupWarnings(c, a),
+    requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus), ...(after.type === "income" && after.expenseScope === "קליפ" ? ["קליפ"] : [])],
+    warnings: (c, a) => [...dupWarnings(c, a), ...(a && a.type === "income" && a.expenseScope === "קליפ" ? ["הכנסה עם שיוך קליפ = כסף של עסקת הקליפ — לא נספרת מול מחיר השיר"] : [])],
     disclosuresHe: ["נוצרת רשומה כספית אחת; שום רשומה אחרת לא משתנה", "מטבעות לא מחוברים ולא מומרים", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "UPDATE_TRANSACTION_DETAILS", kinds: ["transaction"],
-    meta: meta("עדכון פרטי רשומה כספית (תיאור / תאריך / צד / קטגוריה / אמצעי / הערות)", "Update a transaction's descriptive fields (not amount / currency / status)", [K("transaction"), T("description"), { name: "date", kind: "ymd", required: false }, T("artist"), T("category"), T("notes"), E("paymentMethod", PAYMENT_METHODS), T("receiptRef"), E("expenseScope", EXPENSE_SCOPES)], ["description", "date", "artist", "category", "notes", "paymentMethod", "receiptRef", "expenseScope"], "updateTransactionRecord (lib/writes/finance)", { reversible: "YES" }),
-    resolve: onTx, read: txFields,
+    meta: meta("עדכון פרטי רשומה כספית (תיאור / תאריך / צד / קטגוריה / אמצעי / הערות)", "Update a transaction's descriptive fields (not amount / currency / status). expenseScope on an EXPENSE: any Finance scope; on a project INCOME (free-standing, not owned): קליפ (clip money) or כללי (song money) — the preview shows song vs clip money before / after", [K("transaction"), T("description"), { name: "date", kind: "ymd", required: false }, T("artist"), T("category"), T("notes"), E("paymentMethod", PAYMENT_METHODS), T("receiptRef"), E("expenseScope", EXPENSE_SCOPES)], ["description", "date", "artist", "category", "notes", "paymentMethod", "receiptRef", "expenseScope"], "updateTransactionRecord (lib/writes/finance)", { reversible: "YES" }),
+    async resolve(d, a) { const r = await onTx(d, a); if (!("key" in r)) return r; return { ...r, fields: { ...r.fields, ...(await incomeScopeContext(d, r.id, r.fields, a)) } }; },
+    read: txFieldsScoped,
     plan(a, cur) {
-      const own = ownedRefusal(cur); if (own) return own;
       const after: Fields = {};
       for (const k of ["description", "artist", "category", "notes", "receiptRef"] as const) if (a[k] !== undefined) { const t = text(a[k], 500); if (t === null) return refuse("BAD_TEXT", `${k} לא תקין`); after[k] = t.trim(); }
       if (a.date !== undefined) { if (!realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין"); after.date = String(a.date); }
       if (a.paymentMethod !== undefined) after.paymentMethod = String(a.paymentMethod);
-      if (a.expenseScope !== undefined) { if (cur.type !== "expense") return refuse("BAD_ARGS", "שיוך הוצאה רק להוצאה"); after.expenseScope = String(a.expenseScope); }
+      if (a.expenseScope !== undefined) {
+        if (cur.type === "income") {
+          // B3: an income row is song money (כללי) or clip money (קליפ) — only on a project row, never an owned row
+          if (!INCOME_SCOPES.includes(String(a.expenseScope))) return refuse("BAD_ARGS", "שיוך הכנסה: קליפ או כללי בלבד");
+          if (!cur.projectId) return refuse("NO_PROJECT", "הכנסה בלי פרויקט — אין עסקת שיר / קליפ לשייך אליה");
+        } else if (cur.type !== "expense") return refuse("BAD_ARGS", "שיוך רק להוצאה או להכנסה של פרויקט");
+        after.expenseScope = String(a.expenseScope);
+      }
+      const own = ownedRefusal(cur, after); if (own) return own;
       return finishPlan(cur, after);
     },
     apply: (d, id, a) => d.updateTransaction(id, { ...a }),
-    requiredValues: (_a, after) => (after.date ? [String(after.date)] : []),
-    disclosuresHe: ["הסכום, המטבע והסטטוס לא משתנים", "שינוי תאריך משנה את החודש שבו הרשומה נספרת בדוחות", "לא יישלח Push או הודעה"],
+    requiredValues: (_a, after) => [...(after.date ? [String(after.date)] : []), ...(after.expenseScope !== undefined ? [String(after.expenseScope)] : [])],
+    warnings: (c, a) => (a && a.expenseScope !== undefined && c.type === "income" && c.splitBefore !== undefined ? [
+      `היום: ${c.splitBefore}`,
+      `אחרי: ${c.splitAfter}`,
+      c.clipPriceKnown ? `מחיר הקליפ שסוכם: ${money(Number(c.clipPrice), String(c.clipCurrency))}` : "מחיר עסקת הקליפ לא ידוע (לא נקבע בפרויקט) — הכסף יסומן ככסף קליפ, בלי מחיר להשוות מולו",
+      a.expenseScope === "קליפ" ? "הרשומה תצא מחישוב החוב / היתרה של השיר ותיכנס לעסקת הקליפ" : "הרשומה תצא מעסקת הקליפ ותיכנס לחישוב מול מחיר השיר",
+    ] : []),
+    disclosuresHe: ["הסכום, המטבע והסטטוס לא משתנים", "שינוי תאריך משנה את החודש שבו הרשומה נספרת בדוחות", "שיוך קליפ להכנסה: רק רשומה חופשית (לא של הופעה / מיקס / ויקטור וכו') של פרויקט", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "SET_TRANSACTION_AMOUNT", kinds: ["transaction"],
     meta: meta("שינוי סכום / מטבע של רשומה כספית", "Change a transaction's amount and / or currency (no conversion)", [K("transaction"), { name: "amount", kind: "money", required: false }, E("currency", TX_CURRENCIES)], ["amount", "currency"], "updateTransactionRecord (lib/writes/finance)", {}),
     resolve: onTx, read: txFields,
     plan(a, cur) {
-      const own = ownedRefusal(cur); if (own) return own;
       const after: Fields = {};
       if (a.amount !== undefined) { if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום חייב להיות גדול מ-0"); after.amount = a.amount; }
       if (a.currency !== undefined) { if (!TX_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "מטבע לא מוכר"); after.currency = String(a.currency); }
       if (!Object.keys(after).length) return refuse("NOTHING_TO_CHANGE", "לא ציינת מה לשנות");
+      const own = ownedRefusal(cur, after); if (own) return own;
       // Both are always stated so the approval repeats the exact resulting money.
       return finishPlan(cur, { amount: after.amount ?? cur.amount, currency: after.currency ?? cur.currency });
     },
@@ -150,12 +192,14 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     meta: meta("שינוי סטטוס תשלום (התקבל / שולם / צפוי / …)", "Change a transaction's payment status (the app's own received / paid rules decide what counts)", [K("transaction"), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: false }, E("paymentMethod", PAYMENT_METHODS)], ["paymentStatus", "date", "paymentMethod"], "updateTransactionRecord (lib/writes/finance)", {}),
     resolve: onTx, read: txFields,
     plan(a, cur) {
-      const own = ownedRefusal(cur, ["CLIP_ROW"]); if (own) return own;
       const s = String(a.paymentStatus);
       if (!statusesFor(cur.type).includes(s)) return refuse("BAD_ENUM", `סטטוס לא מתאים ל${typeHe(cur.type)}: ${statusesFor(cur.type).join(" / ")}`);
       const after: Fields = { paymentStatus: s };
       if (a.date !== undefined) { if (!realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין"); after.date = String(a.date); }
       if (a.paymentMethod !== undefined) after.paymentMethod = String(a.paymentMethod);
+      // owned fee-like rows (DJ / artist / rehearsal / Victor salary / mix / clip / promotion / Red Films) may change status;
+      // a show payment / expected balance may not (the show payments flow)
+      const own = ownedRefusal(cur, after); if (own) return own;
       return finishPlan(cur, after);
     },
     apply: (d, id, a) => d.updateTransaction(id, { ...a }),
@@ -173,7 +217,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     read: txFields,
     plan(a, cur) {
-      const own = ownedRefusal(cur); if (own) return own;
+      const own = ownedRefusal(cur, { projectId: "__moved__" }); if (own) return own;
       if (cur.linkedSessionId) return refuse("LINKED_ROW", "הרשומה מקושרת לסשן / לשכר — העברה תנתק את הקישור. אפשר למחוק ולרשום מחדש");
       if (a.toGeneral === true) return finishPlan(cur, { projectId: null, scope: "general" });
       const k = parseKey(a.toProject, ["project"]);
@@ -189,7 +233,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     meta: meta("מחיקת רשומה כספית", "Delete a free-standing transaction (rows owned by a show / mix / Red Films sync are deleted through their action)", [K("transaction")], ["exists"], "deleteTransactionRecord (lib/writes/finance)", { effects: ["FINANCE", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) { const r = await onTx(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } }; },
     async read(d, id) { const f = await txFields(d, id); return f ? { ...f, exists: true } : null; },
-    plan(_a, cur) { const own = ownedRefusal(cur); if (own) return own; return { ok: true, after: { exists: false } }; },
+    plan(_a, cur) { const own = ownedRefusal(cur, "delete"); if (own) return own; return { ok: true, after: { exists: false } }; },
     apply: (d, id) => d.deleteTransaction(id),
     async verify(d, id) { return (await d.readTransaction(id)) === null; },
     requiredValues: () => ["מחיקה"],
@@ -201,7 +245,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     meta: meta("פיצול הכנסה צפויה: חלק שהתקבל + יתרה צפויה", "Split an expected income into the received part + the remaining expected balance (atomic, row-locked, no double split)", [K("transaction"), { name: "paidAmount", kind: "money", required: true }, { name: "receivedDate", kind: "ymd", required: true }, E("paymentMethod", PAYMENT_METHODS)], ["amount", "paymentStatus", "currency"], "splitIncome → split_income_transaction RPC (lib/writes/finance)", { reversible: "NO", compensation: null }),
     resolve: onTx, read: txFields,
     plan(a, cur) {
-      const own = ownedRefusal(cur); if (own) return own;
+      const own = ownedRefusal(cur, { amount: "__split__" }); if (own) return own;
       if (cur.type !== "income" || cur.paymentStatus !== "צפוי") return refuse("NOT_SPLITTABLE", "אפשר לפצל רק הכנסה במצב 'צפוי'");
       const paid = a.paidAmount;
       if (typeof paid !== "number" || !(paid > 0) || paid > Number(cur.amount)) return refuse("BAD_MONEY", `הסכום שהתקבל חייב להיות בין 0 ל-${money(Number(cur.amount), String(cur.currency))}`);

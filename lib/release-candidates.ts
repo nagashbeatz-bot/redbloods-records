@@ -6,6 +6,8 @@
 //   • type   — isReleasableType (song, song+clip, EP, album, riddim) — lib/types.ts
 //   • artist — projects.artist tokens (app-wide /[,،;]/ split, trim + collapse
 //              spaces + lowercase, exact full-name match, no fuzzy).
+//   • B2 (2026-09-27): this is the "add release" UI HINT, not a client / label classification —
+//     the one classifier is projects.project_business_type (lib/project-classification.ts).
 //   • a "label artist" is one that is marked status "אמן לייבל" in the clients
 //     screen (the business definition) OR already exists in label_artists (the
 //     operational record: DJ CLEANTONE has no client row and stays valid).

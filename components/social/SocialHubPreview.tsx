@@ -8,7 +8,7 @@ import type {
   SocialContentItem,
   SocialPlatform,
 } from "@/lib/types";
-import { SOCIAL_PLATFORM_LABELS } from "@/lib/types";
+import { SOCIAL_PLATFORM_LABELS, SOCIAL_PHASE_READY, SOCIAL_PHASE_PUBLISHED } from "@/lib/types";
 import { useSocialCampaigns } from "./useSocialCampaign";
 import CreateCampaignModal from "./CreateCampaignModal";
 
@@ -50,8 +50,9 @@ const CONTENT_STATUS_COLOR: Record<string, string> = {
   needs_review: BLUE, ready: AMBER, scheduled: AMBER, posted: GREEN, cancelled: "#EF4444",
 };
 
-const SCHEDULED_S = new Set(["ready_to_post", "ready", "scheduled"]);
-const PUBLISHED_S = new Set(["published", "posted"]);
+// B5: the shared phase sets (lib/types.ts) — both social vocabularies.
+const SCHEDULED_S = new Set<string>(SOCIAL_PHASE_READY);
+const PUBLISHED_S = new Set<string>(SOCIAL_PHASE_PUBLISHED);
 
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const HEB_DAYS_SHORT = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];

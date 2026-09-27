@@ -1,13 +1,19 @@
 /**
  * Shared project clip-deal writers — used by BOTH the /api/projects/[id]/clip routes and Sunny's typed primitives.
- * Route bodies moved here verbatim: the clip price (finance settings merge + the managed production's budget sync),
- * 'שלח קליפ' (find-or-create the managed Red Films production, idempotent by lookup twice), and clip payments (the
- * 50 / 50 seed of an open deal, or one payment). Clip payments are INCOME transactions with expense scope קליפ.
+ * Route bodies moved here verbatim: the clip price (finance settings merge only), 'שלח קליפ' (find-or-create the
+ * managed Red Films production, idempotent by lookup twice), and clip payments (the 50 / 50 seed of an open deal, or one
+ * payment). Clip payments are INCOME transactions with expense scope קליפ.
+ * B3 (Owner canon 2026-09-27): the client clip PRICE (A) is never the production's planned BUDGET (B) — the price →
+ * budget sync is retired; a new managed production starts with budget 0 in the deal currency; its client_source comes
+ * from the project's classification (lib/clip-rf-money-pure rfClientSourceFor), never a hard-coded "פנימי - לייבל".
  */
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
 import { CLIP_SCOPE, CLIP_PAYMENT_STATUSES } from "@/lib/clip-finance";
 import { SONG_WITH_CLIP_TYPE } from "@/lib/types";
+import { mergeSettingsKey } from "@/lib/writes/settings-merge";
+import { normalizeCurrency } from "@/lib/finance/currency";
+import { rfClientSourceFor } from "@/lib/clip-rf-money-pure";
 
 async function readFinanceSettings(projectId: string): Promise<Record<string, unknown>> {
   const { data } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
@@ -22,14 +28,11 @@ export async function clipDealOf(projectId: string): Promise<{ clipAgreedPrice: 
   return { clipAgreedPrice: Number(s.clipAgreedPrice ?? 0) || 0, currency: String(s.currency ?? "₪"), paymentCount: count ?? 0, managedProductionId: await getManagedClipProductionId(projectId) };
 }
 
-/** PATCH /api/projects/[id]/clip semantics. */
-export async function setClipPrice(projectId: string, price: number): Promise<{ budgetSynced: unknown }> {
+/** PATCH /api/projects/[id]/clip semantics. B3: the price only — the production's planned budget is never touched. */
+export async function setClipPrice(projectId: string, price: number): Promise<void> {
   if (!Number.isFinite(price) || price < 0) throw new Error("מחיר לא תקין");
-  const { syncClipBudget } = await import("@/lib/clip-production");
-  const existing = await readFinanceSettings(projectId);
-  const { error } = await supabase.from("settings").upsert({ key: `finance_${projectId}`, value: { ...existing, clipAgreedPrice: price } }, { onConflict: "key" });
-  if (error) throw new Error(error.message);
-  return { budgetSynced: await syncClipBudget(projectId, price) };
+  // Compare-and-swap merge (lib/writes/settings-merge.ts): a concurrent finance-settings writer is never overwritten.
+  await mergeSettingsKey(`finance_${projectId}`, { clipAgreedPrice: price });
 }
 
 /** POST /api/projects/[id]/clip/send semantics. */
@@ -37,10 +40,9 @@ export async function sendClipToRedFilms(projectId: string): Promise<{ kind: "no
   const { findLinkedClipProduction, setManagedClipProductionId } = await import("@/lib/clip-production");
   const existing = await findLinkedClipProduction(projectId);
   if (existing) return { kind: "ok", production: existing as unknown as Record<string, unknown>, created: false };
-  const { data: project } = await supabase.from("projects").select("id, name, artist").eq("id", projectId).maybeSingle();
+  const { data: project } = await supabase.from("projects").select("id, name, artist, project_business_type").eq("id", projectId).maybeSingle();
   if (!project) return { kind: "not_found" };
   const settings = await readFinanceSettings(projectId);
-  const budget = Number(settings.clipAgreedPrice ?? 0) || 0;
   const artist = (project.artist as string) ?? "";
   const title = (project.name as string) ?? "קליפ";
   let clientId: string | null = null;
@@ -54,7 +56,10 @@ export async function sendClipToRedFilms(projectId: string): Promise<{ kind: "no
   const now = new Date().toISOString();
   const { data, error } = await supabase.from("red_films_productions").insert({
     title, production_type: CLIP_SCOPE, status: "רעיון", project_id: projectId, artist_name: artist, client_id: clientId, client_name: clientName,
-    photographer_name: "", client_source: "פנימי - לייבל", collection_status: "לא רלוונטי", general_budget: budget, created_at: now, updated_at: now,
+    photographer_name: "", client_source: rfClientSourceFor({ businessType: (project.project_business_type as string | null) ?? null }), collection_status: "לא רלוונטי",
+    // B3: planning starts at 0 — the client clip price is never the budget. The production carries the clip deal
+    // currency (never a silent ₪ for a $ deal).
+    general_budget: 0, currency: normalizeCurrency(typeof settings.currency === "string" ? settings.currency : null), created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
   await setManagedClipProductionId(projectId, data.id as string);

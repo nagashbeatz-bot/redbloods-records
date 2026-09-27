@@ -10,6 +10,7 @@
  */
 import type { FieldSpec } from "./diff";
 import { diffEntityDomain, diffNestedAdditions, sortChanges } from "./diff";
+import { isReceivedStatus } from "../../finance/classify";
 import {
   CHANGE_SNAPSHOT_SCHEMA_VERSION,
   type ChangeComparisonResult, type ChangeDiagnostic, type ClientSnapshotEntity, type ClipSnapshotEntity,
@@ -19,7 +20,6 @@ import {
   type TransactionSnapshotEntity, type VictorSnapshotEntity,
 } from "./types";
 
-const RECEIVED_STATUSES = new Set(["שולם", "התקבל"]);
 
 const PROJECT_FIELDS: FieldSpec<ProjectSnapshotEntity>[] = [
   { field: "status", kind: "STATUS_CHANGED", get: (e) => e.status, label: "status" },
@@ -151,7 +151,7 @@ export function comparePartnerChangeSnapshots(
       // "Received" is an INCOME concept only (canonical: income שולם|התקבל). An expense turning שולם is money
       // paid OUT — it must never be reported as money received (expense paid = שולם only).
       if (p.type !== "income" || c.type !== "income") continue;
-      const wasReceived = RECEIVED_STATUSES.has(p.status), isReceived = RECEIVED_STATUSES.has(c.status);
+      const wasReceived = isReceivedStatus(p.status), isReceived = isReceivedStatus(c.status);
       if (wasReceived === isReceived) continue;
       changes.push({
         id: `transactions:transaction:${id}:STATUS_CHANGED:receivedSemantic`,

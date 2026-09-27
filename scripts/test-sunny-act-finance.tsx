@@ -17,7 +17,7 @@ const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "u
 
 type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string };
 type Fs = { agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string };
-interface W { tx: Record<string, Tx>; owner: Record<string, "SHOW" | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET">; projects: Record<string, string>; fs: Record<string, Fs> }
+interface W { tx: Record<string, Tx>; owner: Record<string, string>; projects: Record<string, string>; fs: Record<string, Fs> }
 const base = (o: Partial<Tx>): Tx => ({ projectId: U(10), scope: "project", type: "income", date: "2026-09-01", description: "מקדמה", artist: "שליו", amount: 3000, currency: "₪", paymentStatus: "צפוי", paymentMethod: "", receiptRef: "", notes: "", category: "", expenseScope: "כללי", linkedSessionId: "", ...o });
 const world = (): W => ({
   tx: { [U(1)]: base({}), [U(2)]: base({ type: "expense", amount: 500, paymentStatus: "צפוי", description: "DJ" }), [U(3)]: base({ type: "expense", amount: 200, currency: "$", paymentStatus: "לא שולם", description: "מיקס" }) },
@@ -37,6 +37,8 @@ function mk() {
     async splitIncome(id: string, paid: number) { calls.push("splitIncome"); const t = w.tx[id]; if (t.paymentStatus !== "צפוי") return "conflict"; const rest = t.amount - paid; t.amount = paid; t.paymentStatus = "התקבל"; if (rest > 0) w.tx[U(++n)] = { ...t, amount: rest, paymentStatus: "צפוי" }; return "ok"; },
     async readFinanceSettings(id: string) { return { ...w.fs[id] }; },
     async setFinanceSettings(id: string, p: Partial<Fs>) { calls.push("setFinanceSettings"); w.fs[id] = { ...w.fs[id], ...p }; },
+    // B3 income-scope preview context (lib/writes/finance readProjectIncomeContext) — the clip price of U(10) is unknown
+    async readProjectIncomeContext(pid: string) { return { clipAgreedPrice: null, clipCurrency: "₪", incomes: Object.entries(w.tx).filter(([, t]) => t.projectId === pid && t.type === "income").map(([id, t]) => ({ id, amount: t.amount, currency: t.currency, paymentStatus: t.paymentStatus, expenseScope: t.expenseScope })) }; },
   };
   return { w, calls, writers };
 }
@@ -82,6 +84,32 @@ const CASES: FamilyCase<W>[] = [
   ok("every finance money primitive is FINANCIAL with FINANCE declared and at least C2", ["ADD_TRANSACTION", "SET_TRANSACTION_AMOUNT", "SET_TRANSACTION_STATUS", "MOVE_TRANSACTION", "SPLIT_INCOME", "SET_AGREED_PRICE"].every((id) => { const c = ACTION_REGISTRY.get(id)!; return c.riskClass === "FINANCIAL" && c.effects.includes("FINANCE" as never) && c.confirmation !== "C1_APPROVAL"; }));
   ok("DELETE_TRANSACTION is C3", ACTION_REGISTRY.get("DELETE_TRANSACTION")!.confirmation === "C3_STRONG_APPROVAL");
 
+  console.log("\nB3 income scope (song money ↔ clip money)");
+  { const h = mk(); h.w.tx[U(1)].paymentStatus = "התקבל"; const r = await fullFlow(mkDeps(h.writers).d, "UPDATE_TRANSACTION_DETAILS", { transaction: T1, expenseScope: "קליפ" }, "כן בוס, קליפ");
+    const txt = JSON.stringify(r.p);
+    ok("an unowned project INCOME can become clip money (קליפ): the preview shows song vs clip before / after + the clip price is unknown; executed + verified", r.p.status === "PREVIEW" && /היום: ₪: שיר התקבל ₪3000/.test(txt) && /אחרי: ₪: שיר התקבל ₪0 \(פתוח ₪0\) · קליפ התקבל ₪3000/.test(txt) && /מחיר עסקת הקליפ לא ידוע/.test(txt) && r.e?.status === "APPLIED_AS_EXPECTED" && h.w.tx[U(1)].expenseScope === "קליפ", r.e ?? r.p); }
+  { const h = mk(); h.w.tx[U(3)] = { ...h.w.tx[U(3)], type: "income", paymentStatus: "צפוי" }; h.w.owner[U(3)] = "CLIP_ROW";
+    ok("an OWNED income row is refused (lib/finance/ownership — the owner changes it)", (await q("UPDATE_TRANSACTION_DETAILS", { transaction: T3, expenseScope: "קליפ" }, h)).status === "USE_OWNER_ACTION"); }
+  { const h = mk(); h.w.tx[U(1)].projectId = null; h.w.tx[U(1)].scope = "general";
+    ok("an income without a project cannot be scoped (no song / clip deal)", (await q("UPDATE_TRANSACTION_DETAILS", { transaction: T1, expenseScope: "קליפ" }, h)).status === "NO_PROJECT"); }
+  ok("an income scope other than קליפ / כללי is refused", (await q("UPDATE_TRANSACTION_DETAILS", { transaction: T1, expenseScope: "שיווק" })).status === "BAD_ARGS");
+  { const h = mk(); h.w.tx[U(1)].expenseScope = "קליפ"; const r = await q("UPDATE_TRANSACTION_DETAILS", { transaction: T1, expenseScope: "כללי" }, h);
+    ok("clip money back to song money (כללי) is previewed the other way", r.status === "PREVIEW" && /תצא מעסקת הקליפ/.test(JSON.stringify(r)), r); }
+  { const r = await q("ADD_TRANSACTION", { project: P10, type: "income", amount: 3500, currency: "₪", paymentStatus: "התקבל", date: "2026-09-25", expenseScope: "קליפ", description: "קליפ יהלום" });
+    ok("ADD_TRANSACTION: a project income may be created as clip money (קליפ)", r.status === "PREVIEW" && /עסקת הקליפ/.test(JSON.stringify(r)), r); }
+  ok("ADD_TRANSACTION: a general (no project) income cannot be clip money", (await q("ADD_TRANSACTION", { type: "income", amount: 10, currency: "₪", paymentStatus: "צפוי", date: "2026-09-25", expenseScope: "קליפ" })).status === "BAD_ARGS");
+  ok("the writer keeps an income's קליפ scope only on a project row (txScopeForCreate)", /export function txScopeForCreate/.test(read("lib/writes/finance.ts")) && /expense_scope: txScopeForCreate\(b\.type, b\.expenseScope, txScope === "project" && !!b\.projectId\)/.test(read("lib/writes/finance.ts")));
+
+  console.log("\nA5 ownership (the SAME rule as the Finance route: lib/finance/ownership)");
+  const own = (o: string) => { const h = mk(); h.w.owner[U(3)] = o; return h; };
+  ok("a DJ fee row: status change allowed (fee-like)", (await q("SET_TRANSACTION_STATUS", { transaction: T3, paymentStatus: "שולם" }, own("DJ_FEE"))).status === "PREVIEW");
+  { const r = await q("SET_TRANSACTION_AMOUNT", { transaction: T3, amount: 999 }, own("DJ_FEE")); ok("a DJ fee row: amount change refused with the owner named", r.status === "USE_OWNER_ACTION" && JSON.stringify(r).includes("DJ"), r); }
+  ok("a DJ fee row: delete refused", (await q("DELETE_TRANSACTION", { transaction: T3 }, own("DJ_FEE"))).status === "USE_OWNER_ACTION");
+  ok("a show PAYMENT row: status change refused (the show payments flow), notes allowed", (await q("SET_TRANSACTION_STATUS", { transaction: T3, paymentStatus: "שולם" }, own("SHOW_PAYMENT"))).status === "USE_OWNER_ACTION" && (await q("UPDATE_TRANSACTION_DETAILS", { transaction: T3, notes: "הערה" }, own("SHOW_PAYMENT"))).status === "PREVIEW");
+  ok("Victor salary / promotion rows: status allowed, move refused", (await q("SET_TRANSACTION_STATUS", { transaction: T3, paymentStatus: "בוטל" }, own("VICTOR_SALARY"))).status === "PREVIEW" && (await q("MOVE_TRANSACTION", { transaction: T3, toGeneral: true }, own("PROMOTION"))).status === "USE_OWNER_ACTION");
+  const fp = read("lib/partner/act/primitives/finance.ts"), fr = read("app/api/transactions/[id]/route.ts"), sv = read("lib/partner/act/server.ts");
+  ok("ONE rule: Sunny's primitives and the route both use lib/finance/ownership (route via assertTransactionEditable; Sunny's writers call it again at execution)", /transactionEditVerdict/.test(fp) && /assertTransactionEditable\(id, body/.test(fr) && /assertTransactionEditable\(id, "delete"\)/.test(fr) && /status: 409/.test(fr) && /F\.assertTransactionEditable\(id, patch\)/.test(sv) && /F\.assertTransactionEditable\(id, "delete"\)/.test(sv));
+
   console.log("\nVocabularies pinned to the code");
   const qm = read("components/finance/QuickTxModal.tsx"), dr = read("components/ui/ProjectDrawer.tsx");
   const lit = (xs: readonly string[]) => `[${xs.map((x) => `"${x}"`).join(", ")}]`;
@@ -90,7 +118,7 @@ const CASES: FamilyCase<W>[] = [
   ok("payment methods = QuickTxModal PAYMENT_METHODS", qm.includes(`PAYMENT_METHODS    = ${lit(PAYMENT_METHODS)}`));
   ok("expense scopes = ProjectDrawer EXPENSE_SCOPES", dr.includes(`EXPENSE_SCOPES    = ${lit(EXPENSE_SCOPES)}`));
   ok("currencies = ProjectDrawer CURRENCIES", dr.includes(`const CURRENCIES = ${lit(TX_CURRENCIES)}`));
-  ok("received = the app's own rule (lib/finance/classify via clip-finance paid statuses)", /CLIP_PAID_STATUSES/.test(read("lib/finance/classify.ts")));
+  ok("received = the app's own rule (lib/finance/classify is the one set; clip-finance re-exports it)", /export const RECEIVED_STATUSES = \["שולם", "התקבל"\] as const;/.test(read("lib/finance/classify.ts")) && /CLIP_PAID_STATUSES = RECEIVED_STATUSES/.test(read("lib/clip-finance.ts")));
 
   console.log("\nShared writer (no divergence)");
   ok("transaction routes use the shared writer (create / settings / update / delete / split)", /createTransactionRecord\(/.test(read("app/api/transactions/route.ts")) && /setFinanceSettings\(/.test(read("app/api/transactions/route.ts")) && /updateTransactionRecord\(/.test(read("app/api/transactions/[id]/route.ts")) && /deleteTransactionRecord\(/.test(read("app/api/transactions/[id]/route.ts")) && /splitIncome\(/.test(read("app/api/transactions/[id]/split/route.ts")));

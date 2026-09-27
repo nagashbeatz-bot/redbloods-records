@@ -562,7 +562,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
           moneyEv(c, `${s.id}:sadv`, "התקבל (כספים)", s.advance, s.currency ?? "₪", { table: "shows", id: s.id, field: "advance_payment" }),
         ],
         rules: [{ ruleId: "show.unpaid_upcoming", description: "הופעה מאושרת קרובה שסטטוס התשלום שלה אינו 'שולם'", threshold: `showUnpaidUpcomingDays = ${cfg.showUnpaidUpcomingDays}`, observed: `${s.daysTo} ימים` }],
-        coverageKeys: ["shows"], missing: ["אין שדה מטבע בהופעות."], tierCtx: { daysTo: s.daysTo }, sort: 100 - s.daysTo,
+        coverageKeys: ["shows"], missing: [], tierCtx: { daysTo: s.daysTo }, sort: 100 - s.daysTo,
       }));
     }
     for (const s of sh.doneUnpaid) {
@@ -578,7 +578,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
           moneyEv(c, `${s.id}:dadv`, "התקבל (כספים)", s.advance, s.currency ?? "₪", { table: "shows", id: s.id, field: "advance_payment" }),
         ],
         rules: [{ ruleId: "show.done_unpaid", description: "הופעה בסטטוס 'בוצע' עם מחיר, שסטטוס התשלום שלה אינו 'שולם'", threshold: null, observed: s.paymentStatus }],
-        coverageKeys: ["shows"], missing: ["ייתכן שהתשלום התקבל ולא עודכן בהופעה. אין שדה מטבע."],
+        coverageKeys: ["shows"], missing: ["ייתכן שהתשלום התקבל ולא עודכן בהופעה."],
         tierCtx: { daysOverdue: since ?? 0 }, sort: since ?? 0,
       }));
     }

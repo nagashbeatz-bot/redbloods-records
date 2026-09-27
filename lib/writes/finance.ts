@@ -4,12 +4,18 @@
  * finance settings upsert). Canonical rules are NOT restated here: received = שולם / התקבל (lib/finance/classify.ts),
  * an expense is paid only when שולם, currencies are never added.
  *
- * `financeOwnerOf` names the Redbloods writer that OWNS a transaction (a show's income / DJ / artist rows, a mix
- * work's payment row, a clip planning row, a Red Films budget line). Those rows are re-written by their owner's sync,
- * so Sunny edits / deletes them only through that family's action — never directly (they would be silently undone).
+ * `financeOwnerOf` names the Redbloods writer that OWNS a transaction (a show's payment / expected balance / DJ /
+ * artist / rehearsal rows, a mix work's payment row, a clip planning row, a Red Films budget line, a social promotion,
+ * Victor's monthly salary). `assertTransactionEditable` is THE guard (lib/finance/ownership): the Finance route and
+ * Sunny's finance writers both call it — an owned row is never deleted from Finance and only its allowed fields
+ * (status / date / method / notes for fee-like rows; notes / method / date for a show payment) may change (409).
  */
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
+import { isActualMoneyTx } from "@/lib/finance/classify";
+import { mergeSettingsKey } from "@/lib/writes/settings-merge";
+import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
+import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
 
 export interface TransactionInput {
   projectId?: string | null; scope?: string | null; type: string; date?: string | null; description?: string | null; artist?: string | null;
@@ -17,6 +23,15 @@ export interface TransactionInput {
   notes?: string | null; category?: string | null; linkedSessionId?: string | null; expenseScope?: string | null;
 }
 export class FinanceInputError extends Error {}
+
+/**
+ * The expense_scope a NEW row gets: an expense keeps its scope (default כללי); an INCOME row of a project may be
+ * clip money (קליפ, B3 2026-09-27) — any other income scope stays כללי (song / general money).
+ */
+export function txScopeForCreate(type: string, scope: string | null | undefined, hasProject: boolean): string {
+  if (type === "expense") return scope || "כללי";
+  return hasProject && scope && INCOME_SCOPES.includes(scope) ? scope : "כללי";
+}
 
 /** POST /api/transactions semantics. */
 export async function createTransactionRecord(b: TransactionInput): Promise<Record<string, unknown>> {
@@ -27,7 +42,7 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
     project_id: txScope === "general" ? null : (b.projectId || null), scope: txScope, type: b.type, date: b.date || null,
     description: b.description || "", artist: b.artist || "", amount: Number(b.amount) || 0, currency: b.currency || "₪",
     payment_status: b.paymentStatus || "צפוי", payment_method: b.paymentMethod || "", receipt_ref: b.receiptRef || "", notes: b.notes || "",
-    category: b.category || "", linked_session_id: b.linkedSessionId || "", expense_scope: b.type === "expense" ? (b.expenseScope || "כללי") : "כללי",
+    category: b.category || "", linked_session_id: b.linkedSessionId || "", expense_scope: txScopeForCreate(b.type, b.expenseScope, txScope === "project" && !!b.projectId),
   }).select().single();
   if (error) throw new Error(error.message);
   if (txScope === "project" && b.projectId) touchProject(b.projectId).catch(() => {});
@@ -38,9 +53,7 @@ export interface TransactionPatch {
   date?: string | null; description?: string; artist?: string; amount?: number | string; currency?: string; paymentStatus?: string; paymentMethod?: string;
   receiptRef?: string; notes?: string; category?: string; type?: string; scope?: string; project_id?: string | null; linkedSessionId?: string; expenseScope?: string;
 }
-const PAID_STATUSES = new Set(["שולם", "התקבל"]);
-
-/** PATCH /api/transactions/[id] semantics (field-level; a paid status marks a linked clip row שולם). */
+/** PATCH /api/transactions/[id] semantics (field-level; actual money — lib/finance/classify isActualMoneyTx — marks a linked clip row שולם). */
 export async function updateTransactionRecord(id: string, body: TransactionPatch): Promise<Record<string, unknown>> {
   const patch: Record<string, unknown> = {};
   if (body.date !== undefined) patch.date = body.date || null;
@@ -62,7 +75,8 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
   if (error) throw new Error(error.message);
   const pid = (data as { project_id?: string | null }).project_id;
   if (pid) touchProject(pid).catch(() => {});
-  if (patch.payment_status && PAID_STATUSES.has(patch.payment_status as string)) {
+  // the clip row is marked שולם only when the row is ACTUAL money (an expense only when שולם — never "התקבל")
+  if (patch.payment_status && isActualMoneyTx(data as { type?: string | null; payment_status?: string | null })) {
     supabase.from("clip_items").update({ status: "שולם", updated_at: new Date().toISOString() }).eq("linked_transaction_id", id).then(() => {}, () => {});
   }
   return data as Record<string, unknown>;
@@ -88,12 +102,9 @@ export async function splitIncome(id: string, paid: number, receivedDate: string
 }
 
 export interface FinanceSettingsPatch { agreedPrice?: number | string; currency?: string; financialNotes?: string; financeException?: boolean; financeExceptionReason?: string; financeExceptionDate?: string }
-/** PATCH /api/transactions?type=settings semantics: merge into finance_<project>. */
+/** PATCH /api/transactions?type=settings semantics: compare-and-swap merge into finance_<project> (lib/writes/settings-merge). */
 export async function setFinanceSettings(projectId: string, b: FinanceSettingsPatch): Promise<Record<string, unknown>> {
-  const { data: existing } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
-  const cur = (existing?.value ?? {}) as Record<string, unknown>;
-  const merged = {
-    ...cur,
+  const patch = {
     ...(b.agreedPrice !== undefined ? { agreedPrice: Number(b.agreedPrice) } : {}),
     ...(b.currency !== undefined ? { currency: b.currency } : {}),
     ...(b.financialNotes !== undefined ? { financialNotes: b.financialNotes } : {}),
@@ -101,9 +112,24 @@ export async function setFinanceSettings(projectId: string, b: FinanceSettingsPa
     ...(b.financeExceptionReason !== undefined ? { financeExceptionReason: b.financeExceptionReason } : {}),
     ...(b.financeExceptionDate !== undefined ? { financeExceptionDate: b.financeExceptionDate } : {}),
   };
-  const { error } = await supabase.from("settings").upsert({ key: `finance_${projectId}`, value: merged }, { onConflict: "key" });
+  // a concurrent writer of the same blob (clip price, clip production marker, notes …) is never overwritten
+  return mergeSettingsKey(`finance_${projectId}`, patch);
+}
+
+/** Read-only context for the income-scope preview (B3): the project's income rows + its clip price / deal currency. */
+export async function readProjectIncomeContext(projectId: string): Promise<{ clipAgreedPrice: number | null; clipCurrency: string; incomes: IncomeRowLike[] }> {
+  const [{ data: rows, error }, { data: s, error: sErr }] = await Promise.all([
+    supabase.from("transactions").select("id, amount, currency, payment_status, expense_scope").eq("project_id", projectId).eq("type", "income"),
+    supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle(),
+  ]);
   if (error) throw new Error(error.message);
-  return merged;
+  if (sErr) throw new Error(sErr.message);
+  const v = (s?.value ?? {}) as Record<string, unknown>;
+  const price = Number(v.clipAgreedPrice);
+  return {
+    clipAgreedPrice: Number.isFinite(price) && price > 0 ? price : null, clipCurrency: String(v.currency ?? "₪"),
+    incomes: ((rows ?? []) as Array<Record<string, unknown>>).map((r) => ({ id: String(r.id), amount: Number(r.amount) || 0, currency: (r.currency as string | null) ?? null, paymentStatus: (r.payment_status as string | null) ?? null, expenseScope: (r.expense_scope as string | null) ?? null })),
+  };
 }
 export async function readFinanceSettings(projectId: string): Promise<{ agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string }> {
   const { data, error } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
@@ -120,21 +146,60 @@ export async function readTransaction(id: string): Promise<TransactionView | nul
   return { projectId: data.project_id ?? null, scope: data.scope ?? "project", type: data.type ?? "", date: data.date ?? null, description: data.description ?? "", artist: data.artist ?? "", amount: Number(data.amount) || 0, currency: data.currency ?? "₪", paymentStatus: data.payment_status ?? "", paymentMethod: data.payment_method ?? "", receiptRef: data.receipt_ref ?? "", notes: data.notes ?? "", category: data.category ?? "", expenseScope: data.expense_scope ?? "", linkedSessionId: data.linked_session_id ?? "" };
 }
 
+/** Link facts for many transactions at once (batch — never one query per row). `ids` null = every transaction. */
+export async function readOwnerLinks(txs: ReadonlyArray<{ id: string; show_id?: string | null; show_money_role?: string | null; linked_session_id?: string | null }>): Promise<Map<string, TxOwnerLinks>> {
+  const out = new Map<string, TxOwnerLinks>();
+  for (const t of txs) out.set(t.id, { showId: t.show_id ?? null, showMoneyRole: t.show_money_role ?? null, linkedSessionId: t.linked_session_id ?? null });
+  if (!txs.length) return out;
+  const few = txs.length <= 100 ? txs.map((t) => t.id) : null; // small sets filter by id; big ones read the (small) link tables whole
+  const linked = async (table: string, col: string): Promise<string[]> => {
+    let q = supabase.from(table).select(col).not(col, "is", null);
+    if (few) q = q.in(col, few);
+    const { data, error } = await q;
+    if (error) throw new Error(`${table}: ${error.message}`);
+    return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => String(r[col]));
+  };
+  const mark = (list: string[], set: (l: TxOwnerLinks) => void) => { for (const id of list) { const l = out.get(id); if (l) set(l); } };
+  mark(await linked("shows", "linked_income_transaction_id"), (l) => { l.legacyShowRole = "SHOW_PAYMENT"; });
+  mark(await linked("shows", "linked_dj_expense_transaction_id"), (l) => { l.legacyShowRole = "DJ_FEE"; });
+  mark(await linked("shows", "linked_artist_expense_transaction_id"), (l) => { l.legacyShowRole = "ARTIST_FEE"; });
+  mark(await linked("sound_engineer_work", "linked_transaction_id"), (l) => { l.mixWork = true; });
+  mark(await linked("clip_items", "linked_transaction_id"), (l) => { l.clipRow = true; });
+  mark(await linked("red_films_budget_items", "linked_transaction_id"), (l) => { l.rfBudget = true; });
+  mark(await linked("social_promotions", "linked_transaction_id"), (l) => { l.promotion = true; });
+  return out;
+}
+/** Owners for many transaction rows (the Finance list GET) — one batch of link reads. */
+export async function financeOwnersFor(txs: ReadonlyArray<{ id: string; show_id?: string | null; show_money_role?: string | null; linked_session_id?: string | null }>): Promise<Map<string, FinanceOwnerCode | null>> {
+  const links = await readOwnerLinks(txs);
+  return new Map([...links].map(([id, l]) => [id, ownerFromLinks(l)]));
+}
 /** Which Redbloods writer owns this transaction (its sync re-writes it), or null for a free-standing row. */
-export async function financeOwnerOf(id: string): Promise<"SHOW" | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | null> {
-  const probes: Array<[string, string, "SHOW" | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET"]> = [
-    ["shows", "linked_income_transaction_id", "SHOW"], ["shows", "linked_dj_expense_transaction_id", "SHOW"], ["shows", "linked_artist_expense_transaction_id", "SHOW"],
-    ["sound_engineer_work", "linked_transaction_id", "MIX_WORK"], ["clip_items", "linked_transaction_id", "CLIP_ROW"], ["red_films_budget_items", "linked_transaction_id", "RF_BUDGET"],
-  ];
-  for (const [table, col, owner] of probes) {
-    const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq(col, id);
+export async function financeOwnerOf(id: string): Promise<FinanceOwnerCode | null> {
+  const { data, error } = await supabase.from("transactions").select("id, show_id, show_money_role, linked_session_id").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return (await financeOwnersFor([data as { id: string }])).get(id) ?? null;
+}
+
+export class TransactionOwnedError extends Error {
+  readonly status = 409;
+  constructor(readonly verdict: Extract<TxEditVerdict, { ok: false }>) { super(verdict.messageHe); }
+}
+/** THE server guard (Finance route AND Sunny's finance writers): an owned row is never deleted from Finance, and only
+ *  its owner's allowed fields may really change (lib/finance/ownership). Throws TransactionOwnedError (→ 409). */
+export async function assertTransactionEditable(id: string, op: "delete" | Readonly<Record<string, unknown>>): Promise<void> {
+  const owner = await financeOwnerOf(id);
+  if (!owner) return;
+  let fields: TxPatchField[] | "delete" = "delete";
+  if (op !== "delete") {
+    const { data, error } = await supabase.from("transactions").select("*").eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
-    if ((count ?? 0) > 0) return owner;
+    if (!data) return; // the writer reports the missing row
+    const cur: TxCurrent = { date: data.date ?? null, description: data.description ?? "", artist: data.artist ?? "", amount: Number(data.amount) || 0, currency: data.currency ?? "₪", paymentStatus: data.payment_status ?? "", paymentMethod: data.payment_method ?? "", receiptRef: data.receipt_ref ?? "", notes: data.notes ?? "", category: data.category ?? "", type: data.type ?? "", scope: data.scope ?? "project", project_id: data.project_id ?? null, linkedSessionId: data.linked_session_id ?? "", expenseScope: data.expense_scope ?? "" };
+    fields = changedTxFields(cur, op);
   }
-  // D5: every show row (payments, the expected balance, fees, rehearsals) is linked by transactions.show_id
-  const { data: link, error: linkErr } = await supabase.from("transactions").select("show_id").eq("id", id).maybeSingle();
-  if (linkErr) throw new Error(linkErr.message);
-  if ((link as { show_id?: string | null } | null)?.show_id) return "SHOW";
-  return null;
+  const v = transactionEditVerdict(owner, fields);
+  if (!v.ok) throw new TransactionOwnedError(v);
 }
 

@@ -8,6 +8,7 @@ import { getStatusColor } from "@/lib/utils";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import StatusBadge from "./Badge";
+import { sumByCurrency, formatTotalsInline, isExpectedStatus, type CurrencyTotals } from "@/lib/finance";
 import MixSetupModal from "@/components/project/MixSetupModal";
 import MixRevertModal from "@/components/project/MixRevertModal";
 
@@ -48,7 +49,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   const [mixRevertTarget, setMixRevertTarget] = useState<ProjectStatus | null>(null);
   // Cancel-project prompt: shown when moving to "בוטל" and the project still has a
   // future income balance (income txns with status "צפוי"/"לא שולם") to decide on.
-  const [cancelPrompt, setCancelPrompt] = useState<{ balance: number; currency: string; txIds: string[] } | null>(null);
+  const [cancelPrompt, setCancelPrompt] = useState<{ balanceByCurrency: CurrencyTotals; txIds: string[] } | null>(null);
   const [cancelBusy,   setCancelBusy]   = useState(false);
   const triggerRef                  = useRef<HTMLButtonElement>(null);
   const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,11 +146,12 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
         Array.isArray(d?.transactions) ? d.transactions : [];
       const future = txns.filter(
         (t) => (t.type === "income" || t.type === "הכנסה") &&
-               (t.payment_status === "צפוי" || t.payment_status === "לא שולם"),
+               isExpectedStatus(t.payment_status),
       );
-      const balance = future.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      if (balance > 0) {
-        setCancelPrompt({ balance, currency: future[0]?.currency ?? "₪", txIds: future.map((t) => t.id) });
+      // The open balance PER CURRENCY — never one mixed number labelled with the first row's currency (no FX).
+      const balanceByCurrency = sumByCurrency(future, (t) => Number(t.amount) || 0);
+      if (Object.values(balanceByCurrency).some((v) => v > 0)) {
+        setCancelPrompt({ balanceByCurrency, txIds: future.map((t) => t.id) });
         setSaving(false);
         return;
       }
@@ -584,7 +586,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
             <p style={{ color: "#888", fontSize: 12.5, margin: "0 0 20px", textAlign: "center", lineHeight: 1.65 }}>
               לפרויקט הזה יש יתרה עתידית של{" "}
               <strong style={{ color: "#F87171" }}>
-                {cancelPrompt.balance.toLocaleString("he-IL")}{cancelPrompt.currency}
+                {formatTotalsInline(cancelPrompt.balanceByCurrency, (a, c) => `${a.toLocaleString("he-IL")}${c}`)}
               </strong>
               . מה לעשות איתה?
             </p>

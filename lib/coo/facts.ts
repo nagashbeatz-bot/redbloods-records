@@ -22,6 +22,7 @@ import { isSongIncome } from "../clip-finance";
 import { actualBalanceAgainstAgreedPrice } from "../payment-status";
 import { totalsRich, richText } from "./rich";
 import { computeVictorBall } from "./victor-ball";
+import { isEngineerWorkPaid } from "../mix-payment-pure";
 
 const SCHEMA_VERSION = "coo-state-1";
 
@@ -148,7 +149,9 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     };
     const all = raw.steven.map(mapWork);
     const open = all.filter((w) => !cfg.stevenClosedStatuses.includes(w.status));
-    const approvedUnpaid = all.filter((w) => w.status === "אושר" && w.agreedPrice > 0 && w.amountPaid < w.agreedPrice);
+    // THE shared paid rule (lib/mix-payment-pure): paid needs a payment date too.
+    const paidById = new Map(raw.steven.map((r) => [r.id, isEngineerWorkPaid(r)]));
+    const approvedUnpaid = all.filter((w) => w.status === "אושר" && w.agreedPrice > 0 && !paidById.get(w.id));
     const byCurrency: CurrencyTotals = {};
     for (const w of approvedUnpaid) addToTotals(byCurrency, w.currency, w.agreedPrice - w.amountPaid);
     steven = { totalWorks: all.length, open, approvedUnpaid: { works: approvedUnpaid, byCurrency }, linkedOpen: open.filter((w) => w.projectId).length };
@@ -223,7 +226,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     const facts: ShowFact[] = raw.shows.map((s) => {
       const d = parseYmd(s.date);
       return {
-        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, currency: s.currency ?? "₪", incomeTxId: s.incomeTxId,
+        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, currency: normalizeCurrency(s.currency), incomeTxId: s.incomeTxId,
         djClientId: s.djClientId ?? null, djConfirmationStatus: s.djConfirmationStatus ?? null, djConfirmedAt: s.djConfirmedAt ?? null,
       };
     });
@@ -236,7 +239,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     shows = { total: facts.length, upcoming, doneUnpaid, leadsCount: facts.filter((s) => LEAD_SHOW.has(s.status)).length, lastPerformedYmd: performedDates.length ? performedDates[performedDates.length - 1] : null };
     const zeroPriced = done.filter((s) => s.paymentStatus !== "שולם" && !(s.price > 0));
     if (zeroPriced.length) dq.push(dqi("shows.done_no_price", "הופעות שבוצעו בלי מחיר ובלי סטטוס תשלום 'שולם'", zeroPriced.length, "לא ניתן לדעת אם יש כסף לגבות — לא נכללות בהתראת גבייה.", "warn"));
-    coverage.push(cov("shows", "הופעות", facts.length, facts.length, "אין שדה מטבע בהופעות (מוצג ₪ כהנחה); רק הופעות שנרשמו במערכת. אין נתוני 'לידים' בפועל."));
+    coverage.push(cov("shows", "הופעות", facts.length, facts.length, "לכל הופעה מטבע משלה (shows.currency) — סכומים לא מחוברים בין מטבעות; רק הופעות שנרשמו במערכת. אין נתוני 'לידים' בפועל."));
   } else unavailable("shows", "הופעות");
 
   // ── sessions (planned only) ────────────────────────────────────────────────

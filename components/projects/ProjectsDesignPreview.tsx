@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -13,9 +14,9 @@ import StatusDropdown from "@/components/ui/StatusDropdown";
 import ProjectTypeDropdown from "@/components/ui/ProjectTypeDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
-import { isCancelledPayment, collectibleAmount } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
-import { sameCurrency, normalizeCurrency, addToTotals, otherCurrencyLines, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
+import { collectibleAmount } from "@/lib/payment-status";
+import { normalizeCurrency, formatTotalsInline, type CurrencyTotals } from "@/lib/finance";
+import { buildProjectFinanceSummary, collectionTotalsByCurrency, type ProjectFinSummary } from "@/lib/finance/project-summary";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
 import { sortProjectsForList } from "@/lib/projects-sort";
@@ -77,7 +78,7 @@ function formatTimeRemaining(iso: string | null, status: ProjectStatus): string 
 }
 
 function deadlineBadgeColor(p: Project): string {
-  if (p.isOverdue && p.status !== "הושלם") return "#EF4444";
+  if (isProjectOverdue(p)) return "#EF4444";
   const d = daysUntilDeadline(p.deadline);
   if (d !== null && d <= 7 && p.status !== "הושלם") return "#F59E0B";
   return MUTED;
@@ -201,6 +202,8 @@ function KpiCard({ label, value, sub, color, icon, onMouseEnter, onMouseLeave }:
 type KpiPopoverItem = {
   id: string; name: string; artist: string;
   remaining: number; agreed: number; paid: number;
+  /** The project's finance currency — every amount of this item is in it. */
+  currency: string;
   deadline?: string | null;
 };
 
@@ -256,10 +259,10 @@ function KpiPopover({
               </div>
               <div style={{ flexShrink: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: "#F59E0B" }}>
-                  <SensitiveValue>{`₪${item.remaining.toLocaleString()}`}</SensitiveValue>
+                  <SensitiveValue>{`${item.currency}${item.remaining.toLocaleString()}`}</SensitiveValue>
                 </div>
                 <div style={{ fontSize: 10, color: "#555" }}>
-                  <SensitiveValue>{`מתוך ₪${item.agreed.toLocaleString()}`}</SensitiveValue>
+                  <SensitiveValue>{`מתוך ${item.currency}${item.agreed.toLocaleString()}`}</SensitiveValue>
                 </div>
               </div>
             </div>
@@ -396,7 +399,7 @@ export default function ProjectsDesignPreview() {
   const [showNewProject,  setShowNewProject]  = useState(false);
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, ProjectFinSummary>>({});
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; items: KpiPopoverItem[] } | null>(null);
   const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -404,24 +407,9 @@ export default function ProjectsDesignPreview() {
     fetch("/api/transactions?all=1")
       .then(r => r.json())
       .then(d => {
-        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean; currency?: string | null }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; financeException?: boolean; currency?: string | null }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
-          map[s.project_id].agreed = s.agreedPrice ?? 0;
-          map[s.project_id].currency = s.currency; // R5: transactions below only count in this currency
-          map[s.project_id].financeException = s.financeException ?? false;
-        });
-        // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string; currency?: string | null }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
-          if (!isSongIncome(t)) return;
-          if (!sameCurrency(t.currency, map[t.project_id].currency)) return; // R5: compare only within the project currency
-          if (["התקבל", "שולם"].includes(t.payment_status))
-            map[t.project_id].paid += t.amount;
-          if (isCancelledPayment(t.payment_status))
-            map[t.project_id].cancelled += t.amount;
-        });
-        setFinanceSummary(map);
+        // R5: song-deal income only, in the project's own currency; clip income is a separate deal
+        // (lib/finance/project-summary.ts — the same rule as the Projects table).
+        setFinanceSummary(buildProjectFinanceSummary(d.settings ?? [], d.transactions ?? []));
       })
       .catch(() => {});
   }, []);
@@ -461,14 +449,8 @@ export default function ProjectsDesignPreview() {
     const active = projects.filter(p => !p.isHidden);
     const statusById = new Map(active.map(p => [p.id, p.status]));
     // COLLECTION INTENT — "still expected to collect". See lib/payment-status.ts module doc.
-    // Per currency — never added together (Finance contract). The KPI headline is ₪; others are listed apart.
-    const expectedByCurrency: CurrencyTotals = {};
-    for (const [id, f] of Object.entries(financeSummary)) {
-      if (!statusById.has(id) || f.financeException) continue;
-      addToTotals(expectedByCurrency, normalizeCurrency(f.currency), collectibleAmount(f.agreed, f.paid, f.cancelled, statusById.get(id)));
-    }
-    const totalExpected = expectedByCurrency[DEFAULT_CURRENCY] ?? 0;
-    const expectedOtherLines = otherCurrencyLines(expectedByCurrency, DEFAULT_CURRENCY);
+    // Per currency — never added together (Finance contract); finance exceptions excluded (lib/finance/project-summary.ts).
+    const expectedByCurrency: CurrencyTotals = collectionTotalsByCurrency(financeSummary, statusById);
     const now = new Date();
     return {
       // "סה״כ פרויקטים" counts what is still ON THE TABLE — every visible project
@@ -486,9 +468,8 @@ export default function ProjectsDesignPreview() {
         const d = new Date(p.endDate);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       }).length,
-      overdue:  active.filter(p => p.isOverdue && p.status !== "הושלם").length,
-      expected: totalExpected,
-      expectedOtherLines,
+      overdue:  active.filter(p => isProjectOverdue(p)).length,
+      expectedByCurrency,
     };
   }, [projects, financeSummary]);
 
@@ -501,6 +482,7 @@ export default function ProjectsDesignPreview() {
         agreed: financeSummary[p.id]?.agreed ?? 0,
         paid:   financeSummary[p.id]?.paid   ?? 0,
         remaining: collectibleAmount(financeSummary[p.id]?.agreed ?? 0, financeSummary[p.id]?.paid ?? 0, financeSummary[p.id]?.cancelled ?? 0, p.status),
+        currency: normalizeCurrency(financeSummary[p.id]?.currency),
         deadline: p.deadline ? new Date(p.deadline).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : null,
       }))
       .filter(p => p.remaining > 0)
@@ -606,7 +588,7 @@ export default function ProjectsDesignPreview() {
           <KpiCard label="במיקס"          value={String(kpi.inMix)}          color="#A855F7" icon="🎚️" sub="אצל הסאונד" />
           <KpiCard label="באיחור"          value={String(kpi.overdue)}        color={kpi.overdue > 0 ? "#EF4444" : MUTED} icon="⚠️" sub="דורש טיפול" />
           <KpiCard label="הושלמו החודש"   value={String(kpi.completedMonth)} color="#10B981" icon="✅" sub="הצלחה בהצלחה" />
-          <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub={kpi.expectedOtherLines.length ? `לגבייה · ${kpi.expectedOtherLines.join(" · ")}` : "לגבייה"}
+          <KpiCard label="הכנסה צפויה"    value={Object.keys(kpi.expectedByCurrency).length ? formatTotalsInline(kpi.expectedByCurrency, (a, c) => `${c}${a.toLocaleString()}`) : "—"} color="#F59E0B" icon="💰" sub={Object.keys(kpi.expectedByCurrency).length > 1 ? "לגבייה · לפי מטבע" : "לגבייה"}
             onMouseEnter={(e) => handleKpiEnter(expectedBreakdown, e)}
             onMouseLeave={handleKpiLeave}
           />
@@ -914,10 +896,10 @@ function ProjectRow({
 
       {/* Deadline */}
       <div>
-        <div style={{ fontSize: 12, color: dlColor, fontWeight: p.isOverdue && p.status !== "הושלם" ? 700 : 400 }}>
+        <div style={{ fontSize: 12, color: dlColor, fontWeight: isProjectOverdue(p) ? 700 : 400 }}>
           {formatDeadline(p.deadline)}
         </div>
-        {p.isOverdue && p.status !== "הושלם" && (
+        {isProjectOverdue(p) && (
           <div style={{ fontSize: 10, color: "#EF4444", marginTop: 1 }}>באיחור</div>
         )}
       </div>
@@ -1019,7 +1001,7 @@ function MobileCard({ project: p, onOpen, player }: { project: Project; onOpen: 
           {p.deadline && (
             <div style={{ fontSize: 11, color: dlColor, marginTop: 5 }}>
               <span>📅 תאריך יעד: {formatDeadline(p.deadline)}{formatTimeRemaining(p.deadline, p.status)}</span>
-              {p.isOverdue && p.status !== "הושלם" && (
+              {isProjectOverdue(p) && (
                 <span style={{ color: "#EF4444", fontWeight: 700 }}> · באיחור</span>
               )}
             </div>

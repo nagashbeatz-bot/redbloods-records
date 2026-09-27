@@ -350,7 +350,7 @@ function releaseDraft(state: PartnerCompanyState, projectId: string): EntityDraf
   if (!r.labelArtistId) missing.push({ fact: "label artist", whyNeeded: "the release is not linked to a label artist" });
   return {
     entity: { key, type: "release", label: record(projectName(state, projectId)) },
-    facts: [fact("RELEASE_STAGE", "שלב", r.stage, "FACT", "RELEASES"), fact("RELEASE_TARGET_DATE", "תאריך יעד", r.targetYmd, r.targetYmd ? "FACT" : "UNKNOWN", "RELEASES"), fact("RELEASED_AT", "יצא בתאריך", r.releasedAt, "FACT", "RELEASES"), fact("STAGE_ENTERED_AT", "נכנס לשלב", r.stageEnteredAt, "FACT", "RELEASES")],
+    facts: [fact("RELEASE_STAGE", "שלב", r.stage, "FACT", "RELEASES"), fact("RELEASE_TARGET_DATE", "תאריך יעד", r.targetYmd, r.targetYmd ? "FACT" : "UNKNOWN", "RELEASES"), fact("RELEASED_AT", "יצא לראשונה בתאריך (נשמר גם אם השלב חזר)", r.releasedAt, "FACT", "RELEASES"), fact("STAGE_ENTERED_AT", "נכנס לשלב", r.stageEnteredAt, "FACT", "RELEASES")],
     relationships: rels, missing,
     drillDown: [drill(`project:${projectId}`, "פתח את הפרויקט"), ...(r.labelArtistId ? [drill(`label-artist:${r.labelArtistId}`, artist?.name ?? "פתח את האמן")] : [])],
     scopeKeys: [key, `project:${projectId}`], caseIds: new Set([projectId]), patternFamily: () => false,

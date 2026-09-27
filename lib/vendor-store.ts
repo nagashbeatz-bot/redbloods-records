@@ -12,8 +12,9 @@ import { supabase } from "@/lib/supabase";
 import { segmentVictorWork } from "@/lib/victor-segments";
 import { fileRefOf } from "@/lib/victor-files";
 import { isWorkId, isVictorWork, victorMayDelete } from "@/lib/victor-scope";
-import { isExpenseFullyPaidStatus } from "@/lib/finance/classify";
-import { salaryDueDate, salaryLinkedId, salaryMonthLabel, salaryTransactionDescription } from "@/lib/victor-salary-format";
+import { normalizeCurrency } from "@/lib/finance/currency";
+import { isVictorWorkStuck } from "@/lib/victor-stuck";
+import { salaryDueDate, salaryLinkedId, salaryMonthLabel, salaryTransactionDescription, resolveSalaryMonth, type SalaryTxLite } from "@/lib/victor-salary-format";
 import type {
   VendorWork,
   VendorSettings,
@@ -55,8 +56,8 @@ function mapRow(
   const proj         = projectId ? projectMap.get(projectId) : undefined;
   const sentDate     = (row.sent_date as string | null) ?? null;
   const daysSinceSent = sentDate ? daysBetween(sentDate) : null;
-  // stuck = active AND days since sent > threshold
-  const isStuck = row.status === "פעיל" && daysSinceSent !== null && daysSinceSent > stuckAfterDays;
+  // stuck = active AND days since sent > threshold — the ONE rule (lib/victor-stuck.ts), shared with the push cron + Sunny
+  const isStuck = isVictorWorkStuck(row.status as string | null, daysSinceSent, stuckAfterDays);
 
   return {
     id:               row.id as string,
@@ -397,57 +398,41 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
     .select("id, linked_session_id, payment_status, amount, currency")
     .like("linked_session_id", "victor\\_salary\\_%");
 
-  // Build map: workMonth → transaction
-  const txMap = new Map<string, { id: string; paymentStatus: string }>();
+  // Build map: workMonth → ALL its transactions (B5: two rows for one month are a DUPLICATE conflict, never a silent
+  // "last row wins").
+  const txMap = new Map<string, SalaryTxLite[]>();
   for (const tx of (txsRaw ?? [])) {
     const lid = tx.linked_session_id as string | null;
     if (!lid) continue;
     // Validate format: "victor_salary_YYYY-MM"
     const m = /^victor_salary_(\d{4}-\d{2})$/.exec(lid);
     if (!m) continue;
-    txMap.set(m[1], { id: tx.id as string, paymentStatus: tx.payment_status as string });
+    const row: SalaryTxLite = { id: tx.id as string, paymentStatus: (tx.payment_status as string | null) ?? null, amount: tx.amount == null ? null : Number(tx.amount), currency: (tx.currency as string | null) ? normalizeCurrency(tx.currency as string) : null };
+    txMap.set(m[1], [...(txMap.get(m[1]) ?? []), row]);
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayYmd = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   const months: VictorSalaryMonth[] = [];
   for (let mo = 1; mo <= 12; mo++) {
     const workMonth = `${year}-${String(mo).padStart(2, "0")}`;
     const dueDate   = salaryDueDate(workMonth);
-    const amount    = overrides[workMonth] ?? settings.monthlySalary;
-    const currency  = settings.salaryCurrency;
-    const tx        = txMap.get(workMonth);
-
-    let status: SalaryStatus;
-    const statusOverride = statusOverrides[workMonth];
-    if (statusOverride) {
-      // Internal override wins — fully finance-independent.
-      status = statusOverride as SalaryStatus;
-    } else if (!tx) {
-      const due = new Date(dueDate);
-      status = due <= today ? "לא שולם" : "צפוי";
-    } else {
-      const ps = tx.paymentStatus;
-      // Finance contract: an EXPENSE is fully paid ONLY when "שולם". "התקבל" is an income status → not "paid" here.
-      if (isExpenseFullyPaidStatus(ps)) status = "שולם";
-      else if (ps === "חלקי")              status = "חלקי";
-      else if (ps === "בוטל") {
-        // Cancelled transaction — show status as if no transaction (based on dueDate)
-        const due = new Date(dueDate);
-        status = due <= today ? "לא שולם" : "צפוי";
-      }
-      else                                 status = "נשלח לכספים";
-    }
-
+    // B5 precedence (lib/victor-salary-format resolveSalaryMonth): a live Finance row decides paid / amount / currency;
+    // the Owner's overrides only fill a month without one; a disagreement / duplicate is exposed as `conflict`.
+    const r = resolveSalaryMonth({
+      dueDate, todayYmd, defaultAmount: settings.monthlySalary, defaultCurrency: settings.salaryCurrency,
+      amountOverride: overrides[workMonth] ?? null, statusOverride: statusOverrides[workMonth] ?? null, txs: txMap.get(workMonth) ?? [],
+    });
     months.push({
       workMonth,
       dueDate,
-      amount,
-      currency,
-      status,
-      transactionId:              tx?.id              ?? null,
-      transactionPaymentStatus:   tx?.paymentStatus   ?? null,
+      amount:                   r.amount,
+      currency:                 r.currency,
+      status:                   r.status as SalaryStatus,
+      transactionId:            r.transactionId,
+      transactionPaymentStatus: r.transactionPaymentStatus,
+      source:                   r.source,
+      conflict:                 r.conflict,
     });
   }
 

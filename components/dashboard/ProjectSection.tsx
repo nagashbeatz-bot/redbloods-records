@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import type { Project } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { OverdueTag, DueSoonTag } from "@/components/ui/Badge";
@@ -112,12 +113,12 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
             onClick={(e) => e.stopPropagation()}
           >
             <StatusDropdown projectId={p.id} status={p.status} small />
-            {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
+            {isProjectOverdue(p) && <OverdueTag small />}
             {showDueSoon && <DueSoonTag days={days!} small />}
-            {showDeadline && p.deadline && !p.isOverdue && !showDueSoon && (
+            {showDeadline && p.deadline && !isProjectOverdue(p) && !showDueSoon && (
               <span style={{ fontSize: 12, color: "#666" }}>{deadlineLabel(p.deadline)}</span>
             )}
-            {showDeadline && p.deadline && p.isOverdue && (
+            {showDeadline && p.deadline && isProjectOverdue(p) && (
               <span style={{ fontSize: 12, color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
             )}
           </div>
@@ -162,12 +163,12 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
       {/* Right: status + tags + deadline */}
       <div className="flex items-center gap-2 flex-shrink-0 mr-3">
         <StatusDropdown projectId={p.id} status={p.status} small />
-        {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
+        {isProjectOverdue(p) && <OverdueTag small />}
         {showDueSoon && <DueSoonTag days={days!} small />}
-        {showDeadline && p.deadline && !p.isOverdue && !showDueSoon && (
+        {showDeadline && p.deadline && !isProjectOverdue(p) && !showDueSoon && (
           <span style={{ fontSize: 12, color: "#666" }}>{deadlineLabel(p.deadline)}</span>
         )}
-        {showDeadline && p.deadline && p.isOverdue && (
+        {showDeadline && p.deadline && isProjectOverdue(p) && (
           <span style={{ fontSize: 12, color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
         )}
       </div>

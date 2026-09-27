@@ -21,6 +21,7 @@ import { addDays, diffDays, ilYmd, parseYmd } from "../../coo/dates";
 import { EXPENSE_FULLY_PAID_STATUS, isCancelledStatus, isExpenseFullyPaidStatus, isReceivedStatus } from "../../finance/classify";
 import { normalizeCurrency } from "../../finance/currency";
 import { collectibleAmount, overpaymentAmount } from "../../payment-status";
+import { isEngineerWorkPaid } from "../../mix-payment-pure";
 import { isClipIncome, isSongIncome, summarizeClipFinance } from "../../clip-finance";
 import { splitArtistNames } from "../dossiers/relations";
 import { HIGH_VALUE_THRESHOLD_ILS, resolveCollection } from "./collections";
@@ -232,7 +233,7 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   for (const p of projects) {
     const st = settingByProject.get(p.id);
     const mine = txs.filter((t) => t.row.projectId === p.id);
-    const txLike = (t: Tx) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope });
+    const txLike = (t: Tx) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope, currency: t.currency });
     if (st?.exception) priceCoverage.financeExceptions++;
     else if (st?.price) priceCoverage.priced++;
     else if (p.status === COMPLETED) priceCoverage.priceUnknownCompleted++;
@@ -263,7 +264,7 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
     const clip = mine.filter((t) => isClipIncome(txLike(t)));
     if (st?.clipPrice && !st.exception) {
       const same = clip.filter((t) => t.currency === st.currency);
-      const summary = summarizeClipFinance(same.map(txLike), st.clipPrice);
+      const summary = summarizeClipFinance(same.map(txLike), st.clipPrice, st.currency);
       const baseEv: Evidence[] = [{ sourceType: "finance_setting", sourceId: p.id, projectId: p.id, currency: st.currency, reasonCode: "CLIP_AGREED_PRICE" }, ...same.filter((t) => t.received).map((t) => txEv(t, "CLIP_RECEIVED"))];
       if (summary.credit > 0) credits.push({ projectId: p.id, projectName: p.name, amount: round2(summary.credit), currency: st.currency, kind: "CLIP", evidence: baseEv });
       const openRows = same.filter(openIncome);
@@ -299,7 +300,10 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
     const cur = normalizeCurrency(w.currency);
     const linked = w.linkedTransactionId ? txById.get(w.linkedTransactionId) : null;
     if (linked && linked.currency !== cur) settlementAmbiguous.push({ sourceType: "engineer_work", sourceId: w.id, projectId: w.projectId, currency: cur, status: w.status, reasonCode: `WORK_IN_${cur}_TRANSACTION_IN_${linked.currency}` });
-    if (agreed === null || agreed - paid <= 0) continue;
+    // THE shared paid rule (lib/mix-payment-pure). A work with the full amount but no payment date is not paid by the
+    // rule; it carries no open balance either, so it is reported as ambiguous settlement evidence instead of owed money.
+    if (agreed === null || isEngineerWorkPaid({ agreedPrice: agreed, amountPaid: paid, paymentDate: w.paymentDate ?? null })) continue;
+    if (agreed - paid <= 0) { if (w.paymentDate === null) settlementAmbiguous.push({ sourceType: "engineer_work", sourceId: w.id, projectId: w.projectId, currency: cur, status: w.status, reasonCode: "PAID_AMOUNT_WITHOUT_PAYMENT_DATE" }); continue; }
     const approvedUnpaid = w.status === "אושר";
     items.push({ id: `ENGINEER_WORK:${w.id}`, source: "ENGINEER_WORK", amount: round2(agreed - paid), currency: cur, dueDate: null, category: "מיקס / מאסטר", projectId: w.projectId, legacy: approvedUnpaid ? "NEEDS_REVIEW" : "CONFIRMED_CURRENT", overdueDays: null, evidence: [{ sourceType: "engineer_work", sourceId: w.id, projectId: w.projectId, currency: cur, status: w.status, reasonCode: approvedUnpaid ? "APPROVED_WORK_UNPAID" : "WORK_IN_PROGRESS_UNPAID" }] });
   }
@@ -408,7 +412,9 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   sig("LABEL_LEDGER_NO_CURRENCY", "FACT", raw.ledger.length, raw.ledger.map((l, i) => ({ sourceType: "label_ledger" as const, sourceId: `${l.artistId}#${i}`, reasonCode: l.sourceTxId ? "LEDGER_ROW_MIRRORS_TRANSACTION" : "LEDGER_ROW_NO_CURRENCY" })));
   sig("MEDIA_INCOME_NO_CURRENCY", "FACT", raw.mediaIncome.length, raw.mediaIncome.map((m, i) => ({ sourceType: "media_income" as const, sourceId: `${m.labelArtistId}#${i}`, status: m.status, reasonCode: "MEDIA_INCOME_NO_CURRENCY" })));
   const rfPaid = raw.redFilmsPayments.filter((p) => (num(p.amount) ?? 0) > 0);
-  sig("RED_FILMS_OUTSIDE_FINANCE", "FACT", rfPaid.length, rfPaid.map((p) => ({ sourceType: "red_films_payment" as const, sourceId: p.id, date: p.paymentDate, reasonCode: "PAYMENT_WITHOUT_CURRENCY_OR_TRANSACTION" })));
+  sig("RED_FILMS_OUTSIDE_FINANCE", "FACT", rfPaid.length, rfPaid.map((p) => ({ sourceType: "red_films_payment" as const, sourceId: p.id, date: p.paymentDate, ...(p.currency ? { currency: p.currency } : {}), reasonCode: p.currency ? "PAYMENT_OUTSIDE_FINANCE_TRANSACTIONS" : "PAYMENT_WITHOUT_CURRENCY_OR_TRANSACTION" })));
+  // Red Films payments carry their line currency since 2026-09-27; only a legacy row without one is a currency gap.
+  const rfNoCurrency = rfPaid.filter((p) => !p.currency);
   const undated = txs.filter((t) => !t.date && !t.cancelled);
   sig("UNDATED_RECORDS", "FACT", undated.length, undated.map((t) => txEv(t, "NO_DATE")), undated.reduce((m, t) => add(m, t.currency, t.amount), {} as CurrencyTotals));
   sig("POSSIBLE_OBLIGATION_OVERLAP", "HYPOTHESIS", possibleOverlaps.length, possibleOverlaps.flatMap((e) => e.evidence), possibleOverlaps.reduce((m, e) => add(m, e.currency, e.amount), {} as CurrencyTotals));
@@ -430,7 +436,7 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
     clientAttribution: cov("AMBIGUOUS", "PROJECTS_LINK_CLIENTS_BY_NAME_ONLY"),
     labelAttribution: cov("AMBIGUOUS", "LABEL_WORK_LINKED_BY_NAME"),
     currencies: has("CURRENCY_SETTLEMENT_AMBIGUOUS") || has("CURRENCY_AMBIGUOUS") ? cov("AMBIGUOUS", "USD_OBLIGATIONS_SETTLED_IN_ILS_WITHOUT_FX_POLICY")
-      : raw.ledger.length || raw.mediaIncome.length || rfPaid.length ? cov("PARTIAL", "SOME_LEDGERS_WITHOUT_CURRENCY") : cov("RELIABLE", "TRANSACTIONS_CARRY_CURRENCY"),
+      : raw.ledger.length || raw.mediaIncome.length || rfNoCurrency.length ? cov("PARTIAL", "SOME_LEDGERS_WITHOUT_CURRENCY") : cov("RELIABLE", "TRANSACTIONS_CARRY_CURRENCY"),
     proposalPipeline: openProposals.length === 0 ? cov("MISSING", "NO_ACTIVE_PIPELINE_DATA") : cov("PARTIAL", "PROPOSALS_ARE_NOT_COMMITTED_INCOME"),
   };
 

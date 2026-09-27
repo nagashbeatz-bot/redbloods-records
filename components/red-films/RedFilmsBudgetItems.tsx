@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useContext, createContext, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import BudgetItemDetailModal, { type BudgetPayment } from "./BudgetItemDetailModal";
-import { PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
+import { budgetLinePaidState, budgetLineStatusConflict, type BudgetLinePaidState } from "@/lib/clip-rf-money-pure";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,13 +30,7 @@ interface Props {
   productionId: string;
   generalBudget: number;
   onBudgetUpdate: (newBudget: number) => void;
-  /**
-   * True when the budget is owned by a linked project's clip price. Budget items
-   * and expenses stay fully editable — only raising general_budget from them is
-   * blocked, so the agreed price with the artist can't be silently rewritten.
-   */
-  budgetLocked?: boolean;
-  /** the production's currency (₪ / $ / €) */
+  /** the production's currency (₪ / $ / €). B3: the budget is planning and never locked (never the clip price). */
   currency?: string;
 }
 
@@ -67,14 +61,13 @@ function fmtMoney(n: number, currency?: string) {
 
 function BudgetGauge({
   generalBudget, plannedTotal, paidTotal,
-  onEditBudget, onRaiseBudget, budgetLocked = false,
+  onEditBudget, onRaiseBudget,
 }: {
   generalBudget: number;
   plannedTotal: number;
   paidTotal: number;
   onEditBudget: () => void;
   onRaiseBudget: () => void;
-  budgetLocked?: boolean;
 }) {
   const cur = useContext(CurCtx);
   if (generalBudget === 0) {
@@ -182,30 +175,18 @@ function BudgetGauge({
             ⚠ חריגה מהתקציב: ההוצאות המתוכננות גבוהות ב-{fmtMoney(plannedTotal - generalBudget, cur)} מהתקציב הכללי
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
-            {/* Locked: the budget mirrors the linked project's clip price, so
-                raising it from the planned items would rewrite the agreed price. */}
+            {/* B3: the budget is the production's own planning — raising it never touches the clip price. */}
             <button
-              onClick={budgetLocked ? undefined : onRaiseBudget}
-              disabled={budgetLocked}
-              title={budgetLocked ? `${PROJECT_MANAGED_BUDGET_NOTE} — יש לעדכן את מחיר הקליפ בפרויקט` : undefined}
+              onClick={onRaiseBudget}
               style={{
-                fontSize: 11, fontWeight: 700,
-                color: budgetLocked ? "#777" : "#FFF",
-                background: budgetLocked ? "#2A2A2A" : "#EF4444",
-                border: budgetLocked ? "1px solid #3A3A3A" : "none", borderRadius: 6,
-                cursor: budgetLocked ? "not-allowed" : "pointer",
+                fontSize: 11, fontWeight: 700, color: "#FFF", background: "#EF4444",
+                border: "none", borderRadius: 6, cursor: "pointer",
                 fontFamily: "inherit", padding: "4px 12px",
               }}
             >
-              {budgetLocked ? "🔒 העלה תקציב" : "העלה תקציב"}
+              העלה תקציב
             </button>
           </div>
-          {budgetLocked && (
-            <div style={{ fontSize: 11, color: "#8A8A92", width: "100%" }}>
-              {PROJECT_MANAGED_BUDGET_NOTE}. פריטי התקציב וההוצאות משפיעים על ניצול התקציב והרווח בלבד —
-              לשינוי התקציב עדכן את מחיר הקליפ בפרויקט.
-            </div>
-          )}
         </div>
       )}
 
@@ -220,10 +201,11 @@ function BudgetGauge({
 // ── Item row ──────────────────────────────────────────────────────────────────
 
 function ItemRow({
-  item, itemPaid, onSave, onDelete, onOpenDetail, onDuplicate, menuOpen, onMenuToggle, onMenuClose,
+  item, lineState, onSave, onDelete, onOpenDetail, onDuplicate, menuOpen, onMenuToggle, onMenuClose,
 }: {
   item: BudgetItem;
-  itemPaid: number;
+  /** lib/clip-rf-money-pure budgetLinePaidState — the ONE paid rule (payments, never the stored status). */
+  lineState: BudgetLinePaidState & { conflictHe: string | null };
   onSave: (id: string, fields: Partial<BudgetItem>) => Promise<void>;
   onDelete: (id: string) => void;
   onOpenDetail: (withForm?: boolean) => void;
@@ -251,9 +233,11 @@ function ItemRow({
     setEditing(false);
   }
 
+  // Paid state comes ONLY from the payments (the stored status is planning intent; בוטל = the line is cancelled).
+  const itemPaid     = lineState.paid;
   const isCancelled  = item.status === "בוטל";
-  const isFullyPaid  = item.status === "שולם" || (item.planned_amount > 0 && itemPaid >= item.planned_amount * 0.99);
-  const isPartial    = !isFullyPaid && itemPaid > 0;
+  const isFullyPaid  = lineState.state === "PAID";
+  const isPartial    = lineState.state === "PARTIAL" || (lineState.state === "NO_PLAN" && itemPaid > 0);
 
   if (editing) {
     return (
@@ -299,7 +283,7 @@ function ItemRow({
     );
   }
 
-  const statusLabel  = isCancelled ? "בוטל" : isFullyPaid ? "שולם ✓" : isPartial ? "חלקי" : "ממתין";
+  const statusLabel  = isCancelled ? "בוטל" : isFullyPaid ? "שולם ✓" : lineState.state === "NO_PLAN" ? (itemPaid > 0 ? "שולם — ללא תכנון" : "ללא תכנון") : isPartial ? "חלקי" : "ממתין";
   const statusColor  = isCancelled ? "#555" : isFullyPaid ? "#22C55E" : isPartial ? "#F59E0B" : "#60A5FA";
   const statusBg     = isCancelled ? "#1A1A1A" : isFullyPaid ? "rgba(34,197,94,0.1)" : isPartial ? "rgba(245,158,11,0.1)" : "rgba(96,165,250,0.1)";
   const statusBorder = isCancelled ? "#2A2A2A" : isFullyPaid ? "rgba(34,197,94,0.3)" : isPartial ? "rgba(245,158,11,0.3)" : "rgba(96,165,250,0.3)";
@@ -327,6 +311,9 @@ function ItemRow({
         }}>
           {statusLabel}
         </span>
+        {lineState.conflictHe && !isCancelled && (
+          <span title={lineState.conflictHe} style={{ marginInlineStart: 6, fontSize: 11, color: "#F59E0B", cursor: "help" }}>⚠</span>
+        )}
       </td>
       <td style={{ padding: "9px 10px" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -497,7 +484,7 @@ function RaiseBudgetModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate, budgetLocked = false, currency = "₪" }: Props) {
+export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate, currency = "₪" }: Props) {
   const cur = currency;
   const [items, setItems]             = useState<BudgetItem[]>([]);
   const [payments, setPayments]       = useState<BudgetPayment[]>([]);
@@ -553,11 +540,13 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   const otherCurrency = activeAll.filter(i => (i.currency ?? cur) !== cur);
   const plannedTotal  = active.reduce((s, i) => s + (i.planned_amount || 0), 0);
 
-  // Payments — map itemId → sum of payment amounts
-  const paidByItem = payments.reduce((map, p) => {
-    map.set(p.budget_item_id, (map.get(p.budget_item_id) ?? 0) + p.amount);
-    return map;
-  }, new Map<string, number>());
+  // Paid per line — the ONE rule (lib/clip-rf-money-pure budgetLinePaidState): Σ payments in the line currency; the
+  // stored status is planning intent only; actual_amount (a legacy manual mirror) is never "paid".
+  const stateByItem = new Map<string, BudgetLinePaidState & { conflictHe: string | null }>(items.map((i) => {
+    const pays = payments.filter((p) => p.budget_item_id === i.id);
+    return [i.id, { ...budgetLinePaidState({ ...i, currency: i.currency ?? cur }, pays), conflictHe: budgetLineStatusConflict({ ...i, currency: i.currency ?? cur }, pays)?.he ?? null }];
+  }));
+  const paidByItem = new Map<string, number>(items.map((i) => [i.id, stateByItem.get(i.id)?.paid ?? 0]));
   const paidTotal = active.reduce((s, i) => s + (paidByItem.get(i.id) ?? 0), 0);
 
   // Payments for the currently-open detail modal
@@ -616,9 +605,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }
 
   async function handleRaiseBudget() {
-    // Belt and braces: the button is disabled and the server strips the field,
-    // but never let this path fire for a project-managed budget.
-    if (budgetLocked) { setRaiseModal(false); return; }
     setRaiseSaving(true);
     try {
       const res = await fetch(`/api/red-films/productions/${productionId}`, {
@@ -643,7 +629,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
       )}
       {/* Budget gauge */}
       <BudgetGauge
-        budgetLocked={budgetLocked}
         generalBudget={generalBudget}
         plannedTotal={plannedTotal}
         paidTotal={paidTotal}
@@ -662,9 +647,10 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
         /* ── Mobile: cards ─────────────────────────────────────── */
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {items.map(item => {
-            const itemPaid      = paidByItem.get(item.id) ?? 0;
+            const ls            = stateByItem.get(item.id)!;
+            const itemPaid      = ls.paid;
             const isCancelled   = item.status === "בוטל";
-            const isItemFullyPaid = item.status === "שולם" || (item.planned_amount > 0 && itemPaid >= item.planned_amount * 0.99);
+            const isItemFullyPaid = ls.state === "PAID";
             const isItemPartial   = !isItemFullyPaid && itemPaid > 0;
             const itemPaidColor   = isCancelled ? "#555" : isItemFullyPaid ? "#22C55E" : isItemPartial ? "#F59E0B" : "#555";
             return (
@@ -737,7 +723,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                 <ItemRow
                   key={item.id}
                   item={item}
-                  itemPaid={paidByItem.get(item.id) ?? 0}
+                  lineState={stateByItem.get(item.id)!}
                   onSave={handleSave}
                   onDelete={handleDelete}
                   onOpenDetail={(withForm) => { setOpenItemId(item.id); setOpenWithForm(withForm ?? false); }}

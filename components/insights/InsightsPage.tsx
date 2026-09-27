@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
@@ -8,6 +9,7 @@ import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingA
 import { isSongIncome } from "@/lib/clip-finance";
 import {
   calcPeriodTotals, normalizeCurrency, sameCurrency, otherAmountsFrom, formatOtherAmount, DEFAULT_CURRENCY,
+  isReceivedStatus, sumByCurrency, formatTotalsInline,
 } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
@@ -376,6 +378,8 @@ function InsightDetailModal({
     const setting = finSettings.find((s) => s.project_id === p.id);
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
+    // Every amount of this row is in the project's own finance currency (R5 — paidByProject counts only that currency).
+    const cur       = normalizeCurrency(setting?.currency);
     // Actual payment truth — never nets out cancelled income (Finance Semantics
     // Unification audit, 2026-09-22).
     const balance   = actualBalanceAgainstAgreedPrice(agreed, paid);
@@ -388,21 +392,21 @@ function InsightDetailModal({
           </div>
           <div style={{ textAlign: "left", direction: "ltr" }}>
             <div style={{ fontSize: 11, color: "#555" }}>יתרה</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: balance > 0 ? "#EF4444" : "#10B981" }}>{fmtMoney(balance)}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: balance > 0 ? "#EF4444" : "#10B981" }}>{fmtMoney(balance, cur)}</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 16, marginBottom: 10, borderTop: "1px solid #252525", paddingTop: 8 }}>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 10, color: "#444" }}>מוסכם</div>
-            <div style={{ fontSize: 12, color: "#888" }}>{fmtMoney(agreed)}</div>
+            <div style={{ fontSize: 12, color: "#888" }}>{fmtMoney(agreed, cur)}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 10, color: "#444" }}>שולם</div>
-            <div style={{ fontSize: 12, color: "#10B981" }}>{fmtMoney(paid)}</div>
+            <div style={{ fontSize: 12, color: "#10B981" }}>{fmtMoney(paid, cur)}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 10, color: "#444" }}>נותר</div>
-            <div style={{ fontSize: 12, color: "#EF4444" }}>{fmtMoney(balance)}</div>
+            <div style={{ fontSize: 12, color: "#EF4444" }}>{fmtMoney(balance, cur)}</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -727,8 +731,7 @@ export default function InsightsPage() {
   const projectsOneBeforeLimit = activeProjects.filter((p) => (sessionsByProject[p.id] ?? 0) === getLimit(p.id) - 1);
 
   // ── Finance ─────────────────────────────────────────────────────────────────
-  // Must match ProjectDrawer's PAID_STATUSES: both "שולם" and "התקבל" count as received.
-  const PAID_STATUSES_SET = new Set(["שולם", "התקבל"]);
+  // Received = lib/finance/classify.ts isReceivedStatus (שולם | התקבל) — the one status rule.
   // R5: a project's money is compared against its agreedPrice ONLY within the currency
   // of its finance_<projectId> setting (missing = ₪). Other-currency rows never count
   // toward paid / cancelled / balance.
@@ -737,7 +740,7 @@ export default function InsightsPage() {
   // Song-deal income only — clip income (expense_scope="קליפ") is a separate deal
   // and must not count against a project's agreed price (lib/clip-finance.ts).
   const paidByProject: Record<string, number> = {};
-  transactions.filter((t) => isSongIncome(t) && PAID_STATUSES_SET.has(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
+  transactions.filter((t) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
     paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
   });
   // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
@@ -778,10 +781,12 @@ export default function InsightsPage() {
   const openProposals    = proposals.filter((p) => !CLOSED_PROPOSAL.has(p.status));
   const followupOverdue  = openProposals.filter((p) => p.followup_date && p.followup_date < todayStr);
   const followupToday    = openProposals.filter((p) => p.followup_date === todayStr);
-  const proposalPotential = openProposals.filter((p) => p.currency === "₪").reduce((s, p) => s + (p.amount ?? 0), 0);
+  // Open proposal value PER CURRENCY (potential money; $ / € are shown on their own, never dropped or added into ₪).
+  const proposalPotentialByCurrency = sumByCurrency(openProposals, (p) => p.amount ?? 0);
+  const proposalPotentialAny = Object.values(proposalPotentialByCurrency).some((v) => v > 0);
 
   // ── Deadlines ────────────────────────────────────────────────────────────────
-  const overdue     = projects.filter((p) => p.isOverdue && p.status !== "הושלם");
+  const overdue     = projects.filter((p) => isProjectOverdue(p));
   const dueToday    = projects.filter((p) => { const d = daysUntil(p.deadline); return d === 0 && p.status !== "הושלם"; });
   const dueThisWeek = projects.filter((p) => { const d = daysUntil(p.deadline); return d !== null && d > 0 && d <= 7 && p.status !== "הושלם"; });
   const noDeadline  = activeProjects.filter((p) => !p.deadline);
@@ -806,7 +811,7 @@ export default function InsightsPage() {
   const artistBalances: Record<string, number> = {};
   projectsWithOpenBalance.forEach((p) => {
     const setting = finSettings.find((s) => s.project_id === p.id);
-    // Balances are summed per artist and shown in ₪ — never add a project in another currency into it.
+    // Balances are summed per artist in ₪ ONLY (the stat is labelled "(₪)") — a project in another currency is never added into it.
     if (!sameCurrency(setting?.currency, DEFAULT_CURRENCY)) return;
     const agreed    = setting?.agreedPrice ?? 0;
     const paid      = paidByProject[p.id] ?? 0;
@@ -830,14 +835,15 @@ export default function InsightsPage() {
     const setting = finSettings.find((s) => s.project_id === p.id);
     const agreed  = setting?.agreedPrice ?? 0;
     const paid    = paidByProject[p.id] ?? 0;
-    // R5: only expenses in the project's own currency are set against its agreed price.
-    const projectExp = transactions.filter((t) => t.type === "expense" && t.project_id === p.id && sameCurrency(t.currency, setting?.currency ?? DEFAULT_CURRENCY)).reduce((s, t) => s + t.amount, 0);
+    // R5: only expenses in the project's own currency are set against its agreed price; a cancelled expense is never money.
+    const projCur = normalizeCurrency(setting?.currency);
+    const projectExp = transactions.filter((t) => t.type === "expense" && t.project_id === p.id && !isCancelledPayment(t.payment_status) && sameCurrency(t.currency, projCur)).reduce((s, t) => s + t.amount, 0);
     const hasOpenBalance = projectsWithOpenBalance.some((op) => op.id === p.id);
     const netEst  = agreed > 0 ? agreed - projectExp : paid - projectExp;
     if (count > limit && hasOpenBalance) {
       riskyProjects.push({ project: p, reason: `${count}/${limit} סשנים + יתרה פתוחה` });
     } else if (agreed > 0 && netEst < 0) {
-      riskyProjects.push({ project: p, reason: `רווח משוער שלילי: ${fmtMoney(netEst)}` });
+      riskyProjects.push({ project: p, reason: `רווח משוער שלילי: ${fmtMoney(netEst, projCur)}` });
     } else if (["מחכה למיקס","במיקס"].includes(p.status) && hasOpenBalance) {
       riskyProjects.push({ project: p, reason: `${p.status} — לא שולם במלואו` });
     }
@@ -1086,10 +1092,10 @@ export default function InsightsPage() {
                 color={followupToday.length > 0 ? "#F59E0B" : "#555"}
                 onClick={followupToday.length > 0 ? () => openModal("proposals-followup") : undefined}
               />
-              {proposalPotential > 0 && (
+              {proposalPotentialAny && (
                 <StatRow
-                  label="פוטנציאל ₪"
-                  value={proposalPotential.toLocaleString("he-IL") + "₪"}
+                  label="פוטנציאל"
+                  value={formatTotalsInline(proposalPotentialByCurrency, (a, c) => a.toLocaleString("he-IL") + c)}
                   color="#A855F7"
                   sub="סכום הצעות פתוחות"
                 />
@@ -1133,7 +1139,7 @@ export default function InsightsPage() {
                 <StatRow label="הכי הרבה פרויקטים פעילים" value={`${topProjArtist[0]} (${topProjArtist[1]})`} color="#3B82F6" />
               )}
               {topBalanceArtist && (
-                <StatRow label="יתרה פתוחה גדולה ביותר" value={`${topBalanceArtist[0]}: ${fmtMoney(topBalanceArtist[1])}`} color="#EF4444" />
+                <StatRow label="יתרה פתוחה גדולה ביותר (₪)" value={`${topBalanceArtist[0]}: ${fmtMoney(topBalanceArtist[1])}`} color="#EF4444" />
               )}
               <div style={{ height: 1, background: "#222", margin: "4px 0" }} />
               <StatRow

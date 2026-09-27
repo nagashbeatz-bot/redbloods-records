@@ -48,7 +48,7 @@ export function projectMoney(raw: FinanceRaw, project: { id: string; status: str
   const settingRow = raw.financeSettings.find((s) => s.projectId === project.id) ?? null;
   const st = settingRow ? parseSetting(settingRow.value) : null;
   const currency = st?.currency ?? "₪";
-  const txLike = (t: (typeof txs)[number]) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope });
+  const txLike = (t: (typeof txs)[number]) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope, currency: t.currency });
   const open = (t: (typeof txs)[number]) => t.type === "income" && !t.received && !t.cancelled;
 
   const song = txs.filter((t) => t.type === "income" && isSongIncome(txLike(t)));
@@ -69,7 +69,7 @@ export function projectMoney(raw: FinanceRaw, project: { id: string; status: str
     if (t.received) e.paid = r2(e.paid + t.amount); else e.notPaid = r2(e.notPaid + t.amount);
   }
   const clipRows = txs.filter((t) => t.type === "income" && isClipIncome(txLike(t)) && t.currency === currency);
-  const clip = st?.clipPrice && !st.exception ? (() => { const c = summarizeClipFinance(clipRows.map(txLike), st.clipPrice!); return { agreed: c.agreed, paid: c.paid, expected: c.expected, remaining: c.remaining, credit: c.credit, status: c.status }; })() : null;
+  const clip = st?.clipPrice && !st.exception ? (() => { const c = summarizeClipFinance(clipRows.map(txLike), st.clipPrice!, currency); return { agreed: c.agreed, paid: c.paid, expected: c.expected, remaining: c.remaining, credit: c.credit, status: c.status }; })() : null;
 
   const reasons: string[] = [];
   let verdict: MoneyVerdict;

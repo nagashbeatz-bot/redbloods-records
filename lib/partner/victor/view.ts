@@ -18,7 +18,11 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { validateTx } from "../finance/core";
 import { projectOperating } from "../sunny/operating";
 import { computeVictorBall } from "../../coo/victor-ball";
+import { isVictorWorkStuck, DEFAULT_STUCK_AFTER_DAYS, VICTOR_STUCK_PUSH_ENABLED } from "../../victor-stuck";
+import { presenceFactsOf } from "../../push-presence-pure";
+import { markerStateOf } from "../../push-claims-pure";
 import { COO_CONFIG } from "../../coo/config";
+import { sendEntryCurrent, isOpenSendState } from "../work/send-log";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -43,14 +47,21 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
   const uploads = w.filesSent.map((f) => f.uploadedAt).filter((x): x is string => !!x);
   const ball = computeVictorBall({ uploads, filesWithoutTimestamp: w.filesSent.filter((f) => !f.uploadedAt).length, reviews: w.reviews.map((r) => ({ sentAt: r.sentAt, draft: r.draft })) as never }, COO_CONFIG as never);
   const sendLog = (c.det?.actions?.rows ?? []).filter((a) => a.projectId && a.projectId === w.projectId && (a.linkedWorkId === w.id || /ויקטור/.test(a.recipientName ?? "") || a.recipientRole === "external_producer"))
-    .map((a) => ({ status: a.status, contentType: a.contentType, date: a.actionDate, followUp: a.followupDate, linkedToThisWork: a.linkedWorkId === w.id }));
+    .map((a) => {
+      // B5: a send-log entry is a send-time snapshot — superseded by a LATER Victor upload (pending_version) or a later
+      // recorded Owner note (pending_feedback); same day = ambiguous, kept as evidence.
+      const cur = sendEntryCurrent({ status: a.status, actionDate: a.actionDate }, { versionUploads: w.filesSent.map((f) => f.uploadedAt), responses: w.reviews.filter((r) => !r.draft).map((r) => r.sentAt) });
+      return { status: a.status, contentType: a.contentType, date: a.actionDate, followUp: a.followupDate, linkedToThisWork: a.linkedWorkId === w.id, current: cur.state, currentBasis: cur.basis };
+    });
   const open = w.status === "פעיל";
   const versions = [...new Set(w.filesSent.map((f) => f.versionLabel ?? "ללא גרסה"))];
   const latestUpload = uploads.sort().pop() ?? null;
   const lastNotes = w.reviews.map((r) => r.sentAt).filter((x): x is string => !!x).sort().pop() ?? null;
   const drafts = w.reviews.filter((r) => r.draft && r.notes);
   const holderRule = ball.ball.holder;
-  const sendLogHolder = sendLog.find((s) => s.status === "pending_version") ? "VICTOR" : sendLog.find((s) => s.status === "got_notes") ? "OWNER" : null;
+  // only a still-open entry can name a holder — a SUPERSEDED one is historical (not a holder, not a conflict)
+  const openLog = sendLog.filter((s) => s.status === "got_notes" || isOpenSendState(s.current));
+  const sendLogHolder = openLog.find((s) => s.status === "pending_version") ? "VICTOR" : openLog.find((s) => s.status === "got_notes") ? "OWNER" : null;
   const state = !open ? (w.status === "הושלם" ? "COMPLETED" : "CANCELLED")
     : holderRule === "unknown" ? "UNKNOWN"
     : sendLogHolder && sendLogHolder !== holderRule.toUpperCase() ? "CONFLICTING_EVIDENCE"
@@ -71,11 +82,19 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
       briefFiles: w.briefFiles.length, receivedEntries: w.filesReceived.length, folder: w.dropboxFolder, hasFolderLink: w.hasFolderLink, storageListing: "NOT_AVAILABLE (capability gap) — stored entries only" },
     feedback: { reviews: w.reviews.map((r) => ({ version: r.version, sentAt: r.sentAt, draft: r.draft, sentNotes: r.sentNotes, draftNotes: r.draft ? r.notes : null, statusField: r.status, statusNote: "always 'waiting' — no UI sets it" })), draftsNotSent: drafts.length },
     brief: { text: w.briefText, references: w.references.length }, notes: w.notes, engineers, release: release ? { stage: release.stage, target: release.targetYmd, releasedAt: release.releasedAt } : null,
-    completionPush: completedMarker ? "SENT (marker)" : c.settings ? "NONE_RECORDED" : "UNKNOWN", createdAt: w.createdAt ?? null, updatedAt: w.updatedAt ?? null,
+    completionPush: completionPushOf(completedMarker, !!c.settings), createdAt: w.createdAt ?? null, updatedAt: w.updatedAt ?? null,
     projectClosedButWorkOpen: open && !!p && CLOSED_PROJECT.has(p.status),
   };
 }
 export type VictorWork = ReturnType<typeof buildWork>;
+
+/** The completion push marker, stated honestly: "SENT (marker)" only for a delivered push; a pre-2026-09-27 marker
+ *  (written regardless of delivery) is "RECORDED (legacy marker — delivery not verified)"; a failure says so. */
+function completionPushOf(marker: unknown, settingsRead: boolean): string {
+  const st = markerStateOf(marker);
+  return st === "SENT" ? "SENT (marker)" : st === "FAILED" ? "FAILED (not delivered)" : st === "IN_PROGRESS" ? "IN_PROGRESS"
+    : st === "RECORDED_UNVERIFIED" ? "RECORDED (legacy marker — delivery not verified)" : settingsRead ? "NONE_RECORDED" : "UNKNOWN";
+}
 
 /** Salary months: the app's own month resolution vs canonical finance rows vs settings overrides vs legacy keys. */
 export function victorMoney(src: GatewaySources) {
@@ -95,21 +114,29 @@ export function victorMoney(src: GatewaySources) {
     const financePaid = live.some((x) => x.t.status === "שולם");
     const salaryViewStatus = view?.status ?? null;
     const conflicts: string[] = [];
-    if (statusOv[m] === "שולם" && !financePaid) conflicts.push("status override says paid, no paid finance row");
+    // B5 precedence (lib/victor-salary-format resolveSalaryMonth — the same rule as the app's salary view): a live Finance
+    // row decides; an override only FILLS a month without one (an Owner statement, not a conflict); both + disagreeing
+    // = a conflict.
+    if (statusOv[m] === "שולם" && !financePaid && live.length) conflicts.push("status override says paid, the live finance row is not paid (Finance decides)");
+    if (amountOv[m] != null && live[0] && Math.abs(live[0].v!.amount - Number(amountOv[m])) > 0.001) conflicts.push(`amount override ${amountOv[m]} ≠ finance amount ${live[0].v!.amount} (Finance decides)`);
     if (financePaid && statusOv[m] && statusOv[m] !== "שולם") conflicts.push("finance row paid, override says otherwise");
     if (legacy?.status && statusOv[m] && legacy.status !== statusOv[m]) conflicts.push(`legacy key says ${legacy.status}, override says ${statusOv[m]}`);
     if (live.length > 1) conflicts.push("more than one live finance row for the month");
+    // An Owner amount statement that differs from the configured salary is an open Owner question (which amount is the
+    // arrangement?) — not a Finance conflict: with no live Finance row the statement fills the month (B5 precedence).
+    const ownerNotes: string[] = [];
+    if (amountOv[m] != null && cfg?.monthlySalary != null && Number(amountOv[m]) !== Number(cfg.monthlySalary)) ownerNotes.push(`Owner amount statement ${amountOv[m]} ≠ configured salary ${cfg.monthlySalary}`);
     if (live[0] && view && live[0].v!.amount !== view.amount) conflicts.push(`finance amount ${live[0].v!.amount} ≠ salary view ${view.amount}`);
     if (live[0] && view && live[0].v!.currency !== view.currency) conflicts.push(`currency ${live[0].v!.currency} ≠ ${view.currency}`);
     return { month: m, expected: view ? { amount: view.amount, currency: view.currency, due: view.dueDate } : null, salaryViewStatus,
       canonicalFinance: live.map((x) => ({ status: x.t.status, amount: x.v!.amount, currency: x.v!.currency, date: x.t.date, fullyPaid: x.t.status === "שולם" })),
       amountOverride: amountOv[m] ?? null, statusOverride: statusOv[m] ?? null, legacyKey: legacy ? { status: legacy.status ?? null, paidDate: legacy.paidDate ?? null } : null,
-      proof: financePaid ? "PAID_IN_FINANCE (canonical)" : statusOv[m] === "שולם" ? "OWNER_STATEMENT_ONLY (override, no finance row)" : live.length ? "FINANCE_ROW_NOT_PAID" : "NO_EVIDENCE", conflicts };
+      proof: financePaid ? "PAID_IN_FINANCE (canonical)" : statusOv[m] === "שולם" && !live.length ? "OWNER_STATEMENT_ONLY (override, no finance row)" : live.length ? "FINANCE_ROW_NOT_PAID" : "NO_EVIDENCE", conflicts, ownerNotes };
   });
   const byCurrency: Record<string, number> = {};
   for (const r of rows) for (const f of r.canonicalFinance.filter((x) => x.fullyPaid)) byCurrency[f.currency] = Math.round(((byCurrency[f.currency] ?? 0) + f.amount) * 100) / 100;
   return {
-    model: "monthly salary (retainer), due the 10th of the next month; amount = override, else the settings salary",
+    model: "monthly salary (retainer), due the 10th of the next month. Precedence (B5): a live Finance row (not בוטל) decides paid / amount / currency; the Owner's amount / status overrides only fill a month with no live Finance row (OWNER_STATEMENT); when both exist and disagree the month is a conflict (shown both ways, never merged); two live rows for a month = a duplicate conflict; else the configured salary",
     settings: cfg ? { monthlySalary: cfg.monthlySalary ?? null, currency: cfg.salaryCurrency ?? null, monthlyGoal: cfg.monthlyGoal ?? null, paceMetric: cfg.paceMetric ?? null, stuckAfterDays: cfg.stuckAfterDays ?? null, salaryPayDay: cfg.salaryPayDay ?? null, payDayNote: "ignored by the app (due = the 10th)" } : null,
     goalNote: "the monthly goal counts works for KPIs / below-pace alerts — no code ties it to pay; whether '$550 for 12 projects' is still the arrangement is an Owner question",
     paidRule: "fully paid only when the finance row is שולם (התקבל / חלקי are not paid); currencies never added",
@@ -121,7 +148,9 @@ export function buildVictorView(src: GatewaySources) {
   const c = ctxOf(src);
   const worksRaw = (c.det?.victor?.rows ?? []).filter((w) => !w.vendorName || w.vendorName === "victor");
   const works = worksRaw.map((w) => buildWork(src, w)).sort((a, b) => Number(b.status === "פעיל") - Number(a.status === "פעיל") || (b.sentDate ?? "").localeCompare(a.sentDate ?? ""));
-  const presence = setting(c, "PORTAL_PRESENCE", "victor_visit_last") as { at?: string } | null;
+  const pres = presenceFactsOf(c.settings?.families["PORTAL_PRESENCE"]?.rows, "victor");
+  const legacyVisit = setting(c, "PORTAL_PRESENCE", "victor_visit_last") as { at?: string } | null;
+  const stuckAfterDays = ((setting(c, "VICTOR_SALARY_SETTINGS", "vendor_victor_settings") as { stuckAfterDays?: number } | null)?.stuckAfterDays) ?? DEFAULT_STUCK_AFTER_DAYS;
   const money = victorMoney(src);
   const kn = c.kn.filter((k) => /^vendor:/.test(k.subjectKey) || k.identityKeys.some((x) => /vendor:VICTOR/i.test(x)) || k.kind === "VENDOR_COMMITMENT").map((k) => ({ kind: k.kind, meaning: k.meaningHe, subject: k.subjectKey }));
   const open = works.filter((w) => w.status === "פעיל");
@@ -133,6 +162,9 @@ export function buildVictorView(src: GatewaySources) {
     if (w.handoff.state === "UNKNOWN") signals.push({ code: "HANDOFF_UNKNOWN", kind: "UNKNOWN", he: `${w.title}: ${w.handoff.appRule.basis}`, work: w.key });
     if (w.handoff.state === "CONFLICTING_EVIDENCE") { signals.push({ code: "HANDOFF_CONFLICT", kind: "DERIVED_SIGNAL", he: `${w.title}: יומן השליחה (${w.handoff.sendLogHolder}) לא תואם להעלאות / הערות (${w.handoff.appRule.holder})`, work: w.key }); questions.push({ kind: "HANDOFF", questionHe: `"${w.title}" — אצל מי זה באמת עכשיו?`, why: "send log and upload / notes evidence disagree", work: w.key }); }
     if (w.internalDeadline?.passed) signals.push({ code: "INTERNAL_DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `${w.title}: הדדליין הפנימי (${w.internalDeadline.date}) עבר — ציפייה פנימית, לא התחייבות ללקוח; לבדוק את המצב, לא להאשים.`, work: w.key });
+    // The app's ONE stuck rule (lib/victor-stuck.ts: פעיל + more than stuckAfterDays since sent). Owner decision Q3
+    // (2026-09-27): its push is disabled — Sunny still knows it, with the ball, and never calls it "Victor is late".
+    if (isVictorWorkStuck(w.status, w.daysSinceSent, stuckAfterDays)) signals.push({ code: "VICTOR_STUCK", kind: "DERIVED_SIGNAL", he: `${w.title}: פתוח ${w.daysSinceSent} ימים מאז השליחה (מעל ${stuckAfterDays}) — הכדור: ${w.handoff.appRule.holder}; לבדוק, לא להאשים (הפוש על זה כבוי בהחלטת הבוס)`, work: w.key });
     if (!w.project) signals.push({ code: "NO_PROJECT_LINK", kind: "CANONICAL_FACT", he: `${w.title}: עבודה בלי פרויקט — אין הקשר אמן / לקוח`, work: w.key });
     if (w.files.entries === 0) signals.push({ code: "NO_FILE_ENTRIES", kind: "CANONICAL_FACT", he: `${w.title}: אין רישום קבצים (האחסון עצמו לא נקרא)`, work: w.key });
     if (w.feedback.draftsNotSent) signals.push({ code: "DRAFT_NOTES_NOT_SENT", kind: "CANONICAL_FACT", he: `${w.title}: ${w.feedback.draftsNotSent} טיוטות הערות שלא נשלחו`, work: w.key });
@@ -147,7 +179,8 @@ export function buildVictorView(src: GatewaySources) {
     counts: { works: works.length, open: open.length, completed: works.filter((w) => w.status === "הושלם").length, cancelled: works.filter((w) => w.status === "בוטל").length, withoutProject: works.filter((w) => !w.project).length,
       waitingOnVictor: open.filter((w) => w.handoff.state === "WAITING_ON_VICTOR").length, waitingOnOwner: open.filter((w) => w.handoff.state === "WAITING_ON_OWNER").length, unknown: open.filter((w) => w.handoff.state === "UNKNOWN").length, conflicting: open.filter((w) => w.handoff.state === "CONFLICTING_EVIDENCE").length,
       internalDeadlinesPassed: open.filter((w) => w.internalDeadline?.passed).length, labelWork: open.filter((w) => w.labelWork).length, clientWork: open.filter((w) => w.labelWork === false).length, note: "recorded counts — no capacity limit, no workload score" },
-    works, money, presence: { lastPortalVisit: presence?.at ?? null, state: presence ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity evidence only — not work done, not 'saw a message'" },
+    works, money, presence: { lastPortalVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity evidence only — not work done, not 'saw a message'. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" },
+    stuck: { rule: "status פעיל AND more than stuckAfterDays whole days since sent (the app's own rule)", stuckAfterDays, count: open.filter((w) => isVictorWorkStuck(w.status, w.daysSinceSent, stuckAfterDays)).length, pushEnabled: VICTOR_STUCK_PUSH_ENABLED, pushNote: "Owner decision Q3 (2026-09-27): the Victor-stuck push is disabled; the signal is computed only" },
     ownerKnowledge: kn, signals, questions,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (Victor works) was not read — works unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (salary settings, presence, markers)"]), ...money.unavailable.map((u) => `${u} (money)`)],
   };

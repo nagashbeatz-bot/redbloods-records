@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const { data: rawSessions } = await supabase
       .from("sessions")
-      .select("id, project_id, date, start_time, status, created_at")
+      .select("id, project_id, date, start_time, end_time, status, created_at")
       .gte("date", thirtyDaysAgo.toISOString().split("T")[0])
       .order("created_at", { ascending: false });
     const sessions = rawSessions ?? [];
@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
         projectName: projects.find((p) => p.id === s.project_id)?.name ?? "פרויקט",
         date:       s.date,
         startTime:  s.start_time,
+        endTime:    s.end_time,
         status:     s.status,
       }));
 
@@ -132,6 +133,13 @@ export async function GET(req: NextRequest) {
       .from("settings")
       .select("key, value")
       .like("key", "finance_%");
+    // Delivery records (read parity, B5): "completed without delivery" is judged from the delivery record, never from projects.files.
+    const { data: deliveryRows } = await supabase
+      .from("settings")
+      .select("key, value")
+      .like("key", "delivery_%");
+    const deliveryMap = new Map<string, { deliveryStatus?: string; folderPath?: string; lastDeliveredAt?: string }>();
+    for (const row of deliveryRows ?? []) deliveryMap.set(row.key.replace("delivery_", ""), (row.value ?? {}) as { deliveryStatus?: string; folderPath?: string; lastDeliveredAt?: string });
     const financeMap = new Map<string, { agreedPrice?: number | null; financeException?: boolean }>();
     for (const row of financeRows ?? []) {
       const projectId = row.key.replace("finance_", "");
@@ -239,7 +247,7 @@ export async function GET(req: NextRequest) {
       ...checkVictorBelowPace(victorStats, victorStats?.goal ?? 0),
       ...checkInactivity(lastActivity, activeProjects.length),
       ...(goalsProgress ? checkGoalsProgress(goalsProgress) : []),
-      ...checkCompletedNoDelivery(projects),
+      ...checkCompletedNoDelivery(projects, deliveryMap),
       ...checkStaleSessions(activeProjects, sessions),
     ];
 

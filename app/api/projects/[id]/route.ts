@@ -35,6 +35,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     const body = await req.json();
 
+    // Team hand-off completion (Victor "projectToo", B5): the SERVER rule, never a blind status write — refused for a
+    // protected project status (בוטל / בהשהייה, the Steven-completion set) or an already completed project.
+    if (body?.completeIfAllowed === true && body?.field === "status" && body?.value === "הושלם") {
+      const { completeProjectIfAllowed } = await import("@/lib/writes/projects");
+      const r = await completeProjectIfAllowed(id);
+      if (!r.ok) {
+        const msg = r.refused === "NOT_FOUND" ? "פרויקט לא נמצא" : r.refused === "ALREADY_COMPLETED" ? "הפרויקט כבר הושלם" : `הפרויקט בסטטוס "${r.status}" — לא מסמנים אותו כהושלם אוטומטית`;
+        return NextResponse.json({ ok: false, refused: r.refused, status: r.status, error: msg }, { status: r.refused === "NOT_FOUND" ? 404 : 409 });
+      }
+      return NextResponse.json({ ok: true, status: r.status, endDate: r.endDate });
+    }
+
     // Single-field update (from ProjectsProvider.updateProjectField)
     if ("field" in body && "value" in body) {
       const { field, value } = body as { field: UpdatableField; value: string };
@@ -66,9 +78,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         [col]: value || (field === "deadline" || field === "startDate" ? null : ""),
       };
 
-      // Auto-manage end_date when status changes
+      // Auto-manage end_date when status changes — stamped only on a real transition into הושלם (a re-save keeps it).
       if (field === "status") {
-        patch.end_date = statusPatch(value).end_date;
+        const current = await getProject(id);
+        const sp = statusPatch(value, current ? { status: current.status, endDate: current.endDate } : null);
+        if ("end_date" in sp) patch.end_date = sp.end_date;
       }
 
       // Freeze-before-rename: a name change must NEVER relocate the Dropbox
@@ -130,6 +144,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     // never relocates uploads. Never overwrite an existing dropbox_folder.
     let oldArtistFull = "";
     let freezeFolder: string | null = null;
+    // Pre-read the current status so a re-save of "הושלם" keeps its end date (statusPatch: real transition only).
+    const currentForStatus = status !== undefined ? await getProject(id) : null;
     if (artist !== undefined || name !== undefined) {
       const current = await getProject(id);
       oldArtistFull = current?.artist ?? "";
@@ -141,7 +157,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     await updateProject(id, {
       ...(name           !== undefined && { name:           name.trim() }),
       ...(artist         !== undefined && { artist:         artist.trim() }),
-      ...(status         !== undefined && statusPatch(status)),
+      ...(status         !== undefined && statusPatch(status, currentForStatus ? { status: currentForStatus.status, endDate: currentForStatus.endDate } : null)),
       ...(startDate      !== undefined && { start_date:     startDate || null }),
       ...(deadline       !== undefined && { deadline:       deadline || null }),
       ...(notes          !== undefined && { notes:          notes.trim() }),
@@ -172,13 +188,17 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
 
-    const { deleteProjectCompletely } = await import("@/lib/writes/project-delete");
-    await deleteProjectCompletely(id); // aborts on the first failed step; the project row goes last (retry-safe)
-
-    // NOTE: We intentionally do NOT auto-delete clients when a project is removed.
-    // Clients are managed manually only — never auto-deleted.
-
-    return NextResponse.json({ ok: true });
+    const { deleteProjectCompletely, ProjectDeleteBlockedError } = await import("@/lib/writes/project-delete");
+    try {
+      // preflight FIRST (zero mutations when blocked); DB steps checked; project row last; external effects after
+      const result = await deleteProjectCompletely(id);
+      // NOTE: We intentionally do NOT auto-delete clients when a project is removed.
+      // Clients are managed manually only — never auto-deleted.
+      return NextResponse.json({ ok: true, external: result.external });
+    } catch (e) {
+      if (e instanceof ProjectDeleteBlockedError) return NextResponse.json({ error: e.message, code: e.code, blockers: e.blockers }, { status: 409 });
+      throw e;
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[projects DELETE]", msg);
