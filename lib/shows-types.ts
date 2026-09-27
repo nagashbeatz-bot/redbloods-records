@@ -59,6 +59,10 @@ export interface Show {
   // Transient (NOT a DB column): counted rehearsal costs for Fin-2, attached by
   // GET /api/shows so the list split matches the open show panel. Optional.
   rehearsalCounted?: number;
+  // Transient (NOT DB columns, D5): the money from Finance attached by GET /api/shows — received / remaining / credit.
+  received?: number;
+  remaining?: number;
+  credit?: number;
 }
 
 /**

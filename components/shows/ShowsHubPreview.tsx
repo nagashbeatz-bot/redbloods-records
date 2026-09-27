@@ -112,6 +112,8 @@ function calcRemaining(s: Show) {
   // data — which is exactly the case we defend against (kept in-file; the type
   // in lib/shows-types.ts is left untouched).
   const ps: string = s.payment_status;
+  if (ps === "בוטל" || s.status === "בוטל") return 0;  // nothing to collect
+  if (typeof s.remaining === "number") return s.remaining; // D5: Finance (attached by GET /api/shows) is the truth
   if (ps === "שולם" || ps === "התקבל") return 0; // received in full
   if (ps === "בוטל") return 0;                    // nothing to collect
   return Math.max(0, s.show_price - s.advance_payment);
@@ -1368,9 +1370,11 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
   const distributable = split.netAfterDj;
   const artistShare   = split.artistFee;
   const labelShare    = split.labelProfit;
-  const remaining     = calcRemaining(show);
+  // D5: Finance is the truth for money received (attached by GET /api/shows); the mirror is only a fallback
+  const received      = show.received ?? (Number(show.advance_payment) || 0);
+  const remaining     = show.remaining ?? calcRemaining(show);
   const cur           = show.currency ?? "₪";
-  const credit        = Math.max(0, (Number(show.advance_payment) || 0) - (Number(show.show_price) || 0));
+  const credit        = show.credit ?? Math.max(0, received - (Number(show.show_price) || 0));
   const canEdit       = true;
 
   const sectionLabel = (text: string, icon: string) => (
@@ -1517,7 +1521,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
               {finCard("מחיר הופעה",      fmtMoney(show.show_price, cur),            TEXT2)}
               {finCard("שכר דיג׳יי",       fmtMoney(show.dj_fee, cur),                MUTED)}
               {rehearsalCounted > 0 && finCard("עלויות חזרות", "−" + fmtMoney(rehearsalCounted, cur), RED)}
-              {finCard("התקבל",            fmtMoney(show.advance_payment, cur),       TEXT2)}
+              {finCard("התקבל",            fmtMoney(received, cur),                   TEXT2)}
               {finCard("יתרה לגבייה",      fmtMoney(remaining, cur),                  remaining > 0 ? BRAND : GREEN, true)}
               {credit > 0 && finCard("עודף / זיכוי", fmtMoney(credit, cur),          AMBER, true)}
               {finCard("יתרה לחלוקה",      fmtMoney(distributable, cur),              AMBER, true)}
@@ -1870,7 +1874,7 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
         ) : (
         <>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {toggle(Number(show.advance_payment) > 0 ? "יתרת התשלום התקבלה" : "הכסף מההופעה התקבל", fmtMoney(Math.max(0, (show.show_price || 0) - (Number(show.advance_payment) || 0)), show.currency), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
+          {toggle((show.received ?? Number(show.advance_payment) ?? 0) > 0 ? "יתרת התשלום התקבלה" : "הכסף מההופעה התקבל", fmtMoney(show.remaining ?? Math.max(0, (show.show_price || 0) - (Number(show.advance_payment) || 0)), show.currency), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
           {djRelevant &&
             toggle(`שולם לדיג׳יי${show.dj_name ? ` — ${show.dj_name}` : ""}`, fmtMoney(show.dj_fee || 0, show.currency), djPaid, () => setDjPaid(v => !v), AMBER)}
           {artRelevant &&

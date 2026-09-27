@@ -564,3 +564,14 @@ export async function insertShowPayment(show: Show, p: { amount: number; date: s
   if (!id) throw new Error("the payment row was not created");
   return id;
 }
+
+/** The Finance-derived money of many shows in ONE query (the Shows hub list) — the same rule (showMoneyOf). Read-only. */
+export async function getShowMoneyMap(shows: ReadonlyArray<Pick<Show, "id" | "show_price" | "currency">>): Promise<Record<string, ShowMoney>> {
+  const out: Record<string, ShowMoney> = {};
+  if (!shows.length) return out;
+  const { data, error } = await supabase.from("transactions").select("id, show_id, type, show_money_role, payment_status, amount, currency, date").in("show_id", shows.map((s) => s.id));
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Array<{ id: string; show_id: string; type: string; show_money_role: string | null; payment_status: string | null; amount: number; currency: string | null; date: string | null }>;
+  for (const s of shows) out[s.id] = showMoneyOf(s, rows.filter((r) => r.show_id === s.id && r.type === "income").map((r) => ({ id: r.id, role: r.show_money_role, status: r.payment_status, amount: Number(r.amount) || 0, currency: r.currency, date: r.date })));
+  return out;
+}

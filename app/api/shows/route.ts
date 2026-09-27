@@ -9,7 +9,10 @@ export async function GET() {
     // the open show panel (one batched query).
     const { getRehearsalCountedMap } = await import("@/lib/shows-finance-sync");
     const map = await getRehearsalCountedMap(shows.map((s) => s.id));
-    const enriched = shows.map((s) => ({ ...s, rehearsalCounted: map[s.id] ?? 0 }));
+    // D5: the money received / remaining / credit come from Finance (the same rule the sync uses), not the mirror
+    const { getShowMoneyMap } = await import("@/lib/shows-finance-sync");
+    const money = await getShowMoneyMap(shows);
+    const enriched = shows.map((s) => ({ ...s, rehearsalCounted: map[s.id] ?? 0, received: money[s.id]?.received ?? 0, remaining: money[s.id]?.remaining ?? Math.max(0, s.show_price || 0), credit: money[s.id]?.credit ?? 0 }));
     return NextResponse.json({ shows: enriched });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

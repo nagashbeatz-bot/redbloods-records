@@ -103,6 +103,7 @@ export const MONEY_MODEL = {
   rehearsalCounted: "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל",
   advance: "D5 (Owner decision, migration 75bf144e… applied 2026-09-27): money received = SHOW_PAYMENT income rows linked by transactions.show_id (status התקבל / שולם). received = Σ payments; remaining = max(0, agreed − received) held by ONE SHOW_BALANCE_EXPECTED row (צפוי; 0 / בוטל when nothing remains); credit = received − agreed stays visible. Deposit / partial / full / overpayment = RECORD_SHOW_PAYMENT (the shared show-payments writer). Marking שולם / closing with 'received' records the REMAINDER once — never the full price again (no fake revenue). Payments are never deleted, re-priced or cancelled by a sync; a show with payments is never deleted or reverted to a lead. Historical: the 6 legacy fully-paid income rows became SHOW_PAYMENT (known money); no deposit was invented.",
   showMoneyRule: "showMoneyOf — the one rule shared by the sync, the payment writer, the Shows hub and show_view",
+  listMoney: "GET /api/shows attaches received / remaining / credit per show from Finance (one read, the same rule) — the Shows hub never trusts the advance mirror for money",
   rows: [
     { row: "SHOW_PAYMENT", category: "הופעה", scope: "הופעה", when: "money received (RECORD_SHOW_PAYMENT / שולם / close 'received')", status: "התקבל", amount: "the amount received", party: "booker name, else artist, else 'לקוח'" },
     { row: "SHOW_BALANCE_EXPECTED", category: "הופעה", scope: "הופעה", when: "confirmed + price > 0", status: "צפוי while something remains; בוטל (0) when paid in full or the show is cancelled", amount: "agreed − received", party: "booker name, else artist, else 'לקוח'" },
@@ -240,8 +241,8 @@ export const SHOW_REVIEWED_FILES = [
 ] as const;
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "787d5647a4bb925d133b72327bd8ea3e594f552af83a4ecd054bce70ab58844b",
-  "lib/shows-types.ts": "5087bfb0984e20351b8aa7054b7faae36e00083a3ff1a97ee1c3155f335ec4ed",
-  "lib/shows-finance-sync.ts": "b860a570eae3144fc55847e790003f746a0f706928521b2caaefa4d746117826",
+  "lib/shows-types.ts": "4f166c4d1bdeb3f13f9d1246eb6b5d7762a822e45971ce6afa2ad3163e9e0740",
+  "lib/shows-finance-sync.ts": "964ae1fb1f97397841bdec64c192f5889c052312938608a4d6cff0d3273581e0",
   "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
@@ -252,7 +253,7 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/show-quote-followup.ts": "4ab61b81333b94c00556e7d188a4adbf5949c4d5ddc7267f62dda697877c3b17",
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",
   "lib/red-artists/cleantone.ts": "ca64bf791b7d13822a5fc29eb541f276e08dedcf1d7d77270f5a9b9c22edf5cf",
-  "app/api/shows/route.ts": "0c0f51cd4185854bec7bc1aa491015a396b4ec1da7f09d8f6259ebc575c043da",
+  "app/api/shows/route.ts": "6b92b5d6c2884863a2ddaf4922f8d20935c63dd456077ebc50fd59b22e3d2b62",
   "app/api/shows/[id]/route.ts": "a917849300207f51fee1edd9d1d4a35c5755880cfacdf7f5bac0603c364c68e0",
 };
 
