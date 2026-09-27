@@ -571,8 +571,8 @@ export default function LabelPage() {
                   { l: "סך מדיה (התקבל)", v: media.totals.mediaGross, c: SUB },
                   { l: "חלק לייבל", v: media.totals.labelShareReceived, c: GREEN },
                   { l: "חלק אמן ברוטו", v: media.totals.artistShareGross, c: SUB },
-                  { l: "שקוזז", v: media.totals.recoupedTotal, c: "#F59E0B" },
-                  { l: "לתשלום לאמן", v: media.totals.artistPayableTotal, c: SUB },
+                  { l: "קוזז ברשומות ישנות (כלל שבוטל)", v: media.totals.recoupedTotal, c: "#F59E0B" },
+                  { l: "לתשלום לאמן לפי הרשומות", v: media.totals.artistPayableTotal, c: SUB },
                 ].map((t) => (
                   <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>

@@ -8,7 +8,7 @@
  *     Finance expenses.
  * They are joined only on the stored project id. Money stays in layers (B3 Owner canon 2026-09-27, never added together):
  *   A client clip price / clip income ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance, scope קליפ, paid
- *   only when שולם) ≠ D recoupable (NOT_DEFINED until the artist agreement rule is recorded). Red Films ledger payments
+ *   only when שולם) ≠ D recoupable (none — שליו / אבי: a cycle expense; others: no agreement). Red Films ledger payments
  *   are real company money: DB-1 (live 2026-09-27) links each payment to exactly ONE Finance expense — a LINKED payment
  *   is part of C (never counted again); only UNLINKED payments are outside Finance (RF_LEDGER_NOT_IN_FINANCE); a
  *   non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Line paid state = lib/clip-rf-money-pure budgetLinePaidState
@@ -28,6 +28,7 @@ import { projectOperating } from "../sunny/operating";
 import { summarizeClipFinance, CLIP_SCOPE } from "../../clip-finance";
 import { normalizeCurrency } from "../../finance/currency";
 import { budgetLinePaidState, budgetLineStatusConflict, budgetEqualsOldClipPriceSync, BUDGET_EQUALS_CLIP_PRICE_HE, clipRecoupContribution, isClipItemPlanned, isClipItemPromoted, rfPaymentFinanceScope, rfPaymentLinkage, RF_LEDGER_LINKAGE, RF_LEDGER_LINKAGE_HE } from "../../clip-rf-money-pure";
+import { agreementArtistOf, AGREEMENT_CYCLE_ACCOUNTING_HE } from "../../label-agreements";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -119,7 +120,7 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
       linkage: !pays.length ? { state: "NO_PAYMENTS", he: "אין תשלומים", linked: 0, unlinked: 0 } : linkedCount === pays.length ? { state: "ALL_LINKED", he: "כל התשלומים מקושרים להוצאה בכספים (כל תשלום = הוצאה אחת, שיוך קליפ) — נספרים בכספים בלבד", linked: linkedCount, unlinked: 0 } : { state: RF_LEDGER_LINKAGE, he: RF_LEDGER_LINKAGE_HE, linked: linkedCount, unlinked: pays.length - linkedCount },
       financeScope: scope.scope ? { scope: scope.scope } : { scope: null, state: scope.state, he: scope.he },
       layers: "budget / lines = PLANNED (B); payments = the Red Films ledger — real company money; DB-1 (live): each payment → exactly ONE linked Finance expense (scope קליפ, שולם), so a LINKED payment is already in the actual cost C (paidLinkedInFinance — never added again) and only paidOutsideFinance is not in Finance yet (RF_LEDGER_NOT_IN_FINANCE); actual cost (C) = Finance expenses with scope קליפ only. A line's legacyFinanceLink is the old per-line Finance link, not a payment link. actual_amount is a LEGACY manual mirror — never paid",
-      recoup: clipRecoupContribution() },
+      recoup: clipRecoupContribution(agreementArtistOf({ name: p.artistName ?? null }) ? AGREEMENT_CYCLE_ACCOUNTING_HE : null) },
     createdAt: d?.createdAt ?? null, updatedAt: d?.updatedAt ?? null,
   };
 }
@@ -223,8 +224,8 @@ export function buildVideoView(src: GatewaySources) {
       withoutProject: prods.filter((p) => !p.project).length, managedBySendClip: prods.filter((p) => p.managedBySendClip).length, videoProjects: projects.length, clipDeals: projects.filter((p) => p.clipDeal.price > 0).length,
       shootSessions: projects.reduce((n, p) => n + p.shoots.length, 0), upcomingShoots: projects.reduce((n, p) => n + p.shoots.filter((s) => !s.datePassed && s.status !== "בוטל").length, 0), note: "recorded counts — no score, no readiness verdict" },
     money: { redFilms: totals, clipPlanningByCurrency: clipPlanned, actualClipExpenses: expenses, clipIncome: clipIncomeByCurrency(projects),
-      rule: "A client clip price / clip income (revenue) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — no artist agreement rule recorded). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
-      clipRecoup: clipRecoupContribution() },
+      rule: "A client clip price / clip income (revenue) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — none: for שליו / אבי the artist's 50 % of C is an artist expense in the bi-monthly cycle, never repaid by a specific income — media is separate 50 / 50 income; any other artist has no agreement). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
+      clipRecoup: clipRecoupContribution(`${AGREEMENT_CYCLE_ACCOUNTING_HE} (שליו / אבי); לכל אמן אחר — אין הסכם.`) },
     productions: prods, projects, signals, questions,
     unavailable: [...(c.ops ? [] : ["OPERATIONS (productions) — unknown, not none"]), ...(c.det ? [] : ["PROJECT_DETAIL (production detail, budget lines, documents, sessions, clip rows)"]), ...(c.fin ? [] : ["FINANCE (clip deal, expenses)"]), "storage itself is not listed — 'no link' ≠ 'no footage'", "calendar event details are read live by the calendar capability"],
   };

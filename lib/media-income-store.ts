@@ -1,7 +1,8 @@
 import "server-only";
 import { supabase } from "./supabase";
 import type { LabelMediaRecord, ArtistMediaSummary, MediaStatus, MediaRecordType } from "./types";
-import { getRecoupTargetForArtist, round2 } from "./label-clips";
+import { round2 } from "./label-clips";
+import { MEDIA_RECOUP_TARGET } from "./label-agreements";
 
 interface DbMedia {
   id: string; label_artist_id: string; record_type: string; reverses_id: string | null;
@@ -56,7 +57,8 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
     }
   }
 
-  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
+  // Owner model 2026-09-27: media is a 50 / 50 INCOME split — no recoup target (stored snapshots stay history)
+  const recoupTarget = MEDIA_RECOUP_TARGET;
   const recouped = round2(recoupedTotal);
   return {
     records,
@@ -67,8 +69,8 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
       artistShareExpected: round2(artistShareExpected),
     },
     recoupTarget,
-    recoupBalance: Math.max(0, round2(recoupTarget - recouped)),
-    artistCredit: Math.max(0, round2(recouped - recoupTarget)),
+    recoupBalance: 0,
+    artistCredit: 0,
   };
 }
 
@@ -81,7 +83,7 @@ export interface MediaInput {
 }
 
 export async function createMedia(artistId: string, artistName: string, input: MediaInput): Promise<MediaWriteResult> {
-  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
+  const recoupTarget = MEDIA_RECOUP_TARGET; // Owner model: media never repays a clip
   const { data, error } = await supabase.rpc("create_label_media_income", {
     p_artist_id: artistId, p_recoup_target: recoupTarget, p_gross: input.grossAmount,
     p_source: input.source ?? "Mobile1", p_report_period: input.reportPeriod ?? "",
@@ -94,7 +96,7 @@ export async function createMedia(artistId: string, artistName: string, input: M
 export async function updateMedia(
   recordId: string, artistId: string, artistName: string, expectedUpdatedAt: string, input: MediaInput,
 ): Promise<MediaWriteResult> {
-  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
+  const recoupTarget = MEDIA_RECOUP_TARGET; // Owner model: media never repays a clip
   const { data, error } = await supabase.rpc("update_label_media_income", {
     p_record_id: recordId, p_artist_id: artistId, p_recoup_target: recoupTarget, p_expected_updated_at: expectedUpdatedAt,
     p_gross: input.grossAmount ?? null, p_source: input.source ?? null, p_report_period: input.reportPeriod ?? null,

@@ -9,9 +9,9 @@
  *      real company money: since DB-1 (live 2026-09-27, red_films_budget_payments.linked_transaction_id) each payment of a
  *      clip production becomes exactly ONE linked Finance expense (scope קליפ, שולם) and is then PART of C. Only an
  *      UNLINKED payment is "outside Finance" — shown apart, never added to C; a linked one is never counted twice;
- *   D  the RECOUPABLE amount — only what the specific artist agreement says (lib/label-agreements). Owner decision
- *      2026-09-27: for שליו טסמה / אבי מולה the artist's share = 50 % of C (ACTUAL paid), funded by the label; for every
- *      other artist D is NOT_DEFINED (null) with a reason — never 50 % of the budget, never the price.
+ *   D  the RECOUPABLE amount — none (Owner model 2026-09-27, lib/label-agreements): for שליו טסמה / אבי מולה the artist's
+ *      share = 50 % of C (ACTUAL paid) is an artist EXPENSE in the bi-monthly cycle accounting, never repaid by a specific
+ *      income; for every other artist there is no agreement. D is NOT_DEFINED (null) with the reason — never the budget.
  */
 import { normalizeCurrency } from "./finance/currency";
 import { isReceivedStatus as _received, isCancelledStatus as _cancelled } from "./finance/classify";
@@ -93,17 +93,15 @@ export function rfPaymentFinanceScope(productionType: string | null | undefined)
 // ── 2. clip recoup (D) + A / B / C information ───────────────────────────────────────────────────────────────────────
 export const CLIP_RECOUP_NOT_DEFINED_HE = "אין חוק התחשבנות לאמן / לקליפ הזה — חוקי שליו טסמה / אבי מולה לא חלים כאן, הקיזוז לא מוגדר";
 export const CLIP_RECOUP_NOT_DEFINED_UI_HE = "לא נקבע";
-export type ClipRecoupContribution =
-  | { status: "NOT_DEFINED"; amount: null; reasonHe: string }
-  | { status: "DEFINED"; amount: number; currency: string; reasonHe: null; basisHe: string };
+export interface ClipRecoupContribution { status: "NOT_DEFINED"; amount: null; reasonHe: string }
 /**
- * The clip part of an artist's recoup (D). Owner decision 2026-09-27 (lib/label-agreements): ONLY for שליו טסמה / אבי
- * מולה — 50 % of the ACTUAL PAID clip cost is the artist's share funded by the label (pass that allocation). Without a
- * DEFINED agreement allocation it is NOT_DEFINED (never 50 % of the budget, never the price).
+ * The clip part of an artist's recoup (D) — there is NO recoup mechanism (Owner model 2026-09-27): for שליו / אבי the
+ * artist's clip share (50 % of the actual paid cost) is an artist EXPENSE in the bi-monthly cycle accounting, never repaid
+ * by a specific income (pass lib/label-agreements AGREEMENT_CYCLE_ACCOUNTING_HE as the reason); for any other artist
+ * there is no agreement at all. Always NOT_DEFINED as a recoup — never 50 % of the budget, never the price.
  */
-export function clipRecoupContribution(allocation?: { status: "DEFINED"; artistShareFundedByLabel: number; currency: string; basisHe: string } | { status: "NOT_DEFINED"; reasonHe: string } | null): ClipRecoupContribution {
-  if (allocation && allocation.status === "DEFINED") return { status: "DEFINED", amount: allocation.artistShareFundedByLabel, currency: allocation.currency, reasonHe: null, basisHe: allocation.basisHe };
-  return { status: "NOT_DEFINED", amount: null, reasonHe: allocation && allocation.status === "NOT_DEFINED" ? allocation.reasonHe : CLIP_RECOUP_NOT_DEFINED_HE };
+export function clipRecoupContribution(reasonHe?: string | null): ClipRecoupContribution {
+  return { status: "NOT_DEFINED", amount: null, reasonHe: reasonHe || CLIP_RECOUP_NOT_DEFINED_HE };
 }
 export interface Amount { amount: number | null | undefined; currency: string | null | undefined }
 export interface ClipMoneyByCurrency {

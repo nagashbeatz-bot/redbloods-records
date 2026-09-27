@@ -34,6 +34,8 @@ async function main() {
   const { COO_CONFIG } = await import("../lib/coo/config");
   const { teamBallCycle } = await import("../lib/team-ball-cycle");
   const { engineerHandoff } = await import("../lib/partner/mix/handoff");
+  const { computeArtistBalanceTotals } = await import("../lib/artist-balance-store");
+  const { cycleWindow } = await import("../lib/partner/label/view");
 
   section("A. the שליו / אבי agreement — cash out ≠ label share ≠ artist share (funded by the label)");
   for (const [who, id] of [["שליו טסמה", SHALEV], ["אבי מולה", AVI]] as const) {
@@ -66,11 +68,32 @@ async function main() {
     promo,
   ]);
   ok("8. currencies are never mixed: ₪ and $ totals apart; NOT_DEFINED cash out kept apart (never in a share)", JSON.stringify(tot.defined["₪"]) === JSON.stringify({ cashOut: 3000, labelShare: 1500, artistShare: 1500, artistShareFundedByLabel: 1500 }) && tot.defined["$"]?.artistShare === 500 && tot.notDefined["₪"]?.cashOut === 400 && !("labelShare" in (tot.notDefined["₪"] ?? {})), tot);
-  const fb = A.fundedBalancePreview(1500, 1250);
-  ok("A4. funded balance preview: artist share funded 1,500 − artist net show share 1,250 → 250 remains (a preview, records nothing)", fb.remainingFunded === 250 && fb.artistCredit === 0, fb);
+  ok("media = 50 / 50 INCOME and never repays a specific clip: target 0, no clip → income link anywhere", A.MEDIA_RECOUP_TARGET === 0 && A.AGREEMENT_MEDIA_RULE.artistPct === 50 && A.AGREEMENT_MEDIA_RULE.labelPct === 50 && !("fundedBalancePreview" in A) && /MEDIA_RECOUP_TARGET/.test(read("lib/media-income-store.ts")) && !/getRecoupTargetForArtist/.test(read("lib/media-income-store.ts")));
+  ok("the cycle is the accounting: the recoup route never builds a clip target (null + the cycle reason); the clip recoup is NOT_DEFINED", /clipRecoupTarget: null,/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /AGREEMENT_CYCLE_ACCOUNTING_HE/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /recoupStatus: "NOT_DEFINED",/.test(read("app/api/label/artists/[id]/clips/route.ts")));
   ok("the agreement layer reuses the app's own computeShowSplit (one show rule)", /computeShowSplit\(/.test(read("lib/label-agreements.ts")) && !/netAfterDj\s*\/\s*2/.test(read("lib/label-agreements.ts")));
   ok("the writers use the agreement split (finance sync, close-show ledger, close dialog) — no artist fee row without an agreement", /showAgreementSplit\(show, rehearsalCounted\)/.test(read("lib/shows-finance-sync.ts")) && /showAgreementSplit\(fresh, rehearsalCounted\)/.test(read("lib/writes/shows.ts")) && /showAgreementSplit\(show, show\.rehearsalCounted/.test(read("components/shows/ShowsHubPreview.tsx")));
   ok("B. the label page: cash out ≠ label share ≠ artist share funded; the P&L counts the LABEL share", /clipLabelShare \+ clipNotAllocated/.test(read("components/label/LabelPage.tsx")) && /חלק האמן שמומן/.test(read("components/label/LabelPage.tsx")) && !/investActual = clips\?\.totals\.byCurrency\["₪"\]\?\.actualCostPaid/.test(read("components/label/LabelPage.tsx")));
+
+  section("M. media = 50 / 50 INCOME, the clip = a separate expense, the cycle balance is where they meet");
+  const med = A.mediaAgreementSplit({ id: SHALEV }, 1000);
+  ok("A. media 1,000₪ for Shalev → artist 500 · label 500 · automatic clip repayment 0", med.status === "DEFINED" && med.artistShare === 500 && med.labelShare === 500 && med.clipRepayment === 0, med);
+  const medOther = A.mediaAgreementSplit({ name: "נגש ביטס" }, 1000);
+  ok("A2. media of another artist → NOT_DEFINED (no agreement), never the Shalev split", medOther.status === "NOT_DEFINED" && medOther.reason === "NO_AGREEMENT", medOther);
+  // a synthetic ledger of the current cycle (the SAME totals the app's cycle uses: computeArtistBalanceTotals)
+  const win = cycleWindow("2026-08-10", "2026-09-27", 0);
+  const E = (entryType: string, amount: number, entryDate: string, description: string) => ({ id: description, artistId: SHALEV, entryType, amount, entryDate, description, note: null }) as never;
+  const clip = E("הוצאות", 2480, "2026-09-01", "קליפ - פרנציפ");
+  const withoutMedia = [clip, E("הכנסות", 1250, "2026-09-05", "הופעה"), E("תשלומים", 1100, "2026-09-10", "העברה")];
+  const withMedia = [...withoutMedia, E("הכנסות", 500, "2026-09-20", "מדיה")];
+  const t0 = computeArtistBalanceTotals(withoutMedia), t1 = computeArtistBalanceTotals(withMedia);
+  ok("J. Shalev's current cycle = 2026-08-10 → 2026-10-10 (the app's own cycle window from the anchor)", win.start === "2026-08-10" && win.endExclusive === "2026-10-10", win);
+  ok("B. the clip expense 2,480 stays a separate component (expenses 2,480 with or without media)", t0.expenses === 2480 && t1.expenses === 2480);
+  ok("C. media income never changes the clip expense — it only adds income (+500) to the cycle", t1.income - t0.income === 500 && t1.expenses === t0.expenses && (withMedia[0] as { amount: number }).amount === 2480);
+  ok("E. the cycle balance collects every component: income 1,750 − payments 1,100 − expenses 2,480 = −1,830", t1.income === 1750 && t1.payments === 1100 && t1.currentBalance === -1830, t1);
+  ok("D. a historical withheld 382.75 cannot make the new rule offset media: the media target is 0 and no clip-based target exists", A.MEDIA_RECOUP_TARGET === 0 && !/getRecoupTargetForArtist/.test(read("lib/media-income-store.ts") + read("lib/label-clips.ts")) && /historicalWithheldMeaning: "a value stored on media records written before 2026-09-27 by a RETIRED rule — history only; not an active policy, not a clip repayment/.test(read("lib/partner/label/view.ts")));
+  ok("I. Sunny never says media repaid a clip: the served model says so explicitly; no media → clip link / double-charge claim remains in the views, gaps or rules", /never claims that a media income \(or any income\) repaid a specific clip/.test(read("lib/partner/label/view.ts")) && !/doubleOffset|DOUBLE_OFFSET|mediaRecoupedAgainstClips/.test(read("lib/partner/label/view.ts") + read("lib/partner/system/gaps.ts") + read("lib/partner/system/registry.ts")) && /MEDIA_IS_INCOME_NOT_CLIP_RECOUP/.test(read("lib/partner/system/registry.ts")));
+  ok("J2. Sunny serves the cycle (artist_view money → agreement: model, current cycle window + totals, components)", /id: "agreement", label: "הסכם והתחשבנות מחזורית"/.test(read("lib/partner/knowledge/capabilities/label-deep.ts")) && /model: "BI_MONTHLY_CYCLE"/.test(read("lib/partner/label/view.ts")) && /currentCycle: win \?/.test(read("lib/partner/label/view.ts")));
+  ok("the Owner-recorded 2,480 is the record — never 'corrected' to the derived 2,477.50, never a conflict", !/CONFLICTING_SOURCES/.test(read("lib/partner/label/view.ts").split("const agreement = {")[1]?.split("const clipRecoup")[0] ?? "x") && /the amount the Owner recorded is the record/.test(read("lib/partner/system/label-artists.ts")));
 
   section("C. 'לבדיקה' — retired from the active vocabulary (production inventory 2026-09-27: 0 rows)");
   ok("9a. the income pickers (Finance quick modal, project drawer, album tabs) and Sunny's typed status list never offer it", !P.INCOME_STATUSES.includes("לבדיקה") && JSON.stringify(P.INCOME_STATUSES) === JSON.stringify(C.ACTIVE_INCOME_STATUSES) && ["components/finance/QuickTxModal.tsx", "components/ui/ProjectDrawer.tsx", "components/album/AlbumOverviewTab.tsx", "components/album/AlbumFinanceTab.tsx"].every((f) => !/(INCOME_STATUSES|PMT_STATUS_OPTS)[^=\n]*=\s*\[[^\]]*"לבדיקה"/.test(read(f))));
@@ -115,7 +138,7 @@ async function main() {
 
   section("E. Sunny = the same interpretation as the canonical helpers");
   ok("13a. show_view split = the agreement split (showAgreementSplit), with NOT_DEFINED + a signal for any other artist", /showAgreementSplit\(\{ artist: s\.artistText/.test(read("lib/partner/shows/view.ts")) && /SHOW_SPLIT_NOT_DEFINED/.test(read("lib/partner/shows/view.ts")));
-  ok("13b. artist_view money.agreement uses the SAME allocation functions (allocatePaidCost / allocationTotalsByCurrency) and compares the ledger + media recoup (never nets them)", /allocatePaidCost\(/.test(read("lib/partner/label/view.ts")) && /allocationTotalsByCurrency\(/.test(read("lib/partner/label/view.ts")) && /doubleOffsetRisk/.test(read("lib/partner/label/view.ts")));
+  ok("13b. artist_view money.agreement uses the SAME allocation functions, states the bi-monthly cycle model, and never links a media income to a specific clip", /allocatePaidCost\(/.test(read("lib/partner/label/view.ts")) && /allocationTotalsByCurrency\(/.test(read("lib/partner/label/view.ts")) && /BI_MONTHLY_CYCLE/.test(read("lib/partner/label/view.ts")) && !/doubleOffsetRisk|mediaRecoupedAgainstClips/.test(read("lib/partner/label/view.ts")));
   ok("13c. victor_view + mix_view name the cycle with the SAME helper over the app's own rules", /teamBallCycle\(/.test(read("lib/partner/victor/view.ts")) && /teamBallCycle\(/.test(read("lib/partner/mix/view.ts")) && /computeVictorBall\(/.test(read("lib/partner/victor/view.ts")));
   ok("13d. an outbound pending_feedback waits on the recipient; only a received version is the Owner's feedback due", /OWNER_FEEDBACK_DUE/.test(read("lib/partner/projects/view.ts")) && /WAITING_FEEDBACK: a\("CONTEXT", "EXTERNAL"/.test(read("lib/partner/system/company.ts")) && /OWNER_FEEDBACK_DUE: a\("NEEDS_ATTENTION", "OWNER"/.test(read("lib/partner/system/company.ts")));
 

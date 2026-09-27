@@ -9,15 +9,21 @@
  *   Clip                        50 % label, 50 % artist   (of the ACTUAL PAID cost — never the planned budget / the price)
  *   Show                        50 / 50 of the NET show profit: revenue − direct show expenses (the app's own
  *                               computeShowSplit: DJ fee + counted rehearsals are the recorded direct expenses)
+ *   Media income                50 / 50 of the income (artist / label) — INCOME, never a repayment of a specific clip
  *   Anything else               NOT_DEFINED (promotion, artwork, PR photos, distribution, any other category)
+ *
+ * ACCOUNTING = the BI-MONTHLY CYCLE (Owner model 2026-09-27): the artist ledger holds the artist's income (show share,
+ * media share), expenses (e.g. the clip share the Owner recorded) and payments; at each cycle end the whole picture meets
+ * in the CYCLE BALANCE (the app's own cycles, lib/artist-balance-cycles-store). There is NO recoup mechanism: no media
+ * income repays a specific clip unless an explicit Owner link says so (none is recorded). The ledger amount the Owner
+ * recorded is the accounting record (it may differ slightly from the derived share — that is not a conflict).
  *
  * THREE DIFFERENT QUESTIONS, never merged (B, Owner 2026-09-27):
  *   cashOut                   what Redbloods actually paid (Finance cash truth — unchanged by any allocation)
  *   labelShare                the label's ECONOMIC share of that cost
  *   artistShare               the artist's economic share of that cost
- *   artistShareFundedByLabel  the part of the artist's share Redbloods paid for the artist — it enters the accounting with
- *                             the artist and future artist income MAY be offset against it through the accounting
- *                             mechanism (the artist ledger); it is never "label investment".
+ *   artistShareFundedByLabel  the part of the artist's share Redbloods paid for the artist — an artist EXPENSE in the
+ *                             cycle accounting (the ledger), never "label investment" and never tied to a specific income.
  *
  * Currencies are never added or converted: every total is per currency.
  */
@@ -35,6 +41,30 @@ export const AGREEMENT_COST_RULES: Readonly<Record<AgreementCostCategory, CostRu
   CLIP: { labelPct: 50, artistPct: 50, basisHe: "קליפ — 50% לייבל / 50% אמן מהעלות ששולמה בפועל" },
 };
 export const AGREEMENT_SHOW_RULE = { artistPct: 50, labelPct: 50, basisHe: "הופעה — 50/50 מהרווח הנקי: הכנסה פחות הוצאות ישירות (DJ + חזרות שנספרות)" } as const;
+export const AGREEMENT_MEDIA_RULE = { artistPct: 50, labelPct: 50, basisHe: "הכנסות מדיה — 50% אמן / 50% לייבל מההכנסה; הכנסה, לא החזר של קליפ מסוים" } as const;
+/** The accounting model, stated once (served by Sunny and shown where a clip "recoup" used to be). */
+export const AGREEMENT_CYCLE_ACCOUNTING_HE = "אין קיזוז ייעודי לקליפ: חלק האמן בקליפ הוא הוצאה במאזן האמן, וההתחשבנות מתבצעת במחזור של חודשיים — הכנסות (הופעות, מדיה), הוצאות ותשלומים נפגשים ביתרת המחזור.";
+/**
+ * The media-income RPC's p_recoup_target. Owner model 2026-09-27: media income is a 50 / 50 INCOME split and never repays
+ * a specific clip, so nothing is withheld from the artist's media share — the target is 0 for every artist. Snapshots
+ * stored before keep their recorded values (history; never read as a clip repayment).
+ */
+export const MEDIA_RECOUP_TARGET = 0;
+
+export type MediaAgreementSplit =
+  | { status: "DEFINED"; gross: number; artistShare: number; labelShare: number; clipRepayment: 0; basisHe: string }
+  | { status: "NOT_DEFINED"; reason: NotDefinedReason; reasonHe: string; gross: number };
+/**
+ * Media income under the agreement: 50 / 50 of the income (the label share = gross / 2 rounded, the artist gets the rest —
+ * the same split the media screen previews). INCOME only: clipRepayment is always 0 — media never repays a clip.
+ */
+export function mediaAgreementSplit(artist: { id?: string | null; name?: string | null }, gross: number): MediaAgreementSplit {
+  const g = r2(Number(gross) || 0);
+  if (isCollabText(artist.name) && !artist.id) return { status: "NOT_DEFINED", reason: "COLLAB_NOT_ATTRIBUTED", reasonHe: NOT_DEFINED_HE.COLLAB_NOT_ATTRIBUTED, gross: g };
+  if (!agreementArtistOf(artist)) return { status: "NOT_DEFINED", reason: "NO_AGREEMENT", reasonHe: NOT_DEFINED_HE.NO_AGREEMENT, gross: g };
+  const labelShare = r2(g / 2);
+  return { status: "DEFINED", gross: g, artistShare: r2(g - labelShare), labelShare, clipRepayment: 0, basisHe: AGREEMENT_MEDIA_RULE.basisHe };
+}
 
 /** The artists the agreement covers — the registered roster ids (Shalev, Avi). Nobody else. */
 export const AGREEMENT_ARTISTS: ReadonlyArray<{ id: string; name: string }> = OWNER_LABEL_REGISTERED_ROSTER;
@@ -123,13 +153,3 @@ export function showAgreementSplit(show: { artist?: string | null; show_price?: 
   return { status: "DEFINED", artist, directExpenses: r2(split.djFee + split.rehearsalCosts), ...split };
 }
 
-/**
- * The artist-funded balance against the artist's own income share (A4) — one currency, per artist, a DERIVED preview
- * of what the accounting mechanism may offset. It records nothing; the ledger stays the accounting record.
- *   remainingFunded = the funded share not yet covered by the artist's income share
- *   artistCredit    = the artist's income share above the funded share
- */
-export function fundedBalancePreview(fundedByLabel: number, artistIncomeShare: number): { fundedByLabel: number; artistIncomeShare: number; remainingFunded: number; artistCredit: number } {
-  const f = r2(Math.max(0, fundedByLabel)), i = r2(Math.max(0, artistIncomeShare));
-  return { fundedByLabel: f, artistIncomeShare: i, remainingFunded: r2(Math.max(0, f - i)), artistCredit: r2(Math.max(0, i - f)) };
-}

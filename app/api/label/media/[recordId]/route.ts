@@ -13,7 +13,7 @@ function mapWrite(res: MediaWriteResult): NextResponse {
 
 // PATCH /api/label/media/[recordId] — update a media record.
 // Financial fields on a received record are rejected by the RPC (LM403); the RPC
-// verifies the record belongs to the given artist; server computes recoupTarget.
+// verifies the record belongs to the given artist; the server passes no recoup target (media = 50 / 50 income, never a clip repayment).
 export async function PATCH(req: NextRequest, context: { params: Promise<{ recordId: string }> }) {
   const denied = await requireOwner(); if (denied) return denied;
   try {

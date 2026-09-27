@@ -6,8 +6,8 @@ import { parseArtistNames } from "@/lib/clients-store";
 import { computeShowSplit } from "@/lib/shows-types";
 import { getRehearsalCountedMap, getShowFeeRowsMap } from "@/lib/shows-finance-sync";
 import { getArtistMedia } from "@/lib/media-income-store";
-import { listArtistClips, artistClipMoney, artistClipAllocation } from "@/lib/label-clips";
-import { agreementArtistOf } from "@/lib/label-agreements";
+import { listArtistClips, artistClipMoney } from "@/lib/label-clips";
+import { agreementArtistOf, AGREEMENT_CYCLE_ACCOUNTING_HE } from "@/lib/label-agreements";
 import { computeArtistRecoup } from "@/lib/label-recoup";
 
 export const dynamic = "force-dynamic";
@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic";
 // GET /api/label/artists/[id]/recoup — unified per-artist recoup across all income
 // channels. Read-only, owner-only. Artist resolved server-side by id. Every cap runs
 // PER ARTIST inside computeArtistRecoup; /label sums the already-capped results.
-// Owner decision 2026-09-27 (lib/label-agreements): the CLIP part of the debt = the artist's share funded by the label =
-// 50 % of the ACTUAL PAID ₪ clip cost — ONLY for שליו טסמה / אבי מולה; any other artist stays NOT_DEFINED (null + reason).
-// This is a DERIVED preview of the offset — the artist ledger stays the accounting record (it may already carry the same
-// clip share as a manual expense: never netted here). A / B / C per currency are returned as clipMoneyInfo (information).
-// Sources (single each, no double-count): clips = the agreement allocation; media = signed recoupedTotal
+// Owner model 2026-09-27 (lib/label-agreements): there is NO clip recoup — for שליו טסמה / אבי מולה the artist's clip share
+// is an artist EXPENSE in the bi-monthly cycle accounting (the ledger), never repaid by a specific income; for any other
+// artist there is no agreement. The clip target is always null (NOT_DEFINED) with the matching reason; the artist's income
+// figures stay visible. A / B / C per currency are returned as clipMoneyInfo (information).
+// Sources (single each, no double-count): clips = none (information only); media = signed recoupedTotal
 // (frozen snapshots) + artistShareExpected; shows = artistPaid / artistExpected.
 // A1 (Owner canon 2026-09-27): artist paid = the show's OWN ARTIST_FEE row in Finance
 // (status שולם, the amount actually paid) — never the client payment; not yet paid =
@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     // Clips: the recoup contribution is NOT_DEFINED (no artist agreement rule) — A / B / C per currency as information.
     const clips = await listArtistClips(artist.name, artist.id);
     const clipMoneyInfo = artistClipMoney(clips);
-    const clipRecoupTarget = agreementArtistOf({ id: artist.id }) ? (artistClipAllocation(clips).defined["₪"]?.artistShareFundedByLabel ?? 0) : null;
+    const clipRecoupReasonHe = agreementArtistOf({ id: artist.id }) ? AGREEMENT_CYCLE_ACCOUNTING_HE : undefined;
 
     // Media: actual recouped (signed, frozen snapshots) + expected artist share (צפוי).
     const media = await getArtistMedia(id, artist.name);
@@ -71,7 +71,8 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     }
 
     const recoup = computeArtistRecoup({
-      clipRecoupTarget,
+      clipRecoupTarget: null,
+      clipRecoupReasonHe,
       clipMoneyInfo,
       mediaArtistShareReceived,
       mediaExpectedArtistShare,

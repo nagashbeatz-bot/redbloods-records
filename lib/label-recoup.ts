@@ -5,9 +5,9 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
  * Unified per-artist "artist debt to label". The CLIP part of the debt (D) comes ONLY from the specific artist
- * agreement (lib/label-agreements, Owner decision 2026-09-27): for שליו טסמה / אבי מולה the target is the artist's share
- * funded by the label (50 % of the ACTUAL PAID ₪ clip cost); for any other artist callers pass clipRecoupTarget = null
- * (NOT_DEFINED) and every debt figure is null with the Hebrew reason — never 50 % of the budget, never the price.
+ * agreement (lib/label-agreements, Owner model 2026-09-27): there is NO clip recoup — for שליו טסמה / אבי מולה the clip
+ * share is an artist expense in the bi-monthly cycle accounting; callers pass clipRecoupTarget = null (NOT_DEFINED) with the
+ * matching reason, and every debt figure is null — never 50 % of the budget, never the price.
  * The artist's income figures (paid shows + signed received media artist-share; expected shows + צפוי media) are
  * computed as before and stay visible.
  *
@@ -22,8 +22,10 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
  * Pure/stateless: writes nothing, mutates no snapshot, offsets no prior record.
  */
 export interface ArtistRecoupInput {
-  /** D — the artist's clip share funded by the label (שליו / אבי); null = NOT_DEFINED (every other artist). */
+  /** D — null = NOT_DEFINED: no clip recoup exists (שליו / אבי: the clip share is a cycle expense; others: no agreement). */
   clipRecoupTarget: number | null;
+  /** The reason shown with a NOT_DEFINED target (default: no agreement). */
+  clipRecoupReasonHe?: string;
   mediaArtistShareReceived: number;  // signed Σ artist_share_gross of received media (full share, uncapped)
   mediaExpectedArtistShare: number;  // Σ artist_share_gross of צפוי media income
   showsArtistPaid: number;           // artist share of PAID shows
@@ -45,7 +47,7 @@ export function computeArtistRecoup(input: ArtistRecoupInput): ArtistRecoupSumma
 
   if (input.clipRecoupTarget === null || !Number.isFinite(input.clipRecoupTarget)) {
     return {
-      ...base, clipRecoupTarget: null, clipRecoupStatus: "NOT_DEFINED", clipRecoupReasonHe: CLIP_RECOUP_NOT_DEFINED_HE,
+      ...base, clipRecoupTarget: null, clipRecoupStatus: "NOT_DEFINED", clipRecoupReasonHe: input.clipRecoupReasonHe || CLIP_RECOUP_NOT_DEFINED_HE,
       actualRecouped: null, actualRecoupBalance: null, projectedRecoup: null, projectedRecoupBalance: null, artistCredit: null, artistActualBalance: null,
     };
   }

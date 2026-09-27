@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
   }
 }
 
-// POST /api/label/artists/[id]/media — create a media record (server computes recoupTarget).
+// POST /api/label/artists/[id]/media — create a media record (50 / 50 income split; the server passes no recoup target — media never repays a clip).
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const denied = await requireOwner(); if (denied) return denied;
   try {

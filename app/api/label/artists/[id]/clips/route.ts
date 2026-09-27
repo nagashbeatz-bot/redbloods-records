@@ -3,15 +3,16 @@ import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
 import { listArtistClips, artistClipMoney, artistClipAllocation } from "@/lib/label-clips";
 import { CLIP_RECOUP_NOT_DEFINED_HE } from "@/lib/clip-rf-money-pure";
-import { agreementArtistOf, AGREEMENT_COST_RULES } from "@/lib/label-agreements";
+import { agreementArtistOf, AGREEMENT_CYCLE_ACCOUNTING_HE } from "@/lib/label-agreements";
 import type { LabelClipLine, ArtistClipsSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/label/artists/[id]/clips — the artist's clips with A / B / C per currency (B3, Owner canon 2026-09-27):
 // A client clip price, B planned budget, C actual cost (Finance, paid), + the Red Films ledger (not in Finance).
-// Never added together. D (Owner decision 2026-09-27, lib/label-agreements): for שליו טסמה / אבי מולה the clip is 50 % label
-// / 50 % artist of C — the artist's half is funded by the label (the `agreement` block); any other artist is NOT_DEFINED.
+// Never added together. Owner decision 2026-09-27 (lib/label-agreements): for שליו טסמה / אבי מולה the clip is 50 % label /
+// 50 % artist of C — the artist's half is funded by the label and is an artist expense in the bi-monthly cycle (the
+// `agreement` block); there is no recoup (D NOT_DEFINED, with that reason). Any other artist has no agreement.
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -27,7 +28,7 @@ export async function GET(
       id: c.id, title: c.title, status: c.status, projectId: c.projectId,
       plannedBudget: c.plannedBudget, currency: c.currency, clientClipPrice: c.clientClipPrice, clientClipCurrency: c.clientClipCurrency,
       actualCostPaid: c.actualCostPaid, rfLedgerPaid: c.rfLedgerPaid,
-      recoupStatus: c.recoup.status, artistRecoupBalance: null, recoupReasonHe: c.recoup.status === "DEFINED" ? c.recoup.basisHe : c.recoup.reasonHe,
+      recoupStatus: c.recoup.status, artistRecoupBalance: null, recoupReasonHe: c.recoup.reasonHe,
       allocation: c.allocation.map((a) => a.status === "DEFINED"
         ? { status: "DEFINED" as const, currency: a.currency, cashOut: a.cashOut, labelShare: a.labelShare, artistShare: a.artistShare, artistShareFundedByLabel: a.artistShareFundedByLabel, basisHe: a.basisHe }
         : { status: "NOT_DEFINED" as const, currency: a.currency, cashOut: a.cashOut, reasonHe: a.reasonHe }),
@@ -35,8 +36,8 @@ export async function GET(
     const covered = !!agreementArtistOf({ id: artist.id });
     const payload: ArtistClipsSummary = {
       totals: { count: clips.length, byCurrency: artistClipMoney(clips) },
-      recoupStatus: covered ? "DEFINED" : "NOT_DEFINED",
-      recoupReasonHe: covered ? AGREEMENT_COST_RULES.CLIP.basisHe : CLIP_RECOUP_NOT_DEFINED_HE,
+      recoupStatus: "NOT_DEFINED",
+      recoupReasonHe: covered ? AGREEMENT_CYCLE_ACCOUNTING_HE : CLIP_RECOUP_NOT_DEFINED_HE,
       agreement: artistClipAllocation(clips),
       clips: lines,
     };

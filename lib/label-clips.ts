@@ -5,7 +5,7 @@ import { CLIP_SCOPE } from "./clip-finance";
 import { isExpenseFullyPaidStatus } from "./finance/classify";
 import { normalizeCurrency } from "./finance/currency";
 import { clipMoneyByCurrency, clipRecoupContribution, type ClipMoneyByCurrency, type ClipRecoupContribution } from "./clip-rf-money-pure";
-import { allocatePaidCost, allocationTotalsByCurrency, isCollabText, type Allocation } from "./label-agreements";
+import { agreementArtistOf, allocatePaidCost, allocationTotalsByCurrency, isCollabText, AGREEMENT_CYCLE_ACCOUNTING_HE, type Allocation } from "./label-agreements";
 
 /** Round to 2 decimals (money-safe). */
 export function round2(n: number): number {
@@ -16,8 +16,9 @@ export function round2(n: number): number {
  * B3 (Owner canon 2026-09-27): A client clip price ≠ B planned budget ≠ C actual cost ≠ D recoupable. The old per-clip
  * "50 % of the BUDGET" split is RETIRED for every reader. Owner decision 2026-09-27 (lib/label-agreements — the ONE rule):
  * for שליו טסמה / אבי מולה a clip is 50 % label / 50 % artist of C (the ACTUAL PAID cost, per currency); the artist's half
- * is funded by the label and enters the accounting with the artist (D). Any other artist, or a collaboration production,
- * is NOT_DEFINED. A / B / C stay INFORMATION — never added together; the allocation never changes the Finance cash out.
+ * is funded by the label and is an artist EXPENSE in the bi-monthly cycle accounting — there is no recoup (D stays
+ * NOT_DEFINED, with that reason). Any other artist, or a collaboration production, has no agreement. A / B / C stay
+ * INFORMATION — never added together; the allocation never changes the Finance cash out.
  *
  * Artist ↔ production is a TEXT_MATCH on the production's artist_name (lib/label-identity documents the id-first rule;
  * productions carry no label-artist id).
@@ -36,7 +37,7 @@ export interface ArtistClip {
   rfLedgerPaid: Record<string, number>;
   /** The agreement allocation of C, one entry per currency (DEFINED only for שליו / אבי, solo productions). */
   allocation: Allocation[];
-  /** D — the artist's ₪ share funded by the label (DEFINED for שליו / אבי), else NOT_DEFINED with the reason. */
+  /** D — no recoup mechanism: NOT_DEFINED with the reason (שליו / אבי: the clip share is a cycle expense; others: no agreement). */
   recoup: ClipRecoupContribution;
   artistLink: "TEXT_MATCH";
 }
@@ -75,15 +76,16 @@ export async function listArtistClips(artistName: string, artistId?: string | nu
     // a collaboration production is never attributed to one artist (COLLAB_NOT_ATTRIBUTED)
     const who = isCollabText(p.artist_name) ? { name: p.artist_name } : { id: artistId ?? null, name: artistName };
     const allocation = Object.entries(actualCostPaid).map(([currency, amount]) => allocatePaidCost({ artist: who, category: "CLIP", amount, currency, paid: true }));
-    // D in ₪ (the ledger / media are ₪-only): an agreement artist with no paid ₪ cost yet → DEFINED 0; otherwise the reason
-    const ils = allocation.find((a) => a.currency === "₪") ?? allocatePaidCost({ artist: who, category: "CLIP", amount: 0, currency: "₪", paid: true });
+    // D: there is no recoup — an agreement artist's clip share is an artist EXPENSE in the bi-monthly cycle; otherwise the reason
+    const noAgreement = allocatePaidCost({ artist: who, category: "CLIP", amount: 0, currency: "₪", paid: true });
+    const recoupReason = agreementArtistOf(who) ? AGREEMENT_CYCLE_ACCOUNTING_HE : noAgreement.status === "NOT_DEFINED" ? noAgreement.reasonHe : null;
     return {
       id: p.id, title: p.title, status: p.status, projectId: p.project_id,
       plannedBudget: round2(Number(p.general_budget) || 0), currency: normalizeCurrency(p.currency),
       clientClipPrice: Number.isFinite(price) && price > 0 ? price : null, clientClipCurrency: s && Number.isFinite(price) && price > 0 ? normalizeCurrency(typeof s.currency === "string" ? s.currency : null) : null,
       actualCostPaid,
       rfLedgerPaid: byCur(pays.filter((x) => x.production_id === p.id)),
-      allocation, recoup: clipRecoupContribution(ils), artistLink: "TEXT_MATCH" as const,
+      allocation, recoup: clipRecoupContribution(recoupReason), artistLink: "TEXT_MATCH" as const,
     };
   });
 }
@@ -103,14 +105,3 @@ export function artistClipAllocation(clips: readonly ArtistClip[]) {
   return allocationTotalsByCurrency(clips.flatMap((c) => c.allocation));
 }
 
-/**
- * The media-income RPC's p_recoup_target (the DB computes the media recoup snapshot against it). Owner decision
- * 2026-09-27: the artist's clip share funded by the label = 50 % of the ACTUAL PAID ₪ clip cost, ONLY for שליו טסמה /
- * אבי מולה (lib/label-agreements). Any other artist has no agreement → 0 (nothing is withheld from the artist's media
- * share by an undefined rule). The media ledger stores no currency, so only ₪ counts. Replaces the retired pre-B3 rule
- * (the artist half of the planned budgets).
- */
-export async function getRecoupTargetForArtist(artistName: string, artistId?: string | null): Promise<number> {
-  const clips = await listArtistClips(artistName, artistId);
-  return round2(artistClipAllocation(clips).defined["₪"]?.artistShareFundedByLabel ?? 0);
-}

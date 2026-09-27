@@ -190,7 +190,7 @@ function main() {
   ok("Victor June $500: still observed (override 500 vs global 550)", dec("known:victor-june-500")?.liveState === "STILL_OBSERVED");
   ok("Red Films ledger vs Finance: still observed", dec("known:redfilms-ledger-vs-finance")?.liveState === "STILL_OBSERVED");
   ok("mix orphan expenses: no longer observed in this company (kept, marked)", dec("known:mix-orphan-expenses")?.liveState === "NO_LONGER_OBSERVED");
-  ok("policy questions stay POLICY_OPEN (recoup basis, artist accounting, cadence, work hours)", ["known:recoup-basis", "known:artist-accounting-canonical", "known:release-cadence", "known:working-hours"].every((id) => dec(id)?.liveState === "POLICY_OPEN"));
+  ok("policy questions stay POLICY_OPEN (cadence, work hours); the recoup basis + artist accounting were ANSWERED by the Owner (2026-09-27) and are never asked again", ["known:release-cadence", "known:working-hours"].every((id) => dec(id)?.liveState === "POLICY_OPEN") && !dec("known:recoup-basis") && !dec("known:artist-accounting-canonical"));
   ok("every decision is Owner-only (Sunny never answers)", v.decisions.every((d) => d.answerable === "OWNER_ONLY"));
   section("SCENARIO O — decision QA: an Owner decision recorded in knowledge removes the question");
   const withK = buildCompanyView(sources({ knowledge: [{ subjectKey: "known:release-cadence" }] }));

@@ -97,6 +97,7 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
   const RF = await import("../lib/writes/redfilms");
   const FIN = await import("../lib/writes/finance");
   const LC = await import("../lib/label-clips");
+  const { MEDIA_RECOUP_TARGET } = await import("../lib/label-agreements");
   const { computeArtistRecoup } = await import("../lib/label-recoup");
   const PURE = await import("../lib/clip-rf-money-pure");
   const VIEW = await import("../lib/partner/redfilms/view");
@@ -140,12 +141,12 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
   const info = LC.artistClipMoney(clips);
   // Owner decision 2026-09-27 (lib/label-agreements): שליו / אבי — the artist's clip share = 50 % of the ACTUAL PAID cost (never the budget)
   const k1 = clips.find((c) => c.id === "c1")!, k2 = clips.find((c) => c.id === "c2")!;
-  ok("שליו: clip recoup = 50 % of the ACTUAL PAID cost (2000 → 1000), an unpaid clip → DEFINED 0; never half the budget (4000 / 500)", clips.length === 2 && k1.recoup.status === "DEFINED" && k1.recoup.amount === 1000 && k2.recoup.status === "DEFINED" && k2.recoup.amount === 0 && !/4000|"500"|:500[,}]/.test(JSON.stringify(clips.map((c) => ({ r: c.recoup, a: c.allocation })))), clips);
+  ok("שליו: NO clip recoup (Owner model: the clip share is an artist expense in the bi-monthly cycle) — NOT_DEFINED with that reason; never half the budget (4000 / 500)", clips.length === 2 && [k1, k2].every((k) => k.recoup.status === "NOT_DEFINED" && k.recoup.amount === null && /במחזור של חודשיים/.test(k.recoup.reasonHe)) && !/4000|"500"|:500[,}]/.test(JSON.stringify(clips.map((c) => ({ r: c.recoup, a: c.allocation })))), clips);
   ok("allocation: cash out 2000 ≠ label share 1000 ≠ artist share 1000 (funded by the label); the unpaid 700 never counts", JSON.stringify(k1.allocation) === JSON.stringify([{ status: "DEFINED", category: "CLIP", currency: "₪", cashOut: 2000, labelShare: 1000, artistShare: 1000, artistShareFundedByLabel: 1000, basisHe: "קליפ — 50% לייבל / 50% אמן מהעלות ששולמה בפועל" }]), k1.allocation);
   const otherClips = await LC.listArtistClips("נגש ביטס");
   reset({ red_films_productions: [{ id: "o1", title: "קליפ אחר", production_type: "קליפ", status: "בעריכה", project_id: "p9", artist_name: "נגש ביטס", general_budget: 8000, currency: "₪" }], transactions: [{ id: "e9", project_id: "p9", type: "expense", expense_scope: "קליפ", amount: 3000, currency: "₪", payment_status: "שולם" }] });
   const other = await LC.listArtistClips("נגש ביטס");
-  ok("another artist: NOT_DEFINED (no agreement) — the Shalev / Avi rule is never applied automatically", otherClips.length === 0 && other.length === 1 && other[0].recoup.status === "NOT_DEFINED" && other[0].recoup.amount === null && /אין חוק התחשבנות/.test(other[0].recoup.reasonHe ?? "") && other[0].allocation[0].status === "NOT_DEFINED" && other[0].allocation[0].cashOut === 3000 && (await LC.getRecoupTargetForArtist("נגש ביטס")) === 0, other);
+  ok("another artist: NOT_DEFINED (no agreement) — the Shalev / Avi rule is never applied automatically", otherClips.length === 0 && other.length === 1 && other[0].recoup.status === "NOT_DEFINED" && other[0].recoup.amount === null && /אין חוק התחשבנות/.test(other[0].recoup.reasonHe ?? "") && other[0].allocation[0].status === "NOT_DEFINED" && other[0].allocation[0].cashOut === 3000, other);
   reset({
     red_films_productions: [
       { id: "c1", title: "קליפ שליו", production_type: "קליפ", status: "בעריכה", project_id: "p1", artist_name: "שליו טסמה", general_budget: 8000, currency: "₪" },
@@ -155,13 +156,13 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
     transactions: [{ id: "e1", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 2000, currency: "₪", payment_status: "שולם" }, { id: "e2", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 700, currency: "₪", payment_status: "לא שולם" }],
     red_films_budget_payments: [{ id: "y1", production_id: "c1", amount: 1200, currency: "₪" }],
   });
-  ok("the media-income target = the agreement's funded share of the ACTUAL PAID ₪ cost (1000), never half the budget (4000)", (await LC.getRecoupTargetForArtist("שליו טסמה")) === 1000);
+  ok("media never repays a clip: the media-income RPC target is 0 for every artist (MEDIA_RECOUP_TARGET), no clip-based target function remains", MEDIA_RECOUP_TARGET === 0 && !("getRecoupTargetForArtist" in LC));
   ok("A / B / C + Red Films ledger per currency, never added (₪: price 3500, budget 8000, paid cost 2000, RF 1200; $: budget 1000)", JSON.stringify(info["₪"]) === JSON.stringify({ clientClipPrice: 3500, plannedBudget: 8000, actualCostPaid: 2000, rfLedgerPaid: 1200 }) && info["$"]?.plannedBudget === 1000 && info["$"]?.actualCostPaid === 0, info);
   const r0 = computeArtistRecoup({ clipRecoupTarget: null, mediaArtistShareReceived: 300, mediaExpectedArtistShare: 50, showsArtistPaid: 1000, showsArtistExpected: 200, clipMoneyInfo: info });
   ok("computeArtistRecoup: clip target null → NOT_DEFINED + reason; every debt figure null; income still shown", r0.clipRecoupTarget === null && r0.clipRecoupStatus === "NOT_DEFINED" && /אין חוק התחשבנות/.test(r0.clipRecoupReasonHe ?? "") && [r0.actualRecouped, r0.actualRecoupBalance, r0.projectedRecoup, r0.projectedRecoupBalance, r0.artistCredit, r0.artistActualBalance].every((x) => x === null) && r0.actualArtistIncome === 1300 && r0.expectedArtistIncome === 250, r0);
-  ok("the recoup + clips routes take the clip target ONLY from the agreement allocation (agreement artist, else null); no budget, no clipSplit", /agreementArtistOf\(\{ id: artist\.id \}\) \? \(artistClipAllocation\(clips\)/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /: null;/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && !/general_budget|plannedBudget \//.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /artistClipAllocation\(clips\)/.test(read("app/api/label/artists/[id]/clips/route.ts")) && !/clipSplit/.test(read("lib/label-clips.ts")));
+  ok("the recoup + clips routes never build a clip target (null + the cycle / no-agreement reason; no budget, no clipSplit)", /clipRecoupTarget: null,/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && !/general_budget|plannedBudget \//.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /recoupStatus: "NOT_DEFINED",/.test(read("app/api/label/artists/[id]/clips/route.ts")) && /artistClipAllocation\(clips\)/.test(read("app/api/label/artists/[id]/clips/route.ts")) && !/clipSplit/.test(read("lib/label-clips.ts")));
   ok("the label page shows 'לא נקבע' for a null recoup figure and no 50 % label", /לא נקבע/.test(read("components/label/LabelPage.tsx")) && !/\((50%|50\/50)\)|לייבל 50%/.test(read("components/label/LabelPage.tsx")) && /v === null \? "לא נקבע"/.test(read("components/label/LabelPage.tsx")));
-  ok("the media-income RPC target is the agreement share (by artist id), never the budget", /getRecoupTargetForArtist\(artistName, artistId\)/.test(read("lib/media-income-store.ts")) && !/general_budget/.test(read("lib/label-clips.ts").split("export async function getRecoupTargetForArtist")[1] ?? "x"));
+  ok("the media store passes MEDIA_RECOUP_TARGET (0) to both RPCs — media is 50 / 50 income, never a clip repayment", (read("lib/media-income-store.ts").match(/const recoupTarget = MEDIA_RECOUP_TARGET;/g) ?? []).length === 3 && !/getRecoupTargetForArtist/.test(read("lib/media-income-store.ts") + read("lib/label-clips.ts")));
 
   // ── 3. budget line paid state ────────────────────────────────────────────────────────────────────────────────────
   section("3. budgetLinePaidState — one rule for the screen, the modal and Sunny");
