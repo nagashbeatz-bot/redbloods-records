@@ -44,11 +44,19 @@ interface Promotion {
   promo_date: string | null;
   notes: string;
   linked_transaction_id: string | null;
-  actual_amount: number;
+  actual_amount: number;          // PAID spend only (linked expense שולם), in actual_currency
+  actual_currency?: string;
+  linked_amount?: number;         // the linked expense's amount whatever its status (the edit value)
+  linked_status?: string | null;
 }
 
 function fmtMoney(n: number): string {
   return `₪${(Number(n) || 0).toLocaleString("he-IL")}`;
+}
+/** Paid spend in the linked expense's own currency (never shown as ₪ when it is not). */
+function fmtSpend(p: { actual_amount: number; actual_currency?: string }): string {
+  const c = p.actual_currency ?? "₪";
+  return c === "₪" ? fmtMoney(p.actual_amount) : `${c}${(Number(p.actual_amount) || 0).toLocaleString("he-IL")}`;
 }
 function fmtDate(d: string | null): string {
   if (!d) return "—";
@@ -101,7 +109,8 @@ function PromotionModal({ campaignId, item, onClose, onSaved }: {
   const [channel, setChannel]     = useState(item?.channel ?? CHANNELS[0]);
   const [promoType, setPromoType] = useState(item?.promo_type ?? TYPES[0]);
   const [planned, setPlanned]     = useState(item ? String(item.planned_amount) : "");
-  const [actual, setActual]       = useState(item ? String(item.actual_amount) : "");
+  // edit value = the linked expense's own amount (an unpaid / cancelled expense shows 0 spend but keeps its amount)
+  const [actual, setActual]       = useState(item ? String(item.linked_transaction_id ? (item.linked_amount ?? item.actual_amount) : item.actual_amount) : "");
   const [status, setStatus]       = useState(item?.status ?? STATUSES[0]);
   const [promoDate, setPromoDate] = useState(item?.promo_date ?? "");
   const [notes, setNotes]         = useState(item?.notes ?? "");
@@ -228,7 +237,7 @@ function DeleteConfirm({ item, onConfirm, onCancel }: { item: Promotion; onConfi
         </div>
         {item.linked_transaction_id && (
           <div style={{ fontSize: 12, color: AMBER, marginBottom: 20, lineHeight: 1.6 }}>
-            ההוצאה המקושרת ב-Finance ({fmtMoney(item.actual_amount)}) <b>תישאר</b> — היא לא נמחקת.
+            ההוצאה המקושרת ב-Finance <b>תישאר</b> — היא לא נמחקת, ובהערות שלה יירשם שהקידום נמחק.
           </div>
         )}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: item.linked_transaction_id ? 0 : 14 }}>
@@ -288,16 +297,26 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
 
   useEffect(() => { load(); }, [load]);
 
+  const [listErr, setListErr] = useState<string | null>(null);
   async function handleDelete(id: string) {
+    setListErr(null);
     try {
-      await fetch(`/api/social/promotions/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/social/promotions/${id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setListErr(d.error || "המחיקה נכשלה — הקידום לא נמחק"); }
       await load();
     } finally { setDelItem(null); }
   }
 
   // ── Summary ── budget = campaign planning; planned excl. cancelled; actual from txs
-  const plannedTotal  = items.filter(i => i.status !== "בוטל").reduce((s, i) => s + (Number(i.planned_amount) || 0), 0);
-  const actualTotal   = items.reduce((s, i) => s + (Number(i.actual_amount) || 0), 0);
+  // planned PER CURRENCY: a promotion's currency is its linked expense's currency (₪ when unlinked — the campaign budget
+  // is ₪); only ₪ planning is compared with the budget, other currencies are shown apart (never added, no FX)
+  const plannedByCur  = items.filter(i => i.status !== "בוטל").reduce<Record<string, number>>((m, i) => { const c = i.actual_currency ?? "₪"; m[c] = (m[c] ?? 0) + (Number(i.planned_amount) || 0); return m; }, {});
+  const plannedTotal  = plannedByCur["₪"] ?? 0;
+  const plannedOther  = Object.entries(plannedByCur).filter(([c, n]) => c !== "₪" && n > 0).map(([c, n]) => `${c}${n.toLocaleString("he-IL")}`).join(" · ");
+  // actual = PAID linked expenses only; the budget is ₪, so only ₪ spend is compared — other currencies are shown apart
+  const actualTotal   = items.filter(i => (i.actual_currency ?? "₪") === "₪").reduce((s, i) => s + (Number(i.actual_amount) || 0), 0);
+  const actualOther   = Object.entries(items.filter(i => (i.actual_currency ?? "₪") !== "₪" && i.actual_amount > 0).reduce<Record<string, number>>((m, i) => { const c = i.actual_currency ?? "₪"; m[c] = (m[c] ?? 0) + i.actual_amount; return m; }, {}))
+    .map(([c, n]) => `${c}${n.toLocaleString("he-IL")}`).join(" · ");
   const unallocated   = Math.max(0, budget - plannedTotal);  // "לא שובץ" — never negative
   const planOverage   = Math.max(0, plannedTotal - budget);  // "חריגה בתכנון"
   const actualOverage = Math.max(0, actualTotal - budget);   // "חריגה בפועל"
@@ -356,7 +375,10 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
           </div>
 
           <SumChip c={AMBER} val={fmtMoney(plannedTotal)} lbl="שובץ" />
+          {plannedOther && <SumChip c={AMBER} val={plannedOther} lbl="שובץ (מטבע אחר)" />}
           <SumChip c={BLUE}  val={fmtMoney(actualTotal)}  lbl="בפועל" />
+          {actualOther && <SumChip c={BLUE} val={actualOther} lbl="בפועל (מטבע אחר)" />}
+          {listErr && <span style={{ fontSize: 12, color: BRAND }}>{listErr}</span>}
           {budget > 0 && (planOverage > 0
             ? <SumChip c={BRAND} val={fmtMoney(planOverage)} lbl="חריגה בתכנון" />
             : <SumChip c={GREEN} val={fmtMoney(unallocated)} lbl="לא שובץ" />
@@ -388,7 +410,7 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
               </div>
               <div style={{ display: "flex", gap: 14, fontSize: 12, color: TEXT2, marginBottom: 10, flexWrap: "wrap" }}>
                 <span>מתוכנן: <b style={{ color: TEXT }}>{fmtMoney(it.planned_amount)}</b></span>
-                <span>בפועל: <b style={{ color: it.actual_amount > 0 ? GREEN : TEXT2 }}>{fmtMoney(it.actual_amount)}</b></span>
+                <span>בפועל: <b style={{ color: it.actual_amount > 0 ? GREEN : TEXT2 }}>{fmtSpend(it)}</b></span>
                 {it.promo_date && <span>📅 {fmtDate(it.promo_date)}</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -416,7 +438,7 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
                 <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.channel} · {it.promo_type}</div>
               </div>
               <div style={{ textAlign: "center", color: TEXT }}>{fmtMoney(it.planned_amount)}</div>
-              <div style={{ textAlign: "center", color: it.actual_amount > 0 ? GREEN : MUTED, fontWeight: it.actual_amount > 0 ? 700 : 400 }}>{fmtMoney(it.actual_amount)}</div>
+              <div style={{ textAlign: "center", color: it.actual_amount > 0 ? GREEN : MUTED, fontWeight: it.actual_amount > 0 ? 700 : 400 }}>{fmtSpend(it)}</div>
               <div style={{ display: "flex", justifyContent: "center" }}><StatusPill status={it.status} /></div>
               <div style={{ textAlign: "center", color: TEXT2, fontSize: 12, direction: "ltr" }}>{fmtDate(it.promo_date)}</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>

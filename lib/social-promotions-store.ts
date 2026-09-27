@@ -13,7 +13,11 @@ import { supabase } from "@/lib/supabase";
  *   • Entering an actual spend > 0 the first time creates exactly ONE tx and
  *     links it (CAS-guarded against double-create / races). Later edits PATCH
  *     that same tx amount — never a second tx.
- *   • Deleting a promotion never deletes its transaction.
+ *   • Deleting a promotion never deletes its transaction. SAFE DETACH (A5 2026-09-27): before the row goes, a
+ *     provenance marker `[קידום נמחק YYYY-MM-DD: name · channel]` is APPENDED to the transaction's notes; if that
+ *     write fails the delete is aborted. A campaign delete (DB cascade) detaches every promotion the same way first.
+ *   • ACTUAL SPEND = the linked transaction's amount ONLY when its payment_status is שולם, in ITS currency — an
+ *     unpaid / cancelled transaction is not spend, and currencies are never added.
  *
  * Mirrors the existing clip_items / shows linked-transaction pattern.
  */
@@ -36,7 +40,25 @@ export interface SocialPromotion {
 }
 
 export interface PromotionWithActual extends SocialPromotion {
-  actual_amount: number; // derived from the linked transaction (0 when unlinked)
+  actual_amount: number;            // PAID spend: the linked transaction's amount only when שולם (0 otherwise / unlinked)
+  actual_currency: string;          // the linked transaction's currency (₪ when unlinked) — never added across currencies
+  linked_amount: number;            // the linked transaction's raw amount, whatever its status (the edit value)
+  linked_status: string | null;     // the linked transaction's payment_status (null when unlinked)
+}
+
+/** The one promotion-spend rule (pure): paid only, per currency. Shared by the social screen, lib/writes/social and tests. */
+export const PROMO_SPEND_PAID_STATUS = "שולם";
+export function promotionSpend(tx: { amount?: unknown; currency?: unknown; payment_status?: unknown } | null | undefined): { amount: number; currency: string; paid: boolean; linkedAmount: number; status: string | null } {
+  if (!tx) return { amount: 0, currency: "₪", paid: false, linkedAmount: 0, status: null };
+  const linkedAmount = Number(tx.amount) || 0;
+  const paid = tx.payment_status === PROMO_SPEND_PAID_STATUS;
+  return { amount: paid ? linkedAmount : 0, currency: typeof tx.currency === "string" && tx.currency ? tx.currency : "₪", paid, linkedAmount, status: typeof tx.payment_status === "string" ? tx.payment_status : null };
+}
+/** Σ paid spend per currency (never one mixed total). */
+export function promotionSpendByCurrency(rows: ReadonlyArray<{ actual_amount: number; actual_currency: string }>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) if (r.actual_amount) out[r.actual_currency] = (out[r.actual_currency] ?? 0) + r.actual_amount;
+  return out;
 }
 
 // ── Read ─────────────────────────────────────────────────────────────────────
@@ -49,23 +71,22 @@ export async function listPromotions(campaignId: string): Promise<PromotionWithA
   if (error) throw error;
   const rows = (data ?? []) as SocialPromotion[];
 
-  // Derive actual spend from the linked transactions (source of truth).
+  // Derive actual spend from the linked transactions (source of truth): PAID only, per currency.
   const txIds = rows.map(r => r.linked_transaction_id).filter((x): x is string => !!x);
-  const amountById: Record<string, number> = {};
+  const txById: Record<string, { amount: unknown; currency: unknown; payment_status: unknown }> = {};
   if (txIds.length > 0) {
-    const { data: txs } = await supabase
+    const { data: txs, error: txErr } = await supabase
       .from("transactions")
-      .select("id, amount")
+      .select("id, amount, currency, payment_status")
       .in("id", txIds);
-    for (const t of (txs ?? []) as { id: string; amount: number }[]) {
-      amountById[t.id] = Number(t.amount) || 0;
-    }
+    if (txErr) throw txErr;
+    for (const t of (txs ?? []) as { id: string; amount: unknown; currency: unknown; payment_status: unknown }[]) txById[t.id] = t;
   }
 
-  return rows.map(r => ({
-    ...r,
-    actual_amount: r.linked_transaction_id ? (amountById[r.linked_transaction_id] ?? 0) : 0,
-  }));
+  return rows.map(r => {
+    const sp = promotionSpend(r.linked_transaction_id ? txById[r.linked_transaction_id] : null);
+    return { ...r, actual_amount: sp.amount, actual_currency: sp.currency, linked_amount: sp.linkedAmount, linked_status: sp.status };
+  });
 }
 
 // Campaign-level total promotion budget (planning only — never a transaction).
@@ -112,10 +133,47 @@ export async function updatePromotionFields(id: string, patch: Partial<{
   if (error) throw error;
 }
 
+/** The provenance marker appended to a kept transaction when its promotion is deleted (pure). */
+export function promotionDeletedMarker(p: { name?: string | null; channel?: string | null }, ymd: string): string {
+  const name = (p.name ?? "").trim() || "פעולת קידום";
+  return `[קידום נמחק ${ymd}: ${name}${p.channel ? ` · ${p.channel}` : ""}]`;
+}
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+
+/** SAFE DETACH: append the provenance marker to the linked transaction's notes (never overwrite). Throws on any failure
+ *  (including a 0-row update) so the caller aborts the delete. A transaction that no longer exists needs no marker. */
+export async function markPromotionTransactionDetached(promo: Pick<SocialPromotion, "linked_transaction_id" | "name" | "channel">): Promise<"marked" | "no_tx"> {
+  if (!promo.linked_transaction_id) return "no_tx";
+  const { data: tx, error: rErr } = await supabase.from("transactions").select("id, notes").eq("id", promo.linked_transaction_id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!tx) return "no_tx";
+  const marker = promotionDeletedMarker(promo, todayYmd());
+  const cur = String((tx as { notes?: string | null }).notes ?? "");
+  if (cur.includes(marker)) return "marked";
+  const notes = cur.trim() ? `${cur.trimEnd()}\n${marker}` : marker;
+  const { data: upd, error: uErr } = await supabase.from("transactions").update({ notes, updated_at: new Date().toISOString() }).eq("id", promo.linked_transaction_id).select("id");
+  if (uErr) throw uErr;
+  if (!upd || upd.length !== 1) throw new Error("סימון המקור ברשומה הכספית נכשל — הקידום לא נמחק");
+  return "marked";
+}
+
 export async function deletePromotion(id: string): Promise<void> {
-  // Removes ONLY the planning row — a linked transaction stays in Finance.
+  // Removes ONLY the planning row — a linked transaction stays in Finance, marked with where it came from.
+  const { data: row, error: rErr } = await supabase.from(TABLE).select("id, linked_transaction_id, name, channel").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) return;
+  await markPromotionTransactionDetached(row as SocialPromotion); // aborts the delete on failure
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
   if (error) throw error;
+}
+
+/** Before a campaign is deleted (its promotions cascade): mark every linked transaction; any failure aborts. */
+export async function detachCampaignPromotions(campaignId: string): Promise<{ promotions: number; marked: number }> {
+  const { data, error } = await supabase.from(TABLE).select("id, linked_transaction_id, name, channel").eq("campaign_id", campaignId);
+  if (error) throw error;
+  let marked = 0;
+  for (const p of (data ?? []) as SocialPromotion[]) if ((await markPromotionTransactionDetached(p)) === "marked") marked++;
+  return { promotions: (data ?? []).length, marked };
 }
 
 // ── Finance sync — actual spend ↔ a single real transaction ───────────────────
@@ -140,11 +198,14 @@ export async function syncActualExpense(promotionId: string, actualAmount: numbe
 
   // Already linked → update the existing transaction only.
   if (promo.linked_transaction_id) {
-    const { error } = await supabase
+    const { data: upd, error } = await supabase
       .from("transactions")
       .update({ amount, description: expenseDescription(promo) })
-      .eq("id", promo.linked_transaction_id);
+      .eq("id", promo.linked_transaction_id)
+      .select("id");
     if (error) throw error;
+    // 0 rows = the linked transaction is gone — never report a sync that did not happen
+    if (!upd || upd.length !== 1) throw new Error("ההוצאה המקושרת בכספים לא נמצאה — הסכום לא עודכן");
     return;
   }
 
@@ -189,19 +250,25 @@ export async function syncActualExpense(promotionId: string, actualAmount: numbe
     .select("id");
 
   if (casErr) {
-    await supabase.from("transactions").delete().eq("id", tx.id); // roll back the orphan
+    const { error: rbErr } = await supabase.from("transactions").delete().eq("id", tx.id); // roll back the orphan
+    if (rbErr) throw new Error(`קישור ההוצאה נכשל (${casErr.message}) וגם ביטול ההוצאה שנוצרה נכשל (${rbErr.message}) — יש לבדוק בכספים את הרשומה ${tx.id}`);
     throw casErr;
   }
   if (!casRows || casRows.length === 0) {
     // Lost the race — drop our duplicate tx and update the winner instead.
-    await supabase.from("transactions").delete().eq("id", tx.id);
-    const { data: fresh } = await supabase
+    const { error: rbErr } = await supabase.from("transactions").delete().eq("id", tx.id);
+    if (rbErr) throw new Error(`ביטול ההוצאה הכפולה נכשל (${rbErr.message}) — יש לבדוק בכספים את הרשומה ${tx.id}`);
+    const { data: fresh, error: fErr } = await supabase
       .from(TABLE).select("linked_transaction_id").eq("id", promotionId).single();
+    if (fErr) throw fErr;
     const winnerTx = (fresh?.linked_transaction_id as string | null) ?? null;
     if (winnerTx) {
-      await supabase.from("transactions")
+      const { data: w, error: wErr } = await supabase.from("transactions")
         .update({ amount, description: expenseDescription(promo) })
-        .eq("id", winnerTx);
+        .eq("id", winnerTx)
+        .select("id");
+      if (wErr) throw wErr;
+      if (!w || w.length !== 1) throw new Error("ההוצאה המקושרת בכספים לא נמצאה — הסכום לא עודכן");
     }
   }
 }

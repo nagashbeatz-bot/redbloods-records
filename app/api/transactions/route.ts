@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { createTransactionRecord, FinanceInputError, setFinanceSettings } from "@/lib/writes/finance";
+import { createTransactionRecord, FinanceInputError, financeOwnersFor, setFinanceSettings } from "@/lib/writes/finance";
+import { ownerUi } from "@/lib/finance/ownership";
+
+/** Adds `owner` (null or { owner, labelHe, whereHe, allowed, canDelete:false }) to each row — computed server-side in ONE batch. */
+async function withOwners(rows: Array<Record<string, unknown>> | null) {
+  const list = (rows ?? []) as Array<{ id: string; show_id?: string | null; show_money_role?: string | null; linked_session_id?: string | null } & Record<string, unknown>>;
+  const owners = await financeOwnersFor(list);
+  return list.map((t) => ({ ...t, owner: ownerUi(owners.get(t.id) ?? null) }));
+}
 import { requireOwner } from "@/lib/require-auth";
 
 // GET /api/transactions?projectId=xxx   → transactions + finance settings for one project
@@ -30,7 +38,7 @@ export async function GET(req: NextRequest) {
       clipAgreedPrice:  (row.value as { clipAgreedPrice?: number })?.clipAgreedPrice ?? 0,
     }));
 
-    return NextResponse.json({ transactions: txRes.data, settings });
+    return NextResponse.json({ transactions: await withOwners(txRes.data), settings });
   }
 
   if (!projectId) {
@@ -56,7 +64,7 @@ export async function GET(req: NextRequest) {
   const clipAgreedPrice        = (val.clipAgreedPrice        as number  | undefined) ?? 0;
 
   return NextResponse.json({
-    transactions: txRes.data,
+    transactions: await withOwners(txRes.data),
     agreedPrice, currency, financialNotes,
     financeException, financeExceptionReason, financeExceptionDate,
     clipAgreedPrice,

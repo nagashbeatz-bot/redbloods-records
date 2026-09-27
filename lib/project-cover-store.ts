@@ -84,6 +84,22 @@ async function deleteCoverFile(projectId: string): Promise<void> {
   } catch { /* best-effort — a missing/undeletable file never fails the caller */ }
 }
 
+/** Project delete (lib/writes/project-delete): removes the custom cover file AFTER the DB commit and REPORTS the result
+ *  (true = deleted or already absent). Never throws. */
+export async function deleteProjectCoverFile(projectId: string): Promise<boolean> {
+  try {
+    const token = await dropboxToken();
+    const r = await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ path: coverDropboxPath(projectId) }),
+    });
+    if (r.ok) return true;
+    const body = await r.text().catch(() => "");
+    return /not_found/.test(body);
+  } catch { return false; }
+}
+
 // ── Writes (owner routes only) ───────────────────────────────────────────────
 
 async function writeConfig(projectId: string, cfg: ProjectCoverConfig): Promise<void> {

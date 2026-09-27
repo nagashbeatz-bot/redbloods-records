@@ -299,8 +299,8 @@ export default function ActionMenu({ projectId, projectName, artist, projectType
                   try {
                     await deleteProject(projectId);
                     setConfirmDelete(false);
-                  } catch {
-                    setDeleteError("שגיאה במחיקה — נסה שוב");
+                  } catch (e) {
+                    setDeleteError(e instanceof Error && e.message ? e.message : "שגיאה במחיקה — נסה שוב");
                   } finally {
                     setDeleting(false);
                   }

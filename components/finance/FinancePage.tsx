@@ -7,7 +7,7 @@ import { usePrivacyMode } from "@/lib/use-privacy";
 import { isClipScoped } from "@/lib/clip-finance";
 import {
   calcPeriodStats, groupByCurrency, sumByCurrency, totalOf, orderCurrencies, otherAmountsFrom,
-  otherCurrencyAmounts, formatCurrencyAmounts, formatOtherAmount, DEFAULT_CURRENCY,
+  otherCurrencyAmounts, formatCurrencyAmounts, formatOtherAmount, DEFAULT_CURRENCY, isReceivedStatus,
   type CurrencyTotals,
 } from "@/lib/finance";
 
@@ -55,7 +55,12 @@ interface Transaction {
   category: string;
   expense_scope: string;
   created_at: string;
+  /** Server-computed (GET /api/transactions, lib/finance/ownership): the writer that owns this row, or null. */
+  owner?: TxOwnerUi | null;
 }
+/** An owned row (show / mix / clip / Red Films / promotion / Victor salary): never deleted here; only `allowed` fields edit. */
+interface TxOwnerUi { owner: string; labelHe: string; whereHe: string; allowed: string[]; canDelete: false }
+const OWNED_FIELD_HE: Record<string, string> = { paymentStatus: "סטטוס", date: "תאריך", paymentMethod: "אמצעי תשלום", notes: "הערות" };
 
 /** A transaction that originated from the Shows module (categorized as הופעה). */
 function isShowTx(tx: Transaction): boolean {
@@ -531,7 +536,7 @@ function ProjectSelect({
 
 // ── Transaction Modal ─────────────────────────────────────────────────────────
 function TxModal({
-  draft, setDraft, saving, onSave, onCancel, projects, title, isEdit = false, onDelete,
+  draft, setDraft, saving, onSave, onCancel, projects, title, isEdit = false, onDelete, owner = null, error = null,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
@@ -542,7 +547,12 @@ function TxModal({
   title: string;
   isEdit?: boolean;
   onDelete?: () => void;
+  owner?: TxOwnerUi | null;
+  error?: string | null;
 }) {
+  // an owned row: every control outside the owner's allowed fields is disabled (the server refuses them anyway — 409)
+  const locked = (f: string) => !!owner && !owner.allowed.includes(f);
+  const lockStyle = (f: string): React.CSSProperties => (locked(f) ? { opacity: 0.45, cursor: "not-allowed" } : {});
   const isIncome    = draft.type === "income";
   const isGeneral   = draft.scope === "general";
   const categoryList = isIncome
@@ -579,6 +589,14 @@ function TxModal({
           <button onClick={onCancel} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: TEXT, margin: 0 }}>{title}</h2>
         </div>
+        {owner && (
+          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, border: `1px solid ${AMBER}40`, background: `${AMBER}0F`, fontSize: 12, color: TEXT2, lineHeight: 1.6 }}>
+            <b style={{ color: AMBER }}>🔗 {owner.labelHe}</b> — הרשומה מנוהלת {owner.whereHe}. כאן אפשר לשנות רק: {owner.allowed.map((f) => OWNED_FIELD_HE[f] ?? f).join(", ")}. מחיקה ושינוי סכום / מטבע נעשים שם.
+          </div>
+        )}
+        {error && (
+          <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 10, border: `1px solid ${RED}40`, background: `${RED}0F`, fontSize: 12, color: RED, lineHeight: 1.6 }}>{error}</div>
+        )}
 
         {/* Type toggle — hidden when editing an existing transaction (type is fixed) */}
         {!isEdit && (
@@ -629,13 +647,15 @@ function TxModal({
               {!isGeneral && (
                 <div>
                   <label style={LABEL_S}>פרויקט *</label>
+                  <div style={locked("project_id") ? { pointerEvents: "none", opacity: 0.45 } : undefined}>
                   <ProjectSelect value={draft.projectId} projects={projects}
                     onChange={(id, artist) => setDraft({ ...draft, projectId: id, artist })} />
+                  </div>
                 </div>
               )}
               <div>
                 <label style={LABEL_S}>{isIncome ? "סוג הכנסה" : "קטגוריה"}</label>
-                <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={INPUT_S}>
+                <select value={draft.category} disabled={locked("category")} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={{ ...INPUT_S, ...lockStyle("category") }}>
                   <option value="">בחר...</option>
                   {categoryList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -652,16 +672,16 @@ function TxModal({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={LABEL_S}>{isIncome ? "לקוח / אמן" : isGeneral ? "ספק / שם" : "ספק / למי שולם"}</label>
-                <input type="text" value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
-                  placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."} style={INPUT_S} />
+                <input type="text" value={draft.artist} disabled={locked("artist")} onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
+                  placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."} style={{ ...INPUT_S, ...lockStyle("artist") }} />
               </div>
               <div>
                 <label style={{ ...LABEL_S, ...(isOther ? { color: AMBER } : {}) }}>
                   תיאור{isOther ? " *" : ""}
                 </label>
-                <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                <input type="text" value={draft.description} disabled={locked("description")} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   placeholder={isIncome ? "למשל: מקדמה לפרויקט..." : "למשל: חשמל ינואר, מנוי Adobe..."}
-                  style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: `${AMBER}50` } : {}) }} />
+                  style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: `${AMBER}50` } : {}), ...lockStyle("description") }} />
               </div>
             </div>
           </div>
@@ -673,13 +693,13 @@ function TxModal({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
                 <div>
                   <label style={LABEL_S}>סכום *</label>
-                  <input type="number" value={draft.amount} min={0}
+                  <input type="number" value={draft.amount} min={0} disabled={locked("amount")}
                     onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-                    placeholder="0" style={INPUT_S} />
+                    placeholder="0" style={{ ...INPUT_S, ...lockStyle("amount") }} />
                 </div>
                 <div>
                   <label style={LABEL_S}>מטבע</label>
-                  <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })} style={INPUT_S}>
+                  <select value={draft.currency} disabled={locked("currency")} onChange={(e) => setDraft({ ...draft, currency: e.target.value })} style={{ ...INPUT_S, ...lockStyle("currency") }}>
                     {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -687,13 +707,13 @@ function TxModal({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
                   <label style={LABEL_S}>תאריך</label>
-                  <input type="date" value={draft.date}
+                  <input type="date" value={draft.date} disabled={locked("date")}
                     onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-                    style={{ ...INPUT_S, colorScheme: "dark" }} />
+                    style={{ ...INPUT_S, colorScheme: "dark", ...lockStyle("date") }} />
                 </div>
                 <div>
                   <label style={LABEL_S}>סטטוס</label>
-                  <select value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value as PaymentStatus })} style={INPUT_S}>
+                  <select value={draft.paymentStatus} disabled={locked("paymentStatus")} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value as PaymentStatus })} style={{ ...INPUT_S, ...lockStyle("paymentStatus") }}>
                     {statusList.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
@@ -707,20 +727,20 @@ function TxModal({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={LABEL_S}>אמצעי תשלום</label>
-                <select value={draft.paymentMethod} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })} style={INPUT_S}>
+                <select value={draft.paymentMethod} disabled={locked("paymentMethod")} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })} style={{ ...INPUT_S, ...lockStyle("paymentMethod") }}>
                   <option value="">בחר...</option>
                   {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div>
                 <label style={LABEL_S}>אסמכתא / קבלה / חשבונית</label>
-                <input type="text" value={draft.receiptRef} onChange={(e) => setDraft({ ...draft, receiptRef: e.target.value })}
-                  placeholder="מספר קבלה..." style={INPUT_S} />
+                <input type="text" value={draft.receiptRef} disabled={locked("receiptRef")} onChange={(e) => setDraft({ ...draft, receiptRef: e.target.value })}
+                  placeholder="מספר קבלה..." style={{ ...INPUT_S, ...lockStyle("receiptRef") }} />
               </div>
               <div>
                 <label style={LABEL_S}>הערות</label>
-                <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                  placeholder="הערות נוספות..." style={INPUT_S}
+                <input type="text" value={draft.notes} disabled={locked("notes")} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                  placeholder="הערות נוספות..." style={{ ...INPUT_S, ...lockStyle("notes") }}
                   onKeyDown={(e) => { if (e.key === "Enter" && canSave) onSave(); }} />
               </div>
             </div>
@@ -747,7 +767,10 @@ function TxModal({
           </div>
 
           {/* Delete — edit mode only, with an in-modal confirm step */}
-          {isEdit && onDelete && (
+          {isEdit && onDelete && owner && (
+            <div style={{ fontSize: 11.5, color: MUTED, textAlign: "center", marginTop: 2 }}>מחיקה: {owner.whereHe}</div>
+          )}
+          {isEdit && onDelete && !owner && (
             confirmDelete ? (
               <div style={{
                 marginTop: 2, padding: "13px 14px", borderRadius: 12,
@@ -821,6 +844,7 @@ export default function FinancePage() {
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
   const [draft,     setDraft]     = useState<TxDraft>(emptyDraft());
   const [saving,    setSaving]    = useState(false);
   // Inline quick-status popover: which row is open + where to anchor it.
@@ -963,12 +987,14 @@ export default function FinancePage() {
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
   function openAdd() {
+    setTxError(null);
     setEditingId(null);
     setDraft(emptyDraft());
     setModalOpen(true);
   }
 
   function openEdit(tx: Transaction) {
+    setTxError(null);
     setEditingId(tx.id);
     setDraft({
       scope: tx.scope ?? "project",
@@ -996,9 +1022,8 @@ export default function FinancePage() {
   async function handleDeleteFromModal() {
     if (!editingId) return;
     const id = editingId;
-    setModalOpen(false);
-    setEditingId(null);
-    await handleDelete(id);
+    // the modal closes only after the server confirms; a refusal (409 owned row) stays visible in it
+    if (await handleDelete(id)) { setModalOpen(false); setEditingId(null); }
   }
 
   async function handleSave() {
@@ -1023,8 +1048,10 @@ export default function FinancePage() {
           method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...body, project_id: body.projectId }),
         });
-        const data = await res.json();
-        if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? data.transaction : t));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { setTxError(data.error || "השמירה נכשלה"); return; }
+        // keep the server-computed owner (the PATCH response is the bare row)
+        if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? { ...data.transaction, owner: t.owner } : t));
       } else {
         const res  = await fetch("/api/transactions", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -1039,9 +1066,14 @@ export default function FinancePage() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: string): Promise<boolean> {
+    setTxError(null);
+    try {
+      const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setTxError(d.error || "המחיקה נכשלה"); return false; }
+    } catch { setTxError("שגיאת חיבור — התנועה לא נמחקה"); return false; }
     setTransactions((prev) => prev.filter((t) => t.id !== id));
-    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+    return true;
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -1535,9 +1567,11 @@ export default function FinancePage() {
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
           onSave={handleSave}
-          onCancel={() => { setModalOpen(false); setEditingId(null); }}
+          onCancel={() => { setModalOpen(false); setEditingId(null); setTxError(null); }}
           projects={projects}
           isEdit={!!editingId}
+          owner={editingId ? (transactions.find((t) => t.id === editingId)?.owner ?? null) : null}
+          error={txError}
           onDelete={editingId ? handleDeleteFromModal : undefined}
           title={editingId ? (draft.type === "income" ? "עריכת הכנסה" : "עריכת הוצאה") : "תנועה חדשה"} />
       )}
@@ -1656,7 +1690,7 @@ export default function FinancePage() {
         <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
           extra={curLines((s) => s.incomeReceived)}
-          sub={`${periodTx.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).length} תשלומים שהתקבלו`}
+          sub={`${periodTx.filter((t) => t.type === "income" && isReceivedStatus(t.payment_status)).length} תשלומים שהתקבלו`}
         />
         <SummaryCard icon="📉" label="הוצאות בפועל"
           value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}

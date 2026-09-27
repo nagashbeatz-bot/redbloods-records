@@ -84,6 +84,12 @@ const CASES: FamilyCase<W>[] = [
   const dp = mk(); dp.w.promos[U(40)].linked_transaction_id = "tx-1"; dp.w.tx["tx-1"] = 300;
   const pd = await q("DELETE_PROMOTION", { promotion: PR40 }, dp);
   ok("deleting a promotion warns that its expense stays", JSON.stringify(pd).includes("נשארת"));
+  ok("A5: deleting a promotion discloses the provenance marker written into the kept expense", JSON.stringify(pd).includes("קידום נמחק"));
+  { const up = mk(); up.w.promos[U(40)].linked_transaction_id = "tx-9"; up.w.tx["tx-9"] = 300; const base = up.writers.readPromotion; up.writers.readPromotion = async (id: string) => { const r = await base(id); return r ? { ...r, actual_amount: 0, linked_amount: 300, actual_currency: "$", linked_status: "בוטל" } : null; };
+    const r = await q("SET_PROMOTION_ACTUAL_SPEND", { promotion: PR40, amount: 350 }, up);
+    ok("A5: an unpaid / cancelled linked expense is disclosed as NOT spend, and the amount keeps its own currency ($)", r.status === "PREVIEW" && JSON.stringify(r).includes("לא נספרת") && JSON.stringify(r).includes("$350"), r); }
+  const ps = read("lib/social-promotions-store.ts"), ss = read("lib/social-store.ts");
+  ok("A5: promotion / campaign delete marks the transaction BEFORE the row delete, and a 0-row sync update is an error", ps.indexOf("await markPromotionTransactionDetached(row") < ps.indexOf('from(TABLE).delete().eq("id", id)') && ss.indexOf("detachCampaignPromotions(id)") < ss.indexOf('from("social_campaigns").delete()') && /upd\.length !== 1/.test(ps));
   ok("no link / URL argument exists in the family", SOCIAL_PRIMITIVES.every((p) => p.meta.args.every((a) => !/url|link|asset|dropbox/i.test(a.name))));
   ok("the spend is FINANCIAL (C2); deletes are C3", ACTION_REGISTRY.get("SET_PROMOTION_ACTUAL_SPEND")!.effects.includes("FINANCE" as never) && ["DELETE_SOCIAL_CAMPAIGN", "DELETE_SOCIAL_CONTENT", "DELETE_SOCIAL_FILE", "DELETE_PROMOTION"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
   ok("PROJECT.SOCIAL moved from NEEDS_HARDENING to HARDENED", !("PROJECT.SOCIAL" in NEEDS_HARDENING) && "PROJECT.SOCIAL" in HARDENED);

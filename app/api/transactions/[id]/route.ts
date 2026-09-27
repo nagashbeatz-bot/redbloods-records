@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteTransactionRecord, updateTransactionRecord } from "@/lib/writes/finance";
+import { assertTransactionEditable, deleteTransactionRecord, TransactionOwnedError, updateTransactionRecord } from "@/lib/writes/finance";
 
 // PATCH /api/transactions/[id]  → update a transaction (shared writer lib/writes/finance: field-level; a paid status
 // marks a linked clip row שולם)
@@ -10,9 +10,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
   try {
+    // ownership guard (lib/finance/ownership): an owned row's money / identity never changes here (409, Hebrew)
+    await assertTransactionEditable(id, body ?? {});
     const data = await updateTransactionRecord(id, body);
     return NextResponse.json({ transaction: data });
   } catch (err) {
+    if (err instanceof TransactionOwnedError) return NextResponse.json({ error: err.message, code: err.verdict.code, owner: err.verdict.owner, forbidden: err.verdict.forbidden }, { status: 409 });
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
   }
 }
@@ -24,9 +27,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
+    await assertTransactionEditable(id, "delete"); // an owned row is never deleted from Finance (409)
     await deleteTransactionRecord(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (err instanceof TransactionOwnedError) return NextResponse.json({ error: err.message, code: err.verdict.code, owner: err.verdict.owner }, { status: 409 });
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
   }
 }

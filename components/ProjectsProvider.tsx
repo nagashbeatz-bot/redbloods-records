@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { Project, UpdatableField, PendingCreateAction } from "@/lib/types";
-import { isOverdue, isDueSoon } from "@/lib/utils";
+import { isDueSoon } from "@/lib/utils";
+import { isProjectOverdue } from "@/lib/project-deadline";
 
 interface ProjectsContextValue {
   projects: Project[];
@@ -54,10 +55,9 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
         return prev.map((p) => {
           if (p.id !== id) return p;
           const next = { ...p, [field]: value };
-          if (field === "deadline") {
-            next.isOverdue = isOverdue(value);
-            next.isDueSoon = isDueSoon(value);
-          }
+          if (field === "deadline") next.isDueSoon = isDueSoon(value);
+          // The ONE overdue rule (lib/project-deadline.ts) — re-derived on a deadline OR status change.
+          next.isOverdue = isProjectOverdue({ deadline: next.deadline, status: next.status, isHidden: next.isHidden });
           return next as Project;
         });
       });
@@ -85,16 +85,22 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
     []
   );
 
+  // No optimistic removal: the project leaves the list only after the server confirms the delete. A refusal (409 —
+  // e.g. final files still on its mix works) or any failure is THROWN with the server's Hebrew message for the caller
+  // to show, and the list is re-read (a partial cleanup may have changed counts).
   const deleteProject = useCallback(async (id: string): Promise<void> => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    let res: Response;
     try {
-      const res = await fetch(`/api/projects/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) await fetchAll();
+      res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
     } catch {
-      await fetchAll();
+      throw new Error("שגיאת חיבור — הפרויקט לא נמחק");
     }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      await fetchAll();
+      throw new Error(data.error || "המחיקה נכשלה — הפרויקט לא נמחק");
+    }
+    setProjects((prev) => prev.filter((p) => p.id !== id));
   }, [fetchAll]);
 
   const createProject = useCallback(async (fields: PendingCreateAction): Promise<string> => {

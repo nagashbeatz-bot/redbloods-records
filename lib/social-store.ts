@@ -69,6 +69,10 @@ export async function updateCampaign(id: string, patch: Partial<Omit<SocialCampa
 }
 
 export async function deleteCampaign(id: string): Promise<void> {
+  // Its promotions CASCADE with it: first mark every linked Finance transaction (real money stays, with provenance);
+  // any failure aborts the delete (A5 2026-09-27).
+  const { detachCampaignPromotions } = await import("@/lib/social-promotions-store");
+  await detachCampaignPromotions(id);
   const { error } = await supabase.from("social_campaigns").delete().eq("id", id);
   if (error) throw error;
 }

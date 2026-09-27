@@ -5,15 +5,16 @@
  *     (status, platform, content type, dates, platforms list, non-negative promotion budget). They used to write the
  *     whole request body into the row (ids, project / campaign links, calendar / task ids could be overwritten).
  *   • deleting a content item reports how many of its stored files could not be removed (it used to hide failures).
- * Promotions keep the store's money model (the actual spend = ONE linked Finance expense, CAS-guarded; deleting a
- * promotion never deletes its transaction).
+ * Promotions keep the store's money model (the actual spend = ONE linked Finance expense, CAS-guarded; it counts as
+ * spend only when שולם, per currency; deleting a promotion / campaign never deletes its transaction — the transaction
+ * gets a provenance marker first, and a failed marker aborts the delete).
  */
 import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
 import { SOCIAL_CAMPAIGN_STATUSES, SOCIAL_CONTENT_STATUSES, SOCIAL_PLATFORMS } from "@/lib/types";
 import { createCampaign, createContentItem, deleteCampaign, deleteContentItem, getCampaign, getContentItem, updateCampaign, updateContentItem } from "@/lib/social-store";
 import { deleteSocialFile, getFile, listFiles } from "@/lib/social-files-store";
-import { createPromotion, deletePromotion, syncActualExpense, updatePromotionFields } from "@/lib/social-promotions-store";
+import { createPromotion, deletePromotion, promotionSpend, syncActualExpense, updatePromotionFields } from "@/lib/social-promotions-store";
 
 export class SocialInputError extends Error {}
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -122,11 +123,14 @@ export async function readPromotion(id: string): Promise<(Record<string, unknown
   const { data, error } = await supabase.from("social_promotions").select("*").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  let actual = 0;
+  // ACTUAL spend = the linked transaction's amount only when שולם, in its own currency (promotionSpend — one rule)
+  let tx: { amount: unknown; currency: unknown; payment_status: unknown } | null = null;
   if (data.linked_transaction_id) {
-    const { data: tx } = await supabase.from("transactions").select("amount").eq("id", data.linked_transaction_id).maybeSingle();
-    actual = Number(tx?.amount) || 0;
+    const { data: t, error: te } = await supabase.from("transactions").select("amount, currency, payment_status").eq("id", data.linked_transaction_id).maybeSingle();
+    if (te) throw new Error(te.message);
+    tx = t;
   }
-  return { ...(data as Record<string, unknown>), actual_amount: actual };
+  const sp = promotionSpend(tx);
+  return { ...(data as Record<string, unknown>), actual_amount: sp.amount, actual_currency: sp.currency, linked_amount: sp.linkedAmount, linked_status: sp.status };
 }
 export { createPromotion, updatePromotionFields, deletePromotion, syncActualExpense };

@@ -1,4 +1,6 @@
 import type { SocialCampaign, SocialContentItem } from "./types";
+import { socialPhaseOf, isSocialItemOverdue } from "./types";
+import { israelTodayYmd } from "./project-deadline";
 
 export type MissingSeverity = "urgent" | "warning" | "info";
 
@@ -7,11 +9,12 @@ export interface MissingItem {
   severity: MissingSeverity;
 }
 
-export function checkMissing(campaign: SocialCampaign, items: SocialContentItem[]): MissingItem[] {
-  const activeItems = items.filter((i) => i.status !== "cancelled");
+export function checkMissing(campaign: SocialCampaign, items: SocialContentItem[], todayYmd?: string): MissingItem[] {
+  // B5: the shared phases (lib/types.ts) cover BOTH vocabularies — cancelled out, ready_to_post is ready, published is
+  // never overdue. Today = the Israel calendar day.
+  const activeItems = items.filter((i) => socialPhaseOf(i.status) !== "CANCELLED");
   const types = activeItems.map((i) => i.content_type);
-  const statuses = activeItems.map((i) => i.status);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd ?? israelTodayYmd();
 
   const daysToRelease = campaign.release_date
     ? Math.ceil((new Date(campaign.release_date).getTime() - Date.now()) / 86400000)
@@ -34,7 +37,7 @@ export function checkMissing(campaign: SocialCampaign, items: SocialContentItem[
   }
 
   // מוכנות להעלאה
-  const hasReady = statuses.includes("ready") || statuses.includes("scheduled");
+  const hasReady = activeItems.some((i) => socialPhaseOf(i.status) === "READY");
   if (!hasReady && activeItems.length > 0) {
     missing.push({
       label: "אין תוכן מוכן להעלאה",
@@ -52,7 +55,7 @@ export function checkMissing(campaign: SocialCampaign, items: SocialContentItem[
 
   // תוכן מוכן ללא קישור קובץ
   const readyWithoutAsset = activeItems.filter(
-    (i) => (i.status === "ready" || i.status === "scheduled") && !i.asset_link && !i.dropbox_link
+    (i) => socialPhaseOf(i.status) === "READY" && !i.asset_link && !i.dropbox_link
   );
   if (readyWithoutAsset.length > 0) {
     missing.push({
@@ -62,9 +65,7 @@ export function checkMissing(campaign: SocialCampaign, items: SocialContentItem[
   }
 
   // תוכן שעבר תאריך יעד
-  const overdueItems = activeItems.filter(
-    (i) => i.due_date && i.due_date < today && i.status !== "posted"
-  );
+  const overdueItems = activeItems.filter((i) => isSocialItemOverdue(i, today));
   if (overdueItems.length > 0) {
     missing.push({
       label: `${overdueItems.length} תוכן שעבר תאריך יעד`,
