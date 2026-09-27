@@ -16,6 +16,7 @@ import type { MixFamilyWriters } from "./primitives/mix";
 import type { VictorFamilyWriters } from "./primitives/victor";
 import type { LabelFamilyWriters } from "./primitives/label";
 import type { RedFilmsFamilyWriters } from "./primitives/redfilms";
+import type { WorklogFamilyWriters } from "./primitives/worklog";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -25,7 +26,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -349,6 +350,7 @@ async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
     rateSketch: async (slug, id, r) => { await SK.setSketchRating(slug, id, r); },
     archiveSketch: (slug, id) => SK.softDeleteSketch(slug, id),
     orderSketches: async (slug) => (await SK.listSketches(slug)).filter((s) => !s.archived).map((s) => s.id),
+    listSketchChoices: async (slug) => (await SK.listSketches(slug)).filter((s) => !s.archived).map((s) => ({ id: s.id, title: s.title })),
     reorderSketches: async (slug, ids) => { await SK.reorderSketches(slug, ids); },
     async notifySketch(artistId, name, slug, sketchId) { const s = (await SK.listSketches(slug)).find((x) => x.id === sketchId); if (!s) return { kind: "not_found" }; return { kind: (await WL.notifySketchToArtist(artistId, name, s)).kind }; },
     setNextWork: async (slug, id, dl) => { await SK.setNextWorkConfig(slug, id, dl); },
@@ -393,6 +395,23 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
     deleteRfReferenceRecord: async (id) => ((await RF.deleteRfReference(id)).kind === "ok" ? "ok" : "not_found"),
     productionsByIds: (ids) => RF.productionsByIds(ids),
     async deleteCancelledProductionsRecord(ids) { const r = await RF.deleteCancelledProductions(ids); return r.kind === "ok" ? { kind: "ok", deleted: r.deleted } : { kind: "bad", error: r.error }; },
+  };
+}
+
+/** Send log + album tracks (lib/writes/worklog). */
+async function worklogFamilyWriters(): Promise<WorklogFamilyWriters> {
+  const W = await import("@/lib/writes/worklog");
+  return {
+    readSendLogEntry: (id) => W.readSendLogEntry(id),
+    createSendLogEntry: async (b) => String((await W.createSendLogEntry(b)).id),
+    updateSendLogEntry: async (id, b) => { await W.updateSendLogEntry(id, b); },
+    deleteSendLogEntryWithCascade: (id) => W.deleteSendLogEntryWithCascade(id),
+    readAlbumTrack: (id) => W.readAlbumTrack(id),
+    albumTrackOrder: (pid) => W.albumTrackOrder(pid),
+    createAlbumTrack: async (b) => String((await W.createAlbumTrack(b)).id),
+    updateAlbumTrack: async (id, b) => { await W.updateAlbumTrack(id, b); },
+    deleteAlbumTrack: (id) => W.deleteAlbumTrack(id),
+    renumberAlbumTracks: (t) => W.renumberAlbumTracks(t),
   };
 }
 

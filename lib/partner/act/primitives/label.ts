@@ -46,6 +46,8 @@ export interface LabelFamilyWriters {
   rateSketch(slug: string, id: string, rating: number | null): Promise<void>;
   archiveSketch(slug: string, id: string): Promise<void>;
   orderSketches(slug: string): Promise<string[]>;
+  /** The artist's active sketches (id + title) — addressability: a wrong / missing sketch id is answered with these choices. */
+  listSketchChoices(slug: string): Promise<Array<{ id: string; title: string }>>;
   reorderSketches(slug: string, ids: string[]): Promise<void>;
   notifySketch(artistId: string, artistName: string, slug: string, sketchId: string): Promise<{ kind: string }>;
   setNextWork(slug: string, sketchId: string, deadline: string | null): Promise<void>;
@@ -96,8 +98,9 @@ const SKETCH_ID = /^[A-Za-z0-9_-]{4,63}$/;
 async function onSketch(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const art = await onArtist(d, a); if ("ok" in art) return art;
   if (!art.fields.portalSlug) return refuse("NO_PORTAL", "לאמן הזה אין פורטל / ספריית מוזיקה");
-  if (typeof a.sketchId !== "string" || !SKETCH_ID.test(a.sketchId)) return refuse("BAD_ENTITY", "מזהה סקיצה לא תקין");
-  const s = await d.readSketch(String(art.fields.portalSlug), a.sketchId); if (!s) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הסקיצה");
+  const choices = async () => { const c = await d.listSketchChoices(String(art.fields.portalSlug)); return c.length ? ` — הסקיצות הפעילות (sketchId — שם): ${c.slice(0, 40).map((x) => `${x.id} — ${x.title.slice(0, 60)}`).join("; ")}` : " — אין סקיצות פעילות"; };
+  if (typeof a.sketchId !== "string" || !SKETCH_ID.test(a.sketchId)) return refuse("BAD_ENTITY", `מזהה סקיצה לא תקין${await choices()}`);
+  const s = await d.readSketch(String(art.fields.portalSlug), a.sketchId); if (!s) return refuse("ENTITY_NOT_FOUND", `לא מצאתי את הסקיצה${await choices()}`);
   return { key: `sketch:${art.id}.${a.sketchId}`, id: `${art.id}.${a.sketchId}`, label: `${art.label} · ${s.title}`, fields: { ...s, slug: String(art.fields.portalSlug), artistName: String(art.fields.name) } };
 }
 const splitSk = (id: string) => { const i = id.indexOf("."); return { artistId: id.slice(0, i), sketchId: id.slice(i + 1) }; };

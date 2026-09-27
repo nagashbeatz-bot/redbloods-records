@@ -13,6 +13,7 @@
  * Every operation re-checks: the caller is the Owner, the plan belongs to this Owner + connector client, the action is
  * registered and EXECUTABLE, and the executor comes ONLY from the registered action id.
  */
+import { COVERAGE_MAP } from "./coverage-map";
 import { randomBytes } from "node:crypto";
 import type { ActionContract, Plan, PlanOutcome, PlanStep } from "./types";
 import { buildPreview, confirmationFor, planHash, validatePlan } from "./plan";
@@ -89,6 +90,8 @@ export async function planAction(input: { intentHe: unknown; actionId: unknown; 
   const contract = executableContract(actionId, d);
   if (!contract) {
     const known = d.registry.get(actionId);
+    const via = known ? COVERAGE_MAP[known.id] : undefined;
+    if (known && via && known.availabilityDetail === "EXECUTABLE") return refused("USE_PRIMITIVES", `זו פעולה של המערכת שמתבצעת דרך הפעולות המוקלדות: ${via.by.join(", ")} — לתכנן אחת מהן`, { availability: known.availability, useActions: via.by });
     return refused("NOT_AVAILABLE", "סאני עוד לא יכולה לבצע את הפעולה הזאת", known ? { availability: known.availability, reasonEn: known.reason } : {});
   }
   const spec = PRIMITIVES_BY_ID.get(actionId)!;

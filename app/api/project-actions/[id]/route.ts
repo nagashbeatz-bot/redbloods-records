@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { deleteSendLogEntry, updateSendLogEntry } from "@/lib/writes/worklog";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -7,30 +7,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const body = await req.json();
-
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.actionType      !== undefined) patch.action_type         = body.actionType;
-    if (body.contentType     !== undefined) patch.content_type        = body.contentType     || null;
-    if (body.versionLabel    !== undefined) patch.version_label       = body.versionLabel    || null;
-    if (body.recipientRole   !== undefined) patch.recipient_role      = body.recipientRole   || null;
-    if (body.recipientName   !== undefined) patch.recipient_name      = body.recipientName   || null;
-    if (body.recipientPhone  !== undefined) patch.recipient_phone     = body.recipientPhone  || null;
-    if (body.dropboxUrl      !== undefined) patch.dropbox_url         = body.dropboxUrl      || null;
-    if (body.status          !== undefined) patch.status              = body.status;
-    if (body.actionDate      !== undefined) patch.action_date         = body.actionDate;
-    if (body.followupDate    !== undefined) patch.followup_date       = body.followupDate    || null;
-    if (body.notes           !== undefined) patch.notes               = body.notes           || null;
-    if (body.linkedTaskId    !== undefined) patch.linked_task_id      = body.linkedTaskId    || null;
-    if (body.linkedWorkId    !== undefined) patch.linked_work_id      = body.linkedWorkId    || null;
-
-    const { data, error } = await supabase
-      .from("project_actions")
-      .update(patch)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
+    const data = await updateSendLogEntry(id, body); // shared writer (lib/writes/worklog)
     return NextResponse.json({ action: data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
@@ -41,11 +18,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    const { error } = await supabase
-      .from("project_actions")
-      .delete()
-      .eq("id", id);
-    if (error) throw new Error(error.message);
+    await deleteSendLogEntry(id); // shared writer; Sunny's DELETE_SEND_LOG_ENTRY runs the drawer cascade server-side
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

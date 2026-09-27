@@ -61,6 +61,7 @@ function mk() {
     async patchSketch(slug: string, id: string, p: Partial<Sk>) { calls.push("patchSketch"); Object.assign(sk(slug, id)!, p); },
     async rateSketch(slug: string, id: string, r: number | null) { calls.push("rateSketch"); sk(slug, id)!.rating = r; },
     async archiveSketch(slug: string, id: string) { calls.push("archiveSketch"); sk(slug, id)!.archived = true; },
+    async listSketchChoices(slug: string) { return w.sketches[slug].filter((s) => !s.archived).map((s) => ({ id: s.id, title: s.title })); },
     async orderSketches(slug: string) { return w.sketches[slug].filter((s) => !s.archived).map((s) => s.id); },
     async reorderSketches(slug: string, ids: string[]) { calls.push("reorderSketches"); w.sketches[slug] = ids.map((id) => sk(slug, id)!); },
     async notifySketch(_a: string, _n: string, _s: string, id: string) { calls.push("notifySketch"); w.pushes.push(`sketch:${id}`); return { kind: "ok" }; },
@@ -115,6 +116,8 @@ const CASES: FamilyCase<W>[] = [
   const cm = mk(); cm.w.media[U(20)].status = "בוטל";
   ok("a cancelled media record is not edited", (await q("UPDATE_MEDIA_INCOME", { mediaRecord: M20, notes: "x" }, cm)).status === "CANCELLED");
   const nn = mk(); nn.w.artists[U(1)].name = "DJ CLEANTONE";
+  const miss = await q("RATE_SKETCH", { labelArtist: A1, sketchId: "sk_zzzz9", rating: 3 });
+  ok("a wrong sketch id is answered with the artist's active sketches (addressability)", miss.status === "ENTITY_NOT_FOUND" && String(miss.messageHe).includes("sk_aaaa1 — קרוב") && String(miss.messageHe).includes("sk_bbbb2 — רחוק"), miss.messageHe);
   ok("the sketch push exists only for Avi / Shalev", (await q("NOTIFY_SKETCH", { labelArtist: A1, sketchId: "sk_aaaa1" }, nn)).status === "NOT_ENABLED");
   const rr = mk(); const rs = await fullFlow(mkDeps(rr.writers).d, "ADD_LEDGER_ENTRY", { labelArtist: A1, entryType: "תשלומים", amount: 700, entryDate: "2026-09-20" }, "כן בוס");
   ok("a ledger entry needs its type + exact amount in the approval", rs.a?.status === "CONFIRMATION_VALUES_MISSING" && rr.calls.length === 0);

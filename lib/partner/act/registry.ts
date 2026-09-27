@@ -7,6 +7,7 @@
  * handler map). Nothing here executes: an action runs only through the engine, only with the Boss's approval, and only
  * when its availability is SUNNY_EXECUTABLE / EXECUTABLE with a registered executor (Wave 0 registers none).
  */
+import { COVERAGE_MAP } from "./coverage-map";
 import { PROJECT_ACTIONS } from "@/lib/partner/system/project-actions";
 import { CLIENT_ACTIONS } from "@/lib/partner/system/clients";
 import { LABEL_ACTIONS } from "@/lib/partner/system/label-artists";
@@ -53,7 +54,6 @@ export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
   "RF.REFERENCES": "reference links are written as a whole body",
   "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
   "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
-  "PROJECT.SEND_LOG_DELETE": "the cascade into engineer / Victor work runs in the browser, not the server",
 };
 /** Unsafe behaviour already HARDENED in the shared writers (2026-09-27, Universal Actions) — kept as the audit trail of what changed. */
 export const HARDENED: Readonly<Record<string, string>> = {
@@ -76,6 +76,7 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "PROJECT.PROMOTE_CLIP_ITEM": "the clip row is claimed (deleted only while unpromoted) before the expense is created; a failed expense restores the row — no double expense (lib/writes/redfilms promoteClipItem; the route uses it)",
   "RF.PROMOTE_CLIP_ROW": "same claim-first promotion (lib/writes/redfilms promoteClipItem)",
   "RF.CANCEL_PRODUCTION": "the production is saved first and only then are its future tasks / Google Tasks cancelled (lib/writes/redfilms updateProduction; the route uses it)",
+  "PROJECT.SEND_LOG_DELETE": "the drawer's cascade runs on the server (lib/writes/worklog deleteSendLogEntryWithCascade): engineer send → deleteEngineerWorkClean; Victor send → removeVictorWork (task first); then the entry — no half-delete when the browser closes",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {
@@ -358,6 +359,15 @@ function build(): ReadonlyMap<string, ActionContract> {
   for (const inv of INVENTORIES) for (const e of inv.entries) add(fromInventory(inv.domain, inv.source, e));
   SUPPLEMENTARY.map(fromSupp).forEach(add);
   WAVE1_CANDIDATES.filter((w) => !prim.has(w.id)).map(fromW1).forEach(add);
+  // One fact, one source: a census row whose whole outcome the live primitives carry out IS executable (COVERAGE_MAP);
+  // a partly covered row says which primitives are live and what remains.
+  for (const [id, c] of m) {
+    const cov = COVERAGE_MAP[id];
+    if (prim.has(id) || !cov || !cov.by.every((x) => prim.has(x))) continue;
+    m.set(id, cov.full
+      ? { ...c, availability: "SUNNY_EXECUTABLE", availabilityDetail: "EXECUTABLE", reason: `executable through the typed primitives ${cov.by.join(" + ")} (each only after the Boss approves its exact preview)` }
+      : { ...c, reason: `partly live through ${cov.by.join(" + ")}; remaining: ${cov.remaining ?? c.reason}` });
+  }
   return m;
 }
 export const ACTION_REGISTRY: ReadonlyMap<string, ActionContract> = build();

@@ -31,8 +31,9 @@ import type { MixFamilyWriters } from "./mix";
 import type { VictorFamilyWriters } from "./victor";
 import type { LabelFamilyWriters } from "./label";
 import type { RedFilmsFamilyWriters } from "./redfilms";
+import type { WorklogFamilyWriters } from "./worklog";
 /** Every shared writer / narrow reader a primitive may use (composed per family). */
-export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters;
+export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters;
 export interface CoreWriters {
   readProject(id: string): Promise<{ name: string; notes: string; startDate: string | null; plannedHours: number | null; plannedDays: number | null; projectType: string; parentProject: string; deadline: string | null } | null>;
   writeProject(id: string, patch: Partial<{ notes: string; start_date: string | null; planned_hours: number | null; planned_days: number | null; project_type: string; parent_project: string; deadline: string | null }>): Promise<void>;

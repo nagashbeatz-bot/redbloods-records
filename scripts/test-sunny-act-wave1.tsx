@@ -16,6 +16,7 @@ import { planAction, previewAction, approveAction, executeAction, planStatus, ty
 import { handleInternalAct, approvalKeyFrom, ACT_OPS } from "../lib/partner/act/internal-handler";
 import { WAVE1_PRIMITIVES, PRIMITIVES_BY_ID, type CoreWriters, type WriterDeps } from "../lib/partner/act/primitives";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION, WAVE1_CANDIDATES } from "../lib/partner/act/registry";
+import { COVERAGE_MAP } from "../lib/partner/act/coverage-map";
 import { executePlan, type PrimitiveExecutor } from "../lib/partner/act/engine";
 import { issueApprovalToken } from "../lib/partner/act/approval";
 import { planHash } from "../lib/partner/act/plan";
@@ -316,8 +317,10 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
     ok("E20. a registered primitive executes through the shared writer only", e?.status === "APPLIED_AS_EXPECTED" && m.calls.join() === "updateProject:deadline" && m.world.projects[U(1)].deadline === "2026-10-10");
     ok("E22. the result carries a fresh read of the live state + 'בוצע בוס'", JSON.stringify(e?.freshState).includes("2026-10-10") && String(e?.messageHe).includes("בוצע בוס"));
     const inv = await planAction({ intentHe: "x", actionId: "PROJECT.EDIT_NOTES", args: {} }, OWNER, m.d);
-    ok("E21. a non-executable / unregistered action refuses (no plan, no executor)", inv.status === "INVALID_INPUT" || inv.status === "NOT_AVAILABLE");
-    ok("E21b. a NEEDS_HARDENING Wave 1 candidate is refused as not available", (await planAction({ intentHe: "x", actionId: "UPDATE_SEND_LOG_ENTRY", args: {} }, OWNER, m.d)).status === "NOT_AVAILABLE");
+    ok("E21. a census row (not a primitive) refuses — no plan, no executor; a covered one names the primitives to plan instead", inv.status === "USE_PRIMITIVES" && Array.isArray((inv as unknown as { useActions?: unknown }).useActions) && ((inv as unknown as { useActions: string[] }).useActions).includes("UPDATE_PROJECT_NOTES"), inv);
+    ok("E21a. an unregistered id is refused as not available", (await planAction({ intentHe: "x", actionId: "NO_SUCH_ACTION", args: {} }, OWNER, m.d)).status !== "PREVIEW");
+    const unhardened = WAVE1_CANDIDATES.filter((w) => w.status === "NEEDS_HARDENING" && !PRIMITIVES_BY_ID.has(w.id) && !COVERAGE_MAP[w.id]?.full);
+    ok("E21b. every NEEDS_HARDENING Wave 1 candidate without a primitive is refused as not available", (await Promise.all(unhardened.map((w) => planAction({ intentHe: "x", actionId: w.id, args: {} }, OWNER, m.d)))).every((r) => r.status === "NOT_AVAILABLE"));
     ok("E21c. finance / security actions cannot be planned through Claude", (await planAction({ intentHe: "x", actionId: "RECORD_PAID_EXPENSE", args: {} }, OWNER, m.d)).status !== "PREVIEW" && (await planAction({ intentHe: "x", actionId: "SUNNY.CONNECTOR_OAUTH", args: {} }, OWNER, m.d)).status !== "PREVIEW");
     const s = mkDeps({ silentFail: true });
     const { e: se } = await fullFlow(s.d, "UPDATE_PROJECT_DEADLINE", { project: `project:${U(1)}`, deadline: "2026-10-10" });
@@ -426,7 +429,7 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
   ok("H4. no generic writer: every executor comes from the registered action id (PRIMITIVES_BY_ID)", /executorFor\(PRIMITIVES_BY_ID\.get\(s\.actionId\)!/.test(strip(read("lib/partner/act/service.ts"))) && !/new Function|eval\(/.test(core));
   ok("H5. the Victor primitives never send status (no completion push) or a deadline (no task / Google Task sync)", WAVE1_PRIMITIVES.filter((p) => p.actionId.startsWith("UPDATE_VICTOR")).every((p) => !/status|internalDeadline/.test(p.apply.toString())));
   ok("H6. every READY primitive is an internal, reversible, no-effect contract", WAVE1_PRIMITIVES.every((p) => { const c = ACTION_REGISTRY.get(p.actionId)!; return c.effects.length === 0 && c.phase === "INTERNAL" && c.reversible === "YES" && c.availabilityDetail === "EXECUTABLE"; }));
-  ok("H7. the NEEDS_HARDENING / BLOCKED candidates stay unavailable (client / meeting / social / proposal / send log / album / RF / clip / review / premix / alerts / notifications)", WAVE1_CANDIDATES.filter((w) => w.status !== "READY").every((w) => PRIMITIVES_BY_ID.has(w.id) ? ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" /* hardened + built by a later family (its own family test) */ : ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE") && WAVE1_CANDIDATES.filter((w) => w.status !== "READY").length === 12);
+  ok("H7. the NEEDS_HARDENING / BLOCKED candidates stay unavailable (client / meeting / social / proposal / send log / album / RF / clip / review / premix / alerts / notifications)", WAVE1_CANDIDATES.filter((w) => w.status !== "READY").every((w) => PRIMITIVES_BY_ID.has(w.id) || COVERAGE_MAP[w.id]?.full ? ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" /* hardened + built (or fully carried out) by a later family (its own family test) */ : ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE") && WAVE1_CANDIDATES.filter((w) => w.status !== "READY").length === 12);
   ok("H8. D5 / D6 / D7 unchanged (still blocked by the Boss's decision)", ["SHOW.RECORD_SHOW_ADVANCE", "SHOW.REHEARSAL", "RF.MARK_PRODUCTION_APPROVED"].every((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
   ok("H9. Push-on-refresh still absent", !/api\/push\/check/.test(strip(read("components/AppShell.tsx")) + strip(read("components/PushManager.tsx"))));
   ok("H10. the connector never holds a business writer (relay only)", !/projects-store|release-store|vendor-store|mix-.*-store|label-artists-store/.test(strip(read("lib/integrations/partner-mcp/server.ts")) + strip(read("lib/integrations/partner-mcp/mcp.ts"))));

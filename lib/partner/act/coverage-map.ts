@@ -167,6 +167,12 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "RF.REFERENCES": { by: ["SET_RF_REFERENCE_TAG", "DELETE_RF_REFERENCE"], full: false, remaining: "uploading an image needs a new file's bytes (upload) — the file channel; video reference link / URL fields — plans never persist URL values by design (Boss decision)" },
   "RF.BULK_DELETE_PRODUCTIONS": { by: ["DELETE_CANCELLED_PRODUCTIONS"], full: true },
   "PROJECT.RED_FILMS_DELETE": { by: ["DELETE_CANCELLED_PRODUCTIONS"], full: true },
+  // ── Send log + albums ──
+  "PROJECT.SEND_LOG_ADD": { by: ["ADD_SEND_LOG_ENTRY", "UPDATE_SEND_LOG_ENTRY"], full: false, remaining: "the entry's link (URL) field — plans never persist URL values by design (Boss decision)" },
+  "UPDATE_SEND_LOG_ENTRY": { by: ["UPDATE_SEND_LOG_ENTRY"], full: true },
+  "PROJECT.SEND_LOG_DELETE": { by: ["DELETE_SEND_LOG_ENTRY"], full: true },
+  "PROJECT.ALBUM_TRACKS": { by: ["ADD_ALBUM_TRACK", "UPDATE_ALBUM_TRACK", "DELETE_ALBUM_TRACK", "MOVE_ALBUM_TRACK"], full: true },
+  "UPDATE_ALBUM_TRACK": { by: ["UPDATE_ALBUM_TRACK"], full: true },
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every
@@ -333,6 +339,13 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   OPEN_CLIP_DEAL: "CLIPS",
   ADD_CLIP_PAYMENT: "CLIPS",
   SEND_CLIP_TO_RED_FILMS: "CLIPS",
+  ADD_SEND_LOG_ENTRY: "PROJECT_ACTIONS",
+  UPDATE_SEND_LOG_ENTRY: "PROJECT_ACTIONS",
+  DELETE_SEND_LOG_ENTRY: "PROJECT_ACTIONS",
+  ADD_ALBUM_TRACK: "ALBUMS",
+  UPDATE_ALBUM_TRACK: "ALBUMS",
+  DELETE_ALBUM_TRACK: "ALBUMS",
+  MOVE_ALBUM_TRACK: "ALBUMS",
 };
 
 /** The business-action taxonomy (lib/partner/system BUSINESS_ACTIONS) → the primitives that execute it through

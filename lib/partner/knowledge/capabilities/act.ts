@@ -13,9 +13,10 @@ import { ALL_PRIMITIVES } from "../../act/primitives";
 import { bossCanSunnyCannot } from "../../act/coverage";
 import { COVERAGE_MATRIX, WAVE_PLAN, WORKFLOW_COVERAGE, coverageSummary } from "../../act/matrix";
 import { LIFECYCLES } from "../../act/transitions";
+import { buildActionTargets, NON_KEY_TARGETS, RESOLVE_KINDS, TARGET_KINDS } from "../../act/targets";
 import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, PROCESS_IMPROVEMENT_SIGNALS, nextStepsFor } from "../../act/next-step";
 import type { ActionContract } from "../../act/types";
-import { byCount, item, partner, result, sfact } from "./common";
+import { byCount, item, partner, record, result, sfact, unavailable } from "./common";
 
 const OWNER = { externalRead: true, ownerOnly: true, sensitivity: "STANDARD" } as const;
 const served = (c: ActionContract) => {
@@ -108,4 +109,22 @@ export const nextStepsCap: KnowledgeCapability = {
   },
 };
 
-export const ACT_CAPABILITIES = [actionRegistryCap, nextStepsCap] as const;
+const CHILD_KINDS = [...new Set(Object.values(TARGET_KINDS).flat())].sort();
+export const actionTargetsCap: KnowledgeCapability = {
+  id: "action_targets", domain: "PARTNER", titleHe: "מטרות לפעולה — המפתחות המדויקים לפעולות של סאני",
+  descriptionForModel: `Addressability for partner_plan_action: the exact action keys (<kind>:<id>) under a parent, with label + state. Use it before planning an action whose entityKey argument is a child record. Parents: ${Object.entries(TARGET_KINDS).map(([p, ks]) => `${p === "company" ? "company" : p} → ${ks.join(",")}`).join("; ")}. ${RESOLVE_KINDS.join(" / ")} come from partner_resolve; non-key targets are explained in the summary (sketches: the plan refusal lists them). Read-only; never a path, link or credential.`,
+  examplesHe: ["איזה סשנים יש בפרויקט?", "מה המפתח של השיר השלישי באלבום?", "איזה הערות פתוחות יש בעבודת המיקס?"],
+  modes: { list: { descriptionForModel: "Targets under params.parent (optional params.kind)" } }, defaultMode: "list",
+  params: {
+    parent: { kind: "text", maxLength: 60, descriptionForModel: "a parent entity key (project:<id>, mix-work:<id>, rf-production:<id>, label-artist:<id>, client:<id>) or 'company'" },
+    kind: { kind: "enum", values: CHILD_KINDS, descriptionForModel: "only this child kind" },
+  },
+  paging: { defaultLimit: 50, maxLimit: 50 }, recordTextLimit: 300, access: { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" }, needs: ["PROJECT_DETAIL", "LABEL_DETAIL", "OPERATIONS"],
+  read(src, q) {
+    const r = buildActionTargets(src, q.params.parent ?? "", q.params.kind);
+    if (!r.ok) return r.reason === "SOURCE_UNAVAILABLE" ? unavailable(r.detail) : result([], { completeness: "UNKNOWN", missing: [{ fact: "parent", whyNeeded: r.detail }] });
+    return result(r.targets.map((t) => item({ id: t.key, entity: t.parent === "company" ? null : t.parent, label: record(t.label), epistemic: "FACT", source: t.kind === "ledger-entry" || t.kind === "media-income" || t.kind === "beat" ? "LABEL_DETAIL" : "PROJECT_DETAIL", fields: { key: t.key, kind: t.kind, state: t.state } })), { summary: [sfact("COUNTS", "מספר מטרות לפי סוג", byCount(r.targets.map((t) => t.kind)), "DERIVED", "PROJECT_DETAIL"), sfact("NON_KEY_TARGETS", "מטרות שאינן מפתח", NON_KEY_TARGETS, "FACT", "SYSTEM_CONTRACTS")] });
+  },
+};
+
+export const ACT_CAPABILITIES = [actionRegistryCap, nextStepsCap, actionTargetsCap] as const;

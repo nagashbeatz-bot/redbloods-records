@@ -24,7 +24,8 @@ import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, nextStepsFor
 import { EFFECT_KEYS, type ActionContract, type Plan, type PlanStep } from "../lib/partner/act/types";
 import { ALL_PRIMITIVES, PRIMITIVES_BY_ID } from "../lib/partner/act/primitives";
 import { BUSINESS_ACTIONS, BUSINESS_ACTIONS as SYS_BUSINESS_ACTIONS, DOMAIN_CONTRACTS } from "../lib/partner/system/registry";
-import { BUSINESS_ACTION_PRIMITIVES, PRIMITIVE_SYSTEM_DOMAIN } from "../lib/partner/act/coverage-map";
+import { BUSINESS_ACTION_PRIMITIVES, COVERAGE_MAP, PRIMITIVE_SYSTEM_DOMAIN } from "../lib/partner/act/coverage-map";
+const COVERED = (id: string) => !!COVERAGE_MAP[id]?.full && COVERAGE_MAP[id].by.every((x) => ALL_PRIMITIVES.some((p) => p.actionId === x));
 import { WORKFLOW_MODELS, OWNER_OPERATING_RULES } from "../lib/partner/system/owner-model";
 import { BACKGROUND_JOBS } from "../lib/partner/system/platform-domains";
 import * as PC from "../lib/partner/system/project-columns";
@@ -54,10 +55,10 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("registry is non-trivial (≥ 230 contracts)", ACTION_CONTRACTS.length >= 230, ACTION_CONTRACTS.length);
   ok("every contract has a version ≥ 1, a reason, a wave and a confirmation", ACTION_CONTRACTS.every((c) => c.version >= 1 && c.reason.length > 3 && !!c.wave && !!c.confirmation));
   ok("security-sensitive ⇔ NOT_DELEGATED and never executable", ACTION_CONTRACTS.every((c) => (c.riskClass === "SECURITY_SENSITIVE") === (c.confirmation === "NOT_DELEGATED")) && ACTION_CONTRACTS.filter((c) => c.riskClass === "SECURITY_SENSITIVE").every((c) => c.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
-  ok("EVERY executable contract is exactly a registered typed primitive (no other path executes)", JSON.stringify(ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE").map((c) => c.id).sort()) === JSON.stringify(ALL_PRIMITIVES.map((p) => p.actionId).sort()));
-  ok("dashboard-only: the paid-expense finance primitive + the two inventory twins (no finance through Claude)", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE_VIA_DASHBOARD_APPROVAL").map((c) => c.id).sort().join() === ["PROJECT.SUNNY_DEADLINE", "RECORD_PAID_EXPENSE", "VICTOR.RECORD_SALARY_EXPENSE"].join());
+  ok("EVERY executable contract is a registered typed primitive, or a census row whose whole outcome those primitives carry out (COVERAGE_MAP full) — no other path executes", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE").every((c) => ALL_PRIMITIVES.some((p) => p.actionId === c.id) || COVERED(c.id)) && ALL_PRIMITIVES.every((p) => ACTION_REGISTRY.get(p.actionId)?.availabilityDetail === "EXECUTABLE") && ACTION_CONTRACTS.filter((c) => !ALL_PRIMITIVES.some((p) => p.actionId === c.id) && COVERED(c.id)).every((c) => c.availabilityDetail === "EXECUTABLE" && c.reason.includes(COVERAGE_MAP[c.id].by[0])));
+  ok("the older dashboard-only finance path is fully carried out through Claude now (RECORD_VICTOR_SALARY_MONTH + SET_TRANSACTION_STATUS) — nothing is dashboard-only", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE_VIA_DASHBOARD_APPROVAL").length === 0 && ["PROJECT.SUNNY_DEADLINE", "RECORD_PAID_EXPENSE", "VICTOR.RECORD_SALARY_EXPENSE"].every((id) => ACTION_REGISTRY.get(id)?.availabilityDetail === "EXECUTABLE"));
   ok("every NEEDS_HARDENING key is a real contract in that bucket", Object.keys(NEEDS_HARDENING).every((k) => ACTION_REGISTRY.get(k)?.availability === "SUNNY_NEEDS_HARDENING"));
-  ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" || PRIMITIVES_BY_ID.has(w.id) ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE")));
+  ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" || PRIMITIVES_BY_ID.has(w.id) ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && (ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE") === COVERED(w.id))));
   const DEFERRED = ["SHOW.RECORD_SHOW_ADVANCE", "RF.MARK_PRODUCTION_APPROVED", "SHOW.REHEARSAL"];
   ok("D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION (not implemented)", DEFERRED.every((d) => ACTION_REGISTRY.get(d)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
 
@@ -371,7 +372,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   console.log("O. What can the Boss do that Sunny cannot yet do?");
   const g = bossCanSunnyCannot();
   ok("every Boss action is classified into exactly one of the four buckets", Object.values(g.byBucket).reduce((s, n) => s + n, 0) === g.bossActions - g.sunnyExecutableViaClaude);
-  ok("Sunny executes exactly the registered primitives via Claude (each with approval)", g.sunnyExecutableViaClaude === ALL_PRIMITIVES.length);
+  ok("Sunny executes exactly the registered primitives via Claude (each with approval) — plus the census rows they fully cover", g.sunnyExecutableViaClaude === ACTION_CONTRACTS.filter((c) => ALL_PRIMITIVES.some((p) => p.actionId === c.id) || (COVERED(c.id) && c.availabilityDetail === "EXECUTABLE")).length);
   ok("every gap has a wave", Object.values(g.byWave).flat().length === g.bossActions - g.sunnyExecutableViaClaude);
   console.log(`     Boss actions ${g.bossActions}; buckets ${JSON.stringify(g.byBucket)}; waves ${JSON.stringify(Object.fromEntries(Object.entries(g.byWave).map(([k, v]) => [k, v!.length])))}`);
 

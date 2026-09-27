@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-26";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-27";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -183,9 +183,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Per-project log of what was sent / received / approved and who is waiting for a reply or a new version.",
     canonicalSource: "Project action records (type, content type, recipient role, status, action / follow-up dates).",
     entityTypes: ["project_action"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["project_actions"], learnKinds: ["FOLLOW_UP_EXPECTATION", "PROJECT_BLOCKER"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [R("PROJECT_ACTION_VOCAB_UI_ONLY", "IMPLEMENTATION_BEHAVIOR", "Action types / statuses (pending_feedback, pending_version, got_notes, approved, closed, cancelled, followup) are enforced only in the UI.")],
     sideEffects: [], limitationsHe: ["שם/טלפון הנמען, קישורים והערות לא נקראים."],
     surfaces: S([], ["project-actions"]),
@@ -195,9 +195,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Track lists of album / EP projects with per-track mix and master progress.",
     canonicalSource: "Album track records per project; legacy per-project album finance blob; historical Monday data (never used by finance).",
     entityTypes: ["album_track"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["albums", "album_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("ALBUM_TRACK_STATUS_CONFLICT", "CONFLICT", "The default track status 'טרום הקלטה' is not part of the project status vocabulary."),
       R("ALBUM_BALANCE_IGNORES_EXCEPTION", "CONFLICT", "Album screens compute the balance inline and ignore the project's finance exception.", ["FINANCE"]),
@@ -710,7 +710,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps"],
+    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps", "action_targets"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
@@ -951,4 +951,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-25", date: "2026-09-27", domain: "ARTIST_PORTALS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "פורטלים: זמינות שבועית בשם האמן, סקיצות (פרטים, דירוג, סדר, הסרה, התראה), העבודה הבאה והריליס הבא." },
   { version: "2026.09.27-26", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "Red Films: הפקה (יצירה, פרטים, כסף תכנוני, ביטול — נשמר קודם ואז המשימות), שורות תקציב, תשלומים לדג'ר, ציוד, מחיקת מסמך / רפרנס, מחיקה לצמיתות של הפקות מבוטלות; קישורים וקבצים עוד לא." },
   { version: "2026.09.27-26", date: "2026-09-27", domain: "CLIPS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "קליפ בפרויקט: מחיר, פתיחת עסקה 50/50, תשלום, 'שלח קליפ', שורות תכנון ו'העבר לכספים' (בלי כפילות)." },
+  { version: "2026.09.27-27", date: "2026-09-27", domain: "PROJECT_ACTIONS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "יומן השליחות: הוספה, עדכון (אוצר המילים של המגירה) ומחיקה עם המחיקה המשורשרת של העבודה המקושרת — בשרת; קישור (URL) לא נכתב." },
+  { version: "2026.09.27-27", date: "2026-09-27", domain: "ALBUMS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "שירי אלבום: הוספה (מספר תפוס נדחה), עדכון שם / סטטוסים / הערות, מחיקה והזזה עם מספור מחדש." },
 ];

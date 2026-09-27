@@ -89,21 +89,96 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "49079878c01fab69a57e54e9f3fa096725c9ee73a01be3a056614b38e8350bc0",
+  "sha256": "c2a4025b34f06afbf84679fd59903a957dc86ca3e413b456011c27dd6b2d5664",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "actionDate",
+   "actionType",
+   "action_date",
+   "action_type",
+   "contentType",
+   "content_type",
+   "dropboxUrl",
+   "dropbox_url",
+   "followupDate",
+   "followup_date",
+   "linkedTaskId",
+   "linkedWorkId",
+   "linked_task_id",
+   "linked_work_id",
+   "master_status",
+   "mix_status",
+   "notes",
+   "projectId",
+   "project_id",
+   "recipientClientId",
+   "recipientName",
+   "recipientPhone",
+   "recipientRole",
+   "recipient_name",
+   "recipient_phone",
+   "recipient_role",
+   "status",
+   "title",
+   "track_number",
+   "versionLabel",
+   "version_label"
+  ]
  },
  "app/api/album-tracks/reorder/route.ts": {
   "methods": [
    "POST"
   ],
   "getWrites": false,
-  "sha256": "0c14c560c9dc652da9fdaacc52659ea02597e89ce032bb76b42eb60b49670fed",
-  "effects": [],
+  "sha256": "1dda54d2f591b8d6097dcea95fb28dca6587945107f97a0de4cd402e281b0727",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
+  ],
   "fields": [
-   "tracks"
+   "actionDate",
+   "actionType",
+   "action_date",
+   "action_type",
+   "contentType",
+   "content_type",
+   "dropboxUrl",
+   "dropbox_url",
+   "followupDate",
+   "followup_date",
+   "linkedTaskId",
+   "linkedWorkId",
+   "linked_task_id",
+   "linked_work_id",
+   "master_status",
+   "mix_status",
+   "notes",
+   "projectId",
+   "project_id",
+   "recipientClientId",
+   "recipientName",
+   "recipientPhone",
+   "recipientRole",
+   "recipient_name",
+   "recipient_phone",
+   "recipient_role",
+   "status",
+   "title",
+   "track_number",
+   "tracks",
+   "versionLabel",
+   "version_label"
   ]
  },
  "app/api/album-tracks/route.ts": {
@@ -111,16 +186,47 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7cf0bf8e11e9b75360531d33472f9df3f95562dab37b9bbf61addec87faa13ce",
-  "effects": [],
+  "sha256": "52133168460d025c0b64856ccc4ffd0578b0978477ba88c6286124496725f653",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
+  ],
   "fields": [
+   "actionDate",
+   "actionType",
+   "action_date",
+   "action_type",
+   "contentType",
+   "content_type",
+   "dropboxUrl",
+   "dropbox_url",
+   "followupDate",
+   "followup_date",
+   "linkedTaskId",
+   "linkedWorkId",
+   "linked_task_id",
+   "linked_work_id",
    "master_status",
    "mix_status",
    "notes",
+   "projectId",
    "project_id",
+   "recipientClientId",
+   "recipientName",
+   "recipientPhone",
+   "recipientRole",
+   "recipient_name",
+   "recipient_phone",
+   "recipient_role",
    "status",
    "title",
-   "track_number"
+   "track_number",
+   "versionLabel",
+   "version_label"
   ]
  },
  "app/api/beats/[id]/assignments/route.ts": {
@@ -151,7 +257,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -167,7 +272,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1336,9 +1440,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "95280098161e307710529064d32b233050ef125b162176c157a28fa07d3adc60",
+  "sha256": "d30c233c1876b87abe0e66d6c812b6fe2c0020d1d663330ce7a4bb4121af37b1",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "actionDate",
@@ -1355,7 +1464,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linkedWorkId",
    "linked_task_id",
    "linked_work_id",
+   "master_status",
+   "mix_status",
    "notes",
+   "projectId",
+   "project_id",
+   "recipientClientId",
    "recipientName",
    "recipientPhone",
    "recipientRole",
@@ -1363,6 +1477,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_phone",
    "recipient_role",
    "status",
+   "title",
+   "track_number",
    "versionLabel",
    "version_label"
   ]
@@ -1372,23 +1488,47 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "4de21887a2e39fa49a678b248f454b5eca48eb82cdca48864d5b10f222d6c1cd",
-  "effects": [],
+  "sha256": "7e76b388c5d0a059e76de6edb536a4dcf3f197b7037f782c25721cdb40466895",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
+   "SETTINGS"
+  ],
   "fields": [
    "actionDate",
    "actionType",
+   "action_date",
+   "action_type",
    "contentType",
+   "content_type",
    "dropboxUrl",
+   "dropbox_url",
    "followupDate",
+   "followup_date",
+   "linkedTaskId",
    "linkedWorkId",
+   "linked_task_id",
+   "linked_work_id",
+   "master_status",
+   "mix_status",
    "notes",
    "projectId",
+   "project_id",
    "recipientClientId",
    "recipientName",
    "recipientPhone",
    "recipientRole",
+   "recipient_name",
+   "recipient_phone",
+   "recipient_role",
    "status",
-   "versionLabel"
+   "title",
+   "track_number",
+   "versionLabel",
+   "version_label"
   ]
  },
  "app/api/projects/[id]/clip/payments/route.ts": {
@@ -2895,7 +3035,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -2911,7 +3050,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -2987,10 +3125,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "11636af62f37b897d394e83e060dee5890bf749daa57ec4d092da935998bfe80",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "PUSH",
-   "SETTINGS"
+   "DELETION"
   ],
   "fields": [
    "noteText",
@@ -3004,10 +3139,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "36d337726089daf752cf5a9ea5eb064ca3b7e3141e697d8f4458c8554c836d70",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "PUSH",
-   "SETTINGS"
+   "DELETION"
   ],
   "fields": [
    "noteText"
@@ -3032,10 +3164,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "c06d400b2bca821c3d8270db8f6d9677de1610d88e39ed6f56e35f4074e4c675",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "PUSH",
-   "SETTINGS"
+   "DELETION"
   ],
   "fields": [
    "name"
@@ -3051,7 +3180,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3067,7 +3195,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3231,10 +3358,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "af722a667a0d19282cc7e6bdb28d57622f1760c8512cf6d771061f09d8a53bed",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "PUSH",
-   "SETTINGS"
+   "DELETION"
   ],
   "fields": [
    "status"
@@ -3269,10 +3393,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "09ca68623930e77f9fc9e8359032c74aeb37e81be7a426dc1d5d74f30b7147f2",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "PUSH",
-   "SETTINGS"
+   "DELETION"
   ],
   "fields": [
    "author",
@@ -3289,7 +3410,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "0f2bd5cd51228ec9d023a8c2898ffb9f7ab71c6a9fd456414c17a373b009d1d8",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3307,7 +3427,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3323,7 +3442,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3339,7 +3457,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3355,7 +3472,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
