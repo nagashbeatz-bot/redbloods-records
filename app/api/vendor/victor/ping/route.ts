@@ -3,12 +3,10 @@ import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 import { notifyVictorPresence } from "@/lib/victor-presence-notify";
 
 /**
- * POST /api/vendor/victor/ping — presence beacon fired once when Victor's page
- * mounts. It NEVER decides on the client: the server applies a 30-minute
- * rolling visit cooldown, so refresh / a second tab / in-page navigation can't
- * spam. Only a victor session triggers a push (owner viewing his own page is a
- * no-op). Mirrors /api/supplier/steven/ping exactly. This is NOT
- * /api/push/check. Always returns ok.
+ * POST /api/vendor/victor/ping — Victor's portal presence ping (page open + the visible-page heartbeat). The SERVER
+ * decides (lib/push-presence-pure.ts): last-seen is recorded; only a NEW visit (no last-seen for 30 minutes), claimed
+ * atomically, sends the Owner ONE push — a refresh, a second tab or in-page navigation never does. Only a victor
+ * session is recorded (owner viewing his own page is a no-op). This is NOT /api/push/check. Always returns ok.
  */
 export async function POST() {
   const denied = await requireVictorAccess(); if (denied) return denied;

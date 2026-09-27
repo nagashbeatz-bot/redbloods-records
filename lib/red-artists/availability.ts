@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { sendPushToRoles } from "@/lib/push";
+import { classify, type DeliveryResult } from "@/lib/push-claims-pure";
 import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 /**
@@ -78,20 +79,24 @@ const TAG = "rb-availability";
  * ONLY ever fires for Shalev (the "shalev" push role doesn't exist for any other
  * artist yet) — the caller must skip this entirely for any other artist, per the
  * explicit rule that this task never adds new push behavior.
+ *
+ * The result is REAL (2026-09-27): each audience's push is classified, and `sent` is true only when the push to the
+ * OTHER side was delivered (Shalev saved → the Owner's notice; the Owner saved → Shalev's update). Nothing is stored.
  */
-export async function notifyAvailability(sentBy: Sender): Promise<{ sent: boolean; error?: string }> {
+export async function notifyAvailability(sentBy: Sender): Promise<{ sent: boolean; shalev?: DeliveryResult; owner?: DeliveryResult; error?: string }> {
   if (!pushAllowed()) return { sent: false, error: "push-disabled-non-production" };
-  try {
-    if (sentBy === "shalev") {
-      await sendPushToRoles(["shalev"], { title: "הזמינות נשלחה", body: "הזמינות שלך לשבוע הבא נשלחה ללייבל", url: DEEP_LINK, tag: TAG });
-      await sendPushToRoles(["owner"],  { title: "שליו שלח זמינות", body: "שליו שלח את הזמינות שלו לשבוע הבא", url: DEEP_LINK, tag: TAG });
-    } else {
-      await sendPushToRoles(["owner"],  { title: "הזמינות נשלחה", body: "הזמינות לשבוע הבא נשמרה בהצלחה", url: DEEP_LINK, tag: TAG });
-      await sendPushToRoles(["shalev"], { title: "הזמינות עודכנה", body: "הלייבל עדכן את הזמינות לשבוע הבא", url: DEEP_LINK, tag: TAG });
-    }
-    return { sent: true };
-  } catch (e) {
-    console.error("[availability] push failed:", e);
-    return { sent: false, error: e instanceof Error ? e.message : "push-failed" };
+  const one = async (role: "shalev" | "owner", p: { title: string; body: string }): Promise<DeliveryResult> => {
+    try { return classify(await sendPushToRoles([role], { ...p, url: DEEP_LINK, tag: TAG })); }
+    catch (e) { console.error(`[availability] push to ${role} failed:`, e); return "send_failed"; }
+  };
+  let shalev: DeliveryResult, owner: DeliveryResult;
+  if (sentBy === "shalev") {
+    shalev = await one("shalev", { title: "הזמינות נשלחה", body: "הזמינות שלך לשבוע הבא נשלחה ללייבל" });
+    owner  = await one("owner",  { title: "שליו שלח זמינות", body: "שליו שלח את הזמינות שלו לשבוע הבא" });
+  } else {
+    owner  = await one("owner",  { title: "הזמינות נשלחה", body: "הזמינות לשבוע הבא נשמרה בהצלחה" });
+    shalev = await one("shalev", { title: "הזמינות עודכנה", body: "הלייבל עדכן את הזמינות לשבוע הבא" });
   }
+  const primary = sentBy === "shalev" ? owner : shalev;
+  return primary === "sent" ? { sent: true, shalev, owner } : { sent: false, shalev, owner, error: primary };
 }

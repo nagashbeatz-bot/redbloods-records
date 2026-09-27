@@ -1,11 +1,14 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToAll } from "@/lib/push";
+import { settingsBatchStore } from "@/lib/push-claims-batch";
+import { classify } from "@/lib/push-claims-pure";
 import {
   nextBatchValueOnSuccess,
   shouldClaimBatch,
   isBatchStale,
-  buildFinalFilesBatchPush,
+  isBatchClaimStuck,
+  claimAndSendBatch,
   type BatchValue,
 } from "@/lib/final-files-batch-pure";
 
@@ -33,10 +36,13 @@ import {
  *   - completeFinalFilesBatch: called EXPLICITLY by the client right after its
  *     sequential per-file upload loop finishes (all items terminal) — the
  *     primary, non-timeout signal that the batch is done. A CAS claim
- *     (open → sent) means a double-click / StrictMode double-invoke / retry
- *     can win the claim at most once, so at most one push is ever sent per
- *     batch. If no row exists (every file failed — recordFinalFileBatchSuccess
- *     was never reached), this is a silent no-op: no success push.
+ *     (open → processing, BEFORE the push) means a double-click / StrictMode
+ *     double-invoke / retry can win the claim at most once, so at most one push
+ *     is ever sent per batch. The row is removed only after a classified delivery
+ *     success; a failed delivery leaves a durable { status: "failed" } row —
+ *     "sent" is never written before (or without) a delivered push. If no row
+ *     exists (every file failed — recordFinalFileBatchSuccess was never reached),
+ *     this is a silent no-op: no success push.
  *
  * flushStaleFinalFilesBatches is a fallback safety net (NOT the primary
  * mechanism) for the case where the client never calls completeFinalFilesBatch
@@ -94,30 +100,10 @@ export async function recordFinalFileBatchSuccess(batchId: string, workId: strin
   }
 }
 
-/** Claims the batch (open → sent) and sends the summary push. Returns true iff
- *  THIS call won the claim (regardless of push send outcome) — used by both
- *  the explicit-complete and stale-flush callers so at most one send happens. */
-async function claimAndSend(key: string, existing: BatchValue): Promise<boolean> {
-  const sent: BatchValue = { ...existing, status: "sent" };
-  const { data: updated, error } = await supabase
-    .from("settings")
-    .update({ value: sent })
-    .eq("key", key)
-    .eq("value", JSON.stringify(existing))
-    .select();
-  if (error) { console.error("[final-files-batch] claim failed:", error.message); return false; }
-  if (!updated || updated.length === 0) return false; // lost the race — another caller already claimed it
-
-  if (existing.successCount > 0) {
-    try {
-      await sendPushToAll(buildFinalFilesBatchPush(existing.workId, existing.workName, existing.successCount));
-    } catch (e) {
-      console.error("[final-files-batch] push send failed:", e);
-    }
-  }
-  // Best-effort cleanup — a delete failure just leaves an inert "sent" row behind.
-  await supabase.from("settings").delete().eq("key", key).then(null, () => {});
-  return true;
+/** Claim → send → classified close (lib/final-files-batch-pure.ts claimAndSendBatch). */
+async function claimAndSend(key: string, existing: BatchValue): Promise<void> {
+  const outcome = await claimAndSendBatch(settingsBatchStore, key, existing, Date.now(), async (p) => classify(await sendPushToAll(p)));
+  if (outcome === "no_subscription" || outcome === "send_failed") console.error(`[final-files-batch] push not delivered (${outcome}) for ${key} — kept as failed`);
 }
 
 /** Called by the client right after its upload loop finishes (all files
@@ -157,7 +143,7 @@ export async function flushStaleFinalFilesBatches(): Promise<void> {
   const now = Date.now();
   for (const row of rows) {
     const v = (row.value ?? {}) as BatchValue;
-    if (!isBatchStale(v, now, STALE_BATCH_MS)) continue;
+    if (!isBatchStale(v, now, STALE_BATCH_MS) && !isBatchClaimStuck(v, now)) continue;
     await claimAndSend(row.key, v).catch((e) => console.error("[final-files-batch] stale flush failed:", e));
   }
 }

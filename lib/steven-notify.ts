@@ -2,6 +2,10 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToAll } from "@/lib/push";
+import { recordPortalPresence } from "@/lib/push-presence";
+import { settingsBatchStore } from "@/lib/push-claims-batch";
+import { classify, flushDueBatches, joinableBatch, type FlushableBatch } from "@/lib/push-claims-pure";
+import type { PresencePingResult } from "@/lib/push-presence-pure";
 
 /**
  * Owner-only push for Steven's activity — login, page visit, and file uploads.
@@ -12,14 +16,18 @@ import { sendPushToAll } from "@/lib/push";
  *
  * Keys used in `settings`:
  *   steven_upload_pending_{workId}  → coalescing batch for uploads (see below)
- *   steven_login_seen               → { at: <last_sign_in_at> } login dedupe
- *   steven_visit_last               → { at: <iso> } 30-min visit cooldown
+ *   portal_last_seen:steven / portal_visit_push:steven → the ONE shared presence model
+ *                                     (lib/push-presence-pure.ts). The legacy steven_login_seen /
+ *                                     steven_visit_last rows are no longer written.
  *
  * Uploads: the RolePicker posts one file per request, so we coalesce ~75s into a
  * single summary push (a batch → one push; a single file arrives within ≤~90s via
- * the minute scheduler in instrumentation.ts). Login is deduped by the Supabase
- * session's last_sign_in_at (a page refresh never changes it → no repeat push).
- * Visits are rate-limited to once per 30 minutes.
+ * the minute scheduler in instrumentation.ts). The flush CLAIMS a due batch
+ * (compare-and-swap open → processing) before sending, so two server processes can
+ * never both send it; the row is removed only after a classified delivery success,
+ * and a failed delivery stays as a durable "failed" row (never resent by a tick).
+ * Presence: one push per REAL visit (new visit after a 30-minute absence of
+ * last-seen), claimed atomically — a refresh / second tab never pushes.
  *
  * Everything here is best-effort and must NEVER throw into the caller's path.
  */
@@ -33,10 +41,7 @@ const UPLOAD_WINDOW_MS   = 75 * 1000;          // ~75s coalescing window
 const UPLOAD_KEY_PREFIX  = "steven_upload_pending_";
 const uploadKey = (workId: string) => `${UPLOAD_KEY_PREFIX}${workId}`;
 
-const LOGIN_SEEN_KEY     = "steven_login_seen";
-const VISIT_LAST_KEY     = "steven_visit_last";
-const VISIT_COOLDOWN_MS  = 30 * 60 * 1000;     // 30-minute visit cooldown
-const LOGIN_FRESH_MS     = 3 * 60 * 1000;      // treat a sign-in within 3 min as a fresh login
+const LOGIN_FRESH_MS     = 3 * 60 * 1000;      // a visit whose sign-in is under 3 min old is announced as a login
 
 /** Never send real push from local/dev — only production (or an explicit opt-in). */
 function pushAllowed(): boolean {
@@ -79,7 +84,9 @@ export async function queueStevenUploadNotice(workId: string, workName: string, 
   try {
     const k = uploadKey(workId);
     const { data } = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
-    const prev = (data?.value ?? null) as UploadBatch | null;
+    // A batch the flusher is already sending (or a durable failed record) is never joined — this upload opens a
+    // fresh batch, so already-announced files are never counted twice.
+    const prev = joinableBatch((data?.value ?? null) as (UploadBatch & FlushableBatch) | null);
     const files = [...(prev?.files ?? []), file].slice(-12); // sample cap; count stays exact
 
     // Same-target tracking sees EVERY queued file (not just the capped sample):
@@ -131,117 +138,73 @@ function riddimHead(workName: string, targetName: string, kind: StevenMixTargetK
   return parts.join(" — ");
 }
 
+/** Pure: the owner push text + deep link for one due batch. */
+function stevenUploadPush(v: Partial<UploadBatch>): { title: string; body: string; url: string; tag: string } {
+  const count    = v.count ?? 1;
+  const workName = v.workName || "a work";
+  const files    = v.files ?? [];
+
+  // A single, consistent riddim target for the WHOLE batch (never derived
+  // from just the last/first sampled file — see queueStevenUploadNotice).
+  const riddim = (!v.targetsDiffer && v.mixTargetId && v.mixTargetKind)
+    ? { id: v.mixTargetId, name: v.mixTargetName ?? "", kind: v.mixTargetKind }
+    : null;
+
+  let title: string, body: string;
+  if (count === 1) {
+    const f = files[0];
+    title = "Steven uploaded a file";
+    body  = riddim
+      ? `1 file uploaded to ${riddimHead(workName, riddim.name, riddim.kind, f?.label)}`
+      : `${f?.name ?? "A file"} uploaded to ${workName}`
+          + (f?.label ? ` · ${f.label}` : "")
+          + (f?.role ? ` (${f.role})` : "");
+  } else {
+    title = "Steven uploaded files";
+    body  = riddim
+      ? `${count} files uploaded to ${riddimHead(workName, riddim.name, riddim.kind, files[0]?.label)}`
+      : (() => {
+          const roles = Array.from(new Set(files.map(f => f.role).filter(Boolean)));
+          const label = files[0]?.label;
+          return `${count} files uploaded to ${workName}`
+               + (label ? ` · ${label}` : "")
+               + (roles.length ? ` · ${roles.join(", ")}` : "");
+        })();
+  }
+
+  // Deep-link: always the work; add the target only when the whole batch
+  // agrees on one (a mixed batch still opens the work, just not a target).
+  const url = v.workId
+    ? `/team/steven?work=${encodeURIComponent(v.workId)}${riddim ? `&target=${encodeURIComponent(riddim.id)}` : ""}`
+    : "/team/steven";
+  return { title, body, url, tag: `steven-upload-${v.workId ?? "x"}` };
+}
+
 /**
- * Called every minute by the scheduler. Sends ONE owner push per batch whose
- * window has elapsed, then clears that batch.
+ * Called every minute by the scheduler. For each batch whose window has elapsed: CLAIM it (compare-and-swap
+ * open → processing — a second server process loses the claim and sends nothing), send ONE owner push, then remove
+ * the row only after a classified delivery success; a failure stays as a durable "failed" row.
  */
 export async function flushDueStevenUploadNotices(): Promise<void> {
   if (!pushAllowed()) return;
-  let rows: { key: string; value: unknown }[] = [];
-  try {
-    const { data } = await supabase.from("settings").select("key, value").like("key", `${UPLOAD_KEY_PREFIX}%`);
-    rows = data ?? [];
-  } catch (e) {
-    console.error("[steven-notify] flush read failed:", e);
-    return;
-  }
-
-  const now = Date.now();
-  for (const row of rows) {
-    const v = (row.value ?? {}) as Partial<UploadBatch>;
-    if (!v.dueAt || new Date(v.dueAt).getTime() > now) continue; // window still open
-
-    const count    = v.count ?? 1;
-    const workName = v.workName || "a work";
-    const files    = v.files ?? [];
-
-    // A single, consistent riddim target for the WHOLE batch (never derived
-    // from just the last/first sampled file — see queueStevenUploadNotice).
-    const riddim = (!v.targetsDiffer && v.mixTargetId && v.mixTargetKind)
-      ? { id: v.mixTargetId, name: v.mixTargetName ?? "", kind: v.mixTargetKind }
-      : null;
-
-    let title: string, body: string;
-    if (count === 1) {
-      const f = files[0];
-      title = "Steven uploaded a file";
-      body  = riddim
-        ? `1 file uploaded to ${riddimHead(workName, riddim.name, riddim.kind, f?.label)}`
-        : `${f?.name ?? "A file"} uploaded to ${workName}`
-            + (f?.label ? ` · ${f.label}` : "")
-            + (f?.role ? ` (${f.role})` : "");
-    } else {
-      title = "Steven uploaded files";
-      body  = riddim
-        ? `${count} files uploaded to ${riddimHead(workName, riddim.name, riddim.kind, files[0]?.label)}`
-        : (() => {
-            const roles = Array.from(new Set(files.map(f => f.role).filter(Boolean)));
-            const label = files[0]?.label;
-            return `${count} files uploaded to ${workName}`
-                 + (label ? ` · ${label}` : "")
-                 + (roles.length ? ` · ${roles.join(", ")}` : "");
-          })();
-    }
-
-    // Deep-link: always the work; add the target only when the whole batch
-    // agrees on one (a mixed batch still opens the work, just not a target).
-    const url = v.workId
-      ? `/team/steven?work=${encodeURIComponent(v.workId)}${riddim ? `&target=${encodeURIComponent(riddim.id)}` : ""}`
-      : "/team/steven";
-
-    try {
-      await sendPushToAll({ title, body, url, tag: `steven-upload-${v.workId ?? "x"}` });
-    } catch (e) {
-      console.error("[steven-notify] upload send failed:", e);
-      continue; // leave the row so a later tick retries
-    }
-    try {
-      await supabase.from("settings").delete().eq("key", row.key);
-    } catch (e) {
-      console.error("[steven-notify] upload clear failed:", e);
-    }
-  }
+  await flushDueBatches(settingsBatchStore, UPLOAD_KEY_PREFIX, Date.now(),
+    async (v) => classify(await sendPushToAll(stevenUploadPush(v as Partial<UploadBatch>))));
 }
 
-// ── Presence (login + visit) ─────────────────────────────────────────────────
-
-async function readAt(key: string): Promise<string | null> {
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as { at?: string } | null)?.at ?? null;
-}
-async function writeAt(key: string, at: string): Promise<void> {
-  await supabase.from("settings").upsert({ key, value: { at } }, { onConflict: "key" });
-}
+// ── Presence (one shared model) ──────────────────────────────────────────────
 
 /**
- * Called by the /api/supplier/steven/ping endpoint on each page mount. The SERVER
- * decides whether to push, so a refresh never spams:
- *   • Login  — once per real sign-in, deduped by the session's last_sign_in_at.
- *   • Visit  — at most once per 30 minutes (skipped if a login push just fired).
- * Best-effort; never throws.
+ * Called by the /api/supplier/steven/ping endpoint on page mount and on the portal heartbeat. The SERVER decides
+ * (lib/push-presence-pure.ts): last-seen is recorded; only a claimed NEW visit (no last-seen for 30 minutes) sends
+ * ONE owner push — worded "Steven logged in" when his sign-in is under 3 minutes old, else "Steven visited his page".
+ * A refresh, a second tab or a heartbeat never pushes. Best-effort; never throws.
  */
-export async function notifyStevenPresence(user: { last_sign_in_at?: string | null } | null): Promise<void> {
-  if (!pushAllowed()) return;
-  const now = Date.now();
-  try {
-    // Login — fresh sign-in not seen before.
+export async function notifyStevenPresence(user: { last_sign_in_at?: string | null } | null): Promise<PresencePingResult | null> {
+  return recordPortalPresence("steven", async ({ visitStartedAt }) => {
     const lsi = user?.last_sign_in_at ?? null;
-    if (lsi && now - new Date(lsi).getTime() < LOGIN_FRESH_MS) {
-      const seen = await readAt(LOGIN_SEEN_KEY);
-      if (seen !== lsi) {
-        await sendPushToAll({ title: "Steven logged in", body: "Steven signed in to Redbloods OS", url: "/team/steven", tag: "steven-login" });
-        await writeAt(LOGIN_SEEN_KEY, lsi);
-        await writeAt(VISIT_LAST_KEY, new Date(now).toISOString()); // suppress a same-moment visit push
-        return;
-      }
-    }
-
-    // Visit — 30-minute rolling cooldown.
-    const last = await readAt(VISIT_LAST_KEY);
-    if (last && now - new Date(last).getTime() < VISIT_COOLDOWN_MS) return;
-    await sendPushToAll({ title: "Steven visited his page", body: "Steven opened his work dashboard", url: "/team/steven", tag: "steven-visit" });
-    await writeAt(VISIT_LAST_KEY, new Date(now).toISOString());
-  } catch (e) {
-    console.error("[steven-notify] presence failed:", e);
-  }
+    const freshLogin = !!lsi && new Date(visitStartedAt).getTime() - new Date(lsi).getTime() < LOGIN_FRESH_MS;
+    return classify(await sendPushToAll(freshLogin
+      ? { title: "Steven logged in", body: "Steven signed in to Redbloods OS", url: "/team/steven", tag: "steven-login", eventId: `steven-visit:${visitStartedAt}` }
+      : { title: "Steven visited his page", body: "Steven opened his work dashboard", url: "/team/steven", tag: "steven-visit", eventId: `steven-visit:${visitStartedAt}` }));
+  });
 }

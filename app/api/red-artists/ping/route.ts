@@ -3,12 +3,10 @@ import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
 import { notifyShalevEntry } from "@/lib/shalev-presence-notify";
 
 /**
- * POST /api/red-artists/ping — entry beacon fired once per real app session.
- * It NEVER decides on the client alone: sessionStorage (ArtistPortalPage) only
- * stops repeat calls within the same tab, and the server applies a short
- * race-guard on top, so a refresh / in-page navigation can't spam. Only a
- * shalev session triggers a push — the owner previewing his own portal is a
- * no-op. Always returns ok.
+ * POST /api/red-artists/ping — Shalev's portal presence ping (page open + the visible-page heartbeat). The SERVER
+ * decides (lib/push-presence-pure.ts): last-seen is recorded; only a NEW visit (no last-seen for 30 minutes), claimed
+ * atomically, sends the Owner ONE push — a refresh, in-portal navigation, a second tab or a heartbeat never does.
+ * Only a shalev session is recorded — the owner previewing his portal is a no-op. Always returns ok.
  */
 export async function POST() {
   const denied = await requireShalevAccess(); if (denied) return denied;

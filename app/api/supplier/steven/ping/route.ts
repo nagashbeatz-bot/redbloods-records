@@ -3,11 +3,10 @@ import { requireStevenAccess, getAuthRole, getAuthUser } from "@/lib/require-aut
 import { notifyStevenPresence } from "@/lib/steven-notify";
 
 /**
- * POST /api/supplier/steven/ping — presence beacon fired once when Steven's page
- * mounts. It NEVER decides on the client: the server applies login dedupe (by
- * last_sign_in_at) + a 30-minute visit cooldown, so refresh / new tab / hard
- * refresh can't spam. Only a steven session triggers a push (owner viewing his
- * page is a no-op). This is NOT /api/push/check. Always returns ok.
+ * POST /api/supplier/steven/ping — Steven's portal presence ping (page open + the visible-page heartbeat). The SERVER
+ * decides (lib/push-presence-pure.ts): last-seen is recorded; only a NEW visit (no last-seen for 30 minutes), claimed
+ * atomically, sends the Owner ONE push ("logged in" when the sign-in is under 3 minutes old). Only a steven session
+ * is recorded (owner viewing his page is a no-op). This is NOT /api/push/check. Always returns ok.
  */
 export async function POST() {
   const denied = await requireStevenAccess(); if (denied) return denied;

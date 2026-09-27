@@ -2,10 +2,11 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToAll } from "@/lib/push";
+import { settingsBatchStore } from "@/lib/push-claims-batch";
+import { classify, flushDueBatches, joinableBatch, type FlushableBatch } from "@/lib/push-claims-pure";
 import {
   shouldSendImmediately,
   nextPendingBatchValue,
-  isBatchDue,
   buildVictorUploadPush,
   type PendingBatch,
 } from "@/lib/victor-upload-notify-pure";
@@ -28,8 +29,11 @@ import {
  * per pending work batch: key = victor_upload_pending_{workId}.
  *
  * Flush: the minute scheduler (instrumentation.ts) calls
- * flushDueVictorUploadNotices() → sends one push for each batch whose window
- * has elapsed, then deletes the row.
+ * flushDueVictorUploadNotices() → for each batch whose window has elapsed it
+ * CLAIMS the row (compare-and-swap open → processing, so two server processes can
+ * never both send), sends one push, and removes the row only after a classified
+ * delivery success; a failure stays as a durable "failed" row (never resent by a
+ * tick). A new upload never joins a batch that is being sent or has failed.
  *
  * Targeting: sendPushToAll only ever reaches owner devices — push_subscriptions
  * is written exclusively by the requireOwner-gated /api/push/subscribe, so
@@ -60,11 +64,13 @@ export async function queueVictorUploadNotice(workId: string, projectName: strin
   const k = key(workId);
   try {
     const { data } = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
-    const existing = (data?.value ?? null) as PendingBatch | null;
+    const existing = joinableBatch((data?.value ?? null) as (PendingBatch & FlushableBatch) | null);
 
     if (shouldSendImmediately(existing, runTotal)) {
+      // A solo upload is its own real event (no marker, no retry) — the classified result is logged, never assumed.
       try {
-        await sendPushToAll(buildVictorUploadPush(1, projectName, workId));
+        const cls = classify(await sendPushToAll(buildVictorUploadPush(1, projectName, workId)));
+        if (cls !== "sent") console.error(`[victor-upload-notify] immediate push not delivered (${cls}) for work ${workId}`);
       } catch (e) {
         console.error("[victor-upload-notify] immediate send failed:", e);
       }
@@ -79,40 +85,12 @@ export async function queueVictorUploadNotice(workId: string, projectName: strin
 }
 
 /**
- * Called every minute by the scheduler. Sends one owner push per batch whose
- * window has elapsed, then clears that batch.
+ * Called every minute by the scheduler: claim → send → classified close (see the module doc).
  */
 export async function flushDueVictorUploadNotices(): Promise<void> {
   if (!pushAllowed()) return;
-  let rows: { key: string; value: unknown }[] = [];
-  try {
-    const { data } = await supabase
-      .from("settings")
-      .select("key, value")
-      .like("key", `${KEY_PREFIX}%`);
-    rows = data ?? [];
-  } catch (e) {
-    console.error("[victor-upload-notify] flush read failed:", e);
-    return;
-  }
-
-  const now = Date.now();
-  for (const row of rows) {
-    const v = (row.value ?? {}) as Partial<PendingBatch>;
-    if (!v.dueAt || !isBatchDue({ dueAt: v.dueAt }, now)) continue; // window still open
-
-    const count = v.count ?? 1;
-    try {
-      await sendPushToAll(buildVictorUploadPush(count, v.projectName || "פרויקט", v.workId ?? null));
-    } catch (e) {
-      console.error("[victor-upload-notify] send failed:", e);
-      // Leave the row so a later tick can retry rather than silently dropping it.
-      continue;
-    }
-    try {
-      await supabase.from("settings").delete().eq("key", row.key);
-    } catch (e) {
-      console.error("[victor-upload-notify] clear failed:", e);
-    }
-  }
+  await flushDueBatches(settingsBatchStore, KEY_PREFIX, Date.now(), async (v) => {
+    const b = v as Partial<PendingBatch>;
+    return classify(await sendPushToAll(buildVictorUploadPush(b.count ?? 1, b.projectName || "פרויקט", b.workId ?? null)));
+  });
 }

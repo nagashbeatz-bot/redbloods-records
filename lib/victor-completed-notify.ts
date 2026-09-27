@@ -1,8 +1,8 @@
 import "server-only";
 
-import { createClient } from "@supabase/supabase-js";
 import { sendPushToRoles } from "@/lib/push";
-import { classifyPushResult } from "@/lib/shalev-weekly-pure";
+import { settingsClaimStore, pushAllowed } from "@/lib/push-claims";
+import { classify, deliverOnce } from "@/lib/push-claims-pure";
 
 /**
  * "Project completed" push — sent to Victor the moment one of HIS OWN
@@ -28,7 +28,10 @@ import { classifyPushResult } from "@/lib/shalev-weekly-pure";
  * pushAllowed() (production / ALLOW_SERVER_PUSH only).
  *
  * Dedup: settings key/value table (NO schema change), key
- * victor_work_completed_pushed_{workId} = { fromUpdatedAt }, where
+ * victor_work_completed_pushed_{workId} — a delivery claim (lib/push-claims-pure.ts)
+ * whose version is fromUpdatedAt: claimed atomically BEFORE the send, "sent" ONLY
+ * when the push to Victor was actually delivered, otherwise a durable "failed"
+ * record (never "sent"; a duplicate submit of the same transition may retry it). Here
  * fromUpdatedAt is the work row's OWN updated_at timestamp from
  * IMMEDIATELY BEFORE this transition's write. Two requests observing the
  * same not-yet-updated row (a genuine race/duplicate submit) compute the same
@@ -39,16 +42,6 @@ import { classifyPushResult } from "@/lib/shalev-weekly-pure";
  * payment-notify reference, because a same-day reopen-and-recomplete must
  * still notify.
  */
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!,
-);
-
-/** Never send real push from local/dev — only production (or an explicit opt-in). */
-function pushAllowed(): boolean {
-  return process.env.NODE_ENV === "production" || process.env.ALLOW_SERVER_PUSH === "true";
-}
 
 const key = (workId: string) => `victor_work_completed_pushed_${workId}`;
 
@@ -63,37 +56,22 @@ export async function notifyVictorWorkCompleted(work: {
 }): Promise<void> {
   if (!pushAllowed() || !work.id) return;
   try {
-    const k = key(work.id);
-    const stamp = work.fromUpdatedAt;
-
-    // Dedup: skip if we already processed a completion transitioning FROM this
-    // exact pre-update row state (duplicate submit / concurrent request).
-    const { data } = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
-    const prev = (data?.value as { fromUpdatedAt?: string } | null)?.fromUpdatedAt ?? null;
-    if (prev === stamp) return;
-
     const name = (work.displayName ?? "").trim() || "your project";
     const url  = `/team/victor?workId=${work.id}`;
 
-    const results = await sendPushToRoles(["victor"], {
+    const { outcome } = await deliverOnce(settingsClaimStore, key(work.id), work.fromUpdatedAt, Date.now(), async () => classify(await sendPushToRoles(["victor"], {
       title: "Project completed",
       body:  `"${name}" has been marked as completed. Great work! 👏`,
       url,
       tag: `victor-completed-${work.id}`,
-    });
-
-    // Record the attempt regardless of outcome — matches steven-payment-notify's
-    // own convention (a failed attempt for THIS exact transition is not retried
-    // automatically; a genuinely new transition later gets its own fresh stamp).
-    await supabase.from("settings").upsert({ key: k, value: { fromUpdatedAt: stamp } }, { onConflict: "key" });
+    })), { extra: { fromUpdatedAt: work.fromUpdatedAt }, legacyVersionOf: (l) => (typeof l.fromUpdatedAt === "string" ? l.fromUpdatedAt : null) });
 
     // Owner confirmation fires ONLY on a REAL delivery signal (at least one
     // fulfilled webpush send to a "victor" subscription) — never on "the
     // function was called". No subscription at all and an outright send
-    // failure both skip it the same way.
-    const cls = classifyPushResult(results as unknown as { status: string }[]);
-    if (cls !== "sent") {
-      console.error(`[victor-completed-notify] push to victor not delivered (${cls}) for work ${work.id} — owner confirmation skipped`);
+    // failure both skip it the same way (and the marker says "failed").
+    if (outcome !== "sent") {
+      if (outcome !== "already_sent") console.error(`[victor-completed-notify] push to victor not delivered (${outcome}) for work ${work.id} — owner confirmation skipped`);
       return;
     }
 

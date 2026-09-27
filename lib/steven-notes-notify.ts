@@ -1,6 +1,7 @@
 import "server-only";
 
 import { sendPushToRoles } from "@/lib/push";
+import { classify, type DeliveryResult } from "@/lib/push-claims-pure";
 
 /**
  * "New mix notes" push — sent to owner + Steven ONLY when the owner taps the
@@ -20,13 +21,18 @@ import { sendPushToRoles } from "@/lib/push";
  * a supplier's notification row must never inherit the owner's project link. The
  * device experience is unchanged: each person has a single role, so each device
  * receives exactly one of the two sends. No lib/push.ts change.
+ *
+ * The result is REAL (2026-09-27): `sent` is true only when Steven's push was actually delivered
+ * (classifyPushResult === "sent"); `result` says why otherwise. The reminder cycle is started on the Owner's click
+ * regardless — its cycleStartAt is OWNER-ACTION evidence ("the Owner sent notes at …"), never proof that Steven
+ * received a push; `ownerActionAt` returns that time under its real name.
  */
 
 function pushAllowed(): boolean {
   return process.env.NODE_ENV === "production" || process.env.ALLOW_SERVER_PUSH === "true";
 }
 
-export interface NotesNotifyResult { ok: boolean; sent?: boolean; skipped?: boolean }
+export interface NotesNotifyResult { ok: boolean; sent?: boolean; skipped?: boolean; result?: DeliveryResult; ownerActionAt?: string; error?: string }
 
 /** What a riddim send is about — see the `line` parameter below. */
 export type NotesLine =
@@ -74,20 +80,28 @@ export async function notifyStevenMixNotes(
 
   // ── Owner — enriched so the bell opens the ProjectDrawer directly ──
   // projectId only when the work is project-linked (null → left off, url fallback).
-  await sendPushToRoles(["owner"], {
-    title, body, url, tag,
-    ...(work.projectId ? { projectId: work.projectId } : {}),
-    entityType: "sound_engineer_work",
-    entityId:   work.id,
-    actorName:  "סטיבן",
-  });
+  const ownerActionAt = new Date();
+  try {
+    await sendPushToRoles(["owner"], {
+      title, body, url, tag,
+      ...(work.projectId ? { projectId: work.projectId } : {}),
+      entityType: "sound_engineer_work",
+      entityId:   work.id,
+      actorName:  "סטיבן",
+    });
+  } catch (e) { console.error(`[steven-notes-notify] owner copy failed for work ${work.id}:`, e); }
 
   // ── Steven — byte-identical to before: NO projectId / entity / actor ──
-  await sendPushToRoles(["steven"], { title, body, url, tag });
+  let stevenResult: DeliveryResult;
+  try { stevenResult = classify(await sendPushToRoles(["steven"], { title, body, url, tag })); }
+  catch (e) { console.error(`[steven-notes-notify] push to Steven threw for work ${work.id}:`, e); stevenResult = "send_failed"; }
 
   // ── Start (or restart) the "remind Steven every 5h until he uploads a new
   // version" cycle for this work — see lib/steven-mix-reminder-notify.ts.
-  // Never breaks this function's own (already-sent) immediate push either way.
+  // Never breaks this function's own immediate push either way. The cycle's
+  // cycleStartAt records the OWNER'S ACTION (notes were sent from Redbloods at
+  // ownerActionAt) — it is started even when the push was not delivered, because
+  // the Owner's notes exist in the app either way; it is never delivery proof.
   //
   // Skipped for a PRE-MIX target note, and only for that. The cycle is a single
   // work-scoped settings row, so starting it here would reset whatever cycle a
@@ -99,10 +113,14 @@ export async function notifyStevenMixNotes(
   const startsReminderCycle = !line || line.kind === "version";
   if (startsReminderCycle) try {
     const { startOrResetReminderCycle } = await import("@/lib/steven-mix-reminder-notify");
-    await startOrResetReminderCycle(work.id);
+    await startOrResetReminderCycle(work.id, ownerActionAt);
   } catch (err) {
     console.error(`[steven-mix-reminder] failed to start cycle for work ${work.id}:`, err);
   }
 
-  return { ok: true, sent: true };
+  if (stevenResult === "sent") return { ok: true, sent: true, result: stevenResult, ownerActionAt: ownerActionAt.toISOString() };
+  return {
+    ok: false, sent: false, result: stevenResult, ownerActionAt: ownerActionAt.toISOString(),
+    error: stevenResult === "no_subscription" ? "לסטיבן אין מכשיר רשום לפוש — ההערות נשמרו אבל הפוש לא נמסר" : "הפוש לסטיבן לא נמסר — ההערות נשמרו",
+  };
 }

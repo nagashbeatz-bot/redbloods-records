@@ -4,12 +4,22 @@
  * it's testable from a plain tsx script (scripts/test-final-files-batch.ts).
  */
 
+import { STUCK_PROCESSING_TIMEOUT_MS, type BatchClaimStore, type DeliveryResult } from "./push-claims-pure";
+
+/**
+ * "open" while files are landing; "processing" once a caller CLAIMED it for sending (before the push); then either
+ * removed (delivered) or "failed" (a durable record: the push was not delivered — never "sent"). "sent" is kept only
+ * for rows written by the pre-2026-09-27 code, which marked "sent" BEFORE pushing.
+ */
 export interface BatchValue {
-  status: "open" | "sent";
+  status: "open" | "processing" | "sent" | "failed";
   workId: string;
   workName: string;
   successCount: number;
   lastUpdateAt: string;
+  claimedAt?: string;
+  result?: DeliveryResult;
+  failedAt?: string;
 }
 
 /** Pure: the value a successful-file CAS/insert should write. `existing` is
@@ -40,6 +50,42 @@ export function shouldClaimBatch(existing: BatchValue | null): boolean {
 export function isBatchStale(existing: BatchValue, nowMs: number, staleMs: number): boolean {
   if (existing.status !== "open") return false;
   return nowMs - new Date(existing.lastUpdateAt).getTime() >= staleMs;
+}
+
+/** Pure: a "processing" claim older than the stuck timeout (the claimer crashed before closing it) may be reclaimed
+ *  by the fallback tick, so a real upload is never silently un-notified. */
+export function isBatchClaimStuck(existing: BatchValue, nowMs: number, stuckMs: number = STUCK_PROCESSING_TIMEOUT_MS): boolean {
+  if (existing.status !== "processing") return false;
+  const age = nowMs - new Date(existing.claimedAt ?? existing.lastUpdateAt).getTime();
+  return Number.isFinite(age) && age > stuckMs;
+}
+
+export type BatchSendOutcome = "lost_claim" | "no_success" | DeliveryResult;
+
+/**
+ * Claim → send → classified close for ONE batch (shared by the explicit complete call and the fallback tick).
+ *   1. CAS `existing` → { status: "processing", claimedAt } — only one caller can win (double click / two processes);
+ *   2. a batch with zero recorded successes sends nothing and is removed;
+ *   3. push; the row is removed only after a classified delivery success ("sent");
+ *   4. otherwise it becomes a durable { status: "failed", result } row — never "sent", never auto-resent.
+ */
+export async function claimAndSendBatch(
+  store: BatchClaimStore, key: string, existing: BatchValue, nowMs: number,
+  send: (push: FinalFilesPush) => Promise<DeliveryResult>,
+): Promise<BatchSendOutcome> {
+  const processing: BatchValue = { ...existing, status: "processing", claimedAt: new Date(nowMs).toISOString() };
+  let won = false;
+  try { won = await store.cas(key, existing, processing); } catch { won = false; }
+  if (!won) return "lost_claim";
+  if (existing.successCount <= 0) { await store.remove(key, processing).catch(() => false); return "no_success"; }
+  let result: DeliveryResult;
+  try { result = await send(buildFinalFilesBatchPush(existing.workId, existing.workName, existing.successCount)); }
+  catch { result = "send_failed"; }
+  try {
+    if (result === "sent") await store.remove(key, processing);
+    else await store.cas(key, processing, { ...processing, status: "failed", result, failedAt: new Date(Date.now()).toISOString() });
+  } catch { /* the claim stays "processing"; the stuck rule lets the fallback tick finish it */ }
+  return result;
 }
 
 /** Who performed a final-files upload — decided by WHICH ROUTE received it (the owner routes

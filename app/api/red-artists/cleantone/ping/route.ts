@@ -3,17 +3,11 @@ import { requireCleantoneAccess, getAuthRole } from "@/lib/require-auth";
 import { notifyCleantoneEntry } from "@/lib/cleantone-presence-notify";
 
 /**
- * POST /api/red-artists/cleantone/ping — entry beacon fired once per real app
- * session, the mirror of /api/red-artists/ping (Shalev) and
- * /api/label/artists/[id]/ping (Avi).
- *
- * It NEVER decides on the client alone: sessionStorage (ArtistPortalPage) only
- * stops repeat calls within the same tab, and the server applies a short
- * race-guard on top, so a refresh / in-page navigation can't spam. Only a
- * genuine DJ CLEANTONE session triggers a push — the owner previewing his
- * portal resolves as role "owner" and is a no-op. Always returns ok, so a push
- * failure can never break the page. The proxy already allows this path via the
- * "/api/red-artists/cleantone" prefix — no allowlist change.
+ * POST /api/red-artists/cleantone/ping — DJ CLEANTONE's portal presence ping (page open + the visible-page
+ * heartbeat), the mirror of /api/red-artists/ping. The SERVER decides (lib/push-presence-pure.ts): last-seen is
+ * recorded; only a NEW visit (no last-seen for 30 minutes), claimed atomically, sends the Owner ONE push. Only a
+ * genuine DJ CLEANTONE session is recorded — the owner previewing his portal resolves as role "owner" and is a
+ * no-op. Always returns ok. The proxy already allows this path via the "/api/red-artists/cleantone" prefix.
  */
 export async function POST() {
   const denied = await requireCleantoneAccess();

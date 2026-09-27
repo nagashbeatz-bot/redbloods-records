@@ -46,33 +46,35 @@ export async function register() {
 
   // ── Send helpers (call functions directly, no HTTP) ───────────────────────
 
+  // Durable per-day claim (settings report_email:<type>:<Israel day>, lib/push-claims-pure.ts): a second server
+  // process, a restart inside the same minute or an overlapping tick can never send the same day's report twice;
+  // the claim says "sent" only after the email API accepted it, and a failure is recorded as "failed".
   async function sendReport(type: "morning" | "evening"): Promise<void> {
     try {
       const { fetchReportData }    = await import("@/lib/reports/data");
       const { getRecommendations } = await import("@/lib/reports/ai");
       const { sendReportEmail, isEmailConfigured } = await import("@/lib/reports/email");
+      const { settingsClaimStore } = await import("@/lib/push-claims");
+      const { deliverOnceStatus, reportEmailClaimKey, ilYmd } = await import("@/lib/push-claims-pure");
 
       if (!isEmailConfigured()) {
         console.warn(`[reports] אימייל לא מוגדר — דוח ${type} לא נשלח`);
         return;
       }
 
-      const data = await fetchReportData();
-      const recs = await getRecommendations(data, type);
-
-      if (type === "morning") {
-        const { generateMorningReport } = await import("@/lib/reports/templates");
-        const report = generateMorningReport(data, recs);
-        await sendReportEmail(report);
-        markSent("morning");
-        console.log(`[reports] ✓ דוח בוקר נשלח: ${report.subject}`);
-      } else {
-        const { generateEveningReport } = await import("@/lib/reports/templates");
-        const report = generateEveningReport(data, recs);
-        await sendReportEmail(report);
-        markSent("evening");
-        console.log(`[reports] ✓ דוח ערב נשלח: ${report.subject}`);
-      }
+      const nowMs = Date.now();
+      const emailResult = await deliverOnceStatus(settingsClaimStore, reportEmailClaimKey(type, ilYmd(nowMs)), "day", nowMs, async () => {
+        const data = await fetchReportData();
+        const recs = await getRecommendations(data, type);
+        const { generateMorningReport, generateEveningReport } = await import("@/lib/reports/templates");
+        const report = type === "morning" ? generateMorningReport(data, recs) : generateEveningReport(data, recs);
+        await sendReportEmail(report); // throws on failure → recorded as "failed"
+        markSent(type);
+        console.log(`[reports] ✓ דוח ${type === "morning" ? "בוקר" : "ערב"} נשלח: ${report.subject}`);
+        return "sent";
+      });
+      if (emailResult === "already_sent" || emailResult === "in_progress") console.log(`[reports] דוח ${type} כבר נשלח / נשלח כעת היום — דילוג`);
+      else if (emailResult !== "sent") console.error(`[reports] דוח ${type} לא נשלח (${emailResult})`);
     } catch (err) {
       console.error(`[reports] שגיאה בשליחת דוח ${type}:`, err);
     }

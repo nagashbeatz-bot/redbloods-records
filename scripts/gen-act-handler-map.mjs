@@ -16,7 +16,10 @@ const GET_RE = /export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/;
 /** The GET handler's own text (up to the next top-level export). */
 const getSegment = (src) => src.split(/\n(?=export\s)/).filter((seg) => GET_RE.test(seg));
 /** Calls that are writes by name (page-load / GET writers reached through a helper). */
-const WRITER_CALL_RE = /^(sync|backfill|upsert|insert|create|save|mark|record|ensure|pull|write|persist|refresh)[A-Z]/;
+const WRITER_CALL_RE = /^(sync|backfill|upsert|insert|create|update|save|mark|record|ensure|pull|write|persist|refresh)[A-Z]/;
+/** Client factories that match the writer prefix but never write (createSupabaseServer / createClient …). */
+const NOT_WRITER_CALL_RE = /^create(Supabase[A-Za-z]*|Client|ServerClient|BrowserClient)$/;
+const isWriterCall = (name) => WRITER_CALL_RE.test(name) && !NOT_WRITER_CALL_RE.test(name);
 const DB_WRITE_RE = /\.(insert|update|upsert|delete)\s*\(/;
 /** External sinks: never recursed into (their own definitions are not calls). */
 const SINKS = new Set(["lib/google-calendar.ts", "lib/push.ts", "lib/reports/email.ts", "lib/dropbox-token.ts", "lib/supabase.ts", "lib/supabase-server.ts"]);
@@ -87,7 +90,7 @@ export function buildHandlerMap() {
     const raw = fs.readFileSync(path.join(ROOT, rel), "utf8").replace(/\r\n/g, "\n");
     const src = stripComments(raw);
     const methods = [...new Set([...src.matchAll(WRITE_RE)].map((m) => m[1] || m[2]))].sort();
-    const getWrites = getSegment(src).some((seg) => DB_WRITE_RE.test(seg) || [...seg.matchAll(/\b([a-z][A-Za-z0-9]*)\s*\(/g)].some((m) => WRITER_CALL_RE.test(m[1])));
+    const getWrites = getSegment(src).some((seg) => DB_WRITE_RE.test(seg) || [...seg.matchAll(/\b([a-z][A-Za-z0-9]*)\s*\(/g)].some((m) => isWriterCall(m[1])));
     if (!methods.length && !getWrites) continue;
     // A route that hands the parsed body to a shared writer (lib/writes/*) accepts what that writer reads.
     const writerFields = [...src.matchAll(/from\s+["']@\/lib\/writes\/([a-z-]+)["']/g)].flatMap((m) => acceptedFields(stripComments(fs.readFileSync(path.join(ROOT, `lib/writes/${m[1]}.ts`), "utf8"))));
