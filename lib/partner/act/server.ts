@@ -20,6 +20,8 @@ import type { WorklogFamilyWriters } from "./primitives/worklog";
 import type { DeliveryFamilyWriters } from "./primitives/delivery";
 import type { SocialFamilyWriters } from "./primitives/social";
 import type { SystemFamilyWriters } from "./primitives/system";
+import type { FilesFamilyWriters } from "./primitives/files";
+import type { BackfillFamilyWriters } from "./primitives/backfills";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -29,7 +31,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -85,6 +87,7 @@ async function coreWriters(): Promise<CoreWriters> {
 
 /** Projects family (lib/writes/projects + the existing project / release / cover stores). */
 async function projectFamilyWriters(): Promise<ProjectFamilyWriters> {
+  const PD = await import("@/lib/writes/project-delete");
   const { getProject, updateProject } = await import("@/lib/projects-store");
   const { getReleaseDetails, setProjectBusinessType, createLabelSongRelease, convertProjectToLabelRelease } = await import("@/lib/release-store");
   const { getProjectCover, saveThemeCover, resetProjectCover } = await import("@/lib/project-cover-store");
@@ -93,6 +96,8 @@ async function projectFamilyWriters(): Promise<ProjectFamilyWriters> {
   type Biz = Parameters<typeof setProjectBusinessType>[1];
   type RelIn = Parameters<typeof convertProjectToLabelRelease>[2];
   return {
+    projectDeleteImpact: (id) => PD.projectDeleteImpact(id),
+    deleteProjectCompletely: (id) => PD.deleteProjectCompletely(id),
     async readProjectMeta(id) {
       const p = await getProject(id);
       return p ? { name: p.name ?? "", artist: p.artist ?? "", status: p.status ?? "", isHidden: !!p.isHidden, businessType: p.businessType ?? "", projectType: p.projectType ?? "", hasRelease: !!(await getReleaseDetails(id)) } : null;
@@ -415,6 +420,8 @@ async function worklogFamilyWriters(): Promise<WorklogFamilyWriters> {
     updateAlbumTrack: async (id, b) => { await W.updateAlbumTrack(id, b); },
     deleteAlbumTrack: (id) => W.deleteAlbumTrack(id),
     renumberAlbumTracks: (t) => W.renumberAlbumTracks(t),
+    async readAlbumPrevInfo(pid) { const v = await W.readAlbumPrevInfo(pid); return { rows: v.rows, note: v.note }; },
+    saveAlbumPrevInfo: async (pid, v) => { await W.saveAlbumPrevInfo(pid, v); },
   };
 }
 
@@ -477,6 +484,37 @@ async function systemFamilyWriters(): Promise<SystemFamilyWriters> {
     disconnectFileStorage: () => W.disconnectDropbox(),
     readMaintenance: () => W.readMaintenance(),
     setMaintenance: (e) => W.setMaintenanceChecked(e),
+  };
+}
+
+/** Existing project files by handle + work materials (lib/writes/files) — a path never leaves the writer. */
+async function filesFamilyWriters(): Promise<FilesFamilyWriters> {
+  const W = await import("@/lib/writes/files");
+  const pathOf = async (pid: string, ref: string) => { const p = await W.projectFilePath(pid, ref); if (!p) throw new Error("file not found in the project"); return p; };
+  return {
+    async projectFiles(pid) { const xs = await W.projectFilesMeta(pid); return xs ? xs.map((f) => ({ ref: f.ref, name: f.name, category: f.category, versionLabel: f.versionLabel, trackId: f.trackId })) : null; },
+    async deleteProjectFile(pid, ref) { return W.deleteProjectFileByPath(pid, await pathOf(pid, ref)); },
+    readWorkMaterials: (pid) => W.readWorkMaterials(pid),
+    setWorkMaterials: (pid, p) => W.setWorkMaterials(pid, p),
+    portalOfProject: (pid) => W.portalOfProject(pid),
+    async shareProjectFileToPortal(pid, ref, sketchId, newTitle) {
+      const portal = await W.portalOfProject(pid); if (!portal) throw new Error("not linkable");
+      const sk = await W.linkProjectFileToPortal(portal.artistName, portal.slug, pid, await pathOf(pid, ref), sketchId, newTitle);
+      return { sketchId: String((sk as { id: string }).id) };
+    },
+  };
+}
+
+/** Company-wide backfills (lib/writes/backfills) — apply recomputes the same plan the fingerprint pinned. */
+async function backfillFamilyWriters(): Promise<BackfillFamilyWriters> {
+  const W = await import("@/lib/writes/backfills");
+  return {
+    startDatePlan: () => W.startDatePlan(),
+    async applyStartDatesNow() { return W.applyStartDates((await W.startDatePlan()).rows); },
+    missingArtistClients: () => W.missingArtistClients(),
+    async createMissingArtistClients() { return W.createArtistClients((await W.missingArtistClients()).missing); },
+    async folderFreezeCandidates() { return (await W.folderFreezePlan()).filter((r) => r.willSet).map((r) => ({ id: r.id, name: r.name })); },
+    async applyFolderFreezeNow() { const r = await W.applyFolderFreeze((await W.folderFreezePlan()).filter((x) => x.willSet)); return { applied: r.applied.length, failed: r.failed.length }; },
   };
 }
 

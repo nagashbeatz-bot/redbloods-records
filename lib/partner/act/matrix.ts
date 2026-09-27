@@ -64,7 +64,7 @@ const OVERRIDES: Readonly<Record<string, Partial<CoverageRow>>> = {
   "PROJECT.BACKFILL_START_DATES": { targetWave: "W7", requiredWork: "bulk primitive: exact list of projects + proposed start dates previewed, C3 count confirmation" },
   "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": { targetWave: "W7", requiredWork: "bulk primitive: exact list of clients to create previewed, C3 count confirmation" },
   "FILES.BACKFILL_PROJECT_FOLDERS": { targetWave: "W7", requiredWork: "bulk primitive: exact projects + folder ids previewed (never raw paths), C3" },
-  "SOCIAL.MIGRATE_PATHS": { targetWave: "W7", requiredWork: "bulk file primitive with an exact per-file preview; secret-free (the route's migration secret is never Sunny's)" },
+  "SOCIAL.MIGRATE_PATHS": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "SYSTEM_MACHINERY_NOT_AN_OWNER_OPERATION", requiredWork: null, targetWave: "NONE", ownerEquivalent: "none needed — a one-off engineering data migration behind its own migration secret (no Owner screen); re-running it is an approved engineering mission, never a business action" },
   "LABEL.AVAILABILITY_SUBMIT": { klass: "NEEDS_HARDENING", exclusionKind: null, targetWave: "W2", requiredWork: "typed Owner-side availability primitive (the Owner can already submit for an artist)" },
   "LABEL.DJ_CONFIRM": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "IDENTITY_BOUND_OTHER_USER", ownerEquivalent: null, requiredWork: null, targetWave: "NONE" },
   "SHOW.DJ_CONFIRM": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "IDENTITY_BOUND_OTHER_USER", ownerEquivalent: null, requiredWork: null, targetWave: "NONE" },

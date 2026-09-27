@@ -111,7 +111,7 @@ function main() {
   check("every proposal status has semantics", CM.PROPOSAL_STATUS_SEMANTICS.map((s) => s.status).sort(), [...CM.CLIENT_VOCABULARIES.proposalStatuses].sort());
   ok("meeting statuses = the drawer's meeting status union", CM.CLIENT_VOCABULARIES.meetingStatuses.every((s) => read("components/clients/ClientDrawer.tsx").includes(`"${s}"`)));
   const walk = (d: string): string[] => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(`${d}/${e.name}`) : e.name === "route.ts" ? [`${d}/${e.name}`] : []);
-  const touching = walk("app/api").filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|["'`][^"'`]*\bclients\(|from "@\/lib\/clients-store"|from "@\/lib\/writes\/(clients|proposals|shows)"|\bsendClipToRedFilms\b/.test(read(f))).sort();
+  const touching = walk("app/api").filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|["'`][^"'`]*\bclients\(|from "@\/lib\/clients-store"|from "@\/lib\/writes\/(clients|proposals|shows|backfills)"|\bsendClipToRedFilms\b/.test(read(f))).sort();
   check("every API route touching clients / proposals is inventoried", touching.filter((f) => !(f in CM.CLIENT_ROUTE_INVENTORY)), []);
   check("no stale route in the inventory", Object.keys(CM.CLIENT_ROUTE_INVENTORY).filter((f) => !touching.includes(f)), []);
   const writers = fs.readdirSync(path.join(ROOT, "lib/writes")).map((f) => `lib/writes/${f}`).filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|from "@\/lib\/clients-store"/.test(read(f))).sort();

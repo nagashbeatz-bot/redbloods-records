@@ -21,7 +21,7 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "LABEL.UPDATE_LABEL_ARTIST": { by: ["UPDATE_LABEL_ARTIST_NOTES_STATUS", "RENAME_LABEL_ARTIST"], full: false, remaining: "the artist image needs a new file's bytes (upload) — the file channel" },
   "VICTOR.CHANGE_STATUS": { by: ["UPDATE_VICTOR_WORK_STATE", "UPDATE_VICTOR_OUTCOME", "SET_VICTOR_WORK_STATUS"], full: true },
   "MIX.EDIT_OR_DELETE_VERSION": { by: ["UPDATE_MIX_VERSION_STATUS_OR_LABEL", "DELETE_MIX_VERSION"], full: true },
-  "PROJECT.EDIT_DEADLINE": { by: ["UPDATE_PROJECT_DEADLINE"], full: false, remaining: "the UI path's communication side" },
+  "PROJECT.EDIT_DEADLINE": { by: ["UPDATE_PROJECT_DEADLINE", "CLEAR_PROJECT_DEADLINE"], full: true },
   "VICTOR.EDIT_BRIEF": { by: ["UPDATE_VICTOR_NOTES", "UPDATE_VICTOR_WORK_DETAILS"], full: false, remaining: "brief FILES need a new file's bytes (the file channel); reference LINKS are URL values, which plans never persist by design (Boss decision needed)" },
   // ── Projects family ──
   "PROJECT.CHANGE_STATUS": { by: ["UPDATE_PROJECT_STATUS"], full: true },
@@ -64,16 +64,16 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "CALENDAR.SYNC_COMPLETED_TASKS": { by: ["SYNC_GOOGLE_TASKS_NOW"], full: true },
   "CALENDAR.DISCONNECT": { by: ["DISCONNECT_GOOGLE_CALENDAR"], full: true },
   // ── Sessions family ──
-  "PROJECT.ADD_SESSION": { by: ["SCHEDULE_SESSION", "SCHEDULE_SESSION_WITH_INVITE"], full: false, remaining: "the optional expected-payment row staged with the booking (Finance family)" },
+  "PROJECT.ADD_SESSION": { by: ["SCHEDULE_SESSION", "SCHEDULE_SESSION_WITH_INVITE", "ADD_TRANSACTION"], full: true },
   "PROJECT.CALENDAR_INVITE": { by: ["SCHEDULE_SESSION_WITH_INVITE"], full: true },
   "PROJECT.EDIT_SESSION": { by: ["UPDATE_SESSION", "UPDATE_SHOW_REHEARSAL"], full: true },
   "PROJECT.DELETE_SESSION": { by: ["DELETE_SESSION", "DELETE_SHOW_REHEARSAL"], full: true },
-  "CLIENT.SESSION_FROM_CLIENT": { by: ["SCHEDULE_SESSION"], full: false, remaining: "the optional payment row with artist = client name (Finance family)" },
+  "CLIENT.SESSION_FROM_CLIENT": { by: ["SCHEDULE_SESSION", "ADD_TRANSACTION"], full: true },
   "LABEL.ARTIST_SESSION": { by: ["SCHEDULE_SESSION", "BOOK_SHOW_REHEARSAL"], full: true },
   // ── Finance family ──
   "PROJECT.ADD_TRANSACTION": { by: ["ADD_TRANSACTION"], full: true },
-  "PROJECT.EDIT_TRANSACTION": { by: ["UPDATE_TRANSACTION_DETAILS", "SET_TRANSACTION_AMOUNT", "SET_TRANSACTION_STATUS", "MOVE_TRANSACTION"], full: false, remaining: "rows owned by a show / mix / Red Films sync change through that family's action" },
-  "PROJECT.DELETE_TRANSACTION": { by: ["DELETE_TRANSACTION"], full: false, remaining: "rows owned by a show / mix / Red Films sync are removed through that family's action" },
+  "PROJECT.EDIT_TRANSACTION": { by: ["UPDATE_TRANSACTION_DETAILS", "SET_TRANSACTION_AMOUNT", "SET_TRANSACTION_STATUS", "MOVE_TRANSACTION", "SET_SHOW_MONEY", "SET_ENGINEER_WORK_PRICE", "RECORD_ENGINEER_PAYMENT", "UPDATE_CLIP_ROW", "UPDATE_RF_BUDGET_LINE"], full: true },
+  "PROJECT.DELETE_TRANSACTION": { by: ["DELETE_TRANSACTION", "DELETE_SHOW", "DELETE_ENGINEER_WORK", "DELETE_CLIP_ROW", "DELETE_RF_BUDGET_LINE"], full: true },
   "PROJECT.SPLIT_INCOME": { by: ["SPLIT_INCOME"], full: true },
   "PROJECT.SET_PRICE": { by: ["SET_AGREED_PRICE", "SET_FINANCIAL_NOTES"], full: true },
   "PROJECT.SET_FINANCE_EXCEPTION": { by: ["SET_FINANCE_EXCEPTION"], full: true },
@@ -124,8 +124,8 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "VICTOR.SALARY_OVERRIDES": { by: ["SET_VICTOR_SALARY_OVERRIDE"], full: true },
   "VICTOR.RECORD_SALARY_EXPENSE": { by: ["RECORD_VICTOR_SALARY_MONTH", "SET_TRANSACTION_STATUS"], full: true },
   "RECORD_PAID_EXPENSE": { by: ["RECORD_VICTOR_SALARY_MONTH", "SET_TRANSACTION_STATUS"], full: true },
-  "VICTOR.SEND_TO_VICTOR": { by: ["CREATE_VICTOR_WORK", "NOTIFY_VICTOR_WORK"], full: false, remaining: "the project's send-log entry (send-log family)" },
-  "PROJECT.SEND_TO_VICTOR": { by: ["CREATE_VICTOR_WORK", "SET_VICTOR_DEADLINE", "NOTIFY_VICTOR_WORK"], full: false, remaining: "the project's send-log entry (send-log family)" },
+  "VICTOR.SEND_TO_VICTOR": { by: ["CREATE_VICTOR_WORK", "NOTIFY_VICTOR_WORK", "ADD_SEND_LOG_ENTRY"], full: false, remaining: "brief FILES need a new file's bytes (upload) — the file channel" },
+  "PROJECT.SEND_TO_VICTOR": { by: ["CREATE_VICTOR_WORK", "SET_VICTOR_DEADLINE", "NOTIFY_VICTOR_WORK", "ADD_SEND_LOG_ENTRY"], full: true },
   "PROJECT.EDIT_VICTOR_WORK": { by: ["UPDATE_VICTOR_WORK_DETAILS", "SET_VICTOR_WORK_STATUS", "SET_VICTOR_DEADLINE", "UPDATE_VICTOR_WORK_STATE", "UPDATE_VICTOR_OUTCOME", "UPDATE_VICTOR_NOTES"], full: true },
   "PROJECT.NOTIFY_VICTOR": { by: ["NOTIFY_VICTOR_WORK", "SEND_VICTOR_VERSION_NOTES"], full: true },
   "PROJECT.DELETE_VICTOR_WORK": { by: ["REMOVE_VICTOR_WORK"], full: true },
@@ -190,6 +190,21 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "REPORTS.SEND": { by: ["SEND_REPORT_NOW"], full: true },
   "FILES.DISCONNECT_DROPBOX": { by: ["DISCONNECT_DROPBOX"], full: true },
   "SYSTEM.MAINTENANCE": { by: ["SET_MAINTENANCE_MODE"], full: true },
+  // ── Existing project files + work materials ──
+  "PROJECT.DELETE_PROJECT_FILE": { by: ["DELETE_PROJECT_FILE"], full: true },
+  "PROJECT.LINK_TO_PORTAL": { by: ["SHARE_FILE_TO_PORTAL", "NOTIFY_SKETCH"], full: true },
+  "PROJECT.WORK_MATERIALS": { by: ["UPDATE_WORK_MATERIALS", "DELETE_PROJECT_FILE"], full: false, remaining: "uploading a work-material file needs a new file's bytes (upload) — the file channel" },
+  "MIX.WORK_MATERIALS": { by: ["UPDATE_WORK_MATERIALS", "DELETE_PROJECT_FILE"], full: false, remaining: "uploading a work-material file needs a new file's bytes (upload) — the file channel" },
+  "PROJECT.STATUS_COMPLETE_CLIENT_FLOW": { by: ["UPDATE_PROJECT_STATUS", "SET_VICTOR_WORK_STATUS", "CREATE_DELIVERY_FOLDER", "SET_DELIVERY_STATUS"], full: true },
+  "PROJECT.STATUS_CANCEL_BALANCE": { by: ["UPDATE_PROJECT_STATUS", "SET_TRANSACTION_STATUS"], full: true },
+  // ── Album previous-system info ──
+  "PROJECT.ALBUM_SETTINGS": { by: ["SET_ALBUM_PREV_ROW", "DELETE_ALBUM_PREV_ROW", "SET_ALBUM_PREV_NOTE"], full: true },
+  // ── Company-wide backfills ──
+  "PROJECT.BACKFILL_START_DATES": { by: ["BACKFILL_PROJECT_START_DATES"], full: true },
+  "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": { by: ["CREATE_MISSING_ARTIST_CLIENTS"], full: true },
+  "FILES.BACKFILL_PROJECT_FOLDERS": { by: ["FREEZE_PROJECT_FOLDERS"], full: true },
+  // ── Project delete ──
+  "PROJECT.DELETE_PROJECT": { by: ["DELETE_PROJECT"], full: true },
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every
@@ -385,6 +400,17 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   SEND_REPORT_NOW: "REPORTS",
   DISCONNECT_DROPBOX: "FILES_DROPBOX",
   SET_MAINTENANCE_MODE: "PLATFORM_ACCESS",
+  DELETE_PROJECT_FILE: "FILES_DROPBOX",
+  UPDATE_WORK_MATERIALS: "MIX_PIPELINE",
+  SHARE_FILE_TO_PORTAL: "ARTIST_PORTALS",
+  CLEAR_PROJECT_DEADLINE: "PROJECTS",
+  SET_ALBUM_PREV_ROW: "ALBUMS",
+  DELETE_ALBUM_PREV_ROW: "ALBUMS",
+  SET_ALBUM_PREV_NOTE: "ALBUMS",
+  BACKFILL_PROJECT_START_DATES: "PROJECTS",
+  CREATE_MISSING_ARTIST_CLIENTS: "CLIENTS",
+  FREEZE_PROJECT_FOLDERS: "FILES_DROPBOX",
+  DELETE_PROJECT: "PROJECTS",
 };
 
 /** The business-action taxonomy (lib/partner/system BUSINESS_ACTIONS) → the primitives that execute it through

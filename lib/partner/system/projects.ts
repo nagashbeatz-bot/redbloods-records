@@ -178,7 +178,7 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
-  "app/api/projects/[id]/route.ts": "064774379a5e280ef713c6c382fde313a9438ea37b6039430fb4f5e2ea85448e",
+  "app/api/projects/[id]/route.ts": "687ed3b44c0af3a0fc222b32a019cf9d70351d2b5abceeed676326b5621e0a37",
   "lib/payment-status.ts": "f2a0e2c061e0862c0595918d0389c17cc156f73d646e7c7891054d51baf538e8",
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
   "lib/finance/classify.ts": "7a40590e70ca5c22423d1bbe88352aa7cc64a72252c54d1b0a651a3c4beded9f",

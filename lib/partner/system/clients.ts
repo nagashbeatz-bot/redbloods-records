@@ -310,6 +310,8 @@ export const CLIENT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
 /** Every API route file that reads or writes the clients / proposals tables (the test re-discovers them from the repo). */
 /** Shared writers (lib/writes/*) that read or write clients / proposals — used by the routes AND Sunny's typed actions. */
 export const CLIENT_WRITER_INVENTORY: Readonly<Record<string, string>> = {
+  "lib/writes/backfills.ts": "the artist-clients backfill: creates the missing type-אמן clients from project artist names (re-checked before insert; app/api/projects/sync-artists + Sunny CREATE_MISSING_ARTIST_CLIENTS)",
+  "lib/writes/project-delete.ts": "project delete: proposals linked to the deleted project are unlinked and go back to לא נסגר (their follow-up tasks closed first) — app/api/projects/[id] DELETE + Sunny DELETE_PROJECT",
   "lib/writes/clients.ts": "create / field-level edit / rename cascade / delete (proposals + their follow-up tasks first) / duplicate + link counts",
   "lib/writes/proposals.ts": "create (+ follow-up task) / edit / delete / CAS-claimed conversion / project existence check",
   "lib/writes/shows.ts": "reads the artist client's name for a show's calendar event / quote follow-up (app/api/shows routes)",

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
 import { isLinkEnabledArtistName } from "@/lib/red-artists/portal-registry";
-import { resolveLinkableProject, findProjectFileByPath } from "@/lib/red-artists/project-link";
-import {
-  matchSketchByTitle, linkProjectFileAsVersion, createSketchFromProjectFile, SketchError,
-} from "@/lib/red-artists/sketches-store";
+import { resolveLinkableProject } from "@/lib/red-artists/project-link";
+import { matchSketchByTitle } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
 /**
@@ -33,7 +31,6 @@ import { errResponse } from "@/lib/red-artists/sketches-http";
  * with no login/device (נגש ביטס) the client sends no notification at all.
  */
 
-const ID_RE = /^[0-9a-fA-F-]{36}$/;
 
 /** Owner + "this portal is a link-enabled artist" — resolved from
  *  the DB row, never from the client. */
@@ -91,41 +88,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const sketchId = typeof body.sketchId === "string" ? body.sketchId : "";
     const newTitle = typeof body.newTitle === "string" ? body.newTitle : "";
 
-    const linkable = await resolveLinkableProject(projectId);
-    if (!linkable) {
-      return NextResponse.json({ error: "הפרויקט אינו שייך לאמן עם פורטל" }, { status: 403 });
-    }
-    // THE isolation check: the project's own primary artist must be the artist
-    // whose portal this route was called on. Derived from the DB on both sides.
-    if (linkable.artistName !== g.name) {
-      return NextResponse.json({ error: `הפרויקט אינו של ${g.name}` }, { status: 403 });
-    }
-    const project = linkable.project;
-
-    // THE path check: the path must be a file this project already owns.
-    // Everything stored in the manifest is taken from that record, never from
-    // the request body — so no caller can point the library anywhere else.
-    const file = findProjectFileByPath(project, dropboxPath);
-    if (!file?.dropboxPath) {
-      return NextResponse.json({ error: "הקובץ לא נמצא בפרויקט" }, { status: 404 });
-    }
-
-    const ref = {
-      filePath: file.dropboxPath,
-      fileName: file.name,
-      projectId: project.id,
-      ...(file.size ? { sizeBytes: file.size } : {}),
-      ...(file.durationSeconds ? { durationSeconds: file.durationSeconds } : {}),
-    };
-
+    // Shared writer (lib/writes/files): the project's primary artist must be THIS portal's artist and the path must be
+    // a file the project already owns; everything stored is taken from that record, never from the body.
+    const { linkProjectFileToPortal, FilePathError } = await import("@/lib/writes/files");
     let sketch;
-    if (sketchId) {
-      if (!ID_RE.test(sketchId)) throw new SketchError("BAD_INPUT", "מזהה סקיצה לא תקין");
-      sketch = await linkProjectFileAsVersion(g.slug, sketchId, ref);
-    } else {
-      // No target chosen → create a new sketch. Defaults to the project's name so
-      // the next upload from the same project finds it by exact title.
-      sketch = await createSketchFromProjectFile(g.slug, newTitle || project.name, ref);
+    try {
+      sketch = await linkProjectFileToPortal(g.name, g.slug, projectId, dropboxPath, sketchId, newTitle);
+    } catch (e) {
+      if (e instanceof FilePathError) return NextResponse.json({ error: e.message }, { status: /לא נמצא/.test(e.message) ? 404 : 403 });
+      throw e;
     }
 
     return NextResponse.json({ ok: true, sketch });

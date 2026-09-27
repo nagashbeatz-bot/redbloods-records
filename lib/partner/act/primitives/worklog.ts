@@ -20,7 +20,29 @@ export interface WorklogFamilyWriters {
   updateAlbumTrack(id: string, body: Record<string, unknown>): Promise<void>;
   deleteAlbumTrack(id: string): Promise<void>;
   renumberAlbumTracks(tracks: Array<{ id: string; track_number: number }>): Promise<void>;
+  readAlbumPrevInfo(projectId: string): Promise<{ rows: PrevRow[]; note: string }>;
+  saveAlbumPrevInfo(projectId: string, value: { rows: PrevRow[]; note: string }): Promise<void>;
 }
+type PrevRow = { id: string; name: string; costWithoutMix: number; mixMaster: number; paid: number };
+/** A short digest of the whole table — any change to any row makes a plan stale. */
+const digest = (x: unknown) => { const t = JSON.stringify(x); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(16); };
+async function prevFields(d: WriterDeps, projectId: string, rowId: string | null): Promise<Fields | null> {
+  if (!(await d.readProjectMeta(projectId))) return null;
+  const v = await d.readAlbumPrevInfo(projectId);
+  const r = rowId ? v.rows.find((x) => x.id === rowId) : undefined;
+  return { table: digest(v.rows), rowCount: v.rows.length, rowExists: !!r, name: r?.name ?? "", costWithoutMix: r?.costWithoutMix ?? 0, mixMaster: r?.mixMaster ?? 0, paid: r?.paid ?? 0, note: v.note };
+}
+const ROW_ID = /^[A-Za-z0-9-]{4,64}$/;
+async function onPrev(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
+  if (a.rowId !== undefined && (typeof a.rowId !== "string" || !ROW_ID.test(a.rowId))) return refuse("BAD_ENTITY", "מזהה שורה לא תקין");
+  const rowId = (a.rowId as string | undefined) ?? null;
+  const f = await prevFields(d, k.id, rowId); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט");
+  if (rowId && !f.rowExists) { const v = await d.readAlbumPrevInfo(k.id); return refuse("ENTITY_NOT_FOUND", `לא מצאתי את השורה — השורות (rowId — שיר): ${v.rows.slice(0, 40).map((r) => `${r.id} — ${r.name.slice(0, 40)}`).join("; ") || "אין"}`); }
+  return { key: `album-prev:${k.id}.${rowId ?? "table"}`, id: `${k.id}.${rowId ?? "table"}`, label: "מידע קודם (מאנדיי)", fields: f };
+}
+const prevSplit = (id: string) => { const i = id.indexOf("."); const r = id.slice(i + 1); return { projectId: id.slice(0, i), rowId: r && r !== "table" ? r : null }; };
+const prevRead = (d: WriterDeps, id: string) => { const { projectId, rowId } = prevSplit(id); return prevFields(d, projectId, rowId); };
 
 /** Pinned to components/ui/ProjectDrawer.tsx label maps by the family test. */
 export const SEND_ACTION_TYPES: readonly string[] = ["sent", "received", "notes", "approved", "followup", "other"];
@@ -59,17 +81,82 @@ function logPatch(a: Readonly<Record<string, unknown>>): Fields | PlanRefusal {
 }
 const isRef = (x: unknown): x is PlanRefusal => !!x && typeof x === "object" && (x as { ok?: unknown }).ok === false;
 
+const sendContext = async (d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> => {
+  const k = parseKey(a.project, ["project"]);
+  const w = a.linkedWork !== undefined ? parseKey(a.linkedWork, ["victor-work", "mix-work"]) : null;
+  const linked = w ? (w.kind === "victor-work" ? (await d.readVictorWorkFull(w.id))?.title : (await d.readEngineerWork(w.id))?.title) ?? null : null;
+  return { projectName: k ? (await d.readProjectMeta(k.id))?.name ?? null : null, linkedWork: linked };
+};
+
 export const WORKLOG_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
+    actionId: "SET_ALBUM_PREV_ROW", kinds: ["album-prev"],
+    meta: meta("שורה ב'מידע קודם' של אלבום (היסטוריה ממאנדיי) — הוספה / עדכון", "Add or update one row of an album's 'previous-system info' (historical Monday figures; isolated — never Finance)", [K("project"), T("rowId"), T("name"), { name: "costWithoutMix", kind: "money", required: false }, { name: "mixMaster", kind: "money", required: false }, { name: "paid", kind: "money", required: false }], ["name", "costWithoutMix", "mixMaster", "paid", "rowCount"], "saveAlbumPrevInfo (lib/writes/worklog)", {}),
+    resolve: onPrev, read: prevRead,
+    plan(a, cur) {
+      const after: Fields = {};
+      if (a.name !== undefined) { const t = text(a.name, 200); if (t === null) return refuse("BAD_TEXT", "שם לא תקין"); after.name = t.trim(); }
+      for (const k of ["costWithoutMix", "mixMaster", "paid"]) if (a[k] !== undefined) { const n = Number(a[k]); if (!Number.isFinite(n) || n < 0) return refuse("BAD_AMOUNT", `${k} ≥ 0`); after[k] = n; }
+      if (!cur.rowExists) { if (!after.name) return refuse("BAD_TEXT", "לשורה חדשה צריך שם"); after.rowCount = Number(cur.rowCount) + 1; }
+      return finishPlan(cur, after);
+    },
+    async apply(d, id, after) {
+      const { projectId, rowId } = prevSplit(id); const v = await d.readAlbumPrevInfo(projectId);
+      const patch = { ...(after.name !== undefined ? { name: String(after.name) } : {}), ...(["costWithoutMix", "mixMaster", "paid"] as const).reduce((o, k) => (after[k] !== undefined ? { ...o, [k]: Number(after[k]) } : o), {}) };
+      const rows = rowId ? v.rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)) : [...v.rows, { id: crypto.randomUUID(), name: "", costWithoutMix: 0, mixMaster: 0, paid: 0, ...patch }];
+      await d.saveAlbumPrevInfo(projectId, { rows, note: v.note });
+    },
+    async verify(d, id, after) { const { projectId, rowId } = prevSplit(id); const v = await d.readAlbumPrevInfo(projectId); const r = rowId ? v.rows.find((x) => x.id === rowId) : v.rows[v.rows.length - 1]; return !!r && (after.name === undefined || r.name === after.name) && (["costWithoutMix", "mixMaster", "paid"] as const).every((k) => after[k] === undefined || r[k] === after[k]); },
+    disclosuresHe: ["נתונים היסטוריים בלבד — לא נוצרת ולא משתנה שום רשומה בכספים", "סה״כ ויתרה מחושבים במסך (לא נשמרים)"],
+  },
+  {
+    actionId: "DELETE_ALBUM_PREV_ROW", kinds: ["album-prev"],
+    meta: meta("מחיקת שורה מ'מידע קודם' של אלבום", "Delete one row of an album's previous-system info", [K("project"), T("rowId", true)], ["rowExists", "rowCount"], "saveAlbumPrevInfo (lib/writes/worklog)", { effects: ["DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    resolve: onPrev, read: prevRead,
+    plan: (a, cur) => (a.rowId === undefined ? refuse("BAD_ARGS", "צריך rowId") : { ok: true, after: { rowExists: false, rowCount: Number(cur.rowCount) - 1 } }),
+    async apply(d, id) { const { projectId, rowId } = prevSplit(id); const v = await d.readAlbumPrevInfo(projectId); await d.saveAlbumPrevInfo(projectId, { rows: v.rows.filter((r) => r.id !== rowId), note: v.note }); },
+    requiredValues: () => ["מחיקה"],
+    disclosuresHe: ["רק השורה הזאת; כספים לא משתנים"],
+  },
+  {
+    actionId: "SET_ALBUM_PREV_NOTE", kinds: ["album-prev"],
+    meta: meta("הערה ל'מידע קודם' של אלבום", "Set the note of an album's previous-system info", [K("project"), T("note", true)], ["note"], "saveAlbumPrevInfo (lib/writes/worklog)", {}),
+    resolve: onPrev, read: prevRead,
+    plan(a, cur) { const t = a.note === "" ? "" : text(a.note, 2000); if (t === null) return refuse("BAD_TEXT", "הערה לא תקינה"); return finishPlan(cur, { note: t }); },
+    async apply(d, id, after) { const { projectId } = prevSplit(id); const v = await d.readAlbumPrevInfo(projectId); await d.saveAlbumPrevInfo(projectId, { rows: v.rows, note: String(after.note) }); },
+    disclosuresHe: ["רק ההערה; כספים לא משתנים"],
+  },
+  {
     actionId: "ADD_SEND_LOG_ENTRY", kinds: ["send-log"],
-    meta: meta("רשומה ביומן השליחות של הפרויקט (מי מחכה למי)", "Add a send-log entry to a project (the drawer's 'who waits for whom')", [K("project"), E("actionType", SEND_ACTION_TYPES, true), ...LOG_ARGS], ["actionType", "status", "actionDate"], "createSendLogEntry (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the entry" }),
-    createContext: async (d, a) => { const k = parseKey(a.project, ["project"]); return { projectName: k ? (await d.readProjectMeta(k.id))?.name ?? null : null }; },
-    async resolve(d, a) { const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)"); const p = await d.readProjectMeta(k.id); if (!p) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט"); return { key: "send-log:new", id: "new", label: `יומן שליחות ${p.name}`, fields: { projectName: p.name } }; },
+    meta: meta("רשומה ביומן השליחות של הפרויקט (מי מחכה למי)", "Add a send-log entry to a project (the drawer's 'who waits for whom'); optionally linked to the project's Victor / engineer work (like 'send to Victor / engineer' in the drawer)", [K("project"), E("actionType", SEND_ACTION_TYPES, true), ...LOG_ARGS, K("linkedWork", false)], ["actionType", "status", "actionDate"], "createSendLogEntry (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the entry" }),
+    createContext: (d, a) => sendContext(d, a),
+    async resolve(d, a) {
+      const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
+      const p = await d.readProjectMeta(k.id); if (!p) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט");
+      if (a.linkedWork !== undefined) {
+        const w = parseKey(a.linkedWork, ["victor-work", "mix-work"]); if (!w) return refuse("BAD_ENTITY", "עבודה מקושרת: victor-work:… או mix-work:…");
+        const owner = w.kind === "victor-work" ? (await d.readVictorWorkFull(w.id))?.projectId : (await d.readEngineerWork(w.id))?.projectId;
+        if (owner === undefined) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את העבודה המקושרת");
+        if (owner !== k.id) return refuse("WRONG_PROJECT", "העבודה המקושרת שייכת לפרויקט אחר");
+      }
+      return { key: "send-log:new", id: "new", label: `יומן שליחות ${p.name}`, fields: await sendContext(d, a) };
+    },
     read: logFields,
-    plan(a) { const p = logPatch(a); if (isRef(p)) return p; return { ok: true, after: { actionType: String(a.actionType), status: String(p.status ?? "pending_feedback"), actionDate: String(p.actionDate ?? new Date().toISOString().slice(0, 10)) } }; },
-    async apply(d, _id, after, a) { const p = logPatch(a) as Fields; return { createdId: await d.createSendLogEntry({ projectId: parseKey(a.project, ["project"])!.id, actionType: after.actionType, ...p, status: after.status, actionDate: after.actionDate }) }; },
+    plan(a) {
+      const p = logPatch(a); if (isRef(p)) return p;
+      const w = a.linkedWork !== undefined ? parseKey(a.linkedWork, ["victor-work", "mix-work"]) : null;
+      const role = w ? (w.kind === "mix-work" ? "sound_engineer" : "external_producer") : null;
+      if (role && p.recipientRole !== undefined && p.recipientRole !== role) return refuse("BAD_ARGS", `עבודה מקושרת מסוג זה מחייבת נמען ${role}`);
+      return { ok: true, after: { actionType: String(a.actionType), status: String(p.status ?? "pending_feedback"), actionDate: String(p.actionDate ?? new Date().toISOString().slice(0, 10)) } };
+    },
+    async apply(d, _id, after, a) {
+      const p = logPatch(a) as Fields;
+      const w = a.linkedWork !== undefined ? parseKey(a.linkedWork, ["victor-work", "mix-work"]) : null;
+      const link = w ? { linkedWorkId: w.id, recipientRole: w.kind === "mix-work" ? "sound_engineer" : "external_producer" } : {};
+      return { createdId: await d.createSendLogEntry({ projectId: parseKey(a.project, ["project"])!.id, actionType: after.actionType, ...p, ...link, status: after.status, actionDate: after.actionDate }) };
+    },
     async verify(d, id, after) { const f = await logFields(d, id); return !!f && f.actionType === after.actionType && f.status === after.status; },
-    disclosuresHe: ["רשומה ביומן השליחות בלבד — לא נשלח כלום לאף אחד ולא נוצרת עבודה / משימה"],
+    disclosuresHe: ["רשומה ביומן השליחות בלבד — לא נשלח כלום לאף אחד ולא נוצרת עבודה / משימה", "עבודה מקושרת: מחיקת הרשומה בעתיד תמחק גם אותה (כמו במגירה)"],
   },
   {
     actionId: "UPDATE_SEND_LOG_ENTRY", kinds: ["send-log"],

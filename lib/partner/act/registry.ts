@@ -48,10 +48,7 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 // ── classification inputs (discovered 2026-09-26/27; NOT fixed here — Wave 0 classifies, a hardening mission fixes) ──
 /** Known unsafe / non-atomic behaviour: the action must be hardened before Sunny may execute it. */
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
-  "PROJECT.ALBUM_SETTINGS": "whole-body write of the album finance / previous-system settings",
   "RF.REFERENCES": "reference links are written as a whole body",
-  "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
-  "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
 };
 /** Unsafe behaviour already HARDENED in the shared writers (2026-09-27, Universal Actions) — kept as the audit trail of what changed. */
 export const HARDENED: Readonly<Record<string, string>> = {
@@ -81,6 +78,11 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "AGENT.MARK_ALERT_HANDLED": "a failed alert-status write is an error (it used to be ignored); the kill-switch rule is reused unchanged",
   "SYSTEM.MAINTENANCE": "a failed maintenance write is an error (it used to be silently ignored)",
   "NOTIFY.MARK_READ": "a recipient-bound writer for the Owner's own rows (OWNER_EMAILS user ids, never the recipient_role echo)",
+  "PROJECT.DELETE_PROJECT_FILE": "the delete route refuses a path that is not the project's own (listed file, inside the project folder, or a folder of listed files) and traversal (lib/writes/files deleteProjectFileByPath; the route uses it) — it used to delete any path",
+  "PROJECT.ALBUM_SETTINGS": "the legacy album finance PATCH (no screen) accepts only its five typed keys — the whole-body merge is gone; previous-system info goes through one shared normalizing writer (lib/writes/worklog)",
+  "PROJECT.BACKFILL_START_DATES": "the backfill write is guarded by start_date IS NULL and failures are reported (lib/writes/backfills; the route uses it)",
+  "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": "names created meanwhile are re-checked before insert — no duplicate client (lib/writes/backfills)",
+  "PROJECT.DELETE_PROJECT": "each cleanup step is checked and the delete aborts on the first failure; the project row goes LAST so a failure is retry-safe; Victor works go through the shared writer (their tasks too) — lib/writes/project-delete, the route uses it. A single database transaction still needs an approved SQL function (reported)",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {

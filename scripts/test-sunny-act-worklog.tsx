@@ -18,7 +18,7 @@ const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "u
 
 type Lg = Record<string, unknown>;
 type Tr = { project_id: string; track_number: number; title: string; status: string; mix_status: string; master_status: string; notes: string | null };
-interface W { projects: Record<string, string>; log: Record<string, Lg>; tracks: Record<string, Tr>; cascades: string[] }
+interface W { prev: { rows: Array<{ id: string; name: string; costWithoutMix: number; mixMaster: number; paid: number }>; note: string }; projects: Record<string, string>; log: Record<string, Lg>; tracks: Record<string, Tr>; cascades: string[] }
 const world = (): W => ({
   projects: { [U(1)]: "אלבום שליו" },
   log: {
@@ -31,12 +31,17 @@ const world = (): W => ({
     [U(22)]: { project_id: U(1), track_number: 3, title: "סוף", status: "בעבודה", mix_status: "לא התחיל", master_status: "לא התחיל", notes: null },
   },
   cascades: [],
+  prev: { rows: [{ id: "row-0001", name: "שיר 1", costWithoutMix: 3000, mixMaster: 800, paid: 2000 }], note: "" },
 });
 const snake: Record<string, string> = { actionType: "action_type", contentType: "content_type", versionLabel: "version_label", recipientRole: "recipient_role", recipientName: "recipient_name", recipientPhone: "recipient_phone", status: "status", actionDate: "action_date", followupDate: "followup_date", notes: "notes" };
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const writers = {
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id], artist: "שליו", status: "בעבודה", isHidden: false, businessType: "לייבל", projectType: "אלבום", hasRelease: false } : null; },
+    async readAlbumPrevInfo() { return JSON.parse(JSON.stringify(w.prev)); },
+    async saveAlbumPrevInfo(_p: string, v: W["prev"]) { calls.push("saveAlbumPrevInfo"); w.prev = JSON.parse(JSON.stringify(v)); },
+    async readVictorWorkFull(id: string) { return id === U(60) ? { title: "הפקה לאלבום", projectId: U(1) } : id === U(61) ? { title: "אחר", projectId: U(9) } : null; },
+    async readEngineerWork(id: string) { return id === U(50) ? { title: "מיקס", projectId: U(1) } : null; },
     async readSendLogEntry(id: string) { return w.log[id] ? { ...w.log[id] } : null; },
     async createSendLogEntry(b: Record<string, unknown>) { calls.push("createSendLogEntry"); const id = U(++n); const r: Lg = { project_id: b.projectId, linked_work_id: null }; for (const [k, v] of Object.entries(snake)) r[v] = b[k] ?? null; w.log[id] = r; return id; },
     async updateSendLogEntry(id: string, b: Record<string, unknown>) { calls.push("updateSendLogEntry"); for (const [k, v] of Object.entries(b)) w.log[id][snake[k] ?? k] = v; },
@@ -52,6 +57,9 @@ function mk() {
 }
 const P1 = `project:${U(1)}`, L10 = `send-log:${U(10)}`, L11 = `send-log:${U(11)}`, T20 = `album-track:${U(20)}`, T22 = `album-track:${U(22)}`;
 const CASES: FamilyCase<W>[] = [
+  { id: "SET_ALBUM_PREV_ROW", args: { project: P1, rowId: "row-0001", paid: 2500 }, bad: { project: P1, rowId: "row-0001", paid: -1 }, missing: { project: P1, rowId: "row-9999", paid: 1 }, wrongKind: { project: T20, paid: 1 }, stale: (w) => { w.prev.rows[0].mixMaster = 900; }, check: (w) => w.prev.rows[0].paid === 2500 && w.prev.rows[0].costWithoutMix === 3000 },
+  { id: "DELETE_ALBUM_PREV_ROW", args: { project: P1, rowId: "row-0001" }, confirm: "כן בוס, מחיקה", bad: { project: P1 }, missing: { project: P1, rowId: "row-9999" }, stale: (w) => { w.prev.rows.push({ id: "row-0002", name: "x", costWithoutMix: 0, mixMaster: 0, paid: 0 }); }, check: (w) => w.prev.rows.length === 0 },
+  { id: "SET_ALBUM_PREV_NOTE", args: { project: P1, note: "יובא ממאנדיי 2025" }, bad: { project: P1, note: 5 }, missing: { project: `project:${U(9)}`, note: "x" }, stale: (w) => { w.prev.note = "y"; }, check: (w) => w.prev.note === "יובא ממאנדיי 2025" },
   { id: "ADD_SEND_LOG_ENTRY", args: { project: P1, actionType: "sent", contentType: "master", recipientRole: "client", recipientName: "יוסי", actionDate: "2026-09-26", followupDate: "2026-09-30" }, bad: { project: P1, actionType: "shipped" }, missing: { project: `project:${U(9)}`, actionType: "sent" }, wrongKind: { project: T20, actionType: "sent" }, stale: (w) => { w.projects[U(1)] = "אלבום שליו 2"; }, check: (w) => Object.values(w.log).some((e) => e.recipient_name === "יוסי" && e.status === "pending_feedback" && e.followup_date === "2026-09-30" && e.content_type === "master") },
   { id: "UPDATE_SEND_LOG_ENTRY", args: { sendLogEntry: L10, status: "got_notes", notes: "הערות על הבית" }, bad: { sendLogEntry: L10, status: "done" }, missing: { sendLogEntry: `send-log:${U(9)}`, status: "closed" }, wrongKind: { sendLogEntry: T20, status: "closed" }, stale: (w) => { w.log[U(10)].status = "approved"; }, check: (w) => w.log[U(10)].status === "got_notes" && w.log[U(10)].notes === "הערות על הבית" && w.log[U(10)].recipient_name === "שליו" },
   { id: "DELETE_SEND_LOG_ENTRY", args: { sendLogEntry: L11 }, confirm: "כן בוס, מחיקה", bad: { sendLogEntry: "send-log:1" }, missing: { sendLogEntry: `send-log:${U(9)}` }, stale: (w) => { w.log[U(11)].status = "approved"; }, check: (w) => !w.log[U(11)] && w.cascades.join() === "engineer_work" },
@@ -70,12 +78,19 @@ const CASES: FamilyCase<W>[] = [
   const q = (id: string, args: Record<string, unknown>, h = mk()) => planAction({ intentHe: "x", actionId: id, args }, OWNER, mkDeps(h.writers).d);
   ok("a taken track number is refused", (await q("ADD_ALBUM_TRACK", { project: P1, title: "x", trackNumber: 2 })).status === "DUPLICATE");
   ok("an unchanged send-log update is a no-op refusal", (await q("UPDATE_SEND_LOG_ENTRY", { sendLogEntry: L10, status: "pending_feedback" })).status !== "PREVIEW");
-  ok("no URL argument exists (plans never persist links)", WORKLOG_PRIMITIVES.every((p) => p.meta.args.every((a) => !/url|link|dropbox/i.test(a.name))));
+  ok("no URL argument exists (plans never persist links)", WORKLOG_PRIMITIVES.every((p) => p.meta.args.every((a) => !/url|dropbox|^link$/i.test(a.name))));
   const v = mk(); v.w.log[U(11)].recipient_role = "external_producer";
   const rv = await fullFlow(mkDeps(v.writers).d, "DELETE_SEND_LOG_ENTRY", { sendLogEntry: L11 }, "כן בוס, מחיקה");
   ok("a non-engineer linked send cascades into the Victor path (server-side)", rv.e?.status === "APPLIED_AS_EXPECTED" && v.w.cascades.join() === "victor_work");
   const r0 = mk(); const r0f = await fullFlow(mkDeps(r0.writers).d, "DELETE_SEND_LOG_ENTRY", { sendLogEntry: L11 }, "כן בוס");
   ok("the delete needs the word מחיקה in the approval", r0f.a?.status === "CONFIRMATION_VALUES_MISSING" && r0.calls.length === 0);
+  const lk = mk(); const rl = await fullFlow(mkDeps(lk.writers).d, "ADD_SEND_LOG_ENTRY", { project: P1, actionType: "sent", linkedWork: `victor-work:${U(60)}` });
+  ok("a send-log entry can be linked to the project's Victor work (role forced to external_producer — the cascade stays right)", rl.e?.status === "APPLIED_AS_EXPECTED" && Object.values(lk.w.log).some((e) => e.recipient_role === "external_producer"), rl.e?.status);
+  ok("a work of another project is refused", (await q("ADD_SEND_LOG_ENTRY", { project: P1, actionType: "sent", linkedWork: `victor-work:${U(61)}` })).status === "WRONG_PROJECT");
+  ok("an engineer work link with a non-engineer recipient is refused", (await q("ADD_SEND_LOG_ENTRY", { project: P1, actionType: "sent", linkedWork: `mix-work:${U(50)}`, recipientRole: "artist" })).status === "BAD_ARGS");
+  const nr = mk(); const rn = await fullFlow(mkDeps(nr.writers).d, "SET_ALBUM_PREV_ROW", { project: P1, name: "שיר 2", costWithoutMix: 1500 });
+  ok("a new previous-info row is appended (other rows untouched)", rn.e?.status === "APPLIED_AS_EXPECTED" && nr.w.prev.rows.length === 2 && nr.w.prev.rows[1].name === "שיר 2" && nr.w.prev.rows[0].paid === 2000, rn.e);
+  ok("the album finance route is typed (no whole-body merge) and prev-info uses the shared writer", /patchAlbumFinance\(projectId, body\)/.test(read("app/api/album-finance/route.ts")) && /saveAlbumPrevInfo\(projectId, body\)/.test(read("app/api/album-prev-info/route.ts")));
   ok("deletes are C3 destructive", ["DELETE_SEND_LOG_ENTRY", "DELETE_ALBUM_TRACK"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
   ok("PROJECT.SEND_LOG_DELETE moved from NEEDS_HARDENING to HARDENED", !("PROJECT.SEND_LOG_DELETE" in NEEDS_HARDENING) && "PROJECT.SEND_LOG_DELETE" in HARDENED);
 

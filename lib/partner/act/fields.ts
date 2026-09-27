@@ -29,6 +29,7 @@ export type AcceptedFieldKind =
 
 export const ACCEPTED_FIELD_CLASSES: Readonly<Record<string, { kind: AcceptedFieldKind; noteEn: string }>> = {
   invite: { kind: "DERIVED_INPUT", noteEn: "session create (Sunny's invite flow only): guest emails + public title / description for the Google event; the UI route never sends it" },
+  agreed: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "album_finance_<project> legacy settings value (no screen): the agreed album price (settings family A, ALBUM_FINANCE_LEGACY)" },
   financialNotes: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "finance_<project> settings value: the project's financial notes (settings family A, readable by Sunny)" },
   financeException: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "finance_<project> settings value: the finance exception flag" },
   financeExceptionReason: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "finance_<project> settings value: the exception's reason" },

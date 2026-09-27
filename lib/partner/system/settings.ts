@@ -98,7 +98,6 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/delivery/upload/route.ts",
   "app/api/dropbox/status/route.ts",
   "app/api/projects/[id]/clip/route.ts",
-  "app/api/projects/[id]/route.ts",
   "app/api/push/check/route.ts",
   "app/api/sessions/route.ts",
   "app/api/transactions/route.ts",
@@ -143,8 +142,10 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/writes/delivery.ts",
   "lib/writes/finance.ts",
   "lib/writes/projects.ts",
+  "lib/writes/project-delete.ts",
   "lib/writes/proposals.ts",
   "lib/writes/system.ts",
+  "lib/writes/worklog.ts",
   "lib/writes/victor.ts",
 ] as const;
 

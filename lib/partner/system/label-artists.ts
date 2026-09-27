@@ -367,6 +367,6 @@ export const LABEL_ROUTE_GROUPS: ReadonlyArray<{ pattern: string; purpose: strin
   { pattern: "^app/api/red-artists/cleantone(-summary|/shows)/", purpose: "DJ portal summary + show confirm / unconfirm" },
   { pattern: "^app/api/label/(releases|projects)/", purpose: "releases: new label song, convert, stage edits, business type" },
   { pattern: "^app/api/beats/", purpose: "beats + assignments + streaming" },
-  { pattern: "^app/api/shows/\\[id\\]/route\\.ts$", purpose: "show edit / close-show → artist ledger" },
+  { pattern: "^app/api/shows/", purpose: "shows create / edit / close / quote-sent — the shared show writer (lib/writes/shows) keeps the artist ledger in sync" },
   { pattern: "^app/api/dropbox/delete/route\\.ts$", purpose: "a Dropbox delete also unlinks the project folder from artist sketch links" },
 ];

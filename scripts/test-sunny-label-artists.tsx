@@ -119,7 +119,9 @@ function main() {
   check("DJ confirmation = the code", [...LM.LABEL_VOCABULARIES.djConfirmationStatuses], [...DJ_CONFIRMATION_STATUSES]);
   check("portal slugs = the app's name → slug table", LM.LABEL_VOCABULARIES.portalSlugs, Object.fromEntries(Object.entries(PORTAL_ARTISTS).map(([k, v]) => [k, v.slug])));
   const walk = (d: string): string[] => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(`${d}/${e.name}`) : e.name === "route.ts" ? [`${d}/${e.name}`] : []);
-  const labelRoutes = walk("app/api").filter((f) => /^app\/api\/(label|red-artists|beats)\//.test(f) || /\.from\(\s*["'](label_artists|project_release_details|artist_balance_entries|artist_balance_cycles|label_media_income|beats|beat_artist_assignments)["']\)|label-artists-store|release-store|artist-balance|media-income-store|beats-store|red-artists\//.test(read(f)));
+  // a route reaches the domain directly or through the shared writers it imports (lib/writes/*)
+  const withWriters = (f: string) => { const raw = read(f); return raw + [...raw.matchAll(/@\/lib\/writes\/([a-z-]+)"/g)].map((m) => read(`lib/writes/${m[1]}.ts`)).join("\n"); };
+  const labelRoutes = walk("app/api").filter((f) => /^app\/api\/(label|red-artists|beats)\//.test(f) || /\.from\(\s*["'](label_artists|project_release_details|artist_balance_entries|artist_balance_cycles|label_media_income|beats|beat_artist_assignments)["']\)|label-artists-store|release-store|artist-balance|media-income-store|beats-store|red-artists\//.test(withWriters(f)));
   check("every label / portal / beats route belongs to a route family", labelRoutes.filter((f) => !LM.LABEL_ROUTE_GROUPS.some((g) => new RegExp(g.pattern).test(f))), []);
   ok("route inventory is substantial (≥ 80 routes)", labelRoutes.length >= 80);
   for (const [f, want] of Object.entries(LM.LABEL_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny label review (update lib/partner/system/label-artists.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);

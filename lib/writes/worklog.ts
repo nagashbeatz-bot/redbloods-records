@@ -5,8 +5,11 @@
  *     engineer send removes its sound-engineer work (lib/writes/mix — its UNPAID expense goes, a paid one stays); a
  *     Victor send removes its follow-up task (+ Google Task) and its Victor work (lib/writes/victor); then the entry.
  *     A Victor-looking entry without a linked work deletes the entry only — never guessed by project / title / date.
+ *   • album finance (legacy blob, no screen): the PATCH accepts only its five known keys with checked types — it used to
+ *     merge the whole request body into the settings value.
  */
 import { supabase } from "@/lib/supabase";
+import type { AlbumFinanceData, AlbumPrevInfo } from "@/lib/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Body = Record<string, any>;
@@ -115,4 +118,40 @@ export async function albumTrackOrder(projectId: string): Promise<Array<{ id: st
   const { data, error } = await supabase.from("album_tracks").select("id, track_number").eq("project_id", projectId).order("track_number", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Array<{ id: string; track_number: number }>;
+}
+
+// ── album settings: previous-system info (Owner screen) + the legacy finance blob (no screen) ──
+const PREV_EMPTY: AlbumPrevInfo = { rows: [], note: "" };
+const prevKey = (projectId: string) => `album_prev_info_${projectId}`;
+export async function readAlbumPrevInfo(projectId: string): Promise<AlbumPrevInfo> {
+  const { data, error } = await supabase.from("settings").select("value").eq("key", prevKey(projectId)).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.value as AlbumPrevInfo) ?? PREV_EMPTY;
+}
+/** PATCH /api/album-prev-info semantics: rows normalized (numbers coerced, only stored fields kept), note, updatedAt. */
+export async function saveAlbumPrevInfo(projectId: string, body: Partial<AlbumPrevInfo>): Promise<AlbumPrevInfo> {
+  const rows: AlbumPrevInfo["rows"] = Array.isArray(body.rows)
+    ? body.rows.map((r) => ({ id: String(r?.id ?? crypto.randomUUID()), name: typeof r?.name === "string" ? r.name : "", costWithoutMix: Number(r?.costWithoutMix) || 0, mixMaster: Number(r?.mixMaster) || 0, paid: Number(r?.paid) || 0 }))
+    : [];
+  const value: AlbumPrevInfo = { rows, note: typeof body.note === "string" ? body.note : "", updatedAt: new Date().toISOString() };
+  const { error } = await supabase.from("settings").upsert({ key: prevKey(projectId), value }, { onConflict: "key" });
+  if (error) throw new Error(error.message);
+  return value;
+}
+const FIN_EMPTY: AlbumFinanceData = { agreed: 0, currency: "₪", notes: "", payments: [], expenses: [] };
+export class AlbumInputError extends Error {}
+/** PATCH /api/album-finance — HARDENED: only agreed (≥ 0), currency (₪ / $), notes, payments[], expenses[]. */
+export async function patchAlbumFinance(projectId: string, body: Record<string, unknown>): Promise<AlbumFinanceData> {
+  const allowed = ["agreed", "currency", "notes", "payments", "expenses"];
+  const extra = Object.keys(body).filter((k) => !allowed.includes(k));
+  if (extra.length) throw new AlbumInputError(`שדות לא מותרים: ${extra.join(", ")}`);
+  if (body.agreed !== undefined && !(Number.isFinite(Number(body.agreed)) && Number(body.agreed) >= 0)) throw new AlbumInputError("agreed לא תקין");
+  if (body.currency !== undefined && body.currency !== "₪" && body.currency !== "$") throw new AlbumInputError("currency: ₪ / $");
+  if (body.notes !== undefined && typeof body.notes !== "string") throw new AlbumInputError("notes לא תקין");
+  for (const k of ["payments", "expenses"]) if (body[k] !== undefined && !Array.isArray(body[k])) throw new AlbumInputError(`${k} חייב להיות רשימה`);
+  const { data: existing } = await supabase.from("settings").select("value").eq("key", `album_finance_${projectId}`).maybeSingle();
+  const merged: AlbumFinanceData = { ...FIN_EMPTY, ...((existing?.value as object) ?? {}), ...(body as Partial<AlbumFinanceData>), ...(body.agreed !== undefined ? { agreed: Number(body.agreed) } : {}) };
+  const { error } = await supabase.from("settings").upsert({ key: `album_finance_${projectId}`, value: merged }, { onConflict: "key" });
+  if (error) throw new Error(error.message);
+  return merged;
 }

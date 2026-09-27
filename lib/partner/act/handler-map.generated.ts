@@ -68,8 +68,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "efd254776d00ff0652d620b11b89fd91b3095fe05b872e9fcec39ac5cd34eccf",
+  "sha256": "2362808216e7409e6ce12a8710ff14f08aafeddfb67edcbb3e19b1fc84d60496",
   "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": []
@@ -79,13 +84,51 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "f00eb23c8a2c23061ea5064178b4e492b7caa5a3a420191f8314f6a9b34a8d0f",
+  "sha256": "790afd7199afceac14f7beaf08f841586193b24d6dba0e708ce48dfdddeb9d4a",
   "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
+   "actionDate",
+   "actionType",
+   "action_date",
+   "action_type",
+   "agreed",
+   "contentType",
+   "content_type",
+   "currency",
+   "dropboxUrl",
+   "dropbox_url",
+   "followupDate",
+   "followup_date",
+   "linkedTaskId",
+   "linkedWorkId",
+   "linked_task_id",
+   "linked_work_id",
+   "master_status",
+   "mix_status",
    "note",
-   "rows"
+   "notes",
+   "projectId",
+   "project_id",
+   "recipientClientId",
+   "recipientName",
+   "recipientPhone",
+   "recipientRole",
+   "recipient_name",
+   "recipient_phone",
+   "recipient_role",
+   "rows",
+   "status",
+   "title",
+   "track_number",
+   "versionLabel",
+   "version_label"
   ]
  },
  "app/api/album-tracks/[id]/route.ts": {
@@ -108,8 +151,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "actionType",
    "action_date",
    "action_type",
+   "agreed",
    "contentType",
    "content_type",
+   "currency",
    "dropboxUrl",
    "dropbox_url",
    "followupDate",
@@ -120,6 +165,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linked_work_id",
    "master_status",
    "mix_status",
+   "note",
    "notes",
    "projectId",
    "project_id",
@@ -130,6 +176,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_name",
    "recipient_phone",
    "recipient_role",
+   "rows",
    "status",
    "title",
    "track_number",
@@ -156,8 +203,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "actionType",
    "action_date",
    "action_type",
+   "agreed",
    "contentType",
    "content_type",
+   "currency",
    "dropboxUrl",
    "dropbox_url",
    "followupDate",
@@ -168,6 +217,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linked_work_id",
    "master_status",
    "mix_status",
+   "note",
    "notes",
    "projectId",
    "project_id",
@@ -178,6 +228,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_name",
    "recipient_phone",
    "recipient_role",
+   "rows",
    "status",
    "title",
    "track_number",
@@ -205,8 +256,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "actionType",
    "action_date",
    "action_type",
+   "agreed",
    "contentType",
    "content_type",
+   "currency",
    "dropboxUrl",
    "dropbox_url",
    "followupDate",
@@ -217,6 +270,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linked_work_id",
    "master_status",
    "mix_status",
+   "note",
    "notes",
    "projectId",
    "project_id",
@@ -227,6 +281,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_name",
    "recipient_phone",
    "recipient_role",
+   "rows",
    "status",
    "title",
    "track_number",
@@ -589,7 +644,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "cb8bc57774f49e236f4b81e3833bdc171749ba9ab08396691ea73b04e6ef6176",
+  "sha256": "64472e53bc277b0fb5898a74504d2b3efc9ced879cc91eca1466f5bd6cf6f029",
   "effects": [
    "DELETION",
    "FILES"
@@ -1005,7 +1060,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "345e27389a7b8c4287656a0a097c17471f5e7b3e2e4a7c190c468645fa836629",
+  "sha256": "c8a556e4e99388e49c80ef881817b2648b3622963a8b1e0db63c5056a1a0e5f4",
   "effects": [
    "DELETION",
    "FILES"
@@ -1465,8 +1520,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "actionType",
    "action_date",
    "action_type",
+   "agreed",
    "contentType",
    "content_type",
+   "currency",
    "dropboxUrl",
    "dropbox_url",
    "followupDate",
@@ -1477,6 +1534,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linked_work_id",
    "master_status",
    "mix_status",
+   "note",
    "notes",
    "projectId",
    "project_id",
@@ -1487,6 +1545,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_name",
    "recipient_phone",
    "recipient_role",
+   "rows",
    "status",
    "title",
    "track_number",
@@ -1513,8 +1572,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "actionType",
    "action_date",
    "action_type",
+   "agreed",
    "contentType",
    "content_type",
+   "currency",
    "dropboxUrl",
    "dropbox_url",
    "followupDate",
@@ -1525,6 +1586,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "linked_work_id",
    "master_status",
    "mix_status",
+   "note",
    "notes",
    "projectId",
    "project_id",
@@ -1535,6 +1597,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "recipient_name",
    "recipient_phone",
    "recipient_role",
+   "rows",
    "status",
    "title",
    "track_number",
@@ -1630,13 +1693,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "064774379a5e280ef713c6c382fde313a9438ea37b6039430fb4f5e2ea85448e",
+  "sha256": "687ed3b44c0af3a0fc222b32a019cf9d70351d2b5abceeed676326b5621e0a37",
   "effects": [
    "CALENDAR",
    "DELETION",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -1656,19 +1720,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "value"
   ]
  },
- "app/api/projects/backfill-dropbox-folder/route.ts": {
-  "methods": [],
-  "getWrites": true,
-  "sha256": "3dbb21e9d91c9dec62f47a2f7156b061c39359e99d6662bd5f72de9fef24b507",
-  "effects": [],
-  "fields": []
- },
  "app/api/projects/backfill-start-dates/route.ts": {
   "methods": [
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7dc001015c566aec490163830a30a6a66429740ff7d43c637ddbbb6b3d89aed9",
+  "sha256": "9e6b109d33a85f721bdcf9a727efd7dc3a8cd296d2cf5aa65fc8c2133487c8b3",
   "effects": [],
   "fields": []
  },
@@ -1696,10 +1753,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
  "app/api/projects/sync-artists/route.ts": {
   "methods": [],
   "getWrites": true,
-  "sha256": "515f53fa40ea2a83549514031f0520903ebbc194fbb2474732122334197fb5fd",
-  "effects": [
-   "DELETION"
-  ],
+  "sha256": "f4169fdd348334e643e85a54c47a8885a3ec815c4ba6d5aa97fb30117ab09c11",
+  "effects": [],
   "fields": []
  },
  "app/api/proposals/[id]/convert/route.ts": {

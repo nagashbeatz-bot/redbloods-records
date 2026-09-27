@@ -20,6 +20,8 @@ export const NON_KEY_TARGETS: Readonly<Record<string, string>> = {
   "gcal-event": "the Google event id from the calendar capability",
   gtask: "the Google Task id from the calendar capability",
   system: "no target (company-level action)",
+  "project-asset": "project + fileRef — a wrong / missing fileRef is refused WITH the project's files (fileRef — name); a file path is never used",
+  "album-prev": "project (+ rowId) — a wrong rowId is refused WITH the table's rows (rowId — song)",
   notification: "MARK_NOTIFICATIONS_READ with a wrong / missing key is refused WITH your unread notifications (notification:<id> — title)",
 };
 /** Parent kind → the child kinds listed under it (the capability's contract; the test pins it against the primitives). */

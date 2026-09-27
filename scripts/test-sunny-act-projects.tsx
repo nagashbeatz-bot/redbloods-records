@@ -14,15 +14,19 @@ let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); } };
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
-interface P { name: string; artist: string; status: string; isHidden: boolean; businessType: string; projectType: string; release: boolean; cover: { theme: string; customImage: boolean } | null; limit: number }
-interface W { projects: Record<string, P>; artists: Record<string, { name: string; notes: string; status: string }>; clients: string[] }
+interface P { deadline?: string | null; name: string; artist: string; status: string; isHidden: boolean; businessType: string; projectType: string; release: boolean; cover: { theme: string; customImage: boolean } | null; limit: number }
+interface W { impact?: Record<string, number>; projects: Record<string, P>; artists: Record<string, { name: string; notes: string; status: string }>; clients: string[] }
 const world = (): W => ({
-  projects: { [U(1)]: { name: "קרוב אלייך", artist: "שליו", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", release: false, cover: { theme: "black", customImage: true }, limit: 3 } },
+  projects: { [U(1)]: { name: "קרוב אלייך", artist: "שליו", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", release: false, cover: { theme: "black", customImage: true }, limit: 3, deadline: "2026-10-10" } },
   artists: { [U(50)]: { name: "שליו", notes: "", status: "פעיל" } }, clients: ["שליו"],
 });
 function mk() {
   const w = world(); const calls: string[] = [];
   const writers = {
+    async projectDeleteImpact(id: string) { return { sessions: 2, calendarEvents: 1, sendLog: 3, clipRows: 0, victorWorks: 1, transactionsUnlinked: 4, proposalsReset: 1, engineerWorks: 1, albumTracks: 0, openAlerts: 0, tasksKept: 2, meetingsKept: 0, productionsKept: 0, ...(w.impact ?? {}), ...(id ? {} : {}) }; },
+    async deleteProjectCompletely(id: string) { calls.push("deleteProjectCompletely"); delete w.projects[id]; },
+    async readProject(id: string) { const p = w.projects[id]; return p ? { name: p.name, notes: "", startDate: null, plannedHours: null, plannedDays: null, projectType: p.projectType, parentProject: "", deadline: p.deadline ?? null } : null; },
+    async writeProject(id: string, patch: { deadline?: string | null }) { calls.push("writeProject"); if ("deadline" in patch) w.projects[id].deadline = patch.deadline ?? null; },
     async readProjectMeta(id: string) { const p = w.projects[id]; return p ? { name: p.name, artist: p.artist, status: p.status, isHidden: p.isHidden, businessType: p.businessType, projectType: p.projectType, hasRelease: p.release } : null; },
     async writeProjectStatus(id: string, s: string) { calls.push("writeProjectStatus"); w.projects[id].status = s; },
     async writeProjectHidden(id: string, h: boolean) { calls.push("writeProjectHidden"); w.projects[id].isHidden = h; },
@@ -44,6 +48,8 @@ function mk() {
 }
 
 const CASES: FamilyCase<W>[] = [
+  { id: "DELETE_PROJECT", args: { project: `project:${U(1)}` }, confirm: "כן בוס, מחיקה", bad: { project: "project:1" }, missing: { project: `project:${U(9)}` }, wrongKind: { project: `client:${U(1)}` }, stale: (w) => { w.impact = { sessions: 3 }; }, check: (w, calls) => !w.projects[U(1)] && calls.join() === "deleteProjectCompletely" },
+  { id: "CLEAR_PROJECT_DEADLINE", args: { project: `project:${U(1)}` }, bad: { project: "project:1" }, missing: { project: `project:${U(9)}` }, wrongKind: { project: `client:${U(1)}` }, stale: (w) => { w.projects[U(1)].deadline = "2026-10-20"; }, check: (w) => w.projects[U(1)].deadline === null },
   { id: "UPDATE_PROJECT_STATUS", args: { project: `project:${U(1)}`, status: "הושלם" }, bad: { project: `project:${U(1)}`, status: "סגור" }, missing: { project: `project:${U(9)}`, status: "הושלם" }, wrongKind: { project: `label-artist:${U(50)}`, status: "הושלם" }, stale: (w) => { w.projects[U(1)].status = "בהשהייה"; }, check: (w, c) => w.projects[U(1)].status === "הושלם" && c.join() === "writeProjectStatus" },
   { id: "SET_PROJECT_HIDDEN", args: { project: `project:${U(1)}`, hidden: true }, bad: { project: `project:${U(1)}`, hidden: "yes" }, missing: { project: `project:${U(9)}`, hidden: true }, wrongKind: { project: `victor-work:${U(1)}`, hidden: true }, stale: (w) => { w.projects[U(1)].status = "בוטל"; }, check: (w) => w.projects[U(1)].isHidden === true },
   { id: "RENAME_PROJECT", args: { project: `project:${U(1)}`, name: "קרוב אלייך (רמיקס)" }, bad: { project: `project:${U(1)}`, name: "" }, missing: { project: `project:${U(9)}`, name: "x" }, wrongKind: { project: `mix-work:${U(1)}`, name: "x" }, stale: (w) => { w.projects[U(1)].name = "שם אחר"; }, check: (w) => w.projects[U(1)].name === "קרוב אלייך (רמיקס)" },
@@ -78,6 +84,13 @@ const CASES: FamilyCase<W>[] = [
   ok("the projects route uses the shared status / freeze helpers", /statusPatch\(/.test(read("app/api/projects/[id]/route.ts")) && /freezeFolderPatch\(/.test(read("app/api/projects/[id]/route.ts")));
   ok("the create-project route uses the shared writer", /createClientProject\(/.test(read("app/api/projects/route.ts")));
   ok("the session-limit route uses the shared writer", /setSessionLimit\(/.test(read("app/api/sessions/route.ts")));
+  console.log("\nProject delete (hardened)");
+  const pd = read("lib/writes/project-delete.ts");
+  ok("the delete route uses the shared writer", /deleteProjectCompletely\(id\)/.test(read("app/api/projects/[id]/route.ts")) && !/cleanupBeforeDelete/.test(read("app/api/projects/[id]/route.ts")));
+  ok("every step is checked; the project row is deleted LAST", (pd.match(/ok\("/g) ?? []).length >= 7 && pd.lastIndexOf("deleteProject(projectId)") > pd.lastIndexOf('ok("agent_alerts")'));
+  ok("Victor works go through the shared writer (their follow-up task goes too)", /removeVictorWork\(String\(w\.id\)\)/.test(pd) && !/from\("vendor_project_work"\)\.delete\(\)/.test(pd));
+  ok("DELETE_PROJECT is C3 and previews the impact counts", ACTION_REGISTRY.get("DELETE_PROJECT")!.confirmation === "C3_STRONG_APPROVAL");
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })();

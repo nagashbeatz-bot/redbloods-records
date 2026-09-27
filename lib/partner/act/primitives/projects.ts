@@ -6,9 +6,12 @@
 import type { ArgSpec } from "../types";
 import { ALL_STATUSES, PROJECT_BUSINESS_TYPES, PROJECT_TYPES, RELEASE_STAGES } from "@/lib/types";
 import { COVER_THEMES } from "@/lib/project-cover";
-import { COMMON_NO, finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { COMMON_NO, finishPlan, parseKey, projectFields, realYmd, refuse, resolveProject, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 
+export type ProjectDeleteImpactView = { sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; transactionsUnlinked: number; proposalsReset: number; engineerWorks: number; albumTracks: number; openAlerts: number; tasksKept: number; meetingsKept: number; productionsKept: number };
 export interface ProjectFamilyWriters {
+  projectDeleteImpact(id: string): Promise<ProjectDeleteImpactView>;
+  deleteProjectCompletely(id: string): Promise<void>;
   readProjectMeta(id: string): Promise<{ name: string; artist: string; status: string; isHidden: boolean; businessType: string; projectType: string; hasRelease: boolean } | null>;
   writeProjectStatus(id: string, status: string): Promise<void>;
   writeProjectHidden(id: string, hidden: boolean): Promise<void>;
@@ -54,6 +57,30 @@ const coverFields = async (d: WriterDeps, id: string): Promise<Fields | null> =>
 const limitFields = async (d: WriterDeps, id: string): Promise<Fields | null> => (await d.readProjectMeta(id)) ? { sessionLimit: await d.readSessionLimit(id) } : null;
 
 export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
+  {
+    actionId: "DELETE_PROJECT", kinds: ["project"],
+    meta: meta("מחיקת פרויקט (עם כל מה שהוא מחזיק)", "Delete a project the way the app does — sessions (+ events), send log, clip rows, Victor works (+ tasks), finance / delivery / cover settings; transactions unlinked, proposals back to 'לא נסגר', alerts closed; the database removes release details, album tracks and engineer work — checked step by step, project row last", [K("project")], ["exists"], "deleteProjectCompletely (lib/writes/project-delete)", { effects: ["DELETION", "CASCADE", "UNLINK", "CALENDAR", "GOOGLE_TASKS", "FINANCE", "FILES"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    async resolve(d, a) { const r = await resolveProjectMeta(d, a); if ("ok" in r) return r; return { ...r, fields: { name: r.fields.name, exists: true, ...(await d.projectDeleteImpact(r.id)) } }; },
+    async read(d, id) { const m = await d.readProjectMeta(id); return m ? { name: m.name, exists: true, ...(await d.projectDeleteImpact(id)) } : null; },
+    plan: () => ({ ok: true, after: { exists: false } }),
+    apply: (d, id) => d.deleteProjectCompletely(id),
+    async verify(d, id) { return (await d.readProjectMeta(id)) === null; },
+    requiredValues: () => ["מחיקה"],
+    warnings: (c) => [
+      `נמחקים: ${c.sessions} סשנים (${c.calendarEvents} אירועי יומן), ${c.sendLog} רשומות שליחה, ${c.clipRows} שורות קליפ, ${c.victorWorks} עבודות ויקטור (+ המשימות שלהן), ${c.engineerWorks} עבודות מיקס, ${c.albumTracks} שירי אלבום`,
+      `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'`,
+      `נשארים כמו שהם: ${c.tasksKept} משימות, ${c.meetingsKept} פגישות, ${c.productionsKept} הפקות Red Films, תיקיות וקבצים באחסון`,
+    ],
+    disclosuresHe: ["כמו כפתור המחיקה באפליקציה — אבל כל שלב נבדק, וכשל עוצר לפני מחיקת הפרויקט עצמו (אפשר לנסות שוב)", "לקוחות לא נמחקים לעולם", "לא נשלח Push / מייל"],
+  },
+  {
+    actionId: "CLEAR_PROJECT_DEADLINE", kinds: ["project"],
+    meta: meta("הסרת הדדליין של פרויקט", "Clear a project's deadline (the UI's empty date) — the overdue / due-soon reminders stop for it, exactly as in the app", [K("project")], ["deadline"], "updateProject (lib/projects-store)"),
+    resolve: resolveProject, read: projectFields,
+    plan: (_a, cur) => (cur.deadline ? finishPlan(cur, { deadline: null }) : refuse("NO_CHANGE_NEEDED", "לפרויקט אין דדליין")),
+    apply: (d, id) => d.writeProject(id, { deadline: null }),
+    disclosuresHe: [...COMMON_NO, "תזכורות 'באיחור / מתקרב' של המערכת מפסיקות לפרויקט הזה (הן נגזרות מהדדליין)"],
+  },
   {
     actionId: "UPDATE_PROJECT_STATUS", kinds: ["project"],
     meta: meta("שינוי סטטוס פרויקט", "Change a project's status (the app's end-date rule applies)", [K("project"), E("status", ALL_STATUSES)], ["status"], "updateProject + statusPatch (lib/writes/projects)", { riskClass: "NORMAL_BUSINESS" }),

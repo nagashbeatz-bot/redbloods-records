@@ -35,8 +35,10 @@ import type { WorklogFamilyWriters } from "./worklog";
 import type { DeliveryFamilyWriters } from "./delivery";
 import type { SocialFamilyWriters } from "./social";
 import type { SystemFamilyWriters } from "./system";
+import type { FilesFamilyWriters } from "./files";
+import type { BackfillFamilyWriters } from "./backfills";
 /** Every shared writer / narrow reader a primitive may use (composed per family). */
-export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters;
+export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters & FilesFamilyWriters & BackfillFamilyWriters;
 export interface CoreWriters {
   readProject(id: string): Promise<{ name: string; notes: string; startDate: string | null; plannedHours: number | null; plannedDays: number | null; projectType: string; parentProject: string; deadline: string | null } | null>;
   writeProject(id: string, patch: Partial<{ notes: string; start_date: string | null; planned_hours: number | null; planned_days: number | null; project_type: string; parent_project: string; deadline: string | null }>): Promise<void>;
