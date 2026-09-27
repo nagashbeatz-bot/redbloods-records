@@ -6,6 +6,8 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { DEFAULT_CURRENCY, isExpenseFullyPaidStatus, isReceivedStatus, normalizeCurrency } from "@/lib/finance";
 import { listProjects } from "@/lib/projects-store";
+import { isProjectOverdue } from "@/lib/project-deadline";
+import { sessionEndLocal, israelNowString } from "@/lib/session-duration";
 import type { GeneratedReport } from "./types";
 
 // ── Hebrew date utils ─────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
   const rawProjects = await listProjects();
   const DONE = new Set(["הושלם", "בהשהייה"]);
   const activeProjects  = rawProjects.filter((p) => !DONE.has(p.status));
-  const overdueProjects = rawProjects.filter((p) => p.isOverdue && p.status !== "הושלם");
+  const overdueProjects = rawProjects.filter((p) => isProjectOverdue(p));
 
   // Completed this week
   const { data: completedRows } = await supabase
@@ -95,17 +97,20 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
   // Sessions this week
   const { data: thisWeekSessions } = await supabase
     .from("sessions")
-    .select("id, status, date, start_time")
+    .select("id, status, date, start_time, end_time")
     .gte("date", wsStr)
     .lte("date", weStr);
   const sessThisWeek = thisWeekSessions ?? [];
+  // Real session vocabulary (A3): held = התקיים (show rehearsals: בוצע). A planned (מתוכנן) session whose end passed
+  // (overnight-aware) needs an update — passed ≠ happened.
   const sessionsThisWeek = sessThisWeek.filter((s) =>
-    s.status === "הושלם" || s.status === "בוצע"
+    s.status === "התקיים" || s.status === "בוצע"
   ).length;
+  const nowIL = israelNowString();
   const sessionsNeedingUpdate = sessThisWeek.filter((s) => {
-    if (s.status !== "נקבע") return false;
-    if (s.date > today) return false;
-    return true;
+    if (s.status !== "מתוכנן" || !s.date) return false;
+    const end = sessionEndLocal(s.date, s.start_time, s.end_time) ?? `${s.date}T23:59:59`;
+    return end < nowIL;
   }).length;
 
   // Sessions next week

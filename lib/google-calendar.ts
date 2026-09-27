@@ -806,30 +806,38 @@ export interface FetchedCalendarEvent {
   endTime:   string | null;   // HH:MM in Asia/Jerusalem — null for all-day events
 }
 
+/** The outcome of reading one event: FOUND, MISSING (404 / 410 / deleted), or ERROR (auth / network / quota …). */
+export type CalendarEventReadResult =
+  | { kind: "FOUND"; event: FetchedCalendarEvent }
+  | { kind: "MISSING"; reason: "NOT_FOUND" | "CANCELLED" }
+  | { kind: "ERROR"; error: string };
+
+function httpStatusOf(err: unknown): number | null {
+  const e = err as { code?: unknown; status?: unknown; response?: { status?: unknown } } | null;
+  for (const v of [e?.response?.status, e?.code, e?.status]) {
+    const n = typeof v === "number" ? v : typeof v === "string" && /^\d{3}$/.test(v) ? Number(v) : NaN;
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 /**
- * READ-ONLY. Fetches a single calendar event and normalizes its start/end to
- * Israel local date + time. Used by the automatic session calendar-pull sync.
- *
- * Returns null if the event does not exist (404) or any error occurs.
- * Returns an object with status "cancelled" if the event was deleted but still
- * resolvable — callers should treat that as missing.
- *
- * Does NOT create/update/delete anything on Google Calendar.
+ * READ-ONLY. Fetches a single calendar event and normalizes its start/end to Israel local date + time, and says
+ * WHY when there is no event: MISSING (Google answered 404 / 410, or the event is cancelled) is different from ERROR
+ * (Google could not be read — an API error is never "the event is gone"). Used by the session calendar-pull.
  */
-export async function getCalendarEvent(
+export async function getCalendarEventResult(
   eventId: string,
   calendarId: string = CALENDAR_ID
-): Promise<FetchedCalendarEvent | null> {
+): Promise<CalendarEventReadResult> {
   try {
     const auth     = await getAuthenticatedClient();
     const calendar = google.calendar({ version: "v3", auth });
     const res      = await calendar.events.get({ calendarId, eventId });
     const data     = res.data;
 
-    if (!data) return null;
-    if (data.status === "cancelled") {
-      return { status: "cancelled", date: null, startTime: null, endTime: null };
-    }
+    if (!data) return { kind: "MISSING", reason: "NOT_FOUND" };
+    if (data.status === "cancelled") return { kind: "MISSING", reason: "CANCELLED" };
 
     const startDateTime = data.start?.dateTime ?? null; // "2026-07-12T14:00:00+03:00"
     const startDateOnly = data.start?.date     ?? null; // "2026-07-12" (all-day)
@@ -837,29 +845,48 @@ export async function getCalendarEvent(
 
     // All-day event: only a date, no times.
     if (!startDateTime && startDateOnly) {
-      return {
-        status:    data.status ?? "confirmed",
-        date:      startDateOnly, // already YYYY-MM-DD
-        startTime: null,
-        endTime:   null,
-      };
+      return { kind: "FOUND", event: { status: data.status ?? "confirmed", date: startDateOnly, startTime: null, endTime: null } };
     }
-
     // No usable start — nothing to sync.
     if (!startDateTime) {
-      return { status: data.status ?? "confirmed", date: null, startTime: null, endTime: null };
+      return { kind: "FOUND", event: { status: data.status ?? "confirmed", date: null, startTime: null, endTime: null } };
     }
-
     const start = new Date(startDateTime);
     return {
-      status:    data.status ?? "confirmed",
-      date:      ilDateStr(start),                                   // YYYY-MM-DD (IL)
-      startTime: ilTimeStr(start),                                   // HH:MM (IL)
-      endTime:   endDateTime ? ilTimeStr(new Date(endDateTime)) : null, // HH:MM (IL)
+      kind: "FOUND",
+      event: {
+        status:    data.status ?? "confirmed",
+        date:      ilDateStr(start),                                   // YYYY-MM-DD (IL)
+        startTime: ilTimeStr(start),                                   // HH:MM (IL)
+        endTime:   endDateTime ? ilTimeStr(new Date(endDateTime)) : null, // HH:MM (IL)
+      },
     };
-  } catch {
-    return null; // 404 / not found / any error → treat as missing
+  } catch (err) {
+    const st = httpStatusOf(err);
+    if (st === 404 || st === 410) return { kind: "MISSING", reason: "NOT_FOUND" };
+    return { kind: "ERROR", error: st ? `google_http_${st}` : err instanceof Error ? err.message.slice(0, 200) : "unknown" };
   }
+}
+
+/**
+ * READ-ONLY. Fetches a single calendar event and normalizes its start/end to
+ * Israel local date + time (legacy shape).
+ *
+ * Returns null if the event does not exist (404) or any error occurs.
+ * Returns an object with status "cancelled" if the event was deleted but still
+ * resolvable — callers should treat that as missing. Callers that must tell an
+ * API error from a missing event use getCalendarEventResult.
+ *
+ * Does NOT create/update/delete anything on Google Calendar.
+ */
+export async function getCalendarEvent(
+  eventId: string,
+  calendarId: string = CALENDAR_ID
+): Promise<FetchedCalendarEvent | null> {
+  const r = await getCalendarEventResult(eventId, calendarId);
+  if (r.kind === "FOUND") return r.event;
+  if (r.kind === "MISSING" && r.reason === "CANCELLED") return { status: "cancelled", date: null, startTime: null, endTime: null };
+  return null; // 404 / not found / any error → treat as missing (legacy)
 }
 
 // ─── Read a single event with its descriptive fields (Sunny typed calendar actions) ──

@@ -5,9 +5,10 @@
 import "server-only";
 import { listProjects } from "@/lib/projects-store";
 import { supabase } from "@/lib/supabase";
-import { daysUntilDeadline } from "@/lib/utils";
+import { isProjectOverdue, daysUntilProjectDeadline, israelTodayYmd } from "@/lib/project-deadline";
 import { isCancelledPayment } from "@/lib/payment-status";
 import { isExpenseFullyPaidStatus, isReceivedStatus } from "@/lib/finance/classify";
+import { sessionEndLocal, israelNowString } from "@/lib/session-duration";
 import type {
   ReportData,
   ReportProject,
@@ -29,11 +30,14 @@ function isExpenseType(type: string): boolean {
 }
 
 /** True if a HH:MM time string refers to a moment already past (server time) */
-function hasTimePassed(timeStr: string | null): boolean {
-  if (!timeStr) return true; // no time → treat as past for safety
-  const [h, m] = timeStr.split(":").map(Number);
-  const now = new Date();
-  return now.getHours() > h || (now.getHours() === h && now.getMinutes() >= m);
+/**
+ * A session's end has passed (Israel wall clock; overnight-aware through the shared `sessionEndLocal`).
+ * A session with no times ends at the end of its day. Passed ≠ happened (A3): a passed מתוכנן session "needs update".
+ */
+function sessionEndHasPassed(s: { date: string | null; startTime: string | null; endTime: string | null }, nowIL: string): boolean {
+  if (!s.date) return false;
+  const end = sessionEndLocal(s.date, s.startTime, s.endTime) ?? `${s.date}T23:59:59`;
+  return end < nowIL;
 }
 
 function fmtMoney(amount: number, currency: string): string {
@@ -45,6 +49,7 @@ function fmtMoney(amount: number, currency: string): string {
 export async function fetchReportData(): Promise<ReportData> {
   // ── Projects ─────────────────────────────────────────────────────────────────
   const raw = await listProjects();
+  const todayIL = israelTodayYmd();
 
   const projects: ReportProject[] = raw.map((p) => ({
     id:        p.id,
@@ -53,9 +58,10 @@ export async function fetchReportData(): Promise<ReportData> {
     status:    p.status,
     deadline:  p.deadline,
     notes:     p.notes,
-    isOverdue: p.isOverdue,
+    // The ONE overdue rule (lib/project-deadline.ts): strict date, Israel day, not הושלם / בוטל / בהשהייה, not hidden.
+    isOverdue: isProjectOverdue(p, todayIL),
     isDueSoon: p.isDueSoon,
-    daysUntil: daysUntilDeadline(p.deadline),
+    daysUntil: daysUntilProjectDeadline(p.deadline, todayIL),
   }));
 
   // ── Google Calendar (best-effort) ─────────────────────────────────────────
@@ -90,7 +96,7 @@ export async function fetchReportData(): Promise<ReportData> {
     (p) => p.status !== COMPLETED && p.status !== ON_HOLD
   );
   const overdueProjects = projects.filter(
-    (p) => p.isOverdue && p.status !== COMPLETED
+    (p) => p.isOverdue
   );
   const dueTodayProjects = projects.filter(
     (p) => p.daysUntil === 0 && p.status !== COMPLETED
@@ -168,15 +174,18 @@ export async function fetchReportData(): Promise<ReportData> {
   const orphanedSessions    = todaySessionsAll.filter((s) => !s.hasValidProject);
   const todaySessionsValid  = todaySessionsAll.filter((s) => s.hasValidProject);
 
+  // Real session vocabulary (A3): held = התקיים (show rehearsals: בוצע); planned = מתוכנן. A planned session whose
+  // end passed "needs update" — it is never counted as done.
+  const nowIL                  = israelNowString();
   const sessionsDone           = todaySessionsValid.filter(
-    (s) => s.status === "הושלם" || s.status === "בוצע"
+    (s) => s.status === "התקיים" || s.status === "בוצע"
   );
   const sessionsCancelled      = todaySessionsValid.filter((s) => s.status === "בוטל");
   const sessionsNeedingUpdate  = todaySessionsValid.filter(
-    (s) => s.status === "נקבע" && hasTimePassed(s.startTime)
+    (s) => s.status === "מתוכנן" && sessionEndHasPassed(s, nowIL)
   );
   const sessionsUpcoming       = todaySessionsValid.filter(
-    (s) => s.status === "נקבע" && !hasTimePassed(s.startTime)
+    (s) => s.status === "מתוכנן" && !sessionEndHasPassed(s, nowIL)
   );
 
   // ── Sessions created today for FUTURE dates ───────────────────────────────

@@ -87,7 +87,7 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nShared writer (no divergence) + hardening");
   ok("the session routes use the shared writer (create / update / delete)", /createSession\(/.test(read("app/api/sessions/route.ts")) && /updateSession\(/.test(read("app/api/sessions/[id]/route.ts")) && /deleteSession\(/.test(read("app/api/sessions/[id]/route.ts")));
   const sw = read("lib/writes/sessions.ts");
-  ok("HARDENED: a date / time edit moves the Google event even without absolute times", /if \(moved && !startIso && !endIso && row\.date && row\.start_time\)/.test(sw));
+  ok("HARDENED: a date / time edit moves the Google event even without absolute times (only the calendar pull's own copy-back skips the echo — A3)", /if \(!fromCalendar && moved && !startIso && !endIso && row\.date && row\.start_time\)/.test(sw) && /const fromCalendar = opts\.origin === "CALENDAR_PULL";/.test(sw));
   ok("the Shalev push stays in the same writer (production-guarded inside lib/session-notify)", /notifySessionCreatedForShalev\(/.test(sw) && /NODE_ENV === "production"/.test(read("lib/session-notify.ts")));
 
   console.log(`\n${pass} passed, ${fail} failed`);

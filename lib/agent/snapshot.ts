@@ -5,8 +5,10 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { listProjects } from "@/lib/projects-store";
+import { isProjectOverdue } from "@/lib/project-deadline";
 import { getAlerts } from "./alerts-store";
 import { getGoalsProgress } from "./goals";
+import { sessionEndLocal, israelNowString } from "@/lib/session-duration";
 import { isCancelledPayment } from "@/lib/payment-status";
 import { DEFAULT_CURRENCY, isExpenseFullyPaidStatus, isReceivedStatus, normalizeCurrency, sumByCurrency } from "@/lib/finance";
 
@@ -19,7 +21,7 @@ export async function buildSnapshot() {
   const rawProjects = await listProjects();
   const DONE = new Set(["הושלם", "בהשהייה"]);
   const activeProjects = rawProjects.filter((p) => !DONE.has(p.status));
-  const overdueProjects = rawProjects.filter((p) => p.isOverdue && p.status !== "הושלם");
+  const overdueProjects = rawProjects.filter((p) => isProjectOverdue(p));
 
   // Finance settings (agreed prices)
   const { data: financeRows } = await supabase
@@ -55,13 +57,18 @@ export async function buildSnapshot() {
   // Sessions (this month)
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("project_id, date, status, start_time")
+    .select("project_id, date, status, start_time, end_time")
     .gte("date", `${month}-01`)
     .order("date", { ascending: true });
 
-  const sessionsDone     = (sessions ?? []).filter((s) => s.status === "הושלם" || s.status === "בוצע").length;
-  const sessionsUpcoming = (sessions ?? []).filter((s) => s.status === "נקבע" && s.date >= today).length;
-  const sessionsOverdue  = (sessions ?? []).filter((s) => s.status === "נקבע" && s.date < today).length;
+  // Real session vocabulary (A3): held = התקיים (show rehearsals: בוצע); planned = מתוכנן. "Overdue" = a planned session
+  // whose end passed (overnight-aware) — passed ≠ happened, it awaits the Owner's update.
+  const nowIL            = israelNowString();
+  const endPassed = (s: { date: string | null; start_time: string | null; end_time: string | null }) =>
+    !!s.date && (sessionEndLocal(s.date, s.start_time, s.end_time) ?? `${s.date}T23:59:59`) < nowIL;
+  const sessionsDone     = (sessions ?? []).filter((s) => s.status === "התקיים" || s.status === "בוצע").length;
+  const sessionsUpcoming = (sessions ?? []).filter((s) => s.status === "מתוכנן" && !endPassed(s)).length;
+  const sessionsOverdue  = (sessions ?? []).filter((s) => s.status === "מתוכנן" && endPassed(s)).length;
 
   // Victor
   let victorSummary: Record<string, unknown> = {};
@@ -90,7 +97,7 @@ export async function buildSnapshot() {
   } catch { /* ignore */ }
 
   function sessionsThisMonth(): number {
-    return (sessions ?? []).filter((s) => (s.status === "הושלם" || s.status === "בוצע") && s.date?.startsWith(month)).length;
+    return (sessions ?? []).filter((s) => (s.status === "התקיים" || s.status === "בוצע") && s.date?.startsWith(month)).length;
   }
 
   // Open questions
@@ -110,7 +117,7 @@ export async function buildSnapshot() {
       artist:  p.artist,
       status:  p.status,
       deadline: p.deadline,
-      isOverdue: p.isOverdue,
+      isOverdue: isProjectOverdue(p),
       agreedPrice: (finance?.agreedPrice as number | null) ?? null,
       currency: (finance?.currency as string | null) ?? "₪",
     };
@@ -166,7 +173,7 @@ export function formatSnapshotAsText(snapshot: Awaited<ReturnType<typeof buildSn
     ``,
     `📋 פרויקטים פעילים (עד 20):`,
     ...snapshot.projects.map((p) =>
-      `• ${p.name} (${p.artist}) — ${p.status}${p.deadline ? ` | דדליין: ${p.deadline}` : ""}${p.isOverdue ? " ⚠ בפיגור" : ""}${p.agreedPrice ? ` | מחיר: ${p.agreedPrice}${p.currency}` : " | ללא מחיר"}`
+      `• ${p.name} (${p.artist}) — ${p.status}${p.deadline ? ` | דדליין: ${p.deadline}` : ""}${isProjectOverdue(p) ? " ⚠ בפיגור" : ""}${p.agreedPrice ? ` | מחיר: ${p.agreedPrice}${p.currency}` : " | ללא מחיר"}`
     ),
   ];
   return lines.join("\n");

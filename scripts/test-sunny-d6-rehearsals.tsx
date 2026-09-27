@@ -1,43 +1,16 @@
 /**
  * D6 — show rehearsals (Owner decision 2026-09-27, FINAL): בוצע counts toward the show split, מתוכנן and בוטל never
- * (whatever the payment); the page-load auto-mark (AppShell → /api/sessions/auto-mark) and the project drawer's local
- * auto-mark never touch a show rehearsal, so opening / reloading the app never changes a show's money. A legacy
- * auto-marked התקיים keeps the pre-D6 rule (counts only if paid) until the Owner confirms it.
- * The real auto-mark route runs on a stubbed database. Run with:   npx tsx scripts/test-sunny-d6-rehearsals.tsx
+ * (whatever the payment). A3 (2026-09-27): the page-load auto-mark (AppShell → /api/sessions/auto-mark) and the project
+ * drawer's local auto-mark are RETIRED — opening / reloading the app never writes any session status, so it never
+ * changes a show's money. A legacy auto-marked התקיים keeps the pre-D6 rule (counts only if paid) until the Owner confirms it.
+ * Run with:   npx tsx scripts/test-sunny-d6-rehearsals.tsx
  */
-import Module from "node:module";
 import fs from "node:fs";
-import { NextRequest } from "next/server";
 import { computeShowSplit, isRehearsalLegacyAutoMarked, rehearsalCountedAmount } from "../lib/shows-types";
 import { stageCard } from "../lib/partner/act/next-step";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); } };
-
-type Row = { id: string; date: string; end_time: string; status: string; session_type: string | null; show_id: string | null };
-let rows: Row[] = [];
-const updates: string[][] = [];
-const fakeSupabase = {
-  from(t: string) {
-    if (t !== "sessions") throw new Error(`unexpected table ${t}`);
-    const f: Array<(r: Row) => boolean> = [];
-    const q = {
-      select() { return q; },
-      eq(c: keyof Row, v: unknown) { f.push((r) => r[c] === v); return q; },
-      not(c: keyof Row, _op: string, _v: null) { f.push((r) => r[c] !== null && r[c] !== undefined); return q; },
-      then(res: (v: unknown) => unknown) { return Promise.resolve({ data: rows.filter((r) => f.every((x) => x(r))).map((r) => ({ ...r })), error: null }).then(res); },
-      update(patch: Partial<Row>) { return { in: async (_c: string, ids: string[]) => { updates.push(ids); for (const r of rows) if (ids.includes(r.id)) Object.assign(r, patch); return { error: null }; } }; },
-    };
-    return q;
-  },
-};
-const ML = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
-const orig = ML._load;
-ML._load = function (request: string, parent: unknown, isMain: boolean) {
-  if (request === "server-only") return {};
-  if (/lib\/supabase$/.test(request)) return { supabase: fakeSupabase };
-  return orig.call(this, request, parent, isMain);
-};
 
 (async () => {
   console.log("The rule (rehearsalCountedAmount)");
@@ -57,31 +30,16 @@ ML._load = function (request: string, parent: unknown, isMain: boolean) {
   const legacy = computeShowSplit({ show_price: 2200, dj_fee: 400 }, rehearsalCountedAmount("התקיים", "שולם", 180));
   ok("10. the production legacy row (2,200 · DJ 400 · 180 paid התקיים) is unchanged: artist 810 — no silent change", legacy.artistFee === 810, legacy);
 
-  console.log("\nPage load never changes a show's money (the real auto-mark route)");
-  const { POST } = await import("../app/api/sessions/auto-mark/route");
-  rows = [
-    { id: "studio-past", date: "2026-09-20", end_time: "14:00", status: "מתוכנן", session_type: "סשן הקלטה", show_id: null },
-    { id: "rehearsal-past", date: "2026-09-20", end_time: "20:00", status: "מתוכנן", session_type: "חזרה להופעה", show_id: "show-1" },
-    { id: "rehearsal-past-notype", date: "2026-09-20", end_time: "20:00", status: "מתוכנן", session_type: null, show_id: "show-2" },
-    { id: "rehearsal-future", date: "2026-10-20", end_time: "20:00", status: "מתוכנן", session_type: "חזרה להופעה", show_id: "show-1" },
-    { id: "rehearsal-done", date: "2026-09-10", end_time: "20:00", status: "בוצע", session_type: "חזרה להופעה", show_id: "show-1" },
-    { id: "rehearsal-cancelled", date: "2026-09-11", end_time: "20:00", status: "בוטל", session_type: "חזרה להופעה", show_id: "show-1" },
-  ];
-  const call = () => POST(new NextRequest("https://app.test/api/sessions/auto-mark", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clientNow: "2026-09-27T12:00:00" }) }));
-  const r1 = await (await call()).json();
-  ok("11. app load: the passed studio session is still auto-marked (studio semantics unchanged)", JSON.stringify(r1.ids) === '["studio-past"]' && rows[0].status === "התקיים", r1);
-  ok("12. a passed planned show rehearsal (by type or by show link) stays מתוכנן", rows[1].status === "מתוכנן" && rows[2].status === "מתוכנן");
-  ok("13. future / done / cancelled rehearsals untouched", rows[3].status === "מתוכנן" && rows[4].status === "בוצע" && rows[5].status === "בוטל");
-  const r2 = await (await call()).json(); const r3 = await (await call()).json();
-  ok("14. repeated reloads: nothing more is written, rehearsals never move", r2.updated === 0 && r3.updated === 0 && updates.length === 1 && rows[1].status === "מתוכנן");
-
-  console.log("\nNo page-load path reaches show money");
-  const route = fs.readFileSync("app/api/sessions/auto-mark/route.ts", "utf8");
+  console.log("\nPage load never changes a show's money (A3: the auto-mark is retired)");
   const drawer = fs.readFileSync("components/ui/ProjectDrawer.tsx", "utf8");
   const shell = fs.readFileSync("components/AppShell.tsx", "utf8");
-  ok("15. the auto-mark route never syncs finance / ledgers", !/shows-finance-sync|syncShowFinance|artist-balance/.test(route));
-  ok("16. the project drawer's local auto-mark skips show rehearsals (its PATCH would re-sync the show)", /localAutoMark[\s\S]{0,900}חזרה להופעה/.test(drawer));
-  ok("17. AppShell calls only the auto-mark on load (no show / finance sync)", !/syncShowFinance|\/api\/shows/.test(shell));
+  ok("11. the auto-mark route no longer exists", !fs.existsSync("app/api/sessions/auto-mark/route.ts") && !fs.existsSync("app/api/sessions/auto-mark"));
+  ok("12. AppShell has no page-load session writer (no auto-mark call)", !/\/api\/sessions\/auto-mark/.test(shell) && !/clientNow/.test(shell));
+  ok("13. the project drawer has no local auto-mark (no page-load status PATCH)", !/localAutoMark/.test(drawer) && !/JSON\.stringify\(\{ status: "התקיים" \}\)/.test(drawer));
+  ok("14. the drawer no longer PATCHes the project start date on open (the session writer fills it on create)", !/body: JSON\.stringify\(\{ startDate: earliest \}\)/.test(drawer) && /ensureProjectStartDate\(projectId\)/.test(fs.readFileSync("lib/writes/sessions.ts", "utf8")));
+  ok("15. no page-load path names the auto-mark any more", !/sessions\/auto-mark/.test(shell + drawer));
+  ok("16. a show rehearsal's explicit confirmation from the drawer writes בוצע (its own vocabulary), never התקיים", /חזרה להופעה" \? "בוצע" : "התקיים"/.test(drawer));
+  ok("17. AppShell never syncs show / finance on load", !/syncShowFinance|\/api\/shows/.test(shell));
   const sync = fs.readFileSync("lib/shows-finance-sync.ts", "utf8");
   ok("18. the finance sync, the artist ledger and the DJ figure use the same rule (no second rule)", (sync.match(/rehearsalCountedAmount\(/g) ?? []).length >= 2 && /computeShowSplit\(/.test(sync));
 

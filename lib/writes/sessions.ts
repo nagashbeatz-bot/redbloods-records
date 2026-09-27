@@ -9,27 +9,20 @@
 import { supabase } from "@/lib/supabase";
 import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
 import { notifySessionCreatedForShalev } from "@/lib/session-notify";
+import { sessionEndLocal } from "@/lib/session-duration";
 
 export const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
-/** YYYY-MM-DD + 1 day (UTC-safe) — for a calendar end that crosses midnight. */
-function addDayStr(d: string): string {
-  const [y, m, dd] = d.split("-").map(Number);
-  const nd = new Date(Date.UTC(y, m - 1, dd) + 86400000);
-  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, "0")}-${String(nd.getUTCDate()).padStart(2, "0")}`;
-}
-/** Local calendar start / end for a session (end ≤ start = next day; no end = +1 hour). */
+/**
+ * Local calendar start / end for a session (end ≤ start = next day; no end = +1 hour). The end is the ONE shared rule
+ * `sessionEndLocal` (lib/session-duration.ts) — the same end the UI's "עבר — לא אושר" badge, the reports and the
+ * calendar-pull use. Outputs are unchanged for normal sessions; a no-end session starting 23:00+ now ends the next day
+ * (it used to produce an end before its start).
+ */
 export function sessionCalendarTimes(date: string, startTime: string, endTime?: string | null): { start: string; end: string } {
   const calStart = `${date}T${startTime}:00`;
-  if (endTime) {
-    const [sH, sM] = startTime.split(":").map(Number);
-    const [eH, eM] = endTime.split(":").map(Number);
-    const endDate = eH * 60 + eM <= sH * 60 + sM ? addDayStr(date) : date;
-    return { start: calStart, end: `${endDate}T${endTime}:00` };
-  }
-  const [hh, mm] = startTime.split(":").map(Number);
-  const endTotalMin = hh * 60 + mm + 60;
-  return { start: calStart, end: `${date}T${String(Math.floor(endTotalMin / 60) % 24).padStart(2, "0")}:${String(endTotalMin % 60).padStart(2, "0")}:00` };
+  const end = sessionEndLocal(date, startTime, endTime ?? null);
+  return { start: calStart, end: end ?? calStart };
 }
 
 export interface SessionInput {
@@ -115,7 +108,15 @@ export interface SessionPatch {
   location?: string; startIso?: string; endIso?: string; summary?: string; cost?: number | string | null; paymentStatus?: string;
 }
 
-export async function updateSession(id: string, body: SessionPatch): Promise<{ session: Record<string, unknown>; calendarSynced: boolean | null }> {
+/**
+ * Who is writing. "CALENDAR_PULL" = the calendar → Redbloods pull (the event already moved in Google): the calendar
+ * follow-through echo write and the project touch are skipped (the pull never wrote them), but a show rehearsal's
+ * finance resync still runs (its date may have moved).
+ */
+export interface SessionUpdateOptions { origin?: "UI" | "SUNNY" | "CALENDAR_PULL" }
+
+export async function updateSession(id: string, body: SessionPatch, opts: SessionUpdateOptions = {}): Promise<{ session: Record<string, unknown>; calendarSynced: boolean | null }> {
+  const fromCalendar = opts.origin === "CALENDAR_PULL";
   const { date, startTime, endTime, status, sessionType, notes, photographer, location, summary, cost, paymentStatus } = body;
   let { startIso, endIso } = body;
   const patch: Record<string, unknown> = {};
@@ -153,13 +154,13 @@ export async function updateSession(id: string, body: SessionPatch): Promise<{ s
 
   // HARDENED: a date / time change moves the event even when the caller sent no absolute times.
   const moved = date !== undefined || startTime !== undefined || endTime !== undefined;
-  if (moved && !startIso && !endIso && row.date && row.start_time) {
+  if (!fromCalendar && moved && !startIso && !endIso && row.date && row.start_time) {
     const t = sessionCalendarTimes(row.date, String(row.start_time).slice(0, 5), row.end_time ? String(row.end_time).slice(0, 5) : null);
     startIso = t.start; endIso = t.end;
   }
   let calendarSynced: boolean | null = null;
   const calEventId = row.calendar_event_id;
-  if (calEventId && (startIso || endIso || (typeof summary === "string" && summary.trim()))) {
+  if (!fromCalendar && calEventId && (startIso || endIso || (typeof summary === "string" && summary.trim()))) {
     try {
       const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
       if ((await isConnected()) && (await calendarEventExists(calEventId))) {
@@ -175,7 +176,7 @@ export async function updateSession(id: string, body: SessionPatch): Promise<{ s
       calendarSynced = false;
     }
   }
-  if (row.project_id) touchProject(row.project_id).catch(() => {});
+  if (row.project_id && !fromCalendar) touchProject(row.project_id).catch(() => {});
   return { session: data as Record<string, unknown>, calendarSynced };
 }
 

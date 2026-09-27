@@ -118,19 +118,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     window.scrollTo(0, 0);
   }, [pathname]);
 
-  // Auto-mark past sessions as "התקיים" on every app load
-  useEffect(() => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const clientNow =
-      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-      `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    fetch("/api/sessions/auto-mark", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientNow }),
-    }).catch(() => {});
-  }, []);
+  // A3 (2026-09-27, Owner canon "time passed ≠ session happened"): the page-load session auto-mark was retired.
+  // Opening the app never changes a session status; a passed planned session shows "עבר — לא אושר" until the Owner confirms.
 
   useEffect(() => {
     const handler = (e: Event) => setVictorSheetOpen(!!(e as CustomEvent<boolean>).detail);

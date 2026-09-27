@@ -5,6 +5,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { normalizeCurrency } from "@/lib/finance/currency";
+import { RECEIVED_STATUSES } from "@/lib/finance/classify";
 import type { BusinessGoals, GoalsProgress } from "@/lib/types";
 
 const DEFAULT_GOALS: BusinessGoals = {
@@ -69,7 +70,8 @@ function expectedByNow(target: number): number {
 
 // Finance contract: revenue = INCOME received (שולם | התקבל) in the goal's currency — never an expense,
 // never "partial", never another currency added into the goal.
-const INCOME_RECEIVED_STATUSES = ["שולם", "התקבל"];
+// The set is the ONE status rule of lib/finance/classify.ts.
+const INCOME_RECEIVED_STATUSES: string[] = [...RECEIVED_STATUSES];
 
 export async function getGoalsProgress(month: string): Promise<GoalsProgress> {
   const goals = await getGoals();
@@ -108,7 +110,7 @@ export async function getGoalsProgress(month: string): Promise<GoalsProgress> {
     .select("id")
     .gte("date", weekStartStr)
     .lte("date", todayStr)
-    .in("status", ["הושלם", "בוצע"]);
+    .in("status", ["התקיים", "בוצע"]); // real held vocabulary (A3): התקיים; show rehearsals: בוצע
 
   const sessionsActual = (doneSessions ?? []).length;
 
