@@ -40,7 +40,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     fields: { sessions: {
       id: "session id", project_id: "project id (text-like id, no FK) — a standalone session has a title instead", show_id: "show id for show rehearsals", title: "standalone session title", date: "YYYY-MM-DD", start_time: "HH:MM", end_time: "HH:MM (end ≤ start = next day on the calendar event)",
       status: "מתוכנן / התקיים / בוטל / נדחה / לא הגיע (rehearsal dialog also writes בוצע)", session_type: "סשן / ניקוי מיקס / חזרה / צילום קליפ / חזרה להופעה", notes: "free text (clip shoots store the location here too)", location: "free text", photographer: "clip shoot photographer name (free text)",
-      cost: "rehearsal cost (≥0, no currency column) — drives the rehearsal expense", calendar_event_id: "the Google event id (the only canonical calendar link)", created_at: "created",
+      cost: "rehearsal cost (≥0, no currency column on the session) — drives the rehearsal expense, which carries the show's currency", calendar_event_id: "the Google event id (the only canonical calendar link)", created_at: "created",
     } },
     settings: [{ family: "session_limit_<project>", meaning: "{limit} studio-session cap per project (default 3; only type סשן counts)" }, { family: "shalev_session_reminder:* / shalev_weekly_sessions:*", meaning: "dedupe markers of Shalev's session reminder / weekly summary pushes" }],
     vocabularies: { status: ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"], type: ["סשן", "ניקוי מיקס", "חזרה", "צילום קליפ"], rehearsalStatus: ["מתוכנן", "בוצע", "בוטל"], showRehearsalType: ["חזרה להופעה"] },

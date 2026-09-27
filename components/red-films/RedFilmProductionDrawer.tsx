@@ -44,6 +44,8 @@ export interface Production {
   director_notes: string;
   photographer_notes: string;
   general_budget: number;
+  /** the production's currency (₪ / $ / €) — budget, client price and advances are in it */
+  currency?: string;
   client_price: number;
   advance_required: number;
   advance_received: number;
@@ -267,6 +269,8 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
       advance_required:  Number(draftBudget.advance_required) || 0,
       advance_received:  Number(draftBudget.advance_received) || 0,
       collection_status: draftBudget.collection_status,
+      // a clip production's currency follows the project's clip deal (like its budget)
+      ...(isProjectManagedClipBudget(draftBudget) ? {} : { currency: draftBudget.currency ?? "₪" }),
     });
     if (result) setEditing(null);
   }
@@ -635,7 +639,7 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {/* Locked while a linked project's clip price owns the budget. */}
-                  <SRow label={isProjectManagedClipBudget(draftBudget) ? "תקציב כללי ₪ 🔒" : "תקציב כללי ₪"}>
+                  <SRow label={isProjectManagedClipBudget(draftBudget) ? `תקציב כללי ${draftBudget.currency ?? "₪"} 🔒` : `תקציב כללי ${draftBudget.currency ?? "₪"}`}>
                     {isProjectManagedClipBudget(draftBudget) ? (
                       <div>
                         <input type="number" style={{ ...INPUT_S, opacity: 0.6, cursor: "not-allowed" }}
@@ -650,15 +654,21 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
                         onChange={e => setDraftBudget(d => ({ ...d, general_budget: +e.target.value }))} />
                     )}
                   </SRow>
-                  <SRow label="מחיר ללקוח ₪">
+                  <SRow label="מטבע">
+                    <select style={SELECT_S} value={draftBudget.currency ?? "₪"} disabled={isProjectManagedClipBudget(draftBudget)}
+                      onChange={e => setDraftBudget(d => ({ ...d, currency: e.target.value }))}>
+                      {["₪", "$", "€"].map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </SRow>
+                  <SRow label={`מחיר ללקוח ${draftBudget.currency ?? "₪"}`}>
                     <input type="number" style={INPUT_S} value={draftBudget.client_price}
                       onChange={e => setDraftBudget(d => ({ ...d, client_price: +e.target.value }))} />
                   </SRow>
-                  <SRow label="מקדמה נדרשת ₪">
+                  <SRow label={`מקדמה נדרשת ${draftBudget.currency ?? "₪"}`}>
                     <input type="number" style={INPUT_S} value={draftBudget.advance_required}
                       onChange={e => setDraftBudget(d => ({ ...d, advance_required: +e.target.value }))} />
                   </SRow>
-                  <SRow label="מקדמה התקבלה ₪">
+                  <SRow label={`מקדמה התקבלה ${draftBudget.currency ?? "₪"}`}>
                     <input type="number" style={INPUT_S} value={draftBudget.advance_received}
                       onChange={e => setDraftBudget(d => ({ ...d, advance_received: +e.target.value }))} />
                   </SRow>
@@ -675,9 +685,9 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
                   {[
-                    ["תקציב", `₪${fmtNum(prod.general_budget)}`],
-                    ["מחיר ללקוח", prod.client_price ? `₪${fmtNum(prod.client_price)}` : "—"],
-                    ["מקדמה", prod.advance_received ? `₪${fmtNum(prod.advance_received)}` : "—"],
+                    ["תקציב", `${prod.currency ?? "₪"}${fmtNum(prod.general_budget)}`],
+                    ["מחיר ללקוח", prod.client_price ? `${prod.currency ?? "₪"}${fmtNum(prod.client_price)}` : "—"],
+                    ["מקדמה", prod.advance_received ? `${prod.currency ?? "₪"}${fmtNum(prod.advance_received)}` : "—"],
                   ].map(([lbl, val]) => (
                     <div key={lbl} style={{ background: "#181818", border: "1px solid #222", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
                       <div style={{ fontSize: 10, color: "#555" }}>{lbl}</div>

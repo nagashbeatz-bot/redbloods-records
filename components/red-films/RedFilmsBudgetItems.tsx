@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, useRef, useContext, createContext, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import BudgetItemDetailModal, { type BudgetPayment } from "./BudgetItemDetailModal";
 import { PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
@@ -19,7 +19,12 @@ interface BudgetItem {
   notes: string;
   created_at: string;
   updated_at: string;
+  /** the line's currency (its payments are in it) */
+  currency?: string;
 }
+
+/** The production's currency — the gauge compares only lines in it (no FX). */
+const CurCtx = createContext("₪");
 
 interface Props {
   productionId: string;
@@ -31,6 +36,8 @@ interface Props {
    * blocked, so the agreed price with the artist can't be silently rewritten.
    */
   budgetLocked?: boolean;
+  /** the production's currency (₪ / $ / €) */
+  currency?: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -52,8 +59,8 @@ const INPUT_S: CSSProperties = {
 
 const SELECT_S: CSSProperties = { ...INPUT_S, cursor: "pointer" };
 
-function fmtMoney(n: number) {
-  return `₪${n.toLocaleString("he-IL")}`;
+function fmtMoney(n: number, currency?: string) {
+  return `${currency || "₪"}${n.toLocaleString("he-IL")}`;
 }
 
 // ── Budget Gauge ──────────────────────────────────────────────────────────────
@@ -69,6 +76,7 @@ function BudgetGauge({
   onRaiseBudget: () => void;
   budgetLocked?: boolean;
 }) {
+  const cur = useContext(CurCtx);
   if (generalBudget === 0) {
     return (
       <div style={{
@@ -143,12 +151,12 @@ function BudgetGauge({
       {/* Stats row */}
       {(() => {
         const stats: [string, string, string][] = [
-          ["תקציב",   fmtMoney(generalBudget),  "#888"],
-          ["מתוכנן",  fmtMoney(plannedTotal),   isOverrun ? "#EF4444" : "#E8E8E8"],
-          ["שולם",    fmtMoney(paidTotal),       paidColor],
-          ["נשאר",    remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
+          ["תקציב",   fmtMoney(generalBudget, cur),  "#888"],
+          ["מתוכנן",  fmtMoney(plannedTotal, cur),   isOverrun ? "#EF4444" : "#E8E8E8"],
+          ["שולם",    fmtMoney(paidTotal, cur),       paidColor],
+          ["נשאר",    remaining >= 0 ? fmtMoney(remaining, cur) : `−${fmtMoney(Math.abs(remaining), cur)}`,
                       remaining >= 0 ? "#22C55E" : "#EF4444"],
-          ...(remainingToPay > 0 ? [["לתשלום", fmtMoney(remainingToPay), "#F59E0B"] as [string, string, string]] : []),
+          ...(remainingToPay > 0 ? [["לתשלום", fmtMoney(remainingToPay, cur), "#F59E0B"] as [string, string, string]] : []),
         ];
         return (
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 8 }}>
@@ -171,7 +179,7 @@ function BudgetGauge({
           gap: 12, flexWrap: "wrap",
         }}>
           <div style={{ fontSize: 12, color: "#F87171" }}>
-            ⚠ חריגה מהתקציב: ההוצאות המתוכננות גבוהות ב-{fmtMoney(plannedTotal - generalBudget)} מהתקציב הכללי
+            ⚠ חריגה מהתקציב: ההוצאות המתוכננות גבוהות ב-{fmtMoney(plannedTotal - generalBudget, cur)} מהתקציב הכללי
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
             {/* Locked: the budget mirrors the linked project's clip price, so
@@ -224,6 +232,7 @@ function ItemRow({
   onMenuToggle: () => void;
   onMenuClose: () => void;
 }) {
+  const cur = useContext(CurCtx);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item);
   const [saving, setSaving]   = useState(false);
@@ -266,7 +275,7 @@ function ItemRow({
         </td>
         {/* שולם — read-only in edit mode (comes from payments) */}
         <td style={{ padding: "8px 10px", fontSize: 12, color: "#555", fontStyle: "italic" }}>
-          {fmtMoney(itemPaid)}
+          {fmtMoney(itemPaid, item.currency ?? cur)}
         </td>
         <td style={{ padding: "8px 10px" }}>
           <select style={{ ...SELECT_S, width: "100%" }} value={draft.status}
@@ -304,11 +313,11 @@ function ItemRow({
         {item.category || "—"}
       </td>
       <td style={{ padding: "9px 10px", fontSize: 13, color: "#E8E8E8", fontWeight: 700, textAlign: "left" }}>
-        {item.planned_amount ? fmtMoney(item.planned_amount) : "—"}
+        {item.planned_amount ? fmtMoney(item.planned_amount, item.currency ?? cur) : "—"}
       </td>
       {/* שולם — from payments */}
       <td style={{ padding: "9px 10px", fontSize: 13, color: isCancelled ? "#555" : isFullyPaid ? "#22C55E" : isPartial ? "#F59E0B" : "#555", fontWeight: 700, textAlign: "left" }}>
-        {itemPaid > 0 ? fmtMoney(itemPaid) : "—"}
+        {itemPaid > 0 ? fmtMoney(itemPaid, item.currency ?? cur) : "—"}
       </td>
       <td style={{ padding: "9px 10px" }}>
         <span style={{
@@ -363,11 +372,12 @@ function ItemRow({
 // ── Add item form ─────────────────────────────────────────────────────────────
 
 function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promise<void> }) {
+  const cur = useContext(CurCtx);
   const [open, setOpen]   = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft]   = useState({
     title: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0,
-    vendor_name: "", status: "מתוכנן", notes: "",
+    vendor_name: "", status: "מתוכנן", notes: "", currency: cur,
   });
 
   async function handleAdd() {
@@ -376,7 +386,7 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
     await onAdd(draft);
     setSaving(false);
     setOpen(false);
-    setDraft({ title: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0, vendor_name: "", status: "מתוכנן", notes: "" });
+    setDraft({ title: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0, vendor_name: "", status: "מתוכנן", notes: "", currency: cur });
   }
 
   if (!open) {
@@ -415,10 +425,16 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
           </select>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>מתוכנן ₪</div>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>מתוכנן {draft.currency}</div>
           <input type="number" style={INPUT_S} value={draft.planned_amount || ""}
             placeholder="0"
             onChange={e => setDraft(d => ({ ...d, planned_amount: +e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>מטבע</div>
+          <select style={SELECT_S} value={draft.currency} onChange={e => setDraft(d => ({ ...d, currency: e.target.value }))}>
+            {["₪", "$", "€"].map(c => <option key={c}>{c}</option>)}
+          </select>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -446,6 +462,7 @@ function RaiseBudgetModal({
   onCancel: () => void;
   saving: boolean;
 }) {
+  const cur = useContext(CurCtx);
   return createPortal(
     <div
       onClick={() => { if (!saving) onCancel(); }}
@@ -459,8 +476,8 @@ function RaiseBudgetModal({
           העלאת תקציב כללי
         </h2>
         <p style={{ fontSize: 13, color: "#888", lineHeight: 1.8, margin: "0 0 24px" }}>
-          התקציב הנוכחי הוא <strong style={{ color: "#CCC" }}>{fmtMoney(currentBudget)}</strong>, וההוצאות המתוכננות הן <strong style={{ color: "#CCC" }}>{fmtMoney(plannedTotal)}</strong>.<br />
-          להעלות את התקציב הכללי ל-<strong style={{ color: "#22C55E" }}>{fmtMoney(plannedTotal)}</strong>?
+          התקציב הנוכחי הוא <strong style={{ color: "#CCC" }}>{fmtMoney(currentBudget, cur)}</strong>, וההוצאות המתוכננות הן <strong style={{ color: "#CCC" }}>{fmtMoney(plannedTotal, cur)}</strong>.<br />
+          להעלות את התקציב הכללי ל-<strong style={{ color: "#22C55E" }}>{fmtMoney(plannedTotal, cur)}</strong>?
         </p>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onCancel} disabled={saving}
@@ -480,7 +497,8 @@ function RaiseBudgetModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate, budgetLocked = false }: Props) {
+export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate, budgetLocked = false, currency = "₪" }: Props) {
+  const cur = currency;
   const [items, setItems]             = useState<BudgetItem[]>([]);
   const [payments, setPayments]       = useState<BudgetPayment[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -529,7 +547,10 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   useEffect(() => { load(); }, [load]);
 
   // Totals — exclude cancelled items
-  const active        = items.filter(i => i.status !== "בוטל");
+  const activeAll     = items.filter(i => i.status !== "בוטל");
+  // Only lines in the production's currency are compared with its budget — other currencies are never added (no FX)
+  const active        = activeAll.filter(i => (i.currency ?? cur) === cur);
+  const otherCurrency = activeAll.filter(i => (i.currency ?? cur) !== cur);
   const plannedTotal  = active.reduce((s, i) => s + (i.planned_amount || 0), 0);
 
   // Payments — map itemId → sum of payment amounts
@@ -613,7 +634,13 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }
 
   return (
+    <CurCtx.Provider value={cur}>
     <div ref={containerRef}>
+      {otherCurrency.length > 0 && (
+        <div style={{ fontSize: 12, color: "#F59E0B", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+          {[...new Set(otherCurrency.map(i => i.currency ?? cur))].map(c => { const ls = otherCurrency.filter(i => (i.currency ?? cur) === c); const pl = ls.reduce((t, i) => t + (i.planned_amount || 0), 0); const pd = ls.reduce((t, i) => t + (paidByItem.get(i.id) ?? 0), 0); return `שורות ב-${c}: מתוכנן ${fmtMoney(pl, c)}, שולם ${fmtMoney(pd, c)}`; }).join(" · ")} — לא נכללות בהשוואה לתקציב ({cur}) — אין המרה בין מטבעות
+        </div>
+      )}
       {/* Budget gauge */}
       <BudgetGauge
         budgetLocked={budgetLocked}
@@ -655,11 +682,11 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>מתוכנן</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#E8E8E8" }}>{item.planned_amount ? fmtMoney(item.planned_amount) : "—"}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#E8E8E8" }}>{item.planned_amount ? fmtMoney(item.planned_amount, item.currency ?? cur) : "—"}</div>
                   </div>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>שולם</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: itemPaidColor }}>{itemPaid > 0 ? fmtMoney(itemPaid) : "—"}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: itemPaidColor }}>{itemPaid > 0 ? fmtMoney(itemPaid, item.currency ?? cur) : "—"}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -684,11 +711,11 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 0 4px" }}>
             <div style={{ textAlign: "center", background: "#141414", borderRadius: 8, padding: "8px 10px" }}>
               <div style={{ fontSize: 10, color: "#555" }}>סה״כ מתוכנן</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#E8E8E8" }}>{fmtMoney(plannedTotal)}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#E8E8E8" }}>{fmtMoney(plannedTotal, cur)}</div>
             </div>
             <div style={{ textAlign: "center", background: "#141414", borderRadius: 8, padding: "8px 10px" }}>
               <div style={{ fontSize: 10, color: "#555" }}>סה״כ שולם</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E" }}>{fmtMoney(paidTotal)}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E" }}>{fmtMoney(paidTotal, cur)}</div>
             </div>
           </div>
         </div>
@@ -728,10 +755,10 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                     סה״כ (ללא מבוטלים)
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#E8E8E8", textAlign: "left" }}>
-                    {fmtMoney(plannedTotal)}
+                    {fmtMoney(plannedTotal, cur)}
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E", textAlign: "left" }}>
-                    {fmtMoney(paidTotal)}
+                    {fmtMoney(paidTotal, cur)}
                   </td>
                   <td colSpan={2} />
                 </tr>
@@ -772,5 +799,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
         );
       })()}
     </div>
+    </CurCtx.Provider>
   );
 }

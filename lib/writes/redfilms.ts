@@ -14,6 +14,13 @@ import { touchProject } from "@/lib/projects-store";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Body = Record<string, any>;
 export class RfInputError extends Error {}
+/** Red Films money has ONE currency per row (₪ / $ / €) — never converted, never added across currencies. */
+export const RF_CURRENCIES: readonly string[] = ["₪", "$", "€"];
+function rfCurrency(v: unknown, fallback: string): string {
+  if (v === undefined || v === null || v === "") return fallback;
+  if (typeof v !== "string" || !RF_CURRENCIES.includes(v)) throw new RfInputError("מטבע לא נתמך (₪ / $ / €)");
+  return v;
+}
 
 export async function createProduction(body: Body): Promise<Record<string, unknown>> {
   const title = body.title;
@@ -22,7 +29,7 @@ export async function createProduction(body: Body): Promise<Record<string, unkno
   const { data, error } = await supabase.from("red_films_productions").insert({
     title: title.trim(), production_type: body.production_type ?? "קליפ", status: "רעיון", project_id: body.project_id ?? null,
     artist_name: body.artist_name ?? "", client_id: body.client_id ?? null, client_name: body.client_name ?? "", photographer_name: body.photographer_name ?? "",
-    client_source: "פנימי - לייבל", collection_status: "לא רלוונטי", created_at: now, updated_at: now,
+    client_source: "פנימי - לייבל", collection_status: "לא רלוונטי", currency: rfCurrency(body.currency, "₪"), created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
   return data as Record<string, unknown>;
@@ -33,7 +40,7 @@ export const PRODUCTION_ALLOWED_FIELDS = new Set([
   "photographer_name", "director_name", "editor_name", "shoot_date", "locations", "concept_summary", "concept_vibe", "ref_links",
   "script_start", "script_middle", "script_end", "director_notes", "photographer_notes", "general_budget", "client_price",
   "advance_required", "advance_received", "collection_status", "files_raw_link", "files_edit_folder", "version_1_link",
-  "version_2_link", "final_version_link", "fix_notes", "edit_status", "publish_date", "published_where", "notes",
+  "version_2_link", "final_version_link", "fix_notes", "edit_status", "publish_date", "published_where", "notes", "currency",
 ]);
 
 export type UpdateProductionResult = { kind: "ok"; production: Record<string, unknown>; budgetLocked: boolean } | { kind: "budget_locked" } | { kind: "empty" } | { kind: "not_found" };
@@ -43,10 +50,12 @@ export async function updateProduction(id: string, body: Body): Promise<UpdatePr
   const { isManagedClipProduction } = await import("@/lib/clip-production");
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [key, val] of Object.entries(body)) if (PRODUCTION_ALLOWED_FIELDS.has(key)) patch[key] = val;
+  if ("currency" in patch) patch.currency = rfCurrency(patch.currency, "₪");
   let budgetLocked = false;
-  if ("general_budget" in patch) {
+  if ("general_budget" in patch || "currency" in patch) {
     const { data: current } = await supabase.from("red_films_productions").select("id, project_id").eq("id", id).maybeSingle();
-    if (current && await isManagedClipProduction(current as { id: string; project_id?: string | null })) { delete patch.general_budget; budgetLocked = true; }
+    // a clip production's budget (and its currency) mirror the project's clip deal
+    if (current && await isManagedClipProduction(current as { id: string; project_id?: string | null })) { delete patch.general_budget; delete patch.currency; budgetLocked = true; }
   }
   if (Object.keys(patch).length === 1) return budgetLocked ? { kind: "budget_locked" } : { kind: "empty" };
 
@@ -85,17 +94,26 @@ export async function updateProduction(id: string, body: Body): Promise<UpdatePr
 
 export async function createBudgetLine(productionId: string, body: Body): Promise<Record<string, unknown>> {
   const now = new Date().toISOString();
+  const { data: prod } = await supabase.from("red_films_productions").select("currency").eq("id", productionId).maybeSingle();
+  const currency = rfCurrency(body.currency, String((prod as { currency?: string } | null)?.currency ?? "₪"));
   const { data, error } = await supabase.from("red_films_budget_items").insert({
     production_id: productionId, title: body.title ?? "", category: body.category ?? "אחר", planned_amount: Number(body.planned_amount) || 0,
-    actual_amount: Number(body.actual_amount) || 0, vendor_name: body.vendor_name ?? "", status: body.status ?? "מתוכנן", notes: body.notes ?? "", created_at: now, updated_at: now,
+    actual_amount: Number(body.actual_amount) || 0, vendor_name: body.vendor_name ?? "", status: body.status ?? "מתוכנן", notes: body.notes ?? "", currency, created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
   return data as Record<string, unknown>;
 }
-const BUDGET_ALLOWED = new Set(["title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "notes"]);
+const BUDGET_ALLOWED = new Set(["title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "notes", "currency"]);
 export async function updateBudgetLine(itemId: string, body: Body): Promise<Record<string, unknown>> {
   const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [k, v] of Object.entries(body)) if (BUDGET_ALLOWED.has(k)) fields[k] = v;
+  if ("currency" in fields) {
+    fields.currency = rfCurrency(fields.currency, "₪");
+    // a line's payments are in the line's currency — relabelling them would be a silent FX
+    const { data: cur } = await supabase.from("red_films_budget_items").select("currency").eq("id", itemId).maybeSingle();
+    const { count } = await supabase.from("red_films_budget_payments").select("id", { count: "exact", head: true }).eq("budget_item_id", itemId);
+    if ((count ?? 0) > 0 && (cur as { currency?: string } | null)?.currency !== fields.currency) throw new RfInputError("לשורה יש תשלומים — אי אפשר לשנות את המטבע שלה (אין המרה)");
+  }
   const { data, error } = await supabase.from("red_films_budget_items").update(fields).eq("id", itemId).select().single();
   if (error) throw error;
   return data as Record<string, unknown>;
@@ -106,16 +124,19 @@ export async function deleteBudgetLine(itemId: string): Promise<void> {
 }
 
 /** The payment-row insert of POST /budget-items/[itemId]/payments (a receipt, when uploaded by the route, is passed in). */
-export async function insertBudgetPayment(itemId: string, p: { amount: number; paymentDate: string; paymentMethod: string; notes: string; receipt?: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } }): Promise<{ kind: "not_found" } | { kind: "ok"; payment: Record<string, unknown> }> {
+export async function insertBudgetPayment(itemId: string, p: { amount: number; paymentDate: string; paymentMethod: string; notes: string; currency?: string; receipt?: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } }): Promise<{ kind: "not_found" } | { kind: "ok"; payment: Record<string, unknown> }> {
   if (!(p.amount > 0)) throw new RfInputError("סכום חייב להיות גדול מ-0");
-  const { data: item, error: itemErr } = await supabase.from("red_films_budget_items").select("id, production_id, title").eq("id", itemId).maybeSingle();
+  const { data: item, error: itemErr } = await supabase.from("red_films_budget_items").select("id, production_id, title, currency").eq("id", itemId).maybeSingle();
   if (itemErr) throw itemErr;
   if (!item) return { kind: "not_found" };
+  // a payment is in its budget line's currency (never another one — no FX)
+  const lineCurrency = String((item as { currency?: string }).currency ?? "₪");
+  if (p.currency !== undefined && p.currency !== "" && p.currency !== lineCurrency) throw new RfInputError(`שורת התקציב ב-${lineCurrency} — תשלום במטבע אחר לא נרשם עליה (אין המרה)`);
   const now = new Date().toISOString();
   const { data, error } = await supabase.from("red_films_budget_payments").insert({
     production_id: item.production_id as string, budget_item_id: itemId, amount: p.amount, payment_date: p.paymentDate, payment_method: p.paymentMethod, notes: p.notes,
     receipt_file_name: p.receipt?.fileName ?? "", receipt_mime_type: p.receipt?.mimeType ?? "", receipt_dropbox_path: p.receipt?.dropboxPath ?? "", receipt_dropbox_url: p.receipt?.dropboxUrl ?? "",
-    created_at: now, updated_at: now,
+    currency: lineCurrency, created_at: now, updated_at: now,
   }).select().single();
   if (error) throw error;
   return { kind: "ok", payment: data as Record<string, unknown> };
@@ -127,6 +148,12 @@ export async function updateBudgetPayment(paymentId: string, body: Body): Promis
   const { data, error } = await supabase.from("red_films_budget_payments").update(fields).eq("id", paymentId).select().single();
   if (error) throw error;
   return data as Record<string, unknown>;
+}
+/** How many payments a budget line has (its currency cannot change once it has any — no FX). */
+export async function countBudgetLinePayments(itemId: string): Promise<number> {
+  const { count, error } = await supabase.from("red_films_budget_payments").select("id", { count: "exact", head: true }).eq("budget_item_id", itemId);
+  if (error) throw error;
+  return count ?? 0;
 }
 export async function deleteBudgetPayment(paymentId: string): Promise<void> {
   const { error } = await supabase.from("red_films_budget_payments").delete().eq("id", paymentId);
@@ -235,6 +262,7 @@ export async function createEquipment(body: Record<string, any>): Promise<{ kind
       serial_number: body.serial_number?.trim() || null,
       notes: body.notes?.trim() || null,
       added_by: body.added_by?.trim() || "NagashBeatz",
+      currency: typeof body.currency === "string" && RF_CURRENCIES.includes(body.currency) ? body.currency : "₪",
       created_at: now,
       updated_at: now,
     };
@@ -250,7 +278,7 @@ export async function createEquipment(body: Record<string, any>): Promise<{ kind
   return { kind: "ok", item: data as Record<string, unknown> };
 }
 
-const EQUIPMENT_ALLOWED_FIELDS = new Set(["name", "category", "quantity", "acquired_date", "purchase_price", "purchased_from", "serial_number", "notes", "added_by", "status"]);
+const EQUIPMENT_ALLOWED_FIELDS = new Set(["name", "category", "quantity", "acquired_date", "purchase_price", "purchased_from", "serial_number", "notes", "added_by", "status", "currency"]);
 /** PATCH /api/red-films/equipment/[id] semantics (validation verbatim; status drives removed_at). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function updateEquipment(id: string, body: Record<string, any>): Promise<{ kind: "bad"; status: number; error: string } | { kind: "ok"; item: Record<string, unknown> }> {
@@ -262,6 +290,7 @@ export async function updateEquipment(id: string, body: Record<string, any>): Pr
       patch[key] = body[key];
     }
 
+    if ("currency" in patch && (typeof patch.currency !== "string" || !RF_CURRENCIES.includes(patch.currency))) return { kind: "bad" as const, status: 400, error: "מטבע לא נתמך (₪ / $ / €)" };
     if ("name" in patch) {
       const name = String(patch.name ?? "").trim();
       if (!name) return { kind: "bad" as const, status: 400, error: "שם הציוד חובה" };

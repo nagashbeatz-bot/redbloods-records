@@ -349,7 +349,7 @@ export const LABEL_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/beats-store.ts": "eb8b5bf1212f6192339d838cbb3a346e5370298796de2cd47296da3d2ee29bb3",
   "lib/red-artists/portal-registry.ts": "ed1434690be4f62b8cb7e119f07e3e6bdeba00db307d90164c14bb197e8776e9",
   "lib/red-artists/availability.ts": "7f698e3d6ede717cc3ab34671695c1c630ab7bdeccfd1983307e6cbbf6846ccf",
-  "lib/shows-types.ts": "df9ed7a0912f659686185418e814a6f72daccf3b784582c9257d5d2758c6e5a5",
+  "lib/shows-types.ts": "5087bfb0984e20351b8aa7054b7faae36e00083a3ff1a97ee1c3155f335ec4ed",
 };
 
 /** Every API route family touching label artists (internal — the test re-discovers routes and requires a match). */

@@ -223,7 +223,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     const facts: ShowFact[] = raw.shows.map((s) => {
       const d = parseYmd(s.date);
       return {
-        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, incomeTxId: s.incomeTxId,
+        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, currency: s.currency ?? "₪", incomeTxId: s.incomeTxId,
         djClientId: s.djClientId ?? null, djConfirmationStatus: s.djConfirmationStatus ?? null, djConfirmedAt: s.djConfirmedAt ?? null,
       };
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, type DragEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type DragEvent, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -15,7 +15,12 @@ export interface BudgetItem {
   vendor_name: string;
   status: string;
   notes: string;
+  /** the line's currency — its payments are always in it */
+  currency?: string;
 }
+
+/** The line's currency for every amount in this modal (payments are in it — no FX). */
+const LineCur = createContext("₪");
 
 export interface BudgetPayment {
   id: string;
@@ -41,8 +46,8 @@ const PAYMENT_METHODS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtMoney(n: number) {
-  return `₪${n.toLocaleString("he-IL")}`;
+function fmtMoney(n: number, currency?: string) {
+  return `${currency || "₪"}${n.toLocaleString("he-IL")}`;
 }
 
 function fmtDate(d: string | null | undefined) {
@@ -81,6 +86,7 @@ function AddPaymentForm({
   onSaved: (p: BudgetPayment) => void;
   onCancel: () => void;
 }) {
+  const cur = useContext(LineCur);
   const today = new Date().toISOString().slice(0, 10);
 
   const [amount,        setAmount]        = useState(defaultAmount && defaultAmount > 0 ? String(defaultAmount) : "");
@@ -133,7 +139,7 @@ function AddPaymentForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         {/* Amount */}
         <div>
-          <div style={{ fontSize: 10, color: "#555", fontWeight: 700, marginBottom: 4, letterSpacing: "0.06em" }}>סכום ₪ *</div>
+          <div style={{ fontSize: 10, color: "#555", fontWeight: 700, marginBottom: 4, letterSpacing: "0.06em" }}>סכום {cur} *</div>
           <input type="number" min={0} placeholder="0" value={amount}
             onChange={e => setAmount(e.target.value)} style={INP} />
         </div>
@@ -237,6 +243,7 @@ function PaymentRow({
   onDelete: (id: string) => void;
   onReceiptUploaded: (p: BudgetPayment) => void;
 }) {
+  const cur = useContext(LineCur);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -282,7 +289,7 @@ function PaymentRow({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
             <span style={{ fontSize: 14, fontWeight: 800, color: "#22C55E" }}>
-              {fmtMoney(payment.amount)}
+              {fmtMoney(payment.amount, cur)}
             </span>
             <span style={{ fontSize: 11, color: "#888" }}>{fmtDate(payment.payment_date)}</span>
             {payment.payment_method && (
@@ -377,6 +384,7 @@ export default function BudgetItemDetailModal({
   onPaymentDeleted,
   onPaymentUpdated,
 }: Props) {
+  const cur = item.currency ?? "₪";
   const [payments, setPayments] = useState<BudgetPayment[]>(initialPayments);
   const [loading,  setLoading]  = useState(initialPayments.length === 0);
   const [showForm, setShowForm] = useState(initialShowForm ?? false);
@@ -432,6 +440,7 @@ export default function BudgetItemDetailModal({
   if (typeof document === "undefined") return null;
 
   return createPortal(
+    <LineCur.Provider value={cur}>
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 9800,
@@ -498,9 +507,9 @@ export default function BudgetItemDetailModal({
           gap: 1, borderBottom: "1px solid #1E1E1E", flexShrink: 0,
         }}>
           {[
-            { label: "מתוכנן",   value: item.planned_amount ? fmtMoney(item.planned_amount) : "—", color: "#888" },
-            { label: "שולם",     value: fmtMoney(totalPaid),  color: "#22C55E" },
-            { label: "יתרה",     value: balance > 0 ? fmtMoney(balance) : balance < 0 ? `חריגה ${fmtMoney(Math.abs(balance))}` : "✓ אפס", color: balance <= 0 ? "#22C55E" : "#F59E0B" },
+            { label: "מתוכנן",   value: item.planned_amount ? fmtMoney(item.planned_amount, cur) : "—", color: "#888" },
+            { label: "שולם",     value: fmtMoney(totalPaid, cur),  color: "#22C55E" },
+            { label: "יתרה",     value: balance > 0 ? fmtMoney(balance, cur) : balance < 0 ? `חריגה ${fmtMoney(Math.abs(balance), cur)}` : "✓ אפס", color: balance <= 0 ? "#22C55E" : "#F59E0B" },
           ].map(({ label, value, color }) => (
             <div key={label} style={{ padding: "12px 16px", textAlign: "center", background: "#0D0D0D" }}>
               <div style={{ fontSize: 10, color: "#444", marginBottom: 3 }}>{label}</div>
@@ -560,7 +569,8 @@ export default function BudgetItemDetailModal({
           )}
         </div>
       </div>
-    </div>,
+    </div>
+    </LineCur.Provider>,
     document.body
   );
 }

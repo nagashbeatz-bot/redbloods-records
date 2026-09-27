@@ -1,21 +1,23 @@
 /**
  * SUNNY UNIVERSAL ACTION LAYER — Shows + DJ family. Every write goes through lib/writes/shows (+ lib/writes/sessions
  * for rehearsals) — the same writers the Shows hub uses. Show money is the app's own rule (computeShowSplit /
- * rehearsalCountedAmount inside the shared sync); shows store no currency (₪ by convention — disclosed). The DJ is
+ * rehearsalCountedAmount inside the shared sync). Each show has ONE currency (₪ / $ / €) — never converted, never added. The DJ is
  * exactly who the Boss names: CLEANTONE is never auto-assigned, and his 500₪ is an operating default the Boss confirms
- * or overrides, never applied silently. D5 (advance) is unchanged (today's semantics); D6 is decided (only בוצע counts; the page-load auto-mark skips show rehearsals).
+ * or overrides, never applied silently. D5 (decided + migrated): actual show money = SHOW_PAYMENT rows in Finance (RECORD_SHOW_PAYMENT);
+ * the show's payment status / received are derived from them. D6: only בוצע counts; the page-load auto-mark skips show rehearsals.
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 
-export type ShowView = { name: string; artist: string; artistClientId: string | null; bookerName: string; bookerClientId: string | null; date: string | null; startTime: string | null; location: string; contactPerson: string; phone: string; status: string; paymentStatus: string; showPrice: number; djFee: number; djClientId: string | null; djName: string; djConfirmation: string | null; advancePayment: number; notes: string; hasCalendarEvent: boolean; financeRows: number; rehearsals: number };
-type UpdateResult = { kind: "ok" | "not_found" | "balance_sync_failed"; warning?: string | null };
+export type ShowView = { name: string; artist: string; artistClientId: string | null; bookerName: string; bookerClientId: string | null; date: string | null; startTime: string | null; location: string; contactPerson: string; phone: string; status: string; paymentStatus: string; showPrice: number; djFee: number; djClientId: string | null; djName: string; djConfirmation: string | null; advancePayment: number; notes: string; hasCalendarEvent: boolean; financeRows: number; rehearsals: number; currency: string; received: number; remaining: number; credit: number; payments: string };
+type UpdateResult = { kind: "ok" | "not_found" | "balance_sync_failed" | "refused"; warning?: string | null };
 export interface ShowFamilyWriters {
   readShow(id: string): Promise<ShowView | null>;
-  createShow(body: Record<string, unknown>): Promise<{ id: string; calendarWarning: string | null }>;
+  createShow(body: Record<string, unknown>): Promise<{ id: string; calendarWarning: string | null; paymentWarning?: string | null }>;
   updateShow(id: string, body: Record<string, unknown>): Promise<UpdateResult>;
   closeShow(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; artistPaid: boolean; artistPaidDate?: string; djName?: string; note?: string }): Promise<UpdateResult>;
-  deleteShowCompletely(id: string): Promise<{ kind: "ok" | "has_rehearsals" | "not_found" }>;
+  deleteShowCompletely(id: string): Promise<{ kind: "ok" | "has_rehearsals" | "has_payments" | "not_found" }>;
+  recordShowPayment(id: string, p: { amount: number; date: string; currency: string; method: string; note: string }): Promise<{ kind: "ok" | "not_found" | "refused"; messageHe?: string; transactionId?: string }>;
   markShowQuoteSent(id: string): Promise<"ok" | "skipped" | "not_found">;
   notifyShowArtist(id: string): Promise<{ ok: boolean; reason?: string }>;
   notifyShowDj(id: string): Promise<{ ok: boolean; reason?: string }>;
@@ -32,12 +34,19 @@ const PIPELINE = ["ליד חדש", "ממתין לתשובה", "צריך פולו
 const CONFIRMED = ["נסגר", "אושרה"];
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ils = (n: number) => `₪${Number(n).toLocaleString("en-US")}`;
+/** An amount with ITS currency (never assumed ₪). */
+const cm = (n: unknown, c: unknown) => `${typeof c === "string" && c ? c : "₪"}${Number(n).toLocaleString("en-US")}`;
+/** Pinned to lib/shows-types.ts MONEY_CURRENCIES. */
+export const SHOW_CURRENCIES: readonly string[] = ["₪", "$", "€"];
+/** Pinned to lib/writes/show-payments.ts PAYMENT_METHODS. */
+export const SHOW_PAYMENT_METHODS: readonly string[] = ["", "העברה בנקאית", "מזומן", "ביט", "פייבוקס", "צ'ק", "כרטיס אשראי", "PayPal", "אחר"];
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 const K = (name: string, required = true): ArgSpec => ({ name, kind: "entityKey", required });
 const T = (name: string, required = false): ArgSpec => ({ name, kind: "text", required });
 const meta = (he: string, en: string, args: readonly ArgSpec[], fields: readonly string[], writer: string, o: Partial<PrimitiveMeta>): PrimitiveMeta =>
   ({ domain: "SHOW", he, en, args, fields, effects: [], riskClass: "SAFE_REVERSIBLE", reversible: "YES", writer, compensation: "a new approved plan restoring the previous value shown in the preview", ...o });
-const NO_CURRENCY = "להופעות אין עמודת מטבע — הסכומים נרשמים ב-₪ (מוסכמה של המערכת)";
+const NO_CURRENCY = "כל סכום מוצג במטבע של ההופעה — בלי המרה ובלי חיבור בין מטבעות";
+const D5 = "כסף שהתקבל בפועל = שורות תשלום בפיננסים (שולם / התקבל); סטטוס התשלום וה'התקבל' של ההופעה נגזרים מהן";
 
 const showFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const s = await d.readShow(id); return s ? { ...s } : null; };
 async function onShow(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
@@ -47,7 +56,7 @@ async function onShow(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
   if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את ההופעה");
   return { key: `show:${k.id}`, id: k.id, label: `${f.name}${f.date ? ` (${f.date})` : ""}`, fields: f };
 }
-const ok = (r: UpdateResult) => { if (r.kind === "not_found") throw new Error("show not found"); if (r.kind === "balance_sync_failed") throw new Error("the show was saved but the artist balance close-sync failed — re-running the same close is safe"); };
+const ok = (r: UpdateResult) => { if (r.kind === "not_found") throw new Error("show not found"); if (r.kind === "refused") throw new Error(`refused: ${r.warning ?? ""}`); if (r.kind === "balance_sync_failed") throw new Error("the show was saved but the artist balance close-sync failed — re-running the same close is safe"); };
 /** Resolve a client key to its name (artist / booker / DJ). */
 async function clientName(d: WriterDeps, v: unknown): Promise<{ id: string; name: string } | PlanRefusal | null> {
   if (v === undefined) return null;
@@ -66,7 +75,7 @@ async function showCreateContext(d: WriterDeps, a: Readonly<Record<string, unkno
 export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "CREATE_SHOW", kinds: ["show"],
-    meta: meta("יצירת הופעה / הצעת מחיר", "Create a show or a quote (confirmed statuses create the show's finance rows; optional calendar event)", [T("name", true), K("artistClient", false), K("bookerClient", false), T("bookerName"), { name: "date", kind: "ymd", required: false }, { name: "startTime", kind: "time", required: false }, T("location"), T("contactPerson"), T("phone"), { name: "status", kind: "enum", required: true, values: SHOW_STATUSES.filter((s) => s !== "בוצע") }, { name: "showPrice", kind: "money", required: true }, K("djClient", false), { name: "djFee", kind: "money", required: false }, T("notes"), { name: "addToCalendar", kind: "boolean", required: false }], ["name", "status", "showPrice", "djFee", "date"], "createShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "CALENDAR"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the show (separate approved action)" }),
+    meta: meta("יצירת הופעה / הצעת מחיר", "Create a show or a quote (confirmed statuses create the show's finance rows; optional calendar event)", [T("name", true), K("artistClient", false), K("bookerClient", false), T("bookerName"), { name: "date", kind: "ymd", required: false }, { name: "startTime", kind: "time", required: false }, T("location"), T("contactPerson"), T("phone"), { name: "status", kind: "enum", required: true, values: SHOW_STATUSES.filter((s) => s !== "בוצע") }, { name: "showPrice", kind: "money", required: true }, K("djClient", false), { name: "djFee", kind: "money", required: false }, T("notes"), { name: "addToCalendar", kind: "boolean", required: false }, { name: "currency", kind: "enum", required: false, values: SHOW_CURRENCIES }, { name: "depositReceived", kind: "money", required: false }, { name: "depositDate", kind: "ymd", required: false }], ["name", "status", "showPrice", "djFee", "date", "currency", "received"], "createShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "CALENDAR"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the show (separate approved action)" }),
     createContext: showCreateContext,
     async resolve(d, a) {
       for (const k of ["artistClient", "bookerClient", "djClient"]) { const r = await clientName(d, a[k]); if (isRef(r)) return r; }
@@ -85,7 +94,13 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (a.djClient === undefined && a.djFee !== undefined && a.djFee !== 0) return refuse("DJ_REQUIRED", "שכר DJ בלי DJ — בחר DJ או השמט את השכר");
       if (a.addToCalendar === true && (!a.date || !a.startTime)) return refuse("MISSING_DATE", "ליומן צריך תאריך ושעה");
       if (cur.connected === false) return refuse("NOT_CONNECTED", "Google Calendar לא מחובר");
-      return { ok: true, after: { name: n.trim(), status, showPrice: a.showPrice, djFee: a.djClient !== undefined ? Number(a.djFee) : 0, date: (a.date as string | undefined) ?? null } };
+      if (a.currency !== undefined && !SHOW_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "₪ / $ / €");
+      if (a.depositReceived !== undefined) {
+        if (typeof a.depositReceived !== "number" || a.depositReceived <= 0) return refuse("BAD_MONEY", "מקדמה לא תקינה");
+        if (PIPELINE.includes(status)) return refuse("NOT_CONFIRMED", "מקדמה נרשמת רק להופעה מאושרת (נסגר / אושרה)");
+        if (a.depositDate !== undefined && !realYmd(a.depositDate)) return refuse("BAD_DATE", "תאריך המקדמה לא תקין");
+      }
+      return { ok: true, after: { name: n.trim(), status, showPrice: a.showPrice, djFee: a.djClient !== undefined ? Number(a.djFee) : 0, date: (a.date as string | undefined) ?? null, currency: String(a.currency ?? "₪"), received: typeof a.depositReceived === "number" ? a.depositReceived : 0 } };
     },
     async apply(d, _id, after, a) {
       const art = parseKey(a.artistClient, ["client"]), bk = parseKey(a.bookerClient, ["client"]), dj = parseKey(a.djClient, ["client"]);
@@ -94,14 +109,15 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
         name: after.name, artist: names.artist, artist_client_id: art?.id ?? null, booker_client_id: bk?.id ?? null, booker_name: names.booker,
         date: after.date, start_time: str(a.startTime) ?? null, location: str(a.location) ?? "", contact_person: str(a.contactPerson) ?? "", phone: str(a.phone) ?? "",
         status: after.status, payment_status: "לא שולם", show_price: after.showPrice, dj_fee: after.djFee, dj_client_id: dj?.id ?? null, dj_name: names.dj,
-        artist_fee: 0, advance_payment: 0, notes: str(a.notes) ?? "", addToCalendar: a.addToCalendar === true,
+        artist_fee: 0, advance_payment: Number(after.received) || 0, advance_date: str(a.depositDate), currency: after.currency, notes: str(a.notes) ?? "", addToCalendar: a.addToCalendar === true,
       });
+      if (r.paymentWarning) throw new Error(r.paymentWarning);
       return { createdId: r.id, receipt: r.calendarWarning };
     },
-    async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.name === after.name && s.status === after.status && s.showPrice === after.showPrice && s.djFee === after.djFee; },
-    requiredValues: (_a, after) => [ils(Number(after.showPrice)), ...(Number(after.djFee) > 0 ? [ils(Number(after.djFee))] : []), ...(after.date ? [String(after.date)] : [])],
+    async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.name === after.name && s.status === after.status && s.showPrice === after.showPrice && s.djFee === after.djFee && s.currency === after.currency && s.received === after.received; },
+    requiredValues: (_a, after) => [cm(after.showPrice, after.currency), ...(Number(after.djFee) > 0 ? [cm(after.djFee, after.currency)] : []), ...(after.date ? [String(after.date)] : []), ...(Number(after.received) > 0 ? [`התקבל ${cm(after.received, after.currency)}`] : [])],
     warnings: (c) => (c.dj ? [`DJ: ${c.dj} — הוא מקבל בקשת אישור בפורטל (אם זה קלינטון)`] : []),
-    disclosuresHe: ["סטטוס מאושר (נסגר / אושרה) יוצר את רשומות הכספים של ההופעה (הכנסה, DJ, שכר אמן 50/50 אחרי DJ וחזרות) ושורת מאזן צפויה לשליו — כמו באפליקציה", NO_CURRENCY, "DJ נקבע רק כפי שציינת — לעולם לא אוטומטית", "לא יישלח Push לאמן / ל-DJ (שליחה היא פעולה נפרדת)"],
+    disclosuresHe: ["סטטוס מאושר (נסגר / אושרה) יוצר את רשומות הכספים של ההופעה (יתרה צפויה, DJ, שכר אמן 50/50 אחרי DJ וחזרות) ושורת מאזן צפויה לשליו — כמו באפליקציה", "מקדמה שציינת נרשמת כתשלום שהתקבל בפיננסים, והיתרה הצפויה = מחיר פחות מה שהתקבל", NO_CURRENCY, "DJ נקבע רק כפי שציינת — לעולם לא אוטומטית", "לא יישלח Push לאמן / ל-DJ (שליחה היא פעולה נפרדת)"],
   },
   {
     actionId: "UPDATE_SHOW_DETAILS", kinds: ["show"],
@@ -123,20 +139,21 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_SHOW_MONEY", kinds: ["show"],
-    meta: meta("כסף של הופעה: מחיר / סטטוס תשלום הלקוח / מקדמה", "Set a show's price, client payment status (today's vocabulary incl. מקדמה) or advance amount — the show finance re-syncs", [K("show"), { name: "showPrice", kind: "money", required: false }, { name: "paymentStatus", kind: "enum", required: false, values: SHOW_PAYMENT_STATUSES }, { name: "advancePayment", kind: "money", required: false }], ["showPrice", "paymentStatus", "advancePayment"], "updateShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "CALENDAR"], riskClass: "FINANCIAL", reversible: "PARTIAL" }),
+    meta: meta("כסף של הופעה: מחיר / סימון שהלקוח שילם את כל היתרה", "Set a show's agreed price, or mark that the client paid the whole remaining balance (a payment row for the remainder) — received money itself is RECORD_SHOW_PAYMENT", [K("show"), { name: "showPrice", kind: "money", required: false }, { name: "paymentStatus", kind: "enum", required: false, values: SHOW_PAYMENT_STATUSES }], ["showPrice", "paymentStatus", "advancePayment"], "updateShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "CALENDAR"], riskClass: "FINANCIAL", reversible: "PARTIAL" }),
     resolve: onShow, read: showFields,
     plan(a, cur) {
       const after: Fields = {};
       if (a.showPrice !== undefined) { if (typeof a.showPrice !== "number" || a.showPrice < 0) return refuse("BAD_MONEY", "מחיר לא תקין"); after.showPrice = a.showPrice; }
       if (a.paymentStatus !== undefined) { if (!SHOW_PAYMENT_STATUSES.includes(String(a.paymentStatus))) return refuse("BAD_ENUM", "סטטוס תשלום לא מוכר"); after.paymentStatus = String(a.paymentStatus); }
-      if (a.advancePayment !== undefined) { if (typeof a.advancePayment !== "number" || a.advancePayment < 0) return refuse("BAD_MONEY", "מקדמה לא תקינה"); after.advancePayment = a.advancePayment; }
+      if (after.paymentStatus === "מקדמה") return refuse("USE_RECORD_PAYMENT", "מקדמה = תשלום שהתקבל — RECORD_SHOW_PAYMENT רושם אותו בפיננסים (הסטטוס נגזר מהתשלומים)");
       if (after.paymentStatus === "שולם" && cur.status !== "בוצע") return refuse("USE_CLOSE", "תשלום מלא נרשם בסגירת הופעה (סגירה מגדירה מי קיבל ומי שולם) — השתמש ב-CLOSE_SHOW, או בסטטוס אחר");
       return finishPlan(cur, after);
     },
-    async apply(d, id, a) { ok(await d.updateShow(id, { ...(a.showPrice !== undefined ? { show_price: a.showPrice } : {}), ...(a.paymentStatus !== undefined ? { payment_status: a.paymentStatus } : {}), ...(a.advancePayment !== undefined ? { advance_payment: a.advancePayment } : {}) })); },
-    requiredValues: (_a, after) => [...(after.showPrice !== undefined ? [ils(Number(after.showPrice))] : []), ...(after.paymentStatus !== undefined ? [String(after.paymentStatus)] : []), ...(after.advancePayment !== undefined ? [ils(Number(after.advancePayment))] : [])],
-    warnings: (c) => [`היום: ${ils(Number(c.showPrice))}, תשלום '${c.paymentStatus}', סטטוס '${c.status}'`],
-    disclosuresHe: ["רשומות הכספים של הופעה מאושרת מחושבות מחדש לפי הכלל של האפליקציה (50/50 אחרי DJ וחזרות)", "מקדמה נרשמת בסמנטיקה של היום (החלטה D5 לא שונתה)", NO_CURRENCY, "לא יישלח Push"],
+    async apply(d, id, a) { ok(await d.updateShow(id, { ...(a.showPrice !== undefined ? { show_price: a.showPrice } : {}), ...(a.paymentStatus !== undefined ? { payment_status: a.paymentStatus } : {}) })); },
+    async verify(d, id, after) { const s = await d.readShow(id); return !!s && (after.showPrice === undefined || s.showPrice === after.showPrice) && (after.paymentStatus !== "שולם" || s.remaining === 0); },
+    requiredValues: (_a, after) => [...(after.showPrice !== undefined ? [String(after.showPrice)] : []), ...(after.paymentStatus !== undefined ? [String(after.paymentStatus)] : [])],
+    warnings: (c) => [`היום: מחיר ${cm(c.showPrice, c.currency)}, התקבל ${cm(c.received, c.currency)}, יתרה ${cm(c.remaining, c.currency)}${Number(c.credit) > 0 ? `, עודף ${cm(c.credit, c.currency)}` : ""}, סטטוס '${c.status}'`],
+    disclosuresHe: ["'שולם' = הלקוח שילם את כל היתרה → נרשם תשלום אחד על היתרה (לא על המחיר המלא — בלי כפל הכנסה)", "שינוי מחיר מעדכן את היתרה הצפויה; תשלומים שהתקבלו לא משתנים; עודף נשאר גלוי", "רשומות הכספים של הופעה מאושרת מחושבות מחדש לפי הכלל של האפליקציה (50/50 אחרי DJ וחזרות)", D5, NO_CURRENCY, "לא יישלח Push"],
   },
   {
     actionId: "ASSIGN_SHOW_DJ", kinds: ["show"],
@@ -173,10 +190,10 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     actionId: "MOVE_SHOW_TO_PIPELINE", kinds: ["show"],
     meta: meta("החזרת הופעה לשלב ליד / הצעה", "Move a show back to a pipeline status — today this HARD-deletes its three finance rows (even received income)", [K("show"), { name: "status", kind: "enum", required: true, values: PIPELINE }], ["status"], "updateShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     resolve: onShow, read: showFields,
-    plan(a, cur) { if (!PIPELINE.includes(String(a.status))) return refuse("BAD_ENUM", "ליד חדש / ממתין לתשובה / צריך פולואפ"); return finishPlan(cur, { status: String(a.status) }); },
+    plan(a, cur) { if (!PIPELINE.includes(String(a.status))) return refuse("BAD_ENUM", "ליד חדש / ממתין לתשובה / צריך פולואפ"); if (Number(cur.received) > 0) return refuse("HAS_PAYMENTS", `כבר התקבלו ${cm(cur.received, cur.currency)} — הופעה עם תשלומים לא חוזרת לליד (אפשר לבטל אותה)`); return finishPlan(cur, { status: String(a.status) }); },
     async apply(d, id, a) { ok(await d.updateShow(id, { status: a.status })); },
     requiredValues: (_a, after) => [String(after.status), "מחיקה"],
-    warnings: (c) => (Number(c.financeRows) > 0 ? [`${c.financeRows} רשומות כספים של ההופעה יימחקו לצמיתות — גם הכנסה שכבר התקבלה (כמו באפליקציה היום)`] : []),
+    warnings: (c) => (Number(c.financeRows) > 0 ? [`רשומות הכספים הצפויות של ההופעה (יתרה / DJ / אמן) יימחקו לצמיתות — כסף שהתקבל לא נמחק לעולם`] : []),
     disclosuresHe: ["שורת המאזן הצפויה מוסרת; הכנסה שמומשה במאזן נשארת", "לא יישלח Push"],
   },
   {
@@ -197,12 +214,13 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
       for (const k of ["incomeReceived", "djPaid", "artistPaid"]) if (typeof a[k] !== "boolean") return refuse("BAD_ARGS", `${k}: כן / לא`);
       if (a.artistPaidDate !== undefined && !realYmd(a.artistPaidDate)) return refuse("BAD_DATE", "תאריך תשלום לאמן לא תקין");
       if (!CONFIRMED.includes(String(cur.status)) && cur.status !== "בוצע") return refuse("NOT_CONFIRMED", "רק הופעה מאושרת נסגרת");
-      return { ok: true, after: { status: "בוצע", paymentStatus: a.incomeReceived === true ? "שולם" : cur.paymentStatus === "בוטל" ? "בוטל" : "צפוי" } };
+      return { ok: true, after: { status: "בוצע", paymentStatus: a.incomeReceived === true ? "שולם" : String(cur.paymentStatus) } };
     },
     async apply(d, id, _a, args) { ok(await d.closeShow(id, { markDone: true, incomeReceived: args.incomeReceived === true, djPaid: args.djPaid === true, artistPaid: args.artistPaid === true, artistPaidDate: str(args.artistPaidDate), note: str(args.note) })); },
     requiredValues: (a) => [`התקבל ${a.incomeReceived ? "✓" : "✗"}`, `DJ ${a.djPaid ? "✓" : "✗"}`, `אמן ${a.artistPaid ? "✓" : "✗"}`],
+    async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.status === "בוצע" && (after.paymentStatus !== "שולם" || s.remaining === 0); },
     warnings: (c) => [`${c.name}: מחיר ${ils(Number(c.showPrice))}${Number(c.djFee) > 0 ? `, DJ ${ils(Number(c.djFee))}` : ""} — שכר האמן לפי הכלל (50/50 אחרי DJ וחזרות)`],
-    disclosuresHe: ["כמו דיאלוג הסגירה: סטטוס בוצע, סטטוס תשלום הלקוח, סטטוסים לשלוש רשומות הכספים, ושורת סיכום בהערות", "במאזן האמן (אמן לייבל יחיד): הכנסה אחת להופעה, ותשלום רק אם סימנת 'אמן שולם' — הפעלה חוזרת בטוחה, בלי כפילויות", "ביטול סימון 'אמן שולם' לא מוחק תשלום קיים (רק מזהיר)", "לא יישלח Push"],
+    disclosuresHe: ["כמו דיאלוג הסגירה: סטטוס בוצע, סטטוסים לרשומות הכספים, ושורת סיכום בהערות", "'התקבל' = היתרה שנשארה נרשמת כתשלום אחד (מקדמה שכבר נרשמה לא נספרת שוב); 'לא התקבל' לא מוריד שום תשלום שנרשם", "במאזן האמן (אמן לייבל יחיד): הכנסה אחת להופעה, ותשלום רק אם סימנת 'אמן שולם' — הפעלה חוזרת בטוחה, בלי כפילויות", "ביטול סימון 'אמן שולם' לא מוחק תשלום קיים (רק מזהיר)", "לא יישלח Push"],
   },
   {
     actionId: "SET_SHOW_CALENDAR", kinds: ["show"],
@@ -262,12 +280,52 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     meta: meta("מחיקת הופעה", "Delete a show like the hub: its calendar event, its linked tasks, its finance rows, then the show (blocked while rehearsals exist)", [K("show")], ["exists"], "deleteShowCompletely (lib/writes/shows)", { effects: ["FINANCE", "LEDGER", "CALENDAR", "GOOGLE_TASKS", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) { const r = await onShow(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } }; },
     async read(d, id) { const f = await showFields(d, id); return f ? { ...f, exists: true } : null; },
-    plan: (_a, cur) => (Number(cur.rehearsals) > 0 ? refuse("HAS_REHEARSALS", `להופעה יש ${cur.rehearsals} חזרות — מטפלים בהן קודם`) : { ok: true, after: { exists: false } }),
+    plan: (_a, cur) => (Number(cur.rehearsals) > 0 ? refuse("HAS_REHEARSALS", `להופעה יש ${cur.rehearsals} חזרות — מטפלים בהן קודם`) : Number(cur.received) > 0 ? refuse("HAS_PAYMENTS", `כבר התקבלו ${cm(cur.received, cur.currency)} — כסף שהתקבל לא נמחק; אפשר לבטל את ההופעה`) : { ok: true, after: { exists: false } }),
     async apply(d, id) { const r = await d.deleteShowCompletely(id); if (r.kind !== "ok") throw new Error(`delete refused: ${r.kind}`); },
     async verify(d, id) { return (await d.readShow(id)) === null; },
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [`${c.name}${c.date ? ` · ${c.date}` : ""}: ${c.financeRows} רשומות כספים יימחקו${c.hasCalendarEvent ? ", האירוע ביומן יימחק" : ""}, משימות ההופעה יימחקו`],
     disclosuresHe: ["כמו מחיקה מהמרכז: היומן, המשימות, רשומות הכספים ואז ההופעה", "הכנסה ותשלומים שמומשו במאזן האמן נשארים", "לא יישלח Push"],
+  },
+  {
+    actionId: "RECORD_SHOW_PAYMENT", kinds: ["show"],
+    meta: meta("רישום תשלום שהתקבל על הופעה (מקדמה / תשלום חלקי / תשלום מלא / עודף)", "Record money actually received for a show: ONE income row in Finance (התקבל, linked to the show, in the show's currency); the expected balance, the derived payment status and the DJ / artist rows follow. Never double-counts: received = Σ payments", [K("show"), { name: "amount", kind: "money", required: true }, { name: "date", kind: "ymd", required: true }, { name: "currency", kind: "enum", required: false, values: SHOW_CURRENCIES }, { name: "paymentMethod", kind: "enum", required: false, values: SHOW_PAYMENT_METHODS }, T("note")], ["received", "remaining", "credit"], "recordShowPayment (lib/writes/show-payments)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "a transaction correction in Finance (a new approved plan) — a payment row is never deleted silently" }),
+    resolve: onShow, read: showFields,
+    plan(a, cur) {
+      if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום לא תקין");
+      if (!realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין");
+      if (a.currency !== undefined && a.currency !== cur.currency) return refuse("CURRENCY_MISMATCH", `ההופעה מתומחרת ב-${cur.currency} — תשלום במטבע אחר לא נרשם עליה (אין המרה)`);
+      if (a.paymentMethod !== undefined && !SHOW_PAYMENT_METHODS.includes(String(a.paymentMethod))) return refuse("BAD_ENUM", "אמצעי תשלום לא מוכר");
+      if (a.note !== undefined && text(a.note, 300) === null) return refuse("BAD_TEXT", "הערה לא תקינה");
+      if (PIPELINE.includes(String(cur.status))) return refuse("NOT_CONFIRMED", "ההופעה עוד ליד — קודם לאשר אותה (CONFIRM_SHOW), ואז לרשום תשלום");
+      if (String(cur.payments).split(";").includes(`${a.amount}@${a.date}`)) return refuse("DUPLICATE", `כבר רשום תשלום של ${cm(a.amount, cur.currency)} ב-${a.date} להופעה הזאת`);
+      const received = Math.round((Number(cur.received) + a.amount) * 100) / 100;
+      const agreed = Number(cur.showPrice);
+      return { ok: true, after: { received, remaining: Math.max(0, Math.round((agreed - received) * 100) / 100), credit: Math.max(0, Math.round((received - agreed) * 100) / 100) } };
+    },
+    async apply(d, id, _after, a) {
+      const r = await d.recordShowPayment(id, { amount: Number(a.amount), date: String(a.date), currency: String(a.currency ?? ""), method: String(a.paymentMethod ?? ""), note: String(a.note ?? "") });
+      if (r.kind !== "ok") throw new Error(r.messageHe ?? r.kind);
+      return { receipt: "recorded" };
+    },
+    async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.received === after.received && s.remaining === after.remaining && s.credit === after.credit; },
+    requiredValues: (a, _after) => [`${a.amount}`, String(a.date)],
+    warnings: (c) => [`מחיר ${cm(c.showPrice, c.currency)} · התקבל עד היום ${cm(c.received, c.currency)} · יתרה ${cm(c.remaining, c.currency)}${Number(c.credit) > 0 ? ` · עודף ${cm(c.credit, c.currency)}` : ""}`],
+    disclosuresHe: ["נרשמת שורת הכנסה אחת בפיננסים (התקבל) — מקושרת להופעה, במטבע שלה", "היתרה הצפויה = מחיר פחות כל מה שהתקבל; תשלום שמכסה את כל היתרה סוגר אותה, ועודף נשאר גלוי (לא נעלם)", "סטטוס התשלום של ההופעה נגזר מהתשלומים (מקדמה / שולם); שורות ה-DJ והאמן מתעדכנות לפי הכלל של האפליקציה", "אותו סכום באותו תאריך לא נרשם פעמיים", "לא יישלח Push"],
+  },
+  {
+    actionId: "SET_SHOW_CURRENCY", kinds: ["show"],
+    meta: meta("מטבע של הופעה (₪ / $ / €)", "Set the currency a show is priced in (price, DJ fee and its Finance rows carry it). Refused once money was received — no conversion, ever", [K("show"), { name: "currency", kind: "enum", required: true, values: SHOW_CURRENCIES }], ["currency"], "updateShowRecord (lib/writes/shows)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "YES" }),
+    resolve: onShow, read: showFields,
+    plan(a, cur) {
+      if (!SHOW_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "₪ / $ / €");
+      if (Number(cur.received) > 0 && a.currency !== cur.currency) return refuse("CURRENCY_HAS_PAYMENTS", `כבר התקבלו ${cm(cur.received, cur.currency)} — אי אפשר לשנות את המטבע (אין המרה)`);
+      return finishPlan(cur, { currency: String(a.currency) });
+    },
+    async apply(d, id, a) { ok(await d.updateShow(id, { currency: a.currency })); },
+    requiredValues: (_a, after) => [String(after.currency)],
+    warnings: (c) => [`היום: ${cm(c.showPrice, c.currency)} (DJ ${cm(c.djFee, c.currency)}) — המספרים לא מומרים, רק המטבע משתנה`],
+    disclosuresHe: ["המספרים נשארים כמו שהם — רק המטבע שלהם משתנה (אין המרה)", "רשומות הכספים הצפויות של ההופעה (יתרה / DJ / אמן / חזרות) עוברות לאותו מטבע", "הופעה שאינה ב-₪ לא נכנסת אוטומטית למאזן האמן (למאזן אין מטבע) — היא מסומנת לך", "לא יישלח Push"],
   },
   // ── show rehearsals (D6, Owner decision: מתוכנן / בוצע / בוטל; only בוצע counts toward the split — per
   //    rehearsalCountedAmount; a legacy auto-marked התקיים keeps the pre-D6 rule until the Boss confirms it) ──

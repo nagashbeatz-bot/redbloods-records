@@ -3,7 +3,8 @@
  *
  * Label roster = label_artists (Owner definition, 2026-09-24). Other sources never decide membership. There is NO
  * unified label balance: the label ledger has no currency, so a balance is UNKNOWN. Shows come from the canonical
- * shows records only; a show price has no currency column (the app displays it as ₪ — a convention, labelled DERIVED).
+ * shows records only; a show's currency lives on the show (show_view money.currency) — this summary does not read it, so
+ * the price's currency here is labelled DERIVED (see show_view for the recorded currency).
  */
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeSources } from "../types";
 import { byCount, clientName, idOf, item, ok, partner, partnerRecord, projectName, record, result, sfact, state, textMentions, unavailable } from "./common";
@@ -103,7 +104,7 @@ export const shows: KnowledgeCapability = {
       .sort((a, b) => (q.mode === "upcoming" ? (a.dateYmd ?? "9999").localeCompare(b.dateYmd ?? "9999") : (b.dateYmd ?? "").localeCompare(a.dateYmd ?? "")) || a.id.localeCompare(b.id));
     const items: KnowledgeItem[] = rows.map((x) => item({ id: x.id, entity: `show:${x.id}`, label: record(x.name), epistemic: "FACT", source: "SHOWS", ...(links ? { relationQuality: linkOf(x) ?? "UNKNOWN" } : {}),
       fields: {
-        date: x.dateYmd, status: x.status, paymentStatus: x.paymentStatus, price: { amount: x.price, currency: "₪ (app display convention — no currency column)", epistemic: "DERIVED" },
+        date: x.dateYmd, status: x.status, paymentStatus: x.paymentStatus, price: { amount: x.price, currency: "see show_view money.currency (recorded per show since 2026-09-27)", epistemic: "DERIVED" },
         artist: x.artistClientId ? { key: `client:${x.artistClientId}`, name: record(clientName(src, x.artistClientId)), link: "ID" } : null,
         dj: x.djClientId ? { key: `dj:${x.djClientId}`, name: record(clientName(src, x.djClientId)), link: "ID", confirmation: x.djConfirmationStatus } : null,
         booker: x.bookerClientId ? { key: `client:${x.bookerClientId}`, name: record(clientName(src, x.bookerClientId)), link: "ID" } : null,

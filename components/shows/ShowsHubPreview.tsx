@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
-import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount, fmtMoney, MONEY_CURRENCIES } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import TimePickerInput from "@/components/ui/TimePickerInput";
 import RehearsalModal, { type RehearsalSession } from "@/components/shows/RehearsalModal";
@@ -290,9 +290,9 @@ function ShowCard({ show, accent, grad, onClick, selected, index }: {
         </div>
         <div style={{ display: "flex", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BDR}` }}>
           {[
-            { label: "מחיר",  val: fmtIls(show.show_price),    color: TEXT  },
-            { label: "אמן",   val: fmtIls(calcArtistShare(show)), color: AMBER },
-            { label: "לייבל", val: fmtIls(calcLabelShare(show)),  color: GREEN },
+            { label: "מחיר",  val: fmtMoney(show.show_price, show.currency),    color: TEXT  },
+            { label: "אמן",   val: fmtMoney(calcArtistShare(show), show.currency), color: AMBER },
+            { label: "לייבל", val: fmtMoney(calcLabelShare(show), show.currency),  color: GREEN },
           ].map((item, idx) => (
             <div key={idx} style={{ flex: 1, textAlign: "center", borderRight: idx < 2 ? `1px solid ${BDR}` : undefined }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: item.color }}>{item.val}</div>
@@ -349,6 +349,7 @@ interface FormState {
   date: string; start_time: string; location: string;
   contact_person: string; phone: string; status: ShowStatus; payment_status: PaymentStatus;
   show_price: string; dj_fee: string; artist_fee: string; advance_payment: string; notes: string;
+  currency: string;
   booker_client_id: string | null;
   dj_client_id: string | null; dj_name: string;
 }
@@ -357,6 +358,7 @@ const FORM_DEFAULTS: FormState = {
   name: "", artist: "", artist_client_id: null, date: "", start_time: "", location: "",
   contact_person: "", phone: "", status: "ממתין לתשובה", payment_status: "לא שולם",
   show_price: "", dj_fee: "500", artist_fee: "0", advance_payment: "0", notes: "",
+  currency: "₪",
   booker_client_id: null,
   dj_client_id: null, dj_name: "",
 };
@@ -377,6 +379,7 @@ function showToForm(s: Show): FormState {
     dj_fee:           String(s.dj_fee),
     artist_fee:       String(s.artist_fee),
     advance_payment:  String(s.advance_payment),
+    currency:         s.currency ?? "₪",
     notes:            s.notes,
     booker_client_id: s.booker_client_id ?? null,
     dj_client_id:     s.dj_client_id    ?? null,
@@ -635,7 +638,7 @@ function ShowFormModal({
         show_price:       Number(form.show_price) || 0,
         dj_fee:           Number(form.dj_fee) || 0,
         artist_fee:       Number(form.artist_fee) || 0,
-        advance_payment:  Number(form.advance_payment) || 0,
+        currency:         form.currency,
         notes:            form.notes.trim(),
         dj_client_id:     form.dj_client_id ?? null,
         dj_name:          form.dj_name.trim(),
@@ -652,6 +655,9 @@ function ShowFormModal({
 
       // savedId set → PATCH the same record (edit OR a converted quote); else POST.
       const isUpdate = savedId != null;
+      // D5: a deposit typed on a NEW show is money received → recorded as a Finance payment by the server.
+      // On an existing show the received amount comes from Finance (use 'רשום תשלום' in the show panel).
+      if (!isUpdate && (Number(form.advance_payment) || 0) > 0) payload.advance_payment = Number(form.advance_payment) || 0;
       const url    = isUpdate ? `/api/shows/${savedId}` : "/api/shows";
       const method = isUpdate ? "PATCH" : "POST";
       const res    = await fetch(url, {
@@ -1180,20 +1186,32 @@ function ShowFormModal({
           {/* Row: prices — no spin buttons */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={labelStyle}>מחיר הופעה ₪</label>
+              <label style={labelStyle}>מחיר הופעה {form.currency}</label>
               <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
             <div>
-              <label style={labelStyle}>שכר דיג׳יי ₪</label>
+              <label style={labelStyle}>שכר דיג׳יי {form.currency}</label>
               <input type="number" min="0" value={form.dj_fee} onChange={e => set("dj_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="500" />
             </div>
             <div>
-              <label style={labelStyle}>שכר אמן ₪</label>
+              <label style={labelStyle}>שכר אמן {form.currency}</label>
               <input type="number" min="0" value={form.artist_fee} onChange={e => set("artist_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
             <div>
-              <label style={labelStyle}>מקדמה ₪</label>
-              <input type="number" min="0" value={form.advance_payment} onChange={e => set("advance_payment", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
+              {savedId == null ? (<>
+                <label style={labelStyle}>מקדמה שהתקבלה {form.currency}</label>
+                <input type="number" min="0" value={form.advance_payment} onChange={e => set("advance_payment", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
+              </>) : (<>
+                <label style={labelStyle}>התקבל עד כה</label>
+                <div style={{ ...numInputStyle, display: "flex", alignItems: "center", opacity: 0.8 }}>{fmtMoney(Number(form.advance_payment) || 0, form.currency)}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>תשלום נוסף נרשם בפאנל ההופעה (רשום תשלום)</div>
+              </>)}
+            </div>
+            <div>
+              <label style={labelStyle}>מטבע</label>
+              <select value={form.currency} onChange={e => set("currency", e.target.value)} style={selectFieldStyle}>
+                {MONEY_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
           </div>
 
@@ -1280,11 +1298,29 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
 }
 
 // ─── Show Panel (centered modal) ─────────────────────────────────────────────
-function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
+function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: {
   show: Show; onClose: () => void; onEdit: () => void;
   onPatch: (field: "status" | "payment_status", value: string) => Promise<void>;
   onCancelShow: () => Promise<void>;
+  onRefresh?: () => Promise<unknown> | void;
 }) {
+  // D5: record money received (deposit / partial / full) → one Finance payment row (server-side, no double count)
+  const [payOpen,   setPayOpen]   = useState(false);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate,   setPayDate]   = useState(() => new Date().toISOString().slice(0, 10));
+  const [payMethod, setPayMethod] = useState("");
+  const [payBusy,   setPayBusy]   = useState(false);
+  const [payErr,    setPayErr]    = useState<string | null>(null);
+  async function recordPayment() {
+    setPayBusy(true); setPayErr(null);
+    try {
+      const res = await fetch(`/api/shows/${show.id}/payments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: Number(payAmount), date: payDate, method: payMethod, currency: show.currency ?? "₪" }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setPayErr(d.error ?? "רישום התשלום נכשל"); return; }
+      setPayOpen(false); setPayAmount("");
+      await onRefresh?.();
+    } finally { setPayBusy(false); }
+  }
   const [savingField,    setSavingField]    = useState<"status" | "payment_status" | null>(null);
   const [cancelConfirm,  setCancelConfirm]  = useState(false);
   const [cancelling,     setCancelling]     = useState(false);
@@ -1333,6 +1369,8 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   const artistShare   = split.artistFee;
   const labelShare    = split.labelProfit;
   const remaining     = calcRemaining(show);
+  const cur           = show.currency ?? "₪";
+  const credit        = Math.max(0, (Number(show.advance_payment) || 0) - (Number(show.show_price) || 0));
   const canEdit       = true;
 
   const sectionLabel = (text: string, icon: string) => (
@@ -1476,15 +1514,34 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
             {sectionLabel("סיכום כספי", "💰")}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {finCard("מחיר הופעה",      fmtIls(show.show_price),            TEXT2)}
-              {finCard("שכר דיג׳יי",       fmtIls(show.dj_fee),                MUTED)}
-              {rehearsalCounted > 0 && finCard("עלויות חזרות", "−" + fmtIls(rehearsalCounted), RED)}
-              {finCard("מקדמה",            fmtIls(show.advance_payment),       TEXT2)}
-              {finCard("יתרה לגבייה",      fmtIls(remaining),                  remaining > 0 ? BRAND : GREEN, true)}
-              {finCard("יתרה לחלוקה",      fmtIls(distributable),              AMBER, true)}
-              {finCard("שכר אמן",          fmtIls(artistShare),                BLUE)}
-              {finCard("רווח לייבל",       fmtIls(labelShare),                 GREEN, true)}
+              {finCard("מחיר הופעה",      fmtMoney(show.show_price, cur),            TEXT2)}
+              {finCard("שכר דיג׳יי",       fmtMoney(show.dj_fee, cur),                MUTED)}
+              {rehearsalCounted > 0 && finCard("עלויות חזרות", "−" + fmtMoney(rehearsalCounted, cur), RED)}
+              {finCard("התקבל",            fmtMoney(show.advance_payment, cur),       TEXT2)}
+              {finCard("יתרה לגבייה",      fmtMoney(remaining, cur),                  remaining > 0 ? BRAND : GREEN, true)}
+              {credit > 0 && finCard("עודף / זיכוי", fmtMoney(credit, cur),          AMBER, true)}
+              {finCard("יתרה לחלוקה",      fmtMoney(distributable, cur),              AMBER, true)}
+              {finCard("שכר אמן",          fmtMoney(artistShare, cur),                BLUE)}
+              {finCard("רווח לייבל",       fmtMoney(labelShare, cur),                 GREEN, true)}
             </div>
+            {show.status !== "ליד חדש" && show.status !== "ממתין לתשובה" && show.status !== "צריך פולואפ" && (
+              <div style={{ marginTop: 10 }}>
+                {!payOpen ? (
+                  <button onClick={() => { setPayOpen(true); setPayAmount(remaining > 0 ? String(remaining) : ""); }} style={{ padding: "6px 12px", borderRadius: 9, fontSize: 12, fontWeight: 700, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.4)", color: GREEN, cursor: "pointer", fontFamily: "inherit" }}>+ רשום תשלום שהתקבל</button>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, alignItems: "end" }}>
+                    <div><label style={{ fontSize: 11, color: MUTED }}>סכום {cur}</label><input type="number" min="0" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="rb-shows-no-spin" style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${BDR}`, background: "transparent", color: TEXT, fontFamily: "inherit" }} /></div>
+                    <div><label style={{ fontSize: 11, color: MUTED }}>תאריך</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${BDR}`, background: "transparent", color: TEXT, fontFamily: "inherit" }} /></div>
+                    <div><label style={{ fontSize: 11, color: MUTED }}>אמצעי</label><select value={payMethod} onChange={e => setPayMethod(e.target.value)} style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${BDR}`, background: CARD, color: TEXT, fontFamily: "inherit" }}>{["", "העברה בנקאית", "מזומן", "ביט", "פייבוקס", "צ'ק", "כרטיס אשראי", "PayPal", "אחר"].map(m => <option key={m} value={m}>{m || "—"}</option>)}</select></div>
+                    <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                      <button disabled={payBusy || !(Number(payAmount) > 0)} onClick={recordPayment} style={{ padding: "7px 14px", borderRadius: 9, fontSize: 12, fontWeight: 700, background: GREEN, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}>{payBusy ? "רושם…" : "רשום"}</button>
+                      <button onClick={() => { setPayOpen(false); setPayErr(null); }} style={{ padding: "7px 14px", borderRadius: 9, fontSize: 12, background: "transparent", color: MUTED, border: `1px solid ${BDR}`, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
+                    </div>
+                    {payErr && <div style={{ gridColumn: "1 / -1", fontSize: 12, color: RED }}>{payErr}</div>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* חזרות להופעה */}
@@ -1720,11 +1777,9 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
       // (closeShow below) and on the artist's own balance ledger; mixing them
       // into this single field previously left a fully-client-paid show stuck
       // on "מקדמה" just because the artist hadn't been paid out yet.
-      if (incomeReceived) {
-        body.payment_status = "שולם";
-      } else {
-        body.payment_status = show.payment_status === "בוטל" ? "בוטל" : "צפוי";
-      }
+      // D5: "received" = the REMAINING balance was paid (one payment row for it); "not received" leaves Finance
+      // exactly as it is (a recorded deposit is never downgraded) — the status is derived from Finance.
+      if (incomeReceived) body.payment_status = "שולם";
       if (trigger === "done") body.status = "בוצע";
       if (djRelevant && djName.trim() && djName.trim() !== (show.dj_name ?? "")) body.dj_name = djName.trim();
       // Per-party closure → the server updates the 3 linked transactions individually.
@@ -1797,7 +1852,7 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
         </div>
         <div style={{ fontSize: 13, color: TEXT2, marginBottom: 14 }}>
           <strong style={{ color: TEXT }}>{show.name}</strong>
-          {show.artist ? ` — ${show.artist}` : ""} · מחיר הופעה <strong style={{ color: GREEN }}>{fmtIls(show.show_price || 0)}</strong>
+          {show.artist ? ` — ${show.artist}` : ""} · מחיר הופעה <strong style={{ color: GREEN }}>{fmtMoney(show.show_price || 0, show.currency)}</strong>
         </div>
 
         {paymentReversalWarning ? (
@@ -1815,11 +1870,11 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
         ) : (
         <>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {toggle("הכסף מההופעה התקבל", fmtIls(show.show_price || 0), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
+          {toggle(Number(show.advance_payment) > 0 ? "יתרת התשלום התקבלה" : "הכסף מההופעה התקבל", fmtMoney(Math.max(0, (show.show_price || 0) - (Number(show.advance_payment) || 0)), show.currency), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
           {djRelevant &&
-            toggle(`שולם לדיג׳יי${show.dj_name ? ` — ${show.dj_name}` : ""}`, fmtIls(show.dj_fee || 0), djPaid, () => setDjPaid(v => !v), AMBER)}
+            toggle(`שולם לדיג׳יי${show.dj_name ? ` — ${show.dj_name}` : ""}`, fmtMoney(show.dj_fee || 0, show.currency), djPaid, () => setDjPaid(v => !v), AMBER)}
           {artRelevant &&
-            toggle(`שולם לאמן${show.artist ? ` — ${show.artist}` : ""}`, fmtIls(split.artistFee), artistPaid, () => setArtistPaid(v => !v), BLUE)}
+            toggle(`שולם לאמן${show.artist ? ` — ${show.artist}` : ""}`, fmtMoney(split.artistFee, show.currency), artistPaid, () => setArtistPaid(v => !v), BLUE)}
         </div>
 
         {djRelevant && (
@@ -2415,6 +2470,7 @@ export default function ShowsHubPreview() {
           }}
           onPatch={(field, value) => patchStatus(selected.id, field, value)}
           onCancelShow={() => cancelShow(selected.id, !!selected.calendar_event_id)}
+          onRefresh={async () => { const r = await fetch("/api/shows"); const d = await r.json().catch(() => ({})); const list: Show[] = Array.isArray(d.shows) ? d.shows : []; setShows(list); const fresh = list.find(x => x.id === selected.id); if (fresh) setSelected(fresh); }}
         />
       )}
 

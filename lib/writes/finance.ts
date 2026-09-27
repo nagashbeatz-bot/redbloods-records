@@ -131,6 +131,10 @@ export async function financeOwnerOf(id: string): Promise<"SHOW" | "MIX_WORK" | 
     if (error) throw new Error(error.message);
     if ((count ?? 0) > 0) return owner;
   }
+  // D5: every show row (payments, the expected balance, fees, rehearsals) is linked by transactions.show_id
+  const { data: link, error: linkErr } = await supabase.from("transactions").select("show_id").eq("id", id).maybeSingle();
+  if (linkErr) throw new Error(linkErr.message);
+  if ((link as { show_id?: string | null } | null)?.show_id) return "SHOW";
   return null;
 }
 

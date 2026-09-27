@@ -558,8 +558,8 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
         evidence: [
           ev(c, `${s.id}:sdate`, "תאריך הופעה", s.dateYmd, s.dateYmd ? fullDate(s.dateYmd) : "", "date", { table: "shows", id: s.id, field: "date" }),
           ev(c, `${s.id}:spay`, "סטטוס תשלום", s.paymentStatus, s.paymentStatus, "status", { table: "shows", id: s.id, field: "payment_status" }),
-          moneyEv(c, `${s.id}:sprice`, "מחיר (מטבע לא מוגדר בהופעות — מוצג ₪)", s.price, "₪", { table: "shows", id: s.id, field: "show_price" }),
-          moneyEv(c, `${s.id}:sadv`, "מקדמה", s.advance, "₪", { table: "shows", id: s.id, field: "advance_payment" }),
+          moneyEv(c, `${s.id}:sprice`, "מחיר", s.price, s.currency ?? "₪", { table: "shows", id: s.id, field: "show_price" }),
+          moneyEv(c, `${s.id}:sadv`, "התקבל (כספים)", s.advance, s.currency ?? "₪", { table: "shows", id: s.id, field: "advance_payment" }),
         ],
         rules: [{ ruleId: "show.unpaid_upcoming", description: "הופעה מאושרת קרובה שסטטוס התשלום שלה אינו 'שולם'", threshold: `showUnpaidUpcomingDays = ${cfg.showUnpaidUpcomingDays}`, observed: `${s.daysTo} ימים` }],
         coverageKeys: ["shows"], missing: ["אין שדה מטבע בהופעות."], tierCtx: { daysTo: s.daysTo }, sort: 100 - s.daysTo,
@@ -574,8 +574,8 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
         evidence: [
           ev(c, `${s.id}:ddate`, "תאריך הופעה", s.dateYmd, s.dateYmd ? fullDate(s.dateYmd) : "", "date", { table: "shows", id: s.id, field: "date" }),
           ev(c, `${s.id}:dpay`, "סטטוס תשלום", s.paymentStatus, s.paymentStatus, "status", { table: "shows", id: s.id, field: "payment_status" }),
-          moneyEv(c, `${s.id}:dprice`, "מחיר (מוצג ₪)", s.price, "₪", { table: "shows", id: s.id, field: "show_price" }),
-          moneyEv(c, `${s.id}:dadv`, "מקדמה", s.advance, "₪", { table: "shows", id: s.id, field: "advance_payment" }),
+          moneyEv(c, `${s.id}:dprice`, "מחיר", s.price, s.currency ?? "₪", { table: "shows", id: s.id, field: "show_price" }),
+          moneyEv(c, `${s.id}:dadv`, "התקבל (כספים)", s.advance, s.currency ?? "₪", { table: "shows", id: s.id, field: "advance_payment" }),
         ],
         rules: [{ ruleId: "show.done_unpaid", description: "הופעה בסטטוס 'בוצע' עם מחיר, שסטטוס התשלום שלה אינו 'שולם'", threshold: null, observed: s.paymentStatus }],
         coverageKeys: ["shows"], missing: ["ייתכן שהתשלום התקבל ולא עודכן בהופעה. אין שדה מטבע."],

@@ -42,6 +42,7 @@ function mk() {
     async createProductionRecord(b: Row) { calls.push("createProductionRecord"); const id = U(++n); w.prods[id] = { id, ...b, status: "רעיון" }; return id; },
     async updateProductionRecord(id: string, b: Row) { calls.push("updateProductionRecord"); if (!w.prods[id]) return "not_found" as const; Object.assign(w.prods[id], b); return "ok" as const; },
     async readBudgetLineRow(id: string) { return w.lines[id] ? { ...w.lines[id] } : null; },
+    async countBudgetLinePayments(id: string) { return Object.values(w.pays).filter((p) => p.budget_item_id === id).length; },
     async createBudgetLineRecord(pid: string, b: Row) { calls.push("createBudgetLineRecord"); const id = U(++n); w.lines[id] = { id, production_id: pid, ...b }; return id; },
     async updateBudgetLineRecord(id: string, b: Row) { calls.push("updateBudgetLineRecord"); Object.assign(w.lines[id], b); },
     async deleteBudgetLineRecord(id: string) { calls.push("deleteBudgetLineRecord"); delete w.lines[id]; },
@@ -74,6 +75,7 @@ function mk() {
 }
 const P1 = `rf-production:${U(1)}`, P2 = `rf-production:${U(2)}`, L10 = `rf-budget-line:${U(10)}`, Y20 = `rf-payment:${U(20)}`, C30 = `clip-row:${U(30)}`, J40 = `project:${U(40)}`, J41 = `project:${U(41)}`;
 const CASES: FamilyCase<W>[] = [
+  { id: "SET_RF_CURRENCY", args: { target: L10, currency: "$" }, confirm: "כן בוס, $", bad: { target: L10, currency: "GBP" }, missing: { target: `rf-budget-line:${U(9)}`, currency: "$" }, wrongKind: { target: J40, currency: "$" }, stale: (w) => { w.lines[U(10)].currency = "€"; }, check: (w) => w.lines[U(10)].currency === "$" },
   { id: "CREATE_PRODUCTION_FOLDER", args: { production: P2 }, confirm: "כן בוס, קישור ציבורי", bad: { production: "rf-production:1" }, missing: { production: `rf-production:${U(9)}` }, wrongKind: { production: `project:${U(1)}` }, stale: (w) => { w.folders.add(U(2)); }, check: (w) => w.folders.has(U(2)) },
   { id: "CREATE_PRODUCTION", args: { title: "ויזואלייזר", productionType: "ויזואלייזר" }, bad: { title: "" }, stale: (w) => { w.prods[U(77)] = { id: U(77), title: "ויזואלייזר", status: "רעיון" }; }, check: (w) => Object.values(w.prods).some((p) => p.title === "ויזואלייזר" && p.status === "רעיון") },
   { id: "UPDATE_PRODUCTION_DETAILS", args: { production: P2, status: "יום צילום נקבע", shootDate: "2026-10-12", directorName: "דני" }, confirm: "כן בוס, יום צילום נקבע 2026-10-12", bad: { production: P2, status: "בוטל" }, missing: { production: `rf-production:${U(9)}`, notes: "x" }, wrongKind: { production: J40, notes: "x" }, stale: (w) => { w.prods[U(2)].status = "בתכנון"; }, check: (w) => w.prods[U(2)].status === "יום צילום נקבע" && w.prods[U(2)].shoot_date === "2026-10-12" && w.prods[U(2)].director_name === "דני" },

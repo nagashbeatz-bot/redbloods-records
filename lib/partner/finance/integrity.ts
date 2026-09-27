@@ -350,13 +350,16 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
     add({ issueType: "LABEL_LEDGER_CURRENCY_MISSING", severityBand: "LOW", epistemicStatus: "FACT", subjectType: "label_artist", subjectId: a, subjectLabel: name, currency: null, amount: null, date: null, period: "HISTORICAL", reasonCodes: ["LEDGER_HAS_NO_CURRENCY", "EXCLUDED_FROM_TOTALS", `ROWS_${raw.ledger.filter((l) => l.artistId === a).length}`], evidence: (sig("LABEL_LEDGER_NO_CURRENCY")?.evidence ?? []).filter((e) => e.sourceId.startsWith(`${a}#`)), recommendedOwnerQuestion: null });
   }
   const rf = sig("RED_FILMS_OUTSIDE_FINANCE");
-  if (rf) add({ issueType: "RED_FILMS_CURRENCY_MISSING", severityBand: "LOW", epistemicStatus: "FACT", subjectType: "red_films", subjectId: "red_films_budget_payments", subjectLabel: null, currency: null, amount: null, date: null, period: "HISTORICAL", reasonCodes: ["NO_CURRENCY", "NOT_IN_TRANSACTIONS", `PAYMENTS_${rf.count}`], evidence: rf.evidence, recommendedOwnerQuestion: null });
+  // RED_FILMS_CURRENCY_MISSING is no longer emitted: every Red Films money row carries a currency since 2026-09-27 (migration 75bf144e…)
+  void rf;
   for (const s of raw.shows) {
     if (s.status !== "בוצע") continue;
     const price = Number(s.price);
     const inc = s.incomeTxId ? txById.get(s.incomeTxId) : null;
-    const reasons = [!(price > 0) ? "COMPLETED_SHOW_WITHOUT_PRICE" : null, s.paymentStatus === "שולם" && !s.incomeTxId ? "PAID_SHOW_WITHOUT_INCOME_RECORD" : null, s.incomeTxId && !inc ? "INCOME_RECORD_MISSING" : null].filter((x): x is string => !!x);
-    if (reasons.length) add({ issueType: "SHOW_FINANCE_INCOMPLETE", severityBand: periodOf(s.date) === "POST_POLICY" ? "MEDIUM" : "LOW", epistemicStatus: "FACT", subjectType: "show", subjectId: s.id, subjectLabel: null, currency: "₪", amount: price > 0 ? price : null, date: s.date, period: periodOf(s.date), reasonCodes: reasons, evidence: [{ sourceType: "show", sourceId: s.id, date: s.date, status: s.status, reasonCode: reasons[0] }], recommendedOwnerQuestion: null });
+    // D5: actual show money = SHOW_PAYMENT rows linked by show_id (status שולם / התקבל)
+    const paid = raw.transactions.some((t) => t.showId === s.id && t.showMoneyRole === "SHOW_PAYMENT" && (t.status === "שולם" || t.status === "התקבל"));
+    const reasons = [!(price > 0) ? "COMPLETED_SHOW_WITHOUT_PRICE" : null, s.paymentStatus === "שולם" && !paid && !s.incomeTxId ? "PAID_SHOW_WITHOUT_INCOME_RECORD" : null, s.incomeTxId && !inc ? "INCOME_RECORD_MISSING" : null].filter((x): x is string => !!x);
+    if (reasons.length) add({ issueType: "SHOW_FINANCE_INCOMPLETE", severityBand: periodOf(s.date) === "POST_POLICY" ? "MEDIUM" : "LOW", epistemicStatus: "FACT", subjectType: "show", subjectId: s.id, subjectLabel: null, currency: s.currency || "₪", amount: price > 0 ? price : null, date: s.date, period: periodOf(s.date), reasonCodes: reasons, evidence: [{ sourceType: "show", sourceId: s.id, date: s.date, status: s.status, reasonCode: reasons[0] }], recommendedOwnerQuestion: null });
   }
   const clientUnpriced = projects.filter((p) => p.price === "PRICE_UNKNOWN" && p.status !== CANCELLED);
   if (clientUnpriced.length) add({ issueType: "PROJECT_FINANCE_COVERAGE_INCOMPLETE", severityBand: "MEDIUM", epistemicStatus: "FACT", subjectType: "company", subjectId: "projects", subjectLabel: null, currency: null, amount: null, date: null, period: "HISTORICAL", reasonCodes: [`PRICED_${projects.filter((p) => p.price === "PRICE_KNOWN").length}`, `CLIENT_OR_UNKNOWN_UNPRICED_${clientUnpriced.length}`, `LABEL_NOT_APPLICABLE_${projects.filter((p) => p.business === "LABEL" && p.price === "NOT_APPLICABLE").length}`], evidence: clientUnpriced.map((p) => pEv(p.projectId, "PRICE_UNKNOWN", p.status)), recommendedOwnerQuestion: null });

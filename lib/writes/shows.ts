@@ -8,6 +8,14 @@
 import { supabase } from "@/lib/supabase";
 import { createShow, getShow, patchShow, deleteShow, showCalendarSummary, showCalendarTimes, showCalendarDescription } from "@/lib/shows-store";
 import type { PatchShowInput, ShowStatus, PaymentStatus, Show } from "@/lib/shows-store";
+import { isMoneyCurrency, SHOW_MONEY_ROLES } from "@/lib/shows-types";
+
+/** D5: a show whose Finance holds money actually received (SHOW_PAYMENT rows) is never deleted or reverted to a lead. */
+async function receivedPaymentsOf(showId: string): Promise<number> {
+  const { count, error } = await supabase.from("transactions").select("id", { count: "exact", head: true }).eq("show_id", showId).eq("show_money_role", SHOW_MONEY_ROLES.PAYMENT);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
 
 /** If show.artist is empty but artist_client_id exists, resolve name from DB. */
 async function resolveArtistName(show: Show): Promise<Show> {
@@ -27,7 +35,8 @@ const CALENDAR_SYNC_FIELDS = new Set([
 type Body = Record<string, any>;
 
 /** POST /api/shows semantics (the caller validated the name). */
-export async function createShowRecord(body: Body): Promise<{ show: Show; calendarWarning?: string }> {
+export async function createShowRecord(body: Body): Promise<{ show: Show; calendarWarning?: string; paymentWarning?: string }> {
+    if (body.currency !== undefined && !isMoneyCurrency(body.currency)) throw new Error("מטבע לא נתמך (₪ / $ / €)");
     // Create show without calendar_event_id first
     const show = await createShow({
       name:             body.name.trim(),
@@ -47,13 +56,23 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       dj_client_id:     body.dj_client_id          ?? null,
       dj_name:          body.dj_name?.trim()        ?? "",
       artist_fee:       body.artist_fee !== undefined ? Number(body.artist_fee) : 0,
-      advance_payment:  Number(body.advance_payment)   || 0,
+      advance_payment:  0, // D5: a mirror of the received money in Finance (an advance given here is RECORDED below)
+      currency:         isMoneyCurrency(body.currency) ? body.currency : "₪",
       notes:            body.notes?.trim()             ?? "",
     });
 
     // Sync canonical Finance transactions (no-op unless created as "שולם").
     const { syncShowFinance } = await import("@/lib/shows-finance-sync");
     await syncShowFinance(show);
+    // D5: an advance typed on creation is money received — it becomes a SHOW_PAYMENT row (never a number on the show)
+    let paymentWarning: string | undefined;
+    const advance = Number(body.advance_payment) || 0;
+    if (advance > 0) {
+      const { recordShowPayment } = await import("@/lib/writes/show-payments");
+      const r = await recordShowPayment(show.id, { amount: advance, date: typeof body.advance_date === "string" ? body.advance_date : new Date().toISOString().slice(0, 10), method: typeof body.payment_method === "string" ? body.payment_method : "" });
+      if (r.kind === "refused") paymentWarning = `ההופעה נשמרה, אבל המקדמה לא נרשמה: ${r.messageHe}`;
+    }
+    const saved = advance > 0 ? (await getShow(show.id)) ?? show : show;
 
     // Google Calendar — only if explicitly requested and date exists
     let calendarWarning: string | undefined;
@@ -73,7 +92,7 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
             );
             // Save event ID back to show
             const updated = await patchShow(show.id, { calendar_event_id: event.id });
-            return { show: updated };
+            return { show: updated, paymentWarning };
           } else {
             calendarWarning = "ההופעה נשמרה, אבל Google Calendar לא מחובר";
           }
@@ -84,13 +103,14 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       }
     }
 
-    return { show, calendarWarning };
+    return { show: saved, calendarWarning, paymentWarning };
 }
 
 export type UpdateShowResult =
   | { kind: "not_found" }
   | { kind: "ok"; show: Show; calendarWarning?: string; paymentReversalNeeded?: { amount: number; entryDate: string } }
-  | { kind: "balance_sync_failed"; show: Show; balanceSyncError: string };
+  | { kind: "balance_sync_failed"; show: Show; balanceSyncError: string }
+  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS"; messageHe: string };
 
 /** PATCH /api/shows/[id] semantics. */
 export async function updateShowRecord(id: string, body: Body): Promise<UpdateShowResult> {
@@ -115,16 +135,32 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     if (body.dj_client_id    !== undefined) patch.dj_client_id     = body.dj_client_id    ?? null;
     if (body.dj_name         !== undefined) patch.dj_name          = body.dj_name?.trim() ?? "";
     if (body.artist_fee      !== undefined) patch.artist_fee       = Number(body.artist_fee) || 0;
-    if (body.advance_payment  !== undefined) patch.advance_payment  = Number(body.advance_payment) || 0;
+    // advance_payment is NOT writable (D5): it mirrors the money received in Finance — record a payment instead
+    if (body.currency         !== undefined) {
+      if (!isMoneyCurrency(body.currency)) return { kind: "refused", code: "CURRENCY", messageHe: "מטבע לא נתמך (₪ / $ / €)" };
+      patch.currency = body.currency;
+    }
     if (body.notes            !== undefined) patch.notes            = body.notes                   ?? "";
     if (body.calendar_event_id !== undefined) patch.calendar_event_id = body.calendar_event_id    ?? null;
 
     // ── Fetch current show (needed for calendar logic) ──────────────────────
     const existing = await getShow(id);
     if (!existing) return { kind: "not_found" };
+    const received = await receivedPaymentsOf(id);
+    if (patch.currency && patch.currency !== (existing.currency || "₪") && received > 0) {
+      return { kind: "refused", code: "CURRENCY_HAS_PAYMENTS", messageHe: `כבר התקבלו תשלומים ב-${existing.currency || "₪"} — אי אפשר לשנות את מטבע ההופעה (אין המרה)` };
+    }
+    if (patch.status && received > 0) {
+      const { isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
+      if (!isConfirmedShowStatus(patch.status) && patch.status !== "בוטל") return { kind: "refused", code: "HAS_PAYMENTS", messageHe: "להופעה יש תשלומים שהתקבלו — אי אפשר להחזיר אותה לליד (התשלומים לא נמחקים). אפשר לבטל אותה" };
+    }
 
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);
+    // A new currency (no payments yet): the show's expected / DJ / artist / rehearsal rows carry it too — no conversion
+    if (patch.currency && patch.currency !== (existing.currency || "₪")) {
+      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).neq("show_money_role", SHOW_MONEY_ROLES.PAYMENT);
+    }
     // Set when unchecking "שולם לאמן" would otherwise silently leave a stale
     // payment record — surfaced to the client instead of ever auto-deleting it.
     let paymentReversalNeeded: { amount: number; entryDate: string } | undefined;
@@ -143,7 +179,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     let balanceSyncError: string | undefined;
 
     // ── Sync canonical Finance transactions when a finance-relevant field changed ──
-    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow"].some((k) => k in body)) {
+    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow", "currency"].some((k) => k in body)) {
       const fin = await import("@/lib/shows-finance-sync");
       if (!fin.isConfirmedShowStatus(show.status) && show.status !== "בוטל") {
         // Reverted to a pipeline status (e.g. "ממתין לתשובה") → remove the show's
@@ -169,7 +205,8 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
             // just Shalev. See lib/artist-balance-show-close-sync.ts for the full
             // reasoning (idempotency, and how this coexists with the OTHER,
             // booking-time "הכנסות צפויות" sync in shows-finance-sync.ts).
-            if (fresh.status === "בוצע") {
+            // The artist ledger stores no currency: only a ₪ show is realized into it (never a silent FX)
+            if (fresh.status === "בוצע" && (fresh.currency || "₪") === "₪") {
               try {
                 const { computeShowSplit } = await import("@/lib/shows-types");
                 const { isValidYmd } = await import("@/lib/artist-balance-store");
@@ -349,13 +386,16 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
 }
 
 /** DELETE /api/shows/[id] semantics: blocked while rehearsals exist; the show's finance rows are hard-deleted first. */
-export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; deletedTransactions: number } | { kind: "has_rehearsals"; rehearsalCount: number }> {
+export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; deletedTransactions: number } | { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "has_payments"; paymentCount: number }> {
     // Safety: block deletion when the show has linked rehearsals (they carry
     // their own sessions + Finance transactions). No auto-delete — the owner
     // must handle the rehearsals first. 409 with a clear message.
     const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
     const rehearsalCount = await countShowRehearsals(id);
     if (rehearsalCount > 0) return { kind: "has_rehearsals", rehearsalCount };
+    // D5: money actually received is never deleted with its show
+    const paymentCount = await receivedPaymentsOf(id);
+    if (paymentCount > 0) return { kind: "has_payments", paymentCount };
     // Real delete: hard-delete the show's linked Finance transactions (NOT
     // cancel — don't leave them as "בוטל"), then remove the show. No
     // syncShowFinance here. (status="בוטל" cancellation is handled separately
@@ -381,7 +421,9 @@ export async function closeShowRecord(id: string, c: { markDone: boolean; income
   const djRelevant = (show.dj_fee ?? 0) > 0;
   const artRelevant = split.artistFee > 0;
   const body: Body = {};
-  body.payment_status = c.incomeReceived ? "שולם" : show.payment_status === "בוטל" ? "בוטל" : "צפוי";
+  // D5: "received" records the REMAINING balance as a payment; "not received" leaves Finance as it is (a recorded
+  // deposit is never downgraded) — the show's payment status is derived from Finance by the sync.
+  if (c.incomeReceived) body.payment_status = "שולם";
   if (c.markDone) body.status = "בוצע";
   const djName = (c.djName ?? show.dj_name ?? "").trim();
   if (djRelevant && djName && djName !== (show.dj_name ?? "")) body.dj_name = djName;
@@ -403,12 +445,14 @@ export async function showTaskIds(showId: string): Promise<string[]> {
 
 /** The Shows hub delete, server-side: its calendar event first, then its linked tasks (and their Google Tasks), then the
  *  show (blocked while rehearsals exist; its finance rows hard-deleted by deleteShowRecord). */
-export async function deleteShowCompletely(id: string): Promise<{ kind: "ok"; deletedTransactions: number; deletedTasks: number } | { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "not_found" }> {
+export async function deleteShowCompletely(id: string): Promise<{ kind: "ok"; deletedTransactions: number; deletedTasks: number } | { kind: "has_rehearsals"; rehearsalCount: number } | { kind: "has_payments"; paymentCount: number } | { kind: "not_found" }> {
   const show = await getShow(id);
   if (!show) return { kind: "not_found" };
   const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
   const rehearsalCount = await countShowRehearsals(id);
   if (rehearsalCount > 0) return { kind: "has_rehearsals", rehearsalCount };
+  const paymentCount = await receivedPaymentsOf(id);
+  if (paymentCount > 0) return { kind: "has_payments", paymentCount };
   if (show.calendar_event_id) {
     const r = await updateShowRecord(id, { removeFromCalendar: true });
     if (r.kind !== "ok") throw new Error("calendar removal failed");

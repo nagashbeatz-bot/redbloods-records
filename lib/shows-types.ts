@@ -6,6 +6,13 @@ export const SHOW_STATUSES = ["ליד חדש","ממתין לתשובה","צרי�
 // existing rows may still hold it — it is shown as "מקדמה" and never offered.
 export const PAYMENT_STATUSES = ["שולם","לא שולם","צפוי","מקדמה","בוטל"] as const;
 
+/** Currencies a show / Red Films row can be priced in (the symbols Finance already uses). Never converted, never added. */
+export const MONEY_CURRENCIES = ["₪", "$", "€"] as const;
+export type MoneyCurrency = typeof MONEY_CURRENCIES[number];
+export const isMoneyCurrency = (x: unknown): x is MoneyCurrency => typeof x === "string" && (MONEY_CURRENCIES as readonly string[]).includes(x);
+/** "₪1,500" / "$1,500" / "€1,500" — every amount is shown with its own currency. */
+export function fmtMoney(n: number, currency: string | null | undefined): string { return `${currency || "₪"}${(Number(n) || 0).toLocaleString("he-IL")}`; }
+
 export type ShowStatus    = typeof SHOW_STATUSES[number];
 export type PaymentStatus = typeof PAYMENT_STATUSES[number] | "חלקי";
 
@@ -37,7 +44,10 @@ export interface Show {
   dj_confirmation_status: DjConfirmationStatus | null;
   dj_confirmed_at: string | null;
   artist_fee: number;
+  /** D5: a MIRROR of the money received in Finance (the sync writes it; never typed in). */
   advance_payment: number;
+  /** Currency of show_price / dj_fee / advance_payment; its Finance rows carry the same currency. */
+  currency: MoneyCurrency;
   notes: string;
   calendar_event_id: string | null;
   // Canonical Finance links (Phase 1: created when payment_status = "שולם").
@@ -145,4 +155,37 @@ export function computeDjConfirmationTransition(
     return { dj_confirmation_status: null, dj_confirmed_at: null };
   }
   return null;
+}
+
+// ─── D5: show money in Finance (Owner decision 2026-09-27) ─────────────────────
+/** transactions.show_money_role values (the canonical show ↔ Finance link is transactions.show_id). */
+export const SHOW_MONEY_ROLES = { PAYMENT: "SHOW_PAYMENT", EXPECTED: "SHOW_BALANCE_EXPECTED", DJ: "DJ_FEE", ARTIST: "ARTIST_FEE", REHEARSAL: "REHEARSAL" } as const;
+/** Actual money received (Finance rule): only שולם / התקבל. צפוי / לא שולם / בוטל / חלקי are not received. */
+export const RECEIVED_STATUSES: readonly string[] = ["שולם", "התקבל"];
+export interface ShowMoneyRow { id: string; role: string | null; status: string | null; amount: number; currency: string | null; date?: string | null }
+export interface ShowMoney {
+  currency: string; agreed: number;
+  /** Σ SHOW_PAYMENT rows with a received status, in the show's currency. */
+  received: number; remaining: number;
+  /** received above the agreed price — kept visible (overpayment / credit / tip), never discarded. */
+  credit: number;
+  payments: ShowMoneyRow[]; expected: ShowMoneyRow | null;
+  /** payments recorded in another currency — never added, surfaced for the Owner. */
+  otherCurrencyPayments: ShowMoneyRow[];
+  /** the payment status Finance proves: שולם (received ≥ agreed) / מקדמה (partly) / null (nothing received). */
+  derivedPaymentStatus: "שולם" | "מקדמה" | null;
+}
+/** The ONE show-money rule (sync, payment writer, Shows UI and Sunny all use it). */
+export function showMoneyOf(show: { show_price: number; currency?: string | null }, rows: readonly ShowMoneyRow[]): ShowMoney {
+  const currency = show.currency || "₪";
+  const agreed = Math.max(0, Number(show.show_price) || 0);
+  const payRows = rows.filter((r) => r.role === SHOW_MONEY_ROLES.PAYMENT && RECEIVED_STATUSES.includes(String(r.status)));
+  const payments = payRows.filter((r) => (r.currency || "₪") === currency);
+  const otherCurrencyPayments = payRows.filter((r) => (r.currency || "₪") !== currency);
+  const received = Math.round(payments.reduce((t, r) => t + (Number(r.amount) || 0), 0) * 100) / 100;
+  const remaining = Math.max(0, Math.round((agreed - received) * 100) / 100);
+  const credit = Math.max(0, Math.round((received - agreed) * 100) / 100);
+  const expected = rows.find((r) => r.role === SHOW_MONEY_ROLES.EXPECTED) ?? null;
+  const derivedPaymentStatus = received <= 0 ? null : agreed > 0 && received >= agreed ? "שולם" : "מקדמה";
+  return { currency, agreed, received, remaining, credit, payments, expected, otherCurrencyPayments, derivedPaymentStatus };
 }

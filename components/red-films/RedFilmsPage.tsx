@@ -640,7 +640,7 @@ export default function RedFilmsPage() {
                 {p.production_type && <span style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 999, padding: "3px 10px", color: "#8A8A92", fontWeight: 600 }}>{p.production_type}</span>}
                 {p.shoot_date && <span>📅 {fmtDate(p.shoot_date)}</span>}
                 {p.photographer_name && <span>📷 {p.photographer_name}</span>}
-                {p.general_budget ? <span style={{ color: "#4ADE80", fontWeight: 700 }}>₪{p.general_budget.toLocaleString("he-IL")}</span> : null}
+                {p.general_budget ? <span style={{ color: "#4ADE80", fontWeight: 700 }}>{(p as { currency?: string }).currency ?? "₪"}{p.general_budget.toLocaleString("he-IL")}</span> : null}
               </div>
             </div>
           ))}

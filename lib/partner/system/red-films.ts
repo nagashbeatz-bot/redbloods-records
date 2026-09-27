@@ -16,12 +16,12 @@ export const RED_FILMS_BASELINE_VERSION = "2026.09.25-rf-1";
 
 /** Live production columns of the video tables (2026-09-25) — internal, pinned by the test. */
 export const RF_SCHEMA: Readonly<Record<string, readonly string[]>> = {
-  red_films_productions: ["id", "title", "production_type", "status", "project_id", "client_id", "artist_name", "client_name", "client_source", "photographer_name", "director_name", "editor_name", "shoot_date", "locations", "concept_summary", "concept_vibe", "ref_links", "script_start", "script_middle", "script_end", "director_notes", "photographer_notes", "general_budget", "client_price", "advance_required", "advance_received", "collection_status", "files_raw_link", "files_edit_folder", "version_1_link", "version_2_link", "final_version_link", "fix_notes", "edit_status", "publish_date", "published_where", "notes", "created_at", "updated_at", "dropbox_folder_path", "dropbox_folder_url"],
-  red_films_budget_items: ["id", "production_id", "title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "linked_transaction_id", "notes", "created_at", "updated_at"],
-  red_films_budget_payments: ["id", "production_id", "budget_item_id", "amount", "payment_date", "payment_method", "notes", "receipt_file_name", "receipt_mime_type", "receipt_dropbox_path", "receipt_dropbox_url", "created_at", "updated_at"],
+  red_films_productions: ["id", "title", "production_type", "status", "project_id", "client_id", "artist_name", "client_name", "client_source", "photographer_name", "director_name", "editor_name", "shoot_date", "locations", "concept_summary", "concept_vibe", "ref_links", "script_start", "script_middle", "script_end", "director_notes", "photographer_notes", "general_budget", "client_price", "advance_required", "advance_received", "collection_status", "files_raw_link", "files_edit_folder", "version_1_link", "version_2_link", "final_version_link", "fix_notes", "edit_status", "publish_date", "published_where", "notes", "created_at", "updated_at", "dropbox_folder_path", "dropbox_folder_url", "currency"],
+  red_films_budget_items: ["id", "production_id", "title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "linked_transaction_id", "notes", "created_at", "updated_at", "currency"],
+  red_films_budget_payments: ["id", "production_id", "budget_item_id", "amount", "payment_date", "payment_method", "notes", "receipt_file_name", "receipt_mime_type", "receipt_dropbox_path", "receipt_dropbox_url", "created_at", "updated_at", "currency"],
   red_films_crew: ["id", "production_id", "name", "role", "contact", "arrival_time", "confirmation_status", "payment_amount", "payment_status", "notes", "created_at", "updated_at"],
   red_films_documents: ["id", "production_id", "file_name", "file_type", "mime_type", "dropbox_path", "dropbox_url", "notes", "created_at", "updated_at"],
-  red_films_equipment: ["id", "name", "category", "quantity", "acquired_date", "purchase_price", "purchased_from", "serial_number", "notes", "added_by", "status", "removed_at", "created_at", "updated_at"],
+  red_films_equipment: ["id", "name", "category", "quantity", "acquired_date", "purchase_price", "purchased_from", "serial_number", "notes", "added_by", "status", "removed_at", "created_at", "updated_at", "currency"],
   red_films_reference_images: ["id", "production_id", "file_name", "dropbox_path", "dropbox_url", "caption", "tag", "sort_order", "created_at", "updated_at"],
   red_films_reference_links: ["id", "production_id", "url", "provider", "video_id", "title", "thumbnail_url", "notes", "created_at", "updated_at"],
   red_films_scenes: ["id", "production_id", "sort_order", "title", "location", "description", "participants", "status", "notes", "created_at", "updated_at"],
@@ -59,7 +59,8 @@ export const RF_FIELDS: readonly RfField[] = [
   F(P, "ref_links", "CANONICAL", "Reference links text (a boolean for Sunny)."),
   F(P, "script_start", "CANONICAL", "Script — opening."), F(P, "script_middle", "CANONICAL", "Script — middle."), F(P, "script_end", "CANONICAL", "Script — ending."),
   F(P, "director_notes", "CANONICAL", "Director notes."), F(P, "photographer_notes", "CANONICAL", "Photographer notes."),
-  F(P, "general_budget", "CANONICAL", "The production BUDGET (planning ceiling, no currency column — ₪ assumed by the UI). For a production created by 'שלח קליפ' it mirrors the project's clip price one-way and is locked; legacy productions keep their own. The label recoup uses it (50/50 split)."),
+  F(P, "currency", "CANONICAL", "The production's currency (₪ / $ / €, DB check, default ₪ — every row before 2026-09-27 was ₪): general budget, client price, advances. A 'שלח קליפ' production takes the project clip deal's currency (locked like its budget)."),
+  F(P, "general_budget", "CANONICAL", "The production BUDGET (planning ceiling, in the production's currency). For a production created by 'שלח קליפ' it mirrors the project's clip price one-way and is locked; legacy productions keep their own. The label recoup uses it (50/50 split)."),
   F(P, "client_price", "CANONICAL", "What the client pays for the production (Red Films' own deal, not Finance)."),
   F(P, "advance_required", "CANONICAL", "Advance required from the client."), F(P, "advance_received", "CANONICAL", "Advance received (manual, not from Finance)."),
   F(P, "collection_status", "CANONICAL", "לא רלוונטי / צפוי / התקבל / שולם / לא שולם / חלקי / בוטל — collection from the client, manual."),
@@ -75,7 +76,8 @@ export const RF_FIELDS: readonly RfField[] = [
   // ── budget item (Red Films planning + payments) ──
   F(BI, "id", "CANONICAL", "A Red Films budget line.", { history: "—" }), F(BI, "production_id", "CANONICAL", "Owning production."),
   F(BI, "title", "CANONICAL", "Line title."), F(BI, "category", "CANONICAL", "צלם / ציוד / לוקיישן / תלבושות / סטיילינג / פוסט פרודקשן / שחקנים / מודלים / קייטרינג / הובלה / לוגיסטיקה / שיווק / אחר."),
-  F(BI, "planned_amount", "CANONICAL", "PLANNED cost (no currency column — ₪ assumed)."),
+  F(BI, "planned_amount", "CANONICAL", "PLANNED cost (in the line's currency)."),
+  F(BI, "currency", "CANONICAL", "The line's currency (₪ / $ / €, DB check, default = the production's). Its payments are always in it; it cannot change once the line has payments (no FX)."),
   F(BI, "actual_amount", "CONFLICT", "A manual 'actual' number; the UI shows paid = the SUM of the line's payments instead. Production: actual 1,800 vs payments 4,355."),
   F(BI, "vendor_name", "CANONICAL", "Vendor — free text (0 set in production)."),
   F(BI, "status", "CANONICAL", "מתוכנן / שולם / בוטל (manual). The UI also shows 'paid' when payments reach 99% of the plan (display rule)."),
@@ -84,7 +86,7 @@ export const RF_FIELDS: readonly RfField[] = [
   // ── budget payment (Red Films' own ledger) ──
   F(BP, "id", "CANONICAL", "A payment made against a budget line — Red Films' OWN ledger, never a Finance transaction.", { history: "—" }),
   F(BP, "production_id", "CANONICAL", "Production."), F(BP, "budget_item_id", "CANONICAL", "The budget line paid."),
-  F(BP, "amount", "CANONICAL", "Amount (no currency column — ₪ assumed; > 0 enforced)."), F(BP, "payment_date", "CANONICAL", "Paid on."),
+  F(BP, "amount", "CANONICAL", "Amount (> 0 enforced), in the payment's currency."), F(BP, "currency", "CANONICAL", "Always its budget line's currency (the writer forces it; another currency is refused — no FX)."), F(BP, "payment_date", "CANONICAL", "Paid on."),
   F(BP, "payment_method", "CANONICAL", "ביט / העברה בנקאית / כרטיס אשראי / מזומן …"), F(BP, "notes", "CANONICAL", "Notes."),
   F(BP, "receipt_file_name", "CANONICAL", "Receipt file name."), F(BP, "receipt_mime_type", "CANONICAL", "Receipt type."),
   F(BP, "receipt_dropbox_path", "CANONICAL", "Receipt storage path (internal)."), F(BP, "receipt_dropbox_url", "SECRET_LINK", `Receipt link — ${LINK}.`),
@@ -100,7 +102,7 @@ export const RF_FIELDS: readonly RfField[] = [
   // ── equipment (company-level, not per production) ──
   F(E, "id", "CANONICAL", "A Red Films equipment item (company inventory, not linked to productions).", { history: "—" }),
   F(E, "name", "CANONICAL", "Item name."), F(E, "category", "CANONICAL", "מצלמות / עדשות / ייצוב / תאורה / סאונד / אביזרים / אחר."), F(E, "quantity", "CANONICAL", "Quantity."),
-  F(E, "acquired_date", "CANONICAL", "Acquired."), F(E, "purchase_price", "CANONICAL", "Price paid (no currency; not Finance)."), F(E, "purchased_from", "CANONICAL", "Seller."),
+  F(E, "acquired_date", "CANONICAL", "Acquired."), F(E, "purchase_price", "CANONICAL", "Price paid (in the row's currency; not Finance)."), F(E, "currency", "CANONICAL", "The purchase price's currency (₪ / $ / €, default ₪)."), F(E, "purchased_from", "CANONICAL", "Seller."),
   F(E, "serial_number", "CANONICAL", "Serial number (asset identity, not a secret)."), F(E, "notes", "CANONICAL", "Notes."), F(E, "added_by", "CANONICAL", "Who added it (text)."),
   F(E, "status", "CANONICAL", "Item status."), F(E, "removed_at", "CANONICAL", "Soft remove."), F(E, "created_at", "CANONICAL", "Created."), F(E, "updated_at", "CANONICAL", "Updated."),
   // ── reference image ──
@@ -165,7 +167,7 @@ export const MONEY_MODEL = {
   promote: "'העבר לכספים' on a clip planning row: an expense (project scope, status לא שולם, expense scope קליפ, amount + currency of the row, the date chosen) is created and the ROW IS DELETED — so the plan and the expense never coexist (no double count), but the plan's history is gone. Guard: a row already carrying a transaction link returns 409; no atomic claim (a double click could create two expenses). No Owner check in the route (proxy only).",
   shootExpense: "adding a shoot day can optionally create an expense (status לא שולם, category צילום קליפ, expense scope קליפ, linked to the session).",
   noDoubleCount: "Sunny never adds a planning row / budget line to an expense; Red Films payments are shown apart from Finance; a clip expense and a Red Films payment for the same vendor are 'possible duplicate evidence', never summed.",
-  currency: "clip rows and Finance carry a currency (₪ default); Red Films budget / lines / payments / client price have NO currency column (₪ assumed by the UI) — Sunny labels them 'currency not recorded' and never converts.",
+  currency: "every money row carries its currency (₪ / $ / €; migration 75bf144e… applied 2026-09-27, every existing row = ₪): productions (budget / client price / advances), budget lines (planned / actual) and their payments (always the line's currency), equipment purchase price, clip rows, Finance. Nothing is converted; totals are grouped by currency, never added across currencies (SET_RF_CURRENCY; refused on a line that already has payments).",
   clipDeal: "clip deal status: אין עסקה / ממתין / חלקי / שולם / יתרת זכות; remaining = max(0, price − received), overpayment = credit. Clip income is excluded from the song's balance.",
   recoup: "label recoup: every ACTIVE (not cancelled) production of type קליפ whose artist text includes the artist's name contributes half of its BUDGET (planned, not actual) as the artist's recoup target — a name match on planned money.",
 } as const;
@@ -234,7 +236,7 @@ export interface RfWorkflow { event: string; support: "SUPPORTED" | "PARTIAL" | 
 export const RF_WORKFLOWS: readonly RfWorkflow[] = [
   { event: "CREATE_VIDEO_WORK", support: "SUPPORTED", concept: "a production (modal) or a project clip deal", missing: [] },
   { event: "SEND_TO_RED_FILMS", support: "SUPPORTED", concept: "'שלח קליפ' (idempotent by lookup)", missing: ["no database unique guard"] },
-  { event: "PLAN_CLIP_BUDGET", support: "SUPPORTED", concept: "production budget + budget lines + clip planning rows", missing: ["currency on Red Films money"] },
+  { event: "PLAN_CLIP_BUDGET", support: "SUPPORTED", concept: "production budget + budget lines + clip planning rows", missing: [] },
   { event: "TRANSFER_CLIP_ITEM_TO_FINANCE", support: "SUPPORTED", concept: "'העבר לכספים' (row deleted)", missing: ["plan history", "atomic claim"] },
   { event: "ASSIGN_CREW", support: "PARTIAL", concept: "three free-text names", missing: ["crew records (table unused)"] },
   { event: "SCHEDULE_SHOOT", support: "SUPPORTED", concept: "clip shoot session (+ calendar) / production shoot date", missing: ["a link between the two"] },
@@ -276,7 +278,7 @@ export const RF_INTEGRITY = {
   productionCounts20260925: {
     productions: 14, byStatus: { "בוטל": 12, "רעיון": 2 }, byType: { "קליפ": 12, "unreadable (encoding)": 2 }, withProject: 10, distinctProjects: 7, projectsWithTwoOrMore: 2, projectBusinessType: { "לקוח": 10 }, managedBySendClip: 0,
     activeProductions: 2, activeWithPassedShootDate: 2, activeWithProjectCompleted: 1, clientSourceAllInternalLabel: 14, publishDates: 0, finalLinks: 0, versionLinks: 0, rawLinks: 0,
-    budgetLines: 17, budgetLineStatus: { "מתוכנן": 17 }, plannedTotal: 10655, manualActualTotal: 1800, budgetPayments: 9, paymentsTotal: 4355, paymentsWithReceipt: 9, linesInFinance: 0, currencyRecorded: "none (₪ assumed)",
+    budgetLines: 17, budgetLineStatus: { "מתוכנן": 17 }, plannedTotal: 10655, manualActualTotal: 1800, budgetPayments: 9, paymentsTotal: 4355, paymentsWithReceipt: 9, linesInFinance: 0, currencyRecorded: "per row since 2026-09-27 (all existing rows ₪)",
     crewRows: 0, sceneRows: 0, documents: 2, documentTypes: ["תסריט", "אחר"], documentsWithPublicLink: 2, referenceImages: 47, referenceLinks: 2, equipment: 8, productionTasks: 2,
     clipRows: 1, clipRowStatus: { "הועבר לכספים": 1 }, clipRowTransactionMissing: 1, clipDeals: 1, clipDealPrice: 3500, clipIncome: { received: 1500, expected: 2000 }, clipScopedExpenses: 0,
     shootSessions: 2, shootSessionStatus: { "התקיים": 2 }, shootSessionsWithCalendar: 2, shootSessionsWithExpense: 0, shootSessionWithoutProduction: 1, projectTypeSongPlusClip: 1,
@@ -316,10 +318,10 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/redfilms.ts": "57f8e1d7a430fbcb86bcf520bb0b90dba965a6bb0f0c8ea5c153d82c15ef4a64",
+  "lib/writes/redfilms.ts": "5f1c1f0d7575bae3738a5df07b66b0a263bf298396133f88f3a9adcd1c12ff13",
   "lib/writes/clip.ts": "4eccc46270b2b40bcc85692fae9d3e71138f4d13ded0a5519ee0f28196a7af2f",
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
-  "lib/clip-production.ts": "9167e4578406e96976576e511bf579dfb10a12ca430616ab107180be0b6e0712",
+  "lib/clip-production.ts": "befdc1090414c0cfdc72919045c7de6fcdd5b695b5c973e9bdf8952ec475cf81",
   "lib/label-clips.ts": "68cce31a6cacc93540fc91bc535ed68cbbd8bb355bca61b974fb6dc88b819413",
   "app/api/projects/[id]/clip/send/route.ts": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
   "app/api/projects/[id]/clip/route.ts": "867f75b89941c39425e880ab67c4fe0d6d42706d6796ccfe07594dcd6d478942",

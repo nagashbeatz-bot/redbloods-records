@@ -13,6 +13,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const body = await req.json();
     const r = await updateShowRecord(id, body);
     if (r.kind === "not_found") return NextResponse.json({ error: "הופעה לא נמצאה" }, { status: 404 });
+    if (r.kind === "refused") return NextResponse.json({ error: r.messageHe, code: r.code }, { status: 409 });
     // A balance-sync failure means the request did NOT fully succeed, even though the show row itself was saved —
     // non-2xx so the client treats it as a failure. Retrying the same close action is always safe.
     if (r.kind === "balance_sync_failed") {
@@ -39,6 +40,9 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
         error: `להופעה יש ${r.rehearsalCount} חזרות מקושרות עם הוצאות — יש לטפל בהן לפני מחיקת ההופעה`,
         rehearsalCount: r.rehearsalCount,
       }, { status: 409 });
+    }
+    if (r.kind === "has_payments") {
+      return NextResponse.json({ error: `להופעה יש ${r.paymentCount} תשלומים שהתקבלו — כסף שהתקבל לא נמחק. אפשר לבטל את ההופעה`, paymentCount: r.paymentCount }, { status: 409 });
     }
     return NextResponse.json({ ok: true, deletedTransactions: r.deletedTransactions });
   } catch (err) {

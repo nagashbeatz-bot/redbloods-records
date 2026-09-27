@@ -18,7 +18,7 @@ import type { CalendarWindowResult } from "../calendar/types";
 import { validateTx } from "../finance/core";
 import { buildCalendarLinkIndex, linkCalendarEvent } from "../calendar/links";
 import { availability, dayList } from "../calendar/availability";
-import { computeShowSplit, rehearsalCountedAmount } from "../../shows-types";
+import { computeShowSplit, rehearsalCountedAmount, showMoneyOf } from "../../shows-types";
 import { computeShowNotifyFingerprint } from "../../show-notify-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -97,11 +97,17 @@ export function buildShowView(src: GatewaySources, showId: string) {
     const v = validateTx(t);
     return { role, exists: true, status: t.status, amount: v?.amount ?? null, currency: v?.currency ?? t.currency, date: t.date, received: v?.received ?? null, cancelled: v?.cancelled ?? null };
   };
-  const finance = { income: rowOf(s.incomeTxId, "INCOME (client)"), djFee: rowOf(s.djExpenseTxId, "DJ_FEE"), artistFee: rowOf(s.artistExpenseTxId, "ARTIST_FEE"),
-    rehearsalRows: rehearsals.filter((x) => x.financeRow).length, note: "rows are created only for confirmed shows; written as ₪ by the app" };
+  const currency = s.currency || "₪";
+  const linked = (fin?.raw.transactions ?? []).filter((t) => t.showId === s.id && t.type === "income");
+  const sm = showMoneyOf({ show_price: s.price ?? 0, currency }, linked.map((t) => ({ id: t.id, role: t.showMoneyRole ?? null, status: t.status, amount: Number(t.amount) || 0, currency: t.currency, date: t.date })));
+  const finance = { income: rowOf(s.incomeTxId, "INCOME (client) — legacy link"), djFee: rowOf(s.djExpenseTxId, "DJ_FEE"), artistFee: rowOf(s.artistExpenseTxId, "ARTIST_FEE"),
+    payments: sm.payments.map((p) => ({ amount: p.amount, currency: p.currency, date: p.date ?? null, status: p.status })),
+    expectedBalance: sm.expected ? { amount: sm.expected.amount, status: sm.expected.status } : null,
+    rehearsalRows: rehearsals.filter((x) => x.financeRow).length, note: "D5: rows are linked by transactions.show_id; actual money = SHOW_PAYMENT rows (שולם / התקבל)" };
   const money = {
-    currency: "NOT_STORED on the show (the app writes its finance rows as ₪)",
-    price: s.price, advance: s.advancePayment, remainingPerUi: s.price !== null && s.advancePayment !== null ? r2((s.price ?? 0) - (s.advancePayment ?? 0)) : null, clientPayment: s.paymentStatus,
+    currency, agreed: sm.agreed, received: sm.received, remaining: sm.remaining, credit: sm.credit,
+    ...(sm.otherCurrencyPayments.length ? { otherCurrencyPayments: sm.otherCurrencyPayments.map((p) => `${p.currency ?? "?"}${p.amount}`), otherCurrencyNote: "never added to this show's money (no FX) — for the Owner" } : {}),
+    price: s.price, receivedMirror: s.advancePayment, clientPayment: s.paymentStatus, clientPaymentRule: "derived from Finance: שולם when received ≥ agreed, מקדמה when partly received",
     djFee: s.djFee, rehearsalsCounted: counted, split: { gross: split.grossAmount, djFee: split.djFee, rehearsalCosts: split.rehearsalCosts, net: split.netAfterDj, artistFee: split.artistFee, labelProfit: split.labelProfit, rule: "net = max(0, price − DJ fee − counted rehearsals); artist = net / 2; label = the rest (the app's own function)" },
     storedArtistFeeColumn: s.artistFee, storedArtistFeeNote: "legacy column, never used by the app",
     finance,

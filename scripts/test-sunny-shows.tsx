@@ -80,7 +80,7 @@ const CAL: CalendarWindowResult = { status: "CALENDAR_DATA_AVAILABLE", window: {
 function sources(o: { cal?: "NONE"; settings?: "NONE" } = {}): GatewaySources {
   const st = input({ contexts: [] }).state!;
   const t = (id: string, over: Record<string, unknown>) => ({ ...tx(over as Parameters<typeof tx>[0]), id });
-  const raw = empty({ transactions: [t(TX_INC, { type: "income", amount: 3000, status: "התקבל", category: "הופעה" }), t(TX_DJ, { type: "expense", amount: 500, status: "שולם", category: "שכר דיג'יי" }), t(TX_ART, { type: "expense", amount: 1150, status: "צפוי", category: "שכר אמן" }),
+  const raw = empty({ transactions: [{ ...t(TX_INC, { type: "income", amount: 1000, status: "התקבל", category: "הופעה" }), showId: NEXT, showMoneyRole: "SHOW_PAYMENT" }, { ...t(U(9105), { type: "income", amount: 2000, status: "צפוי", category: "הופעה" }), showId: NEXT, showMoneyRole: "SHOW_BALANCE_EXPECTED" }, t(TX_DJ, { type: "expense", amount: 500, status: "שולם", category: "שכר דיג'יי" }), t(TX_ART, { type: "expense", amount: 1150, status: "צפוי", category: "שכר אמן" }),
     { ...t(TX_REH, { type: "expense", amount: 200, status: "שולם", category: "חזרה" }), linkedSessionId: U(951) }] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
@@ -118,7 +118,7 @@ function main() {
   section("SCENARIO A — 'מה קורה עם ההופעה הבאה של שליו?'");
   const a = buildShowView(sources(), NEXT)!;
   ok("artist: client CANONICAL + roster by text (ledger rule)", a.artist.client?.key === `client:${C_SHALEV}` && a.artist.labelArtist?.key === `label-artist:${LA_SHALEV}` && /TEXT_MATCH/.test(a.artist.labelArtist.link));
-  ok("money: price / advance / remaining / split", a.money.price === 3000 && a.money.advance === 1000 && a.money.remainingPerUi === 2000 && a.money.split.net === 2500 && a.money.split.artistFee === 1250);
+  ok("money (D5, from Finance): agreed / received / remaining / credit / split", a.money.agreed === 3000 && a.money.received === 1000 && a.money.remaining === 2000 && a.money.credit === 0 && a.money.currency === "₪" && a.money.finance.payments.length === 1 && a.money.finance.expectedBalance?.amount === 2000 && a.money.split.net === 2500 && a.money.split.artistFee === 1250);
   ok("rehearsal recorded, calendar event found, task visible", a.rehearsals.length === 1 && (a.calendar as { showEventFound?: boolean }).showEventFound === true && a.tasks.some((t) => t.kind === "CLOSE_A_DJ"));
   ok("asks for place + time (missing)", a.questions.some((x) => x.kind === "PLACE") && a.questions.some((x) => x.kind === "TIME"));
 
@@ -140,7 +140,7 @@ function main() {
   const e = buildShowView(sources(), PAST)!;
   ok("income received, DJ paid, artist-fee row still expected", (e.money.finance.income as { received?: boolean }).received === true && (e.money.finance.djFee as { status?: string }).status === "שולם" && codes(e).includes("ARTIST_ROW_UNPAID_AFTER_DONE"));
   ok("ledger income via close (show link)", e.ledger.some((l) => l.type === "הכנסות" && /close-show/.test(l.via)));
-  ok("finance rows carry their currency", (e.money.finance.income as { currency?: string }).currency === "₪" && /NOT_STORED/.test(e.money.currency));
+  ok("finance rows carry their currency, and the show has its own (D5 / currency)", (e.money.finance.income as { currency?: string }).currency === "₪" && e.money.currency === "₪");
 
   section("SCENARIO F — cancelled after the artist income existed");
   const f = buildShowView(sources(), CANCELLED)!;

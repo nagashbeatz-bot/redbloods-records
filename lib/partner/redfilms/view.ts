@@ -8,7 +8,7 @@
  *     Finance expenses.
  * They are joined only on the stored project id. Money stays in layers:
  *   planned → Red Films paid (own ledger) → actual Finance expense → paid expense.
- * A plan is never counted as spent; currencies are never added; Red Films money has no currency column. The clip deal
+ * A plan is never counted as spent; currencies are never added (each Red Films money row carries its own currency since 2026-09-27; totals are per currency). The clip deal
  * uses the app's own summarizeClipFinance; expenses use the Finance Brain's validateTx.
  * No score, no readiness verdict, no invented policy (a release never requires a video).
  */
@@ -71,9 +71,11 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
   const shootPassed = !!p.shootDate && p.shootDate < c.today;
   const shot = SHOT_OR_LATER.has(p.status ?? "");
   const linePaid = (id: string | null) => round2(pays.filter((x) => x.budgetItemId === id).reduce((s, x) => s + (x.amount ?? 0), 0));
-  const plannedLines = round2(lines.filter((l) => l.status !== "בוטל").reduce((s, l) => s + (l.planned ?? 0), 0));
-  const paidLedger = round2(pays.reduce((s, x) => s + (x.amount ?? 0), 0));
-  const manualActual = round2(lines.reduce((s, l) => s + (l.actual ?? 0), 0));
+  // per currency — amounts in different currencies are never added (no FX)
+  const byCur = <T,>(rows: readonly T[], cur: (r: T) => string | null | undefined, amt: (r: T) => number | null | undefined) => rows.reduce<Record<string, number>>((m, r) => { const c = cur(r) || "₪"; m[c] = round2((m[c] ?? 0) + (amt(r) ?? 0)); return m; }, {});
+  const plannedLines = byCur(lines.filter((l) => l.status !== "בוטל"), (l) => l.currency, (l) => l.planned);
+  const paidLedger = byCur(pays, (x) => x.currency, (x) => x.amount);
+  const manualActual = byCur(lines, (l) => l.currency, (l) => l.actual);
   const links = d?.links ?? null;
   return {
     key: `video-production:${p.id}`, id: p.id, title: p.title, type: p.productionType, typeReadable: !!p.productionType && /^[֐-׿A-Za-z0-9 /.\-]+$/.test(p.productionType),
@@ -88,8 +90,8 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
     publication: { publishDate: p.publishDate, publishedWhere: d?.publishedWhere ?? null },
     files: { folder: d?.dropboxFolderPath ? "RECORDED" : "NONE", documents: docs.map((x) => ({ fileName: x.fileName, type: x.fileType, mime: x.mimeType, uploadedAt: x.createdAt, publicLink: x.hasPublicLink })), referenceImages: refImages.length, referenceLinks: refLinks.map((x) => ({ provider: x.provider, title: x.title })), storageListing: "NOT_AVAILABLE (capability gap) — records only; 'no link' ≠ 'no footage'" },
     tasks: tasks.map((t) => ({ title: t.title, status: t.status, due: t.dueDate, relation: "CANONICAL (production task)" })),
-    money: { currency: "NOT_RECORDED (Red Films money has no currency column; the UI assumes ₪)", budget: p.generalBudget, budgetMirrorsClipPrice: !!p.projectId && managedId === p.id, plannedLines, paidRedFilmsLedger: paidLedger, manualActualOnLines: manualActual,
-      lines: lines.map((l) => ({ title: l.title, category: l.category, status: l.status, planned: l.planned, manualActual: l.actual, paidFromPayments: linePaid(l.id), vendor: l.vendorName, inFinance: !!l.linkedTransactionId })),
+    money: { currency: d?.currency ?? "₪", totalsNote: "planned / paid / actual are grouped PER CURRENCY — never added across currencies (no FX)", budget: p.generalBudget, budgetMirrorsClipPrice: !!p.projectId && managedId === p.id, plannedLines, paidRedFilmsLedger: paidLedger, manualActualOnLines: manualActual,
+      lines: lines.map((l) => ({ title: l.title, category: l.category, status: l.status, currency: l.currency ?? "₪", planned: l.planned, manualActual: l.actual, paidFromPayments: linePaid(l.id), vendor: l.vendorName, inFinance: !!l.linkedTransactionId })),
       clientPrice: p.clientPrice, advanceRequired: p.advanceRequired, advanceReceived: p.advanceReceived, collectionStatus: p.collectionStatus,
       layers: "budget / lines = PLANNED; payments = Red Films' own ledger (not Finance); no Finance expense is linked to a line",
       recoup: p.productionType === CLIP_SCOPE && active ? "counts toward the label recoup (the app's rule: an active clip production's budget, artist matched by name, split 50/50)" : "not in the recoup" },
@@ -97,6 +99,9 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
   };
 }
 export type VideoProduction = ReturnType<typeof buildProduction>;
+/** Per-currency amounts: any non-zero, and a stable "₪1,200 · $300" text (never a cross-currency sum). */
+const anyAmount = (m: Record<string, number>) => Object.values(m).some((x) => x > 0);
+const fmtByCur = (m: Record<string, number>) => Object.entries(m).filter(([, a]) => a !== 0).sort(([a], [b]) => a.localeCompare(b)).map(([c, a]) => `${c}${a}`).join(" · ") || "0";
 
 /** The PROJECT side: clip deal, clip rows, shoot sessions, clip expenses — for one project. */
 export function buildProjectVideo(src: GatewaySources, projectId: string) {
@@ -152,9 +157,9 @@ export function buildVideoView(src: GatewaySources) {
     if (p.shoot.sessions.some((s) => s.status === "התקיים") && !p.shoot.statusSaysShot) S("SHOOT_SESSION_HAPPENED_STATUS_STALE", "DERIVED_SIGNAL", `${p.title}: יום צילום בפרויקט סומן 'התקיים' אבל ההפקה עדיין "${p.status}"`);
     if (p.project && ["הושלם", "בוטל"].includes(p.project.status ?? "")) S("PRODUCTION_STATUS_VS_PROJECT", "DERIVED_SIGNAL", `${p.title}: הפרויקט ${p.project.status} וההפקה פעילה (${p.status})`);
     if (p.project?.businessType === "לקוח" && p.clientSource === "פנימי - לייבל") S("CLIENT_SOURCE_MISLABELLED", "DERIVED_SIGNAL", `${p.title}: מסומנת 'פנימי - לייבל' אבל הפרויקט של לקוח`);
-    if (p.money.plannedLines > 0 || (p.money.budget ?? 0) > 0) S("PLANNED_NOT_SPENT", "CANONICAL_FACT", `${p.title}: תקציב ${p.money.budget ?? 0}, שורות מתוכננות ${p.money.plannedLines} — תכנון, לא הוצאה (מטבע לא רשום)`);
-    if (p.money.paidRedFilmsLedger > 0) S("RF_LEDGER_NOT_IN_FINANCE", "CANONICAL_FACT", `${p.title}: שולמו ${p.money.paidRedFilmsLedger} בפנקס של Red Films — לא עבר לכספים`);
-    if (p.money.manualActualOnLines !== p.money.paidRedFilmsLedger && p.money.lines.length) S("LINE_ACTUAL_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title}: 'בפועל' ידני ${p.money.manualActualOnLines} ≠ תשלומים ${p.money.paidRedFilmsLedger}`);
+    if (anyAmount(p.money.plannedLines) || (p.money.budget ?? 0) > 0) S("PLANNED_NOT_SPENT", "CANONICAL_FACT", `${p.title}: תקציב ${p.money.currency}${p.money.budget ?? 0}, שורות מתוכננות ${fmtByCur(p.money.plannedLines)} — תכנון, לא הוצאה`);
+    if (anyAmount(p.money.paidRedFilmsLedger)) S("RF_LEDGER_NOT_IN_FINANCE", "CANONICAL_FACT", `${p.title}: שולמו ${fmtByCur(p.money.paidRedFilmsLedger)} בפנקס של Red Films — לא עבר לכספים`);
+    if (fmtByCur(p.money.manualActualOnLines) !== fmtByCur(p.money.paidRedFilmsLedger) && p.money.lines.length) S("LINE_ACTUAL_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title}: 'בפועל' ידני ${fmtByCur(p.money.manualActualOnLines)} ≠ תשלומים ${fmtByCur(p.money.paidRedFilmsLedger)}`);
     const missing = [!p.shoot.locations && !p.shoot.sessions.some((s) => s.location) ? "לוקיישן" : null, !p.crew.photographer && !p.crew.director ? "צלם / במאי" : null, !p.files.documents.length ? "מסמכים" : null].filter(Boolean);
     if (missing.length) S("MISSING_RECORDED_PREP", "CANONICAL_FACT", `${p.title}: לא רשום במערכת — ${missing.join(", ")} (עובדה, לא קביעה שההפקה לא מוכנה)`);
   }
@@ -175,8 +180,9 @@ export function buildVideoView(src: GatewaySources) {
   const active = prods.filter((p) => p.active);
   if (active.some((p) => p.shoot.datePassed && !p.shoot.statusSaysShot)) questions.push({ kind: "STATUS", questionHe: `${active.filter((p) => p.shoot.datePassed && !p.shoot.statusSaysShot).map((p) => p.title).join(", ")} — תאריך הצילום עבר והסטטוס 'רעיון'. הקליפ צולם? איפה הוא עומד?`, why: "the status is manual; outside progress is invisible" });
   if (projects.some((pv) => pv.planning.rows.some((r) => r.transferred && r.transactionExists === false))) questions.push({ kind: "FINANCE", questionHe: "שורת תכנון קליפ מסומנת 'הועבר לכספים' אבל ההוצאה לא קיימת בכספים — נמחקה בכוונה?", why: "a transferred plan without its expense" });
-  if (active.some((p) => p.money.paidRedFilmsLedger > 0)) questions.push({ kind: "FINANCE", questionHe: "תשלומי Red Films (פנקס נפרד) לא עוברים לכספים — שולמו מכסף החברה? צריכים להופיע גם בכספים?", why: "two money records; never summed by Sunny" });
-  const totals = { plannedBudget: round2(active.reduce((s, p) => s + (p.money.budget ?? 0), 0)), plannedLines: round2(active.reduce((s, p) => s + p.money.plannedLines, 0)), paidRedFilmsLedger: round2(active.reduce((s, p) => s + p.money.paidRedFilmsLedger, 0)), currency: "NOT_RECORDED (₪ assumed)" };
+  if (active.some((p) => anyAmount(p.money.paidRedFilmsLedger))) questions.push({ kind: "FINANCE", questionHe: "תשלומי Red Films (פנקס נפרד) לא עוברים לכספים — שולמו מכסף החברה? צריכים להופיע גם בכספים?", why: "two money records; never summed by Sunny" });
+  const sumCur = (pick: (p: VideoProduction) => Record<string, number>) => { const m: Record<string, number> = {}; for (const p of active) for (const [c, a] of Object.entries(pick(p))) m[c] = round2((m[c] ?? 0) + a); return m; };
+  const totals = { plannedBudget: sumCur((p) => ({ [p.money.currency]: p.money.budget ?? 0 })), plannedLines: sumCur((p) => p.money.plannedLines), paidRedFilmsLedger: sumCur((p) => p.money.paidRedFilmsLedger), currency: "PER CURRENCY — never added across currencies" };
   const expenses: Record<string, Record<string, number>> = { total: {}, paid: {}, unpaid: {} };
   for (const pv of projects) for (const k of ["total", "paid", "unpaid"] as const) for (const [cur, amt] of Object.entries(pv.expenses[k])) addByCurrency(expenses[k], cur, amt);
   const clipPlanned: Record<string, number> = {};

@@ -182,7 +182,7 @@ function main() {
   ok("no cadence / readiness field", !/cadenceTarget|readinessScore/.test(JSON.stringify(v.releases)));
   section("SCENARIO L — video: Red Films ledger is NOT Finance");
   ok("RF_LEDGER_NOT_IN_FINANCE is a money conflict", v.attention.some((o) => o.code === "RF_LEDGER_NOT_IN_FINANCE" && o.nature === "CONFLICT" && o.dims.includes("MONEY_RELEVANT")));
-  ok("cashflow shows the Red Films ledger apart", v.cashflow!.video!.redFilmsLedgerPaid === 1200);
+  ok("cashflow shows the Red Films ledger apart", (v.cashflow!.video!.redFilmsLedgerPaid as Record<string, number>)["₪"] === 1200);
   section("SCENARIO M — PLANNED_NOT_SPENT is INVESTMENT context, never attention");
   ok("investment is not in attention", !v.attention.some((o) => o.code === "PLANNED_NOT_SPENT") && v.context.some((o) => o.code === "PLANNED_NOT_SPENT" && o.nature === "INVESTMENT"));
   section("SCENARIO N — decisions: known historical decisions re-evaluated live");

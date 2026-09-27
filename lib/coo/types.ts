@@ -276,6 +276,8 @@ export interface ShowFact {
   daysTo: number | null;
   price: number;
   advance: number;
+  /** the show's currency (D5 / currency migration 2026-09-27); advance = the money received in Finance (a mirror) */
+  currency?: string;
   incomeTxId: string | null;
   /** Additive (Partner Phase B.1) — not read by any signal/case/priority/brief logic. */
   djClientId: string | null;
@@ -485,7 +487,7 @@ export interface RawProposal {
 }
 export interface RawShow {
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
-  price: number; advance: number; incomeTxId: string | null;
+  price: number; advance: number; currency?: string; incomeTxId: string | null;
   /** Additive (Partner Phase B.1) — already fetched by listShows()'s select("*"), just not read by Phase 1a signals/cases.
    *  Optional so existing fixtures/tests never need to change; missing = null. */
   djClientId?: string | null; djConfirmationStatus?: string | null; djConfirmedAt?: string | null;

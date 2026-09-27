@@ -20,6 +20,9 @@ export interface FinanceTxRow {
   scope: string | null;
   expenseScope: string | null;
   linkedSessionId: string | null;
+  /** D5: the canonical show link + what the row is for the show (SHOW_PAYMENT / SHOW_BALANCE_EXPECTED / DJ_FEE / ARTIST_FEE / REHEARSAL). Optional for older fixtures. */
+  showId?: string | null;
+  showMoneyRole?: string | null;
   createdAt: string | null;
   /** F2.31 (optional): the row description — used ONLY to detect an unkeyed row carrying the canonical Victor salary text. */
   description?: string | null;
@@ -28,7 +31,7 @@ export interface FinanceProjectRow { id: string; name: string; status: string; i
 /** settings key `finance_<projectId>` (any projectId — orphans included). */
 export interface FinanceSettingRow { projectId: string; value: unknown }
 export interface EngineerWorkRow { id: string; projectId: string | null; engineerName: string | null; status: string | null; agreedPrice: unknown; amountPaid: unknown; currency: string | null; linkedTransactionId: string | null }
-export interface FinanceShowRow { id: string; date: string | null; status: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null }
+export interface FinanceShowRow { id: string; date: string | null; status: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }

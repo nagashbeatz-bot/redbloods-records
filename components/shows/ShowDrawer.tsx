@@ -464,7 +464,7 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
               {/* Finance summary card */}
               <div style={{ background: "#0A0A0A", borderRadius: 10, padding: "14px 16px", border: "1px solid #1A1A1A" }}>
                 {[
-                  { label: "מחיר שוסכם", value: `₪${(draft.show_price || 0).toLocaleString()}`, color: "#F0F0F0" },
+                  { label: "מחיר שוסכם", value: `${draft.currency ?? "₪"}${(draft.show_price || 0).toLocaleString()}`, color: "#F0F0F0" },
                   { label: "מקדמה",       value: `₪${(draft.advance_payment || 0).toLocaleString()}`, color: "#F59E0B" },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

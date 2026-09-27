@@ -28,6 +28,8 @@ interface EquipmentItem {
   quantity: number;
   acquired_date: string;
   purchase_price: number | null;
+  /** the purchase price's currency (₪ / $ / €) */
+  currency?: string;
   purchased_from: string | null;
   serial_number: string | null;
   notes: string | null;
@@ -75,9 +77,9 @@ function fmtDate(d: string | null): string {
   const [y, m, day] = d.split("-");
   return `${parseInt(day, 10)}.${parseInt(m, 10)}.${y.slice(2)}`;
 }
-function fmtMoney(n: number | null): string {
+function fmtMoney(n: number | null, currency?: string): string {
   if (n === null || n === undefined) return "—";
-  return `₪${n.toLocaleString("he-IL")}`;
+  return `${currency || "₪"}${n.toLocaleString("he-IL")}`;
 }
 
 const ICON_PROPS = {
@@ -102,6 +104,7 @@ function EquipmentModal({ item, onClose, onSaved }: {
   const [quantity, setQuantity]         = useState(String(item?.quantity ?? 1));
   const [acquiredDate, setAcquiredDate] = useState(item?.acquired_date ?? new Date().toISOString().slice(0, 10));
   const [price, setPrice]               = useState(item?.purchase_price != null ? String(item.purchase_price) : "");
+  const [currency, setCurrency]         = useState(item?.currency ?? "₪");
   const [purchasedFrom, setPurchasedFrom] = useState(item?.purchased_from ?? "");
   const [serialNumber, setSerialNumber] = useState(item?.serial_number ?? "");
   const [notes, setNotes]               = useState(item?.notes ?? "");
@@ -125,6 +128,7 @@ function EquipmentModal({ item, onClose, onSaved }: {
         quantity: quantityNum,
         acquired_date: acquiredDate,
         purchase_price: priceNum,
+        currency,
         purchased_from: purchasedFrom.trim() || null,
         serial_number: serialNumber.trim() || null,
         notes: notes.trim() || null,
@@ -188,8 +192,13 @@ function EquipmentModal({ item, onClose, onSaved }: {
 
         <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
-            <label style={LABEL_S}>מחיר קנייה (אופציונלי)</label>
-            <input type="number" inputMode="decimal" min={0} step="1" style={{ ...INPUT_S, direction: "ltr", textAlign: "right" }} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" disabled={saving} />
+            <label style={LABEL_S}>מחיר קנייה {currency} (אופציונלי)</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="number" inputMode="decimal" min={0} step="1" style={{ ...INPUT_S, direction: "ltr", textAlign: "right" }} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" disabled={saving} />
+              <select value={currency} onChange={e => setCurrency(e.target.value)} disabled={saving} style={{ ...INPUT_S, width: 64 }}>
+                {["₪", "$", "€"].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
           <div style={{ flex: 1 }}>
             <label style={LABEL_S}>חנות / ממי נקנה (אופציונלי)</label>
@@ -294,7 +303,9 @@ export default function RedFilmsEquipment() {
   }).length;
   const removedCount = items.filter(i => i.status === "הוסר מהמלאי").length;
   const priced = items.filter(i => i.purchase_price !== null);
-  const totalInvestment = priced.reduce((sum, i) => sum + (i.purchase_price ?? 0) * i.quantity, 0);
+  // per currency — prices in different currencies are never added (no FX)
+  const investByCur = priced.reduce((m, i) => m.set(i.currency ?? "₪", (m.get(i.currency ?? "₪") ?? 0) + (i.purchase_price ?? 0) * i.quantity), new Map<string, number>());
+  const totalInvestment = [...investByCur.entries()].map(([c, n]) => fmtMoney(n, c)).join(" · ");
 
   // ── Filter + search ────────────────────────────────────────────────────────
   const visible = items
@@ -347,14 +358,14 @@ export default function RedFilmsEquipment() {
       {/* ── KPI cards ── */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : `repeat(${totalInvestment > 0 || priced.length > 0 ? 5 : 4}, minmax(0,1fr))`,
+        gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : `repeat(${priced.length > 0 ? 5 : 4}, minmax(0,1fr))`,
         gap: isMobile ? 12 : 16, marginBottom: 24,
       }}>
         <KpiCard icon={<IcBox />} label="סך הכול פריטים" value={totalItems} valueSize={32} />
         <KpiCard icon={<IcTag />} label="קטגוריות" value={categoriesCount} valueSize={32} />
         <KpiCard icon={<IcPlus />} label="נוספו החודש" value={addedThisMonth} valueSize={32} />
         <KpiCard icon={<IcTrash />} label="הוסרו מהמלאי" value={removedCount} valueSize={32} />
-        {priced.length > 0 && <KpiCard icon={<IcMoney />} label="סך ההשקעה" value={fmtMoney(totalInvestment)} valueSize={26} />}
+        {priced.length > 0 && <KpiCard icon={<IcMoney />} label="סך ההשקעה" value={totalInvestment} valueSize={26} />}
       </div>
 
       {/* ── Search + status filter ── */}
@@ -410,7 +421,7 @@ export default function RedFilmsEquipment() {
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "#8A8A92", marginBottom: 12 }}>
                 <span>📅 {fmtDate(item.acquired_date)}</span>
-                {item.purchase_price !== null && <span style={{ color: "#4ADE80", fontWeight: 700 }}>{fmtMoney(item.purchase_price)}</span>}
+                {item.purchase_price !== null && <span style={{ color: "#4ADE80", fontWeight: 700 }}>{fmtMoney(item.purchase_price, item.currency)}</span>}
                 <span>מי הוסיף: {item.added_by}</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -450,7 +461,7 @@ export default function RedFilmsEquipment() {
               <div style={{ color: "#8A8A92", textAlign: "center" }}>{item.category}</div>
               <div style={{ color: "#8A8A92", textAlign: "center" }}>{item.quantity}</div>
               <div style={{ color: "#8A8A92", textAlign: "center", direction: "ltr" }}>{fmtDate(item.acquired_date)}</div>
-              <div style={{ color: "#8A8A92", textAlign: "center" }}>{fmtMoney(item.purchase_price)}</div>
+              <div style={{ color: "#8A8A92", textAlign: "center" }}>{fmtMoney(item.purchase_price, item.currency)}</div>
               <div style={{ display: "flex", justifyContent: "center" }}><EquipmentStatusBadge status={item.status} small /></div>
               <div style={{ color: "#8A8A92", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.added_by}</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>

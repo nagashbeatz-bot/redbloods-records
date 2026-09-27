@@ -2990,6 +2990,25 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": []
  },
+ "app/api/shows/[id]/payments/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "8d30abbd4f25939ddf91b0da95bb0444b6ba0366e40f09530f0276c754e59955",
+  "effects": [
+   "DELETION",
+   "FINANCE",
+   "LEDGER"
+  ],
+  "fields": [
+   "amount",
+   "currency",
+   "date",
+   "method",
+   "note"
+  ]
+ },
  "app/api/shows/[id]/quote-sent/route.ts": {
   "methods": [
    "POST"
@@ -3007,6 +3026,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": [
    "addToCalendar",
+   "advance_date",
    "advance_payment",
    "artist",
    "artistPaidDate",
@@ -3017,6 +3037,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "calendar_event_id",
    "closeShow",
    "contact_person",
+   "currency",
    "date",
    "dj_client_id",
    "dj_fee",
@@ -3024,6 +3045,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "location",
    "name",
    "notes",
+   "payment_method",
    "payment_status",
    "phone",
    "removeFromCalendar",
@@ -3038,7 +3060,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "b2ea75f1e68b431af3274f32b7954097bccdb98f14ac8bea858915e8410a3f04",
+  "sha256": "a917849300207f51fee1edd9d1d4a35c5755880cfacdf7f5bac0603c364c68e0",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -3050,6 +3072,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": [
    "addToCalendar",
+   "advance_date",
    "advance_payment",
    "artist",
    "artistPaidDate",
@@ -3060,6 +3083,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "calendar_event_id",
    "closeShow",
    "contact_person",
+   "currency",
    "date",
    "dj_client_id",
    "dj_fee",
@@ -3067,6 +3091,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "location",
    "name",
    "notes",
+   "payment_method",
    "payment_status",
    "phone",
    "removeFromCalendar",
@@ -3092,6 +3117,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": [
    "addToCalendar",
+   "advance_date",
    "advance_payment",
    "artist",
    "artistPaidDate",
@@ -3102,6 +3128,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "calendar_event_id",
    "closeShow",
    "contact_person",
+   "currency",
    "date",
    "dj_client_id",
    "dj_fee",
@@ -3109,6 +3136,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "location",
    "name",
    "notes",
+   "payment_method",
    "payment_status",
    "phone",
    "removeFromCalendar",

@@ -124,7 +124,8 @@ export interface ClientsFact {
  * Duplicated rather than imported — that file has `import "server-only"` (same
  * reasoning as splitArtistNames in lib/partner/dossiers/relations.ts). The
  * table has NO currency column (see the domain's warnings) — treat as one
- * implicit ledger, never assumed to be ₪ without evidence.
+ * implicit ledger, never assumed to be ₪ without evidence. (Shows and Red Films money carry a currency since
+ * 2026-09-27; the label ledger still does not.)
  */
 export interface LabelArtistBalanceTotals {
   income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number; currentBalance: number;

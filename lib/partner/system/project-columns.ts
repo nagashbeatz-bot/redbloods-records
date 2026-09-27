@@ -33,7 +33,7 @@ export const PROJECT_TABLE_COLUMNS: Readonly<Record<string, readonly string[]>> 
   social_content_items: ["id", "campaign_id", "project_id", "title", "content_type", "status", "platform", "due_date", "publish_date", "owner_name", "asset_link", "dropbox_link", "calendar_event_id", "task_id", "caption", "hook", "notes", "posted_url", "created_at", "updated_at", "publish_time"],
   sound_engineer_work: ["id", "project_id", "engineer_name", "work_type", "status", "agreed_price", "currency", "amount_paid", "sent_date", "internal_deadline", "files_link", "notes", "linked_transaction_id", "created_at", "updated_at", "work_title", "sort_order", "payment_date"],
   tasks: ["id", "title", "notes", "status", "related_type", "related_id", "due_date", "start_time", "end_time", "calendar_event_id", "created_at", "updated_at", "show_id"],
-  transactions: ["id", "project_id", "type", "date", "description", "artist", "amount", "currency", "payment_status", "payment_method", "receipt_ref", "notes", "category", "created_at", "linked_session_id", "scope", "expense_scope"],
+  transactions: ["id", "project_id", "type", "date", "description", "artist", "amount", "currency", "payment_status", "payment_method", "receipt_ref", "notes", "show_id", "show_money_role", "category", "created_at", "linked_session_id", "scope", "expense_scope"],
   vendor_project_work: ["id", "vendor_name", "project_id", "status", "sent_date", "internal_deadline", "returned_date", "dropbox_folder", "dropbox_share_link", "quality", "entered_project", "notes", "files_sent", "files_received", "created_at", "updated_at", "work_state", "outcome", "linked_task_id", "title", "brief_text", "reference_links", "version_reviews", "brief_files"],
 };
 

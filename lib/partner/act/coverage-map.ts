@@ -90,7 +90,7 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "LABEL.NOTIFY_SHOW": { by: ["NOTIFY_SHOW_ARTIST", "NOTIFY_SHOW_DJ"], full: true },
   "LABEL.SHOW_LIFECYCLE": { by: ["CREATE_SHOW", "UPDATE_SHOW_DETAILS", "SET_SHOW_MONEY", "CONFIRM_SHOW", "CANCEL_SHOW", "CLOSE_SHOW", "DELETE_SHOW"], full: true },
   "SHOW.REHEARSAL": { by: ["BOOK_SHOW_REHEARSAL", "UPDATE_SHOW_REHEARSAL", "DELETE_SHOW_REHEARSAL"], full: true },
-  "SHOW.RECORD_SHOW_ADVANCE": { by: ["SET_SHOW_MONEY"], full: false, remaining: "D5 (Boss decision): how a show advance is modelled — today's payment status מקדמה + advance amount is what runs" },
+  "SHOW.RECORD_SHOW_ADVANCE": { by: ["RECORD_SHOW_PAYMENT"], full: true },
   // ── Mix / mastering family ──
   "MIX.ASSIGN_ENGINEER": { by: ["CREATE_ENGINEER_WORK"], full: true },
   "MIX.EDIT_WORK": { by: ["UPDATE_ENGINEER_WORK", "SET_ENGINEER_WORK_STATUS", "SET_ENGINEER_WORK_PRICE", "RECORD_ENGINEER_PAYMENT"], full: true },
@@ -219,6 +219,10 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   // ── File Channel (Sunny Inbox) + typed URL fields (Boss decisions 2026-09-27) ──
   "RF.MARK_PRODUCTION_APPROVED": { by: ["UPDATE_PRODUCTION_DETAILS"], full: true },
   // ── Compound plans + action history + D6 / D7 + Claude operability (2026-09-27) ──
+  "SHOW.SET_SHOW_CURRENCY": { by: ["SET_SHOW_CURRENCY"], full: true },
+  "RF.SET_PAYMENT_CURRENCY": { by: ["SET_RF_CURRENCY"], full: true },
+  "SHOW.RECORD_PAYMENT": { by: ["RECORD_SHOW_PAYMENT"], full: true },
+  // ── D5 show payments in Finance + currency on shows / Red Films (2026-09-27) ──
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every
@@ -461,6 +465,9 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   UPLOAD_PROJECT_FILE: "FILES_DROPBOX",
   DISCARD_INBOX_ITEM: "FILES_DROPBOX",
   SET_PROJECT_COVER_IMAGE: "PROJECTS",
+  RECORD_SHOW_PAYMENT: "SHOWS",
+  SET_SHOW_CURRENCY: "SHOWS",
+  SET_RF_CURRENCY: "RED_FILMS",
 };
 
 /** The business-action taxonomy (lib/partner/system BUSINESS_ACTIONS) → the primitives that execute it through

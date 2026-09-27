@@ -11,7 +11,7 @@ import type { ApprovalClass, Enforcement, Who } from "./project-actions";
 export const SHOWS_BASELINE_VERSION = "2026.09.27-shows-2";
 
 /** Live production columns (information_schema, 2026-09-25) — internal, pinned by the test. */
-export const SHOW_SCHEMA_COLUMNS = ["id", "name", "artist", "date", "start_time", "location", "contact_person", "phone", "status", "payment_status", "show_price", "dj_fee", "advance_payment", "notes", "created_at", "updated_at", "artist_client_id", "booker_client_id", "booker_name", "calendar_event_id", "dj_client_id", "dj_name", "linked_income_transaction_id", "linked_dj_expense_transaction_id", "artist_fee", "linked_artist_expense_transaction_id", "dj_confirmation_status", "dj_confirmed_at"] as const;
+export const SHOW_SCHEMA_COLUMNS = ["id", "name", "artist", "date", "start_time", "location", "contact_person", "phone", "status", "payment_status", "show_price", "dj_fee", "advance_payment", "notes", "created_at", "updated_at", "artist_client_id", "booker_client_id", "booker_name", "calendar_event_id", "dj_client_id", "dj_name", "linked_income_transaction_id", "linked_dj_expense_transaction_id", "artist_fee", "linked_artist_expense_transaction_id", "dj_confirmation_status", "dj_confirmed_at", "currency"] as const;
 
 export type FieldClass = "CANONICAL" | "DERIVED" | "DISPLAY_ONLY" | "LEGACY" | "AMBIGUOUS" | "POSSIBLE_BUG" | "CONFLICT";
 export interface ShowField { field: string; classification: FieldClass; meaning: string; validation: string; writers: string; readers: string; sideEffects: string; history: string; sunnyReads: string }
@@ -32,10 +32,11 @@ export const SHOW_FIELDS: readonly ShowField[] = [
   F("contact_person", "CANONICAL", "Venue / booker contact name.", "none", { sunnyReads: "show_view (name)" }),
   F("phone", "CANONICAL", "Contact phone.", "none", { sunnyReads: "show_view (hasPhone only)" }),
   F("status", "CANONICAL", "Lifecycle: ליד חדש / ממתין לתשובה / צריך פולואפ (pipeline) · נסגר / אושרה (confirmed upcoming) · בוצע (done) · בוטל (cancelled).", "not validated server-side; DB default ליד חדש", { sideEffects: "confirmed → finance rows; back to pipeline → finance rows HARD-deleted; בוטל → rows cancelled, open tasks cancelled, expected ledger removed; בוצע via the close dialog → ledger income (+ payment)" }),
-  F("payment_status", "CANONICAL", "CLIENT payment: שולם / לא שולם / צפוי / מקדמה / בוטל (legacy חלקי shown as מקדמה).", "not validated server-side; DB default לא שולם", { sideEffects: "income row received vs expected; also drives DJ / artist rows on a re-sync (close-dialog per-party statuses are re-derived from it on a later edit)" }),
-  F("show_price", "CANONICAL", "Gross show price — NO currency stored (finance rows are written as ₪).", "number, default 0", { sideEffects: "income row, split" }),
+  F("payment_status", "DERIVED", "CLIENT payment, derived from Finance (D5): שולם when received ≥ agreed, מקדמה when partly received; לא שולם / צפוי / בוטל otherwise. Choosing שולם = the client paid the whole REMAINING balance (a payment row for it). (legacy חלקי shown as מקדמה)", "not validated server-side; DB default לא שולם", { sideEffects: "income row received vs expected; also drives DJ / artist rows on a re-sync (close-dialog per-party statuses are re-derived from it on a later edit)" }),
+  F("show_price", "CANONICAL", "Gross (agreed) show price, in the show's currency.", "number, default 0", { sideEffects: "expected balance row (price − received), split" }),
+  F("currency", "CANONICAL", "The show's currency (₪ / $ / €, DB check, default ₪ — every row before 2026-09-27 was ₪). Price, DJ fee and every Finance row of the show carry it; never converted, never added across currencies. Refused once money was received.", "DB check ₪ / $ / €", { sideEffects: "its Finance rows' currency; a non-₪ show is not synced into the (currency-less) artist ledger" }),
   F("dj_fee", "CANONICAL", "DJ fee — defaults to 500 at creation even when no DJ is chosen.", "number, default 500 (a bad PATCH value becomes NaN)", { sideEffects: "DJ expense row (created from the fee even without a DJ), split" }),
-  F("advance_payment", "CANONICAL", "Advance received from the client (amount).", "number, default 0", { sideEffects: "none in finance — used only by the UI 'remaining' and the COO", readers: "hub UI, COO evidence" }),
+  F("advance_payment", "DERIVED", "D5: a MIRROR of the money received in Finance (Σ SHOW_PAYMENT rows) — written by the sync, never typed in (a typed advance becomes a payment row).", "number, default 0", { sideEffects: "none — read by the UI 'remaining' and the COO", readers: "hub UI, COO evidence" }),
   F("artist_fee", "LEGACY", "Stored artist fee — NEVER read by any calculation (the split computes it); 0 on every production show.", "number, default 0", { readers: "nobody" }),
   F("notes", "CANONICAL", "Free text; the close dialog appends a 'סגירת הופעה <date>: …' line.", "none", { sunnyReads: "show_view (evidence)" }),
   F("calendar_event_id", "CANONICAL", "The show's Google Calendar event (canonical calendar link).", "text or null", { sideEffects: "event title 'הופעה: <name> - <artist>'; updated when name / artist / date / time / place / booker / contact / phone / price / DJ fee change; removed only by the hub's cancel / delete", sunnyReads: "show_view (hasCalendarEvent) + calendar" }),
@@ -97,17 +98,19 @@ export const DJ_MODEL = {
 } as const;
 
 export const MONEY_MODEL = {
-  currency: "shows store NO currency; the finance sync writes every show / DJ / artist / rehearsal row as ₪ — a foreign-currency show would be recorded as ₪ (registered gap)",
+  currency: "each show has ONE currency (shows.currency ₪ / $ / €); its Finance rows carry it; nothing is converted or added across currencies; a payment in another currency is refused; a non-₪ show is not synced into the currency-less artist ledger (flagged for the Owner)",
   split: "gross = price; net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label profit = net − artist fee. No rounding (x.5 possible). The stored artist fee column is never used; there is no override.",
   rehearsalCounted: "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל",
-  advance: "stored amount only — not a finance row; the UI shows remaining = price − advance; מקדמה counts as unpaid in finance",
+  advance: "D5 (Owner decision, migration 75bf144e… applied 2026-09-27): money received = SHOW_PAYMENT income rows linked by transactions.show_id (status התקבל / שולם). received = Σ payments; remaining = max(0, agreed − received) held by ONE SHOW_BALANCE_EXPECTED row (צפוי; 0 / בוטל when nothing remains); credit = received − agreed stays visible. Deposit / partial / full / overpayment = RECORD_SHOW_PAYMENT (the shared show-payments writer). Marking שולם / closing with 'received' records the REMAINDER once — never the full price again (no fake revenue). Payments are never deleted, re-priced or cancelled by a sync; a show with payments is never deleted or reverted to a lead. Historical: the 6 legacy fully-paid income rows became SHOW_PAYMENT (known money); no deposit was invented.",
+  showMoneyRule: "showMoneyOf — the one rule shared by the sync, the payment writer, the Shows hub and show_view",
   rows: [
-    { row: "INCOME", category: "הופעה", scope: "הופעה", when: "confirmed + price > 0", status: "בוטל if cancelled; התקבל if client paid; else צפוי", amount: "price", party: "booker name, else artist, else 'לקוח'" },
+    { row: "SHOW_PAYMENT", category: "הופעה", scope: "הופעה", when: "money received (RECORD_SHOW_PAYMENT / שולם / close 'received')", status: "התקבל", amount: "the amount received", party: "booker name, else artist, else 'לקוח'" },
+    { row: "SHOW_BALANCE_EXPECTED", category: "הופעה", scope: "הופעה", when: "confirmed + price > 0", status: "צפוי while something remains; בוטל (0) when paid in full or the show is cancelled", amount: "agreed − received", party: "booker name, else artist, else 'לקוח'" },
     { row: "DJ_FEE", category: "שכר דיג'יי", scope: "הופעה", when: "confirmed + DJ fee > 0 (even with no DJ)", status: "בוטל if cancelled / fee 0; שולם if paid; else צפוי", amount: "DJ fee", party: "DJ name" },
     { row: "ARTIST_FEE", category: "שכר אמן", scope: "הופעה", when: "confirmed + artist fee > 0", status: "בוטל if cancelled / fee 0; שולם if paid; else צפוי", amount: "split artist fee", party: "artist text (full, incl. collaborations)" },
     { row: "REHEARSAL", category: "חזרה", scope: "הופעה", when: "a rehearsal session with cost > 0", status: "session payment (שולם / לא שולם)", amount: "cost", party: "artist" },
   ],
-  rowRules: "rows carry a 'show_id:<id>' note; linked ids make re-syncs patch (never duplicate); an existing row is always patched, never deleted by sync; the close dialog sets per-party paid statuses, a later edit re-derives all three from the client payment",
+  rowRules: "every row carries transactions.show_id + show_money_role (the canonical link; the 'show_id:<id>' note is kept for older readers); one expected-balance row per show (DB unique index); re-syncs patch, never duplicate; a payment row is never deleted / re-priced by a sync; the DJ / artist rows are paid when the show is paid in full (derived)",
   ledger: "see LEDGER_SYNC — the artist ledger is separate money (no currency)",
 } as const;
 
@@ -157,6 +160,7 @@ export const SHOW_ACTIONS: readonly ShowActionEntry[] = [
   X({ id: "QUOTE_SENT", action: "Mark a quote sent (follow-up task)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "quote save", writes: "task", finance: null, ledger: null, calendar: null, push: null, external: false, destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "SHOW_QUOTE_FOLLOW_UP", routes: ["app/api/shows/[id]/quote-sent/route.ts"] }),
   X({ id: "EDIT_SHOW", action: "Edit show fields / status / client payment", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "form / pickers", writes: "show", finance: "re-sync (pipeline → delete rows)", ledger: "expected row re-derived / removed", calendar: "event update", push: null, external: true, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "UPDATE_SHOW / UPDATE_SHOW_STATUS", routes: [SI] }),
   X({ id: "ASSIGN_DJ", action: "Choose / change the DJ", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "form DJ picker", writes: "DJ id + name + confirmation reset", finance: "DJ row party", ledger: null, calendar: "description", push: null, external: false, destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "ASSIGN_SHOW_DJ", routes: [SI] }),
+  X({ id: "RECORD_PAYMENT", action: "Record money received for a show (deposit / partial / full / overpayment)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "show panel 'רשום תשלום' / Sunny RECORD_SHOW_PAYMENT", writes: "one SHOW_PAYMENT income row (show currency) + the expected balance + the derived payment status", finance: "payment row; expected balance = agreed − received; DJ / artist rows paid when paid in full", ledger: "unchanged (the ledger follows the split, not the cash)", calendar: null, push: null, external: false, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "RECORD_SHOW_PAYMENT", routes: ["app/api/shows/[id]/payments/route.ts"] }),
   X({ id: "CLOSE_SHOW", action: "Close a show (done + who was paid)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "close-show dialog", writes: "status בוצע, payments, DJ name, notes", finance: "per-party paid statuses", ledger: "artist INCOME (+ PAYMENT)", calendar: null, push: null, external: false, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "CLOSE_SHOW", routes: [SI] }),
   X({ id: "CANCEL_SHOW", action: "Cancel a show", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "'בטל הופעה'", writes: "status בוטל", finance: "rows → בוטל", ledger: "expected removed; realized kept", calendar: "event removed (hub)", push: null, external: true, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "CANCEL_SHOW", routes: [SI] }),
   X({ id: "DELETE_SHOW", action: "Delete a show (blocked while rehearsals exist)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "hub trash", writes: "show + tasks (hub) deleted", finance: "rows hard-deleted", ledger: "expected removed; realized kept", calendar: "event removed (hub only)", push: null, external: true, destructive: true, reversible: "NO", approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_SHOW", routes: [SI] }),
@@ -235,9 +239,9 @@ export const SHOW_REVIEWED_FILES = [
   "app/api/shows/route.ts", "app/api/shows/[id]/route.ts",
 ] as const;
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/shows-store.ts": "a53af88357604ae6120b9165275bc42ebd020c3fb691fd6ccdc4b062694acf09",
-  "lib/shows-types.ts": "df9ed7a0912f659686185418e814a6f72daccf3b784582c9257d5d2758c6e5a5",
-  "lib/shows-finance-sync.ts": "a680e9058a3a769ebf94af21f2e64268987fd814efeca90a1d96573505cce6ba",
+  "lib/shows-store.ts": "787d5647a4bb925d133b72327bd8ea3e594f552af83a4ecd054bce70ab58844b",
+  "lib/shows-types.ts": "5087bfb0984e20351b8aa7054b7faae36e00083a3ff1a97ee1c3155f335ec4ed",
+  "lib/shows-finance-sync.ts": "b860a570eae3144fc55847e790003f746a0f706928521b2caaefa4d746117826",
   "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
@@ -249,7 +253,7 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",
   "lib/red-artists/cleantone.ts": "ca64bf791b7d13822a5fc29eb541f276e08dedcf1d7d77270f5a9b9c22edf5cf",
   "app/api/shows/route.ts": "0c0f51cd4185854bec7bc1aa491015a396b4ec1da7f09d8f6259ebc575c043da",
-  "app/api/shows/[id]/route.ts": "b2ea75f1e68b431af3274f32b7954097bccdb98f14ac8bea858915e8410a3f04",
+  "app/api/shows/[id]/route.ts": "a917849300207f51fee1edd9d1d4a35c5755880cfacdf7f5bac0603c364c68e0",
 };
 
 /** Route families touching shows (internal — the test re-discovers routes). */

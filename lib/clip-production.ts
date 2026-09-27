@@ -116,12 +116,18 @@ export async function isManagedClipProduction(production: {
  * manages. One-way by design, and ONLY for a production created by "שלח קליפ" —
  * a legacy production's budget is never touched from here.
  */
+/** The project's clip deal currency (finance settings) — the managed production's budget carries it (no FX). */
+async function clipDealCurrency(projectId: string): Promise<string> {
+  const { data } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
+  const c = (data?.value as { currency?: unknown } | null)?.currency;
+  return c === "$" || c === "€" || c === "₪" ? c : "₪";
+}
 export async function syncClipBudget(projectId: string, price: number): Promise<{ productionId: string; general_budget: number } | null> {
   const production = await getManagedClipProduction(projectId);
   if (!production) return null;
   const { data } = await supabase
     .from("red_films_productions")
-    .update({ general_budget: price, updated_at: new Date().toISOString() })
+    .update({ general_budget: price, currency: await clipDealCurrency(projectId), updated_at: new Date().toISOString() })
     .eq("id", production.id)
     .select("id, general_budget")
     .maybeSingle();

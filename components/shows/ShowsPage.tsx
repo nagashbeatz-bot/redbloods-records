@@ -377,6 +377,13 @@ const selSt: React.CSSProperties = {
   outline: "none", fontFamily: "inherit",
 };
 
+/** Totals per currency — amounts in different currencies are never added (no FX). */
+function sumShowsByCurrency(list: Array<{ show_price: number; currency?: string }>): string {
+  const by = new Map<string, number>();
+  for (const s of list) by.set(s.currency || "₪", (by.get(s.currency || "₪") ?? 0) + (s.show_price || 0));
+  return by.size ? [...by.entries()].map(([c, n]) => `${c}${n.toLocaleString()}`).join(" · ") : "₪0";
+}
+
 export default function ShowsPage() {
   const [shows,   setShows]   = useState<Show[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -421,7 +428,7 @@ export default function ShowsPage() {
     { label: "הופעות החודש",        value: shows.filter(s => s.date?.startsWith(monthKey)).length,                               sub: `חודש ${now.getMonth() + 1}`,    color: "#60A5FA", icon: "📅" },
     { label: "ממתינות לפולואפ",     value: shows.filter(s => s.status === "צריך פולואפ" || s.status === "ממתין לתשובה").length, sub: "צריכות טיפול",                  color: "#F59E0B", icon: "⏰" },
     { label: "נסגרו",               value: shows.filter(s => s.status === "נסגר" || s.status === "בוצע").length,                sub: "מאושרות",                        color: "#10B981", icon: "✅" },
-    { label: 'סה"כ הכנסות צפויות',  value: `₪${shows.filter(s => s.status !== "בוטל").reduce((sum, s) => sum + (s.show_price || 0), 0).toLocaleString()}`, sub: "לא כולל מבוטלות", color: "#A78BFA", icon: "💰" },
+    { label: 'סה"כ הכנסות צפויות',  value: sumShowsByCurrency(shows.filter(s => s.status !== "בוטל")), sub: "לא כולל מבוטלות", color: "#A78BFA", icon: "💰" },
   ];
 
   // Table columns — fewer when drawer is open

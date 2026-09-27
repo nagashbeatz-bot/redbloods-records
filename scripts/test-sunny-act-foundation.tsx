@@ -59,8 +59,8 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("the older dashboard-only finance path is fully carried out through Claude now (RECORD_VICTOR_SALARY_MONTH + SET_TRANSACTION_STATUS) — nothing is dashboard-only", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE_VIA_DASHBOARD_APPROVAL").length === 0 && ["PROJECT.SUNNY_DEADLINE", "RECORD_PAID_EXPENSE", "VICTOR.RECORD_SALARY_EXPENSE"].every((id) => ACTION_REGISTRY.get(id)?.availabilityDetail === "EXECUTABLE"));
   ok("every NEEDS_HARDENING key is a real contract in that bucket", Object.keys(NEEDS_HARDENING).every((k) => ACTION_REGISTRY.get(k)?.availability === "SUNNY_NEEDS_HARDENING"));
   ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" || PRIMITIVES_BY_ID.has(w.id) ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && (ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE") === COVERED(w.id))));
-  const DEFERRED = ["SHOW.RECORD_SHOW_ADVANCE"];
-  ok("D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION (not implemented)", DEFERRED.every((d) => ACTION_REGISTRY.get(d)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
+  const DEFERRED: string[] = []; // D5 / D6 / D7 decided (2026-09-27); none is blocked by the Boss any more
+  ok("D5 / D6 / D7 are decided: the former blocked rows are executable through their primitives", ["SHOW.RECORD_SHOW_ADVANCE", "RF.MARK_PRODUCTION_APPROVED", "SHOW.SET_SHOW_CURRENCY", "RF.SET_PAYMENT_CURRENCY"].every((d) => ACTION_REGISTRY.get(d)?.availabilityDetail === "EXECUTABLE") && DEFERRED.length === 0);
 
   // ── G1: every write handler maps to an action or an explicit exclusion ──
   console.log("G1. Every write handler → an action id (or an explicit exclusion)");

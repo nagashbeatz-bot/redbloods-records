@@ -207,14 +207,16 @@ async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
 async function showFamilyWriters(): Promise<ShowFamilyWriters> {
   const W = await import("@/lib/writes/shows");
   const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
-  const kind = (r: Awaited<ReturnType<typeof W.updateShowRecord>>) => ({ kind: r.kind, warning: r.kind === "ok" ? r.calendarWarning ?? null : null });
+  const kind = (r: Awaited<ReturnType<typeof W.updateShowRecord>>) => ({ kind: r.kind, warning: r.kind === "ok" ? r.calendarWarning ?? null : r.kind === "refused" ? r.messageHe : null });
+  const { showMoneyForShow } = await import("@/lib/shows-finance-sync");
   return {
     async readShow(id) {
       const s = await W.readShow(id);
       if (!s) return null;
-      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id) };
+      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id), ...(await (async () => { const m = await showMoneyForShow(s); return { currency: m.currency, received: m.received, remaining: m.remaining, credit: m.credit, payments: m.payments.map((x) => `${x.amount}@${x.date ?? ""}`).sort().join(";") }; })()) };
     },
-    async createShow(body) { const r = await W.createShowRecord(body); return { id: r.show.id, calendarWarning: r.calendarWarning ?? null }; },
+    async createShow(body) { const r = await W.createShowRecord(body); return { id: r.show.id, calendarWarning: r.calendarWarning ?? null, paymentWarning: r.paymentWarning ?? null }; },
+    async recordShowPayment(id, p) { const { recordShowPayment } = await import("@/lib/writes/show-payments"); const r = await recordShowPayment(id, { amount: p.amount, date: p.date, currency: p.currency || undefined, method: p.method, note: p.note }); return r.kind === "ok" ? { kind: "ok", transactionId: r.transactionId } : r.kind === "refused" ? { kind: "refused", messageHe: r.messageHe } : { kind: "not_found" }; },
     updateShow: async (id, body) => kind(await W.updateShowRecord(id, body)),
     closeShow: async (id, c) => kind(await W.closeShowRecord(id, c)),
     deleteShowCompletely: async (id) => ({ kind: (await W.deleteShowCompletely(id)).kind }),
@@ -391,6 +393,7 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
     createProductionRecord: async (b) => String((await RF.createProduction(b)).id),
     updateProductionRecord: async (id, b) => (await RF.updateProduction(id, b)).kind,
     readBudgetLineRow: (id) => RF.readBudgetLineRow(id),
+    countBudgetLinePayments: (itemId) => RF.countBudgetLinePayments(itemId),
     createBudgetLineRecord: async (pid, b) => String((await RF.createBudgetLine(pid, b)).id),
     updateBudgetLineRecord: async (id, b) => { await RF.updateBudgetLine(id, b); },
     deleteBudgetLineRecord: (id) => RF.deleteBudgetLine(id),

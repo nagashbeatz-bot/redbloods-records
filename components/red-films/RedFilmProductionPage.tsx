@@ -142,8 +142,8 @@ function fmtDate(d: string | null) {
   return `${parseInt(day, 10)}.${parseInt(m, 10)}.${y}`;
 }
 
-function fmtNum(n: number) {
-  return n ? `₪${n.toLocaleString("he-IL")}` : "—";
+function fmtNum(n: number, currency?: string) {
+  return n ? `${currency || "₪"}${n.toLocaleString("he-IL")}` : "—";
 }
 
 // ── Small UI helpers ──────────────────────────────────────────────────────────
@@ -339,6 +339,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
       advance_required: Number(draftBudget.advance_required) || 0,
       advance_received: Number(draftBudget.advance_received) || 0,
       collection_status: draftBudget.collection_status,
+      // a clip production's currency follows the project's clip deal (like its budget)
+      ...(isProjectManagedClipBudget(draftBudget) ? {} : { currency: draftBudget.currency ?? "₪" }),
     });
     if (r) setEditing(null);
   }
@@ -610,10 +612,10 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
           {editing === "budget" && draftBudget ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
               {([
-                ["general_budget","תקציב כללי ₪"],
-                ["client_price","מחיר ללקוח ₪"],
-                ["advance_required","מקדמה נדרשת ₪"],
-                ["advance_received","מקדמה התקבלה ₪"],
+                ["general_budget",`תקציב כללי ${draftBudget.currency ?? "₪"}`],
+                ["client_price",`מחיר ללקוח ${draftBudget.currency ?? "₪"}`],
+                ["advance_required",`מקדמה נדרשת ${draftBudget.currency ?? "₪"}`],
+                ["advance_received",`מקדמה התקבלה ${draftBudget.currency ?? "₪"}`],
               ] as const).map(([field, label]) => {
                 // general_budget is read-only while the linked project owns it.
                 const locked = field === "general_budget" && isProjectManagedClipBudget(draftBudget);
@@ -633,6 +635,13 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   </div>
                 );
               })}
+              <div>
+                <SLabel>מטבע</SLabel>
+                <select style={SELECT_S} value={draftBudget.currency ?? "₪"} disabled={isProjectManagedClipBudget(draftBudget)}
+                  onChange={e => setDraftBudget(d => d ? { ...d, currency: e.target.value } : d)}>
+                  {["₪", "$", "€"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
               <div style={{ gridColumn: "span 4" }}>
                 <SLabel>סטטוס גבייה</SLabel>
                 <select style={{ ...SELECT_S, maxWidth: 240 }} value={draftBudget.collection_status}
@@ -645,10 +654,10 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 12 }}>
                 {[
-                  ["תקציב",fmtNum(prod.general_budget)],
-                  ["מחיר ל״ק",prod.client_price ? fmtNum(prod.client_price) : "—"],
-                  ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required) : "—"],
-                  ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received) : "—"],
+                  ["תקציב",fmtNum(prod.general_budget, prod.currency)],
+                  ["מחיר ל״ק",prod.client_price ? fmtNum(prod.client_price, prod.currency) : "—"],
+                  ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required, prod.currency) : "—"],
+                  ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received, prod.currency) : "—"],
                 ].map(([lbl,val]) => (
                   <div key={lbl} style={{ ...INNER_TILE, textAlign: "center", padding: "14px 13px" }}>
                     <div style={{ fontSize: 11.5, color: "#8A8A92", fontWeight: 600 }}>{lbl}</div>
@@ -667,7 +676,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
       case "budgetItems": return (
         <SCard key="budgetItems">
           <SectionHeader title="תקציב מפורט" />
-          <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget}
+          <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget} currency={prod.currency ?? "₪"}
             budgetLocked={isProjectManagedClipBudget(prod)}
             onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)} />
         </SCard>
@@ -931,9 +940,9 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : "repeat(5, minmax(0,1fr))", gap: isMobile ? 10 : 14, marginBottom: 4 }}>
           <KpiCard icon={KPI_ICON.type}    label="סוג הפקה"     value={prod.production_type || "—"} />
           <KpiCard icon={KPI_ICON.status}  label="סטטוס"        value={prod.status} valueColor="#FCA5A5" />
-          <KpiCard icon={KPI_ICON.budget}  label="תקציב כללי"   value={fmtNum(prod.general_budget)} />
-          <KpiCard icon={KPI_ICON.price}   label="מחיר ללקוח"   value={fmtNum(prod.client_price)} />
-          <KpiCard icon={KPI_ICON.advance} label="מקדמה התקבלה" value={fmtNum(prod.advance_received)} valueColor={prod.advance_received ? "#4ADE80" : undefined} />
+          <KpiCard icon={KPI_ICON.budget}  label="תקציב כללי"   value={fmtNum(prod.general_budget, prod.currency)} />
+          <KpiCard icon={KPI_ICON.price}   label="מחיר ללקוח"   value={fmtNum(prod.client_price, prod.currency)} />
+          <KpiCard icon={KPI_ICON.advance} label="מקדמה התקבלה" value={fmtNum(prod.advance_received, prod.currency)} valueColor={prod.advance_received ? "#4ADE80" : undefined} />
         </div>
       </div>
 

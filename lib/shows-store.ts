@@ -98,6 +98,7 @@ export async function createShow(input: Partial<CreateShowInput> & { name: strin
       dj_confirmed_at:        djTransition?.dj_confirmed_at ?? null,
       artist_fee:        input.artist_fee        ?? 0,
       advance_payment:   input.advance_payment   ?? 0,
+      currency:          input.currency          ?? "₪",
       notes:             input.notes             ?? "",
       calendar_event_id: input.calendar_event_id ?? null,
     })

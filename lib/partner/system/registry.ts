@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-37";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-38";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -316,7 +316,8 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("SHOW_SPLIT_APP_RULE", "CANONICAL_BUSINESS_RULE", "Show split: net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label = the rest; no rounding. The stored artist-fee column is legacy and never used."),
       R("REHEARSAL_COUNTED_RULE", "OWNER_POLICY", "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל."),
       R("SHOW_FINANCE_ROWS", "IMPLEMENTATION_BEHAVIOR", "Confirmed shows (נסגר / אושרה / בוצע) get income / DJ-fee / artist-fee rows (₪, linked by id, 'show_id:' note); cancel → rows בוטל; back to pipeline → rows HARD-deleted even when received; the DJ-fee row is created even with no DJ.", ["FINANCE"]),
-      R("SHOW_NO_CURRENCY", "IMPLEMENTATION_BEHAVIOR", "Shows store no currency; every show finance row is written as ₪."),
+      R("SHOW_CURRENCY", "OWNER_POLICY", "Each show has one currency (₪ / $ / €); its Finance rows carry it; nothing is converted or added across currencies; a non-₪ show is not synced into the currency-less artist ledger."),
+      R("SHOW_PAYMENTS_IN_FINANCE", "OWNER_POLICY", "D5: money received for a show = SHOW_PAYMENT income rows in Finance (transactions.show_id); received = Σ payments (שולם / התקבל), remaining = agreed − received (one expected row), credit stays visible; marking paid / closing records the remainder once — never a second full-price income; payments are never deleted with a show."),
       R("SHOW_STATUS_UNVALIDATED", "POSSIBLE_BUG", "Show status / payment status are not validated server-side; list / create routes rely on the proxy only."),
       R("SHOW_CLOSE_PREVIEW_MISMATCH", "POSSIBLE_BUG", "The close dialog previews the artist amount without rehearsal costs; the server deducts them."),
       R("SHOW_LEDGER_KEPT_AFTER_CANCEL", "POSSIBLE_BUG", "Cancelling / deleting after close keeps realized artist income and payments; a price change after close does not update the realized income; a plain edit to בוצע writes no ledger.", ["ARTIST_BALANCES"]),
@@ -971,4 +972,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-36", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "שדות קישור מוקלדים (הפקה / רפרנס וידאו / סושיאל / ויקטור / יומן שליחה / קליטה): הקישור המדויק מוצג בתצוגה, נשמר רק אחרי אישור, לא נפתח ולא מורץ; PATCH רפרנס וידאו הוקשח לכותרת / הערות" },
   { version: "2026.09.27-37", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D6 הוחלט: רק חזרה 'בוצע' נספרת בחלוקת ההופעה; 'מתוכנן' ו'בוטל' לא; הסימון האוטומטי בטעינת האפליקציה לא נוגע יותר בחזרות; 'התקיים' ישן נשאר בכלל הקודם עד אישור הבוס. תוכניות מרובות שלבים (אירוע עסקי אחד = תצוגה אחת + אישור אחד) והיסטוריית פעולות" },
   { version: "2026.09.27-37", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D7 הוחלט: 'מאושר' = הבוס אישר את השלב הנוכחי להמשיך לשלב הבא — לא אישור לקוח / תשלום / גרסה סופית / מסירה; הקישור הסופי מסומן 'גרסה סופית'" },
+  { version: "2026.09.27-38", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D5: תשלומי הופעה בפיננסים (מקדמה / חלקי / מלא / עודף) דרך RECORD_SHOW_PAYMENT; התקבל / יתרה / זיכוי נגזרים מכלל אחד; מטבע לכל הופעה (SET_SHOW_CURRENCY) בלי המרה" },
+  { version: "2026.09.27-38", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מטבע לכל הפקה / שורת תקציב (התשלומים במטבע השורה) / ציוד (SET_RF_CURRENCY); סיכומים לפי מטבע" },
 ];

@@ -19,7 +19,7 @@ const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "u
 type Sess = { projectId: string | null; showId: string | null; title: string; date: string | null; startTime: string | null; endTime: string | null; status: string; sessionType: string; notes: string; location: string; photographer: string; hasCalendarEvent: boolean };
 interface W { shows: Record<string, ShowView>; clients: Record<string, string>; sessions: Record<string, Sess>; connected: boolean; sent: string[]; quote: string[]; closed: string[] }
 const FUT = "2099-05-01";
-const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, ...o });
+const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
 const world = (): W => ({
   shows: { [U(1)]: sv({}), [U(2)]: sv({ name: "ליד", status: "ליד חדש", financeRows: 0, hasCalendarEvent: false, djClientId: null, djName: "", djFee: 0 }) },
   clients: { [U(60)]: "שליו טסמה", [CLEANTONE_ID]: "CLEANTONE", [U(61)]: "DJ אחר" },
@@ -28,20 +28,23 @@ const world = (): W => ({
 });
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
-  const map: Record<string, keyof ShowView> = { name: "name", date: "date", start_time: "startTime", location: "location", contact_person: "contactPerson", phone: "phone", booker_name: "bookerName", notes: "notes", show_price: "showPrice", payment_status: "paymentStatus", advance_payment: "advancePayment", dj_client_id: "djClientId", dj_name: "djName", dj_fee: "djFee", status: "status" };
+  const map: Record<string, keyof ShowView> = { name: "name", date: "date", start_time: "startTime", location: "location", contact_person: "contactPerson", phone: "phone", booker_name: "bookerName", notes: "notes", show_price: "showPrice", payment_status: "paymentStatus", currency: "currency", advance_payment: "advancePayment", dj_client_id: "djClientId", dj_name: "djName", dj_fee: "djFee", status: "status" };
   const writers = {
     async readClient(id: string) { return w.clients[id] ? { name: w.clients[id], phone: "", email: "", type: "אמן", status: "פעיל", notes: "" } : null; },
     async calendarConnected() { return w.connected; },
     async readShow(id: string) { return w.shows[id] ? { ...w.shows[id], rehearsals: Object.values(w.sessions).filter((s) => s.showId === id).length } : null; },
-    async createShow(b: Record<string, unknown>) { calls.push("createShow"); const id = U(++n); w.shows[id] = sv({ name: String(b.name), status: String(b.status), showPrice: Number(b.show_price), djFee: Number(b.dj_fee), djClientId: (b.dj_client_id as string) ?? null, djName: String(b.dj_name ?? ""), date: (b.date as string) ?? null, financeRows: 0, hasCalendarEvent: b.addToCalendar === true }); return { id, calendarWarning: null }; },
+    async createShow(b: Record<string, unknown>) { calls.push("createShow"); const id = U(++n); w.shows[id] = sv({ name: String(b.name), status: String(b.status), showPrice: Number(b.show_price), djFee: Number(b.dj_fee), djClientId: (b.dj_client_id as string) ?? null, djName: String(b.dj_name ?? ""), date: (b.date as string) ?? null, financeRows: 0, hasCalendarEvent: b.addToCalendar === true, currency: String(b.currency ?? "₪"), received: Number(b.advance_payment) || 0 }); return { id, calendarWarning: null }; },
     async updateShow(id: string, b: Record<string, unknown>) {
       calls.push("updateShow"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const };
       if (b.removeFromCalendar) s.hasCalendarEvent = false; if (b.addToCalendar) s.hasCalendarEvent = true;
       for (const [k, v] of Object.entries(b)) if (map[k]) (s as unknown as Record<string, unknown>)[map[k]] = v;
       if (["ליד חדש", "ממתין לתשובה", "צריך פולואפ"].includes(s.status)) s.financeRows = 0;
+      if (b.payment_status === "שולם") s.received = Math.max(s.received, s.showPrice); // the remainder was received (D5)
+      s.remaining = Math.max(0, s.showPrice - s.received); s.credit = Math.max(0, s.received - s.showPrice);
       return { kind: "ok" as const };
     },
-    async closeShow(id: string, c: { incomeReceived: boolean }) { calls.push("closeShow"); w.closed.push(id); w.shows[id].status = "בוצע"; w.shows[id].paymentStatus = c.incomeReceived ? "שולם" : "צפוי"; return { kind: "ok" as const }; },
+    async closeShow(id: string, c: { incomeReceived: boolean }) { calls.push("closeShow"); w.closed.push(id); w.shows[id].status = "בוצע"; if (c.incomeReceived) { w.shows[id].paymentStatus = "שולם"; w.shows[id].received = Math.max(w.shows[id].received, w.shows[id].showPrice); w.shows[id].remaining = 0; } return { kind: "ok" as const }; },
+    async recordShowPayment(id: string, p: { amount: number; date: string }) { calls.push("recordShowPayment"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const }; s.received += p.amount; s.remaining = Math.max(0, s.showPrice - s.received); s.credit = Math.max(0, s.received - s.showPrice); s.payments = [s.payments, `${p.amount}@${p.date}`].filter(Boolean).join(";"); s.paymentStatus = s.remaining === 0 ? "שולם" : "מקדמה"; return { kind: "ok" as const, transactionId: U(700) }; },
     async deleteShowCompletely(id: string) { calls.push("deleteShowCompletely"); if (Object.values(w.sessions).some((s) => s.showId === id)) return { kind: "has_rehearsals" as const }; delete w.shows[id]; return { kind: "ok" as const }; },
     async markShowQuoteSent(id: string) { calls.push("markShowQuoteSent"); w.quote.push(id); return "ok" as const; },
     async notifyShowArtist(id: string) { calls.push("notifyShowArtist"); w.sent.push(`artist:${id}`); return { ok: true }; },
@@ -58,7 +61,9 @@ const S1 = `show:${U(1)}`, S2 = `show:${U(2)}`, R30 = `session:${U(30)}`;
 const CASES: FamilyCase<W>[] = [
   { id: "CREATE_SHOW", args: { name: "הופעה באילת", artistClient: `client:${U(60)}`, date: "2099-06-01", startTime: "22:00", status: "אושרה", showPrice: 9000, djClient: `client:${CLEANTONE_ID}`, djFee: 500 }, confirm: "כן בוס, ₪9,000 ₪500 2099-06-01", bad: { name: "x", status: "בוצע", showPrice: 1 }, missing: { name: "x", status: "אושרה", showPrice: 1, djClient: `client:${U(99)}`, djFee: 1 }, stale: (w) => { w.clients[U(60)] = "שם אחר"; }, check: (w, c) => Object.values(w.shows).some((s) => s.name === "הופעה באילת" && s.djFee === 500 && s.djClientId === CLEANTONE_ID && s.showPrice === 9000) && c.join() === "createShow" },
   { id: "UPDATE_SHOW_DETAILS", args: { show: S1, location: "חיפה — אודיטוריום", startTime: "20:30" }, confirm: "כן בוס, 20:30", bad: { show: S1, startTime: "8pm" }, missing: { show: `show:${U(9)}`, location: "x" }, wrongKind: { show: `client:${U(60)}`, location: "x" }, stale: (w) => { w.shows[U(1)].location = "טבריה"; }, check: (w) => w.shows[U(1)].location === "חיפה — אודיטוריום" && w.shows[U(1)].startTime === "20:30" },
-  { id: "SET_SHOW_MONEY", args: { show: S1, showPrice: 8500, paymentStatus: "מקדמה", advancePayment: 2000 }, confirm: "כן בוס, ₪8,500 מקדמה ₪2,000", bad: { show: S1, paymentStatus: "חלקי" }, missing: { show: `show:${U(9)}`, showPrice: 1 }, stale: (w) => { w.shows[U(1)].showPrice = 7000; }, check: (w) => w.shows[U(1)].showPrice === 8500 && w.shows[U(1)].paymentStatus === "מקדמה" && w.shows[U(1)].advancePayment === 2000 },
+  { id: "SET_SHOW_MONEY", args: { show: S1, showPrice: 8500 }, confirm: "כן בוס, 8500", bad: { show: S1, paymentStatus: "חלקי" }, missing: { show: `show:${U(9)}`, showPrice: 1 }, stale: (w) => { w.shows[U(1)].showPrice = 7000; }, check: (w) => w.shows[U(1)].showPrice === 8500 && w.shows[U(1)].remaining === 8500 },
+  { id: "RECORD_SHOW_PAYMENT", args: { show: S1, amount: 3000, date: "2099-04-01", paymentMethod: "העברה בנקאית" }, confirm: "כן בוס, 3000 2099-04-01", bad: { show: S1, amount: -5, date: "2099-04-01" }, missing: { show: `show:${U(9)}`, amount: 1, date: "2099-04-01" }, wrongKind: { show: `client:${U(60)}`, amount: 1, date: "2099-04-01" }, stale: (w) => { w.shows[U(1)].received = 500; }, check: (w, c) => w.shows[U(1)].received === 3000 && w.shows[U(1)].remaining === 5000 && c.join() === "recordShowPayment" },
+  { id: "SET_SHOW_CURRENCY", args: { show: S1, currency: "$" }, confirm: "כן בוס, $", bad: { show: S1, currency: "GBP" }, missing: { show: `show:${U(9)}`, currency: "$" }, stale: (w) => { w.shows[U(1)].showPrice = 1; }, check: (w) => w.shows[U(1)].currency === "$" },
   { id: "ASSIGN_SHOW_DJ", args: { show: S1, djClient: `client:${U(61)}`, djFee: 700 }, confirm: "כן בוס, DJ אחר ₪700", bad: { show: S1, djClient: `client:${U(61)}` }, missing: { show: `show:${U(9)}`, remove: true }, stale: (w) => { w.shows[U(1)].djFee = 600; }, check: (w) => w.shows[U(1)].djClientId === U(61) && w.shows[U(1)].djName === "DJ אחר" && w.shows[U(1)].djFee === 700 },
   { id: "CONFIRM_SHOW", args: { show: S2, status: "אושרה" }, confirm: "כן בוס, אושרה", bad: { show: S2, status: "בוצע" }, missing: { show: `show:${U(9)}`, status: "אושרה" }, stale: (w) => { w.shows[U(2)].status = "צריך פולואפ"; }, check: (w) => w.shows[U(2)].status === "אושרה" },
   { id: "MOVE_SHOW_TO_PIPELINE", args: { show: S1, status: "ממתין לתשובה" }, confirm: "כן בוס, ממתין לתשובה מחיקה", bad: { show: S1, status: "בוטל" }, missing: { show: `show:${U(9)}`, status: "ליד חדש" }, stale: (w) => { w.shows[U(1)].financeRows = 2; }, check: (w) => w.shows[U(1)].status === "ממתין לתשובה" && w.shows[U(1)].financeRows === 0 },
@@ -89,7 +94,7 @@ const CASES: FamilyCase<W>[] = [
   ok("the created show has no DJ and fee 0", Object.values(h0.w.shows).some((s) => s.name === "בלי DJ" && s.djClientId === null && s.djFee === 0));
   ok("back to pipeline is DESTRUCTIVE (C3) and declares DELETION", ACTION_REGISTRY.get("MOVE_SHOW_TO_PIPELINE")!.confirmation === "C3_STRONG_APPROVAL" && ACTION_REGISTRY.get("MOVE_SHOW_TO_PIPELINE")!.effects.includes("DELETION" as never));
   const pp = await q("MOVE_SHOW_TO_PIPELINE", { show: S1, status: "ליד חדש" });
-  ok("the pipeline preview says received income is deleted too (today's semantics disclosed)", pp.status === "PREVIEW" && JSON.stringify(pp).includes("גם הכנסה שכבר התקבלה"));
+  ok("the pipeline preview says received money is never deleted (D5)", pp.status === "PREVIEW" && JSON.stringify(pp).includes("כסף שהתקבל לא נמחק לעולם"));
   ok("full payment only through the close (SET_SHOW_MONEY שולם on an open show is refused)", (await q("SET_SHOW_MONEY", { show: S1, paymentStatus: "שולם" })).status === "USE_CLOSE");
   const past = mk(); past.w.shows[U(1)].date = "2020-01-01";
   ok("notify only an upcoming show", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, past)).status === "NOT_UPCOMING");
@@ -100,7 +105,7 @@ const CASES: FamilyCase<W>[] = [
   const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: true }, "כן בוס");
   ok("closing needs the three party flags repeated in the approval", rc.a?.status === "CONFIRMATION_VALUES_MISSING" && c.calls.length === 0);
   ok("a regular studio session is not edited as a rehearsal", (await q("UPDATE_SHOW_REHEARSAL", { session: `session:${U(30)}`, status: "בוצע" }, (() => { const x = mk(); x.w.sessions[U(30)].sessionType = "סשן"; return x; })())).status === "WRONG_ENTITY_TYPE");
-  ok("D5 / D6 / D7 stay the Boss's decisions (registry unchanged)", ["SHOW.RECORD_SHOW_ADVANCE"].every((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
+  ok("D5 is decided: recording show money is executable through RECORD_SHOW_PAYMENT", ACTION_REGISTRY.get("SHOW.RECORD_SHOW_ADVANCE")?.availabilityDetail === "EXECUTABLE");
 
   console.log("\nVocabularies pinned to the code");
   const st = read("lib/shows-types.ts");

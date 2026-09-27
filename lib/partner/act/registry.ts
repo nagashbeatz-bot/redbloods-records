@@ -91,7 +91,7 @@ const LEGACY: Readonly<Record<string, string>> = {
   "PROJECT.BACKFILL_START_DATES": "one-off backfill with no screen",
   "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": "one-off backfill with no screen (a GET that writes)",
 };
-/** Blocked until the Boss decides. D6 (2026-09-27) and D7 (2026-09-27) are decided; D5 waits on the approved SQL. */
+/** Blocked until the Boss decides. D5 / D6 / D7 are decided (2026-09-27); the D5 + currency SQL is applied. */
 const OWNER_DECISION: Readonly<Record<string, string>> = {};
 
 // ── derivation ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -247,10 +247,10 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "SOCIAL.MIGRATE_PATHS", domain: "SOCIAL", en: "One-off migration of social file paths", routes: ["app/api/social/migrate-paths/route.ts"], detail: "LEGACY_NOT_EXPOSED", reason: "one-off migration", approvalClass: "BULK", effects: ["FILES"] },
   { id: "SOCIAL.PROMOTIONS", domain: "SOCIAL", en: "Create / edit / delete a paid promotion (+ its expense)", routes: ["app/api/social/promotions/route.ts", "app/api/social/promotions/[id]/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "financial primitive (Wave 3)", effects: ["FINANCE"] },
   // Wave 0 / D-decisions kept visible as blocked contracts
-  { id: "SHOW.RECORD_SHOW_ADVANCE", domain: "SHOW", en: "Record a show advance payment (D5)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D5 — how a show advance is modelled awaits the Boss", effects: ["FINANCE"] },
+  { id: "SHOW.RECORD_SHOW_ADVANCE", domain: "SHOW", en: "Record money received for a show — deposit / partial / full / overpayment (D5: a SHOW_PAYMENT row in Finance)", routes: ["app/api/shows/[id]/payments/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "executed through RECORD_SHOW_PAYMENT", effects: ["FINANCE"] },
   { id: "RF.MARK_PRODUCTION_APPROVED", domain: "RF", en: "Mark the current Red Films stage approved (D7: the Owner approved the current production / edit stage to proceed — not client / payment / final)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed as a status / edit-status change through UPDATE_PRODUCTION_DETAILS" },
-  { id: "SHOW.SET_SHOW_CURRENCY", domain: "SHOW", en: "Record the currency of a show price", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "shows store no currency", effects: ["FINANCE"] },
-  { id: "RF.SET_PAYMENT_CURRENCY", domain: "RF", en: "Record the currency of a Red Films payment", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "Red Films money has no currency column", effects: ["FINANCE"] },
+  { id: "SHOW.SET_SHOW_CURRENCY", domain: "SHOW", en: "Set the currency of a show (price, DJ fee and its Finance rows)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed through SET_SHOW_CURRENCY", effects: ["FINANCE"] },
+  { id: "RF.SET_PAYMENT_CURRENCY", domain: "RF", en: "Set the currency of Red Films money (production / budget line — its payments follow it / equipment)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed through SET_RF_CURRENCY", effects: ["FINANCE"] },
 ];
 function fromSupp(s: Supp): ActionContract {
   const effects = EFFECT_KEYS.filter((k) => (s.effects ?? []).includes(k));

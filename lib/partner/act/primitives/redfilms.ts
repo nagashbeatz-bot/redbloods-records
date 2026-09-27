@@ -4,8 +4,8 @@
  * goes through lib/writes/redfilms — the writer the Red Films screens and the clip panel use.
  *
  * App rules only: planned ≠ spent (production budget, budget lines and clip rows are planning; Red Films payments are
- * their own ledger; only a Finance expense with scope קליפ is actual spend, and only שולם is paid). Red Films money has
- * no currency column (₪ by convention — disclosed); clip rows carry their own currency and are never converted. A
+ * their own ledger; only a Finance expense with scope קליפ is actual spend, and only שולם is paid). Every Red Films money
+ * row carries its currency (₪ / $ / €, SET_RF_CURRENCY); clip rows carry their own; nothing is ever converted. A
  * managed production's budget follows the project's clip price and is locked here (the app's rule). D7 ("production
  * approved") is unchanged: status מאושר is today's status value, nothing more. Crew names are free text. Link / URL
  * fields are never written through Sunny (plans never persist URL values — a registered, reported limit).
@@ -50,6 +50,7 @@ export interface RedFilmsFamilyWriters {
   deleteRfReferenceRecord(id: string): Promise<"ok" | "not_found">;
   productionsByIds(ids: string[]): Promise<Array<{ id: string; title: string; status: string }>>;
   deleteCancelledProductionsRecord(ids: string[]): Promise<{ kind: "ok" | "bad"; deleted?: number; error?: string }>;
+  countBudgetLinePayments(itemId: string): Promise<number>;
 }
 
 /** Pinned to lib/partner/system/red-films.ts RF_VOCABULARIES (which the red-films contract test pins to the code). */
@@ -70,7 +71,25 @@ const E = (name: string, values: readonly string[], required = false): ArgSpec =
 const M = (name: string, required = false): ArgSpec => ({ name, kind: "money", required });
 const meta = (he: string, en: string, args: readonly ArgSpec[], fields: readonly string[], writer: string, o: Partial<PrimitiveMeta>): PrimitiveMeta =>
   ({ domain: "RF", he, en, args, fields, effects: [], riskClass: "SAFE_REVERSIBLE", reversible: "YES", writer, compensation: "a new approved plan restoring the previous value shown in the preview", ...o });
-const NO_CUR = "לכסף של Red Films אין עמודת מטבע — ₪ כמוסכמה (לא מומר)";
+const NO_CUR = "כל סכום של Red Films במטבע של השורה שלו (₪ / $ / €) — בלי המרה ובלי חיבור בין מטבעות";
+/** Pinned to lib/writes/redfilms.ts RF_CURRENCIES. */
+export const RF_CURRENCIES: readonly string[] = ["₪", "$", "€"];
+const CUR_KINDS = ["rf-production", "rf-budget-line", "rf-equipment"] as const;
+async function currencyTarget(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<{ kind: string; id: string; row: Row } | PlanRefusal> {
+  const k = parseKey(a.target, [...CUR_KINDS]);
+  if (!k) return refuse("BAD_ENTITY", "צריך הפקה / שורת תקציב / פריט ציוד (rf-production:… / rf-budget-line:… / rf-equipment:…)");
+  const row = k.kind === "rf-production" ? await d.readProductionRow(k.id) : k.kind === "rf-budget-line" ? await d.readBudgetLineRow(k.id) : await d.readEquipmentRow(k.id);
+  return row ? { kind: k.kind, id: k.id, row } : refuse("ENTITY_NOT_FOUND", "לא מצאתי את הרשומה");
+}
+async function currencyFields(d: WriterDeps, t: { kind: string; id: string; row: Row }): Promise<Fields> {
+  const r = t.row as Record<string, unknown>;
+  return {
+    currency: String(r.currency ?? "₪"), label: String(r.title ?? r.name ?? ""),
+    payments: t.kind === "rf-budget-line" ? await d.countBudgetLinePayments(t.id) : 0,
+    managed: t.kind === "rf-production" ? await d.isManagedProduction(t.id, (r.project_id as string | null) ?? null) : false,
+    amounts: t.kind === "rf-production" ? `תקציב ${r.general_budget ?? 0} · ללקוח ${r.client_price ?? 0} · מקדמה נדרשת ${r.advance_required ?? 0} · התקבלה ${r.advance_received ?? 0}` : t.kind === "rf-budget-line" ? `מתוכנן ${r.planned_amount ?? 0} · בפועל ${r.actual_amount ?? 0}` : `מחיר קנייה ${r.purchase_price ?? "—"}`,
+  };
+}
 const PLANNING = "תכנון ≠ הוצאה בפועל: רק הוצאה בכספים עם שיוך קליפ היא הוצאה, ורק 'שולם' משולם";
 
 const DETAIL_TEXT = ["title", "photographer_name", "director_name", "editor_name", "locations", "concept_summary", "concept_vibe", "script_start", "script_middle", "script_end", "director_notes", "photographer_notes", "fix_notes", "published_where", "notes"] as const;
@@ -119,6 +138,33 @@ const withExists = (r: ResolvedTarget | PlanRefusal) => ("ok" in r ? r : { ...r,
 const snake = (o: Fields) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/[A-Z0-9]/g, (c) => `_${c.toLowerCase()}`).replace(/_(\d)/g, "_$1"), v]));
 
 export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
+  {
+    actionId: "SET_RF_CURRENCY", kinds: ["rf-production", "rf-budget-line", "rf-equipment"],
+    meta: meta("מטבע של רשומת Red Films (הפקה / שורת תקציב / ציוד)", "Set the currency (₪ / $ / €) of a production's money, a budget line (its payments follow it) or an equipment purchase price — the numbers are never converted", [K("target"), E("currency", RF_CURRENCIES, true)], ["currency"], "updateProduction / updateBudgetLine / updateEquipment (lib/writes/redfilms)", { effects: [], riskClass: "NORMAL_BUSINESS", reversible: "YES" }),
+    async resolve(d, a) { const t = await currencyTarget(d, a); if ("ok" in t) return t; const f = await currencyFields(d, t); return { key: `${t.kind}:${t.id}`, id: t.id, label: `מטבע — ${f.label || t.kind}`, fields: f }; },
+    async read(d, id, a) {
+      const t = a ? await currencyTarget(d, a) : await (async () => { // verification reads by id only (uuids are unique across the three tables)
+        for (const kind of CUR_KINDS) { const row = kind === "rf-production" ? await d.readProductionRow(id) : kind === "rf-budget-line" ? await d.readBudgetLineRow(id) : await d.readEquipmentRow(id); if (row) return { kind, id, row }; }
+        return null;
+      })();
+      return t && !("ok" in t) ? currencyFields(d, t) : null;
+    },
+    plan(a, cur) {
+      if (!RF_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "₪ / $ / €");
+      if (cur.managed === true) return refuse("MANAGED_BY_PROJECT", "זו הפקת הקליפ של הפרויקט — התקציב והמטבע שלה נגזרים מעסקת הקליפ בפרויקט");
+      if (Number(cur.payments) > 0 && a.currency !== cur.currency) return refuse("HAS_PAYMENTS", `לשורה יש ${cur.payments} תשלומים ב-${cur.currency} — אי אפשר לשנות את המטבע (אין המרה)`);
+      return finishPlan(cur, { currency: String(a.currency) });
+    },
+    async apply(d, id, after, a) {
+      const k = parseKey(a.target, [...CUR_KINDS])!;
+      if (k.kind === "rf-production") { const r = await d.updateProductionRecord(id, { currency: after.currency }); if (r !== "ok") throw new Error(`not updated: ${r}`); }
+      else if (k.kind === "rf-budget-line") await d.updateBudgetLineRecord(id, { currency: after.currency });
+      else { const r = await d.updateEquipmentRecord(id, { currency: after.currency }); if (r !== "ok") throw new Error(`not updated: ${r}`); }
+    },
+    requiredValues: (_a, after) => [String(after.currency)],
+    warnings: (c) => [`היום ${c.currency}: ${c.amounts} — המספרים לא מומרים, רק המטבע שלהם משתנה`],
+    disclosuresHe: ["המספרים נשארים כמו שהם — רק המטבע שלהם משתנה (אין המרה)", "שורת תקציב עם תשלומים לא מחליפה מטבע; תשלום חדש תמיד במטבע של השורה שלו", "סיכומים מוצגים לפי מטבע — לעולם לא מחוברים"],
+  },
   {
     actionId: "CREATE_PRODUCTION_FOLDER", kinds: ["rf-production"],
     meta: meta("הקמת תיקיית ההפקה (עם קישור ציבורי)", "Create the production's storage folder (+ references, documents) with a PUBLIC link, saved on the production — the production page's button", [K("production")], ["hasFolder"], "createProductionFolder (lib/writes/redfilms)", { effects: ["FILES", "EXTERNAL_LINK"], riskClass: "FILE_MUTATION", reversible: "PARTIAL", compensation: null }),
