@@ -134,7 +134,7 @@ export default function Sidebar({ role }: { role: ClientRole }) {
 
   // Friendly display name by role (no DB / no profiles system).
   const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : role === "shalev" ? "שליו טסמה" : role === "cleantone" ? "DJ CLEANTONE" : "Redbloods";
-  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : role === "shalev" ? "אמן" : role === "cleantone" ? "אמן" : "";
+  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : role === "shalev" ? "אמן" : role === "cleantone" ? "דיג'יי" : "";
 
   // Full nav ONLY for owner; victor/steven/shalev → minimal (their own page);
   // null/unknown → none. role comes pre-hydrated from AppShell (cached before
