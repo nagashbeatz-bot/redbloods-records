@@ -7,10 +7,13 @@ import { useRole } from "@/lib/use-role";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import { finalFilesFocusVisible, withFinalFilesHintsCleared } from "@/lib/steven-completed-pure";
+import { engineerPayStatus } from "@/lib/mix-payment-pure";
+import { versionGroupKey, versionGroupLabel } from "@/lib/mix-version-group-pure";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { saveFileAs } from "@/lib/download-file";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
+import { usePortalPresence } from "@/components/team/usePortalPresence";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -41,7 +44,8 @@ const DROPBOX_APP_ROOT = "/Apps/redbloods-records";
 // value "לא נשלח" (no new DB enum value, no schema change) and is never added to
 // the global SOUND_ENGINEER_STATUSES. See dbStatusToUi / uiStatusToDb.
 type WorkStatus = "לא התחיל" | "פעיל" | "הושלם" | "בוטל";
-// "חלקי" is DISPLAY-ONLY (derived when 0 < amountPaid < agreedPrice); it is NOT
+// "חלקי" is DISPLAY-ONLY (derived when 0 < amountPaid < agreedPrice, or the full amount with no
+// payment date — not paid by the shared rule, lib/mix-payment-pure); it is NOT
 // a selectable option (no payment_status column — a real 3-state needs SQL).
 type PayStatus  = "שולם" | "חלקי" | "לא שולם";
 type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
@@ -190,14 +194,8 @@ function targetAccent(targetId: string | null): { fg: string; bg: string; bd: st
 type RoledVersion = MixVersion & { role: FileRole };
 type VersionGroup = { key: string; label: string; files: RoledVersion[]; primary: RoledVersion; latestAt: string; targetId: string | null };
 
-// Strip a trailing role qualifier so "Mix 1 (acapella)" groups with "Mix 1".
-function baseVersionKey(label: string): string {
-  return (label || "")
-    .replace(/[\s\-_()·|]*\b(acapella|accapella|acappella|acapela|vocals?|vox|instrumental|inst|beat)\b[\s\-_()·|]*$/i, "")
-    .trim() || label;
-}
-
-// Group flat mix_versions rows into logical versions (code-only, no DB). Existing
+// Group flat mix_versions rows into logical versions (code-only, no DB). The key / label rule is SHARED with
+// Sunny's mix view (lib/mix-version-group-pure: versionGroupKey / versionGroupLabel). Existing
 // data has unique labels → each becomes a group of one (a single "mix" player).
 //
 // The key is scoped by mix_target_id, NOT by the label alone. On a riddim two
@@ -210,9 +208,9 @@ function groupVersions(versions: MixVersion[]): VersionGroup[] {
   for (const v of versions) {
     const rv: RoledVersion = { ...v, role: roleOfFile(v.fileName || v.label) };
     const targetId = v.mixTargetId ?? null;
-    const key = `${targetId ?? "unassigned"}|${baseVersionKey(v.label) || v.id}`;
+    const key = versionGroupKey({ id: v.id, label: v.label, targetId });
     let g = map.get(key);
-    if (!g) { g = { key, label: baseVersionKey(v.label) || v.label, files: [], primary: rv, latestAt: rv.createdAt, targetId }; map.set(key, g); }
+    if (!g) { g = { key, label: versionGroupLabel(v.label), files: [], primary: rv, latestAt: rv.createdAt, targetId }; map.set(key, g); }
     g.files.push(rv);
     if (rv.createdAt > g.latestAt) g.latestAt = rv.createdAt;
   }
@@ -323,12 +321,11 @@ function dbWorkTypeToUi(w: string): WorkType {
 function uiWorkTypeToDb(w: WorkType): string {
   return w === "מאסטרינג" ? "מאסטר" : "מיקס + מאסטר";
 }
-// Pay status is derived from amounts (no payment_status column on this table).
-// 3-state for DISPLAY (שולם / חלקי / לא שולם); only שולם & לא שולם are selectable.
-function payFromAmounts(agreed: number, paid: number): PayStatus {
-  if (agreed > 0 && paid >= agreed) return "שולם";
-  if (paid > 0)                     return "חלקי";
-  return "לא שולם";
+// Pay status is derived from the work (no payment_status column on this table) by THE shared rule
+// (lib/mix-payment-pure): שולם = agreed > 0 AND paid ≥ agreed AND a payment date — the same answer as the
+// server, COO and Sunny. 3-state for DISPLAY (שולם / חלקי / לא שולם); only שולם & לא שולם are selectable.
+function payFromAmounts(agreed: number, paid: number, paymentDate: string | null): PayStatus {
+  return engineerPayStatus({ agreedPrice: agreed, amountPaid: paid, paymentDate });
 }
 // DB dates are ISO (yyyy-mm-dd); UI shows DD.MM.YY.
 function fmtDbDate(d: string | null): string {
@@ -353,7 +350,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     deadline:   fmtDbDate(r.internalDeadline),
     deadlineISO: r.internalDeadline ?? null,
     price:      r.agreedPrice,
-    pay:        payFromAmounts(r.agreedPrice, r.amountPaid),
+    pay:        payFromAmounts(r.agreedPrice, r.amountPaid, r.paymentDate ?? null),
     amountPaid: r.amountPaid,
     currency:   r.currency || "$",
     dbBacked:   true,
@@ -415,7 +412,7 @@ const TR = {
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט", wmMatSub: "Rough Mix · רפרנסים · Stems · הוראות",
-    focusTitle: "הפרויקט הושלם", focusBody: "אנא העלה את הקבצים הסופיים", focusHint: "לחץ מחוץ לאזור כדי לחזור לתצוגה הרגילה",
+    focusTitle: "העבודה הושלמה", focusBody: "אנא העלה את הקבצים הסופיים", focusHint: "לחץ מחוץ לאזור כדי לחזור לתצוגה הרגילה",
     uploadFinalBtn: "העלאת קבצים סופיים", uploadFinalHint: "מאסטרים · סטמים · אינסטרומנטל · אקפלה · קבצי מסירה — עד 1GB לכל קובץ", rpRetry: "נסה שוב לקבצים שנכשלו", rpStPending: "ממתין", rpStUploading: "מעלה", rpStDone: "הושלם", rpStFailed: "נכשל",
     uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
     uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
@@ -493,7 +490,7 @@ const TR = {
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files", wmMatSub: "Rough Mix · References · Stems · Instructions",
-    focusTitle: "Project completed", focusBody: "Please upload the final files", focusHint: "Tap outside this box to return to the job view",
+    focusTitle: "Job completed", focusBody: "Please upload the final files", focusHint: "Tap outside this box to return to the job view",
     uploadFinalBtn: "Upload Final Files", uploadFinalHint: "Masters · stems · instrumental · acapella · delivery files — up to 1GB each", rpRetry: "Retry failed files", rpStPending: "Pending", rpStUploading: "Uploading", rpStDone: "Done", rpStFailed: "Failed",
     uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
     uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
@@ -990,10 +987,10 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     toastTimer.current = setTimeout(() => setToast(null), ms);
   }
 
-  // The ProjectsProvider (app/layout.tsx) fetches once and never polls. When a Steven
-  // work's completion also completes its linked project on the server, the owner's
-  // /projects list has to be refreshed from here or it would keep the old status.
-  const { refresh: refreshProjects } = useProjects();
+  // Engineer completed ≠ project completed: the server never completes the project. When the
+  // Owner explicitly says yes to "לסמן גם את הפרויקט כהושלם?", the normal Projects writer
+  // (ProjectsProvider.updateProjectField → PATCH /api/projects/[id]) runs and updates the list.
+  const { updateProjectField } = useProjects();
 
   // Load Steven's real work records from the existing API (also called after a
   // create so a new job is shown from the SERVER truth, never a local phantom).
@@ -1048,13 +1045,10 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     setPendingDeepLink(null); // not found (deleted / not his) → dropped silently
   }, [works, pendingDeepLink]);
 
-  // Presence beacon — fire once when Steven lands on his page. The SERVER decides
-  // whether to actually push (login dedupe + 30-min visit cooldown), so a refresh
-  // never spams; owner never fires this. NOT /api/push/check.
-  useEffect(() => {
-    if (!isSteven) return;
-    fetch("/api/supplier/steven/ping", { method: "POST" }).catch(() => {});
-  }, [isSteven]);
+  // Portal presence — ping on open + a visible-page heartbeat (components/team/usePortalPresence.ts). The SERVER
+  // records last-seen and pushes the Owner once per claimed new visit (30 minutes without any ping), so a refresh,
+  // a second tab or a heartbeat never pushes; owner never pings. NOT /api/push/check.
+  usePortalPresence(isSteven ? "/api/supplier/steven/ping" : null);
 
   const openWork = works.find(w => w.id === openId) ?? null;
   const materialsWork = works.find(w => w.id === openMaterialsId) ?? null;
@@ -1075,11 +1069,11 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
       // (שולם → full price, לא שולם → 0). Keep the derived label in sync.
       if (patch.pay !== undefined) {
         next.amountPaid = patch.pay === "שולם" ? w.price : 0;
-        next.pay = payFromAmounts(w.price, next.amountPaid);
         // "שולם" → paymentDate arrives in `patch` (from the modal); "לא שולם" clears it.
         if (patch.pay === "לא שולם") next.paymentDate = null;
+        next.pay = payFromAmounts(w.price, next.amountPaid, next.paymentDate);
       }
-      if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
+      if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid, next.paymentDate);
       // The picker writes the raw ISO date; keep the display string (DD.MM.YY)
       // derived from it so the card + jobs table update immediately.
       if (patch.deadlineISO !== undefined) next.deadline = fmtDbDate(patch.deadlineISO);
@@ -1091,7 +1085,8 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     }));
     if (!target || !target.dbBacked) return true; // manual "new work" rows are local-only
 
-    // skipFinanceSync keeps these edits from creating/updating any Finance transaction.
+    // skipFinanceSync = no expected (price) row for Steven. The server records a PAID work in Finance itself (THE one
+    // writer, work currency, in this same request) and never overwrites / deletes a "שולם" row.
     const body: Record<string, unknown> = { skipFinanceSync: true };
     if (patch.workType !== undefined) body.workType    = uiWorkTypeToDb(patch.workType);
     if (patch.status   !== undefined) body.status      = uiStatusToDb(patch.status);
@@ -1113,16 +1108,23 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
       });
       if (!res.ok) {
         setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
-        notify(rtl ? "השמירה נכשלה" : "Save failed");
+        // 409 = paid money is protected (the linked expense is already "שולם") — show the server's explanation.
+        const e = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        notify(e?.code === "PAID_EXPENSE_PROTECTED" && e.error ? e.error : (rtl ? "השמירה נכשלה" : "Save failed"), e?.code ? 8000 : 2500);
         return false;
       }
-      // A real Steven work → completed transition reports what the server did to the
-      // linked project. Updated → refresh /projects now (owner only, no polling).
-      // Failed → say so clearly: the work IS completed, the project is not.
+      // A real Steven work → completed transition reports what the server found about the
+      // linked project. Engineer completed ≠ project completed (Owner decision 2026-09-27):
+      // the server NEVER completes the project; "suggested" = the project is still open, so
+      // the Owner is asked explicitly and the normal Projects writer runs only on a yes.
+      // Failed → say so clearly: the work IS completed, the project was not read.
       if (patch.status === "הושלם") {
         const d = (await res.json().catch(() => null)) as { completion?: { projectSync?: string } } | null;
         const sync = d?.completion?.projectSync;
-        if (sync === "updated" && isOwner) void refreshProjects();
+        if (sync === "suggested" && isOwner && target.projectId && typeof window !== "undefined"
+          && window.confirm(rtl ? "העבודה של Steven הושלמה. לסמן גם את הפרויקט כהושלם?" : "Steven's job is completed. Mark the project completed too?")) {
+          await updateProjectField(target.projectId, "status", "הושלם");
+        }
         else if (sync === "failed") notify(rtl ? "העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט." : "Steven's job was marked completed, but the project status could not be updated.", 8000);
         // The PATCH succeeded, so the server has now decided whether this completion made
         // a final-files request. Re-read the list (never assume) — an open WorkModal picks
@@ -1138,20 +1140,6 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     }
   }
 
-  // After a paid/unpaid change is persisted, reconcile the linked Finance expense
-  // (create/update when paid, delete when not) — safe, id-linked, owner-only route.
-  async function syncPaymentExpense(id: string) {
-    if (isSteven) return; // Finance is owner-only
-    const target = works.find(w => w.id === id);
-    if (!target || !target.dbBacked) return; // local-only rows never hit Finance
-    try {
-      const res = await fetch(`/api/sound-engineer/${id}/payment-expense`, { method: "POST" });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok || !d.ok) notify(rtl ? "סנכרון לכספים נכשל — בדוק ב-Finance" : "Finance sync failed — check Finance");
-    } catch {
-      notify(rtl ? "סנכרון לכספים נכשל — בדוק ב-Finance" : "Finance sync failed — check Finance");
-    }
-  }
   // Delete a job: optimistic remove + close, then DELETE for DB-backed rows.
   // Local-only rows ("+ עבודה חדשה") are just dropped from state. Removes ONLY
   // sound_engineer_work here — the linked project_action is not touched (no action
@@ -1356,7 +1344,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                     { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
                     { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
                   ]}
-                  onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
+                  onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void updateWork(w.id, { pay: v }); }}
                 />
               )}
             </td>
@@ -1551,7 +1539,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                         {isSteven ? (
                           <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${PAY_COLOR[w.pay]}1A`, border: `1px solid ${PAY_COLOR[w.pay]}40`, color: PAY_COLOR[w.pay] }}>{payLabel(w.pay, lang)}</span>
                         ) : (
-                          <InlineSelect value={w.pay} display={payLabel(w.pay, lang)} color={PAY_COLOR[w.pay]} options={[{ value: "שולם" as PayStatus, label: payLabel("שולם", lang), color: PAY_COLOR["שולם"] }, { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] }]} onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }} />
+                          <InlineSelect value={w.pay} display={payLabel(w.pay, lang)} color={PAY_COLOR[w.pay]} options={[{ value: "שולם" as PayStatus, label: payLabel("שולם", lang), color: PAY_COLOR["שולם"] }, { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] }]} onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void updateWork(w.id, { pay: v }); }} />
                         )}
                       </span>
                     </div>
@@ -1609,7 +1597,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
 
       {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} focusTargetId={pendingFocusTarget?.workId === openWork.id ? pendingFocusTarget.targetId : null} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} onRefresh={reloadWorks} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
-      {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
+      {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); await updateWork(wid, { pay: "שולם", paymentDate: date }); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
@@ -4767,6 +4755,7 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
   const [deadline, setDeadline] = useState(() => isoDay(3));
   const [price, setPrice]       = useState("200");
   const [pay, setPay]           = useState<PayStatus>("לא שולם");
+  const [paidDate, setPaidDate] = useState<string>(isoDay(0));
   const [err, setErr]           = useState<string | null>(null);
   const [saving, setSaving]     = useState(false);
   const rtl = lang === "he";
@@ -4819,6 +4808,8 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
           status:           uiStatusToDb(status),
           agreedPrice:      Number(price) || 0,
           amountPaid:       pay === "שולם" ? (Number(price) || 0) : 0,
+          // B5: a work created as paid carries its payment date (else the shared paid rule sees it unpaid)
+          paymentDate:      pay === "שולם" ? (paidDate.trim() || isoDay(0)) : null,
           sentDate:         startDate.trim() || null,
           internalDeadline: deadline.trim() || null,
           skipFinanceSync:  true,
@@ -4890,6 +4881,7 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
             {row(t.priceLabel, <StyledInput value={price} onChange={setPrice} placeholder="200" inputMode="numeric" />)}
             {row(t.payment, <PillGroup value={pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} labelFor={o => payLabel(o, lang)} onChange={setPay} />)}
           </div>
+          {pay === "שולם" && row(rtl ? "תאריך תשלום" : "Payment date", <StyledInput value={paidDate} onChange={setPaidDate} placeholder={isoDay(0)} />)}
           {err && <div style={{ fontSize: 12, color: RED }}>{err}</div>}
         </div>
 

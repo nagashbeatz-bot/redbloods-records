@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/sound-engineer
  * Body: { projectId, engineerName, workType?, status?, agreedPrice?, currency?,
- *         amountPaid?, sentDate?, internalDeadline?, filesLink?, notes? }
+ *         amountPaid?, paymentDate?, sentDate?, internalDeadline?, filesLink?, notes? }
  * Creates work record + auto-creates expense transaction if agreedPrice > 0.
  */
 export async function POST(req: NextRequest) {
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       agreedPrice?:     number;
       currency?:        string;
       amountPaid?:      number;
+      paymentDate?:     string | null;
       sentDate?:        string | null;
       internalDeadline?: string | null;
       filesLink?:       string | null;
@@ -100,6 +101,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // B5: a work created as paid needs its payment date (strict YYYY-MM-DD, a real day) — the shared paid rule
+    // (lib/mix-payment-pure) counts a work as paid only with a date.
+    let paymentDate: string | null = null;
+    if (body.paymentDate !== undefined && body.paymentDate !== null && body.paymentDate !== "") {
+      const { isStrictYmd } = await import("@/lib/project-deadline");
+      if (!isStrictYmd(body.paymentDate)) return NextResponse.json({ ok: false, error: "תאריך תשלום לא תקין" }, { status: 400 });
+      paymentDate = body.paymentDate;
+    }
+
     const work = await createSoundEngineerWork(projectId, {
       engineerName,
       workTitle:        workTitle || null,
@@ -108,6 +118,7 @@ export async function POST(req: NextRequest) {
       agreedPrice:      body.agreedPrice,
       currency:         body.currency,
       amountPaid:       body.amountPaid,
+      paymentDate,
       sentDate:         body.sentDate,
       internalDeadline: body.internalDeadline,
       filesLink:        body.filesLink,

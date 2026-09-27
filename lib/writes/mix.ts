@@ -3,15 +3,17 @@
  * stores (lib/sound-engineer-store, lib/mix-*-store, lib/riddim-work) stay the writers; this module adds the pieces that
  * lived inline in routes (comment / version delete with their stored files) and two narrow flows:
  *
- *  • recordEngineerPayment — exactly the Steven page for a Steven work (skipFinanceSync + the id-linked payment expense
- *    reconcile) and the drawer path for any other engineer (the auto-synced linked expense). The app's own rules only;
- *    the "two finance writers" conflict is reported in the mix contract, never resolved here.
+ *  • reconcileEngineerExpense — THE ONE writer of an engineer work's linked Finance expense (integrity fix A2,
+ *    2026-09-27; it replaced the two retired writers "syncTransaction" and the Steven ₪ payment sync). Paid rows are
+ *    protected, the work currency is kept, no silent 3.25 conversion.
+ *  • recordEngineerPayment — paid / unpaid for every engineer through the store update (which runs the one writer).
  *  • deleteEngineerWorkClean — HARDENED (2026-09-27): deleting a work no longer leaves its UNPAID linked expense behind
  *    (the dangling-finance-link finding); a PAID expense is history and is always kept (its link just ends).
  *
  * Stored Dropbox paths are read from the records themselves; no caller ever supplies a path.
  */
 import { supabase } from "@/lib/supabase";
+import { decideEngineerExpense, engineerExpenseMode, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
 
 async function deleteDropboxPaths(paths: string[]): Promise<void> {
   if (!paths.length) return;
@@ -43,16 +45,103 @@ export async function deleteMixVersionWithFile(versionId: string): Promise<void>
   await deleteMixVersion(versionId);
 }
 
-/** Paid / unpaid exactly like the app: Steven → the Steven page's two calls; others → the drawer's auto-synced expense. */
+/**
+ * Paid / unpaid for EVERY engineer (Steven included) — one call: the store update runs the ONE Finance writer
+ * (reconcileEngineerExpense) server-side. Un-pay is refused while the linked expense is "שולם" (UNPAY_BLOCKED_HE).
+ */
 export async function recordEngineerPayment(workId: string, paid: boolean, paymentDate: string | null): Promise<void> {
-  const { getSoundEngineerWork, updateSoundEngineerWork, syncStevenPaymentExpense } = await import("@/lib/sound-engineer-store");
+  const { getSoundEngineerWork, updateSoundEngineerWork } = await import("@/lib/sound-engineer-store");
   const w = await getSoundEngineerWork(workId);
   if (!w) throw new Error("work not found");
-  if (w.engineerName === "Steven") {
-    await updateSoundEngineerWork(workId, { skipFinanceSync: true, amountPaid: paid ? w.agreedPrice : 0, paymentDate: paid ? paymentDate : null });
-    await syncStevenPaymentExpense(workId);
-  } else {
-    await updateSoundEngineerWork(workId, { amountPaid: paid ? w.agreedPrice : 0, paymentDate: paid ? paymentDate : null });
+  await updateSoundEngineerWork(workId, { amountPaid: paid ? w.agreedPrice : 0, paymentDate: paid ? paymentDate : null });
+}
+
+export interface EngineerExpenseOutcome {
+  kind: ReconcileDecision["kind"];
+  txId: string | null;
+  /** A disagreement left in place (paid row protected) — reported, never resolved here. */
+  conflictHe: string | null;
+  messageHe: string;
+}
+
+/**
+ * THE ONE WRITER of an engineer work's linked Finance expense (sound_engineer_work.linked_transaction_id). Every path
+ * goes through it: store create / update (price, payment, engineer / type edits), recordEngineerPayment, the
+ * payment-expense route, the drawer's "sync" button and Sunny's force-sync primitive.
+ *
+ * Rules (lib/mix-payment-pure.ts decideEngineerExpense):
+ *  • a linked row whose payment_status is "שולם" is NEVER overwritten or deleted (amount / currency / status / date
+ *    untouched); a disagreement is returned as a conflict for Sunny / the UI to report;
+ *  • the expense is recorded in the WORK'S OWN currency and amount — no silent 3.25 conversion (the ₪ estimate is notes
+ *    text only). This changes NEW Steven payment rows from "₪650" to "$200" (Owner direction, 2026-09-27); historical
+ *    rows are untouched;
+ *  • an existing date is never nulled; "not paid" never deletes a שולם / חלקי row;
+ *  • Steven (and callers that skip the price sync): no expected row — the expense exists once the work is paid;
+ *    other engineers on a project: an expected row that follows the price in the work currency;
+ *  • `force` (explicit sync) refuses a standalone work.
+ */
+export async function reconcileEngineerExpense(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean }): Promise<EngineerExpenseOutcome> {
+  const { data: w, error: wErr } = await supabase
+    .from("sound_engineer_work")
+    .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id")
+    .eq("id", workId)
+    .maybeSingle();
+  if (wErr) throw new Error(wErr.message);
+  if (!w) throw new Error("עבודה לא נמצאה");
+  const work: ReconcileWork = {
+    id: String(w.id), projectId: (w.project_id as string | null) ?? null, engineerName: String(w.engineer_name ?? ""), workType: String(w.work_type ?? "מיקס"),
+    workTitle: (w.work_title as string | null) ?? null, currency: String(w.currency ?? "$"),
+    agreedPrice: Number(w.agreed_price ?? 0), amountPaid: Number(w.amount_paid ?? 0), paymentDate: (w.payment_date as string | null) ?? null,
+  };
+  const linkedId = (w.linked_transaction_id as string | null) ?? null;
+  let linked: ReconcileTx | null = null;
+  if (linkedId) {
+    const { data: t, error: tErr } = await supabase.from("transactions").select("id, payment_status, amount, currency, date").eq("id", linkedId).maybeSingle();
+    if (tErr) throw new Error(tErr.message); // fail closed: never decide on an unreadable paid row
+    if (t) linked = { id: String(t.id), paymentStatus: (t.payment_status as string | null) ?? null, amount: t.amount == null ? null : Number(t.amount), currency: (t.currency as string | null) ?? null, date: (t.date as string | null) ?? null };
+  }
+  let artist = "", projectName = "";
+  if (work.projectId) {
+    const { data: p } = await supabase.from("projects").select("name, artist").eq("id", work.projectId).maybeSingle();
+    projectName = String(p?.name ?? ""); artist = String(p?.artist ?? "");
+  }
+  const d = decideEngineerExpense(work, linked, { mode: engineerExpenseMode(work.engineerName, opts.skipPriceSync), artist, projectName, force: opts.force });
+  const setLink = async (id: string | null) => {
+    const { error } = await supabase.from("sound_engineer_work").update({ linked_transaction_id: id }).eq("id", workId);
+    if (error) throw new Error(error.message);
+  };
+  switch (d.kind) {
+    case "REFUSED":
+      return { kind: d.kind, txId: linkedId, conflictHe: null, messageHe: d.reasonHe };
+    case "NONE":
+      if (linkedId && !linked) await setLink(null); // a dangling link to a row that no longer exists
+      return { kind: d.kind, txId: linked?.id ?? null, conflictHe: null, messageHe: d.reasonHe };
+    case "PROTECTED_PAID":
+      if (d.conflictHe) console.warn(`[mix] reconcile (${opts.reason}) work ${workId}: paid expense ${d.txId} protected — ${d.conflictHe}`);
+      return { kind: d.kind, txId: d.txId, conflictHe: d.conflictHe, messageHe: "שורה ששולמה לא נדרסת — ההוצאה בכספים נשארה כפי שהיא" };
+    case "REMOVE_UNPAID": {
+      // conditional delete: only while the row is still NOT paid (never deletes paid money, even in a race)
+      const { error } = await supabase.from("transactions").delete().eq("id", d.txId).neq("payment_status", "שולם").neq("payment_status", "חלקי");
+      if (error) throw new Error(error.message);
+      const { data: still } = await supabase.from("transactions").select("id").eq("id", d.txId).maybeSingle();
+      if (still) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — נשארה", messageHe: "שורה ששולמה לא נדרסת" };
+      await setLink(null);
+      return { kind: d.kind, txId: null, conflictHe: null, messageHe: "הוצאה שלא שולמה הוסרה (אין הוצאה עד שמסמנים שולם)" };
+    }
+    case "UPDATE": {
+      // conditional update: never rewrites a row that became "שולם" meanwhile
+      const { data: upd, error } = await supabase.from("transactions").update(d.fields).eq("id", d.txId).neq("payment_status", "שולם").select("id");
+      if (error) throw new Error(error.message);
+      if (!upd || upd.length === 0) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — לא נדרסה", messageHe: "שורה ששולמה לא נדרסת" };
+      return { kind: d.kind, txId: d.txId, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)" };
+    }
+    case "INSERT": {
+      const { data: ins, error } = await supabase.from("transactions").insert(d.fields).select("id").single();
+      if (error) throw new Error(error.message);
+      const newId = String(ins?.id ?? "");
+      await setLink(newId);
+      return { kind: d.kind, txId: newId, conflictHe: null, messageHe: "נרשמה הוצאה מקושרת (במטבע העבודה)" };
+    }
   }
 }
 

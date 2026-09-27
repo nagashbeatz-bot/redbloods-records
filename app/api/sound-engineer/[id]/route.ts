@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   updateSoundEngineerWork,
   forceSyncTransaction,
+  PaidExpenseProtectedError,
 } from "@/lib/sound-engineer-store";
 import { requireOwner } from "@/lib/require-auth";
 import { deleteEngineerWorkClean } from "@/lib/writes/mix";
@@ -11,7 +12,8 @@ import type { StevenCompletionOutcome } from "@/lib/steven-completed-pure";
 /**
  * PATCH /api/sound-engineer/[id]
  * Body: partial fields to update.
- * Auto-syncs the linked expense transaction if financial fields changed.
+ * Finance-relevant changes run THE one expense writer (lib/writes/mix reconcileEngineerExpense) server-side — the
+ * Steven page needs no second call. Un-pay while the linked expense is "שולם" → 409 (paid money is protected).
  */
 export async function PATCH(
   req: NextRequest,
@@ -50,6 +52,7 @@ export async function PATCH(
     });
     return NextResponse.json({ ok: true, work, ...(flow.completion ? { completion: flow.completion } : {}) });
   } catch (err) {
+    if (err instanceof PaidExpenseProtectedError) return NextResponse.json({ ok: false, error: err.message, code: err.code }, { status: 409 });
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -75,13 +78,15 @@ export async function DELETE(
 }
 
 /**
- * POST /api/sound-engineer/[id] — force-sync the linked transaction.
- * Useful if auto-sync failed during creation/update.
+ * POST /api/sound-engineer/[id] — explicit "sync" of the linked expense (the drawer button). THE one writer with force:
+ * a standalone work is refused, and a paid ("שולם") row is never overwritten — the response says what happened.
+ * Owner only (also enforced by the proxy).
  */
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await params;
     const result = await forceSyncTransaction(id);

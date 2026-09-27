@@ -1,15 +1,9 @@
 /**
  * Sound Engineer store — server-only.
- * CRUD for sound_engineer_work table + auto-sync with transactions.
- *
- * Transaction sync rules:
- *   amountPaid === 0                   → payment_status = "צפוי"
- *   0 < amountPaid < agreedPrice       → payment_status = "חלקי"
- *   amountPaid >= agreedPrice > 0      → payment_status = "שולם"
- *
- * When agreedPrice > 0:
- *   - First time: creates an expense transaction, saves ID in linked_transaction_id
- *   - Subsequent updates: PATCHes the existing transaction
+ * CRUD for sound_engineer_work. The linked Finance expense has ONE writer: lib/writes/mix.ts reconcileEngineerExpense
+ * (integrity fix A2, 2026-09-27 — it replaced the retired price sync and the retired Steven ₪ payment sync). Rules live
+ * in lib/mix-payment-pure.ts: paid = agreed > 0 AND paid ≥ agreed AND a payment date; a "שולם" expense is never
+ * overwritten or deleted; the work currency is kept, no silent 3.25 conversion.
  */
 import "server-only";
 import { supabase } from "@/lib/supabase";
@@ -19,6 +13,7 @@ import type {
   SoundEngineerWorkType,
 } from "@/lib/types";
 import { isClosedStatus } from "@/lib/steven-mix-reminder-pure";
+import { isEngineerWorkPaid, unpayBlocked, UNPAY_BLOCKED_HE } from "@/lib/mix-payment-pure";
 import {
   isCompletionTransition,
   isBecameOpenTransition,
@@ -30,16 +25,16 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Maps (agreedPrice, amountPaid) → expense payment_status.
- * Uses "שולם" (not "התקבל") — "התקבל" is reserved for income from clients.
- * "לא שולם" = haven't paid yet (expense owed but not sent).
- */
-function paymentStatusFromAmounts(agreed: number, paid: number): string {
-  if (agreed <= 0) return "לא שולם";
-  if (paid >= agreed) return "שולם";
-  if (paid > 0)       return "חלקי";
-  return "לא שולם";
+/** Thrown when a request would un-pay a work whose linked expense is already "שולם" (paid money is protected). */
+export class PaidExpenseProtectedError extends Error {
+  readonly code = "PAID_EXPENSE_PROTECTED";
+  constructor() { super(UNPAY_BLOCKED_HE); }
+}
+
+/** Runs THE one Finance writer (dynamic import — lib/writes/mix imports this store lazily too). */
+async function reconcile(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean }) {
+  const { reconcileEngineerExpense } = await import("@/lib/writes/mix");
+  return reconcileEngineerExpense(workId, opts);
 }
 
 /**
@@ -212,64 +207,6 @@ async function buildProjectMap(): Promise<Map<string, { name: string; artist: st
   return map;
 }
 
-// ── Transaction sync ──────────────────────────────────────────────────────────
-
-/**
- * Creates or updates the linked expense transaction for a sound engineer record.
- * Returns the transaction ID (new or existing).
- * No-ops if agreedPrice === 0.
- */
-async function syncTransaction(work: {
-  projectId: string;
-  artist: string;
-  engineerName: string;
-  workType: string;
-  agreedPrice: number;
-  currency: string;
-  amountPaid: number;
-  linkedTransactionId: string | null;
-}): Promise<string | null> {
-  if (work.agreedPrice <= 0) return work.linkedTransactionId;
-
-  const paymentStatus = paymentStatusFromAmounts(work.agreedPrice, work.amountPaid);
-
-  const txData = {
-    project_id:     work.projectId,
-    type:           "expense",
-    category:       "מיקס / מאסטר",
-    description:    `${work.engineerName} — ${work.workType}`,
-    artist:         work.artist,
-    amount:         work.agreedPrice,
-    currency:       work.currency,
-    payment_status: paymentStatus,
-    payment_method: "",
-    receipt_ref:    "",
-    notes:          work.amountPaid > 0
-      ? `שולם ${work.currency}${work.amountPaid} מתוך ${work.currency}${work.agreedPrice}`
-      : `ממתין לתשלום — ${work.currency}${work.agreedPrice}`,
-    linked_session_id: "",
-  };
-
-  if (work.linkedTransactionId) {
-    // Update existing
-    await supabase
-      .from("transactions")
-      .update({ ...txData, date: null })
-      .eq("id", work.linkedTransactionId);
-    return work.linkedTransactionId;
-  }
-
-  // Create new
-  const { data, error } = await supabase
-    .from("transactions")
-    .insert({ ...txData, date: null })
-    .select("id")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data?.id ?? null;
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Fetch the sound engineer record for a specific project (null = none). */
@@ -365,11 +302,13 @@ export async function createSoundEngineerWork(
     agreedPrice?:     number;
     currency?:        string;
     amountPaid?:      number;
+    /** B5: a work created as paid carries its payment date (YYYY-MM-DD) — else the shared paid rule sees it unpaid. */
+    paymentDate?:     string | null;
     sentDate?:        string | null;
     internalDeadline?: string | null;
     filesLink?:       string | null;
     notes?:           string;
-    /** When true, do NOT create the linked expense transaction. (Used by the
+    /** When true, do NOT create an expected expense row (PAYMENT_ONLY). (Used by the
      *  Steven send flow, which must not touch Finance.) Not persisted to DB. */
     skipFinanceSync?: boolean;
   }
@@ -409,6 +348,8 @@ export async function createSoundEngineerWork(
     agreed_price:      agreedPrice,
     currency,
     amount_paid:       amountPaid,
+    // B5: only a paid amount carries a payment date (a date on an unpaid work is never stored)
+    ...(amountPaid > 0 && fields.paymentDate ? { payment_date: fields.paymentDate } : {}),
     sent_date:         fields.sentDate        ?? null,
     internal_deadline: fields.internalDeadline ?? null,
     files_link:        fields.filesLink        ?? null,
@@ -426,28 +367,13 @@ export async function createSoundEngineerWork(
   if (error) throw new Error(error.message);
 
   const row = data as Record<string, unknown>;
-  let linkedTransactionId: string | null = null;
 
-  // Finance sync ONLY for project-linked works (standalone never touches Finance).
-  if (projectId && !fields.skipFinanceSync && agreedPrice > 0) {
-    linkedTransactionId = await syncTransaction({
-      projectId,
-      artist,
-      engineerName: fields.engineerName,
-      workType,
-      agreedPrice,
-      currency,
-      amountPaid,
-      linkedTransactionId: null,
-    });
-
-    if (linkedTransactionId) {
-      await supabase
-        .from("sound_engineer_work")
-        .update({ linked_transaction_id: linkedTransactionId })
-        .eq("id", row.id as string);
-      row.linked_transaction_id = linkedTransactionId;
-    }
+  // The linked expense through THE one writer. A new work carries no payment date, so it is never "paid" here: a
+  // project-linked non-Steven work with a price gets its expected row (work currency); Steven / skipFinanceSync /
+  // standalone works get none (the Steven send flow must not touch Finance).
+  if (projectId && agreedPrice > 0) {
+    const r = await reconcile(row.id as string, { reason: "work create", skipPriceSync: !!fields.skipFinanceSync });
+    row.linked_transaction_id = r.txId;
   }
 
   const projectMap = projectId
@@ -469,7 +395,7 @@ export async function createSoundEngineerWork(
   return created;
 }
 
-/** Update a sound engineer work record. Syncs transaction if price fields changed. */
+/** Update a sound engineer work record. Finance-relevant changes run THE one expense writer (reconcileEngineerExpense). */
 export async function updateSoundEngineerWork(
   id: string,
   fields: Partial<{
@@ -484,7 +410,8 @@ export async function updateSoundEngineerWork(
     filesLink:        string | null;
     notes:            string;
     paymentDate:      string | null;   // YYYY-MM-DD when marked paid, or null to clear
-    /** When true, skip the linked-transaction sync entirely (Steven flow). Not persisted. */
+    /** When true: NO expected (price) row — PAYMENT_ONLY (Steven flow). A paid work is still recorded by the one
+     *  writer and a "שולם" row is never touched. Not persisted. */
     skipFinanceSync:  boolean;
   }>,
   hooks?: {
@@ -506,9 +433,25 @@ export async function updateSoundEngineerWork(
 
   // Snapshot the pre-update "Paid" state so we can detect a real transition and
   // push "Payment confirmed" only once (never on re-save / refresh / page load).
-  const curAgreed = Number(cur.agreed_price ?? 0);
-  const curPaid   = Number(cur.amount_paid  ?? 0);
-  const wasPaid   = curAgreed > 0 && curPaid >= curAgreed && !!(cur.payment_date);
+  const wasPaid = isEngineerWorkPaid({ agreedPrice: Number(cur.agreed_price ?? 0), amountPaid: Number(cur.amount_paid ?? 0), paymentDate: (cur.payment_date as string | null) ?? null });
+
+  // Un-pay guard (BEFORE any write): a request that touches the payment and leaves the work NOT paid is refused while
+  // its linked expense is "שולם" — paid money is cancelled in Finance first, never deleted from a work screen.
+  if (fields.amountPaid !== undefined || fields.paymentDate !== undefined) {
+    const projectedPaid = isEngineerWorkPaid({
+      agreedPrice: fields.agreedPrice ?? Number(cur.agreed_price ?? 0),
+      amountPaid:  fields.amountPaid  ?? Number(cur.amount_paid ?? 0),
+      paymentDate: fields.paymentDate !== undefined ? fields.paymentDate : ((cur.payment_date as string | null) ?? null),
+    });
+    const linkedId = (cur.linked_transaction_id as string | null) ?? null;
+    let linkedStatus: string | null = null;
+    if (linkedId && !projectedPaid) {
+      const { data: t, error: tErr } = await supabase.from("transactions").select("payment_status").eq("id", linkedId).maybeSingle();
+      if (tErr) throw new Error(tErr.message); // fail closed
+      linkedStatus = (t?.payment_status as string | null) ?? null;
+    }
+    if (unpayBlocked({ touchesPayment: true, projectedPaid, linkedStatus })) throw new PaidExpenseProtectedError();
+  }
 
   const dbUpdate: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -534,57 +477,31 @@ export async function updateSoundEngineerWork(
   if (error) throw new Error(error.message);
 
   const row       = updated as Record<string, unknown>;
-  const agreed    = Number(row.agreed_price ?? 0);
-  const paid      = Number(row.amount_paid  ?? 0);
-  const currency  = (row.currency as string) ?? "$";
-  const engineer  = row.engineer_name as string;
-  const workType  = (row.work_type as SoundEngineerWorkType) ?? "מיקס";
-  const projectId = row.project_id as string;
-  const linkedTxId = (row.linked_transaction_id as string | null) ?? null;
 
-  // Re-sync transaction if any financial field changed
-  const priceChanged =
-    fields.agreedPrice !== undefined ||
-    fields.amountPaid  !== undefined ||
-    fields.currency    !== undefined ||
+  // ── The linked Finance expense: THE one writer, server-side, in the same request ──
+  // Runs when any finance-relevant field changed (price, currency, amount paid, payment date, engineer, type). One call
+  // for the Steven page too — its separate payment-expense call is no longer needed. skipFinanceSync (Steven page /
+  // Steven send flow) only means "no expected row" (PAYMENT_ONLY); a paid work is always recorded, and a "שולם" row is
+  // never overwritten or deleted.
+  const financeChanged =
+    fields.agreedPrice  !== undefined ||
+    fields.amountPaid   !== undefined ||
+    fields.paymentDate  !== undefined ||
+    fields.currency     !== undefined ||
     fields.engineerName !== undefined ||
     fields.workType     !== undefined;
-
-  if (!fields.skipFinanceSync && priceChanged && agreed > 0) {
-    const { data: proj } = await supabase
-      .from("projects")
-      .select("artist")
-      .eq("id", projectId)
-      .single();
-    const artist = (proj?.artist as string) ?? "";
-
-    const newTxId = await syncTransaction({
-      projectId,
-      artist,
-      engineerName: engineer,
-      workType,
-      agreedPrice: agreed,
-      currency,
-      amountPaid: paid,
-      linkedTransactionId: linkedTxId,
-    });
-
-    if (newTxId && newTxId !== linkedTxId) {
-      await supabase
-        .from("sound_engineer_work")
-        .update({ linked_transaction_id: newTxId })
-        .eq("id", id);
-      row.linked_transaction_id = newTxId;
-    }
+  if (financeChanged) {
+    const r = await reconcile(id, { reason: "work update", skipPriceSync: !!fields.skipFinanceSync });
+    row.linked_transaction_id = r.txId;
   }
 
   const projectMap = await buildProjectMap();
   const result = mapRow(row, projectMap);
 
   // ── "Payment confirmed" push (owner + Steven) on a REAL transition only ──
-  // Fires only when the work goes from non-Paid → Paid. Best-effort, never
+  // Fires only when the work goes from non-Paid → Paid (THE shared rule, lib/mix-payment-pure). Best-effort, never
   // throws, localhost-guarded, deduped in settings. No other path is touched.
-  const nowPaid = result.agreedPrice > 0 && result.amountPaid >= result.agreedPrice && !!result.paymentDate;
+  const nowPaid = isEngineerWorkPaid(result);
   if (!wasPaid && nowPaid) {
     try {
       const { notifyStevenPaymentPaid } = await import("@/lib/steven-payment-notify");
@@ -600,11 +517,11 @@ export async function updateSoundEngineerWork(
     }
   }
 
-  // ── Steven "work completed" (project sync + final-files request + push) ─────
+  // ── Steven "work completed" (final-files request + push + a project SUGGESTION — never a project write) ─────
   // Fires ONLY on a real transition into completed ("אושר"): the pre-update row
   // was not completed, THIS request carried the completed status, and the row now
   // is completed. A re-save / payment edit / refresh never re-fires. All behaviour
-  // (last-open-work check, project sync, marker, claim, push) lives in
+  // (last-open-work check, project read → suggestion, marker, claim, push) lives in
   // lib/steven-completion.ts; it is restricted to engineer_name "Steven" and never
   // throws, so it can neither fail nor roll back this update.
   if (isCompletionTransition(cur.status as string | null, fields.status, row.status as string | null)) {
@@ -640,90 +557,11 @@ export async function updateSoundEngineerWork(
 }
 
 /**
- * Reconcile the ONE Finance expense linked to a Steven/Bill payment, keyed ONLY by
- * sound_engineer_work.linked_transaction_id (never by name/amount/type):
- *   - paid (amount_paid ≥ agreed_price > 0 AND payment_date set) → upsert the linked
- *     expense (update the linked row if it still exists, else insert + save the link).
- *   - not paid → delete the linked expense by id and clear linked_transaction_id.
- * Idempotent (re-marking "שולם" updates the same row — no duplicates). expense: type
- * "expense", payment_status "שולם" (supplier status, never "התקבל"), category
- * "מיקס / מאסטר", date = payment_date. Project-linked → project scope + original
- * project name/artist; standalone → general scope + work_title. Returns the tx id.
+ * Reconcile the ONE Finance expense linked to this work's payment (payment-expense route). Kept as the route's entry
+ * point; it is THE one writer (lib/writes/mix reconcileEngineerExpense) — work currency, paid rows protected.
  */
-export async function syncStevenPaymentExpense(workId: string): Promise<string | null> {
-  const { data: w } = await supabase
-    .from("sound_engineer_work")
-    .select("id, project_id, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id")
-    .eq("id", workId)
-    .maybeSingle();
-  if (!w) throw new Error("עבודה לא נמצאה");
-
-  const agreed      = Number(w.agreed_price ?? 0);
-  const paid        = Number(w.amount_paid  ?? 0);
-  const paymentDate = (w.payment_date as string | null) ?? null;
-  const linkedId    = (w.linked_transaction_id as string | null) ?? null;
-  const isPaid      = agreed > 0 && paid >= agreed && !!paymentDate;
-
-  // ── Not paid → remove ONLY the linked expense, clear the link ──
-  if (!isPaid) {
-    if (linkedId) {
-      await supabase.from("transactions").delete().eq("id", linkedId);
-      await supabase.from("sound_engineer_work").update({ linked_transaction_id: null }).eq("id", workId);
-    }
-    return null;
-  }
-
-  // ── Paid → resolve original project (scope/artist/name) ──
-  const projectId = (w.project_id as string | null) ?? null;
-  let artist = "", projectName = "";
-  if (projectId) {
-    const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).maybeSingle();
-    projectName = (proj?.name as string) ?? "";
-    artist      = (proj?.artist as string) ?? "";
-  }
-  const displayName = (projectId ? projectName : ((w.work_title as string | null) ?? "")).trim();
-
-  // Fixed working ratio for this phase — NO external/official rate, NO manual input.
-  // The agreed USD net (unchanged on the Steven page) is recorded in Finance as ILS,
-  // and we note the PayPal gross: $200 net → PayPal gross $210 ($200×1.05) → recorded
-  // ₪650 ($200×3.25). round to 2 decimals to avoid float artifacts.
-  const ils   = Math.round(agreed * 3.25 * 100) / 100; // Finance amount (₪)
-  const gross = Math.round(agreed * 1.05 * 100) / 100; // PayPal gross estimate ($) — note only
-  const num = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
-  const notes = `תשלום Steven: $${num(agreed)} נטו. PayPal gross estimate: $${num(gross)}. יחס חישוב קבוע: $200 = ₪650. נרשם בכספים: ₪${num(ils)}.`;
-
-  const txFields: Record<string, unknown> = {
-    project_id:        projectId,
-    scope:             projectId ? "project" : "general",
-    type:              "expense",
-    category:          "מיקס / מאסטר",
-    description:       displayName ? `מיקס - ${displayName}` : "מיקס",
-    artist,
-    amount:            ils,          // recorded in ₪ per the fixed ratio (not the $ agreed)
-    currency:          "₪",
-    payment_status:    "שולם",
-    payment_method:    "",
-    receipt_ref:       "",
-    notes,
-    date:              paymentDate,
-    linked_session_id: "",
-    expense_scope:     "כללי",
-  };
-
-  // ── Upsert by the safe link ──
-  if (linkedId) {
-    const { data: existing } = await supabase.from("transactions").select("id").eq("id", linkedId).maybeSingle();
-    if (existing) {
-      const { error } = await supabase.from("transactions").update(txFields).eq("id", linkedId);
-      if (error) throw new Error(error.message);
-      return linkedId;
-    }
-  }
-  const { data: inserted, error } = await supabase.from("transactions").insert(txFields).select("id").single();
-  if (error) throw new Error(error.message);
-  const newId = inserted?.id as string;
-  await supabase.from("sound_engineer_work").update({ linked_transaction_id: newId }).eq("id", workId);
-  return newId;
+export async function reconcileWorkPaymentExpense(workId: string) {
+  return reconcile(workId, { reason: "payment-expense route" });
 }
 
 /** Delete a sound engineer work record. Does NOT delete the linked transaction. */
@@ -733,41 +571,10 @@ export async function deleteSoundEngineerWork(id: string): Promise<void> {
 }
 
 /**
- * Manually trigger a transaction sync for an existing record.
- * Use this if the auto-sync failed on creation/update.
+ * Explicit "sync" (the drawer button / Sunny force-sync) — THE one writer with force: refuses a standalone work, and a
+ * paid ("שולם") linked row is never overwritten ("שורה ששולמה לא נדרסת").
  */
-export async function forceSyncTransaction(id: string): Promise<{ txId: string | null }> {
-  const { data, error } = await supabase
-    .from("sound_engineer_work")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (error || !data) throw new Error(error?.message ?? "רשומה לא נמצאה");
-
-  const row = data as Record<string, unknown>;
-  const { data: proj } = await supabase
-    .from("projects")
-    .select("artist")
-    .eq("id", row.project_id as string)
-    .single();
-
-  const newTxId = await syncTransaction({
-    projectId:           row.project_id as string,
-    artist:              (proj?.artist as string) ?? "",
-    engineerName:        row.engineer_name as string,
-    workType:            (row.work_type as string) ?? "מיקס",
-    agreedPrice:         Number(row.agreed_price ?? 0),
-    currency:            (row.currency as string) ?? "$",
-    amountPaid:          Number(row.amount_paid ?? 0),
-    linkedTransactionId: (row.linked_transaction_id as string | null) ?? null,
-  });
-
-  if (newTxId && newTxId !== row.linked_transaction_id) {
-    await supabase
-      .from("sound_engineer_work")
-      .update({ linked_transaction_id: newTxId })
-      .eq("id", id);
-  }
-
-  return { txId: newTxId };
+export async function forceSyncTransaction(id: string): Promise<{ txId: string | null; outcome: string; messageHe: string; conflictHe: string | null }> {
+  const r = await reconcile(id, { reason: "force sync", force: true });
+  return { txId: r.txId, outcome: r.kind, messageHe: r.messageHe, conflictHe: r.conflictHe };
 }

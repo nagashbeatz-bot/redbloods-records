@@ -98,22 +98,12 @@ function makeWorld(o: WorldOpts = {}) {
       await ctl.hop();
       return snap;
     },
-    async syncProjectCompleted(projectId) {
+    async readProjectStatus(projectId) {
       counters.syncCalls++;
-      if (o.failSync) throw new Error("update failed");
-      const read = () => { const p = projects[projectId]; if (!p) throw new Error("linked project not found"); return p; };
-      const before = decideProjectSync(read().status);
+      if (o.failSync) throw new Error("read failed");
       await ctl.hop();
-      if (before !== "sync") return before;
-      await ctl.hop(); // the window between the read and the conditional write
-      // conditional write, atomic like the real UPDATE … WHERE status NOT IN (הושלם, בוטל, בהשהייה)
-      const p = read();
-      if (p.status !== PROJECT_COMPLETED_STATUS && !PROJECT_PROTECTED_STATUSES.includes(p.status)) {
-        p.status = PROJECT_COMPLETED_STATUS; p.endDate = TODAY; counters.syncUpdated++; return "updated";
-      }
-      const after = decideProjectSync(p.status);
-      if (after === "sync") throw new Error("matched no row although open");
-      return after;
+      const p = projects[projectId]; if (!p) throw new Error("linked project not found");
+      return p.status; // READ-ONLY: the flow never writes the project (Owner decision 2026-09-27)
     },
     async claimFinalFilesRequest(key, value) {
       if (o.claimError) return "error";
@@ -148,7 +138,7 @@ function makeWorld(o: WorldOpts = {}) {
     await releaseStevenFinalFilesRequest({ id, projectId: works[id]?.projectId ?? null }, deps);
   };
   const ownerConfirms = () => ownerPushes.filter((p) => p.title === "התראה נשלחה ל-Steven").length;
-  const ownerFailures = () => ownerPushes.filter((p) => p.title === "התראה ל-Steven לא נשלחה" || p.title === "סנכרון הפרויקט נכשל").length;
+  const ownerFailures = () => ownerPushes.filter((p) => p.title === "התראה ל-Steven לא נשלחה" || p.title === "קריאת הפרויקט נכשלה").length;
   const advance = (ms: number) => { clock.t += ms; };
   /** a final file uploaded through work `workId` at the current clock (project_id copied from the work, like the real writer) */
   const upload = (workId: string) => { files.push({ work_id: workId, project_id: works[workId]?.projectId ?? null, created_at: new Date(clock.t).toISOString() }); };
@@ -196,26 +186,26 @@ async function main() {
   {
     const w = makeWorld({ projects: { P1: { status: "בעבודה", endDate: null } } });
     const out = await w.run("W1", "P1");
-    check("project → הושלם", w.projects.P1.status === "הושלם", w.projects.P1.status);
-    check("end_date = today", w.projects.P1.endDate === TODAY, String(w.projects.P1.endDate));
-    check("outcome: updated + lastOpenWork", out.projectSync === "updated" && out.lastOpenWork);
+    check("engineer completion does NOT complete the project (status unchanged)", w.projects.P1.status === "בעבודה", w.projects.P1.status);
+    check("end_date untouched", w.projects.P1.endDate === null, String(w.projects.P1.endDate));
+    check("outcome: suggested (an explicit Owner action) + lastOpenWork", out.projectSync === "suggested" && out.lastOpenWork);
     check("ONE project-scoped request row (claim + marker) exists", w.rows.size === 1 && w.rows.has(finalFilesRequestedProjectKey("P1")) && out.finalFilesRequested);
     check("exactly ONE push to Steven", w.stevenPushes.length === 1, String(w.stevenPushes.length));
-    check("Steven push title", w.stevenPushes[0]?.title === "Project completed");
+    check("Steven push title", w.stevenPushes[0]?.title === "Job completed");
     check("Steven push body is English, {name} — please upload the final files.", w.stevenPushes[0]?.body === "G Thang — please upload the final files.", w.stevenPushes[0]?.body);
     check("Steven push deep-links to the work", w.stevenPushes[0]?.url === "/team/steven?work=W1");
     check("Steven push carries NO project/entity fields (his bell must not open the owner drawer)",
       !("projectId" in (w.stevenPushes[0] ?? {})) && !w.stevenPushes[0]?.entityType && !w.stevenPushes[0]?.entityId);
     check("owner confirmation sent once", w.ownerConfirms() === 1 && out.push === "sent");
     check("owner confirmation text (Hebrew, 'נשלחה' — never 'קיבל')",
-      w.ownerPushes[0]?.body === 'נשלחה ל-Steven התראה שהפרויקט "G Thang" הושלם ושיש להעלות קבצים סופיים.' && !/קיבל/.test(w.ownerPushes[0]?.title + w.ownerPushes[0]?.body), w.ownerPushes[0]?.body);
+      w.ownerPushes[0]?.body === 'נשלחה ל-Steven התראה שהעבודה שלו על "G Thang" הושלמה ושיש להעלות קבצים סופיים (הפרויקט עצמו לא סומן כהושלם).' && !/קיבל/.test(w.ownerPushes[0]?.title + w.ownerPushes[0]?.body), w.ownerPushes[0]?.body);
   }
 
   console.log("\n— A2. לא התחיל → הושלם behaves the same (transition input differs only in the store) —");
   {
     const w = makeWorld({ projects: { P1: { status: "לא התחיל", endDate: null } } });
     const out = await w.run("W1", "P1");
-    check("project completed + one push", out.projectSync === "updated" && w.stevenPushes.length === 1);
+    check("project suggested (not written) + one push", out.projectSync === "suggested" && w.projects.P1.status === "לא התחיל" && w.stevenPushes.length === 1);
   }
 
   console.log("\n— B. two Steven works on the project —");
@@ -235,8 +225,8 @@ async function main() {
     // now B completes; A is already closed
     w.commit("WB");
     const b = await w.run("WB", "P1", "U1", "G Thang — Master");
-    check("B (the last open one) completes → project הושלם", b.projectSync === "updated" && w.projects.P1.status === "הושלם");
-    check("end_date = today", w.projects.P1.endDate === TODAY);
+    check("B (the last open one) completes → project SUGGESTED, not written", b.projectSync === "suggested" && w.projects.P1.status === "במיקס");
+    check("end_date untouched", w.projects.P1.endDate === null);
     check("ONE request row for the project, won by B", w.rows.size === 1 && (w.rows.get(finalFilesRequestedProjectKey("P1")) as { workId: string })?.workId === "WB");
     check("push for B only", w.stevenPushes.length === 1 && w.stevenPushes[0].url === "/team/steven?work=WB");
   }
@@ -246,7 +236,7 @@ async function main() {
       works: { WB: { projectId: "P1", status: "בוטל" } },
     });
     const a = await w.run("WA", "P1");
-    check("a CANCELLED sibling does not block the sync", a.projectSync === "updated" && w.projects.P1.status === "הושלם");
+    check("a CANCELLED sibling does not block the suggestion", a.projectSync === "suggested" && w.projects.P1.status === "בעבודה");
   }
 
   console.log("\n— C. project already הושלם —");
@@ -297,8 +287,8 @@ async function main() {
   {
     const w = makeWorld({ projects: { P1: { status: "בעבודה", endDate: null } }, claimError: true });
     const out = await w.run("W1", "P1");
-    check("a request-row DB error sends nothing (no dedupe guarantee) but the project still synced",
-      out.push === "claim_error" && w.stevenPushes.length === 0 && out.projectSync === "updated" && w.rows.size === 0);
+    check("a request-row DB error sends nothing (no dedupe guarantee); the project is only suggested",
+      out.push === "claim_error" && w.stevenPushes.length === 0 && out.projectSync === "suggested" && w.rows.size === 0);
     check("…and the owner is told nothing was sent to Steven", w.ownerFailures() === 1 && w.errors.some((e) => /could not record/.test(e)));
   }
 
@@ -309,7 +299,7 @@ async function main() {
     check("no Steven subscription → no_subscription", out.push === "no_subscription");
     check("owner told it could not be sent (and why)", w.ownerPushes.length === 1 && w.ownerPushes[0].body === 'לא ניתן היה לשלוח ל-Steven התראה עבור "G Thang". אין ל-Steven מכשיר רשום להתראות.', w.ownerPushes[0]?.body);
     check("NO 'success' confirmation is sent", w.ownerConfirms() === 0);
-    check("the work/project completion is not undone; the request row (Blur marker) still exists", w.projects.P1.status === "הושלם" && w.rows.size === 1);
+    check("the work completion is not undone; the project is untouched; the request row (Blur marker) still exists", w.projects.P1.status === "בעבודה" && w.rows.size === 1);
   }
   {
     const w = makeWorld({ projects: { P1: { status: "בעבודה", endDate: null } }, steven: REJ });
@@ -325,7 +315,7 @@ async function main() {
     const w = makeWorld({ projects: { P1: { status: "בעבודה", endDate: null } }, pushAllowed: false });
     const out = await w.run("W1", "P1");
     check("localhost / dev: no push at all", out.push === "disabled" && w.stevenPushes.length === 0 && w.ownerPushes.length === 0);
-    check("…but the state is still real: project synced + request row written", w.projects.P1.status === "הושלם" && w.rows.size === 1 && out.finalFilesRequested);
+    check("…but the state is still real: request row written (project untouched)", w.projects.P1.status === "בעבודה" && w.rows.size === 1 && out.finalFilesRequested);
   }
 
   console.log("\n— project-sync failure is reported, never silent, never a rollback —");
@@ -335,7 +325,7 @@ async function main() {
     check("outcome failed", out.projectSync === "failed");
     check("logged loudly", w.errors.some((e) => /PROJECT SYNC FAILED/.test(e)));
     check("owner gets the failure notice (exact wording)",
-      w.ownerPushes[0]?.body === '"G Thang": העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט.', w.ownerPushes[0]?.body);
+      w.ownerPushes[0]?.body === '"G Thang": העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לקרוא את הפרויקט — לא הוצע לסמן אותו כהושלם.', w.ownerPushes[0]?.body);
     check("project untouched", w.projects.P1.status === "בעבודה");
     check("the work's own flow continues: request row + Steven push still happen", w.rows.size === 1 && w.stevenPushes.length === 1);
     check("owner also gets the delivery confirmation for the push (two distinct facts)", w.ownerPushes.length === 2);
@@ -343,7 +333,7 @@ async function main() {
   {
     const w = makeWorld({ projects: {} });
     const out = await w.run("W1", "PX");
-    check("a dangling project_id is a reported failure, not a guess", out.projectSync === "failed" && w.ownerPushes.some((p) => p.title === "סנכרון הפרויקט נכשל"));
+    check("a dangling project_id is a reported failure, not a guess", out.projectSync === "failed" && w.ownerPushes.some((p) => p.title === "קריאת הפרויקט נכשלה"));
   }
   {
     const w = makeWorld({ projects: { P1: { status: "בעבודה", endDate: null } }, failList: true });
@@ -381,8 +371,8 @@ async function main() {
 
     check("both works are completed", w.works.A.status === "אושר" && w.works.B.status === "אושר");
     check("BOTH requests concluded they were the last open work (the case being defended)", oa.lastOpenWork && ob.lastOpenWork);
-    check("project.status = הושלם, written exactly ONCE", w.projects.P.status === "הושלם" && w.counters.syncUpdated === 1, String(w.counters.syncUpdated));
-    check("end_date set once, to today", w.projects.P.endDate === TODAY);
+    check("project.status NEVER written (engineer completion ≠ project completion)", w.projects.P.status === "בעבודה" && w.counters.syncUpdated === 0, String(w.counters.syncUpdated));
+    check("end_date untouched", w.projects.P.endDate === null);
     check("exactly ONE final-files request row (project-scoped), no per-work markers",
       w.rows.size === 1 && w.rows.has(finalFilesRequestedProjectKey("P")) && !w.rows.has(finalFilesRequestedKey("A")) && !w.rows.has(finalFilesRequestedKey("B")));
     check("exactly ONE winner: one request created, one skipped_duplicate",
@@ -427,8 +417,8 @@ async function main() {
       if (last === 2) bothLast++; else if (last === 1) oneLast++; else neitherLast++;
       const tag = `${order.join(",")} seed ${seed}`;
       if (w.works.A.status !== "אושר" || w.works.B.status !== "אושר") note("both works completed", tag);
-      if (!(w.projects.P.status === "הושלם" && w.counters.syncUpdated === 1)) note("project completed exactly once", `${tag}: updated ${w.counters.syncUpdated}`);
-      if (w.projects.P.endDate !== TODAY) note("end_date set once, to today", tag);
+      if (!(w.projects.P.status === "בעבודה" && w.counters.syncUpdated === 0)) note("project never written", `${tag}: updated ${w.counters.syncUpdated}`);
+      if (w.projects.P.endDate !== null) note("end_date untouched", tag);
       if (!(w.rows.size === 1 && w.rows.has(finalFilesRequestedProjectKey("P")))) note("exactly one project-level request row", `${tag}: rows ${[...w.rows.keys()].join("|")}`);
       if (w.stevenPushes.length === 0) note("NEVER zero pushes (someone always requests)", tag);
       if (w.stevenPushes.length > 1) note("never two pushes", `${tag}: ${w.stevenPushes.length}`);
@@ -440,7 +430,7 @@ async function main() {
     check("the both-think-last case was genuinely exercised", bothLast > 0, String(bothLast));
     check("the one-is-last case was genuinely exercised (A listed before B committed)", oneLast > 0, String(oneLast));
     check('"neither is last" NEVER occurs (commit precedes the sibling list)', neitherLast === 0, String(neitherLast));
-    for (const k of ["both works completed", "project completed exactly once", "end_date set once, to today", "exactly one project-level request row",
+    for (const k of ["both works completed", "project never written", "end_date untouched", "exactly one project-level request row",
       "NEVER zero pushes (someone always requests)", "never two pushes", "exactly one owner confirmation", "no owner failure notice", "exactly one winner"]) {
       check(`all ${runs} runs: ${k}`, !(k in viol), viol[k]);
     }
@@ -467,12 +457,12 @@ async function main() {
       const outs = await runOrder(w, order, ids, seed);
       runs++;
       if (outs.filter((o) => o.lastOpenWork).length === 3) allLast++;
-      const ok = ids.every((i) => w.works[i].status === "אושר") && w.projects.P.status === "הושלם" && w.counters.syncUpdated === 1 &&
+      const ok = ids.every((i) => w.works[i].status === "אושר") && w.projects.P.status === "בעבודה" && w.counters.syncUpdated === 0 &&
         w.rows.size === 1 && w.stevenPushes.length === 1 && w.ownerConfirms() === 1 && w.ownerFailures() === 0;
       if (!ok && !bad) bad = `${order.join(",")} → pushes ${w.stevenPushes.length}, rows ${w.rows.size}, updated ${w.counters.syncUpdated}`;
     }
     console.log(`  · 3 works × ${runs} random interleavings (all three thought they were last in ${allLast})`);
-    check(`3 works: all ${runs} runs → all completed, project once, ONE request row, ONE push, ONE confirmation`, bad === "", bad);
+    check(`3 works: all ${runs} runs → all completed, project never written, ONE request row, ONE push, ONE confirmation`, bad === "", bad);
   }
 
   console.log("\n— CYCLES: reopen still allows a genuinely new request (no permanent marker) —");
@@ -494,7 +484,7 @@ async function main() {
     const whileOpen = await w.run("B", "P", "B1");           // B "completes" again while A is open → not last
     check("while A is open again nothing is requested", whileOpen.projectSync === "other_open_work" && w.rows.size === 0 && w.stevenPushes.length === 1);
     // cycle 2: A completes again
-    w.projects.P.endDate = "2026-09-01";                       // the project kept its cycle-1 end_date
+    w.projects.P.status = "הושלם"; w.projects.P.endDate = "2026-09-01"; // the Owner accepted the cycle-1 suggestion (explicit action)
     w.commit("A"); const c2 = await w.run("A", "P", "A2");
     check("cycle 2 (הושלם → פעיל → הושלם): a NEW request + push", c2.push === "sent" && w.stevenPushes.length === 2 && w.ownerConfirms() === 2);
     check("cycle 2: the project was already הושלם → no-op, end_date NOT re-stamped", c2.projectSync === "already_completed" && w.projects.P.endDate === "2026-09-01");
@@ -503,8 +493,8 @@ async function main() {
     await w.reopen("B");
     w.projects.P.status = "בעבודה"; w.projects.P.endDate = null;
     w.commit("B"); const c3 = await w.run("B", "P", "B3");
-    check("cycle 3: request + push again, and the reopened project is completed again with a fresh end_date",
-      c3.push === "sent" && w.stevenPushes.length === 3 && c3.projectSync === "updated" && w.projects.P.endDate === TODAY);
+    check("cycle 3: request + push again; the reopened project is only SUGGESTED again (never written)",
+      c3.push === "sent" && w.stevenPushes.length === 3 && c3.projectSync === "suggested" && w.projects.P.status === "בעבודה" && w.projects.P.endDate === null);
   }
   {
     // the same double-completion race, but in cycle 2 (after a reopen released the row)
@@ -609,7 +599,7 @@ async function main() {
     const at2 = reqAt(w, finalFilesRequestedProjectKey("P"));
     check("6. second completion → a NEW request row with a NEW, later timestamp", w.rows.size === 1 && at2 > at1, `${at1} → ${at2}`);
     check("6. exactly ONE new push (2 in total)", c2.push === "sent" && w.stevenPushes.length === 2 && w.ownerConfirms() === 2);
-    check("6. the push goes out even though final files from the previous cycle exist", w.stevenPushes[1]?.title === "Project completed" && w.files.length === 1);
+    check("6. the push goes out even though final files from the previous cycle exist", w.stevenPushes[1]?.title === "Job completed" && w.files.length === 1);
     check("6. the previous cycle's file does NOT count for the new request → Blur on", w.blur("A") && !w.flags().hasCurrentFinalFiles.has("A"));
     w.advance(10 * MIN); w.upload("A");
     check("7. a NEW final file after the new request → Blur gone", !w.blur("A") && w.flags().hasCurrentFinalFiles.has("A"));
@@ -829,9 +819,9 @@ async function main() {
   check("keys round-trip, unrelated keys → null",
     workIdFromRequestedKey("steven_final_files_requested:W1") === "W1" && projectIdFromRequestedKey("steven_final_files_requested_project:P1") === "P1" &&
     workIdFromRequestedKey("steven_upload_pending_W1") === null && projectIdFromRequestedKey("steven_upload_pending_W1") === null);
-  check("empty name still reads sensibly", buildStevenPush("W1", "  ", "U0").body === "Please upload the final files." && buildOwnerConfirmPush("W1", "").body.startsWith("נשלחה ל-Steven התראה שהפרויקט הושלם"));
+  check("empty name still reads sensibly", buildStevenPush("W1", "  ", "U0").body === "Please upload the final files." && buildOwnerConfirmPush("W1", "").body.startsWith("נשלחה ל-Steven התראה שהעבודה שלו הושלמה") && !/הפרויקט הושלם/.test(buildOwnerConfirmPush("W1", "").body));
   check("owner failure notice without a name", buildOwnerPushFailedPush("W1", "", "send_failed").body.startsWith("לא ניתן היה לשלוח ל-Steven התראה."));
-  check("sync-failure notice without a name", buildOwnerProjectSyncFailedPush("W1", "").body === "העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט.");
+  check("sync-failure notice without a name", buildOwnerProjectSyncFailedPush("W1", "").body === "העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לקרוא את הפרויקט — לא הוצע לסמן אותו כהושלם.");
 
   console.log(`\n${fail === 0 ? "✓ ALL PASS" : "✗ FAILURES"} — ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exit(1);

@@ -13,11 +13,13 @@
  *      one exists, the work simply completes: the project is NOT touched and
  *      Steven is NOT asked for final files yet (that would claim the whole
  *      project is done while another job of his is still running).
- *   2. Project sync (one-way, Steven → Projects, project_id only — never by
- *      name): projects.status → "הושלם" and end_date → today, exactly what the
- *      Projects PATCH route writes. A project that is already "הושלם", or that
- *      the owner stopped ("בוטל" / "בהשהייה"), is left untouched. A standalone
- *      work (no project_id) has no project to sync.
+ *   2. Project SUGGESTION (read-only; Owner decision 2026-09-27: "engineer completed ≠
+ *      project completed unless an explicit business rule / action"). The project is
+ *      READ by project_id (never by name) and NEVER written here: an open project is
+ *      returned as projectSync "suggested" so the Owner's UI can offer "לסמן גם את
+ *      הפרויקט כהושלם?" as an explicit Owner action (the normal Projects writer). A
+ *      project that is already "הושלם", or that the owner stopped ("בוטל" /
+ *      "בהשהייה"), is reported as such. A standalone work has no project.
  *   3. THE FINAL-FILES REQUEST — one per "cycle", scoped to the PROJECT (or to the
  *      work itself when it has no project). It is a single settings row that is
  *      BOTH the INSERT-first claim and the marker Steven's WorkModal reads to show
@@ -40,7 +42,7 @@
  * the opposite one (both commit, then both list, both think they are last), and
  * step 3 makes that harmless.
  *
- * A project-sync failure never rolls the work back and never stops the request:
+ * A project-read failure never rolls the work back and never stops the request:
  * it is reported (returned to the caller, logged, and pushed to the owner).
  */
 import { COMPLETED_STATUS, isClosedStatus } from "@/lib/steven-mix-reminder-pure";
@@ -256,7 +258,8 @@ const ownerMeta = (workId: string) =>
 export function buildStevenPush(workId: string, name: string, fromUpdatedAt: string): CompletionPush {
   const n = (name ?? "").trim();
   return {
-    title: "Project completed",
+    // B5: Steven's JOB is completed — the project is only SUGGESTED to the Owner, never claimed completed.
+    title: "Job completed",
     body:  n ? `${n} — please upload the final files.` : "Please upload the final files.",
     url:   `/team/steven?work=${workId}`,
     tag:   `steven-completed-${workId}`,
@@ -274,8 +277,8 @@ export function buildOwnerConfirmPush(workId: string, name: string): CompletionP
   return {
     title: "התראה נשלחה ל-Steven",
     body:  n
-      ? `נשלחה ל-Steven התראה שהפרויקט "${n}" הושלם ושיש להעלות קבצים סופיים.`
-      : "נשלחה ל-Steven התראה שהפרויקט הושלם ושיש להעלות קבצים סופיים.",
+      ? `נשלחה ל-Steven התראה שהעבודה שלו על "${n}" הושלמה ושיש להעלות קבצים סופיים (הפרויקט עצמו לא סומן כהושלם).`
+      : "נשלחה ל-Steven התראה שהעבודה שלו הושלמה ושיש להעלות קבצים סופיים (הפרויקט עצמו לא סומן כהושלם).",
     tag: `steven-completed-owner-${workId}`,
     ...ownerMeta(workId),
   };
@@ -293,8 +296,9 @@ export function buildOwnerPushFailedPush(workId: string, name: string, reason: P
 export function buildOwnerProjectSyncFailedPush(workId: string, name: string): CompletionPush {
   const n = (name ?? "").trim();
   return {
-    title: "סנכרון הפרויקט נכשל",
-    body:  `${n ? `"${n}": ` : ""}העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לעדכן את סטטוס הפרויקט.`,
+    // B5: the flow never writes the project — the failure is that the project could not be READ (so no suggestion).
+    title: "קריאת הפרויקט נכשלה",
+    body:  `${n ? `"${n}": ` : ""}העבודה של Steven סומנה כהושלמה, אך לא ניתן היה לקרוא את הפרויקט — לא הוצע לסמן אותו כהושלם.`,
     tag:   `steven-project-sync-failed-${workId}`,
     ...ownerMeta(workId),
   };
@@ -303,7 +307,7 @@ export function buildOwnerProjectSyncFailedPush(workId: string, name: string): C
 // ── Orchestration (injectable deps → testable without a DB / real push) ────────
 
 export type ProjectSyncOutcome =
-  | "updated"            // projects.status → "הושלם", end_date → today, actually written
+  | "suggested"          // the project is open: the Owner MAY mark it הושלם (explicit action) — nothing written
   | "already_completed"  // project was already "הושלם": no-op (end_date untouched)
   | "protected"          // project is "בוטל"/"בהשהייה": left as the owner set it
   | "no_project"         // standalone work: nothing to sync, never guessed by name
@@ -352,8 +356,8 @@ export interface StevenCompletionDeps extends StevenReleaseDeps {
   now(): number;
   /** Other Steven works on the project (excludes `excludeWorkId`). Throws on error. */
   listOtherStevenWorks(projectId: string, excludeWorkId: string): Promise<{ status: string | null }[]>;
-  /** Reads, decides (decideProjectSync) and conditionally writes status+end_date. Throws on error. */
-  syncProjectCompleted(projectId: string): Promise<"updated" | "already_completed" | "protected">;
+  /** READ-ONLY: the linked project's status (never written by this flow). Throws on error / a missing project. */
+  readProjectStatus(projectId: string): Promise<string>;
   /** INSERT-first: exactly one caller per key wins while the row exists. The row is the marker. */
   claimFinalFilesRequest(key: string, value: FinalFilesRequestValue): Promise<"won" | "lost" | "error">;
   pushAllowed(): boolean;
@@ -380,7 +384,7 @@ export async function processStevenCompletion(
     await ownerSafe(buildOwnerProjectSyncFailedPush(work.id, name));
   }
 
-  // 1 + 2. Project-linked: is this the last open Steven work, and if so sync the project.
+  // 1 + 2. Project-linked: is this the last open Steven work, and if so read the project for the Owner's suggestion.
   if (work.projectId) {
     let others: { status: string | null }[];
     try {
@@ -399,9 +403,10 @@ export async function processStevenCompletion(
       return out;
     }
     try {
-      out.projectSync = await deps.syncProjectCompleted(work.projectId);
+      const d = decideProjectSync(await deps.readProjectStatus(work.projectId));
+      out.projectSync = d === "sync" ? "suggested" : d; // a suggestion for the Owner — never an automatic write
     } catch (e) {
-      await reportSyncFailure("projects update", e);
+      await reportSyncFailure("project read", e);
       // Deliberately continues: the work IS done, so Steven is still asked for final files.
     }
   }

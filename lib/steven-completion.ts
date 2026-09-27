@@ -4,9 +4,6 @@ import { supabase } from "@/lib/supabase";
 import { sendPushToRoles } from "@/lib/push";
 import { STEVEN_ENGINEER } from "@/lib/steven-scope";
 import {
-  PROJECT_COMPLETED_STATUS,
-  PROJECT_PROTECTED_STATUSES,
-  decideProjectSync,
   processStevenCompletion,
   releaseStevenFinalFilesRequest,
   type StevenCompletionDeps,
@@ -32,7 +29,8 @@ import {
  * Steven work on that project becomes open again (or a new open one is created),
  * which is what makes a genuine re-completion a new cycle.
  *
- * Deliberately NOT done here: no Victor sync/push, no delivery-folder dialog
+ * Deliberately NOT done here: NO project status write (engineer completion only SUGGESTS completing the project —
+ * the Owner decides, Owner decision 2026-09-27), no Victor sync/push, no delivery-folder dialog
  * (those belong to the manual /projects StatusDropdown), no Projects → Steven
  * direction, no agent_alerts.
  */
@@ -54,38 +52,13 @@ const realDeps: StevenCompletionDeps = {
     return (data ?? []) as { status: string | null }[];
   },
 
-  async syncProjectCompleted(projectId) {
-    const readStatus = async (): Promise<string> => {
-      const { data, error } = await supabase.from("projects").select("status").eq("id", projectId).maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) throw new Error("linked project not found"); // never guess another project
-      return data.status as string;
-    };
-
-    const before = decideProjectSync(await readStatus());
-    if (before !== "sync") return before;
-
-    // Same values the Projects PATCH route writes when a status becomes "הושלם"
-    // (app/api/projects/[id]/route.ts): status + end_date = today (UTC date, the
-    // same expression) + updated_at. The status filters make this write atomic —
-    // if the owner changed the project between the read above and this write, it
-    // matches 0 rows instead of overwriting them, and end_date is never moved on a
-    // project that was already completed.
-    const today = new Date().toISOString().split("T")[0];
-    let q = supabase
-      .from("projects")
-      .update({ status: PROJECT_COMPLETED_STATUS, end_date: today, updated_at: new Date().toISOString() })
-      .eq("id", projectId)
-      .neq("status", PROJECT_COMPLETED_STATUS);
-    for (const s of PROJECT_PROTECTED_STATUSES) q = q.neq("status", s);
-    const { data: updated, error } = await q.select("id");
+  async readProjectStatus(projectId) {
+    // READ-ONLY (Owner decision 2026-09-27: engineer completed ≠ project completed). The project is never written by
+    // this flow; an open project comes back to the Owner's UI as the suggestion "suggested".
+    const { data, error } = await supabase.from("projects").select("status").eq("id", projectId).maybeSingle();
     if (error) throw new Error(error.message);
-    if (updated && updated.length > 0) return "updated";
-
-    // Lost a race with a concurrent status change → classify what is there now.
-    const after = decideProjectSync(await readStatus());
-    if (after === "sync") throw new Error("project status update matched no row although the project is still open");
-    return after;
+    if (!data) throw new Error("linked project not found"); // never guess another project
+    return data.status as string;
   },
 
   async claimFinalFilesRequest(key, value) {

@@ -17,15 +17,30 @@ import type { FinanceTxRow } from "../finance/types";
 import { validateTx } from "../finance/core";
 import { projectOperating } from "../sunny/operating";
 import { computeFinalFilesFlags } from "../../steven-completed-pure";
-import { isClosedStatus, hasNewerVersion, COMPLETED_STATUS } from "../../steven-mix-reminder-pure";
+import { isClosedStatus, COMPLETED_STATUS } from "../../steven-mix-reminder-pure";
+import { APP_PAYMENT_RATIO, isEngineerWorkPaid, engineerPayStatus, isLegacyPaidWithoutDate } from "../../mix-payment-pure";
+import { versionGroupKey, versionGroupLabel } from "../../mix-version-group-pure";
+import { engineerHandoff, maxIso } from "./handoff";
+import { presenceFactsOf } from "../../push-presence-pure";
+import { markerStateOf } from "../../push-claims-pure";
+
+/** The "Send to Steven" push marker, stated honestly (sent only after delivery; legacy = unverified; failed says so). */
+function mixReadyPushOf(marker: unknown, settingsRead: boolean): string {
+  const st = markerStateOf(marker);
+  return st === "SENT" ? "SENT (marker)" : st === "FAILED" ? "FAILED (not delivered)" : st === "IN_PROGRESS" ? "IN_PROGRESS"
+    : st === "RECORDED_UNVERIFIED" ? "RECORDED (legacy marker — delivery not verified)" : settingsRead ? "NONE_RECORDED" : "UNKNOWN";
+}
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const days = (a: string | null | undefined, b: string) => (a ? Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a.slice(0, 10)}T12:00:00Z`)) / 86_400_000) : null);
-const maxIso = (xs: Array<string | null | undefined>) => xs.filter((x): x is string => !!x).sort((a, b) => Date.parse(a) - Date.parse(b)).pop() ?? null;
 export const STEVEN = "Steven";
-/** The payment sync's hard-coded working ratio ($ agreed → ₪ recorded) — IMPLEMENTATION_BEHAVIOR, reported as such. */
-export const APP_PAYMENT_RATIO = 3.25;
+/** The retired Steven payment sync's working ratio ($ agreed → ₪ recorded) — code working value, NOT Owner policy.
+ *  Re-exported from the ONE shared module; today it only explains historical ₪ rows and the notes estimate. */
+export { APP_PAYMENT_RATIO };
+/** mix_versions.status values that are a RECORDED version decision (set via PATCH /api/sound-engineer/versions/[id] or
+ *  Sunny UPDATE_MIX_VERSION_STATUS_OR_LABEL). */
+const VERSION_DECISION = new Set(["מאושר", "נדחה"]);
 const MIX_STAGE = new Set(["מחכה למיקס", "במיקס"]);
 const INTENDED_SCOPE = "מיקס / מאסטר";
 
@@ -46,23 +61,10 @@ export function roundNumber(label: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** Owner "Send notes" instants recorded for a work: the active reminder cycle + every cycle start embedded in a reminder claim key. */
-function notesSentInstants(c: Ctx, workId: string): { active: string | null; history: string[] } {
-  const rows = famRows(c, "STEVEN_MIX_REMINDER_STATE");
-  const cycle = rows.find((r) => r.key === `steven_mix_reminder_cycle:${workId}`)?.value as { cycleStartAt?: string } | undefined;
-  const hist = new Set<string>();
-  for (const r of rows) {
-    const m = /^steven_mix_reminder_send:([^:]+):(.+):(\d+)$/.exec(r.key);
-    if (m && m[1] === workId) hist.add(m[2]);
-  }
-  if (cycle?.cycleStartAt) hist.add(cycle.cycleStartAt);
-  return { active: cycle?.cycleStartAt ?? null, history: [...hist].sort() };
-}
-
 function roundsOf(versions: DetailMixVersion[], comments: DetailMixComment[], attachments: ProjectDetailRaw["commentAttachments"]) {
   const byRound = new Map<string, DetailMixVersion[]>();
   for (const v of versions) {
-    const k = `${v.targetId ?? "-"}|${v.label ?? "(no label)"}`;
+    const k = versionGroupKey({ id: v.id, label: v.label, targetId: v.targetId }); // THE shared grouping (same as the Steven page)
     byRound.set(k, [...(byRound.get(k) ?? []), v]);
   }
   const rounds = [...byRound.entries()].map(([k, files]) => {
@@ -72,7 +74,7 @@ function roundsOf(versions: DetailMixVersion[], comments: DetailMixComment[], at
     const att = (attachments?.rows ?? []).filter((a) => a.commentId && csIds.has(a.commentId));
     const uploadedAt = maxIso(files.map((f) => f.createdAt ?? f.uploadedAt));
     return {
-      key: k, label: files[0].label, number: roundNumber(files[0].label), line: files[0].targetId, uploadedAt, files: files.length,
+      key: k, label: versionGroupLabel(files[0].label), number: roundNumber(versionGroupLabel(files[0].label)), line: files[0].targetId, uploadedAt, files: files.length,
       roles: [...new Set(files.map((f) => (/\.(zip|rar|7z)$/i.test(f.fileName ?? "") ? "stems (archive)" : /acapella|vocal/i.test(f.fileName ?? "") ? "acapella" : /instrumental|\binst\b/i.test(f.fileName ?? "") ? "instrumental" : "mix")))],
       versionStatus: [...new Set(files.map((f) => f.status ?? "—"))],
       uploadedByRecorded: [...new Set(files.map((f) => f.uploadedBy ?? "—"))],
@@ -102,33 +104,10 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
   const status = w.status ?? "לא נשלח";
   const closed = isClosedStatus(status);
 
-  // ── handoff evidence ──
-  const lastUpload = latest?.uploadedAt ?? null;
-  const notes = isSteven ? notesSentInstants(c, w.id) : { active: null, history: [] };
-  const lastComment = maxIso(comments.map((x) => x.createdAt));
-  const lastPreMix = maxIso(preMix.map((n) => n.createdAt));
-  const lastFeedback = maxIso([lastComment, lastPreMix, ...notes.history]);
-  const mixReadyMarker = isSteven ? famRows(c, "PUSH_SENT_ONCE_MARKERS").some((r) => r.key === `steven_mix_ready_pushed_${w.id}`) : false;
-  const sendLog = (c.det?.actions?.rows ?? []).filter((a) => a.projectId && a.projectId === w.projectId && (a.recipientRole === "sound_engineer" || (a.recipientName ?? "") === w.engineerName))
-    .map((a) => ({ date: a.actionDate, status: a.status, contentType: a.contentType, recipient: a.recipientName, note: "send evidence only — the status is never updated after the send" }));
-  const feedbackAfterUpload = !!lastFeedback && (!lastUpload || hasNewerVersion(lastUpload, lastFeedback));
-  const uploadAfterFeedback = !!lastUpload && (!lastFeedback || hasNewerVersion(lastFeedback, lastUpload));
-  const sent = status !== "לא נשלח" || mixReadyMarker || sendLog.length > 0 || !!w.sentDate;
-  let state: "COMPLETED" | "CANCELLED" | "WAITING_ON_ENGINEER" | "WAITING_ON_OWNER" | "CONFLICTING_EVIDENCE" | "UNKNOWN";
-  const conflicts: string[] = [];
-  if (closed) state = status === COMPLETED_STATUS ? "COMPLETED" : "CANCELLED";
-  else {
-    if (status === "חזר" && feedbackAfterUpload) conflicts.push("status חזר (returned to the Owner) but Owner feedback is newer than the latest version");
-    if (notes.active && lastUpload && hasNewerVersion(notes.active, lastUpload)) conflicts.push("an active notes-reminder cycle while a newer version is recorded");
-    state = conflicts.length ? "CONFLICTING_EVIDENCE"
-      : feedbackAfterUpload ? "WAITING_ON_ENGINEER"
-      : uploadAfterFeedback ? "WAITING_ON_OWNER"
-      : sent ? "WAITING_ON_ENGINEER" : "UNKNOWN";
-  }
-  const basis = closed ? `status ${status}` : conflicts.length ? conflicts.join("; ")
-    : feedbackAfterUpload ? (lastUpload ? "Owner feedback after the latest version" : "Owner feedback, no version yet")
-    : uploadAfterFeedback ? "a version after the latest Owner feedback (a review is not recorded)"
-    : sent ? "sent to the engineer, nothing uploaded yet" : "no version, no feedback, no send evidence";
+  // ── handoff evidence (THE shared rule, lib/partner/mix/handoff — also the operating model's ball) ──
+  const ho = engineerHandoff(src, { id: w.id, projectId: w.projectId, engineerName: w.engineerName, status, sentDate: w.sentDate ?? null });
+  const { state, basis, lastComment, lastPreMix, lastFeedback, notes, sendLog, feedbackAfterUpload } = ho;
+  const lastUpload = latest?.uploadedAt ?? ho.lastUpload;
 
   // ── final files (the app's own rule) ──
   const finalRows = (c.det?.finalFiles?.rows ?? []);
@@ -138,9 +117,10 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
   const ownFinals = finalRows.filter((f) => f.workId === w.id);
   const projectFinals = w.projectId ? finalRows.filter((f) => f.projectId === w.projectId) : ownFinals;
 
-  // ── money (the app's paid rule; the payment sync's fixed ratio) ──
+  // ── money (THE shared paid rule, lib/mix-payment-pure; the retired sync's ratio only explains historical ₪ rows) ──
   const agreed = w.agreedPrice ?? 0, paid = w.amountPaid ?? 0, currency = w.currency ?? "$";
-  const paidByWork = agreed > 0 && paid >= agreed && !!w.paymentDate;
+  const paidByWork = isEngineerWorkPaid({ agreedPrice: agreed, amountPaid: paid, paymentDate: w.paymentDate ?? null });
+  const legacyPaidNoDate = isLegacyPaidWithoutDate({ agreedPrice: agreed, amountPaid: paid, paymentDate: w.paymentDate ?? null });
   const tx = w.linkedTransactionId ? (c.txs ?? []).find((t) => t.id === w.linkedTransactionId) ?? null : null;
   const txv = tx ? validateTx(tx) : null;
   const moneyConflicts: string[] = [];
@@ -148,9 +128,10 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
   if (tx && tx.type === "expense" && tx.status === "התקבל") moneyConflicts.push("expense status התקבל is income-only — invalid for an engineer expense, never paid");
   if (paidByWork && c.txs && !tx) moneyConflicts.push("the work is paid but no expense is linked");
   if (paidByWork && txv && !txv.received) moneyConflicts.push(`the work is paid but its expense is ${tx!.status}`);
-  if (!paidByWork && txv?.received) moneyConflicts.push("the expense is שולם but the work is not paid");
+  if (!paidByWork && txv?.received) moneyConflicts.push(`the expense is שולם but the work is not paid by the rule${legacyPaidNoDate ? " (full amount recorded, no payment date)" : ""}`);
   const ratioExpected = txv && txv.currency !== currency && currency === "$" && txv.currency === "₪" ? Math.round(agreed * APP_PAYMENT_RATIO * 100) / 100 : null;
-  if (ratioExpected !== null && txv && Math.abs(txv.amount - ratioExpected) > 0.01) moneyConflicts.push(`recorded ₪${txv.amount} ≠ the app's fixed-ratio amount ₪${ratioExpected}`);
+  if (ratioExpected !== null && txv && Math.abs(txv.amount - ratioExpected) > 0.01) moneyConflicts.push(`historical ₪ row: recorded ₪${txv.amount} ≠ the retired sync's fixed-ratio amount ₪${ratioExpected}`);
+  const latestVersionDecision = latest ? latest.versionStatus.filter((x) => VERSION_DECISION.has(x)) : [];
   const scopeGeneral = !!tx && tx.expenseScope === "כללי";
 
   const release = w.projectId ? (c.st?.domains.releasesFull.data?.items ?? []).find((r) => r.projectId === w.projectId) ?? null : null;
@@ -169,21 +150,25 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
     clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the CLIENT / project commitment — separate from the engineer's internal deadline" } : null,
     internalDeadline: w.internalDeadline ? { date: w.internalDeadline, passed: deadlinePassed, daysOver: deadlinePassed ? days(w.internalDeadline, c.today) : null, meaning: "the engineer's INTERNAL expectation — not a client commitment; passed = investigate, never blame", debt: deadlinePassed && (days(w.internalDeadline, c.today) ?? 0) > 30 ? "HISTORICAL (recorded old state, not an emergency)" : null } : null,
     handoff: { state, basis, lastUploadAt: lastUpload, lastOwnerCommentAt: lastComment, lastPreMixNoteAt: lastPreMix, notesSent: { activeCycleSince: notes.active, recorded: notes.history, note: "recorded only while a reminder cycle is active or reached a reminder" }, lastOwnerFeedbackAt: lastFeedback,
-      daysSinceLastUpload: days(lastUpload, c.today), daysSinceLastFeedback: days(lastFeedback, c.today), sentEvidence: { mixReadyPush: isSteven ? (mixReadyMarker ? "SENT (marker)" : c.settings ? "NONE_RECORDED" : "UNKNOWN") : "n/a (Steven only)", sendLog },
+      daysSinceLastUpload: days(lastUpload, c.today), daysSinceLastFeedback: days(lastFeedback, c.today), sentEvidence: { mixReadyPush: isSteven ? mixReadyPushOf(famRows(c, "PUSH_SENT_ONCE_MARKERS").find((r) => r.key === `steven_mix_ready_pushed_${w.id}`)?.value, !!c.settings) : "n/a (Steven only)", sendLog },
       caveats: ["versions uploaded by the Owner are recorded as the engineer's", "a comment resolve records no who / when", "outside communication (WhatsApp / phone / email) is invisible"] },
     versions: { files: versions.length, rounds: rounds.length, latest: latest ? { label: latest.label, number: latest.number, uploadedAt: latest.uploadedAt, files: latest.files, roles: latest.roles, line: latest.line } : null,
-      versionStatusNote: "the version status is never set (בבדיקה) — not an approval", byRound: rounds.map(({ commentItems: _ci, ...r }) => r) },
+      latestVersionStatus: latest ? latest.versionStatus : [],
+      versionStatusNote: "mix_versions.status (בבדיקה / מוכן / מאושר / נדחה) is a RECORDED version decision when set to מאושר / נדחה (route PATCH /api/sound-engineer/versions/[id] or Sunny UPDATE_MIX_VERSION_STATUS_OR_LABEL); it is not the work status and not payment", byRound: rounds.map(({ commentItems: _ci, ...r }) => r) },
     comments: { total: comments.length, open: openComments.length, resolved: comments.length - openComments.length, openOnLatestRound: openOnLatest, openOnOlderRounds: openComments.length - openOnLatest,
       latestFeedbackAfterLatestVersion: feedbackAfterUpload, attachments: rounds.reduce((n, r) => n + r.attachments.total, 0), note: "a newer version does not resolve comments; resolved = marked done (no who / when)" },
     rounds, riddim: lines.length ? { lines: lines.map((t) => ({ kind: t.kind, name: t.displayName, removed: !!t.removedAt })), preMixNotes: preMix.length, openPreMixNotes: preMix.filter((n) => n.status !== "resolved").length } : null,
     finalFiles: { own: ownFinals.length, project: projectFinals.length, latestAt: maxIso(projectFinals.map((f) => f.createdAt)), types: [...new Set(projectFinals.map((f) => f.fileType ?? "—"))],
       requested: flags.finalFilesRequested.has(w.id), satisfiedAfterRequest: flags.finalFilesRequested.has(w.id) ? flags.hasCurrentFinalFiles.has(w.id) : null, note: "per project; no mix / master type recorded; not the client delivery" },
-    completion: { completed: status === COMPLETED_STATUS, approvalRecord: "NOT_RECORDED (no approval concept — אושר is the completed status)", finalFilesEvidence: projectFinals.length > 0, paid: paidByWork, note: "completed, approved, final files and paid are four separate facts" },
+    completion: { completed: status === COMPLETED_STATUS, approvalRecord: latestVersionDecision.length ? `VERSION_STATUS_RECORDED: the latest version is ${latestVersionDecision.join(" / ")} (FACT of a recorded version status — not the work status)` : "NOT_RECORDED (no version decision on the latest version; the work status אושר means completed, not approved)",
+      approvalEpistemic: latestVersionDecision.length ? "FACT" : "UNKNOWN", finalFilesEvidence: projectFinals.length > 0, paid: paidByWork, note: "completed, approved, final files and paid are four separate facts" },
     money: { agreed, currency, amountPaid: paid, balance: Math.max(0, agreed - paid), paymentDate: w.paymentDate ?? null, paid: paidByWork, priceRecorded: agreed > 0,
-      payStatus: agreed <= 0 ? "NO_PRICE" : paidByWork ? "שולם" : paid > 0 ? "חלקי" : "לא שולם",
-      expense: tx ? { status: tx.status, amount: txv?.amount ?? null, currency: txv?.currency ?? tx.currency, date: tx.date, category: tx.category, expenseScope: tx.expenseScope, validPaid: !!txv?.received, shape: txv && txv.currency !== currency ? `payment-sync shape (${currency} → ${txv.currency} at the app's fixed ${APP_PAYMENT_RATIO})` : "price-sync shape (work currency)" } : null,
+      payStatus: agreed <= 0 ? "NO_PRICE" : engineerPayStatus({ agreedPrice: agreed, amountPaid: paid, paymentDate: w.paymentDate ?? null }),
+      legacyPaidWithoutDate: legacyPaidNoDate,
+      sourceAgreement: !tx ? (w.linkedTransactionId && !c.txs ? "UNKNOWN" : moneyConflicts.length ? "CONFLICTING_SOURCES" : "NO_EXPENSE") : moneyConflicts.length ? "CONFLICTING_SOURCES" : "AGREE",
+      expense: tx ? { status: tx.status, amount: txv?.amount ?? null, currency: txv?.currency ?? tx.currency, date: tx.date, category: tx.category, expenseScope: tx.expenseScope, validPaid: !!txv?.received, shape: txv && txv.currency !== currency ? `historical payment-sync shape (${currency} → ${txv.currency} at the retired sync's working ratio ${APP_PAYMENT_RATIO}; kept untouched)` : "work-currency shape (the one writer)" } : null,
       expenseLink: w.linkedTransactionId ? (tx ? "LINKED" : c.txs ? "DANGLING" : "UNKNOWN") : "NONE", conflicts: moneyConflicts, expenseScopeGeneral: scopeGeneral,
-      note: "never add $ and ₪; the app records Steven's payment in ₪ by a hard-coded working ratio (not Owner policy)" },
+      note: "never add $ and ₪; since 2026-09-27 the one writer records every payment in the WORK currency (no silent 3.25 conversion); older Steven rows in ₪ are historical and untouched; a שולם expense is never overwritten" },
     release: release ? { stage: release.stage, target: release.targetYmd, releasedAt: release.releasedAt ?? null, note: "context only — no mix-readiness policy exists" } : null,
     victor, tasks, notesOwnerInternal: w.notes, hasFilesLink: w.hasFilesLink,
   };
@@ -229,8 +214,8 @@ export function buildMixView(src: GatewaySources) {
   if (unpaidDone.length) questions.push({ kind: "PAYMENT", questionHe: `${unpaidDone.length} עבודות מיקס שהושלמו לא סומנו כשולמו (${unpaidDone.map((w) => `${w.title} ${w.money.currency}${w.money.agreed}`).join(", ")}) — שולמו מחוץ למערכת?`, why: "completed + priced + not paid; no expense recorded" });
   if (orphanExpenses.length) questions.push({ kind: "FINANCE", questionHe: `${orphanExpenses.length} הוצאות מיקס לא מקושרות לשום עבודה — לשייך או שהן שאריות?`, why: "never fuzzy-linked by Sunny" });
   const presence = famRows(c, "PORTAL_PRESENCE");
-  const visit = presence.find((r) => r.key === "steven_visit_last")?.value as { at?: string } | undefined;
-  const login = presence.find((r) => r.key === "steven_login_seen")?.value as { at?: string } | undefined;
+  const pres = presenceFactsOf(presence, "steven");
+  const legacyVisit = presence.find((r) => r.key === "steven_visit_last")?.value as { at?: string } | undefined;
   const digests = famRows(c, "STEVEN_DEADLINE_DIGEST_SENT").map((r) => r.key.split(":")[1]).filter(Boolean).sort();
   const byEngineer: Record<string, number> = {};
   for (const w of works) byEngineer[w.engineer] = (byEngineer[w.engineer] ?? 0) + 1;
@@ -247,8 +232,8 @@ export function buildMixView(src: GatewaySources) {
       internalDeadlinesPassed: open.filter((w) => w.internalDeadline?.passed).length, openComments: works.reduce((n, w) => n + w.comments.open, 0), completedWithOpenComments: works.filter((w) => w.status === COMPLETED_STATUS && w.comments.open).length,
       completedWithoutFinalFiles: works.filter((w) => w.status === COMPLETED_STATUS && !w.finalFiles.project).length, completedUnpaid: unpaidDone.length, mixStageWithoutEngineer: mixStageNoEngineer.length,
       note: "recorded counts — no capacity limit, no ranking, no performance score" },
-    money: { paidByCurrency, owedByCurrency, orphanExpenses, rule: "paid = agreed > 0 AND paid ≥ agreed AND a payment date (the app's rule); currencies never added", ratio: `the payment sync records $ × ${APP_PAYMENT_RATIO} in ₪ (hard-coded working value, not Owner policy)`, paypal: "the ×1.05 PayPal gross is a note only; no fee policy is stored" },
-    steven: { works: steven.length, open: steven.filter((w) => !isClosedStatus(w.status)).length, presence: { lastVisit: visit?.at ?? null, lastLoginSeen: login?.at ?? null, state: visit || login ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity only — not work done, not a mix heard, not a comment handled" }, digestsSent: { count: digests.length, last: digests.at(-1) ?? null } },
+    money: { paidByCurrency, owedByCurrency, orphanExpenses, rule: "paid = agreed > 0 AND paid ≥ agreed AND a payment date (the app's rule); currencies never added", ratio: `historical only: the retired Steven sync recorded $ × ${APP_PAYMENT_RATIO} in ₪ (working value, not Owner policy); new expenses are in the work currency, the ₪ figure is a notes estimate`, paypal: "the ×1.05 PayPal gross is a note only; no fee policy is stored" },
+    steven: { works: steven.length, open: steven.filter((w) => !isClosedStatus(w.status)).length, presence: { lastVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity only — not work done, not a mix heard, not a comment handled. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" }, digestsSent: { count: digests.length, last: digests.at(-1) ?? null } },
     works, mixStageNoEngineer, victorDoneNoMix, signals, questions,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (engineer works, versions, comments, final files) was not read — unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (notes-sent cycles, markers, presence)"]), ...(c.txs ? [] : ["FINANCE (expenses)"]), "storage itself is not listed — a missing file record ≠ a missing file"],
   };
