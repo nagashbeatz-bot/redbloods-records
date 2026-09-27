@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listContentItems, createContentItem } from "@/lib/social-store";
+import { listContentItems } from "@/lib/social-store";
+import { createSocialContent, SocialInputError } from "@/lib/writes/social";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,9 +17,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const item = await createContentItem(body);
+    const item = await createSocialContent(body); // shared writer — validated fields only
     return NextResponse.json({ item });
   } catch (e) {
+    if (e instanceof SocialInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     console.error("[social/content] POST error:", e);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

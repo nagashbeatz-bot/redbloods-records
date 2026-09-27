@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { buildActionTargets, NON_KEY_TARGETS, RESOLVE_KINDS, TARGET_KINDS } from "../lib/partner/act/targets";
 import { parseKey } from "../lib/partner/act/primitives/core";
+import { inspectText } from "../lib/partner/act/persist";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
 import { DOMAIN_CONTRACTS } from "../lib/partner/system/registry";
 import type { GatewaySources } from "../lib/partner/gateway/core";
@@ -32,6 +33,7 @@ const listed = new Set([...Object.values(TARGET_KINDS).flat(), ...RESOLVE_KINDS,
 const unaddressable = [...parsed].filter((k) => !listed.has(k));
 ok(`A1. all ${parsed.size} key kinds used by primitives are addressable`, parsed.size > 25 && unaddressable.length === 0, unaddressable);
 ok("A2. every listed child kind is really used by a primitive (no dead listing)", [...new Set(Object.values(TARGET_KINDS).flat())].every((k) => parsed.has(k)), [...new Set(Object.values(TARGET_KINDS).flat())].filter((k) => !parsed.has(k)));
+ok("A4. every key kind survives the act input guard (no kind reads as a URL scheme / path — e.g. 'file:')", [...parsed].every((k) => inspectText(`${k}:${U(1)}`, "k").length === 0), [...parsed].filter((k) => inspectText(`${k}:${U(1)}`, "k").length));
 ok("A3. partner_resolve really indexes the RESOLVE_KINDS", RESOLVE_KINDS.every((k) => fs.readFileSync(path.join(ROOT, "lib/partner/gateway/resolve.ts"), "utf8").includes(`key: \`${k}:`)));
 
 console.log("\nB. Sources → keys the primitives accept");

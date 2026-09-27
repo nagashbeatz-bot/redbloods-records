@@ -244,7 +244,8 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     const s = plan([step(0, "T.SEC", "a", "x")]);
     ok("22. a security-sensitive action is never delegated", validatePlan(s, REG).some((x) => x.code === "NOT_DELEGATED"));
     // CALENDAR.DISCONNECT is an Owner operation (typed DISCONNECT_GOOGLE_CALENDAR, C3; the token is never read) — not a credential flow.
-    ok("22b. every real security contract is excluded", ["CALENDAR.CONNECT", "FILES.DISCONNECT_DROPBOX", "SUNNY.CONNECTOR_OAUTH", "NOTIFY.PUSH_SUBSCRIBE", "NOTIFY.PUSH_CHECK", "SYSTEM.MAINTENANCE"].every((id) => ACTION_REGISTRY.get(id)?.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
+    ok("22b. every real credential / device-authentication contract is excluded", ["CALENDAR.CONNECT", "SUNNY.CONNECTOR_OAUTH", "NOTIFY.PUSH_SUBSCRIBE", "NOTIFY.PUSH_CHECK"].every((id) => ACTION_REGISTRY.get(id)?.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
+    ok("22c. re-reviewed: disconnecting Dropbox and the maintenance lock are Owner operations — typed C3 primitives, never a credential in a plan", ["FILES.DISCONNECT_DROPBOX", "SYSTEM.MAINTENANCE"].every((id) => ACTION_REGISTRY.get(id)?.availabilityDetail === "EXECUTABLE") && ["DISCONNECT_DROPBOX", "SET_MAINTENANCE_MODE"].every((id) => ACTION_REGISTRY.get(id)?.confirmation === "C3_STRONG_APPROVAL"));
     world.a = "1"; const a = plan([step(0, "T.A", "a", "13")]); const ad = deps({ "T.A": exec("a") });
     ok("24. without an approval token nothing executes", (await run(a, "", ad.d)).status === "REFUSED" && world.a === "1");
     const pay = plan([step(0, "T.PAY", "a", "500")]); const pd = deps({ "T.PAY": exec("a") });

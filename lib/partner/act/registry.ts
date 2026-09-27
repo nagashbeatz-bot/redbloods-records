@@ -48,9 +48,7 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 // ── classification inputs (discovered 2026-09-26/27; NOT fixed here — Wave 0 classifies, a hardening mission fixes) ──
 /** Known unsafe / non-atomic behaviour: the action must be hardened before Sunny may execute it. */
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
-  "PROJECT.DELIVERY": "whole-body write of the delivery record",
   "PROJECT.ALBUM_SETTINGS": "whole-body write of the album finance / previous-system settings",
-  "PROJECT.SOCIAL": "whole-body writes of campaigns / content",
   "RF.REFERENCES": "reference links are written as a whole body",
   "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
   "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
@@ -77,6 +75,12 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "RF.PROMOTE_CLIP_ROW": "same claim-first promotion (lib/writes/redfilms promoteClipItem)",
   "RF.CANCEL_PRODUCTION": "the production is saved first and only then are its future tasks / Google Tasks cancelled (lib/writes/redfilms updateProduction; the route uses it)",
   "PROJECT.SEND_LOG_DELETE": "the drawer's cascade runs on the server (lib/writes/worklog deleteSendLogEntryWithCascade): engineer send → deleteEngineerWorkClean; Victor send → removeVictorWork (task first); then the entry — no half-delete when the browser closes",
+  "PROJECT.DELIVERY": "the status write changes ONLY deliveryStatus + deliveredAt (validated) merged into the record — the whole-body merge that could overwrite the folder / link is gone; create checks its settings write (lib/writes/delivery; the route uses it)",
+  "PROJECT.SOCIAL": "campaign / content POST + PATCH accept only the fields the screens edit, validated against the app's vocabularies (lib/writes/social; the routes use it) — the whole-body writes are gone; a content delete reports storage failures instead of hiding them",
+  "AGENT.UPDATE_GOALS": "only the four known goals with a validated shape are written, all checked before any write; a failed write is an error (lib/writes/system; the route uses it) — the route used to turn any body key into a goal_<key> settings row",
+  "AGENT.MARK_ALERT_HANDLED": "a failed alert-status write is an error (it used to be ignored); the kill-switch rule is reused unchanged",
+  "SYSTEM.MAINTENANCE": "a failed maintenance write is an error (it used to be silently ignored)",
+  "NOTIFY.MARK_READ": "a recipient-bound writer for the Owner's own rows (OWNER_EMAILS user ids, never the recipient_role echo)",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {
@@ -210,7 +214,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "CALENDAR.SYNC_COMPLETED_TASKS", domain: "CALENDAR", en: "Sync completed Google Tasks back into Redbloods", routes: ["app/api/calendar/tasks/sync/route.ts"], detail: "SYSTEM_AUTOMATIC", reason: "page-load / background sync" },
   // Dropbox
   { id: "FILES.FOLDER_LINK", domain: "FILES", en: "Create / return a folder share link", routes: ["app/api/dropbox/folder-link/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "public links are a Wave 5 file primitive", effects: ["EXTERNAL_LINK"] },
-  { id: "FILES.DISCONNECT_DROPBOX", domain: "FILES", en: "Disconnect Dropbox (revoke token)", routes: ["app/api/dropbox/status/route.ts"], detail: "SECURITY_EXCLUDED", reason: "credentials — never Sunny", security: true },
+  { id: "FILES.DISCONNECT_DROPBOX", domain: "FILES", en: "Disconnect Dropbox (revoke token)", routes: ["app/api/dropbox/status/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "re-reviewed 2026-09-27: an Owner operation on an integration, not a credential flow — a typed C3 primitive (the token is never read into a plan or exposed; reconnecting stays the Boss's own consent)", effects: ["SETTINGS", "FILES"], approvalClass: "DESTRUCTIVE", reversible: "NO" },
   { id: "FILES.BACKFILL_PROJECT_FOLDERS", domain: "FILES", en: "Backfill project Dropbox folder paths (GET that writes)", routes: ["app/api/projects/backfill-dropbox-folder/route.ts"], detail: "LEGACY_NOT_EXPOSED", reason: "one-off backfill with no screen", approvalClass: "BULK" },
   // label artist portal (Owner-side writes on an artist's portal)
   { id: "LABEL.PORTAL_PING", domain: "LABEL", en: "Artist portal presence ping", routes: ["app/api/label/artists/[id]/ping/route.ts", "app/api/red-artists/ping/route.ts", "app/api/red-artists/cleantone/ping/route.ts"], detail: "SYSTEM_AUTOMATIC", reason: "presence heartbeat from the portal" },
@@ -221,7 +225,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "LABEL.SKETCH_DELETE", domain: "LABEL", en: "Delete a sketch", routes: ["app/api/label/artists/[id]/sketches/[sketchId]/route.ts#DELETE"], detail: "NEEDS_PRIMITIVE", reason: "destructive file primitive (Wave 7)", effects: ["FILES", "DELETION"] },
   { id: "LABEL.ARTIST_SKETCH_SELF_EDIT", domain: "LABEL", en: "The artist edits / versions / reorders / deletes their own sketches", routes: ["app/api/red-artists/sketches/[id]/duration/route.ts", "app/api/red-artists/sketches/[id]/route.ts", "app/api/red-artists/sketches/[id]/version/route.ts", "app/api/red-artists/sketches/reorder/route.ts", "app/api/red-artists/next-work/route.ts"], detail: "OTHER_USER_PORTAL_ONLY", reason: "the artist's own portal action" },
   // maintenance / reports
-  { id: "SYSTEM.MAINTENANCE", domain: "SYSTEM", en: "Maintenance mode / system maintenance", routes: ["app/api/maintenance/route.ts"], detail: "SECURITY_EXCLUDED", reason: "system operation — the Boss only", security: true },
+  { id: "SYSTEM.MAINTENANCE", domain: "SYSTEM", en: "Maintenance mode / system maintenance", routes: ["app/api/maintenance/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "re-reviewed 2026-09-27: the Owner's maintenance lock — a typed C3 BULK primitive (who is locked out is previewed); users, roles and passwords stay excluded", effects: ["SETTINGS"], approvalClass: "BULK", reversible: "YES" },
   { id: "REPORTS.UPDATE_CONFIG", domain: "REPORTS", en: "Edit report schedule / recipients", routes: ["app/api/reports/config/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "settings primitive; changes who receives email", effects: ["SETTINGS"] },
   { id: "REPORTS.SEND", domain: "REPORTS", en: "Send the morning / evening / weekly report email", routes: ["app/api/reports/morning/route.ts", "app/api/reports/evening/route.ts", "app/api/reports/weekly/route.ts"], detail: "SYSTEM_AUTOMATIC", reason: "scheduled; Sunny's morning brief is produced on request, never emailed", effects: ["EMAIL"] },
   // Sunny connector / OAuth / MCP (security)

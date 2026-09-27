@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { getMaintenance, setMaintenance } from "@/lib/maintenance";
+import { getMaintenance } from "@/lib/maintenance";
+import { setMaintenanceChecked } from "@/lib/writes/system";
 
 /**
  * Maintenance lock — owner only.
@@ -18,6 +19,6 @@ export async function POST(req: Request) {
   const denied = await requireOwner(); if (denied) return denied;
   let enabled = false;
   try { enabled = !!(await req.json())?.enabled; } catch { /* default false */ }
-  await setMaintenance(enabled);
+  await setMaintenanceChecked(enabled); // shared writer — a failed write is an error
   return NextResponse.json({ ok: true, enabled });
 }

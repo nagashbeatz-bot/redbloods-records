@@ -173,6 +173,23 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "PROJECT.SEND_LOG_DELETE": { by: ["DELETE_SEND_LOG_ENTRY"], full: true },
   "PROJECT.ALBUM_TRACKS": { by: ["ADD_ALBUM_TRACK", "UPDATE_ALBUM_TRACK", "DELETE_ALBUM_TRACK", "MOVE_ALBUM_TRACK"], full: true },
   "UPDATE_ALBUM_TRACK": { by: ["UPDATE_ALBUM_TRACK"], full: true },
+  // ── Client delivery ──
+  "PROJECT.DELIVERY": { by: ["CREATE_DELIVERY_FOLDER", "SET_DELIVERY_STATUS"], full: false, remaining: "uploading files into the Delivery folder needs a new file's bytes (upload) — the file channel" },
+  "PROJECT.DELETE_DELIVERY": { by: ["DELETE_DELIVERY_FOLDER"], full: true },
+  // ── Social ──
+  "PROJECT.SOCIAL": { by: ["CREATE_SOCIAL_CAMPAIGN", "UPDATE_SOCIAL_CAMPAIGN", "DELETE_SOCIAL_CAMPAIGN", "ADD_SOCIAL_CONTENT", "UPDATE_SOCIAL_CONTENT", "DELETE_SOCIAL_CONTENT"], full: false, remaining: "uploading a content file needs a new file's bytes (upload) — the file channel; the asset / storage / posted link fields are URL values — plans never persist URL values by design (Boss decision)" },
+  "UPDATE_SOCIAL_CONTENT": { by: ["UPDATE_SOCIAL_CONTENT"], full: true },
+  "SOCIAL.PROMOTIONS": { by: ["ADD_PROMOTION", "UPDATE_PROMOTION", "SET_PROMOTION_ACTUAL_SPEND", "DELETE_PROMOTION"], full: true },
+  "SOCIAL.DELETE_FILE": { by: ["DELETE_SOCIAL_FILE"], full: true },
+  // ── Owner company-level operations ──
+  "NOTIFY.MARK_READ": { by: ["MARK_NOTIFICATIONS_READ"], full: true },
+  "NOTIFY.MARK_ALL_READ": { by: ["MARK_ALL_NOTIFICATIONS_READ"], full: true },
+  "AGENT.UPDATE_GOALS": { by: ["SET_BUSINESS_GOAL"], full: true },
+  "AGENT.MARK_ALERT_HANDLED": { by: ["MARK_AGENT_ALERT_HANDLED"], full: true },
+  "REPORTS.UPDATE_CONFIG": { by: ["SET_REPORT_SCHEDULE"], full: true },
+  "REPORTS.SEND": { by: ["SEND_REPORT_NOW"], full: true },
+  "FILES.DISCONNECT_DROPBOX": { by: ["DISCONNECT_DROPBOX"], full: true },
+  "SYSTEM.MAINTENANCE": { by: ["SET_MAINTENANCE_MODE"], full: true },
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every
@@ -346,6 +363,28 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   UPDATE_ALBUM_TRACK: "ALBUMS",
   DELETE_ALBUM_TRACK: "ALBUMS",
   MOVE_ALBUM_TRACK: "ALBUMS",
+  CREATE_DELIVERY_FOLDER: "DELIVERY",
+  SET_DELIVERY_STATUS: "DELIVERY",
+  DELETE_DELIVERY_FOLDER: "DELIVERY",
+  CREATE_SOCIAL_CAMPAIGN: "SOCIAL",
+  UPDATE_SOCIAL_CAMPAIGN: "SOCIAL",
+  DELETE_SOCIAL_CAMPAIGN: "SOCIAL",
+  ADD_SOCIAL_CONTENT: "SOCIAL",
+  UPDATE_SOCIAL_CONTENT: "SOCIAL",
+  DELETE_SOCIAL_CONTENT: "SOCIAL",
+  DELETE_SOCIAL_FILE: "SOCIAL",
+  ADD_PROMOTION: "SOCIAL",
+  UPDATE_PROMOTION: "SOCIAL",
+  SET_PROMOTION_ACTUAL_SPEND: "SOCIAL",
+  DELETE_PROMOTION: "SOCIAL",
+  MARK_NOTIFICATIONS_READ: "PUSH_NOTIFICATIONS",
+  MARK_ALL_NOTIFICATIONS_READ: "PUSH_NOTIFICATIONS",
+  SET_BUSINESS_GOAL: "AGENT_ALERTS",
+  MARK_AGENT_ALERT_HANDLED: "AGENT_ALERTS",
+  SET_REPORT_SCHEDULE: "REPORTS",
+  SEND_REPORT_NOW: "REPORTS",
+  DISCONNECT_DROPBOX: "FILES_DROPBOX",
+  SET_MAINTENANCE_MODE: "PLATFORM_ACCESS",
 };
 
 /** The business-action taxonomy (lib/partner/system BUSINESS_ACTIONS) → the primitives that execute it through

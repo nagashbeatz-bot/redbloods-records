@@ -9,8 +9,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "28576648a2ade959bd2f78d59f5de0dadef6d9ef1032ff13ed8f6ba85b367ddd",
-  "effects": [],
+  "sha256": "d2422fbd7f207e1905211c59e012f7d195b135d4157ac9389e1065a003a0bd11",
+  "effects": [
+   "DELETION",
+   "EMAIL",
+   "SETTINGS"
+  ],
   "fields": [
    "status"
   ]
@@ -51,9 +55,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "d5346a0bac61c879d65e4f3dfae9f2c9138e2f26612c277da7b6d87e5053fa8b",
+  "sha256": "fab16b6c74dea558fa7ad405ce893408d70aef92922d4198d5ef25952cd9cd59",
   "effects": [
    "DELETION",
+   "EMAIL",
    "SETTINGS"
   ],
   "fields": []
@@ -554,7 +559,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "8b3bae8e3694bb8c6c9e87accc84ff443708cc492ba86fe28018b50585fc2eea",
+  "sha256": "60989529fcb46fbe7ea7f6f94a9b4b1948c51fe8594aa29c112df1aab9b2616e",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
@@ -562,6 +567,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "SETTINGS"
   ],
   "fields": [
+   "deliveredAt",
+   "deliveryStatus",
    "projectId",
    "updates"
   ]
@@ -638,9 +645,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETE"
   ],
   "getWrites": false,
-  "sha256": "76ae917f56c4c9282c202f0e1fccf641b4110c203b506fca8f00d50785b6acf3",
+  "sha256": "ba316bb15b22f65bfc0e8b279764fa55edd6291e538ccd23e1d6e4b7023f2c6f",
   "effects": [
    "DELETION",
+   "EMAIL",
    "SETTINGS"
   ],
   "fields": []
@@ -1177,8 +1185,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "82c2b612e28439ef07c225ae58ec4fb73f67703fa697345d1798fbf937dbe430",
+  "sha256": "65d15ee1f874f4cd3bf1f2ec8bbe867722346d53608d90d6a82b71632a1a2a76",
   "effects": [
+   "DELETION",
+   "EMAIL",
    "SETTINGS"
   ],
   "fields": []
@@ -1424,6 +1434,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "CALENDAR",
    "DELETION",
+   "EMAIL",
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
@@ -2575,8 +2586,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PUT"
   ],
   "getWrites": false,
-  "sha256": "389e720e6df602527f89ed382fcfb8cda210abf9f1c52f716d56573e28af04a0",
+  "sha256": "335adcbee081b405d3bf3a17f1e7091346eb4f0d1b371d5122ffded1faf5e65f",
   "effects": [
+   "DELETION",
+   "EMAIL",
    "SETTINGS"
   ],
   "fields": [
@@ -2589,7 +2602,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7daa37e67e563abb5d8997b9a2b5e51e3ee57ebead0aed4daf307b5519340bc6",
+  "sha256": "47979ec59bff62c61a02525f9cacf042329ca5d405eea20a2e4f31282a9d029f",
   "effects": [
    "DELETION",
    "EMAIL",
@@ -2602,7 +2615,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "6a8e9922e185c00e4a3821a6733ee26a95462e520debdd6151a89ab6811fea52",
+  "sha256": "aea37269685bf50ba74f479e7628c760473523c39aecf842de4c5a862f6a52fb",
   "effects": [
    "DELETION",
    "EMAIL",
@@ -2615,7 +2628,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "799db8052c218db98350c220afefc778c5a01cf4d678ba2acdaca1ea82c93f20",
+  "sha256": "6e99575f60863dbf2bfc59355bb3a0a4ed210ef82d620df1d698a238eb9cf752",
   "effects": [
    "DELETION",
    "EMAIL",
@@ -2884,9 +2897,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "0924c4d58330a70f933f08da9204e2c271934d28bf00a46dd8a54956d4601d1c",
+  "sha256": "d83be6be75d0a772e3e32606cd1ce9e7b929520b843de5afc692b2109324cac1",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE"
   ],
   "fields": []
  },
@@ -2895,9 +2910,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "999aa748ffaf4940467321fe5318f3582db80dec70ecc7c65b57d81ba21693e2",
+  "sha256": "1ecf6dff5f5f85819e339c037b1775af8cd39898b71a47dd0fecace017f863d5",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE"
   ],
   "fields": []
  },
@@ -2907,10 +2924,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "b62de55a75dba9d7577cd9512c7acb236d9348cb29e29f74e923565e3e7643cb",
+  "sha256": "b31aa17ddb325020a6d257cc4ba19da669e26fe01968807cd1df47f955e4a68e",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE"
   ],
   "fields": []
  },
@@ -2919,9 +2937,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "e0597a785bf5114596216f0b307024835c7178fd04033898398c81958115e1e5",
+  "sha256": "3eeccb44981caaad2decc500c480344fa8d03cd53720b105407ea1508a36ad0d",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FILES",
+   "FINANCE"
   ],
   "fields": []
  },
@@ -2930,10 +2950,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETE"
   ],
   "getWrites": false,
-  "sha256": "6d5c9af3d34804db1ee7c97b8cb21dd55658dfd582d1b6228f25a9f2861c2b70",
+  "sha256": "09e2aa1ca304113015577fa7ddbe0f319a283ae1d36310c400166f77d7486d64",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE"
   ],
   "fields": []
  },

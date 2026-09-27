@@ -57,31 +57,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** DELETE /api/dropbox/status — revokes and removes stored tokens */
+/** DELETE /api/dropbox/status — revokes and removes stored tokens (shared writer lib/writes/system) */
 export async function DELETE() {
   const denied = await requireOwner(); if (denied) return denied; // in-route Owner check (the central gate is the first layer)
   try {
-    // Load token to revoke it with Dropbox
-    const { data } = await supabase
-      .from("settings")
-      .select("value")
-      .eq("key", "dropbox_tokens")
-      .maybeSingle();
-
-    const tokens = data?.value as Record<string, unknown> | undefined;
-    const accessToken = tokens?.access_token as string | undefined;
-
-    // Revoke the token via Dropbox API (best-effort)
-    if (accessToken) {
-      await fetch("https://api.dropboxapi.com/2/auth/token/revoke", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }).catch(() => {});
-    }
-  } catch { /* ignore */ }
-
-  // Remove from Supabase
-  await supabase.from("settings").delete().eq("key", "dropbox_tokens");
-
+    const { disconnectDropbox } = await import("@/lib/writes/system");
+    await disconnectDropbox();
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "שגיאה" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

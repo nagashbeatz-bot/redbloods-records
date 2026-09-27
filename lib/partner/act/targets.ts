@@ -20,16 +20,19 @@ export const NON_KEY_TARGETS: Readonly<Record<string, string>> = {
   "gcal-event": "the Google event id from the calendar capability",
   gtask: "the Google Task id from the calendar capability",
   system: "no target (company-level action)",
+  notification: "MARK_NOTIFICATIONS_READ with a wrong / missing key is refused WITH your unread notifications (notification:<id> — title)",
 };
 /** Parent kind → the child kinds listed under it (the capability's contract; the test pins it against the primitives). */
 export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {
-  project: ["session", "meeting", "task", "send-log", "album-track", "mix-work", "victor-work", "clip-row", "rf-production", "proposal", "transaction", "release"],
+  project: ["session", "meeting", "task", "send-log", "album-track", "mix-work", "victor-work", "clip-row", "rf-production", "proposal", "transaction", "release", "social-campaign"],
+  "social-campaign": ["social-content", "promotion", "social-attachment"],
+  "social-content": ["social-attachment"],
   "mix-work": ["mix-version", "mix-comment", "mix-line", "premix-note"],
   "rf-production": ["rf-budget-line", "rf-payment", "rf-document", "rf-reference"],
   "label-artist": ["ledger-entry", "media-income"],
   client: ["proposal", "meeting", "task"],
   show: ["session", "task"],
-  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat"],
+  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat", "agent-alert"],
 };
 
 const rows = <T>(m: { rows: readonly T[] } | null | undefined): readonly T[] => (m && Array.isArray(m.rows) ? m.rows : []);
@@ -62,6 +65,15 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       for (const x of rows(d.proposals)) if (x.linkedProjectId === pid) add("proposal", x.id, j(x.title));
       for (const x of rows(d.transactionsText)) if (x.projectId === pid) add("transaction", x.id, j(x.date, x.type, x.description));
       for (const x of rows(d.releases)) if (x.projectId === pid) add("release", x.projectId, j("ריליס", x.nextAction));
+      for (const x of rows(d.campaigns)) if (x.projectId === pid) add("social-campaign", x.id, j("קמפיין", x.title));
+    } else if (pk === "social-campaign") {
+      const d = needDet();
+      for (const x of rows(d.contentItems)) if (x.campaignId === pid) add("social-content", x.id, j(x.contentType, x.title, x.publishDate), x.status);
+      for (const x of rows(ops?.promotions)) if (x.campaignId === pid) add("promotion", x.id ?? null, j(x.name, x.channel, x.plannedAmount, x.promoDate), x.status);
+      for (const x of rows(d.socialFiles)) if (x.campaignId === pid) add("social-attachment", x.id ?? null, j(x.fileName, x.fileType));
+    } else if (pk === "social-content") {
+      const d = needDet();
+      for (const x of rows(d.socialFiles)) if (x.contentItemId === pid) add("social-attachment", x.id ?? null, j(x.fileName, x.fileType));
     } else if (pk === "mix-work") {
       const d = needDet();
       const versions = rows(d.mixVersions).filter((x) => x.workId === pid);
@@ -101,6 +113,7 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       for (const x of rows(d.sessions)) add("session", x.id, j(x.date, x.startTime, x.type, x.title, pname(x.projectId)), x.status);
       for (const x of rows(d.meetings)) add("meeting", x.id, j(x.date, x.time, x.clientName, pname(x.projectId)), x.status);
       for (const x of rows(d.tasks)) add("task", x.id, j(x.title, x.dueDate), x.status);
+      for (const x of rows(d.agentAlerts)) if (x.status === "new") add("agent-alert", x.id ?? null, j(x.type, x.title), x.status);
       for (const x of rows(d.rfEquipment)) if (!x.removedAt) add("rf-equipment", x.id, j(x.name, x.category, x.quantity), x.status);
       if (!lab) throw new Error("LABEL_DETAIL");
       for (const x of rows(lab.beats)) add("beat", x.id, j(x.name, x.genre, x.musicalKey), x.status);

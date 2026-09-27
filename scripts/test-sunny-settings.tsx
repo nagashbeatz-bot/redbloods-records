@@ -8,6 +8,7 @@
  *
  * Run with:   npx tsx scripts/test-sunny-settings.tsx      NEVER touches production.
  */
+import { PRIMITIVE_SYSTEM_DOMAIN } from "../lib/partner/act/coverage-map";
 import fs from "node:fs";
 import path from "node:path";
 import { SETTINGS_FAMILIES, SETTINGS_ACCESS_FILES, PRODUCTION_SETTING_FAMILIES_20260925, familyOfKey, validateSettingsFamilies } from "../lib/partner/system/settings";
@@ -141,7 +142,7 @@ async function main() {
   check("NOTIFY_ARTIST_DJ: external communication needing explicit approval", [act("NOTIFY_ARTIST_DJ").class, act("NOTIFY_ARTIST_DJ").confirmations.includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED"), /recipients/.test(act("NOTIFY_ARTIST_DJ").reason)], ["FUTURE_PRIMITIVE_REQUIRED", true, true]);
   check("SECURITY_RESTRICTED only for auth / roles / credentials", BUSINESS_ACTIONS.filter((a) => a.class === "SECURITY_RESTRICTED").map((a) => a.id), ["SETTINGS_AUTH_PEOPLE"]);
   check("no security-restricted action is executable; every executable one is approved in the conversation (G10 keeps the list equal to the action layer)", BUSINESS_ACTIONS.filter((a) => a.sunnyCanExecuteToday && (a.class === "SECURITY_RESTRICTED" || a.approval !== "OWNER_CONFIRMATION_IN_CONVERSATION")).map((a) => a.id), []);
-  check("every domain's execute support is NOT_YET_EXECUTABLE or PARTIAL (never FULL, never 'forbidden forever'); PLATFORM_ACCESS is never executable", DOMAIN_CONTRACTS.filter((d) => !["NOT_YET_EXECUTABLE", "PARTIAL"].includes(d.support.execute) || (d.id === "PLATFORM_ACCESS" && d.support.execute !== "NOT_YET_EXECUTABLE")).map((d) => d.id), []);
+  check("every domain's execute support is NOT_YET_EXECUTABLE or PARTIAL (never FULL, never 'forbidden forever'); in PLATFORM_ACCESS only the maintenance lock executes (users / roles / passwords never)", DOMAIN_CONTRACTS.filter((d) => !["NOT_YET_EXECUTABLE", "PARTIAL"].includes(d.support.execute)).map((d) => d.id).concat(Object.entries(PRIMITIVE_SYSTEM_DOMAIN).filter(([id, dom]) => dom === "PLATFORM_ACCESS" && id !== "SET_MAINTENANCE_MODE").map(([id]) => id)), []);
   check("Sunny proposal primitives unchanged", [...SUPPORTED_ACTIONS], ["UPDATE_PROJECT_DEADLINE"]);
   check("MCP tools unchanged (no new mutation tool)", [...TOOL_NAMES], ["partner_brief", "partner_resolve", "partner_entity", "partner_query", "partner_answer_question", "partner_propose_knowledge"]);
   const del = proposeActionPreviewCore(src as never, { actionType: "DELETE_PROJECT", project: null, newDeadline: null }) as { status: string; known: { class: string } | null };

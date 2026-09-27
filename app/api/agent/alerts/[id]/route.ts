@@ -3,7 +3,8 @@
  * Body: { status: "handled" | "dismissed" | "ignored" }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { updateAlertStatus, getAlertById } from "@/lib/agent/alerts-store";
+import { getAlertById } from "@/lib/agent/alerts-store";
+import { setAlertStatus } from "@/lib/writes/system";
 import { requireOwner } from "@/lib/require-auth";
 import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { WEEK_STRENGTH_ALERT_TYPE } from "@/lib/week-strength-pure";
@@ -35,7 +36,7 @@ export async function PATCH(
     if (!VALID_STATUSES.includes(status)) {
       return NextResponse.json({ error: "invalid status" }, { status: 400 });
     }
-    await updateAlertStatus(id, status);
+    await setAlertStatus(id, status); // shared writer — a failed write is an error
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[agent/alerts/:id] PATCH error:", e);

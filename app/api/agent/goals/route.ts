@@ -4,7 +4,8 @@
  * Body: { monthlyRevenue?: {...}, weeklySessions?: {...}, ... }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getGoals, updateGoal, getGoalsProgress } from "@/lib/agent/goals";
+import { getGoals, getGoalsProgress } from "@/lib/agent/goals";
+import { setBusinessGoal, SystemInputError, validGoal } from "@/lib/writes/system";
 import type { BusinessGoals } from "@/lib/types";
 
 export async function GET() {
@@ -21,13 +22,12 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json() as Partial<BusinessGoals>;
     const keys = Object.keys(body) as Array<keyof BusinessGoals>;
-    for (const key of keys) {
-      if (body[key] !== undefined) {
-        await updateGoal(key, body[key]!);
-      }
-    }
+    // shared writer (lib/writes/system): only the four known goals, validated — all checked before any write
+    for (const key of keys) if (body[key] !== undefined) validGoal(key, body[key]);
+    for (const key of keys) if (body[key] !== undefined) await setBusinessGoal(key, body[key]);
     return NextResponse.json({ ok: true });
   } catch (e) {
+    if (e instanceof SystemInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     console.error("[agent/goals] PATCH error:", e);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }

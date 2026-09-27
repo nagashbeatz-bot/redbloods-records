@@ -177,5 +177,6 @@ export const PROJECT_ACTION_EXCLUSIONS: Readonly<Record<string, string>> = {
   "app/api/red-films/equipment/[id]/route.ts": "company equipment inventory — never a project (same shared module as above)",
   "app/api/red-films/productions/[id]/budget-items/route.ts": "Red Films budget line only (same shared module as above)",
   "app/api/red-films/references/[refId]/route.ts": "Red Films reference image only (same shared module as above)",
+  "app/api/social/files/route.ts": "deletes one social content file — inventoried as SOCIAL.DELETE_FILE; its shared writer module (lib/writes/social) also holds the campaign writers that name project_id",
   "app/api/proposals/route.ts": "creates a proposal only — its shared writer module (lib/writes/proposals) also holds the conversion, inventoried as CONVERT_PROPOSAL via the convert route",
 };

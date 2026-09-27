@@ -126,7 +126,7 @@ export function coverageOf(c: ActionContract): CoverageRow {
   else if (d === "SYSTEM_AUTOMATIC") Object.assign(base, { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "SYSTEM_MACHINERY_NOT_AN_OWNER_OPERATION", targetWave: "NONE" });
   else if (d === "EXECUTABLE_VIA_DASHBOARD_APPROVAL") Object.assign(base, { requiredWork: "wire into the universal pipeline", targetWave: "W3" });
   const o = OVERRIDES[c.id];
-  if (o) Object.assign(base, o);
+  if (o && !PRIMITIVE_IDS.has(c.id)) Object.assign(base, o); // a built primitive's own contract is the truth (no stale override)
   const cov = COVERAGE_MAP[c.id];
   if (cov && cov.by.every((x) => PRIMITIVE_IDS.has(x))) {
     if (cov.full) Object.assign(base, { klass: "EXECUTABLE", targetWave: "LIVE", requiredWork: null, ownerEquivalent: cov.by.join(" + ") });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listFiles, listFilesByCampaign, countFilesByContentItems, getFile, deleteSocialFile } from "@/lib/social-files-store";
-import { getDropboxToken } from "@/lib/dropbox-token";
+import { listFiles, listFilesByCampaign } from "@/lib/social-files-store";
+import { deleteSocialFileWithStorage } from "@/lib/writes/social";
 
 export async function GET(req: NextRequest) {
   const contentItemId = req.nextUrl.searchParams.get("contentItemId");
@@ -37,20 +37,7 @@ export async function DELETE(req: NextRequest) {
   const fileId = req.nextUrl.searchParams.get("id");
   if (!fileId) return NextResponse.json({ error: "חסר id" }, { status: 400 });
   try {
-    const file = await getFile(fileId);
-    if (file?.dropbox_path) {
-      try {
-        const token = await getDropboxToken();
-        await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: file.dropbox_path }),
-        });
-      } catch {
-        // Dropbox unavailable — continue with DB deletion
-      }
-    }
-    await deleteSocialFile(fileId);
+    await deleteSocialFileWithStorage(fileId); // shared writer: the stored file best-effort, then the row
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[social/files] DELETE error:", e);

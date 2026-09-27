@@ -44,7 +44,7 @@ export function isOwnerWeeklyCleanupWindowOpen(now: Date, tz: string = TZ): bool
 /** OWNER_EMAILS → actual Supabase Auth user ids, via the admin API (the only
  *  supported way to look up a user by email with the service-role key — there
  *  is no getUserByEmail; listUsers() is paginated so every page is walked). */
-async function resolveOwnerUserIds(): Promise<string[]> {
+export async function resolveOwnerUserIds(): Promise<string[]> {
   const owners = new Set(emailList(process.env.OWNER_EMAILS));
   if (owners.size === 0) return [];
 

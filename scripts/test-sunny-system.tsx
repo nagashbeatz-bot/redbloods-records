@@ -7,6 +7,7 @@
  * NEVER touches production. The operations reader runs over a recording fake client; capabilities run over the
  * production-shaped fixture + a crafted operations snapshot.
  */
+import { PRIMITIVE_SYSTEM_DOMAIN } from "../lib/partner/act/coverage-map";
 import fs from "node:fs";
 import path from "node:path";
 import { BUSINESS_ACTIONS, CAPABILITY_CHANGES, DOMAIN_CONTRACTS, FORBIDDEN_SERVED_TERMS, RELATIONSHIPS, SURFACE_EXCLUSIONS, SYSTEM_BASELINE_VERSION, validateSystemRegistry } from "../lib/partner/system";
@@ -113,7 +114,7 @@ async function main() {
   ok("the baseline version has change entries (capability change awareness)", CAPABILITY_CHANGES.some((c) => c.version === SYSTEM_BASELINE_VERSION));
   ok("Sunny execute is NOT_YET_EXECUTABLE or PARTIAL (typed Universal Action Layer primitives, each Owner-approved; kept equal to the action layer by G10) — never FULL, never forbidden", DOMAIN_CONTRACTS.every((d) => d.support.execute === "NOT_YET_EXECUTABLE" || d.support.execute === "MISSING" || d.support.execute === "PARTIAL"));
   ok("FULL is never claimed without a live read capability", DOMAIN_CONTRACTS.filter((d) => d.support.read === "FULL").every((d) => d.readCapabilities.length > 0));
-  ok("Push and Agent Alerts: readable knowledge (history / markers / alerts), NOT executable by Sunny", ["PUSH_NOTIFICATIONS", "AGENT_ALERTS"].every((id) => { const d = DOMAIN_CONTRACTS.find((x) => x.id === id)!; return d.readCapabilities.length > 0 && d.support.execute === "NOT_YET_EXECUTABLE"; }));
+  ok("Push and Agent Alerts: readable knowledge; executable ONLY through the typed bell / goal / alert-status primitives (Sunny never sends a push itself and never writes an alert)", ["PUSH_NOTIFICATIONS", "AGENT_ALERTS"].every((id) => DOMAIN_CONTRACTS.find((x) => x.id === id)!.readCapabilities.length > 0) && Object.entries(PRIMITIVE_SYSTEM_DOMAIN).filter(([, d]) => d === "PUSH_NOTIFICATIONS" || d === "AGENT_ALERTS").map(([id]) => id).sort().join() === ["MARK_AGENT_ALERT_HANDLED", "MARK_ALL_NOTIFICATIONS_READ", "MARK_NOTIFICATIONS_READ", "SET_BUSINESS_GOAL"].join());
   ok("Google Calendar: LIVE read (FULL) through the trusted integration; writes only as typed Owner-approved actions (PARTIAL)", (() => { const d = DOMAIN_CONTRACTS.find((x) => x.id === "GOOGLE_CALENDAR")!; return d.support.read === "FULL" && d.freshness === "LIVE" && d.readCapabilities.includes("calendar") && d.support.execute === "PARTIAL" && d.approval === "OWNER_CONFIRMATION_IN_CONVERSATION"; })());
   ok("every notification contract says sunnyMayTrigger=false", DOMAIN_CONTRACTS.flatMap((d) => d.notifications ?? []).every((n) => n.sunnyMayTrigger === false));
   ok("CONFLICT / POSSIBLE_BUG rules exist and are never marked as policy", DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "CONFLICT").length >= 10 && DOMAIN_CONTRACTS.flatMap((d) => d.rules).filter((r) => r.class === "POSSIBLE_BUG").length >= 10);

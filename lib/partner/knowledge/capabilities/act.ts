@@ -112,7 +112,7 @@ export const nextStepsCap: KnowledgeCapability = {
 const CHILD_KINDS = [...new Set(Object.values(TARGET_KINDS).flat())].sort();
 export const actionTargetsCap: KnowledgeCapability = {
   id: "action_targets", domain: "PARTNER", titleHe: "מטרות לפעולה — המפתחות המדויקים לפעולות של סאני",
-  descriptionForModel: `Addressability for partner_plan_action: the exact action keys (<kind>:<id>) under a parent, with label + state. Use it before planning an action whose entityKey argument is a child record. Parents: ${Object.entries(TARGET_KINDS).map(([p, ks]) => `${p === "company" ? "company" : p} → ${ks.join(",")}`).join("; ")}. ${RESOLVE_KINDS.join(" / ")} come from partner_resolve; non-key targets are explained in the summary (sketches: the plan refusal lists them). Read-only; never a path, link or credential.`,
+  descriptionForModel: `Addressability for partner_plan_action: the exact action keys (<kind>:<id>) under a parent, with label + state. Use it before planning an action whose entityKey argument is a child record. Parents: ${Object.keys(TARGET_KINDS).join(", ")} (the summary lists each parent's child kinds). ${RESOLVE_KINDS.join(" / ")} come from partner_resolve; non-key targets are explained in the summary (sketches: the plan refusal lists them). Read-only; never a path, link or credential.`,
   examplesHe: ["איזה סשנים יש בפרויקט?", "מה המפתח של השיר השלישי באלבום?", "איזה הערות פתוחות יש בעבודת המיקס?"],
   modes: { list: { descriptionForModel: "Targets under params.parent (optional params.kind)" } }, defaultMode: "list",
   params: {
@@ -123,7 +123,7 @@ export const actionTargetsCap: KnowledgeCapability = {
   read(src, q) {
     const r = buildActionTargets(src, q.params.parent ?? "", q.params.kind);
     if (!r.ok) return r.reason === "SOURCE_UNAVAILABLE" ? unavailable(r.detail) : result([], { completeness: "UNKNOWN", missing: [{ fact: "parent", whyNeeded: r.detail }] });
-    return result(r.targets.map((t) => item({ id: t.key, entity: t.parent === "company" ? null : t.parent, label: record(t.label), epistemic: "FACT", source: t.kind === "ledger-entry" || t.kind === "media-income" || t.kind === "beat" ? "LABEL_DETAIL" : "PROJECT_DETAIL", fields: { key: t.key, kind: t.kind, state: t.state } })), { summary: [sfact("COUNTS", "מספר מטרות לפי סוג", byCount(r.targets.map((t) => t.kind)), "DERIVED", "PROJECT_DETAIL"), sfact("NON_KEY_TARGETS", "מטרות שאינן מפתח", NON_KEY_TARGETS, "FACT", "SYSTEM_CONTRACTS")] });
+    return result(r.targets.map((t) => item({ id: t.key, entity: t.parent === "company" ? null : t.parent, label: record(t.label), epistemic: "FACT", source: t.kind === "ledger-entry" || t.kind === "media-income" || t.kind === "beat" ? "LABEL_DETAIL" : "PROJECT_DETAIL", fields: { key: t.key, kind: t.kind, state: t.state } })), { summary: [sfact("COUNTS", "מספר מטרות לפי סוג", byCount(r.targets.map((t) => t.kind)), "DERIVED", "PROJECT_DETAIL"), sfact("NON_KEY_TARGETS", "מטרות שאינן מפתח", NON_KEY_TARGETS, "FACT", "SYSTEM_CONTRACTS"), sfact("PARENTS", "הורה → סוגי מטרות", TARGET_KINDS, "FACT", "SYSTEM_CONTRACTS")] });
   },
 };
 

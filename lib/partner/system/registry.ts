@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-27";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-30";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -211,9 +211,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The client delivery folder (Dropbox) + public share link per project, and delivery status.",
     canonicalSource: "Per-project delivery setting (status, delivered date; folder path + link are not exposed to Sunny).",
     entityTypes: ["delivery"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["deliveries", "delivery_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("DELIVERY_PUBLIC_LINK", "IMPLEMENTATION_BEHAVIOR", "Creating a delivery creates a PUBLIC Dropbox share link; deleting a delivery deletes the Dropbox folder."),
       R("SHARE_PAGE_DEAD", "POSSIBLE_BUG", "The /share/<token> page requires login and its tokens are never handed out — effectively unused."),
@@ -585,9 +585,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Release / marketing campaigns: content pipeline and paid promotions.",
     canonicalSource: "Campaign records (one per project) + content items + promotions (actual spend lives only as a marketing expense transaction) + social files in Dropbox.",
     entityTypes: ["campaign", "content_item", "promotion"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["social", "social_view"], learnKinds: ["PROCESS_FRICTION", "RELEASE_PRIORITY"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("SOCIAL_STATUS_CONFLICT", "CONFLICT", "Content statuses disagree: the approved Hebrew 9-status pipeline vs the stored 4 English statuses (draft / in_progress / ready_to_post / published) vs the missing-content checker, which only knows legacy values — so ready / published content can be reported as missing."),
       R("PROMO_SPEND_IS_FINANCE", "CANONICAL_BUSINESS_RULE", "A promotion's actual spend is a Finance expense (status שולם, category = channel); deleting a promotion keeps it.", ["FINANCE"]),
@@ -600,9 +600,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Where all audio and files live: project folders (Delivery, Instructions, Mix Versions, Final Files, Victor), beats, artist uploads, Red Films and social media; streaming and share links.",
     canonicalSource: "Dropbox (external) + file metadata on project / work records.",
     entityTypes: ["file"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "OWNER_APPROVAL_REQUIRED"], readCapabilities: ["mix_pipeline", "deliveries", "integrations", "storage_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "PARTIAL",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "PARTIAL",
     rules: [
       R("PROJECT_AUDIO_IN_DROPBOX", "CANONICAL_BUSINESS_RULE", "Project audio (the player), mixes and finals are Dropbox files; LISTEN / radio is a separate external system, not part of Redbloods."),
       R("PUBLIC_SHARE_LINKS", "IMPLEMENTATION_BEHAVIOR", "Most uploads create PUBLIC share links."),
@@ -618,9 +618,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Device push notifications to the Owner, artists (Shalev, Avi, DJ CLEANTONE), Victor and Steven, plus the Owner's notification bell.",
     canonicalSource: "Push subscriptions per role (credentials — never exposed) + a notification row per delivered push (bell).",
     entityTypes: ["notification"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["system_awareness", "system_settings", "project_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "NOT_APPLICABLE",
     rules: [
       R("PUSH_PROD_ONLY", "CANONICAL_BUSINESS_RULE", "Server pushes are sent only in production (or with an explicit override); every sender is a specific business event."),
       R("OWNER_PAGE_LOAD_NO_PUSH", "CANONICAL_BUSINESS_RULE", "Opening / refreshing the app as the Owner never sends a push; the legacy 'check on app load' endpoint is not called by any page."),
@@ -641,9 +641,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Morning / evening / weekly email reports to the Owner (optional AI recommendations).",
     canonicalSource: "Report schedule setting + live company data at send time.",
     entityTypes: ["report"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["system_settings", "reports_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "NOT_APPLICABLE",
     rules: [
       R("REPORT_MONEY_BY_CREATED_VS_FINANCE", "CONFLICT", "Report money counts transactions by creation date (weekly: ₪ only) while the Finance Brain uses the transaction date and keeps every currency — the email and Sunny can show different numbers."),
       R("REPORT_UTC_DAY", "POSSIBLE_BUG", "The reports compute 'today' as a UTC date (00:00–03:00 Israel time falls on the previous day)."),
@@ -659,9 +659,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The older rule-based alert engine (its rule pipeline switched off) with the holiday and week-strength checks that still run.",
     canonicalSource: "Agent alert records (entity keys per alert type) and goals.",
     entityTypes: ["agent_alert"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["project_view", "system_settings", "company_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "NOT_APPLICABLE",
     rules: [
       R("ALERTS_NOT_TRUTH", "OWNER_POLICY", "Agent alerts are never canonical action truth for Sunny (Owner decision); Sunny's own Cases replace them."),
       R("ALERT_RULES_OFF", "IMPLEMENTATION_BEHAVIOR", "The agent-alert rules switch is off: the 13 rules, their pushes and alert widgets are disabled; the holiday cycle and week-strength check still run."),
@@ -692,9 +692,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Who can log in and see what (Owner, Shalev, Avi, DJ CLEANTONE, Victor, Steven) and maintenance mode.",
     canonicalSource: "Role by login email + path allowlists per role + a maintenance flag.",
     entityTypes: ["role"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["system_awareness", "system_settings"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "NOT_APPLICABLE",
     rules: [
       R("ROLES", "CANONICAL_BUSINESS_RULE", "Roles: owner (everything), shalev, avi, cleantone (their portals), victor, steven (their vendor pages). Everything else is Owner-only by default-deny."),
       R("ROUTE_GUARDS_PROXY_ONLY", "IMPLEMENTATION_BEHAVIOR", "About half of the Owner mutation routes rely only on the central gate (no second in-route check)."),
@@ -953,4 +953,11 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-26", date: "2026-09-27", domain: "CLIPS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "קליפ בפרויקט: מחיר, פתיחת עסקה 50/50, תשלום, 'שלח קליפ', שורות תכנון ו'העבר לכספים' (בלי כפילות)." },
   { version: "2026.09.27-27", date: "2026-09-27", domain: "PROJECT_ACTIONS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "יומן השליחות: הוספה, עדכון (אוצר המילים של המגירה) ומחיקה עם המחיקה המשורשרת של העבודה המקושרת — בשרת; קישור (URL) לא נכתב." },
   { version: "2026.09.27-27", date: "2026-09-27", domain: "ALBUMS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "שירי אלבום: הוספה (מספר תפוס נדחה), עדכון שם / סטטוסים / הערות, מחיקה והזזה עם מספור מחדש." },
+  { version: "2026.09.27-28", date: "2026-09-27", domain: "DELIVERY", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "מסירה ללקוח: יצירת תיקיית מסירה עם קישור ציבורי (אחרי אישור מפורש), סימון נמסר / חזרה למוכן, מחיקת התיקייה; העלאת קבצים — ערוץ הקבצים." },
+  { version: "2026.09.27-29", date: "2026-09-27", domain: "SOCIAL", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "סושיאל: קמפיין (אחד לפרויקט), תכנים, מחיקת קבצים, קידום ממומן — ההוצאה בפועל היא הוצאה אחת בכספים (₪, שולם) עם הסכום המדויק באישור; קישורים והעלאות — עוד לא." },
+  { version: "2026.09.27-30", date: "2026-09-27", domain: "PUSH_NOTIFICATIONS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "פעמון ההתראות שלך: סימון התראה / כל ההתראות כנקראו — רק שלך (לפי משתמשי הבעלים), לעולם לא של אחר; סאני עדיין לא שולחת Push." },
+  { version: "2026.09.27-30", date: "2026-09-27", domain: "AGENT_ALERTS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "יעדים עסקיים (מדדים, לא כללי תשלום) וסימון התראת סוכן — עם כלל ה-kill-switch של האפליקציה." },
+  { version: "2026.09.27-30", date: "2026-09-27", domain: "REPORTS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "שעות דוחות המייל ושליחת דוח עכשיו (לכתובת הדוחות שלך, אישור חזק)." },
+  { version: "2026.09.27-30", date: "2026-09-27", domain: "FILES_DROPBOX", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "ניתוק Dropbox (אישור חזק; הטוקן לא נחשף; חיבור מחדש — רק אתה)." },
+  { version: "2026.09.27-30", date: "2026-09-27", domain: "PLATFORM_ACCESS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "מצב תחזוקה: נעילה / פתיחה של המערכת לכל מי שאינו אתה (אישור חזק). משתמשים, תפקידים וסיסמאות — לא." },
 ];

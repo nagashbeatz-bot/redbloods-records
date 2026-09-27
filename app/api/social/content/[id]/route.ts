@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getContentItem, updateContentItem, deleteContentItem } from "@/lib/social-store";
-import { listFiles } from "@/lib/social-files-store";
-import { getDropboxToken } from "@/lib/dropbox-token";
+import { getContentItem } from "@/lib/social-store";
+import { deleteSocialContentWithFiles, SocialInputError, updateSocialContent } from "@/lib/writes/social";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,9 +17,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await req.json();
-    const item = await updateContentItem(id, body);
+    const item = await updateSocialContent(id, body); // shared writer — validated fields only
     return NextResponse.json({ item });
   } catch (e) {
+    if (e instanceof SocialInputError) return NextResponse.json({ error: e.message }, { status: 400 });
     console.error("[social/content/id] PATCH error:", e);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }
@@ -29,33 +29,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-
-    // Delete associated Dropbox files before removing the DB record
-    const files = await listFiles(id);
-    if (files.length > 0) {
-      try {
-        const token = await getDropboxToken();
-        await Promise.all(
-          files
-            .filter((f) => f.dropbox_path)
-            .map((f) =>
-              fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ path: f.dropbox_path }),
-              }).catch(() => {})
-            )
-        );
-      } catch {
-        // Token error or Dropbox unavailable — continue with DB deletion
-      }
-    }
-
-    // DB cascade also deletes social_content_files rows
-    await deleteContentItem(id);
+    // shared writer: stored files best-effort, then the row (DB cascade also deletes social_content_files rows)
+    await deleteSocialContentWithFiles(id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: "failed" }, { status: 500 });

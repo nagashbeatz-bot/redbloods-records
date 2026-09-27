@@ -17,6 +17,9 @@ import type { VictorFamilyWriters } from "./primitives/victor";
 import type { LabelFamilyWriters } from "./primitives/label";
 import type { RedFilmsFamilyWriters } from "./primitives/redfilms";
 import type { WorklogFamilyWriters } from "./primitives/worklog";
+import type { DeliveryFamilyWriters } from "./primitives/delivery";
+import type { SocialFamilyWriters } from "./primitives/social";
+import type { SystemFamilyWriters } from "./primitives/system";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -26,7 +29,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -412,6 +415,68 @@ async function worklogFamilyWriters(): Promise<WorklogFamilyWriters> {
     updateAlbumTrack: async (id, b) => { await W.updateAlbumTrack(id, b); },
     deleteAlbumTrack: (id) => W.deleteAlbumTrack(id),
     renumberAlbumTracks: (t) => W.renumberAlbumTracks(t),
+  };
+}
+
+/** Client delivery (lib/writes/delivery) — the folder path / public link never leave the writer. */
+async function deliveryFamilyWriters(): Promise<DeliveryFamilyWriters> {
+  const W = await import("@/lib/writes/delivery");
+  return {
+    readDeliveryState: (pid) => W.readDeliveryState(pid),
+    createDeliveryFolder: async (pid, artist, name) => { await W.createDeliveryFolder(pid, artist, name); },
+    setDeliveryStatus: async (pid, p) => { await W.setDeliveryStatus(pid, p); },
+    deleteDeliveryFolder: (pid) => W.deleteDeliveryFolder(pid),
+  };
+}
+
+/** Social campaigns / content / files / promotions (lib/writes/social) — storage paths never leave the writer. */
+async function socialFamilyWriters(): Promise<SocialFamilyWriters> {
+  const W = await import("@/lib/writes/social");
+  const row = (x: unknown) => (x ? (x as unknown as Record<string, unknown>) : null);
+  return {
+    readSocialCampaign: async (id) => row(await W.readSocialCampaign(id)),
+    campaignForProject: (pid) => W.campaignForProject(pid),
+    createSocialCampaign: async (b) => String((await W.createSocialCampaign(b)).id),
+    updateSocialCampaign: async (id, b) => { await W.updateSocialCampaign(id, b); },
+    deleteSocialCampaign: (id) => W.deleteSocialCampaign(id),
+    campaignCounts: (id) => W.campaignCounts(id),
+    readSocialContent: async (id) => row(await W.readSocialContent(id)),
+    createSocialContent: async (b) => String((await W.createSocialContent(b)).id),
+    updateSocialContent: async (id, b) => { await W.updateSocialContent(id, b); },
+    deleteSocialContentWithFiles: (id) => W.deleteSocialContentWithFiles(id),
+    contentFileCount: (id) => W.contentFileCount(id),
+    async readSocialFile(id) { const f = await W.readSocialFile(id); return f ? { contentItemId: f.content_item_id ?? null, fileName: f.file_name ?? null } : null; },
+    deleteSocialFileWithStorage: (id) => W.deleteSocialFileWithStorage(id),
+    readPromotion: (id) => W.readPromotion(id),
+    createPromotion: async (i) => String((await W.createPromotion(i)).id),
+    updatePromotionFields: (id, p) => W.updatePromotionFields(id, p),
+    syncActualExpense: (id, n) => W.syncActualExpense(id, n),
+    deletePromotion: (id) => W.deletePromotion(id),
+  };
+}
+
+/** The Owner's company-level operations (lib/writes/system) — no credential leaves the writer. */
+async function systemFamilyWriters(): Promise<SystemFamilyWriters> {
+  const W = await import("@/lib/writes/system");
+  return {
+    readOwnerNotification: (id) => W.readOwnerNotification(id),
+    listOwnerUnread: () => W.listOwnerUnread(),
+    countOwnerUnread: () => W.countOwnerUnread(),
+    markOwnerNotificationRead: (id) => W.markOwnerNotificationRead(id),
+    markAllOwnerNotificationsRead: () => W.markAllOwnerNotificationsRead(),
+    readBusinessGoals: async () => (await W.readBusinessGoals()) as unknown as Record<string, { target: number; currency?: string }>,
+    setBusinessGoal: (n, v) => W.setBusinessGoal(n, v),
+    readAlert: (id) => W.readAlert(id),
+    alertActionable: (t) => W.alertActionable(t),
+    setAlertStatus: (id, s) => W.setAlertStatus(id, s),
+    readReportSchedule: () => W.readReportSchedule(),
+    setReportSchedule: (m, e) => W.setReportSchedule(m, e),
+    reportEmailConfigured: () => W.reportEmailConfigured(),
+    sendReportNow: (k) => W.sendReportNow(k as "morning" | "evening" | "weekly"),
+    fileStorageConnected: () => W.dropboxConnected(),
+    disconnectFileStorage: () => W.disconnectDropbox(),
+    readMaintenance: () => W.readMaintenance(),
+    setMaintenance: (e) => W.setMaintenanceChecked(e),
   };
 }
 

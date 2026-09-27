@@ -64,7 +64,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "beat_artist_assignments", "beat_id, artist_slug"),
     readSection(client, "social_campaigns", "id, project_id, title, artist_name, release_date, status, promotion_budget"),
     readSection(client, "social_content_items", "campaign_id, status, content_type, platform, due_date, publish_date"),
-    readSection(client, "social_promotions", "campaign_id, channel, planned_amount, status, promo_date, linked_transaction_id"),
+    readSection(client, "social_promotions", "id, name, campaign_id, channel, planned_amount, status, promo_date, linked_transaction_id"),
     readSection(client, "artist_balance_cycles", "artist_id, cycle_index, start_date, end_date, income, payments, expenses, ending_balance, closed_at"),
     readSection(client, "album_tracks", "project_id, track_number, title, status, mix_status, master_status"),
     readSection(client, "sound_engineer_work", "id, project_id, engineer_name, work_type, work_title, status, sent_date, internal_deadline, agreed_price, amount_paid, currency, payment_date"),
@@ -108,7 +108,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     beatAssignments: mapSection(assign, (r) => (s(r.beat_id) && s(r.artist_slug) ? { beatId: String(r.beat_id), artistSlug: String(r.artist_slug) } : null)),
     campaigns: mapSection(camps, (r) => (s(r.id) ? { id: String(r.id), projectId: s(r.project_id), title: s(r.title) ?? "", artistName: s(r.artist_name), releaseDate: s(r.release_date), status: s(r.status), promotionBudget: n(r.promotion_budget) } : null)),
     contentItems: mapSection(content, (r) => ({ campaignId: s(r.campaign_id), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
-    promotions: mapSection(promos, (r) => ({ campaignId: s(r.campaign_id), channel: s(r.channel), plannedAmount: n(r.planned_amount), status: s(r.status), promoDate: s(r.promo_date), hasTransaction: !!s(r.linked_transaction_id) })),
+    promotions: mapSection(promos, (r) => ({ id: s(r.id), name: s(r.name), campaignId: s(r.campaign_id), channel: s(r.channel), plannedAmount: n(r.planned_amount), status: s(r.status), promoDate: s(r.promo_date), hasTransaction: !!s(r.linked_transaction_id) })),
     balanceCycles: mapSection(cycles, (r) => (s(r.artist_id) ? { artistId: String(r.artist_id), cycleIndex: Number(r.cycle_index), startDate: s(r.start_date), endDate: s(r.end_date), income: n(r.income), payments: n(r.payments), expenses: n(r.expenses), endingBalance: n(r.ending_balance), closedAt: s(r.closed_at) } : null)),
     albumTracks: mapSection(tracks, (r) => ({ projectId: s(r.project_id), trackNumber: n(r.track_number), title: s(r.title) ?? "", status: s(r.status), mixStatus: s(r.mix_status), masterStatus: s(r.master_status) })),
     engineerWork: mapSection(work, (r) => (s(r.id) ? {

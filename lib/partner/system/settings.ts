@@ -140,9 +140,11 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/victor-presence-notify.ts",
   "lib/victor-upload-notify.ts",
   "lib/writes/clip.ts",
+  "lib/writes/delivery.ts",
   "lib/writes/finance.ts",
   "lib/writes/projects.ts",
   "lib/writes/proposals.ts",
+  "lib/writes/system.ts",
   "lib/writes/victor.ts",
 ] as const;
 

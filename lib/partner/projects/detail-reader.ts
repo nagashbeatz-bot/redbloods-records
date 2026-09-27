@@ -194,7 +194,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
       dueDate: s(x.due_date), publishDate: s(x.publish_date), caption: t(x.caption), hook: t(x.hook), notes: t(x.notes), ownerName: s(x.owner_name), postedUrl: scrubSecrets(s(x.posted_url)),
       hasAssetLink: has(x.asset_link) || has(x.dropbox_link), hasCalendarEvent: has(x.calendar_event_id), taskId: s(x.task_id), publishTime: s(x.publish_time), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
     } : null)),
-    socialFiles: mapSection(sfiles, (x) => ({ projectId: s(x.project_id), contentItemId: s(x.content_item_id), campaignId: s(x.campaign_id), dropboxFileId: s(x.dropbox_file_id), updatedAt: s(x.updated_at), fileName: s(x.file_name), fileType: s(x.file_type), fileSize: n(x.file_size), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at), path: s(x.dropbox_path), hasShareLink: has(x.dropbox_share_link) })),
+    socialFiles: mapSection(sfiles, (x) => ({ id: s(x.id), projectId: s(x.project_id), contentItemId: s(x.content_item_id), campaignId: s(x.campaign_id), dropboxFileId: s(x.dropbox_file_id), updatedAt: s(x.updated_at), fileName: s(x.file_name), fileType: s(x.file_type), fileSize: n(x.file_size), uploadedBy: s(x.uploaded_by), createdAt: s(x.created_at), path: s(x.dropbox_path), hasShareLink: has(x.dropbox_share_link) })),
     projectSettings: psettings.some((x) => x === null) ? null : {
       rows: psettings.flatMap((sec, i) => (sec?.rows ?? []).flatMap((x) => {
         const id = keyId(x.key, PROJECT_SETTING_FAMILIES[i].prefix);
