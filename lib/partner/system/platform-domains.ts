@@ -47,8 +47,8 @@ export const REPORTS_MODEL = {
   ],
   configuration: "a settings value with the morning / evening times (defaults 07:00 / 19:00), cached in memory; the setup page edits it",
   recipients: "one address from server configuration (not stored in the database)",
-  history: "NOT_RECORDED — only an in-memory 'last sent' time; no record of what was sent",
-  dedupe: "in memory only — a restart in the same minute can send twice",
+  history: "PARTIAL — since 2026-09-27 a durable claim per report type per Israel day records sent (the email service accepted it) / failed; what was sent is not recorded",
+  dedupe: "a durable per-day claim (morning / evening × Israel day): a restart, a second process or an overlapping tick never sends the same day's report twice (2026-09-27)",
   aiRecommendations: "deterministic rule-based recommendations only (the model-call path was removed with the retired in-app assistant on 2026-09-25)",
   moneySemantics: [
     { report: "daily 'added today'", rule: "transactions CREATED today (created_at), received = שולם/התקבל, expense paid = שולם only, per currency", vsFinanceBrain: "CONFLICT — the Finance Brain uses the transaction DATE, not the creation date" },
@@ -56,16 +56,16 @@ export const REPORTS_MODEL = {
     { report: "weekly revenue / expenses", rule: "created_at within a Sunday–Saturday week, ₪ ONLY, English type names only", vsFinanceBrain: "CONFLICT — creation date + other currencies dropped" },
     { report: "weekly pending", rule: "all-time open income, ₪ only", vsFinanceBrain: "partial (other currencies dropped)" },
   ],
-  dateSemantics: "the daily / weekly reports compute 'today' as a UTC date — between 00:00 and 03:00 Israel time they use the previous day",
+  dateSemantics: "report MONEY still computes 'today' as a UTC date — between 00:00 and 03:00 Israel time it uses the previous day; project overdue / due-soon and passed sessions use the Israel day (the shared overdue rule and session end, 2026-09-27)",
   vsSunnyMorningBrief: "Sunny's brief is on request only, Israel dates, Finance Brain money (transaction date, every currency apart); the email is scheduled, creation-date money. They can show different numbers for the same day — never reconciled silently.",
   internal: { files: ["lib/reports/data.ts", "lib/reports/weekly.ts", "lib/reports/ai.ts", "lib/reports/email.ts", "lib/reports/runtime-config.ts", "lib/reports/monday-config.ts", "instrumentation.ts"], routes: ["app/api/reports/morning/route.ts", "app/api/reports/evening/route.ts", "app/api/reports/weekly/route.ts", "app/api/reports/config/route.ts", "app/api/reports/status/route.ts", "app/api/reports/debug/route.ts"] },
-  anomalies: ["the status route and setup page still describe SMTP although sending uses Resend", "the old agent check route triggers reports by an unauthenticated server fetch that the gate would refuse", "no report history is kept"],
+  anomalies: ["the status route and setup page still describe SMTP although sending uses Resend", "the old agent check route triggers reports by an unauthenticated server fetch that the gate would refuse", "the content of a sent report is not kept (only sent / failed per day)"],
 } as const;
 
 export type EngineClass = "ACTIVE_OPERATIONAL" | "LEGACY" | "OBSERVATION_SOURCE" | "USER_VISIBLE" | "BACKGROUND" | "DISABLED";
 export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does: string; writes: string; classes: EngineClass[] }> = [
-  { id: "REPORT_EMAILS", trigger: "in-process every minute (morning / evening time match)", does: "sends the morning / evening email", writes: "email only", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "UPLOAD_NOTICE_BATCHES", trigger: "in-process every minute", does: "flushes batched Victor / Steven upload and final-files pushes to the Owner", writes: "push + batch markers", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
+  { id: "REPORT_EMAILS", trigger: "in-process every minute (morning / evening time match)", does: "sends the morning / evening email once per Israel day (durable claim: sent only after the email service accepted it, else failed)", writes: "email + the day claim", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
+  { id: "UPLOAD_NOTICE_BATCHES", trigger: "in-process every minute", does: "flushes batched Victor / Steven upload and final-files pushes to the Owner — each batch claimed (processing) before the send, removed only after delivery, a failure kept as a failed row (overlapping ticks never double-send)", writes: "push + batch claims", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SHALEV_WEEKLY_SUMMARY", trigger: "Sunday 10:00–10:15", does: "pushes Shalev his week's sessions", writes: "push + claim marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SHALEV_SESSION_REMINDER", trigger: "every minute (~3h before a session)", does: "pushes Shalev a session reminder", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "AVAILABILITY_REMINDER", trigger: "Thu 12:00 / Thu 18:00 / Fri 09:00", does: "asks the artist for weekly availability", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
@@ -74,11 +74,11 @@ export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does:
   { id: "STEVEN_DEADLINE_DIGEST", trigger: "09:00–09:15 New York time", does: "daily deadline digest to Steven", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "OWNER_BELL_RESET", trigger: "Friday 06:00–06:15", does: "deletes the Owner's notification bell rows", writes: "deletes notifications", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "AGENT_CHECK_ROUTE", trigger: "external cron every 3h (cron secret)", does: "holiday alerts always; the rule-based alert pipeline + pushes + report triggers only when the agent-alert rules switch is on (it is off)", writes: "holiday agent alerts", classes: ["BACKGROUND", "DISABLED", "LEGACY"] },
-  { id: "PUSH_CRON_ROUTE", trigger: "external cron (cron secret)", does: "Owner pushes for overdue / due-soon deadlines + today's sessions", writes: "push", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "SESSION_CALENDAR_PULL", trigger: "external cron (cron secret)", does: "copies moved Google event times into sessions", writes: "sessions", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
+  { id: "PUSH_CRON_ROUTE", trigger: "external cron (cron secret)", does: "Owner digest (production only): overdue / due-soon deadlines by the shared overdue rule, today's sessions, overdue expected income per currency, morning / evening summary — each type claimed once per Israel day; Victor stuck computed and returned, never pushed (Owner decision)", writes: "push + per-day claims", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
+  { id: "SESSION_CALENDAR_PULL", trigger: "external cron (cron secret)", does: "copies moved Google event date / times into sessions — never a status (reports statusConflicts and calendarErrors apart from missing events)", writes: "sessions (date / time)", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "AGENT_SNAPSHOT_READ", trigger: "external call (cron secret)", does: "returns a read-only business snapshot of the old agent", writes: "nothing", classes: ["BACKGROUND", "LEGACY"] },
   { id: "PUSH_STATUS_READ", trigger: "external call (cron secret)", does: "reports push delivery status", writes: "nothing", classes: ["BACKGROUND"] },
-  { id: "PAGE_LOAD_WRITES", trigger: "the Owner opens the app / a page", does: "session auto-mark, tasks completion sync, push re-subscribe", writes: "sessions / tasks / push subscriptions", classes: ["ACTIVE_OPERATIONAL"] },
+  { id: "PAGE_LOAD_WRITES", trigger: "the Owner opens the app / a page; a portal user opens their own portal", does: "tasks completion sync, push re-subscribe; portal presence (last-seen + at most one visit push per real visit). The session auto-mark is RETIRED (2026-09-27)", writes: "tasks / push subscriptions / portal presence records", classes: ["ACTIVE_OPERATIONAL"] },
 ];
 /** Internal (tests only, never served): which job each scheduler / secret route belongs to. */
 export const JOB_SOURCES_INTERNAL = {

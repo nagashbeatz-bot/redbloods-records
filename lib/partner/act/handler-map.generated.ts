@@ -40,7 +40,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
  "app/api/agent/check/route.ts": {
   "methods": [],
   "getWrites": true,
-  "sha256": "b490ba658d04fb513ec5a4fa9aab8fd021b18e16defa77953c0b6246a2a5786f",
+  "sha256": "4062865deed954c0a8823e6267e9f1c970ec51b2761b58e801c1c13ec02b0974",
   "effects": [
    "DELETION",
    "PUSH",
@@ -486,7 +486,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "32eaa2782d56c73614ee2cade0889235fcad9da369b58cefb2697be4ebf97605",
+  "sha256": "d2a6dbdcee397491afb7d1b82244a94c8754a3b7243703a75c08ddab64e89218",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
@@ -504,10 +504,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "date",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -536,7 +536,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "bbce3ca960534e7e522e65a70e57e20e1e928a6b9da0aced56a4c002a124a55a",
+  "sha256": "d31ca649d1ced7a5a346963da1330e29cdc953560bcba7825b7b271aa0c54f17",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
@@ -554,9 +554,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -602,9 +602,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -672,7 +672,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "64472e53bc277b0fb5898a74504d2b3efc9ced879cc91eca1466f5bd6cf6f029",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -947,7 +948,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "89b6e8ae5198d714fe1e5c8b6e72aec08be7b1bf29bf3c4b847a17d2e025a7f0",
+  "sha256": "70a0aac7217b171e669ba0e065d3f0b35617284287f597677c9da4ba60fa48f0",
   "effects": [
    "PUSH",
    "SETTINGS"
@@ -1091,7 +1092,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "c8a556e4e99388e49c80ef881817b2648b3622963a8b1e0db63c5056a1a0e5f4",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "SETTINGS"
   ],
   "fields": [
    "dropboxPath",
@@ -1285,7 +1287,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1300,7 +1301,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1315,7 +1315,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1330,7 +1329,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1348,7 +1346,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1417,13 +1414,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [],
   "fields": []
  },
- "app/api/notifications/route.ts": {
-  "methods": [],
-  "getWrites": true,
-  "sha256": "446ab89debe02c965872f5154e1977a70289b05f5641b7113f7c8a7f1626c089",
-  "effects": [],
-  "fields": []
- },
  "app/api/partner/actions/change-deadline/route.ts": {
   "methods": [
    "POST"
@@ -1433,7 +1423,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1448,7 +1437,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1472,7 +1460,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1502,7 +1489,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -1662,7 +1648,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "867f75b89941c39425e880ab67c4fe0d6d42706d6796ccfe07594dcd6d478942",
+  "sha256": "b97d7b15f72005dd63bde526336aa8dc536f3d5155d4d446a1b79060f28d5f15",
   "effects": [
    "DELETION",
    "FINANCE",
@@ -1723,7 +1709,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "687ed3b44c0af3a0fc222b32a019cf9d70351d2b5abceeed676326b5621e0a37",
+  "sha256": "07896b6ff750d23a888f119e04a94b2d1a4cf9929d921e995c501d95ac8b3e74",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -1736,6 +1722,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": [
    "artist",
+   "completeIfAllowed",
    "deadline",
    "end_date",
    "field",
@@ -1876,7 +1863,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "aa4c7f68e6c106ff7cea69f00940dbe839e731463549645d4aee8eedc91c0337",
+  "sha256": "1486f9f11c261da55c875fba3c7c08aecf2865816b774546aa7d0520865d939f",
   "effects": [
    "PUSH",
    "SETTINGS"
@@ -1909,7 +1896,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "ce467eac89ee3a3e1573890f84c75a36526beb7061a3cccaf5c93d4fefe0e4c2",
+  "sha256": "32c26d01f3e6eafbd00ff842eb7a36aae8879c77135e1e0247c3d888ffcb4a0a",
   "effects": [
    "PUSH",
    "SETTINGS"
@@ -1979,7 +1966,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "5fb6ffd740c75c5dd863834e3fe0730d34b534c723e11f5b280b0b0fdbd3d750",
+  "sha256": "4b8ba573fa14af490b70bce16c6839f82f7ca85d0546450e242d3fed3fc1645f",
   "effects": [
    "PUSH",
    "SETTINGS"
@@ -2135,9 +2122,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2184,9 +2171,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2249,9 +2236,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2297,9 +2284,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2345,9 +2332,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2393,9 +2380,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2441,9 +2428,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2521,9 +2508,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2567,7 +2554,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "4a3f25efcd25bd3fea3f90e3aa0105bd181b979ab600c8350265077db1ab759d",
+  "sha256": "3fb198a3244277eadef0b231ba76357b3f9385078a585f5f55bf85c5331e0b0d",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
@@ -2585,9 +2572,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2615,7 +2602,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "addc4c59d35d171484e063ebb1eeddc5fa3f08b346f03781ff42cd34e8d2dbb2",
+  "sha256": "c176d9d02f12393c56c7faf612762b6a1a89f4b993f2befc709b0647d4201e1b",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
@@ -2633,9 +2620,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "ids",
    "name",
    "notes",
@@ -2682,9 +2669,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2731,9 +2718,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2780,9 +2767,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "category",
    "client_id",
    "client_name",
+   "client_source",
    "currency",
    "description",
-   "general_budget",
    "name",
    "notes",
    "photographer_name",
@@ -2901,27 +2888,40 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "title"
   ]
  },
- "app/api/sessions/auto-mark/route.ts": {
-  "methods": [
-   "POST"
-  ],
-  "getWrites": false,
-  "sha256": "ee2b8bbf3e1e0874a86154f7ae00c7374be3e6f5b1042b1035f0082853ab1c3a",
-  "effects": [],
-  "fields": [
-   "clientNow"
-  ]
- },
  "app/api/sessions/calendar-pull/route.ts": {
   "methods": [],
   "getWrites": true,
-  "sha256": "e517e89040e80732cc635f73875382eb356a5b8439818ad66af03392c5377acc",
-  "effects": [],
+  "sha256": "c946ccb0777605b2bde4e3298af25372f1520f22f42e34a0f9efdc2ce491a71e",
+  "effects": [
+   "CALENDAR",
+   "DELETION",
+   "FINANCE",
+   "LEDGER",
+   "PUSH"
+  ],
   "fields": [
+   "addToCalendar",
+   "calendarEventId",
+   "cost",
    "date",
+   "endIso",
+   "endTime",
    "end_time",
+   "invite",
+   "location",
+   "notes",
+   "paymentStatus",
+   "photographer",
+   "projectId",
+   "sessionType",
+   "session_type",
+   "showId",
+   "startIso",
+   "startTime",
    "start_time",
-   "status"
+   "status",
+   "summary",
+   "title"
   ]
  },
  "app/api/sessions/route.ts": {
@@ -3060,7 +3060,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "a917849300207f51fee1edd9d1d4a35c5755880cfacdf7f5bac0603c364c68e0",
+  "sha256": "99028c8731059a62940ffccb4b54d965efda2e492adbae2d7122ba95585c7be0",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -3221,7 +3221,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE"
   ],
   "fields": [
    "secret"
@@ -3341,7 +3342,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "d0b2b804c2946cc6decded4d2e37ea83093a486fc5b0f12a42d2d9acbb38a521",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3355,7 +3355,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "e1af11e738db541fa9313550185d461992675a3c2ebe1ec656ad9bb1975c7565",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3369,10 +3368,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "307b6569f91a68d0eb17238a843d48d393baf73c783ad5dcb2e0f99d1faa11e8",
+  "sha256": "c19f2b9bf9c690acdb9555336ac3b87316353bdbeb7197e25f851d18b2e25764",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3385,7 +3383,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "bb55a72ff67bb6ac8be231bc9bfec8a06702032fa87df0b7bc4a5729a2b351ab",
+  "sha256": "7dc0b6fa50f26c2ac246fdde2d97113890dd90f7baca8a1d38e3d2deb45a95f2",
   "effects": [
    "DELETION",
    "FILES",
@@ -3567,7 +3565,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "434542e8fc2224bf0c3a5eb6084a7ccb64d95ed496fbf18e250679ba80fea9c0",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3580,10 +3577,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "c1ff43ea867c6faa8cf9c74d573617fd9612bd7be774269a70d21ccbca7e7f69",
+  "sha256": "0cb7941db703b2817c002356c963e44c261351c8e74010ecbdef037ec43fbe65",
   "effects": [
    "DELETION",
-   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -3595,6 +3591,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "filesLink",
    "internalDeadline",
    "notes",
+   "paymentDate",
    "projectId",
    "sentDate",
    "skipFinanceSync",
@@ -3655,7 +3652,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "219386813f3a78d09be4c09fe9fdaba9b7a91a80b7c88ef2c563a4d173ab3818",
+  "sha256": "305395afde5cda37536b9221b81d188e32c7abe839aa494ab48a5944bac41315",
   "effects": [
    "DELETION",
    "PUSH",
@@ -3813,7 +3810,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "6a3141ad5aa3156bd59698103279f709912a23175d3db8b728e98ceebcec65b6",
+  "sha256": "255efa06d8085ebdc96b9c80765c4c70a499a34c65f929b31b8bc55c53e6d2f7",
   "effects": [
    "DELETION",
    "FINANCE",
@@ -3896,7 +3893,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "af9434f10aa722b7240007f1a8045f6e8ff185ec0b994dcddcd00418bb8692ac",
+  "sha256": "1e31b96daf8943ff787b0d425e20465675043ac8464c42f14ff448306590e6db",
   "effects": [
    "DELETION",
    "FINANCE",
@@ -4019,7 +4016,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "d4f8673b1ee59d5cf73bc98227d81e2939107689c03556a2d3789ee7cf0f781f",
+  "sha256": "b9732eae815893a6a374b0c8064d1bc8895c6f0fe0798b67dc18bfd56c215863",
   "effects": [
    "PUSH",
    "SETTINGS"

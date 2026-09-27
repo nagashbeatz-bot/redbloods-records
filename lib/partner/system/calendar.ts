@@ -38,6 +38,7 @@ export const CALENDAR_CONTEXT_CONTRACT = {
     "RELEASES: work scheduled before the target date",
     "TASKS / COO: calendar is one input next to deadlines, money, waiting and team state",
   ],
+  inboundSync: "A scheduled calendar pull copies MOVED Google event date / times back into the linked sessions (through the session writer; a show rehearsal's finance follows its new date). It NEVER changes a session status (2026-09-27): a held session whose event moved to the future is only reported as a status conflict, a Google read error is reported apart from a missing event, and nothing is deleted. Time passed never marks a session held.",
   readCapabilities: ["calendar (summary / events / event / availability / context)", "project_view section calendar", "partner_entity enrichment for projects / clients / shows / releases / label artists"],
   futureWriteCapabilities: ["CREATE_CALENDAR_EVENT", "UPDATE_CALENDAR_EVENT", "DELETE_CALENDAR_EVENT", "SCHEDULE_SESSION", "SCHEDULE_MEETING", "RESCHEDULE_EVENT"],
   writesToday: "none — every calendar write is NOT_YET_EXECUTABLE and will need explicit Owner approval with external-effect (and, for deletes, destructive) confirmation.",

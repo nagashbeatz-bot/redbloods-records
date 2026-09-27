@@ -74,9 +74,11 @@ console.log("\n3. project ↔ client links");
 console.log("\n4. session status vocabulary");
 {
   const r = buildCompanyIntegrityRegister(input());
-  const v = find(r, "SESSION_STATUS_VOCABULARY_CONFLICT")[0];
-  ok("vocabulary conflict detected (stored התקיים vs legacy readers' נקבע/בוצע/הושלם)", !!v && v.stance === "CONFLICT" && v.interpretationHe.includes("נקבע"));
-  ok("no session row normalized (wording + evidence only)", v.interpretationHe.includes("שום שורה לא נורמלה"));
+  // A3 (2026-09-27): the Agent / report readers now read the real vocabulary — no legacy reader, so no conflict fires.
+  check("no legacy session-status reader remains (A3)", SESSION_STATUS_VOCABULARY.legacyReaders.length, 0);
+  check("vocabulary conflict no longer detected (readers aligned with מתוכנן / התקיים / בוצע)", find(r, "SESSION_STATUS_VOCABULARY_CONFLICT").length, 0);
+  const aligned = SESSION_STATUS_VOCABULARY.alignedReaders.map((x) => fs.readFileSync(path.join(process.cwd(), x.file), "utf8"));
+  ok("aligned readers no longer look for the non-existent נקבע / הושלם session statuses", aligned.every((src) => !/status\s*[!=]==\s*"נקבע"|"הושלם" \|\| s\.status|\["הושלם", "בוצע"\]/.test(src)));
 }
 
 console.log("\n5. future schedule ≠ empty calendar");
@@ -208,8 +210,12 @@ void (async () => {
   ok("the Gateway reaches the register only through the CompanyReadContext (server) and types — never by building it", !/buildCompanyIntegrityRegister|integrity\/detectors/.test(fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n")));
   ok("session writers really store the declared statuses", SESSION_STATUS_VOCABULARY.writers.files.some((fl) => read(fl).includes("התקיים")) && read("lib/writes/sessions.ts").includes("מתוכנן"));
   ok("legacy readers really expect the declared statuses", SESSION_STATUS_VOCABULARY.legacyReaders.every((r) => r.expects.every((s) => read(r.file).includes(`"${s}"`))));
-  ok("both Steven writers exist in code", STEVEN_PAYMENT_WRITERS.every((w) => read(w.file).includes(w.marker)));
+  ok("aligned readers really read the declared statuses", SESSION_STATUS_VOCABULARY.alignedReaders.every((r) => r.reads.every((s) => read(r.file).includes(`"${s}"`))));
+  ok("the ONE current engineer-payment writer exists in code; the retired writers are gone (their shapes stay only in historical data)", STEVEN_PAYMENT_WRITERS.filter((w) => w.status === "CURRENT").length === 1 && STEVEN_PAYMENT_WRITERS.every((w) => w.status === "CURRENT" ? read(w.file).includes(w.marker) : !new RegExp(`function ${w.marker}\\b`).test(read(w.file))));
   check("PORTAL_ARTISTS = the roster (supporting source)", Object.keys(PORTAL_ARTISTS).sort(), [...LABEL_ROSTER_DEFINITION.rosterNames].sort());
+  // B2 (Owner canon 2026-09-27): LABEL_SONGS answers are Owner EVIDENCE only — never a second classifier in the readers
+  ok("B2: operating / label views do not classify by LABEL_SONGS (evidence field only)", !/labelWork = [^;\n]*ownerLabel/.test(read("lib/partner/sunny/operating.ts")) && !/labelWork = [^;\n]*labelWorkByOwner/.test(read("lib/partner/label/view.ts")) && /ownerLabelSongsAnswer/.test(read("lib/partner/sunny/operating.ts")) && /ownerLabelSongsAnswer/.test(read("lib/partner/label/view.ts")));
+  ok("B2: integrity detectors never write a business type", !/setProjectBusinessType|supabase|\.(insert|upsert)\(|fetch\(/.test(read("lib/partner/integrity/detectors.ts")));
   ok("integrity answer types are in the Owner Context taxonomy", !!ANSWER_OPTIONS.INTEGRITY_LABEL_PROJECT_CLASSIFICATION && !!ANSWER_OPTIONS.INTEGRITY_CLIENT_IDENTITY);
 
   console.log(`\n${pass} passed, ${fail} failed`);

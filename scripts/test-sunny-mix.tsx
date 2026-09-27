@@ -27,6 +27,7 @@ import type { FinanceRaw } from "../lib/partner/finance/types";
 import { deriveFinanceView } from "../lib/partner/finance/view";
 import { buildFinanceBrief } from "../lib/partner/finance/brief";
 import { buildMixView, roundNumber, APP_PAYMENT_RATIO, STEVEN } from "../lib/partner/mix/view";
+import * as PAY from "../lib/mix-payment-pure";
 import * as MX from "../lib/partner/system/mix";
 import { SECURITY_GAPS } from "../lib/partner/system/people";
 import { DOMAIN_CONTRACTS, FORBIDDEN_SERVED_TERMS, CAPABILITY_CHANGES, validateSystemRegistry } from "../lib/partner/system";
@@ -100,7 +101,7 @@ function det(): ProjectDetailRaw {
 }
 const SETTINGS: SettingsState = { families: {
   STEVEN_MIX_REMINDER_STATE: sec([{ key: `steven_mix_reminder_send:${U(W_NOTES)}:${T(11)}:1`, updatedAt: null, value: {} }, { key: `steven_mix_reminder_cycle:${U(W_CYCLE)}`, updatedAt: null, value: { workId: U(W_CYCLE), cycleStartAt: T(13), remindersSent: 1, lastReminderAt: T(14) } }]),
-  PORTAL_PRESENCE: sec([{ key: "steven_visit_last", updatedAt: null, value: { at: "2026-09-24T08:00:00Z" } }]),
+  PORTAL_PRESENCE: sec([{ key: "portal_last_seen:steven", updatedAt: null, value: { at: "2026-09-24T08:00:00Z" } }, { key: "steven_visit_last", updatedAt: null, value: { at: "2026-09-20T08:00:00Z" } }]),
   PUSH_SENT_ONCE_MARKERS: sec([{ key: `steven_mix_ready_pushed_${U(W_FB)}`, updatedAt: null, value: {} }]),
   STEVEN_DEADLINE_DIGEST_SENT: sec([{ key: "steven_deadline_digest:2026-09-24", updatedAt: null, value: {} }]),
 } };
@@ -148,9 +149,9 @@ function main() {
   ok("every action route exists; executability is served only by the action coverage matrix", MX.MIX_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
   for (const [f, want] of Object.entries(MX.MIX_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Mix review (update lib/partner/system/mix.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   check("fingerprints cover every reviewed file", Object.keys(MX.MIX_REVIEWED_FINGERPRINTS).sort(), [...MX.MIX_REVIEWED_FILES].sort());
-  const view = code(read("lib/partner/mix/view.ts"));
+  const view = code(read("lib/partner/mix/view.ts") + read("lib/partner/mix/handoff.ts"));
   ok("view reuses the app's rules (final-files flags, closed status, newer-version comparison, Finance validation)", /computeFinalFilesFlags\(/.test(view) && /isClosedStatus\(/.test(view) && /hasNewerVersion\(/.test(view) && /validateTx\(/.test(view));
-  ok("the reported payment ratio equals the code's", new RegExp(`agreed \\* ${APP_PAYMENT_RATIO.toString().replace(".", "\\.")} \\* 100`).test(read("lib/sound-engineer-store.ts")) && new RegExp(`export const STEVEN_ENGINEER = "${STEVEN}"`).test(read("lib/steven-scope.ts")));
+  ok("the reported payment ratio IS the one shared working value (lib/mix-payment-pure), and no writer converts with it any more", APP_PAYMENT_RATIO === PAY.APP_PAYMENT_RATIO && !/agreed \* 3\.25/.test(read("lib/sound-engineer-store.ts") + read("lib/writes/mix.ts")) && new RegExp(`export const STEVEN_ENGINEER = "${STEVEN}"`).test(read("lib/steven-scope.ts")));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/mix-deep.ts"))));
   check("numeric round order (never lexical)", [roundNumber("Mix 10")! > roundNumber("Mix 9")!, roundNumber("Mix 2"), roundNumber("סקיצה")], [true, 2, null]);
 

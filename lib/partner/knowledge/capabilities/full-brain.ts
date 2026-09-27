@@ -60,11 +60,11 @@ function workCapability<V extends { counts: object; signals: WorkSignal[]; unava
 
 export const sessionView = workCapability({
   id: "session_view", domain: "SESSIONS", contract: "SESSIONS", titleHe: "סשנים, חזרות וימי צילום — עומק",
-  description: "Every session record: type (studio / mix cleaning / rehearsal / show rehearsal / clip shoot), status with its real meaning (התקיים may be auto-marked on app load — not proof), date passed vs happened, project / show, calendar event stored, linked expenses per currency, session limits, orphan expenses. Modes overview / list (filter) / record (ref) / model.",
+  description: "Every session record: type (studio / mix cleaning / rehearsal / show rehearsal / clip shoot), status with its real meaning (התקיים is an explicit Owner record after AUTO_MARK_RETIRED_AT 2026-09-27; on / before it may be a legacy auto-mark — not proof; a passed מתוכנן is 'עבר — לא אושר'), end passed (overnight-aware) vs happened, נדחה / לא הגיע as recorded outcomes, project / show, calendar event stored, linked expenses per currency, session limits, orphan expenses. Modes overview / list (filter) / record (ref) / model.",
   examplesHe: ["אילו סשנים יש השבוע?", "הסשן התקיים?", "כמה סשנים נשארו לפרויקט?", "אילו חזרות להופעה נקבעו?"],
-  needs: need("STATE", "PROJECT_DETAIL", "OPERATIONS", "FINANCE", "LABEL_DETAIL"), coverage: ["תאריך שעבר ≠ התקיים. 'התקיים' יכול להיות סימון אוטומטי של האפליקציה.", "ביטול סשן לא מוחק את אירוע היומן; פרטי אירוע חיים — דרך יכולת היומן."],
+  needs: need("STATE", "PROJECT_DETAIL", "OPERATIONS", "FINANCE", "LABEL_DETAIL"), coverage: ["זמן שעבר ≠ התקיים. סשן מתוכנן שהסתיים ולא אושר = 'עבר — לא אושר'. 'התקיים' לפני 2026-09-27 יכול להיות סימון אוטומטי ישן; אחרי — רק פעולה מפורשת של הבוס.", "ביטול סשן לא מוחק את אירוע היומן; פרטי אירוע חיים — דרך יכולת היומן."],
   build: buildSessionsView, list: (v) => v.sessions, filters: ["upcoming", "all", "passed_still_planned", "cancelled", "show_rehearsals", "clip_shoots", "no_project", "with_expense"] as const,
-  pick: (s, f) => ({ upcoming: !s.datePassed && s.status === "מתוכנן", all: true, passed_still_planned: s.datePassed && s.status === "מתוכנן", cancelled: s.status === "בוטל", show_rehearsals: s.kind === "SHOW_REHEARSAL", clip_shoots: s.kind === "CLIP_SHOOT", no_project: !s.project, with_expense: s.finance.length > 0 } as Record<string, boolean>)[f] ?? false,
+  pick: (s, f) => ({ upcoming: !s.endPassed && s.status === "מתוכנן", all: true, passed_still_planned: s.endPassed && s.status === "מתוכנן", cancelled: s.status === "בוטל", show_rehearsals: s.kind === "SHOW_REHEARSAL", clip_shoots: s.kind === "CLIP_SHOOT", no_project: !s.project, with_expense: s.finance.length > 0 } as Record<string, boolean>)[f] ?? false,
   label: (s) => `${s.type ?? "סשן"} ${s.date ?? ""}${s.project?.name ? ` · ${s.project.name}` : s.title ? ` · ${s.title}` : ""}`, questions: (v) => v.questions,
 });
 export const taskView = workCapability({
@@ -96,9 +96,9 @@ export const albumView = workCapability({
 });
 export const deliveryView = workCapability({
   id: "delivery_view", domain: "PROJECTS", contract: "DELIVERY", titleHe: "מסירה ללקוח — עומק",
-  description: "Per project: the delivery record (status / date / public link exists — no recipient, no history), final files (count / last / request open), send-log entries with a link, remaining money to collect, and the EVIDENCE level (DELIVERY_RECORDED > LINK_SENT_LOGGED > DELIVERY_READY > FINAL_FILES_EXIST > PROJECT_COMPLETED > NONE). 'Delivered' only from a delivery record. Modes overview / list / record / model.",
+  description: "Per project: the delivery record (status / delivered date — always set while delivered / lastDeliveredAt kept as history / public link exists — no recipient), final files (count / last / request open from the app's own flags), send-log entries with a link, remaining money to collect per currency, and the EVIDENCE level (DELIVERY_RECORDED > DELIVERED_BEFORE > LINK_SENT_LOGGED > DELIVERY_READY > FINAL_FILES_EXIST > PROJECT_COMPLETED > NONE). 'Delivered' only from a delivery record. Modes overview / list / record / model.",
   examplesHe: ["מה נמסר?", "הפרויקט נמסר ללקוח?", "מה הושלם ולא נמסר?", "יש קבצים סופיים?"],
-  needs: need("STATE", "PROJECT_DETAIL", "OPERATIONS", "FINANCE"), coverage: ["'נמסר' רק מרשומת מסירה — לא מסיום פרויקט ולא מקבצים סופיים. מסירה מחוץ למערכת לא נראית.", "תוכן תיקיית המסירה לא נקרא."],
+  needs: need("STATE", "PROJECT_DETAIL", "OPERATIONS", "FINANCE"), coverage: ["'נמסר' רק מרשומת מסירה — לא מסיום פרויקט ולא מקבצים סופיים. 'נמסר בעבר' (DELIVERED_BEFORE) = תאריך מסירה אחרון שנשמר אחרי שינוי סטטוס — היסטוריה, לא מצב נוכחי. מסירה מחוץ למערכת לא נראית.", "תוכן תיקיית המסירה לא נקרא."],
   build: buildDeliveryView, list: (v) => v.projects, filters: ["all", "delivered", "ready_not_marked", "completed_no_evidence", "final_files", "balance_open"] as const,
   pick: (p, f) => ({ all: true, delivered: p.evidence === "DELIVERY_RECORDED", ready_not_marked: p.delivery?.status === "ready", completed_no_evidence: p.projectStatus === "הושלם" && !["DELIVERY_RECORDED", "LINK_SENT_LOGGED"].includes(p.evidence), final_files: p.finalFiles.count > 0, balance_open: !!p.remainingToCollect && Object.values(p.remainingToCollect).some((x) => x > 0) } as Record<string, boolean>)[f] ?? false,
   label: (p) => p.name ?? "פרויקט",

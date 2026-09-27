@@ -132,7 +132,7 @@ export const systemAwareness: KnowledgeCapability = {
       const ent = (o: Record<string, unknown>) => Object.entries(o).map(([k, v]) => obj(k, k, v));
       const rowsR: Array<{ id: string; label: string; fields: Record<string, unknown> }> =
         t === "fields" ? RFC.RF_FIELDS.map((f) => ({ id: `${f.entity}.${f.field}`, label: f.meaning, fields: { ...f } }))
-        : t === "settings" ? [obj("clipAgreedPrice", "The project's clip price (the artist pays it) — project finance settings", "clip deal price; a managed production's budget follows it one-way"), obj("clipProductionId", "The production 'שלח קליפ' created for the project (the managed marker)", "0 in production")]
+        : t === "settings" ? [obj("clipAgreedPrice", "The project's clip price (the artist pays it) — project finance settings", "clip deal price (A) — B3: it never sets a Red Films production budget (B, planning) and is never a recoup basis"), obj("clipProductionId", "The production 'שלח קליפ' created for the project (the managed marker)", "0 in production")]
         : t === "vocabularies" ? ent(RFC.RF_VOCABULARIES)
         : t === "statuses" ? ent(RFC.STATUS_MODEL)
         : t === "money" ? ent(RFC.MONEY_MODEL)

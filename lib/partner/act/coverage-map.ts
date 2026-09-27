@@ -222,6 +222,7 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "SHOW.SET_SHOW_CURRENCY": { by: ["SET_SHOW_CURRENCY"], full: true },
   "RF.SET_PAYMENT_CURRENCY": { by: ["SET_RF_CURRENCY"], full: true },
   "SHOW.RECORD_PAYMENT": { by: ["RECORD_SHOW_PAYMENT"], full: true },
+  "SHOW.MARK_FEE_PAID": { by: ["MARK_SHOW_FEE_PAID"], full: true },
   // ── D5 show payments in Finance + currency on shows / Red Films (2026-09-27) ──
 };
 
@@ -466,6 +467,7 @@ export const PRIMITIVE_SYSTEM_DOMAIN: Readonly<Record<string, string>> = {
   DISCARD_INBOX_ITEM: "FILES_DROPBOX",
   SET_PROJECT_COVER_IMAGE: "PROJECTS",
   RECORD_SHOW_PAYMENT: "SHOWS",
+  MARK_SHOW_FEE_PAID: "SHOWS",
   SET_SHOW_CURRENCY: "SHOWS",
   SET_RF_CURRENCY: "RED_FILMS",
 };

@@ -218,7 +218,7 @@ async function main() {
   section("9. Waiting / blockers — evidence, never invented");
   const w = q({ project: P2, section: "waiting" }, sources(), OWNER, 50);
   const on = w.items.map((i) => `${i.fields.waitingOn}:${i.fields.evidence}`);
-  ok("send log → ARTIST; engineer → ENGINEER; open comment → ENGINEER; Victor draft → OWNER; needs revision → VICTOR; money → CLIENT", ["ARTIST:send log entry", "ENGINEER:engineer work status", "ENGINEER:open mix comments", "OWNER:Victor review notes written but not sent", "VICTOR:Victor version review needs revision", "CLIENT:"].every((x) => on.some((o) => o.startsWith(x))));
+  ok("send log → ARTIST; engineer → ENGINEER (the mix handoff evidence rule, never the status alone); open comment → ENGINEER; Victor draft → OWNER; needs revision → VICTOR; money → CLIENT", ["ARTIST:send log entry", "ENGINEER:mix handoff evidence:", "ENGINEER:open mix comments", "OWNER:Victor review notes written but not sent", "VICTOR:Victor version review needs revision", "CLIENT:"].every((x) => on.some((o) => o.startsWith(x))));
   const w6 = q({ project: `project:${P(6)}`, section: "waiting" }, sources({ detail: { ...DETAIL, actions: { rows: [], capped: false } } }));
   check("no evidence → DATA_NOT_RECORDED (never 'nobody')", [w6.items.length, w6.items[0].fields.waitingOn, w6.items[0].epistemic], [1, "DATA_NOT_RECORDED", "UNKNOWN"]);
 

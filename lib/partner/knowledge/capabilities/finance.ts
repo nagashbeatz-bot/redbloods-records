@@ -100,7 +100,7 @@ export const financeIntegrity: KnowledgeCapability = {
 
 export const victorSalary: KnowledgeCapability = {
   id: "victor_salary", domain: "TEAM", titleHe: "משכורת Victor",
-  descriptionForModel: "Victor's monthly salary per work month from the canonical salary model (status override > linked Finance transaction > due date): amount + currency, due date, and whether it is found in Finance, paid outside Finance, expected-not-found or upcoming; plus Partner's memory of each month (observations, unresolved source conflicts, Owner answers). Use partner_entity recurring:VICTOR_SALARY:YYYY-MM for one month in depth.",
+  descriptionForModel: "Victor's monthly salary per work month from the canonical salary model (a live Finance row decides; an Owner statement only fills a month without one — a disagreement is a conflict; else the due date): amount + currency, due date, and whether it is found in Finance, paid outside Finance, expected-not-found or upcoming; plus Partner's memory of each month (observations, unresolved source conflicts, Owner answers). Use partner_entity recurring:VICTOR_SALARY:YYYY-MM for one month in depth.",
   examplesHe: ["שילמתי לויקטור?", "מה המצב עם המשכורת של Victor?", "ומה קרה באוגוסט?"],
   modes: { months: { descriptionForModel: "Salary months, newest first" } }, defaultMode: "months",
   params: {}, paging: { defaultLimit: 12, maxLimit: 24 }, access: ACCESS, needs: ["FINANCE", "MEMORY"],

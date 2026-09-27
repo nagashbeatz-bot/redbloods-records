@@ -127,7 +127,7 @@ function main() {
   check("fingerprints cover every reviewed file", Object.keys(RF.RF_REVIEWED_FINGERPRINTS).sort(), [...RF.RF_REVIEWED_FILES].sort());
   const view = code(read("lib/partner/redfilms/view.ts"));
   ok("view reuses the app's clip-deal math + Finance validation", /summarizeClipFinance\(/.test(view) && /validateTx\(/.test(view));
-  ok("promote still deletes the row and writes expense scope קליפ (the contract's statement; the shared writer, claim-first since 2026-09-27)", /from\("clip_items"\)\.delete\(\)/.test(read("lib/writes/redfilms.ts")) && /expense_scope:\s*"קליפ"/.test(read("lib/writes/redfilms.ts")) && /promoteClipItem\(id, date\)/.test(read("app/api/clip-items/[id]/promote/route.ts")));
+  ok("promote KEEPS the row (claim → link, B3) and writes expense scope קליפ (the contract's statement; the shared writer, claim-first since 2026-09-27)", /CLIP_ITEM_PROMOTED_STATUS/.test(read("lib/writes/redfilms.ts")) && /update\(\{ linked_transaction_id: txId/.test(read("lib/writes/redfilms.ts")) && /KEPT and linked/.test(RF.MONEY_MODEL.promote) && /expense_scope:\s*"קליפ"/.test(read("lib/writes/redfilms.ts")) && /promoteClipItem\(id, date\)/.test(read("app/api/clip-items/[id]/promote/route.ts")));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/video-deep.ts"))));
 
   const v = buildVideoView(sources());
@@ -214,13 +214,14 @@ function main() {
   ok("conflicting sources shown, never rewritten", v.signals.some((s) => s.code === "PUBLISHED_CONTENT_VS_PRODUCTION" && s.project === `project:${P(4)}`));
 
   section("SCENARIO Y — label artist video");
-  ok("label context + recoup rule, no priority", PV(P(1)).labelWork === true && /recoup/.test(PRD(PR_NODATE).money.recoup) && !/priority/.test(JSON.stringify(PV(P(1)))));
+  // B3 (Owner canon 2026-09-27): the clip recoup is NOT_DEFINED (null + the Hebrew reason) — never 50 % of the budget
+  ok("label context + recoup NOT_DEFINED (B3), no priority", PV(P(1)).labelWork === true && PRD(PR_NODATE).money.recoup.status === "NOT_DEFINED" && PRD(PR_NODATE).money.recoup.amount === null && /חסר כלל חוזה/.test(PRD(PR_NODATE).money.recoup.reasonHe) && !/50/.test(JSON.stringify(PRD(PR_NODATE).money.recoup)) && !/priority/.test(JSON.stringify(PV(P(1)))));
 
   section("SCENARIO Z — client video");
   ok("clip income ≠ expense", PV(P(2)).labelWork === false && PV(P(2)).clipDeal.price === 3500 && PV(P(2)).clipDeal.paid === 1500 && PV(P(2)).expenses.total["₪"] === 1100 && /revenue, never a video expense/.test(PV(P(2)).clipDeal.note));
 
   section("2. money layers, Red Films ledger, awareness");
-  ok("Red Films ledger apart from Finance; manual actual vs payments flagged; no currency", a.money.paidRedFilmsLedger["₪"] === 1200 && a.money.manualActualOnLines["₪"] === 500 && v.signals.some((s) => s.code === "LINE_ACTUAL_VS_PAYMENTS") && v.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE") && a.money.currency === "₪" && /PER CURRENCY|never added across currencies/.test(a.money.totalsNote));
+  ok("Red Films ledger apart from Finance (DB-1 pending); legacy manual actual vs payments flagged; no currency", a.money.paidRedFilmsLedger["₪"] === 1200 && a.money.legacyManualActualOnLines["₪"] === 500 && v.signals.some((s) => s.code === "LINE_ACTUAL_VS_PAYMENTS") && v.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE" && /DB-1/.test(s.he)) && a.money.linkage.state === "RF_LEDGER_NOT_IN_FINANCE" && a.money.currency === "₪" && /PER CURRENCY|never added across currencies/.test(a.money.totalsNote) && !/no Finance expense is linked to a line/.test(a.money.layers));
   for (const fl of ["active", "all", "cancelled", "shoot_passed_not_shot", "no_project", "with_documents", "with_payments", "projects", "projects_no_production"]) ok(`video_portfolio filter ${fl}`, q("video_portfolio", "list", { filter: fl }).status === "OK");
   ok("Owner-only", q("video_view", "overview", {}, STRANGER).status !== "OK" && q("video_portfolio", "list", {}, STRANGER).status !== "OK");
   for (const s of ["fields", "settings", "vocabularies", "work", "statuses", "money", "identity", "calendar", "files", "consumers", "actions", "workflows", "signals", "security", "integrity"]) ok(`system_awareness red_films_model ${s}`, (q("system_awareness", "red_films_model", { section: s }) as { items: unknown[] }).items.length > 0);

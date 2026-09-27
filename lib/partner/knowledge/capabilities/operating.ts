@@ -24,7 +24,7 @@ const COVERAGE = [
 
 export const operatingModel: KnowledgeCapability = {
   id: "operating_model", domain: "COMPANY", titleHe: "איך הבעלים מנהל את Redbloods",
-  descriptionForModel: "The Owner-CONFIRMED operating model and its deterministic application. Modes: rules (area filter), workflows (event filter: what must be known + where Redbloods keeps it / what to ask, downstream effects, existing manual pushes, action executability), project (client deadline class NO_DEADLINE/UPCOMING/APPROACHING/AT_RISK/PASSED_NEW_FAILURE/HISTORICAL_OPERATIONAL_DEBT, internal deadlines, ball-holder evidence, advance evidence, label protection, occupancy, questions), show (artist + date → known / to ask / downstream / notification proposals), company (cashflow + label + deadlines trade-off context, no score), repeated_questions (improvement signals). Old overdue = operational debt, not an emergency. Never invent payment terms.",
+  descriptionForModel: "The Owner-CONFIRMED operating model and its deterministic application. Modes: rules (area filter), workflows (event filter: what must be known + where Redbloods keeps it / what to ask, downstream effects, existing manual pushes, action executability), project (client deadline class NO_DEADLINE/UPCOMING/APPROACHING/AT_RISK/PASSED_NEW_FAILURE/HISTORICAL_OPERATIONAL_DEBT/ON_HOLD/HIDDEN/UNPARSEABLE_DEADLINE (on-hold, hidden, completed and cancelled are never overdue — the one shared overdue rule), internal deadlines, ball-holder evidence, advance evidence, label protection, occupancy, questions), show (artist + date → known / to ask / downstream / notification proposals), company (cashflow + label + deadlines trade-off context, no score), repeated_questions (improvement signals). Old overdue = operational debt, not an emergency. Never invent payment terms.",
   examplesHe: ["נכנסה הופעה לשליו ב-15.10", "הדדליין של הפרויקט הזה בסיכון?", "על מי הפרויקט מחכה?", "התקבלה מקדמה?", "כסף או לייבל — מה קודם?", "איך אתה אמור להתנהג כשדדליין עובר?", "מה אתה שואל אותי שוב ושוב?"],
   modes: {
     rules: { descriptionForModel: "Owner-confirmed rules (optional area)" }, workflows: { descriptionForModel: "Event workflow models (optional event)" },
@@ -40,9 +40,9 @@ export const operatingModel: KnowledgeCapability = {
     date: { kind: "ymd", descriptionForModel: "show: the show date (YYYY-MM-DD)" },
   },
   entityScope: { types: ["project"], param: "project", mode: "project", limit: 1 },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000,
+  paging: { defaultLimit: 30, maxLimit: 50 }, recordTextLimit: 2000, // 26 Owner rules fit one page
   access: { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" },
-  needs: ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "INTEGRITY", "CASES", "ACTIONS", "OUTCOMES", "PROJECT_DETAIL"], optionalNeeds: ["CALENDAR", "SETTINGS"],
+  needs: ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "INTEGRITY", "CASES", "ACTIONS", "OUTCOMES", "PROJECT_DETAIL"], optionalNeeds: ["CALENDAR", "SETTINGS", "LABEL_DETAIL"],
   read(src, q) {
     const version = sfact("OWNER_MODEL_VERSION", "גרסת מודל העבודה", OWNER_MODEL_VERSION, "OWNER_DECISION", "PARTNER_KNOWLEDGE");
     if (q.mode === "rules") {

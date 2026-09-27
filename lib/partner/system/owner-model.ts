@@ -11,7 +11,7 @@
  * Provenance: OWNER_CONFIRMED (the Owner's own words in the Sunny operating-model conversation, 2026-09-25).
  */
 
-export const OWNER_MODEL_VERSION = "2026.09.27-owner-2";
+export const OWNER_MODEL_VERSION = "2026.09.27-owner-3";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -85,6 +85,31 @@ export const OWNER_OPERATING_RULES: readonly OwnerRule[] = [
   { ...O("ADDRESS_OWNER_AS_BOSS", "LANGUAGE", "Sunny's default direct form of address for the Owner is 'בוס' (Boss).",
     ["Use 'בוס' naturally when addressing the Owner directly — at the start of an answer, a preview or a question."],
     ["Not in every sentence.", "Does not change how others (artists, Victor, Steven, clients) are addressed, and never appears in anything sent to them."]), confirmedAt: "2026-09-27" },
+  // ── Owner decisions of 2026-09-27 (the integrity mission: Q1 / Q3 + the money / label / session canon) ──
+  { ...O("PRESENCE_PUSH_ONE_PER_VISIT", "COMMUNICATION", "A portal user (Shalev, Avi, DJ CLEANTONE, Victor, Steven) opening their OWN portal sends the Owner ONE presence push per real visit (a new visit = no activity for 30 minutes).",
+    ["Report 'last seen' and the visit-push delivery state as two separate facts.", "A refresh or a second tab inside the same visit is not a new visit."],
+    ["The Owner opening the app never sends a push.", "Presence is activity evidence only — not work done, not availability.", "Sunny never sends a push."]), confirmedAt: "2026-09-27" },
+  { ...O("VICTOR_STUCK_SIGNAL_NOT_PUSH", "COMMUNICATION", "The Victor-stuck PUSH is disabled; the stuck signal is kept.",
+    ["Compute stuck with the app's one rule together with the ball holder and show it as context when relevant."],
+    ["Stuck is not urgent and not a judgement of Victor.", "Never re-enable or imitate the push."]), confirmedAt: "2026-09-27" },
+  { ...O("SHALEV_AVI_PROJECTS_ARE_LABEL", "LABEL", "A project that credits Shalev Tasama or Avi Molla (solo or in a collaboration) is a LABEL project.",
+    ["Apply it when a project is created (the app's create writers do); show an existing stored לקוח that this rule would call לייבל as a mismatch for the Owner's explicit fix."],
+    ["No 'every roster artist = label' rule — other roster artists are classified by the Owner case by case.", "An existing project is never reclassified automatically."]), confirmedAt: "2026-09-27" },
+  { ...O("CLIENT_PAID_IS_NOT_FEE_PAID", "PAYMENTS", "Client paid ≠ DJ paid ≠ artist paid: a show's DJ fee and artist fee are independent obligations.",
+    ["Mark a DJ / artist fee paid only when the Owner says so (the close-dialog flag, MARK_SHOW_FEE_PAID or a Finance edit).", "Undoing a payment is an explicit correction, never a side effect."],
+    ["The client paying in full never pays the DJ or the artist.", "A save never downgrades a paid fee."]), confirmedAt: "2026-09-27" },
+  { ...O("RECOUP_ONLY_PER_AGREEMENT", "LABEL", "Recoup exists only according to the specific artist agreement.",
+    ["Until the agreement rule is recorded, the clip recoup is NOT_DEFINED ('לא נקבע'); show the client clip price, planned budget, actual paid cost and Red Films payments per currency as information only."],
+    ["Never half of the budget, never the budget, never the client clip price as a recoup.", "No recoup figure may be invented."]), confirmedAt: "2026-09-27" },
+  { ...O("RF_PAYMENT_IS_COMPANY_EXPENSE", "CASHFLOW", "A Red Films payment marked שולם is a real company expense.",
+    ["Count it as real money spent, shown apart from Finance until the Finance linkage (DB-1) is approved; a clip production maps to expense scope קליפ, other types need an explicit scope."],
+    ["Planned budget is not spend.", "It is never added to a Finance expense for the same vendor (possible duplicate evidence only)."]), confirmedAt: "2026-09-27" },
+  { ...O("TIME_PASSED_IS_NOT_HAPPENED", "TIME", "Time passed ≠ a session happened: a session is held only when the Owner records it.",
+    ["Show a passed planned session as 'עבר — לא אושר' and ask; treat a held status written before 2026-09-27 as possibly automatic."],
+    ["A calendar event or a passed date never proves a session, a shoot or a meeting happened."]), confirmedAt: "2026-09-27" },
+  { ...O("NO_SILENT_FX", "PAYMENTS", "No silent currency conversion anywhere: every amount stays in its own currency.",
+    ["Totals are per currency; a conversion appears only as an explicitly labelled estimate."],
+    ["An estimate (e.g. a working $→₪ ratio) is never recorded as actual money."]), confirmedAt: "2026-09-27" },
 ];
 
 // ── the event → workflow model (Redbloods-supported: system contracts + implementation behaviour) ──
@@ -122,20 +147,20 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
       { item: "rehearsal", knownFrom: "CANONICAL_DATA", note: "rehearsal sessions store the show id" },
       { item: "calendar on that date", knownFrom: "LIVE_CALENDAR" },
     ],
-    downstream: ["a confirmed show creates 3 finance rows (income, DJ fee, artist fee = half of net)", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע writes the artist ledger (frozen)"],
+    downstream: ["a confirmed show creates 3 finance rows in the show currency (expected balance, DJ fee, artist fee = half of net); money received = payment rows; DJ / artist fees are paid only explicitly", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע writes the artist ledger (frozen)"],
     notifications: ["P_SHOW_TO_ARTIST — Owner presses 'שלח' to the artist (manual)", "P_SHOW_TO_DJ — Owner presses 'שלח' to the DJ (manual)", "P_DJ_CONFIRMED — when the DJ confirms (automatic, to the Owner)"],
     actions: ["CREATE_SHOW — FUTURE_PRIMITIVE_REQUIRED (the Owner creates it in the dashboard today)", "UPDATE_SHOW_STATUS — FUTURE_PRIMITIVE_REQUIRED", "ASSIGN_SHOW_DJ — FUTURE_PRIMITIVE_REQUIRED", "NOTIFY_ARTIST_DJ — FUTURE_PRIMITIVE_REQUIRED (Sunny may ASK whether to send; never sends)", "CLOSE_SHOW — FUTURE_PRIMITIVE_REQUIRED (financial + strong confirmation)"] },
   { event: "NEW_PROJECT", titleHe: "פרויקט חדש", source: "SYSTEM_CONTRACT",
     required: [
       { item: "client / artist", knownFrom: "CANONICAL_DATA", note: "artist text → client (TEXT_MATCH); label roster for label work" },
-      { item: "label or client work", knownFrom: "ASK_OWNER", note: "creation always stores 'לקוח' — ask when the artist is on the label roster" },
+      { item: "label or client work", knownFrom: "OWNER_CONFIRMED", note: "the Owner rule at creation: שליו טסמה / אבי מולה credited → לייבל (the create writers apply it); any other roster artist → ask" },
       { item: "project type", knownFrom: "ASK_OWNER" },
       { item: "client deadline (a commitment)", knownFrom: "ASK_OWNER" },
       { item: "agreed price + currency", knownFrom: "ASK_OWNER", note: "belongs in Redbloods finance, never in Sunny's memory" },
       { item: "advance received?", knownFrom: "CANONICAL_DATA", note: "income rows — Owner pattern: most client projects start with an advance" },
       { item: "linked proposal", knownFrom: "CANONICAL_DATA" },
     ],
-    downstream: ["start date = today, business type 'לקוח'", "missing clients are added by name", "no Dropbox folder until the first upload", "price / advance live in the finance setting / transactions"],
+    downstream: ["start date = today, business type by the Owner rule (לייבל when שליו טסמה / אבי מולה is credited, else לקוח)", "missing clients are added by name", "no Dropbox folder until the first upload", "price / advance live in the finance setting / transactions"],
     notifications: [], actions: ["CREATE_PROJECT — PROPOSAL_CANDIDATE (dashboard today)", "SET_PROJECT_AGREED_PRICE — FUTURE_PRIMITIVE_REQUIRED (financial)"] },
   { event: "NEW_CLIENT_OR_LEAD", titleHe: "לקוח / ליד חדש", source: "SYSTEM_CONTRACT",
     required: [{ item: "client identity (existing or new — never by a similar name)", knownFrom: "CANONICAL_DATA" }, { item: "what they want (project type)", knownFrom: "ASK_OWNER" }, { item: "proposal amount + follow-up date", knownFrom: "ASK_OWNER" }],
@@ -154,7 +179,7 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
     downstream: ["project becomes לייבל; release row created", "portal cover / visibility by the release row"], notifications: [], actions: ["CONVERT_TO_LABEL_RELEASE / CREATE_LABEL_SONG — FUTURE (dashboard today)"] },
   { event: "NEW_CLIP", titleHe: "קליפ חדש", source: "SYSTEM_CONTRACT",
     required: [{ item: "project", knownFrom: "CANONICAL_DATA" }, { item: "clip price", knownFrom: "ASK_OWNER" }, { item: "Red Films production", knownFrom: "CANONICAL_DATA" }],
-    downstream: ["clip deal seeds advance + balance income rows", "managed Red Films production budget mirrors the clip price"], notifications: [], actions: ["OPEN_CLIP_DEAL / START_CLIP_PRODUCTION — FUTURE (financial)"] },
+    downstream: ["clip deal seeds advance + balance income rows", "'שלח קליפ' creates a Red Films production with its own planning budget (0 in the deal currency — never the clip price); recoup stays NOT_DEFINED until the artist agreement rule"], notifications: [], actions: ["OPEN_CLIP_DEAL / START_CLIP_PRODUCTION — FUTURE (financial)"] },
   { event: "NEW_TASK", titleHe: "משימה חדשה", source: "IMPLEMENTATION_BEHAVIOR",
     required: [{ item: "what + related entity", knownFrom: "ASK_OWNER" }, { item: "due date", knownFrom: "ASK_OWNER" }],
     downstream: ["mirrored as a Google Task"], notifications: [], actions: ["CREATE_TASK — FUTURE (external effect)"] },
@@ -162,7 +187,7 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
 
 /** Repeated questions → the Redbloods concept whose absence causes them (improvement signals). */
 export const QUESTION_TYPE_TO_MISSING_CONCEPT: Readonly<Record<string, string>> = {
-  INTEGRITY_LABEL_PROJECT_CLASSIFICATION: "Projects of label-roster artists are created as 'לקוח' by default — Redbloods does not ask label vs client when a project is created.",
+  INTEGRITY_LABEL_PROJECT_CLASSIFICATION: "Only Shalev / Avi projects are classified as label automatically at creation (Owner rule, 2026-09-27) — other roster artists' projects and older projects still need the Owner's explicit classification.",
   INTEGRITY_CLIENT_IDENTITY: "Projects carry the client only as free-text artist names — there is no client id on a project.",
   PROJECT_PRICE: "The agreed price is not captured when a project is created (only on proposal conversion).",
   FINANCE_COMPLETED_PROJECT_INCOME_STATUS: "A project can be completed without its income being recorded — there is no completion check for money.",

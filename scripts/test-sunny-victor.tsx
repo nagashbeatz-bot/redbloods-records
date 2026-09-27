@@ -68,7 +68,7 @@ const SETTINGS: SettingsState = { families: {
   VICTOR_SALARY_SETTINGS: sec([{ key: "vendor_victor_settings", updatedAt: null, value: { monthlyGoal: 12, monthlySalary: 550, salaryCurrency: "$", salaryPayDay: 10, stuckAfterDays: 5, paceMetric: "נכנסו לפרויקט בפועל" } }]),
   VICTOR_SALARY_OVERRIDES: sec([{ key: "vendor_victor_salary_overrides", updatedAt: null, value: { "2026-05": 550, "2026-06": 500 } }, { key: "vendor_victor_salary_status_overrides", updatedAt: null, value: { "2026-05": "שולם", "2026-06": "שולם", "2026-08": "שולם" } }]),
   VICTOR_LEGACY_MONTH_PAYMENT: sec([{ key: "vendor_victor_payment_2026_05", updatedAt: null, value: { status: "צפוי", paidDate: null } }]),
-  PORTAL_PRESENCE: sec([{ key: "victor_visit_last", updatedAt: null, value: { at: "2026-09-24T08:00:00Z" } }]),
+  PORTAL_PRESENCE: sec([{ key: "portal_last_seen:victor", updatedAt: null, value: { at: "2026-09-24T08:00:00Z" } }, { key: "portal_visit_push:victor", updatedAt: null, value: { status: "sent", visitStartedAt: "2026-09-24T07:40:00Z", claimedAt: "2026-09-24T07:40:00Z", sentAt: "2026-09-24T07:40:01Z", result: "sent" } }, { key: "victor_visit_last", updatedAt: null, value: { at: "2026-09-20T08:00:00Z" } }]),
   PUSH_SENT_ONCE_MARKERS: sec([{ key: `victor_work_completed_pushed_${U(W_DONE)}`, updatedAt: null, value: {} }]),
 } };
 function sources(o: Opt = {}): GatewaySources {
@@ -147,7 +147,7 @@ function main() {
 
   section("SCENARIO H — month marked paid without a finance row");
   const may = v.money.months.find((m) => m.month === "2026-05")!;
-  ok("conflict surfaced; proof = Owner statement only", may.proof.startsWith("OWNER_STATEMENT_ONLY") && may.conflicts.some((x) => /no paid finance row/.test(x)) && may.conflicts.some((x) => /legacy key says צפוי/.test(x)));
+  ok("B5 precedence: no live Finance row → the Owner statement fills the month (proof = Owner statement only, not a Finance conflict); the legacy-key disagreement is still a conflict", may.proof.startsWith("OWNER_STATEMENT_ONLY") && !may.conflicts.some((x) => /finance row/.test(x)) && may.conflicts.some((x) => /legacy key says צפוי/.test(x)));
   ok("an Owner question is raised", v.questions.some((x) => x.kind === "PAYMENT" && /2026-05/.test(x.questionHe)));
 
   section("SCENARIO I — $ and ₪ never mixed");
@@ -157,7 +157,7 @@ function main() {
   ok("stored entries only; never 'no files'", /NOT_AVAILABLE/.test(b.files.storageListing) && W(v, W_STANDALONE).files.entries === 0 && v.signals.some((s) => s.code === "NO_FILE_ENTRIES" && /האחסון עצמו לא נקרא/.test(s.he)));
 
   section("SCENARIO K — completed, no mix evidence");
-  ok("COMPLETED_NO_MIX_EVIDENCE", v.signals.some((s) => s.code === "COMPLETED_NO_MIX_EVIDENCE" && s.work === `victor-work:${U(W_DONE)}`) && W(v, W_DONE).completionPush === "SENT (marker)");
+  ok("COMPLETED_NO_MIX_EVIDENCE", v.signals.some((s) => s.code === "COMPLETED_NO_MIX_EVIDENCE" && s.work === `victor-work:${U(W_DONE)}`) && /^(SENT \(marker\)|RECORDED \(legacy marker)/.test(W(v, W_DONE).completionPush));
 
   section("SCENARIO L — deadline passed, Owner has not answered the latest upload");
   ok("ball = Owner; deadline signal does not blame", f.handoff.state === "WAITING_ON_OWNER" && f.internalDeadline?.passed === true);

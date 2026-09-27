@@ -51,11 +51,12 @@ const NOT_SETTING_KEYS: Readonly<Record<string, string>> = {
   "steven-completed-owner-": "notification event key (notifications table), not settings",
   "shalev_weekly_sessions_ack:": "push event id, not settings", "shalev_weekly_sessions_fail:": "push event id, not settings",
   "https:": "a URL literal, not a key", "already_": "a claim-result reason string (already_sent), not a key",
+  "send_": "a delivery-result string (send_failed), not a key", "in_": "a claim-result string (in_progress), not a key", "cas_": "a claim-decision string (cas_update), not a key",
 };
 /** Builder heads whose full key needs more than a suffix: head → a real sample key (must classify). */
 const BUILDER_HEADS: Readonly<Record<string, string>> = {};
 /** Key-builder helper files (the key text lives here, the settings access in the caller). */
-const KEY_BUILDER_FILES = ["lib/shalev-availability-reminder-pure.ts", "lib/shalev-session-reminder-pure.ts", "lib/show-notify-pure.ts", "lib/steven-completed-pure.ts", "lib/steven-deadline-digest-pure.ts", "lib/steven-mix-reminder-pure.ts", "lib/project-cover.ts", "lib/dj-show-notify.ts", "lib/agent/goals.ts", "lib/red-artists/availability.ts", "lib/vendor-store.ts"];
+const KEY_BUILDER_FILES = ["lib/shalev-availability-reminder-pure.ts", "lib/shalev-session-reminder-pure.ts", "lib/show-notify-pure.ts", "lib/steven-completed-pure.ts", "lib/steven-deadline-digest-pure.ts", "lib/steven-mix-reminder-pure.ts", "lib/project-cover.ts", "lib/dj-show-notify.ts", "lib/agent/goals.ts", "lib/red-artists/availability.ts", "lib/vendor-store.ts", "lib/push-claims-pure.ts", "lib/push-presence-pure.ts", "lib/steven-mix-ready-notify.ts", "lib/steven-payment-notify.ts", "lib/victor-completed-notify.ts"];
 
 async function main() {
   section("1. Registry is valid and every class is explicit");

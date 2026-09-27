@@ -26,6 +26,9 @@ import { KNOWLEDGE_GAPS, validateKnowledgeGaps } from "../lib/partner/system/gap
 import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
 import { C_SHALEV, LA_CLEAN, LA_SHALEV, NOW, P, U, input } from "./fixtures/integrity-company";
 import { empty, tx } from "./fixtures/finance-mirror";
+import type { SettingsState } from "../lib/partner/settings/types";
+import type { LabelDetailRaw } from "../lib/partner/label/detail-types";
+import { computeShowNotifyFingerprint } from "../lib/show-notify-pure";
 
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
@@ -62,7 +65,7 @@ const CAL: CalendarWindowResult = { status: "CALENDAR_DATA_AVAILABLE", window: {
 const K = (kind: string, subjectKey: string, value: Record<string, unknown>, meaningHe: string): OwnerKnowledgeRecord => ({ id: `k-${kind}`, createdAt: "2026-09-24T10:00:00Z", kind, subjectKey, identityKeys: [subjectKey], slotKey: kind, value: value as OwnerKnowledgeRecord["value"], epistemic: "OWNER_REPORTED" as OwnerKnowledgeRecord["epistemic"], meaningHe, operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, provenance: {} as OwnerKnowledgeRecord["provenance"], confirmationId: "c", itemIndex: 0 });
 const P2 = [K("ORGANIZATIONAL_ROLE", `label-artist:${LA_CLEAN}`, { role: "LABEL_DJ" }, "DJ CLEANTONE הוא הדי-ג׳יי של הלייבל"), K("ENTITY_RELATIONSHIP", `label-artist:${LA_CLEAN}`, { relation: "PARTICIPATES_IN_SHOWS", frequency: "MOST", object: "company:REDBLOODS" }, "מנגן ברוב ההופעות")];
 
-interface Opt { today?: string; deadlines?: Record<string, string>; victorInternal?: string; cal?: CalendarWindowResult | "NONE"; integrity?: CompanyIntegrityRegister; knowledge?: OwnerKnowledgeRecord[]; incomeFor?: string[] }
+interface Opt { today?: string; deadlines?: Record<string, string>; victorInternal?: string; cal?: CalendarWindowResult | "NONE"; integrity?: CompanyIntegrityRegister; knowledge?: OwnerKnowledgeRecord[]; incomeFor?: string[]; settings?: SettingsState; labelDetail?: LabelDetailRaw }
 function sources(o: Opt = {}): GatewaySources {
   const st = input({ contexts: [] }).state!;
   if (o.today) (st as { todayIL: string }).todayIL = o.today;
@@ -78,7 +81,9 @@ function sources(o: Opt = {}): GatewaySources {
     cases: { status: "OK", value: [] }, actions: { status: "OK", value: [] }, outcomes: { status: "OK", value: [] }, ownerKnowledge: { status: "OK", value: o.knowledge ?? P2 },
     projectDetail: { status: "OK", value: EMPTY_DETAIL }, operations: { status: "OK", value: OPS },
     ...(o.cal === "NONE" ? {} : { calendar: { status: "OK" as const, value: o.cal ?? CAL } }),
-    ...(o.integrity ? { integrity: { status: "OK" as const, value: o.integrity } } : {}) };
+    ...(o.integrity ? { integrity: { status: "OK" as const, value: o.integrity } } : {}),
+    ...(o.settings ? { settings: { status: "OK" as const, value: o.settings } } : {}),
+    ...(o.labelDetail ? { labelDetail: { status: "OK" as const, value: o.labelDetail } } : {}) };
 }
 const q = (mode: string, params: Record<string, string> = {}, src = sources(), aud = OWNER): QueryResponse => queryKnowledgeCore(REG, { capability: "operating_model", mode, params }, src, aud);
 const itemsOf = (r: QueryResponse) => (r.status === "OK" ? r.items : []);
@@ -86,7 +91,7 @@ const served = (r: QueryResponse) => r.status === "OK";
 
 function main() {
   section("1. Owner-confirmed rules — provenance, coverage, no invented policy");
-  ok("18 rules, every one OWNER_CONFIRMED with a date (16 on 2026-09-25 + Owner authority / \"בוס\" on 2026-09-27)", OWNER_OPERATING_RULES.length === 18 && OWNER_OPERATING_RULES.every((r) => r.provenance === "OWNER_CONFIRMED" && (r.confirmedAt === "2026-09-25" || (r.confirmedAt === "2026-09-27" && (r.id === "OWNER_IS_FINAL_AUTHORITY" || r.id === "ADDRESS_OWNER_AS_BOSS")))));
+  ok("26 rules, every one OWNER_CONFIRMED with a date (16 on 2026-09-25 + Owner authority / \"בוס\" + the 8 integrity-mission decisions on 2026-09-27)", OWNER_OPERATING_RULES.length === 26 && OWNER_OPERATING_RULES.every((r) => r.provenance === "OWNER_CONFIRMED" && (r.confirmedAt === "2026-09-25" || (r.confirmedAt === "2026-09-27" && ["OWNER_IS_FINAL_AUTHORITY", "ADDRESS_OWNER_AS_BOSS", "PRESENCE_PUSH_ONE_PER_VISIT", "VICTOR_STUCK_SIGNAL_NOT_PUSH", "SHALEV_AVI_PROJECTS_ARE_LABEL", "CLIENT_PAID_IS_NOT_FEE_PAID", "RECOUP_ONLY_PER_AGREEMENT", "RF_PAYMENT_IS_COMPANY_EXPENSE", "TIME_PASSED_IS_NOT_HAPPENED", "NO_SILENT_FX"].includes(r.id)))));
   ok("every rule says what Sunny does AND what it does not mean", OWNER_OPERATING_RULES.every((r) => r.sunnyBehavior.length > 0 && r.doesNotMean.length > 0));
   const ids = OWNER_OPERATING_RULES.map((r) => r.id);
   for (const want of ["CLIENT_DEADLINE_IS_COMMITMENT", "INTERNAL_DEADLINE_IS_EXPECTATION", "HISTORICAL_OVERDUE_IS_OPERATIONAL_DEBT", "CONTINUOUS_PROJECT_OWNERSHIP", "INVESTIGATE_THEN_ASK", "OUTSIDE_COMMUNICATION_EXISTS", "LEARNING_LOOP", "CASHFLOW_TOP_OPERATIONAL_PRIORITY", "ADVANCE_THEN_LATER_PAYMENT", "LABEL_ARTISTS_PROTECTED_GROWTH_TRACK", "MONEY_AND_LABEL_ARE_CONNECTED", "NO_FIXED_WORK_HOURS", "PERSONAL_CONTEXT_IS_REAL_SCHEDULE", "ALIASES_LEARNED_PROGRESSIVELY", "EVENT_STARTS_WORKFLOW", "SUGGEST_SYSTEM_IMPROVEMENTS"]) ok(`rule ${want}`, ids.includes(want));
@@ -95,7 +100,7 @@ function main() {
   const rulesExceptIdentity = JSON.stringify(OWNER_OPERATING_RULES.filter((r) => r.id !== "OWNER_IS_FINAL_AUTHORITY"));
   ok("open questions are NOT silently answered (את היחידה / קרוב אלייך absent; Nagash only in the Owner-answered identity rule, 2026-09-27)", !/נגש|Nagash|את היחידה|קרוב אלייך/.test(rulesExceptIdentity + JSON.stringify(WORKFLOW_MODELS) + read("lib/partner/sunny/operating.ts")) && /Nagash \(נגש\)/.test(JSON.stringify(OWNER_OPERATING_RULES.find((r) => r.id === "OWNER_IS_FINAL_AUTHORITY"))));
   const rr = q("rules");
-  ok("capability serves the rules (Owner)", served(rr) && itemsOf(rr).length === 18 && itemsOf(rr).every((i) => i.epistemic === "OWNER_DECISION"));
+  ok("capability serves the rules (Owner)", served(rr) && itemsOf(rr).length === OWNER_OPERATING_RULES.length && itemsOf(rr).length === 26 && itemsOf(rr).every((i) => i.epistemic === "OWNER_DECISION"));
   ok("rules filtered by area", itemsOf(q("rules", { area: "DEADLINES" })).length === 3);
   ok("operating_model is Owner-only", !served(q("rules", {}, sources(), STRANGER)));
   ok("version fact served", served(rr) && rr.summary.some((f) => f.code === "OWNER_MODEL_VERSION" && f.value === OWNER_MODEL_VERSION));
@@ -143,6 +148,29 @@ function main() {
   const ex = showWorkflow(sources(), `client:${C_SHALEV}`, "2026-08-06");
   ok("an already-registered show is recognised (no duplicate workflow)", ex.resolved && ex.existingShow === `show:${U(401)}` && ex.questions.length === 0);
   ok("settings unreadable → notification state UNKNOWN (never 'not sent')", ex.resolved && ex.notifications.every((n) => n.state === "UNKNOWN"));
+  // the one read rule (showNotifyStateOf with the show's CURRENT fingerprint) — the same answer as the send button / show_view
+  const SHOW_EX = U(401);
+  const exRow = { id: SHOW_EX, name: "הופעה בחיפה", date: "2026-08-06", startTime: "21:00", location: "חיפה" };
+  const LDX = { shows: sec([exRow]) } as unknown as LabelDetailRaw;
+  const curFp = computeShowNotifyFingerprint({ name: exRow.name, date: exRow.date, startTime: exRow.startTime, location: exRow.location });
+  const withClaim = (value: Record<string, unknown> | null, ld: LabelDetailRaw | undefined = LDX) => {
+    const st: SettingsState = { families: { SHOW_SENT_TO_ARTIST: sec(value ? [{ key: `show_notify:${SHOW_EX}`, updatedAt: null, value }] : []), SHOW_SENT_TO_DJ: sec([]) } } as unknown as SettingsState;
+    const w = showWorkflow(sources({ settings: st, labelDetail: ld }), `client:${C_SHALEV}`, "2026-08-06");
+    return w.resolved ? w.notifications.find((n) => n.push === "P_SHOW_TO_ARTIST")! : null;
+  };
+  const nSent = withClaim({ status: "sent", fingerprint: curFp, claimedAt: "2026-08-01T10:00:00Z", sentAt: "2026-08-01T10:00:05Z" });
+  ok("notify: sent for the CURRENT version → SENT, no send proposal", nSent?.state === "SENT" && nSent.proposal === null);
+  const nOld = withClaim({ status: "sent", fingerprint: computeShowNotifyFingerprint({ name: exRow.name, date: "2026-08-05", startTime: exRow.startTime, location: exRow.location }), claimedAt: "2026-08-01T10:00:00Z", sentAt: "2026-08-01T10:00:05Z" });
+  ok("notify: sent for an OLDER version (date changed) → SENT_PREVIOUS_VERSION, proposes asking the Owner to send again", nOld?.state === "SENT_PREVIOUS_VERSION" && typeof nOld.proposal === "string" && /NOTIFY_SHOW_ARTIST/.test(nOld.proposal));
+  const nFail = withClaim({ status: "failed", fingerprint: curFp, claimedAt: "2026-08-01T10:00:00Z" });
+  ok("notify: a failed send → FAILED, proposes a send", nFail?.state === "FAILED" && typeof nFail.proposal === "string");
+  const nProc = withClaim({ status: "processing", fingerprint: curFp, claimedAt: "2026-08-01T10:00:00Z" });
+  ok("notify: in flight → PROCESSING, never proposes a second send", nProc?.state === "PROCESSING" && nProc.proposal === null);
+  const nNone = withClaim(null);
+  ok("notify: no claim row → NOT_SENT, proposes a send", nNone?.state === "NOT_SENT" && typeof nNone.proposal === "string");
+  const nNoLd = withClaim({ status: "sent", fingerprint: curFp, claimedAt: "2026-08-01T10:00:00Z", sentAt: "2026-08-01T10:00:05Z" }, { shows: sec([]) } as unknown as LabelDetailRaw);
+  ok("notify: the show's version unreadable (no time / place) → UNKNOWN, never SENT / never a proposal", nNoLd?.state === "UNKNOWN" && nNoLd.proposal === null);
+  ok("operating.ts reads the sent state with the app's showNotifyStateOf + computeShowNotifyFingerprint (no inline mapping)", /showNotifyStateOf\(/.test(code(read("lib/partner/sunny/operating.ts"))) && /computeShowNotifyFingerprint\(/.test(code(read("lib/partner/sunny/operating.ts"))) && !/v\.status === "failed" \? "FAILED"/.test(read("lib/partner/sunny/operating.ts")));
   const un = showWorkflow(sources(), "label-artist:nope", "2026-10-15");
   ok("unknown artist → ask, never guess", !un.resolved && /למי/.test(un.questions[0].questionHe));
 

@@ -74,8 +74,9 @@ function main() {
   check("the web-push library is imported only by the push primitive", files.filter((f) => /from\s+["']web-push["']|require\(["']web-push["']\)/.test(code(fs.readFileSync(f, "utf8")))).map(rel), ["lib/push.ts"]);
   ok("every push contract: Sunny may NOT trigger it", PUSH_CONTRACTS.every((p) => p.sunnyMayTrigger === false));
   ok("statuses are ACTIVE / DISABLED / LEGACY only; the agent sender is DISABLED and the push check is LEGACY", PUSH_CONTRACTS.find((p) => p.id === "P_AGENT_ALERTS")!.status === "DISABLED" && PUSH_CONTRACTS.find((p) => p.id === "P_PUSH_CHECK_LEGACY")!.status === "LEGACY");
-  check("senders WITHOUT a production-only guard are flagged (and match the code)", PUSH_CONTRACTS.filter((p) => !p.productionOnly).map((p) => p.id).sort(), ["P_AGENT_ALERTS", "P_CYCLE_REMIND", "P_EXTERNAL_PUSH_CRON", "P_PUSH_CHECK_LEGACY", "P_SKETCH_NOTIFY_MANUAL"]);
-  ok("the flagged senders really have no production guard in code", ["app/api/push/cron/route.ts", "app/api/push/check/route.ts", "lib/writes/label.ts", "lib/agent/notifications.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
+  check("senders WITHOUT a production-only guard are flagged (and match the code)", PUSH_CONTRACTS.filter((p) => !p.productionOnly).map((p) => p.id).sort(), ["P_AGENT_ALERTS", "P_CYCLE_REMIND", "P_SKETCH_NOTIFY_MANUAL"]);
+  ok("the flagged senders really have no production guard in code", ["lib/writes/label.ts", "lib/agent/notifications.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
+  ok("the push cron + legacy check send only through the production-guarded, per-day-claimed digest (2026-09-27)", ["app/api/push/cron/route.ts", "app/api/push/check/route.ts"].every((f) => /runOwnerDigest/.test(code(read(f)))) && /pushAllowed\(\)/.test(code(read("lib/push-digest.ts"))) && /pushCronClaimKey/.test(code(read("lib/push-digest.ts"))));
 
   section("F. Refresh never sends push for the Owner; page-load beacons are the non-owner roles' own opens");
   const beacons = PUSH_CONTRACTS.filter((p) => p.type === "PAGE_LOAD_BEACON" && p.status === "ACTIVE");
@@ -106,7 +107,7 @@ function main() {
   const gaps = q("gaps");
   ok("security gaps served as OBSERVATION with an honest status, incl. the HIGH Victor Dropbox gap", gaps.items.every((i) => i.epistemic === "OBSERVATION" && ["REPORTED_NOT_FIXED", "REMEDIATED", "PARTIALLY_REMEDIATED"].includes(String(i.fields.status))) && gaps.items.some((i) => i.id === "SG_VICTOR_DROPBOX_PATHS" && i.fields.severity === "HIGH"));
   ok("a gap is REMEDIATED only with a remediation note naming its proof; open gaps carry none", SECURITY_GAPS.every((g) => g.status === "REPORTED_NOT_FIXED" ? !g.remediation : /Proven by/.test(g.remediation ?? "")));
-  check("Victor portal hardening (2026-09-25): exactly these gaps are closed; the chunk-session residue + the Owner-side gaps stay open", SECURITY_GAPS.filter((g) => g.status === "REMEDIATED").map((g) => g.id).sort(), ["SG_STORAGE_ROUTES_PROXY_ONLY", "SG_VENDOR_FOLDER_PUBLIC_LINK", "SG_VICTOR_AVATAR_PATH", "SG_VICTOR_DELETES_OWNER_FILES", "SG_VICTOR_DROPBOX_PATHS", "SG_VICTOR_GET_NO_VENDOR_CHECK", "SG_VICTOR_SALARY_IN_PAYLOAD", "SG_VICTOR_UPLOAD_RESPONSE_LEAK", "SG_VICTOR_WORK_LOOKUP_BY_PROJECT"]);
+  check("Victor portal hardening (2026-09-25) + the DJ fee pill (A1, 2026-09-27): exactly these gaps are closed; the chunk-session residue + the Owner-side gaps stay open", SECURITY_GAPS.filter((g) => g.status === "REMEDIATED").map((g) => g.id).sort(), ["SG_DJ_PAYMENT_PILL", "SG_STORAGE_ROUTES_PROXY_ONLY", "SG_VENDOR_FOLDER_PUBLIC_LINK", "SG_VICTOR_AVATAR_PATH", "SG_VICTOR_DELETES_OWNER_FILES", "SG_VICTOR_DROPBOX_PATHS", "SG_VICTOR_GET_NO_VENDOR_CHECK", "SG_VICTOR_SALARY_IN_PAYLOAD", "SG_VICTOR_UPLOAD_RESPONSE_LEAK", "SG_VICTOR_WORK_LOOKUP_BY_PROJECT"]);
   ok("still open: chunk session, public share links, OAuth state, direct REST / RLS", ["SG_VICTOR_CHUNK_SESSION_UNSCOPED", "SG_PUBLIC_SHARE_LINKS", "SG_OAUTH_CALLBACK_STATE", "SG_DIRECT_REST_RLS_UNKNOWN"].every((id) => SECURITY_GAPS.find((g) => g.id === id)?.status === "REPORTED_NOT_FIXED"));
   ok("UI-vs-server mismatches are distinguished from security gaps", SECURITY_GAPS.some((g) => g.kind === "UI_SERVER_MISMATCH") && SECURITY_GAPS.some((g) => g.kind === "SECURITY_GAP"));
   const all = JSON.stringify(["people", "push", "access", "gaps"].map((m) => q(m)).concat(USER_CONTRACTS.map((u) => q("person", { person: u.id })))).toLowerCase();
@@ -115,6 +116,10 @@ function main() {
 
   section("H. Development contract covers users / roles / portals / push");
   const agents = read("AGENTS.md");
+  // B4 identity (2026-09-27): portals resolve by label_artists.id first; access-control files unchanged by it
+  const pcfg = read("lib/red-artists/portal-config.ts"), preg = read("lib/red-artists/portal-registry.ts");
+  ok("B4: portal config resolves id-first (a renamed Shalev / Avi keeps his portal), strict against name reuse", /resolvePortalIdentity\(\{ id: artist\.id, name: artist\.name \}\)/.test(pcfg) && /registeredIdForPortalName\(name\)/.test(pcfg) && /\[AVI_ARTIST_ID\]:\s*\{ name: AVI_NAME/.test(preg) && /strict \?\? true/.test(preg));
+  ok("B4: portal-access.ts still delegates to resolvePortalConfig (behaviour identical)", (read("lib/red-artists/portal-access.ts").match(/resolvePortalConfig\(artistId\)/g) ?? []).length === 2);
   ok("AGENTS.md requires a Sunny review for roles, portals, access and push senders", /people\.ts/.test(agents) && /push sender/i.test(agents) && /test-sunny-people\.tsx/.test(agents));
 
   console.log(`\n${pass} passed, ${fail} failed`);

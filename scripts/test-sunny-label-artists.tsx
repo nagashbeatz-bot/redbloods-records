@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { computeShowNotifyFingerprint } from "../lib/show-notify-pure";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
 import { queryKnowledgeCore } from "../lib/partner/knowledge/query";
 import type { KnowledgeAudience, QueryResponse } from "../lib/partner/knowledge/types";
@@ -70,9 +71,13 @@ const LD: LabelDetailRaw = {
 const SETTINGS: SettingsState = { families: {
   ARTIST_BALANCE_CYCLE_ANCHOR: sec([{ key: `balance_cycle_anchor:${LA_SHALEV}`, updatedAt: null, value: { anchorDate: "2026-08-01" } }]),
   ARTIST_WEEKLY_AVAILABILITY: sec([{ key: "shalev_weekly_availability", updatedAt: null, value: { days: [{ day: "ראשון", date: "2026-09-27", available: true, from: "12:00" }], sentBy: "shalev", sentAt: "2026-09-24T08:00:00Z" } }]),
-  PORTAL_PRESENCE: sec([{ key: "shalev_entry_last", updatedAt: null, value: { at: "2026-09-24T07:00:00Z" } }]),
-  SHOW_SENT_TO_ARTIST: sec([{ key: `show_notify:${SHOW_PAST}`, updatedAt: null, value: {} }]),
-  SHOW_SENT_TO_DJ: sec([]), AVAILABILITY_REMINDER_SENT: sec([]),
+  PORTAL_PRESENCE: sec([{ key: "portal_last_seen:shalev", updatedAt: null, value: { at: "2026-09-24T07:00:00Z" } }, { key: "shalev_entry_last", updatedAt: null, value: { at: "2026-09-20T07:00:00Z" } }]),
+  // the claim rows as the notify writers store them (status + the version fingerprint): SHOW_PAST sent for its CURRENT version;
+  // its DJ push was sent for an OLDER version (the place changed since); SHOW_DJ's DJ push failed
+  SHOW_SENT_TO_ARTIST: sec([{ key: `show_notify:${SHOW_PAST}`, updatedAt: null, value: { status: "sent", fingerprint: computeShowNotifyFingerprint({ name: "הופעה", date: "2026-08-06", startTime: "21:00", location: "תל אביב" }), claimedAt: "2026-08-01T10:00:00Z", sentAt: "2026-08-01T10:00:05Z" } }]),
+  SHOW_SENT_TO_DJ: sec([{ key: `dj_show_notify:${SHOW_PAST}`, updatedAt: null, value: { status: "sent", fingerprint: computeShowNotifyFingerprint({ name: "הופעה", date: "2026-08-06", startTime: "21:00", location: "חיפה" }), claimedAt: "2026-08-01T10:00:00Z", sentAt: "2026-08-01T10:00:05Z" } },
+    { key: `dj_show_notify:${SHOW_DJ}`, updatedAt: null, value: { status: "failed", fingerprint: computeShowNotifyFingerprint({ name: "הופעה", date: "2026-10-20", startTime: "21:00", location: "תל אביב" }), claimedAt: "2026-09-20T10:00:00Z" } }]),
+  AVAILABILITY_REMINDER_SENT: sec([]),
 } };
 const cal: CalendarWindowResult = { status: "CALENDAR_DATA_AVAILABLE", window: { start: "2026-09-17T00:00:00+03:00", end: "2026-10-31T23:59:59+02:00", days: 45 }, fetchedAt: NOW.toISOString(), cache: "MISS", calendars: [], truncated: false, reasons: [], events: [] };
 
@@ -144,6 +149,8 @@ function main() {
   ok("beats by portal slug (DERIVED)", a.beats.length === 1 && /DERIVED/.test(a.beats[0].link));
   ok("media income with stored recoup snapshot, never touching the ledger", a.money.mediaIncome.receivedArtistShare === 200 && a.money.mediaIncome.lastRecoupAfter === 800 && /never touches the ledger/.test(a.money.mediaIncome.note));
   ok("current cycle from the anchor", a.money.cycles.current?.start === "2026-08-01" && a.money.cycles.current?.totals.balance === 850);
+  // B3 (Owner canon 2026-09-27): the clip recoup is NOT_DEFINED (null + reason) — the 8000 budget is planning (B), never 50 % recouped
+  ok("B3: clip recoup NOT_DEFINED with the Hebrew reason; the budget is shown as planning per currency, never halved", a.money.recoup.clipContribution.status === "NOT_DEFINED" && a.money.recoup.clipContribution.amount === null && /חסר כלל חוזה/.test(a.money.recoup.clipContribution.reasonHe) && a.money.recoup.clipMoneyByCurrency["₪"]?.plannedBudget === 8000 && !JSON.stringify(a.money.recoup).includes("4000"));
   const qa = q("artist_view", "view", { artist: `label-artist:${LA_SHALEV}` });
   ok("artist_view summary served", qa.status === "OK" && qa.summary.some((f) => f.code === "LEDGER_BALANCE"));
 
@@ -171,7 +178,8 @@ function main() {
   section("SCENARIO F — same person has client work: money stays separate");
   const f = buildArtistView(sources(), LA_AVI)!;
   const aviProj = f.projects.find((p) => p.id === P(2))!;
-  ok("client-work project is not label work (no Owner classification / release / stored לייבל)", aviProj.labelWork === false && aviProj.labelBasis === "CLIENT_WORK_OR_UNCLASSIFIED");
+  ok("client-work project is not label work (no Owner classification / release / stored לייבל)", aviProj.labelWork === false && aviProj.labelBasis === "STORED_CLIENT");
+  ok("B2: labelWork is the stored type only — a release row / Owner answer is evidence, never a second classifier", f.projects.every((p) => p.labelWork === (p.businessType === "לייבל")) && f.projects.every((p) => typeof p.labelEvidence === "object"));
   ok("client income (700) never appears as artist money", !JSON.stringify(f.money.labelWorkProjects).includes("700") && f.money.ledger!.allTime.income === 0);
 
   section("SCENARIO G — new show without a DJ");
@@ -179,6 +187,11 @@ function main() {
   const ng = g.shows.find((x) => x.key === `show:${SHOW_NEXT}`)!;
   ok("no DJ auto-assigned; asks", ng.dj === null && codes(g).includes("SHOW_WITHOUT_DJ") && g.questions.some((x) => x.kind === "SHOW_DJ"));
   ok("rehearsal + sent markers + split read", ng.rehearsals.length === 1 && ng.sentToArtist === "NOT_SENT" && g.shows.find((x) => x.key === `show:${SHOW_PAST}`)!.sentToArtist === "SENT");
+  const past = g.shows.find((x) => x.key === `show:${SHOW_PAST}`)!;
+  ok("sent state = the app's showNotifyStateOf: a DJ push sent for an OLDER version (place changed) → SENT_PREVIOUS_VERSION, never SENT", past.sentToDj === "SENT_PREVIOUS_VERSION");
+  const clv = buildArtistView(sources(), LA_CLEAN)!;
+  ok("a failed DJ push → FAILED (never shown as sent)", clv.shows.find((x) => x.key === `show:${SHOW_DJ}`)!.sentToDj === "FAILED");
+  ok("artist_view reads the sent state with showNotifyStateOf + computeShowNotifyFingerprint (no inline mapping)", /showNotifyStateOf\(/.test(code(read("lib/partner/label/view.ts"))) && /computeShowNotifyFingerprint\(/.test(code(read("lib/partner/label/view.ts"))) && !/v\.status === "failed" \? "FAILED"/.test(read("lib/partner/label/view.ts")));
   const cl = buildArtistView(sources(), LA_CLEAN)!;
   ok("CLEANTONE: his DJ shows by the canonical client id (incl. another artist's show)", cl.shows.some((x) => x.role === "DJ" && x.key === `show:${SHOW_DJ}` && /CANONICAL/.test(x.link)) && !!cl.identity.labelDj);
 

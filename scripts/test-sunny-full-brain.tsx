@@ -180,11 +180,11 @@ function main() {
   ok("every new gap is registered", ["WK_SESSION_HAPPENED_UNPROVEN", "WK_REHEARSAL_STATUS_CONFLICT", "WK_TASK_TEXT_LINKS", "WK_GOOGLE_TASKS_NOT_READ", "WK_MEETING_OUTCOME_NOT_RECORDED", "WK_DELIVERY_RECIPIENT_NOT_RECORDED", "FS_STORAGE_ONLY_FILES", "RP_REPORT_SEMANTICS_CONFLICT", "RP_NO_REPORT_HISTORY", "SC_FEEDBACK_NO_WRITER", "SC_CONVERSATION_NOT_STORED", "CO_SUNNY_OWN_AUDIT"].every((id) => KNOWLEDGE_GAPS.some((g) => g.id === id)));
 
   const src = sources();
-  section("SESSIONS — passed ≠ happened; auto-mark; rehearsal vocabulary; calendar; orphan expense");
+  section("SESSIONS — passed ≠ happened; legacy auto-mark; rehearsal vocabulary; calendar; orphan expense");
   const S = buildSessionsView(src);
   const sig = (v: { signals: Array<{ code: string }> }, c: string) => v.signals.filter((x) => x.code === c).length;
-  ok("a passed מתוכנן session is UNKNOWN (never 'happened') + asks the Owner", S.sessions.find((s) => s.id === U(201))!.happened.startsWith("UNKNOWN") && sig(S, "SESSION_PASSED_STILL_PLANNED") === 1 && S.questions.length >= 1);
-  ok("התקיים is 'recorded as happened — possibly auto-marked'", S.sessions.find((s) => s.id === U(205))!.happened.includes("auto"));
+  ok("a passed מתוכנן session is 'עבר — לא אושר' (never 'happened') + asks the Owner (A3)", S.sessions.find((s) => s.id === U(201))!.happened.startsWith("PASSED_NOT_CONFIRMED") && S.sessions.find((s) => s.id === U(201))!.happened.includes("עבר — לא אושר") && sig(S, "SESSION_PASSED_STILL_PLANNED") === 1 && S.questions.length >= 1);
+  ok("a legacy התקיים (ended before the auto-mark was retired) is 'recorded as happened — possibly auto-marked'", S.sessions.find((s) => s.id === U(205))!.happened.includes("auto"));
   ok("an auto-marked show rehearsal is flagged as not counted by the split", sig(S, "REHEARSAL_STATUS_NOT_COUNTED") === 1);
   ok("upcoming without a calendar event is flagged", sig(S, "SESSION_NO_CALENDAR_EVENT") === 1);
   ok("a cancelled session keeps its event (flagged)", sig(S, "SESSION_CANCELLED_EVENT_KEPT") === 1);

@@ -73,7 +73,7 @@ export const MIX_FIELDS: readonly MixField[] = [
   F(V, "dropbox_path", "CANONICAL", "Storage location — never shown to Steven (opaque stream handle).", { stevenSees: "no (opaque handle)", sunnyReads: "mix_view (metadata; storage not listed)" }),
   F(V, "file_size", "CANONICAL", "Size in bytes.", {}),
   F(V, "file_type", "CANONICAL", "Extension (wav / mp3 / zip …).", {}),
-  F(V, "status", "LEGACY", "בבדיקה / מוכן / מאושר / נדחה — an Owner version status; every one of the 126 production files is בבדיקה (never used). It is NOT an approval record.", { nullDefault: "בבדיקה" }),
+  F(V, "status", "LEGACY", "בבדיקה / מוכן / מאושר / נדחה — an Owner version status, settable via PATCH /api/sound-engineer/versions/[id] and Sunny UPDATE_MIX_VERSION_STATUS_OR_LABEL; production 2026-09-25: all 126 files בבדיקה. מאושר / נדחה on the latest version is served as a RECORDED version decision (FACT) — it is never the work status and never payment.", { nullDefault: "בבדיקה" }),
   F(V, "uploaded_by", "POSSIBLE_BUG", "Always the ENGINEER NAME of the work — even when the Owner uploaded the file. It does not prove who uploaded.", { writers: "upload (set to the work's engineer name)" }),
   F(V, "duration_seconds", "CANONICAL", "Audio length (0 of 126 set in production).", {}),
   F(V, "uploaded_at", "CANONICAL", "Upload time (same instant as created).", {}),
@@ -134,12 +134,12 @@ export const MIX_SETTINGS: readonly MixSetting[] = [
   { key: "steven_deadline_digest:", classification: "CANONICAL", meaning: "The daily deadline digest was sent for a day (claim / outcome)", sunnyReads: "mix_view steven (digest history)" },
   { key: "steven_mix_reminder_cycle:", classification: "CANONICAL", meaning: "An ACTIVE notes-reminder cycle for a work: cycleStartAt = the instant the Owner pressed 'Send notes'; deleted when a newer version lands, the work closes or 3 reminders were sent", sunnyReads: "mix_view handoff (notes-sent evidence)" },
   { key: "steven_mix_reminder_send:", classification: "DERIVED", meaning: "One claim per reminder attempt; the key embeds the cycle start = a past 'Send notes' instant (only for cycles that reached a reminder — a notes send answered within 5 hours leaves no trace)", sunnyReads: "mix_view handoff (partial notes history)" },
-  { key: "steven_mix_ready_pushed_", classification: "CANONICAL", meaning: "'Send to Steven' (new mix job) push dedupe marker per work", sunnyReads: "mix_view (sent-to-engineer evidence)" },
-  { key: "steven_payment_pushed_", classification: "CANONICAL", meaning: "'Payment sent' push dedupe marker per work ({paymentDate})", sunnyReads: "mix_view money" },
-  { key: "steven_upload_pending_", classification: "CANONICAL", meaning: "Steven uploads waiting to be batched into one Owner push", sunnyReads: "system_settings" },
-  { key: "final_files_batch:", classification: "CANONICAL", meaning: "Final-file upload batch waiting for its Owner push", sunnyReads: "system_settings" },
-  { key: "steven_login_seen", classification: "CANONICAL", meaning: "Last sign-in already announced (login push dedupe)", sunnyReads: "mix_view steven presence" },
-  { key: "steven_visit_last", classification: "CANONICAL", meaning: "Last announced portal visit (30-minute cooldown)", sunnyReads: "mix_view steven presence" },
+  { key: "steven_mix_ready_pushed_", classification: "CANONICAL", meaning: "'Send to Steven' (new mix job) push DELIVERY CLAIM per work: processing → sent only after Steven's push was delivered, else failed (2026-09-27); a marker without a status is an older record written regardless of delivery (unverified)", sunnyReads: "mix_view (sent-to-engineer evidence + delivery state)" },
+  { key: "steven_payment_pushed_", classification: "CANONICAL", meaning: "'Payment sent' push DELIVERY CLAIM per work, versioned by the payment date: sent only after delivery, else failed; an older {paymentDate} marker is unverified", sunnyReads: "mix_view money" },
+  { key: "steven_upload_pending_", classification: "CANONICAL", meaning: "Steven uploads waiting to be batched into one Owner push — claimed (processing) before the send, removed only after delivery, a failure stays as a failed row", sunnyReads: "system_settings" },
+  { key: "final_files_batch:", classification: "CANONICAL", meaning: "Final-file upload batch waiting for its Owner push — claimed before the send, removed only after delivery, a failure stays as a failed row", sunnyReads: "system_settings" },
+  { key: "steven_login_seen", classification: "LEGACY", meaning: "Pre-2026-09-27 login-push dedupe — no longer written; Steven's presence now uses the shared portal presence model (last-seen + one visit push per real visit)", sunnyReads: "mix_view steven presence (legacy)" },
+  { key: "steven_visit_last", classification: "LEGACY", meaning: "Pre-2026-09-27 visit-push cooldown — no longer written and NOT a last-seen (the shared presence model's last-seen replaces it)", sunnyReads: "mix_view steven presence (legacy)" },
 ];
 
 export const MIX_VOCABULARIES = {
@@ -161,7 +161,7 @@ export const STATUS_MACHINE = {
   stored: "Six stored statuses; the server does not validate them. Steven's page writes only לא נשלח (לא התחיל), בתהליך (פעיל), אושר (הושלם) and בוטל (creation only); נשלח / חזר come from other editors (1 production work is נשלח).",
   display: "Steven page: אושר → הושלם; בוטל → בוטל; לא נשלח with no version → לא התחיל; everything else (incl. לא נשלח WITH versions) → פעיל.",
   automatic: "The first mix version moves a Steven work from לא נשלח to בתהליך (no other side effect).",
-  completion: "→ אושר (a real transition only): Steven work → if it was Steven's LAST open work on the project, the project becomes הושלם (unless בוטל / בהשהייה / already הושלם), a final-files request is written, Steven is pushed 'upload final files' and the Owner gets a confirmation. Comments, payment and the deadline are untouched.",
+  completion: "→ אושר (a real transition only): Steven work → if it was Steven's LAST open work on the project, a final-files request is written, Steven is pushed 'upload final files' and the Owner gets a confirmation. The PROJECT IS NOT CHANGED (Owner decision 2026-09-27: engineer completed ≠ project completed): an open project comes back as projectSync 'suggested' and the Owner's page asks 'לסמן גם את הפרויקט כהושלם?' — only a yes runs the normal Projects writer. Comments, payment and the deadline are untouched.",
   reopen: "אושר / בוטל → open: releases the project's final-files request (a new cycle).",
   closed: "אושר and בוטל are 'closed' everywhere (reminders, digest, COO).",
   meaningOfStatus: "no status means 'Owner approved the mix': אושר is set by the Owner and is what the app calls completed; no approval record exists.",
@@ -178,12 +178,12 @@ export const IDENTITY_MODEL = {
 export const STEVEN_VS_GENERIC: ReadonlyArray<{ behavior: string; scope: "STEVEN_ONLY" | "GENERIC" | "STEVEN_ASSUMPTION_APPLIED_TO_ALL" }> = [
   { behavior: "portal access, sanitized data, opaque file handles", scope: "STEVEN_ONLY" },
   { behavior: "first version → בתהליך; upload push to the Owner", scope: "STEVEN_ONLY" },
-  { behavior: "completion flow (project הושלם, final-files request, pushes)", scope: "STEVEN_ONLY" },
+  { behavior: "completion flow (final-files request, pushes, a project-completion SUGGESTION — never an automatic project write)", scope: "STEVEN_ONLY" },
   { behavior: "notes reminder (every 5 h, max 3), daily deadline digest, presence pushes", scope: "STEVEN_ONLY" },
   { behavior: "new project-linked work only for שיר / רידים / אלבום / EP", scope: "STEVEN_ONLY" },
   { behavior: "work record, statuses, price sync to Finance, versions, comments, attachments, riddim lines, final files", scope: "GENERIC" },
   { behavior: "'Payment sent' push to Steven on any engineer's paid transition", scope: "STEVEN_ASSUMPTION_APPLIED_TO_ALL" },
-  { behavior: "payment → ₪ expense at the fixed $→₪ ratio (3.25) — the route has no engineer check", scope: "STEVEN_ASSUMPTION_APPLIED_TO_ALL" },
+  { behavior: "payment → the linked expense through the ONE writer (reconcileEngineerExpense) in the work currency; Steven: no expected row until paid, others: an expected row that follows the price", scope: "GENERIC" },
   { behavior: "'Send notes' / 'Send to Steven' pushes go to Steven whatever the work's engineer (Owner-only routes, no engineer check)", scope: "STEVEN_ASSUMPTION_APPLIED_TO_ALL" },
 ];
 
@@ -215,7 +215,7 @@ export const VERSION_MODEL = {
   ordering: "numeric where needed ('Mix 10' after 'Mix 9', never lexical); ties broken by upload time.",
   mutability: "a version file is immutable once uploaded (no replace); label and status are editable; a version can be deleted (the project-player copy of a full mix stays).",
   projectCopy: "a FULL mix on a project-linked work is also copied into the project's files (player) with a link back to the version.",
-  approval: "the version status (בבדיקה / מוכן / מאושר / נדחה) exists but is never set (all 126 = בבדיקה) — not an approval.",
+  approval: "the version status (בבדיקה / מוכן / מאושר / נדחה) is settable (route + Sunny primitive); מאושר / נדחה on the latest version is served as a recorded version decision (FACT). Production 2026-09-25: all 126 = בבדיקה. The work status אושר means completed — completed ≠ approved ≠ final files ≠ paid ≠ delivered.",
 } as const;
 
 export const COMMENT_MODEL = {
@@ -238,14 +238,14 @@ export const FINAL_FILES_MODEL = {
 
 export const MONEY_MODEL = {
   fields: "agreed price + currency + amount paid + payment date on the work (manual). Paid = agreed > 0 AND paid ≥ agreed AND a payment date.",
-  writerA: "PRICE SYNC (generic, on create / update with a price, and a manual re-sync): an expense in the WORK currency, amount = the agreed price, status לא שולם / חלקי / שולם from the amounts, category מיקס / מאסטר, no date, no expense scope set.",
-  writerB: "STEVEN PAYMENT SYNC (the Steven page 'paid' toggle): paid → an expense upserted in ₪ = agreed × 3.25 (a fixed working ratio in code), status שולם, dated the payment date, category מיקס / מאסטר, expense scope כללי, a note with the PayPal gross estimate (agreed × 1.05); unpaid → the linked expense is DELETED.",
-  conflict: "both writers use the same link, so they can overwrite each other; production 2026-09-25: all 9 linked expenses have the payment-sync shape (₪650 for $200).",
-  currencies: "the work is in $, its payment expense in ₪ (by the fixed ratio) — never add or subtract across currencies; Sunny shows both and checks the recorded ₪ against the app's own ratio.",
+  writer: "ONE WRITER since 2026-09-27 (integrity fix A2): the mix writes module's reconcileEngineerExpense, run server-side by every path (store create / update, recordEngineerPayment, the payment-expense route, the drawer 'sync', Sunny force-sync). The expense is in the WORK currency and amount (e.g. $200), status לא שולם / חלקי / שולם by THE shared paid rule, dated the payment date when paid; the ₪ figure (× 3.25, PayPal × 1.05) is an 'הערכה' in the notes only — NO silent conversion presented as actual money. A linked row that is שולם is NEVER overwritten (amount / currency / status / date) or deleted; an un-pay is refused (409) until the row is changed in Finance; an existing date is never nulled; a standalone work is refused by the explicit sync. Steven (and skipFinanceSync): no expected row — the expense exists once paid; other engineers on a project: an expected row that follows the price.",
+  retiredWriters: "RETIRED 2026-09-27 (their shapes remain in historical data, untouched): the PRICE SYNC (work currency, date nulled, could overwrite a paid row) and the STEVEN PAYMENT SYNC (₪ = agreed × 3.25, status שולם, expense scope כללי, deleted the linked row on un-pay).",
+  conflict: "historical only: production 2026-09-25 — all 9 linked expenses have the retired payment-sync shape (₪650 for $200). They stay as they are (the Owner deferred whether ₪650 is real); a NEW Steven payment is recorded as $200. Sunny reports a paid row that disagrees with the work as CONFLICTING_SOURCES.",
+  currencies: "new expenses carry the work currency; historical Steven expenses are in ₪ (retired fixed ratio) — never add or subtract across currencies; Sunny shows both and checks a historical ₪ row against the retired ratio.",
   expenseScope: "the intended engineer expense scope is מיקס / מאסטר; the payment sync writes כללי (all 9 production expenses) — reported, not changed.",
   statuses: "expense statuses: לא שולם / חלקי / שולם. התקבל is income-only — on an engineer expense it is invalid and never counts as paid.",
-  rate: "no stored rate, no per-engineer rate and no PayPal fee policy. Hard-coded working values (IMPLEMENTATION_BEHAVIOR, not Owner policy): the project-drawer send pre-fills $200; the payment sync uses $→₪ 3.25 and notes a ×1.05 PayPal gross estimate. Each work's own agreed price wins.",
-  noPrice: "no price ≠ free; no expense ≠ paid (the Steven flow creates the expense only when marked paid).",
+  rate: "no stored rate, no per-engineer rate and no PayPal fee policy. Hard-coded working values (IMPLEMENTATION_BEHAVIOR, not Owner policy — the shared payment module's APP_PAYMENT_RATIO / PAYPAL_GROSS_FACTOR): the project-drawer send pre-fills $200; 3.25 and ×1.05 only produce the notes estimate. Each work's own agreed price wins.",
+  noPrice: "no price ≠ free; no expense ≠ paid (the Steven flow creates the expense only when marked paid). A work with paid ≥ agreed but NO payment date is NOT paid by the shared rule (legacy; reported, never guessed).",
 } as const;
 
 export const PORTAL_MODEL = {
@@ -287,10 +287,10 @@ const X = (e: MA): MixActionEntry => { const { routes, ...rest } = e; return { .
 const SE = "app/api/sound-engineer", SS = "app/api/supplier/steven";
 export const MIX_ACTIONS: readonly MixActionEntry[] = [
   X({ id: "ASSIGN_ENGINEER", action: "Create an engineer work (mix setup / Steven page / project drawer)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "work (לא נשלח)", finance: "price sync only on the generic path with a price", push: null, files: null, project: "mix setup also sets the project status במיקס", destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "ASSIGN_MIX_ENGINEER", routes: [`${SE}/route.ts`] }),
-  X({ id: "EDIT_WORK", action: "Change engineer / type / price / currency / paid / deadline / sent date / notes / status", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "work", finance: "price sync when a money field changes (price > 0)", push: "paid transition → Steven payment push; completion → completion pushes", files: null, project: "Steven completion may set the project הושלם", destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "UPDATE_MIX_WORK", routes: [`${SE}/[id]/route.ts`] }),
-  X({ id: "MARK_COMPLETED", action: "Mark a work הושלם (אושר)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "status", finance: null, push: "Steven + Owner (last open work)", files: "final-files request", project: "project הושלם when it was Steven's last open work", destructive: false, reversible: "PARTIAL", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "COMPLETE_MIX_WORK", routes: [`${SE}/[id]/route.ts`] }),
-  X({ id: "RECORD_PAYMENT", action: "Toggle paid (Steven page) → Finance expense upsert / delete", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "amount paid + payment date, then the linked expense", finance: "₪ expense at the fixed ratio (deleted when unpaid)", push: "payment push (Owner + Steven)", files: null, project: null, destructive: true, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "RECORD_ENGINEER_PAYMENT", routes: [`${SE}/[id]/route.ts`, `${SE}/[id]/payment-expense/route.ts`] }),
-  X({ id: "FORCE_FINANCE_SYNC", action: "Re-run the price sync", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "linked expense", finance: "work-currency expense", push: null, files: null, project: null, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "—", routes: [`${SE}/[id]/route.ts`] }),
+  X({ id: "EDIT_WORK", action: "Change engineer / type / price / currency / paid / deadline / sent date / notes / status", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "work", finance: "price sync when a money field changes (price > 0)", push: "paid transition → Steven payment push; completion → completion pushes", files: null, project: "Steven completion only SUGGESTS completing the project (the Owner decides)", destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "UPDATE_MIX_WORK", routes: [`${SE}/[id]/route.ts`] }),
+  X({ id: "MARK_COMPLETED", action: "Mark a work הושלם (אושר)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "status", finance: null, push: "Steven + Owner (last open work)", files: "final-files request", project: "never changed — an open project is returned as a suggestion the Owner may accept (explicit Projects write)", destructive: false, reversible: "PARTIAL", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "COMPLETE_MIX_WORK", routes: [`${SE}/[id]/route.ts`] }),
+  X({ id: "RECORD_PAYMENT", action: "Toggle paid (Steven page / drawer / Sunny) → the ONE writer reconciles the linked expense in the same request", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "amount paid + payment date, then the linked expense", finance: "expense in the work currency; a שולם row is never overwritten; un-pay refused while the row is שולם", push: "payment push (Owner + Steven)", files: null, project: null, destructive: true, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "RECORD_ENGINEER_PAYMENT", routes: [`${SE}/[id]/route.ts`, `${SE}/[id]/payment-expense/route.ts`] }),
+  X({ id: "FORCE_FINANCE_SYNC", action: "Re-run the ONE writer (explicit sync)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "linked expense", finance: "work-currency expense; a שולם row is never overwritten; standalone refused", push: null, files: null, project: null, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "—", routes: [`${SE}/[id]/route.ts`] }),
   X({ id: "DELETE_WORK", action: "Delete an engineer work", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "work + its versions / comments / lines (cascade); blocked when final files exist", finance: "the expense is kept", push: null, files: "storage kept", project: null, destructive: true, reversible: "NO", approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_MIX_WORK", routes: [`${SE}/[id]/route.ts`] }),
   X({ id: "REORDER", action: "Reorder Steven's jobs list", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "display order", finance: null, push: null, files: null, project: null, destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${SE}/reorder/route.ts`] }),
   X({ id: "SEND_TO_ENGINEER", action: "'Send to Steven' (new mix job push)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "push marker", finance: null, push: "Owner + Steven", files: null, project: null, destructive: false, reversible: "NO", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "SEND_MIX_JOB", routes: [`${SE}/[id]/notify-mix-ready/route.ts`] }),
@@ -364,9 +364,9 @@ export const MIX_INTEGRITY = {
     "5 עבודות שהושלמו עדיין עם הערות פתוחות (בסך הכול 44 הערות פתוחות על עבודות שהושלמו).",
     "4 עבודות שהושלמו בלי קבצים סופיים לפרויקט; 3 מהן בלי אף גרסת מיקס.",
     "3 עבודות שהושלמו לא סומנו כשולמו ($550 עצמאית, $200, $150).",
-    "9 תשלומים לסטיבן נרשמו בכספים בשקלים ביחס קבוע ($200 → ₪650), עם היקף הוצאה 'כללי' ולא 'מיקס / מאסטר'.",
+    "9 תשלומים לסטיבן נרשמו בכספים בשקלים ביחס קבוע ($200 → ₪650), עם היקף הוצאה 'כללי' ולא 'מיקס / מאסטר' — צורה היסטורית של הכותב שהוחלף; מאז 2026-09-27 תשלום חדש נרשם במטבע העבודה ($200) וה-₪ הוא הערכה בהערות בלבד.",
     "5 הוצאות מיקס בדולרים לא-משולמות (5 / 50 / 3 / 30 / 300) מ-2026-06-29 לא מקושרות לשום עבודה — שאריות של סנכרון מחיר ישן; ועוד הוצאה אחת ₪590 ששולמה בלי עבודה מקושרת.",
-    "סטטוס הגרסה אף פעם לא נקבע (כל 126 'בבדיקה') ומי שהעלה נרשם תמיד 'Steven' — גם כשהבעלים העלה.",
+    "בנתוני 2026-09-25 סטטוס הגרסה לא נקבע אף פעם (כל 126 'בבדיקה'; היום אפשר לקבוע אותו) ומי שהעלה נרשם תמיד 'Steven' — גם כשהבעלים העלה.",
     "4 פרויקטים במצב 'מחכה למיקס' בלי עבודת מיקס; עבודת ויקטור אחת שהושלמה בפרויקט בלי עבודת מיקס.",
     "אין סוג Agent Alert למיקס; ביקור אחרון של סטיבן בפורטל שנרשם: 2026-09-23 (כניסה אחרונה: 2026-08-25). שתי העבודות הפתוחות מחכות לבעלים לפי הראיות (0 מחכות לסטיבן).",
   ],
@@ -381,7 +381,7 @@ export const MIX_REVIEWED_FILES = [
   "components/project/MixSetupModal.tsx",
 ] as const;
 export const MIX_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/sound-engineer-store.ts": "dfdfd06da5c2affbbbfab32ead4a957ec03e81a3ad608fe565aee342b2dc99e3",
+  "lib/sound-engineer-store.ts": "829e3c8f39ea061ebe6ff2c2f5f2588665a6dbba0ff1d077b15e20fd6be1eab8",
   "lib/mix-versions-store.ts": "0b4f094089c59e38b9f0e1e202859db8912d39c9a9354461d05160910a85fd37",
   "lib/mix-comments-store.ts": "a8d0000efc0661a8d70d291ab30924e5a1391748d2a2570f7fe27f5a866196ce",
   "lib/mix-comment-attachments-store.ts": "d2023bde3c1c01407e44d362b8c8c40fc5ea25af5fd255d4e706ea8f1b062418",
@@ -393,16 +393,16 @@ export const MIX_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/mix-version-project-copy.ts": "3179f46fa386928edac4039d9acb49763bb3f81707c5248df87c0b50042b5389",
   "lib/riddim-numbering-pure.ts": "340aa1926d06a008e08a12b1ee1a50334cdc9f4ded7b4320abe1ca801b11360f",
   "lib/steven-scope.ts": "3e7125366f5f85e926bf0628bf17a1ebeaf63554171b834d0ead8161b1ccad69",
-  "lib/steven-completion.ts": "acf0f9d641be01c23e043051788c59be68d69c5761ace93fcd803bbec022763e",
-  "lib/steven-completed-pure.ts": "51283cfdd67a4ae4970609fbf6890e11bb9603441e71e0df581ae45f104c1210",
+  "lib/steven-completion.ts": "57af55c67f5c4737e615033ee0700b4b03f1ece730ea7e13b6de5e0ef0fb6548",
+  "lib/steven-completed-pure.ts": "8217c3251317c8f61be9059c8227548805577fbadd442fd7f8c231a40044f8d9",
   "lib/steven-mix-reminder-pure.ts": "c27e362804b40614a31a5eae112769419714615c86f6410862fa9ecc23c3af65",
   "lib/steven-mix-reminder-notify.ts": "45b9a2f3e4b4ddb111ff49fcdac63c36b8d42f8899e33ab1bef68f6c22ad38de",
   "lib/steven-deadline-digest-pure.ts": "f0220ca36a509657dccfb6d95fb7a9ad70e07aa34560ae38fa5bde9f91cf3a0e",
-  "lib/steven-payment-notify.ts": "28d375971b8c3d416eb608e30005cdceff217997ea330cece1770183bfd77538",
-  "lib/steven-notes-notify.ts": "a59a2f814cede62b7e6cd0ed5e3893a1ef72bd8a96094c823ef4e68ea3ce067f",
-  "lib/steven-mix-ready-notify.ts": "537f49cf3822eaee02f2df7ac237ed345ae7b33d831bad0e17574ee42fb9383e",
-  "lib/steven-notify.ts": "ff6383f70ada1e4aba4d6b99ed78168a35b1b642c920ce0e881a89b7344bc03b",
-  "lib/final-files-batch-notify.ts": "8f93f9d090436f02555508eae8a9d714668e9a10d6c5c6ed562abe75f3125967",
+  "lib/steven-payment-notify.ts": "9a9dfa50c1d518aa38a4a70a7cb972e9b0f9ceec1cf7b58e5682057d6a169467",
+  "lib/steven-notes-notify.ts": "468635e8fd4f2b6bed6566f24e860ed70524b4aec81cec61c2b06a18d4f0d44b",
+  "lib/steven-mix-ready-notify.ts": "81d57e9630eaf4dc7098e24ebc61be236298e1cbfdb66473a6ba5a1a3f6123b2",
+  "lib/steven-notify.ts": "ac844247bf41c6a8cccc86b9dc4f9dc7b80fc52926bd519725d7f86b41ecf9b7",
+  "lib/final-files-batch-notify.ts": "38d6373c9680b4892af98d3ddef7d481ac5c7f97819ec25980b00b0ba7179ea9",
   "components/project/MixSetupModal.tsx": "4fb835a64fefea97650c073066a78e2694d9920172a592479079fb38ca5db201",
 };
 
@@ -416,7 +416,7 @@ export const SECURITY_REVIEW = {
   enforcement: "every Owner route checks the Owner in-route; every Steven route checks the Steven role in-route AND resolves the work / version / comment to a work whose engineer is exactly 'Steven' (else 403). Steven never receives a storage path (opaque handles); Finance links, Owner notes and raw links are stripped.",
   findings: [
     "the 'Payment sent' push has no engineer check (known: SG_STEVEN_PAYMENT_WRONG_RECIPIENT)",
-    "the payment-expense route converts ANY engineer work at Steven's fixed ratio (no engineer check) — Owner-only, a behavior gap not an exposure",
+    "REMEDIATED 2026-09-27: the payment-expense route no longer converts at a fixed ratio — it runs the one writer (work currency, engineer-aware); Owner-only",
     "'Send notes' / 'Send to Steven' routes have no engineer check (Owner-only; would push Steven about another engineer's work)",
     "Steven can see price, paid amount and payment date of his works (intended, read-only)",
   ],

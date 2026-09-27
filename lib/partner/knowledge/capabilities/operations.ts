@@ -10,10 +10,16 @@ import type { KnowledgeCapability, KnowledgeReadResult, KnowledgeSources } from 
 import type { GatewayEntityType } from "../../gateway/types";
 import { byCount, clientName, idOf, item, labelArtistName, ok, partner, projectName, record, result, sfact, state, unavailable } from "./common";
 import type { Maybe } from "../../operations/readers";
+import { isEngineerWorkPaid } from "../../../mix-payment-pure";
+import { budgetLinePaidState, budgetLineStatusConflict, isClipItemPlanned, rfPaymentFinanceScope, RF_LEDGER_LINKAGE } from "../../../clip-rf-money-pure";
+import { normalizeCurrency, type CurrencyTotals } from "../../../finance/currency";
 
 const ops = (src: KnowledgeSources) => ok(src.operations);
 const today = (src: KnowledgeSources) => state(src)?.todayIL ?? src.now.toISOString().slice(0, 10);
 const sum = (xs: Array<number | null>) => xs.reduce<number>((a, x) => a + (x ?? 0), 0);
+/** Per-currency sum (no FX, never a mixed scalar). */
+const sumCur = <T extends { currency?: string | null }>(xs: T[], amt: (x: T) => number | null): CurrencyTotals =>
+  xs.reduce<CurrencyTotals>((m, x) => { const c = normalizeCurrency(x.currency); m[c] = (m[c] ?? 0) + (amt(x) ?? 0); return m; }, {});
 const cappedNote = (...secs: Array<Maybe<unknown>>) => (secs.some((x) => x?.capped) ? [partner("חלק מהרשומות לא נקרא (תקרת שורות) — הסכומים חלקיים.")] : []);
 /** Section missing → UNKNOWN with an honest reason (never "none"). */
 function need<T>(sec: Maybe<T>, what: string): sec is NonNullable<Maybe<T>> { return !!sec && Array.isArray(sec.rows) && !!what; }
@@ -50,7 +56,7 @@ export const tasks: KnowledgeCapability = {
 // ── RED FILMS (all productions + budgets; clips are productions of type קליפ) ──
 export const redFilms: KnowledgeCapability = {
   id: "red_films", domain: "SALES", titleHe: "Red Films — הפקות",
-  descriptionForModel: "Red Films video productions (clips, shoot days, social content, live shoots…): type, status, edit status, collection status, shoot / publish dates, linked project (ID), artist / client (text), client price and advance, general budget, and budget items planned / actual + payments recorded. IMPORTANT: Red Films budget payments are a separate ledger — they do NOT create Finance transactions (Finance does not see Red Films spend). A managed clip's budget follows the project's clip price (one-way). Amounts are in the production's (unstated, normally ₪) currency.",
+  descriptionForModel: "Red Films productions (clips, shoot days, social, live shoots…): type, status, edit / collection status, shoot / publish dates, project (ID), artist / client (text), client price, advance, general budget (PLANNING — never the client clip price), budget lines planned + payments, and each line's paid state (PAID / PARTIAL / UNPAID / NO_PLAN from its payments in the line currency; the stored line status is planning intent; budgetLineStatusConflicts = stored status vs payments). Red Films payments are real company money in a SEPARATE ledger — NOT linked to Finance (DB-1 pending); a non-clip production has no canonical Finance scope (SCOPE_REQUIRED). budgetLegacyManualActual = the old manual actual_amount, never paid. Clip recoup is NOT_DEFINED. Money maps are per currency — never added (no FX).",
   examplesHe: ["מה קורה ב-Red Films?", "איזה קליפים בהפקה?", "כמה הוצאנו על הקליפ של שליו?"],
   modes: { active: { descriptionForModel: "Not published / cancelled" }, all: { descriptionForModel: "Every production" } }, defaultMode: "active",
   params: { ...projectParam, type: { kind: "text", maxLength: 30, descriptionForModel: "Production type (e.g. קליפ, יום צילום)" } },
@@ -68,10 +74,13 @@ export const redFilms: KnowledgeCapability = {
       return item({
         id: p.id, entity: p.projectId ? `project:${p.projectId}` : null, label: record(p.title), epistemic: "FACT", source: "RED_FILMS", relationQuality: p.projectId ? "ID" : undefined,
         fields: {
-          productionType: p.productionType, status: p.status, editStatus: p.editStatus, collectionStatus: p.collectionStatus, shootDate: p.shootDate, publishDate: p.publishDate,
+          currency: normalizeCurrency(p.currency), productionType: p.productionType, status: p.status, editStatus: p.editStatus, collectionStatus: p.collectionStatus, shootDate: p.shootDate, publishDate: p.publishDate,
           project: projectRef(src, p.projectId).name ? record(projectRef(src, p.projectId).name!) : null, artistText: p.artistName ? record(p.artistName) : null, clientSource: p.clientSource,
           clientPrice: p.clientPrice, advanceRequired: p.advanceRequired, advanceReceived: p.advanceReceived, generalBudget: p.generalBudget,
-          budgetPlanned: bi ? sum(bi.map((x) => x.planned)) : null, budgetActual: bi ? sum(bi.map((x) => x.actual)) : null, budgetPaid: bp ? sum(bp.map((x) => x.amount)) : null, budgetItems: bi?.length ?? null,
+          budgetPlanned: bi ? sumCur(bi, (x) => x.planned) : null, budgetLegacyManualActual: bi ? sumCur(bi, (x) => x.actual) : null, budgetPaid: bp ? sumCur(bp, (x) => x.amount) : null, budgetItems: bi?.length ?? null,
+          budgetLinePaidStates: bi && bp ? byCount(bi.filter((x) => x.status !== "בוטל").map((x) => budgetLinePaidState({ planned_amount: x.planned, currency: x.currency, status: x.status }, bp.filter((y) => y.budgetItemId && y.budgetItemId === x.id)).state)) : null,
+          budgetLineStatusConflicts: bi && bp ? bi.filter((x) => x.status !== "בוטל" && budgetLineStatusConflict({ planned_amount: x.planned, currency: x.currency, status: x.status }, bp.filter((y) => y.budgetItemId && y.budgetItemId === x.id))).length : null,
+          ledgerLinkage: RF_LEDGER_LINKAGE, financeScope: rfPaymentFinanceScope(p.productionType).scope ?? "SCOPE_REQUIRED",
         },
       });
     });
@@ -84,7 +93,7 @@ export const redFilms: KnowledgeCapability = {
 // ── CLIP PLANNING (clip_items: planning rows until promoted into a Finance expense) ──
 export const clipPlanning: KnowledgeCapability = {
   id: "clip_planning", domain: "SALES", titleHe: "תכנון קליפ",
-  descriptionForModel: "Clip planning rows per project (category, planned amount + currency, status). These are PLANNING ONLY — not money — until promoted, which creates a Finance expense (expense_scope קליפ) and removes the planning row.",
+  descriptionForModel: "Clip planning rows per project (category, planned amount + currency, status). These are PLANNING ONLY — not money. 'העבר לכספים' creates a Finance expense (expense_scope קליפ) and KEEPS the row, marked הועבר לכספים and linked to the expense (B3 provenance); a promoted / linked row is never counted as planned.",
   examplesHe: ["מה מתוכנן לקליפ?", "כמה תכננו להוציא על הקליפ?"],
   modes: { current: { descriptionForModel: "Current planning rows (not cancelled)" } }, defaultMode: "current",
   params: projectParam, entityScope: PROJECT_SCOPE("current", 8),
@@ -93,8 +102,8 @@ export const clipPlanning: KnowledgeCapability = {
     const o = ops(src);
     if (!o || !need(o.clipItems, "clip items")) return miss("clip planning");
     const pid = q.params.project ? idOf(q.params.project) : null;
-    // "הועבר לכספים" = already promoted into a Finance expense (legacy rows are kept) — never counted as planning again
-    const rows = o.clipItems.rows.filter((c) => c.status !== "בוטל" && c.status !== "הועבר לכספים" && !c.hasTransaction && (!pid || c.projectId === pid));
+    // planned = UNLINKED rows only — the ONE rule (lib/clip-rf-money-pure isClipItemPlanned); promoted rows are provenance
+    const rows = o.clipItems.rows.filter((c) => isClipItemPlanned(c) && (!pid || c.projectId === pid));
     const perCur: Record<string, number> = {};
     for (const c of rows) perCur[c.currency ?? "₪"] = (perCur[c.currency ?? "₪"] ?? 0) + (c.amount ?? 0);
     return result(rows.map((c, i) => item({ id: `${c.projectId ?? "none"}:${i}`, entity: c.projectId ? `project:${c.projectId}` : null, label: partner(c.category ?? "פריט"), epistemic: "FACT", source: "CLIPS",
@@ -239,10 +248,10 @@ export const albums: KnowledgeCapability = {
 };
 
 // ── MIX PIPELINE (every sound engineer: Steven, Bill, external) ──
-const paid = (w: { agreedPrice: number | null; amountPaid: number | null; paymentDate: string | null }) => (w.agreedPrice ?? 0) > 0 && (w.amountPaid ?? 0) >= (w.agreedPrice ?? 0) && !!w.paymentDate;
+const paid = (w: { agreedPrice: number | null; amountPaid: number | null; paymentDate: string | null }) => isEngineerWorkPaid(w); // THE shared rule (lib/mix-payment-pure)
 export const mixPipeline: KnowledgeCapability = {
   id: "mix_pipeline", domain: "TEAM", titleHe: "מיקס ומאסטר — כל המהנדסים",
-  descriptionForModel: "Mix / master work of EVERY sound engineer (Steven and external engineers — the engineer is a free-text name): work type, status (לא נשלח / נשלח / בתהליך / חזר / אושר / בוטל), sent date, internal deadline, mix versions uploaded (+ latest), open review comments, final files delivered, price / paid (paid = agreed > 0, paid ≥ agreed and a payment date; per currency, no FX). Approving Steven's last open work on a project auto-completes the project.",
+  descriptionForModel: "Mix / master work of EVERY sound engineer (Steven and external engineers — the engineer is a free-text name): work type, status (לא נשלח / נשלח / בתהליך / חזר / אושר / בוטל), sent date, internal deadline, mix versions uploaded (+ latest), open review comments, final files delivered, price / paid (paid = agreed > 0, paid ≥ agreed and a payment date; per currency, no FX). Completing Steven's last open work on a project does NOT complete the project — the Owner is only offered to mark it (engineer completed ≠ project completed).",
   examplesHe: ["מה מצב המיקסים?", "איזה מיקסים מחכים לתיקונים?", "למי אנחנו חייבים על מיקס?", "מה עם המהנדס החיצוני?"],
   modes: { open: { descriptionForModel: "Not approved / cancelled" }, unpaid: { descriptionForModel: "Approved but not fully paid" }, all: { descriptionForModel: "Every work" } }, defaultMode: "open",
   params: { ...projectParam, engineer: { kind: "text", maxLength: 40, descriptionForModel: "Engineer name as stored (e.g. Steven)" } },
@@ -272,7 +281,7 @@ export const mixPipeline: KnowledgeCapability = {
 // ── DELIVERIES ──
 export const deliveries: KnowledgeCapability = {
   id: "deliveries", domain: "PROJECTS", titleHe: "מסירות ללקוח",
-  descriptionForModel: "Delivery status per project (a delivery Dropbox folder + share link is created manually from the project; status not_created / ready / delivered and delivered date). The folder path and link are never read.",
+  descriptionForModel: "Delivery status per project (a delivery Dropbox folder + share link is created manually from the project; status not_created / ready / delivered; the delivered date is always set while delivered and the last delivered date is kept as history). The folder path and link are never read.",
   examplesHe: ["מה נמסר ללקוחות?", "איזה פרויקטים הושלמו בלי מסירה?"],
   modes: { all: { descriptionForModel: "Every project with a delivery record" } }, defaultMode: "all",
   params: projectParam, entityScope: PROJECT_SCOPE("all", 1),

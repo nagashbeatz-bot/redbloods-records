@@ -39,6 +39,10 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   WAITING_ON_VICTOR: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
   WAITING_ON_ENGINEER: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
   WAITING_VERSION: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
+  // B5: a pending send-log entry answered by later in-app evidence (version upload / sent notes) — history, not waiting
+  SEND_LOG_SUPERSEDED: a("CONTEXT", "NONE"),
+  // B5: a stored project deadline that is not a YYYY-MM-DD date — overdue cannot be known (never counted overdue)
+  DEADLINE_UNPARSEABLE: a("SYSTEM_GAP", "OWNER", "DATA_CONFLICT"),
   WAITING_PRODUCTION: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING", "LABEL_CONTINUITY"),
   WAITING_MIX: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING", "LABEL_CONTINUITY"),
   AT_VICTOR: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
@@ -46,6 +50,9 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   HANDOFF_UNKNOWN: a("CONTEXT", "UNKNOWN"),
   HANDOFF_CONFLICT: a("CONFLICT", "UNKNOWN", "DATA_CONFLICT"),
   INTERNAL_DEADLINE_PASSED: a("NEEDS_ATTENTION", "UNKNOWN", "TIME_SENSITIVE"),
+  // the app's Victor stuck rule (פעיל + > stuckAfterDays since sent) — stale is not urgent; the ball says whose move;
+  // its push is disabled by the Owner (Q3, 2026-09-27), so it is context Sunny knows, never an alert
+  VICTOR_STUCK: a("CONTEXT", "UNKNOWN", "TIME_SENSITIVE"),
   DRAFT_NOTES_NOT_SENT: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
   OPEN_COMMENTS: a("CONTEXT", "UNKNOWN"),
   // completion / files / vendor money
@@ -72,6 +79,8 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   PLANNED_NOT_SPENT: a("INVESTMENT", "NONE"),
   RF_LEDGER_NOT_IN_FINANCE: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   LINE_ACTUAL_VS_PAYMENTS: a("CONFLICT", "NONE", "DATA_CONFLICT"),
+  BUDGET_LINE_STATUS_VS_PAYMENTS: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
+  BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC: a("CONTEXT", "NONE", "DATA_CONFLICT"),
   MISSING_RECORDED_PREP: a("CONTEXT", "UNKNOWN"),
   DUPLICATE_PRODUCTIONS: a("SYSTEM_GAP", "NONE", "DATA_CONFLICT"),
   PROJECT_VIDEO_NO_PRODUCTION: a("CONTEXT", "UNKNOWN"),
@@ -93,7 +102,10 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   NO_RELEASE_RECORDED: a("CONTEXT", "OWNER", "LABEL_CONTINUITY"),
   NO_UPCOMING_RECORDED_WORK: a("CONTEXT", "OWNER", "LABEL_CONTINUITY"),
   ACTIVE_WORK: a("CONTEXT", "NONE", "LABEL_CONTINUITY"),
-  LABEL_CLASSIFICATION_UNCLEAR: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT"),
+  LABEL_CLASSIFICATION_UNCLEAR: a("CONTEXT", "OWNER", "DATA_CONFLICT"),
+  // B2 (Owner canon 2026-09-27): stored לקוח but the Owner rule (שליו טסמה / אבי מולה credited) says לייבל — the
+  // Owner's explicit classification click fixes it; never an automatic write
+  MISMATCH_OWNER_RULE: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT", "LABEL_CONTINUITY"),
   // artist accounting / shows
   LEDGER_BALANCE: a("CONTEXT", "NONE", "MONEY_RELEVANT"),
   CYCLE_NOT_SET: a("SYSTEM_GAP", "OWNER", "SYSTEM_GAP"),
@@ -112,6 +124,8 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   DONE_UNPAID: a("NEEDS_ATTENTION", "EXTERNAL", "MONEY_RELEVANT"),
   DONE_WITHOUT_LEDGER: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   ARTIST_ROW_UNPAID_AFTER_DONE: a("NEEDS_ATTENTION", "OWNER", "MONEY_RELEVANT"),
+  // A1: a paid fee row that no longer matches its show — never overwritten, the Owner decides
+  PAID_FEE_ROW_MISMATCH: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   LEDGER_KEPT_AFTER_CANCEL: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   DATE_PASSED_NOT_CLOSED: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT"),
   NO_DJ: a("NEEDS_ATTENTION", "OWNER", "SCHEDULED_EVENT"),
@@ -221,7 +235,9 @@ export const SOURCE_PRECEDENCE: ReadonlyArray<{ concept: string; canonical: stri
   { concept: "policy / meaning", canonical: "Owner-confirmed rules (operating model)", secondary: "system contracts (implementation behavior)", onConflict: "Owner policy outranks an implementation assumption; the gap is reported" },
   { concept: "real-world facts the tables lack", canonical: "typed Owner knowledge (P2, active, not superseded / withdrawn)", secondary: "—", onConflict: "live canonical entity state wins for that entity; knowledge stays context" },
   { concept: "who holds the next move", canonical: "the domain evidence rule (uploads vs feedback times; send logs)", secondary: "statuses, send logs", onConflict: "CONFLICTING_EVIDENCE — ask, never blame; outside communication is invisible" },
-  { concept: "artist accounting", canonical: "UNDECIDED — ledger, cycles, media recoup and clip recoup are separate views", secondary: "—", onConflict: "OWNER_DECISION_REQUIRED; never sum" },
+  { concept: "artist accounting", canonical: "UNDECIDED — ledger, cycles and media snapshots are separate views; the clip recoup is NOT_DEFINED until the artist agreement rule is recorded (Owner canon 2026-09-27)", secondary: "—", onConflict: "OWNER_DECISION_REQUIRED; never sum; media snapshots computed against the retired target are CONFLICTING_SOURCES" },
+  { concept: "label vs client work", canonical: "the ONE stored project business type (Owner rule applied at creation: שליו טסמה / אבי מולה → לייבל)", secondary: "roster-name match, release row, client status, Red Films source (evidence only)", onConflict: "MISMATCH_OWNER_RULE — the Owner's explicit classification fixes it; never an automatic write" },
+  { concept: "overdue / session happened / delivered / paid", canonical: "ONE shared rule each (overdue rule, explicit session outcome, delivery record, the shared paid rules)", secondary: "screen-local copies (retired)", onConflict: "a screen and Sunny give the same answer; a remaining difference is reported as CONFLICTING_SOURCES" },
   { concept: "vendor payment", canonical: "Finance expense שולם", secondary: "work paid fields, salary overrides, Red Films payments", onConflict: "CONFLICTING_SOURCES" },
 ];
 
@@ -396,7 +412,7 @@ export const DISCOVERIES: readonly Discovery[] = [
   { id: "CODE_BUSINESS_GOALS", what: "Business goals hard-coded in the old agent code (₪20,000 GROSS monthly income, 8 sessions / week, 4 completions / month, Victor 12) — no settings rows, so the code defaults drive the 'goal behind' alerts and the weekly report", where: "old agent goals", why: "a second, unconfirmed goal system that measures gross where the Owner measures net", domains: ["REPORTS", "AGENT_ALERTS", "FINANCE"], sunnyReads: "reports_view engines", gap: "RP_CODE_GOALS_VS_OWNER_TARGET", ownerInput: true },
   { id: "AUDIT_INSERT_ONLY", what: "Sunny's connector audit is insert-only for the service role and stores input HASHES — Sunny can never read back what it queried", where: "connector audit grant", why: "'what did you check before' is unanswerable by design", domains: ["SUNNY_CONNECTOR"], sunnyReads: "sunny_self (the boundary itself)", gap: "CO_SUNNY_OWN_AUDIT", ownerInput: true },
   { id: "STORAGE_ONLY_PORTAL", what: "The artist portal 'המוזיקה שלי' lives only in a storage manifest (versions, ratings, next release / next work) — no database record at all", where: "artist portal storage", why: "an artist's plans for the next song are invisible to Sunny", domains: ["FILES_DROPBOX", "ARTIST_PORTALS"], sunnyReads: "no", gap: "FS_STORAGE_ONLY_FILES", ownerInput: true },
-  { id: "REHEARSAL_AUTOMARK_MONEY", what: "RESOLVED 2026-09-27 (D6): the page-load auto-mark no longer touches show rehearsals; only בוצע counts; legacy auto-marked התקיים rows keep the pre-D6 rule until the Owner confirms them", where: "sessions auto-mark + show split", why: "was a silent money effect", domains: ["SESSIONS", "SHOWS", "FINANCE"], sunnyReads: "session_view", gap: "WK_REHEARSAL_STATUS_CONFLICT", ownerInput: true },
+  { id: "REHEARSAL_AUTOMARK_MONEY", what: "RESOLVED 2026-09-27 (D6 + A3): the page-load auto-mark is retired entirely (it never touches a session again); only בוצע counts; legacy auto-marked התקיים rows keep the pre-D6 rule until the Owner confirms them", where: "the retired sessions auto-mark + show split", why: "was a silent money effect", domains: ["SESSIONS", "SHOWS", "FINANCE"], sunnyReads: "session_view", gap: "WK_REHEARSAL_STATUS_CONFLICT", ownerInput: true },
 ];
 
 export const COMPANY_RULES = [

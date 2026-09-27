@@ -14,12 +14,12 @@ export interface ProjectField { field: string; meaning: string; writtenBy: strin
 export const PROJECT_FIELDS: readonly ProjectField[] = [
   { field: "name", meaning: "Project title", writtenBy: "Owner (create / edit), proposal conversion, label release creation", cls: "CANONICAL", lifecycle: "First rename freezes the project's Dropbox folder", sunnyReads: true },
   { field: "artist", meaning: "Free-text artist name(s), several separated by , ، ;", writtenBy: "Owner, client rename (rewrites it), label conversion", cls: "CANONICAL", lifecycle: "The ONLY link to clients and (outside releases) to label artists — by name", sunnyReads: true },
-  { field: "status", meaning: "Work state", writtenBy: "Owner (status menu / drawer), Steven completion (auto הושלם), client restore, sending to Steven (במיקס)", cls: "CANONICAL", lifecycle: "הושלם stamps the end date; any other status clears it; not validated on the server", sunnyReads: true },
+  { field: "status", meaning: "Work state", writtenBy: "Owner (status menu / drawer; accepting the Steven-completion suggestion), a Victor hand-off 'complete the project too' (server rule: refused for בוטל / בהשהייה / already הושלם), client restore, sending to Steven (במיקס)", cls: "CANONICAL", lifecycle: "a REAL transition into הושלם stamps the end date (a re-save keeps it); any other status clears it; not validated on the server; Steven completion never changes it (suggestion only, Owner decision 2026-09-27)", sunnyReads: true },
   { field: "project_type", meaning: "What kind of work", writtenBy: "Owner, clip seeding (שיר → שיר + קליפ), label creation", cls: "CANONICAL", lifecycle: "Album / EP open the album center; רידים drives riddim mix mode; Steven accepts only שיר / רידים / אלבום / EP", sunnyReads: true },
-  { field: "project_business_type", meaning: "לקוח or לייבל", writtenBy: "Create forces לקוח; label conversion / label creation / business-type switch set לייבל", cls: "AMBIGUOUS", lifecycle: "Competes with roster-name matching (label classification conflict)", sunnyReads: true },
-  { field: "deadline", meaning: "Target date", writtenBy: "Owner, the Partner deadline action", cls: "CANONICAL", lifecycle: "Overdue / due-soon are computed", sunnyReads: true },
-  { field: "start_date", meaning: "When work started", writtenBy: "Create (today), first session backfill, legacy drawer backfill (can overwrite for hidden projects), manual", cls: "DERIVED", lifecycle: "Auto-filled; editable", sunnyReads: true },
-  { field: "end_date", meaning: "Actual completion date", writtenBy: "Server on status change", cls: "DERIVED", lifecycle: "Set on הושלם, cleared otherwise", sunnyReads: true },
+  { field: "project_business_type", meaning: "לקוח or לייבל — the ONE classification field (2026-09-27)", writtenBy: "Create (UI, proposal conversion, Sunny) by the Owner rule: שליו טסמה / אבי מולה credited → לייבל, else לקוח; label conversion / label creation; the Owner's explicit classification control", cls: "CANONICAL", lifecycle: "the only classifier for every screen and Sunny; never reclassified automatically — a stored לקוח the Owner rule would call לייבל is the signal MISMATCH_OWNER_RULE (fixed only by the Owner)", sunnyReads: true },
+  { field: "deadline", meaning: "Target date", writtenBy: "Owner, the Partner deadline action", cls: "CANONICAL", lifecycle: "Overdue has ONE rule (valid date before today in Israel; never for הושלם / בוטל / בהשהייה / hidden); a value that is not a valid date is never overdue and is reported as unparseable", sunnyReads: true },
+  { field: "start_date", meaning: "When work started", writtenBy: "Create (today), the session writer on the first session (only when empty), manual", cls: "DERIVED", lifecycle: "Auto-filled; editable; no page-load write (the legacy drawer backfill is retired, 2026-09-27)", sunnyReads: true },
+  { field: "end_date", meaning: "Actual completion date", writtenBy: "Server on a status change", cls: "DERIVED", lifecycle: "Stamped (Israel day) only on a real transition into הושלם; kept on a re-save; cleared by any other status", sunnyReads: true },
   { field: "parent_project", meaning: "Belongs to another project (by NAME); ללא שיוך = none", writtenBy: "Owner", cls: "AMBIGUOUS", lifecycle: "Renaming the parent silently orphans children", sunnyReads: true },
   { field: "is_hidden", meaning: "Removed from the active views", writtenBy: "Owner (full edit)", cls: "CANONICAL", lifecycle: "Hidden projects vanish from almost every screen (not from Finance Brain)", sunnyReads: true },
   { field: "planned_hours / planned_days", meaning: "Lesson (לימודים) targets", writtenBy: "Owner", cls: "CANONICAL", lifecycle: "Actuals come from held sessions", sunnyReads: true },
@@ -63,17 +63,17 @@ export const PROJECT_LINKS: readonly ProjectLink[] = [
   L("PROPOSAL", "proposal", "proposal's linked project id (conversion)", "N:1 (one conversion)", "CANONICAL_RELATION", "DB_FK_SET_NULL", "project delete → proposal back to לא נסגר, follow-up task deleted; a proposal edit can point anywhere", "project_view", "proposals"),
   L("TRANSACTIONS", "finance transaction", "transaction project id (+ scope / expense scope)", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "project delete unlinks them (orphan project-scope rows)", "project_view", "transactions"),
   L("FINANCE_SETTING", "agreed price / currency / exception / clip price", "settings row finance_<project id>", "1:1", "CANONICAL_RELATION", "SETTINGS_KEY", "deleted with the project; orphans exist (9 in production)", "project_view", null),
-  L("SESSIONS", "session", "session project id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "project delete hard-deletes sessions + their calendar events (1 orphan session exists)", "project_view", "sessions"),
+  L("SESSIONS", "session", "session project id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "project delete hard-deletes sessions; their calendar events are removed after the database commit (failures reported) (1 orphan session exists)", "project_view", "sessions"),
   L("CALENDAR_EVENT", "Google Calendar event", "session's stored event id; the event title holds project + artist at creation", "1:1 per session", "CANONICAL_RELATION", "EXTERNAL_ID", "project rename does not retitle events", null, null),
   L("TASKS", "task", "task related type 'project' + related id (polymorphic)", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned on project delete; a Victor task can have no id", "tasks", null),
   L("MEETINGS", "meeting", "meeting project id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned on delete; editable", "meetings", "meetings"),
   L("PROJECT_ACTIONS", "project action (send / receive log)", "action project id; linked work only to Victor work", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project", "project_actions", "project_actions"),
-  L("VICTOR_WORK", "Victor work", "Victor work project id", "1:1 in practice", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project (tasks + Dropbox folder stay); Victor folder built from the CURRENT name, not the frozen folder", "project_view", "vendor_project_work"),
-  L("ENGINEER_WORK", "Steven / external engineer work", "engineer work project id (engineer = free-text name)", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project by the database; Steven approval auto-completes the project", "mix_pipeline", "sound_engineer_work"),
+  L("VICTOR_WORK", "Victor work", "Victor work project id", "1:1 in practice", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project through the Victor writer (its follow-up task + Google Task go with it; the Dropbox folder stays); Victor folder built from the CURRENT name, not the frozen folder", "project_view", "vendor_project_work"),
+  L("ENGINEER_WORK", "Steven / external engineer work", "engineer work project id (engineer = free-text name)", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project by the database; completing Steven's last open work only SUGGESTS completing the project (the Owner decides)", "mix_pipeline", "sound_engineer_work"),
   L("MIX_VERSIONS", "mix version", "version project id (copied from the work); full mixes copied into project files", "1:N", "CANONICAL_RELATION", "DB_FK_SET_NULL", "project delete nulls it; deleting a version leaves the file copy", "mix_pipeline", "mix_versions"),
-  L("FINAL_FILES", "final file", "final file project id + work id", "1:N", "CANONICAL_RELATION", "DB_FK_SET_NULL", "project delete nulls it", "mix_pipeline", "final_files"),
-  L("RED_FILMS", "Red Films production", "production project id + managed-clip pointer in the finance setting; artist / client name snapshots", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned on delete; renames not propagated to the snapshots", "red_films", "red_films_productions"),
-  L("CLIP_ITEMS", "clip planning row", "clip item project id", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project", "clip_planning", "clip_items"),
+  L("FINAL_FILES", "final file", "final file project id + work id", "1:N", "CANONICAL_RELATION", "DB_FK_SET_NULL", "A5: a final file on one of the project's mix works BLOCKS the project delete (the work link is RESTRICT; zero writes, the Owner removes the final files first); a final file linked only by the project is nulled", "mix_pipeline", "final_files"),
+  L("RED_FILMS", "Red Films production", "production project id + managed-clip pointer in the finance setting; artist / client name snapshots", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned on delete; renames not propagated to the snapshots; a bulk permanent delete of a cancelled production clears the project's clip pointer only while it still points at it (compare-and-swap)", "red_films", "red_films_productions"),
+  L("CLIP_ITEMS", "clip planning row", "clip item project id", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project (a promoted row is kept as provenance of its Finance expense until then)", "clip_planning", "clip_items"),
   L("SOCIAL_CAMPAIGN", "social campaign", "campaign project id (unique)", "1:1", "CANONICAL_RELATION", "DB_FK_SET_NULL", "project delete nulls it", "social", "social_campaigns"),
   L("SOCIAL_CONTENT", "social content item / file", "content project id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned; uploads live outside the project folder", "social", "social_content_items"),
   L("RELEASE", "label release", "release details keyed by project id", "1:1", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project", "releases", "project_release_details"),
@@ -101,13 +101,14 @@ export const PROJECT_SCHEMA_COLUMNS = [
 export const PROJECT_MONEY_MODEL = {
   rules: [
     "The agreed price, currency, finance exception and clip price live in the project's finance setting.",
-    "Received income = שולם or התקבל; צפוי / לא שולם / בוטל are not received; חלקי is not paid.",
+    "Received income = שולם or התקבל (ONE shared status rule for every screen and Sunny); צפוי / לא שולם / בוטל are not received; חלקי is not paid.",
     "An expense is paid only when שולם.",
     "Only song income in the PRICE currency counts against the price; clip income belongs to the clip deal (its own clip price).",
     "received ≥ agreed → no debt; received > agreed → overpayment / credit / tip (never income elsewhere).",
     "A finance exception (no charge / favour) means no receivable.",
     "A cancelled project's remaining balance is not collectible.",
-    "Other currencies are listed separately and never converted.",
+    "No agreed price (0 / missing) is PRICE_UNKNOWN: never 'paid', never 'free' — fully paid needs agreed > 0 (one shared project summary for the UI badges and Sunny).",
+    "Other currencies are listed separately and never converted; every total is a per-currency map.",
   ],
   sunnyImplementation: "project_view mirrors the Finance Brain's per-project loop with the same shared primitives and explains its verdict.",
   conflictsHe: [
@@ -118,7 +119,7 @@ export const PROJECT_MONEY_MODEL = {
     "C8 טבלת הפרויקטים הישנה מחברת יתרות במטבעות שונים.",
     "C10 בלשוניות האלבום צבע היתרה הפוך (חוב ירוק, עודף אדום).",
     "C12 תובנות סופרות כל הוצאה ומציגות פרויקט בדולר כשקלים.",
-    "C13–C14 'הכנסה צפויה' מוגדרת אחרת בכל מסך; 'לא שולם' לא נחשב צפוי בחלק מהמקומות.",
+    "C13–C14 (תוקן 2026-09-27): 'הכנסה צפויה' הוגדרה אחרת בכל מסך ו'לא שולם' לא נחשב צפוי בחלק מהמקומות — היום כל מסך (סטטיסטיקות כספים / תובנות, מגירת פרויקט, מגירת לקוח, בדיקת הבריאות, לשוניות האלבום, תזכורת היתרה, הדשבורד, הסוכן) וסאני משתמשים בכלל האחד isExpectedStatus (צפוי / לא שולם / חלקי).",
     "C15 במוח הכספים: פרויקט חריג עדיין יכול להציג שורות צפויות כחוב; פרויקטי לייבל נספרים כ'חסר מחיר'.",
     "C16 תצוגת הישות הקודמת של סאני הראתה רק יתרה כללית — חוב שכולו רשום כצפוי לא הופיע (תוקן בתצוגה המחוברת).",
     "C17 'יש מחיר' חושב כ'יש הגדרה' — גם חריג או מחיר 0.",
@@ -134,7 +135,9 @@ export const PROJECT_SIGNAL_MODEL = [
   { code: "AT_VICTOR / VICTOR_WAITING_OWNER", kind: "DERIVED_SIGNAL", note: "from recorded timestamps — does not prove it wasn't handled outside the system" },
   { code: "WAITING_FEEDBACK / WAITING_VERSION", kind: "CANONICAL_FACT", note: "from the project send / receive log" },
   { code: "CLIP_IN_PRODUCTION / RELEASE_TARGET_PASSED / NO_SESSIONS / COMPLETED_DELIVERY_OPEN", kind: "DERIVED_SIGNAL", note: "no session ≠ problem (some work needs none)" },
-  { code: "LABEL_CLASSIFICATION_UNCLEAR", kind: "UNKNOWN", note: "stored לקוח but the artist is on the label roster — an Owner decision" },
+  { code: "LABEL_CLASSIFICATION_UNCLEAR", kind: "UNKNOWN", note: "no stored business type — context for the Owner (a roster-name match is evidence only)" },
+  { code: "MISMATCH_OWNER_RULE", kind: "DERIVED_SIGNAL", note: "stored לקוח but the Owner rule (שליו טסמה / אבי מולה credited) says לייבל — never fixed automatically; the Owner's explicit classification fixes it" },
+  { code: "DEADLINE_UNPARSEABLE", kind: "DERIVED_SIGNAL", note: "the stored deadline is not a valid date — overdue cannot be known (never counted overdue)" },
   { code: "WAITING_FOR_CLIENT / WAITING_FOR_ARTIST", kind: "UNKNOWN", note: "not computed anywhere — only the Owner can say (teach as PROJECT_BLOCKER)" },
   { code: "PRIORITY", kind: "OWNER_POLICY", note: "no universal ranking: quality before speed, protect label releases, stale is not urgent" },
 ] as const;
@@ -142,9 +145,9 @@ export const PROJECT_SIGNAL_MODEL = [
 export const PROJECT_SURFACES = [
   { surface: "Projects page", purpose: "Portfolio list, KPIs, status changes, create, open drawer", notes: "KPI popover mixes currencies; the 'active' filter includes cancelled" },
   { surface: "Project drawer (current)", purpose: "Everything about one project: money, sessions, send log, clip, Victor / Steven sends, files", notes: "No writes on open" },
-  { surface: "Project drawer (legacy, ?drawerLegacy=1)", purpose: "Same + delivery + session limit", notes: "WRITES on open (see side effects)" },
+  { surface: "Project drawer (legacy, ?drawerLegacy=1)", purpose: "Same + delivery + session limit", notes: "No writes on open since 2026-09-27 (a passed planned session shows 'עבר — לא אושר' with explicit held / cancelled buttons)" },
   { surface: "Album center (album / EP)", purpose: "Tracks, album money, tasks, previous-system info", notes: "Balance ignores the finance exception; debt colour inverted" },
-  { surface: "Status menu", purpose: "Change status", notes: "הושלם: delivery prompt + closes Victor work (may push Victor); בוטל: offers to cancel open income (mixes currencies)" },
+  { surface: "Status menu", purpose: "Change status", notes: "הושלם: delivery prompt + closes Victor work (may push Victor); בוטל: offers to cancel open income (amounts shown per currency)" },
   { surface: "Dashboard", purpose: "Receivables, releases, shows, 'סאני צריך ממך', approvals, outcomes", notes: "Read-only fetches" },
   { surface: "Client drawer", purpose: "The client's projects (by exact artist name)", notes: "Row balance ignores the exception; creates projects with artist = client name" },
   { surface: "Finance / Insights", purpose: "Money across projects", notes: "Hidden projects shown generically; collab balances double-counted per artist" },
@@ -153,9 +156,8 @@ export const PROJECT_SURFACES = [
 ] as const;
 
 export const PROJECT_PAGE_LOAD_EFFECTS = [
-  { trigger: "Opening ANY app page (every role; only the Owner is allowed through)", writes: "Planned sessions whose end time passed (by the DEVICE clock) become 'held' — never a show rehearsal (D6: its status carries show money)", idempotent: true, refresh: true, risk: "a wrong device clock marks future sessions held (the calendar pull reverts only moved events)" },
-  { trigger: "Opening a project in the LEGACY drawer", writes: "Each passed planned session of that project → 'held' (bumps the project's updated time) — show rehearsals skipped (D6)", idempotent: true, refresh: true, risk: "reorders 'recently updated'" },
-  { trigger: "Opening a project in the LEGACY drawer", writes: "Backfills the project start date from its earliest session", idempotent: false, refresh: true, risk: "for a HIDDEN project it overwrites an existing start date on every open (uses cancelled sessions too)" },
+  { trigger: "Opening a portal as its own user (Shalev / Avi / CLEANTONE / Steven / Victor)", writes: "portal last-seen (throttled) + at most ONE Owner presence push per real visit (30-minute absence window, atomic claim) — Owner decision Q1", idempotent: true, refresh: true, risk: "none for business data" },
+  { trigger: "RETIRED 2026-09-27 — opening ANY app page or a project drawer", writes: "nothing: the session auto-mark (app load + legacy drawer) and the start-date backfill are gone (Owner canon: time passed ≠ session happened)", idempotent: true, refresh: true, risk: "none" },
   { trigger: "Opening the Tasks page", writes: "Open tasks completed in Google Tasks become done", idempotent: true, refresh: true, risk: "low" },
   { trigger: "Every Owner page", writes: "Re-saves the Owner's push subscription", idempotent: true, refresh: true, risk: "none for business data; never sends a push" },
 ] as const;
@@ -163,7 +165,7 @@ export const PROJECT_PAGE_LOAD_EFFECTS = [
 export const PROJECT_INTEGRITY = {
   productionCounts20260925: { projects: 38, hidden: 0, orphanTransactions: 0, orphanSessions: 1, orphanMeetings: 0, orphanRedFilms: 0, orphanSocialItems: 0, orphanOrNullProjectTasks: 0, orphanFinanceSettings: 9, orphanDeliverySettings: 0, artistWithoutClientMatch: 0, brokenParentNames: 0, nonVocabularyStatus: 0, completedWithoutEndDate: 0, unfrozenDropboxFolders: 12, storedLabelBusinessType: 1, openEngineerWorkOnClosedProject: 0 },
   risksHe: [
-    "מחיקת פרויקט לא טרנזקציונית: חלק נמחק באפליקציה, חלק בבסיס הנתונים (מדרג), חלק נשאר (משימות, פגישות, Red Films, תוכן סושיאל, התראות, הגדרות אלבום/מגבלת סשנים, תיקיות דרופבוקס).",
+    "מחיקת פרויקט עדיין לא טרנזקציה אחת: בדיקה מקדימה חוסמת כשיש קבצים סופיים (בלי שום כתיבה), כל שלב נבדק והפרויקט נמחק אחרון; נשארים: משימות, פגישות, Red Films, תוכן סושיאל, התראות ותיקיות דרופבוקס.",
     "שינוי אמן בפרויקט שהתיקייה שלו לא 'קפואה' מזיז העלאות עתידיות לתיקייה אחרת.",
     "קבצי הפרויקט נשמרים בלי נעילה — שתי העלאות במקביל יכולות לאבד אחת.",
     "סטטוס פרויקט לא נבדק בשרת (כל טקסט מתקבל).",
@@ -173,16 +175,16 @@ export const PROJECT_INTEGRITY = {
 
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/projects-store.ts": "33977432a48347e93dfe0d4bac8c450b71fe1d9bac34bf3a5596545ae8beb22f",
-  "lib/types.ts": "f1a0d3b1450c72b2cf50edafd1900d4fef1f6cdead9864227b0e2074d96363a8",
+  "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
+  "lib/types.ts": "3f3e72ac40b78e73ea21cd5e84e1c7636061e8bfece4dfcdbddc907eb658e5a7",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
-  "app/api/projects/[id]/route.ts": "687ed3b44c0af3a0fc222b32a019cf9d70351d2b5abceeed676326b5621e0a37",
-  "lib/payment-status.ts": "f2a0e2c061e0862c0595918d0389c17cc156f73d646e7c7891054d51baf538e8",
-  "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
-  "lib/finance/classify.ts": "7a40590e70ca5c22423d1bbe88352aa7cc64a72252c54d1b0a651a3c4beded9f",
+  "app/api/projects/[id]/route.ts": "07896b6ff750d23a888f119e04a94b2d1a4cf9929d921e995c501d95ac8b3e74",
+  "lib/payment-status.ts": "99ed0806205a2fbaca511835f1cc1adfa3f78713b00026fa9f2c26d2a29b05e3",
+  "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
+  "lib/finance/classify.ts": "c7614d80b9f45faab3163e21ff7dc8c2b1345958490b214d97c9bf74d8ca2055",
   "lib/project-paths.ts": "69c88d46ab47affddbe1b1d94dcfc118026e94a2bc0e41c85b5e4a5ae7e46b07",
-  "components/ui/ProjectDrawer.tsx": "be202d2277c550636957f4e3b8d9a237ea6473da91109e0b0808b273c04b8e1b",
-  "components/AppShell.tsx": "4249e7a7e41aeb55eaac6001fef9bae542e6e30f92ebd6bb7a148bcc064d3f6f",
+  "components/ui/ProjectDrawer.tsx": "3db95da70afd95f0edaf74363704706997c8e4390ca692c2c75cd0d30e9b9d42",
+  "components/AppShell.tsx": "9e6cab9ae8c07d28f32c07f37a078b05312627a751fa738fa67825eee5f9e800",
 };

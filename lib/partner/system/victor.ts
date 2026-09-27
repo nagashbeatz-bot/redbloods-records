@@ -50,13 +50,13 @@ export const VICTOR_FIELDS: readonly VictorField[] = [
 export const VICTOR_SETTINGS: ReadonlyArray<{ key: string; classification: FieldClass; meaning: string; sunnyReads: string }> = [
   { key: "vendor_victor_settings", classification: "CANONICAL", meaning: "{monthlyGoal (code default 10; production 12), monthlySalary (default 550; production 550), salaryCurrency ($), salaryPayDay (10 — IGNORED: due date is hardcoded to the 10th), stuckAfterDays (5), paceMetric}", sunnyReads: "victor_view money + system_settings" },
   { key: "vendor_victor_salary_overrides", classification: "CANONICAL", meaning: "per-month amount overrides (e.g. 2026-06: 500)", sunnyReads: "victor_view money" },
-  { key: "vendor_victor_salary_status_overrides", classification: "CONFLICT", meaning: "per-month status overrides — they OUTRANK the finance transaction in the salary view (May–Aug 2026 = שולם while only August has a finance row)", sunnyReads: "victor_view money" },
+  { key: "vendor_victor_salary_status_overrides", classification: "CONFLICT", meaning: "per-month status overrides — Owner STATEMENTS. Since 2026-09-27 a live Finance row decides the month; an override only fills a month with no live Finance row, and a disagreement is shown as a conflict beside Finance (May–Aug 2026 = שולם while only August has a finance row; Owner decision: May–July were paid $550 each — the Finance reconciliation awaits approval)", sunnyReads: "victor_view money" },
   { key: "vendor_victor_payment_<YYYY_MM>", classification: "LEGACY", meaning: "old per-month {status, paidDate} (May / June 2026 = צפוי) — still read into the portal stats", sunnyReads: "victor_view money (evidence only)" },
   { key: "goal_monthly_victor", classification: "CONFLICT", meaning: "agent goal target (default 12) — while its 'expected by now' uses the vendor monthlyGoal", sunnyReads: "system_settings" },
-  { key: "victor_visit_last", classification: "CANONICAL", meaning: "last portal visit {at} (30-minute presence cooldown)", sunnyReads: "victor_view presence" },
-  { key: "victor_work_completed_pushed_<workId>", classification: "CANONICAL", meaning: "completion push dedupe {fromUpdatedAt}", sunnyReads: "victor_view notifications" },
-  { key: "victor_upload_pending_<workId>", classification: "CANONICAL", meaning: "upload push batching (1-minute window)", sunnyReads: "system_settings" },
-  { key: "push_cooldown_victor_stuck", classification: "CANONICAL", meaning: "agent / cron stuck-work push cooldown", sunnyReads: "system_settings" },
+  { key: "victor_visit_last", classification: "LEGACY", meaning: "pre-2026-09-27 presence-push cooldown {at} — no longer written and NOT a last-seen; Victor's presence is the shared portal presence model (portal last-seen + one visit push per real visit)", sunnyReads: "victor_view presence (legacy)" },
+  { key: "victor_work_completed_pushed_<workId>", classification: "CANONICAL", meaning: "completion push DELIVERY CLAIM, versioned by the pre-transition row stamp: processing → sent only after Victor's push was delivered, else failed (2026-09-27); an older {fromUpdatedAt} marker is unverified", sunnyReads: "victor_view notifications" },
+  { key: "victor_upload_pending_<workId>", classification: "CANONICAL", meaning: "upload push batching (1-minute window) — claimed before the send, removed only after delivery, a failure stays as a failed row; a new upload never joins a batch being sent", sunnyReads: "system_settings" },
+  { key: "push_cooldown_victor_stuck", classification: "LEGACY", meaning: "stuck-work push cooldown — the stuck PUSH is disabled by the Owner (Q3, 2026-09-27); the signal is still computed", sunnyReads: "system_settings" },
   { key: "push_cooldown_victor_below_pace", classification: "CANONICAL", meaning: "agent below-pace push cooldown", sunnyReads: "system_settings" },
   { key: "victor_avatar", classification: "DISPLAY_ONLY", meaning: "avatar image choice (image at a fixed storage path)", sunnyReads: "not read (display only)" },
 ];
@@ -68,21 +68,21 @@ export const VICTOR_IDENTITY = {
   sendLog: "the project send log names him by text ('ויקטור', recipient role external_producer)",
   releaseResponsible: "'ויקטור' is a suggested free-text value of a release's responsible field",
   storage: "work folders under the projects tree (…/Victor) or a standalone Victor folder; avatar at a fixed path",
-  hardcoded: ["role email", "stuck days 5 in the cron + agent (setting ignored there)", "salary due = the 10th of the next month (pay-day setting ignored)", "portal start date 12.03.2024 (display)", "portal list capped at 12 works"],
+  hardcoded: ["role email", "stuck days: the setting (default 5) drives the portal, the push cron response and Sunny; the switched-off agent rule still uses its own '>=' comparison", "salary due = the 10th of the next month (pay-day setting ignored)", "portal start date 12.03.2024 (display)", "portal list capped at 12 works"],
 } as const;
 
 export const VICTOR_STATES = {
   status: [{ value: "פעיל", meaning: "open work" }, { value: "הושלם", meaning: "Owner marked it complete (returned date stamped; optionally the project too)" }, { value: "בוטל", meaning: "cancelled" }],
   workState: "display-only after send (see field) — the ball holder is derived from timestamps instead",
-  completion: "Owner only. On a linked work the Owner may also complete the PROJECT ('כן, סמן הכול') or only the Victor work. A real transition pushes Victor 'Project completed' then the Owner (deduped by the pre-update time). Completing never proves the project moved to mix.",
+  completion: "Owner only. On a linked work the Owner may also complete the PROJECT ('כן, סמן הכול') — through the server rule (refused for בוטל / בהשהייה or an already completed project, never a blind status write) — or only the Victor work. A real transition pushes Victor 'Project completed' (a delivery claim: sent only after delivery) then the Owner. Completing never proves the project moved to mix.",
   reopen: "any non-הושלם status clears the returned date; re-completing pushes again",
-  conflicts: ["the cron stuck check filters status by work-state values → never fires", "portal isStuck uses '>' days while the agent uses '>='", "'active' stats are month-filtered despite the documentation"],
+  conflicts: ["the switched-off agent stuck rule uses '>=' days while the ONE shared rule (portal, push cron, Sunny) uses '>' (the old cron that never fired is replaced — 2026-09-27)", "'active' stats are month-filtered despite the documentation"],
 } as const;
 
 export const HANDOFF_MODEL = {
   rule: "the app's ball rule: compare the latest upload time (ALL uploads — the Owner's own uploads included) with the latest notes-sent time (tie tolerance 60 s). Upload later → OWNER holds; notes later → VICTOR holds; missing / legacy / too close → UNKNOWN.",
   evidence: ["upload times (versions)", "notes sent times (per version)", "drafts (not sent)", "status / completion", "send-log entry (pending_version / got_notes)", "internal deadline", "Owner knowledge (blocker)"],
-  caveats: ["an Owner upload counts as an 'upload' and can make the rule say the Owner holds the ball", "WhatsApp / phone / in-person are invisible — a stale in-app state is a question, not a conclusion", "age never decides responsibility", "the send log can disagree with the upload / notes evidence — Sunny shows both"],
+  caveats: ["an Owner upload counts as an 'upload' and can make the rule say the Owner holds the ball", "WhatsApp / phone / in-person are invisible — a stale in-app state is a question, not a conclusion", "age never decides responsibility", "the send log can disagree with the upload / notes evidence — Sunny shows both", "a pending send-log entry answered by LATER in-app evidence (a Victor upload / sent notes) is SUPERSEDED — history, not a wait (2026-09-27); a same-day answer is AMBIGUOUS and stays shown"],
   sunnyStates: ["WAITING_ON_VICTOR", "WAITING_ON_OWNER", "COMPLETED", "UNKNOWN", "CONFLICTING_EVIDENCE"],
 } as const;
 
@@ -109,10 +109,10 @@ export const MONEY_MODEL = {
   model: "a monthly SALARY (retainer) per calendar month — not per project. Amount = the month's override, else the settings salary (550); currency from settings ($).",
   quota: "a monthly GOAL of works exists (settings monthlyGoal = 12 in production; agent goal 12; code default 10) with pace metric 'נכנסו לפרויקט בפועל' — used for KPIs / below-pace alerts, NOT tied to pay in any code",
   due: "the 10th of the following month (hardcoded)",
-  statusOrder: "status override → (no finance row: לא שולם when past due, else צפוי) → finance row שולם → חלקי → בוטל = as if none → otherwise נשלח לכספים",
+  statusOrder: "2026-09-27: a LIVE Finance salary row (not בוטל) decides — שולם (paid) / חלקי / otherwise נשלח לכספים; two live rows for one month = DUPLICATE conflict. With no live row: the Owner's status / amount statement fills the month, else לא שולם when past due, else צפוי. An Owner statement that disagrees with a live row is shown as a conflict (OWNER_STATEMENT_DISAGREES), never merged.",
   financeRow: "expense, category צוות, scope כללי, party 'Victor', description 'משכורת Victor — <month>', key victor_salary_YYYY-MM; created by the salary route (no live UI caller — Partner's approved finance action executed August 2026)",
   paidRule: "Finance Brain: a vendor expense is fully paid only when שולם (התקבל is not a valid vendor-expense paid status; חלקי is not paid); currencies never added",
-  sources: ["finance rows (canonical money)", "status / amount overrides (Owner statements in settings — outrank finance in the salary view)", "legacy month keys (evidence)", "Owner Context answers (Finance Brain)", "Partner memory conflicts"],
+  sources: ["finance rows (canonical money)", "status / amount overrides (Owner statements in settings — fill a month with no live Finance row; a disagreement is a conflict)", "legacy month keys (evidence)", "Owner Context answers (Finance Brain)", "Partner memory conflicts"],
 } as const;
 
 export const PORTAL_MODEL = {
@@ -128,8 +128,8 @@ export const VICTOR_PUSHES = [
   { id: "VERSION_NOTES", trigger: "Owner sends notes on a version", recipients: "Victor, then Owner ack; sent state written only on delivery", guard: "production", deepLink: "?workId" },
   { id: "VICTOR_UPLOAD", trigger: "Victor uploads (single → immediate; batch → 1-minute window, flushed by the minute ticker)", recipients: "Owner", guard: "production", deepLink: "?workId" },
   { id: "WORK_COMPLETED", trigger: "status → הושלם (real transition)", recipients: "Victor, then Owner", guard: "production", deepLink: "?workId" },
-  { id: "PRESENCE", trigger: "Victor loads his page (30-minute cooldown)", recipients: "Owner", guard: "production", deepLink: "his portal" },
-  { id: "STUCK_CRON", trigger: "push cron — filters status by work-state values, so it NEVER fires on current data", recipients: "Owner", guard: "production", deepLink: "team" },
+  { id: "PRESENCE", trigger: "Victor opens his page, or returns after a 30-minute absence (ping + 5-minute heartbeat) — one push per real visit, atomic claim, sent only after delivery (Owner decision Q1)", recipients: "Owner", guard: "production", deepLink: "his portal" },
+  { id: "STUCK_CRON", trigger: "DISABLED by the Owner (Q3, 2026-09-27): the push cron computes stuck works with the one rule + the ball holder and returns them, but never pushes", recipients: "none (was: Owner)", guard: "production", deepLink: "team" },
   { id: "STUCK_AGENT", trigger: "agent check (switched off by the agent-alert rules switch)", recipients: "Owner (12-hour cooldown)", guard: "production", deepLink: "team" },
 ] as const;
 
@@ -181,6 +181,7 @@ export const VICTOR_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL
   { code: "WAITING_ON_OWNER", kind: "DERIVED_SIGNAL", note: "an upload after the last notes (the Owner's own uploads count)" },
   { code: "HANDOFF_UNKNOWN", kind: "UNKNOWN", note: "no / too-close / legacy evidence" },
   { code: "HANDOFF_CONFLICT", kind: "DERIVED_SIGNAL", note: "the send log says something different from the upload / notes evidence" },
+  { code: "VICTOR_STUCK", kind: "DERIVED_SIGNAL", note: "the app's ONE stuck rule (פעיל and more than the configured days since sent) with the ball holder — context, never an alert; its push is disabled by the Owner (Q3, 2026-09-27); stale is not urgent" },
   { code: "INTERNAL_DEADLINE_PASSED", kind: "DERIVED_SIGNAL", note: "internal expectation — not a client commitment, not blame" },
   { code: "NO_PROJECT_LINK", kind: "CANONICAL_FACT", note: "standalone work — no project / artist / client context" },
   { code: "NO_FILE_ENTRIES", kind: "CANONICAL_FACT", note: "no stored file entries (storage itself not listable)" },
@@ -219,16 +220,16 @@ export const VICTOR_REVIEWED_FILES = [
   "lib/victor-scope.ts", "app/api/vendor/victor/route.ts", "app/api/vendor/victor/stream/route.ts", "app/api/vendor/victor/download/route.ts", "app/api/vendor/victor/avatar/route.ts",
 ] as const;
 export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/vendor-store.ts": "f585d4789ddfc97ecdd83eed7b71769f985e3f4921c32d52d44a35358a27ff78",
+  "lib/vendor-store.ts": "0a836c163aed63e988707b2050aa8f608bf05f725c875e5465534491739a423b",
   "lib/vendor-folder.ts": "cbd63b60c770a9a01712464848b32e6d26184bdcfc882750395b0361fd385c0d",
   "lib/victor-files.ts": "4852e479431d23c2403a743b6a22bb06cf61965ec98ce340882c439539f2e272",
   "lib/coo/victor-ball.ts": "90baf51e8c245f368641460819b4e8d7b50c3f6dd71bdc23807ff1f59ba10231",
-  "lib/victor-salary-format.ts": "6385d71cbbea9dba2dc0f0eb276997cf812c30cb7556e8ac942182538cf6bc64",
-  "lib/victor-completed-notify.ts": "da5f698281367b8f7d3b5cbe609f29a098a0ce615399e3015cfda1c5985e0077",
-  "lib/victor-upload-notify.ts": "15607a441e2ee5a33aefe3be27c84a15783ae043a58b9bff06d00006c723b929",
+  "lib/victor-salary-format.ts": "d751da8dbf76d8fbc264416137750d73d7b5da1ae3df1a36949dd9e98025b73b",
+  "lib/victor-completed-notify.ts": "96b7c01e0180a2bb409e12991bc7cba8e55830ee9ce6c1a3f1b5b1361722cdfb",
+  "lib/victor-upload-notify.ts": "842ec33fc7ca22ebaa761d631c1c3647daa6c69180cadfb4eaf826effc0fbfca",
   "lib/victor-work-notify.ts": "7f5a56a97cbaf261ed40df759d16a154263fa0d8e67168d91b8d548e00d48306",
   "lib/victor-version-notes-notify.ts": "cf42862f128758edae5ec620717824ed7f9058b6ecfddfbdf87a049c6b833f86",
-  "lib/victor-presence-notify.ts": "2609032407255e16fb29b4250c983b40115702aa435c6a52156f743c64eb323f",
+  "lib/victor-presence-notify.ts": "7f9eddf9837030f5cb8da4964b26bce39db8614877d5f0e2469990111af9b151",
   "app/api/vendor/victor/work/route.ts": "6bbc30e1afe3a6b733b548f95627f368afc198d50af9b13192ce85f98b6c0343",
   "app/api/vendor/victor/work/[id]/route.ts": "ca778b750b4f26f67b926021d5dffc8e4a2e7ef8bdadd88826929f43e05e9d1f",
   "app/api/vendor/victor/work/[id]/file/route.ts": "d2b6101bb57ffbdcd8e2d4be6857802c287caed2bfe92b0b07602cd1f19b516a",

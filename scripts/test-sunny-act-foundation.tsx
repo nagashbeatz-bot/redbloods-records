@@ -115,6 +115,74 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   const appShell = strip(read("components/AppShell.tsx")) + strip(read("components/PushManager.tsx"));
   ok("26. no Push-on-refresh: no page-load caller of /api/push/check", !/api\/push\/check/.test(appShell));
 
+  // ── G4b: every mutating fetch a page fires from an effect is a classified background writer; push flags are true ──
+  console.log("G4b. Every page-driven (useEffect) mutating fetch → a BACKGROUND_WRITERS route; sendsPush = the route's PUSH effect");
+  {
+    const { PAGE_LOAD_READ_POSTS } = await import("../lib/partner/act/background");
+    const pageFiles: string[] = [];
+    const walkPages = (d: string) => { for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory()) { if (p !== "app/api") walkPages(p); } else if (/\.(tsx|ts)$/.test(e.name)) pageFiles.push(p); } };
+    walkPages("components"); walkPages("app");
+    const balanced = (src: string, openIdx: number) => {
+      const open = src[openIdx], close = open === "(" ? ")" : "}"; let depth = 0;
+      for (let i = openIdx; i < src.length; i++) {
+        const c = src[i];
+        if (c === '"' || c === "'" || c === "`") { const q = c; i++; while (i < src.length && src[i] !== q) { if (src[i] === "\\") i++; i++; } continue; }
+        if (c === open) depth++; else if (c === close && --depth === 0) return src.slice(openIdx + 1, i);
+      }
+      return src.slice(openIdx + 1);
+    };
+    const fnBodies = (src: string) => {
+      const m = new Map<string, string>();
+      for (const x of src.matchAll(/(?:function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:useCallback\(\s*)?(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=>)/g)) {
+        const i = src.indexOf("{", x.index! + x[0].length - 1); if (i >= 0) m.set(x[1] ?? x[2], balanced(src, i));
+      }
+      return m;
+    };
+    /** Non-literal effect URLs, resolved by hand (file | expression → the API paths it can take). Reviewed. */
+    const RESOLVED: Record<string, string[]> = {
+      "components/team/usePortalPresence.ts|pingUrl": ["/api/red-artists/ping", "/api/label/artists/X/ping", "/api/red-artists/cleantone/ping", "/api/supplier/steven/ping", "/api/vendor/victor/ping"],
+      "components/red-artists/ArtistPortalPage.tsx|`${apiBase}/sketches/${s.id}/duration`": ["/api/red-artists/sketches/X/duration", "/api/label/artists/X/sketches/X/duration"],
+    };
+    const routeOf = (url: string) => Object.keys(HANDLER_MAP)
+      .filter((r) => { const segs = r.replace(/^app/, "").replace(/\/route\.ts$/, "").split("/"); const u = url.split("/"); return u.length === segs.length && segs.every((s, i) => s === u[i] || /^\[.+\]$/.test(s) || u[i] === "X"); })
+      .sort((a, b) => (a.match(/\[/g) ?? []).length - (b.match(/\[/g) ?? []).length)[0] ?? null; // a static segment beats a dynamic one
+    const bwRoutesAll = new Set(BACKGROUND_WRITERS.flatMap((w) => w.routes));
+    const sites: string[] = []; const unmapped: string[] = []; const unresolved: string[] = [];
+    for (const f of pageFiles) {
+      const src = strip(read(f));
+      if (!/\buse(?:Layout)?Effect\s*\(/.test(src)) continue;
+      const fns = fnBodies(src);
+      for (const m of src.matchAll(/\buse(?:Layout)?Effect\s*\(/g)) {
+        const body = balanced(src, m.index! + m[0].length - 1);
+        const scopes = [body];
+        for (const c of body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) { const b = fns.get(c[1]); if (b && !scopes.includes(b)) scopes.push(b); } // + one level of same-file functions
+        for (const s of scopes) for (const fm of s.matchAll(/fetch\(\s*([^,)]+?)\s*,\s*\{([\s\S]{0,300}?)\}/g)) {
+          const mm = /method:\s*["'`]?(POST|PATCH|PUT|DELETE)/.exec(fm[2]); if (!mm) continue;
+          const expr = fm[1].trim();
+          const lit = /^([`'"])(\/api\/[^`'"]*)\1$/.exec(expr);
+          const urls = lit ? [lit[2].replace(/\?.*$/, "").replace(/\$\{[^}]+\}/g, "X").replace(/\/+$/, "")] : RESOLVED[`${f}|${expr}`];
+          if (!urls) { unresolved.push(`${f}: ${mm[1]} ${expr}`); continue; }
+          for (const u of urls) {
+            sites.push(`${f}: ${mm[1]} ${u}`);
+            const r = routeOf(u);
+            if (!r || !(bwRoutesAll.has(r) || r in PAGE_LOAD_READ_POSTS)) unmapped.push(`${f}: ${mm[1]} ${u} → ${r ?? "no route"}`);
+          }
+        }
+      }
+    }
+    ok(`G4b-1. every page-driven mutating fetch URL is resolvable (${sites.length} sites)`, unresolved.length === 0 && sites.length >= 5, unresolved);
+    ok("G4b-2. every page-driven mutating fetch maps to a BACKGROUND_WRITERS route (or a reviewed read-only POST)", unmapped.length === 0, unmapped);
+    ok("G4b-3. every reviewed read-only POST is a real route", Object.keys(PAGE_LOAD_READ_POSTS).every((r) => fs.existsSync(path.join(ROOT, r))));
+    const pushFlag: string[] = [];
+    for (const w of BACKGROUND_WRITERS) for (const r of w.routes) {
+      const effects = HANDLER_MAP[r]?.effects ?? (fs.existsSync(path.join(ROOT, r)) && /\bsendPushTo[A-Za-z]*\s*\(/.test(strip(read(r))) ? ["PUSH"] : []);
+      const hasPush = effects.includes("PUSH");
+      if (w.sendsPush !== hasPush && !(hasPush && !w.sendsPush && w.pushGatedOff)) pushFlag.push(`${w.id}: sendsPush=${w.sendsPush}, ${r} PUSH=${hasPush}`);
+    }
+    ok("G4b-4. sendsPush equals the route's reachable PUSH effect (a reachable-but-switched-off sender names its gate)", pushFlag.length === 0, pushFlag);
+    ok("G4b-5. no PAGE_LOAD writer pushes; the only page-driven pusher is PORTAL_PRESENCE (PORTAL_HEARTBEAT, via the one-push-per-visit claim)", BACKGROUND_WRITERS.filter((w) => w.trigger === "PAGE_LOAD").every((w) => !w.sendsPush) && BACKGROUND_WRITERS.filter((w) => w.trigger === "PORTAL_HEARTBEAT" && w.sendsPush).every((w) => w.id === "PORTAL_PRESENCE") && /runPresencePing/.test(read("lib/push-presence.ts")));
+  }
+
   // ── G5: every side effect is declared ──
   console.log("G5. Every side effect is declared");
   const undeclared: string[] = [];
@@ -170,7 +238,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     const out = await run(p, approve(p), d);
     ok("an approved, fresh plan applies and is verified by a fresh read", out.status === "APPLIED_AS_EXPECTED" && world.a === "2" && st.events.some((e) => e.type === "VERIFIED"));
     const again = await run(p, approve(p), d);
-    ok("18. a duplicate (new token, same plan) returns the recorded outcome and never executes twice", again.status === "APPLIED_AS_EXPECTED" && again.steps[0].replayed && calls.filter((c) => c === "T.A").length === 1);
+    ok("18. a duplicate (new token, same plan) is refused ALREADY_EXECUTED — it carries the recorded outcome and never executes twice", again.status === "REFUSED" && again.refusal === "ALREADY_EXECUTED" && again.steps[0].replayed && again.steps[0].status === "APPLIED_AS_EXPECTED" && calls.filter((c) => c === "T.A").length === 1);
   }
   { // 8. action version binding
     const p = plan([step(0, "T.A", "a", "3", { actionVersion: 2 })]); const { d } = deps({ "T.A": exec("a") });
@@ -388,7 +456,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     const dead = COVERAGE_MATRIX.filter((r) => (r.klass === "NEEDS_HARDENING" || r.klass === "BLOCKED_BY_MISSING_CAPABILITY") && (!r.requiredWork || !["W2", "W3", "W4", "W5", "W6", "W7", "W8"].includes(r.targetWave)));
     ok("G7c. no dead end: every non-executable, non-excluded operation names its required work and a destination wave", dead.length === 0, dead.map((r) => r.id));
     ok("G7d. EXECUTABLE rows are live (a registered executable primitive, Sunny's own channel, or fully covered by one)", COVERAGE_MATRIX.filter((r) => r.klass === "EXECUTABLE").every((r) => r.targetWave === "LIVE"));
-    const EXCLUDED_REVIEWED = ["AGENT.CREATE_ALERT", "AGENT.RUN_CHECK", "CALENDAR.CONNECT", "CLIENT.AUTO_CREATE_CLIENT", "FILES.FOLDER_LINK", "LABEL.ARTIST_SKETCH_SELF_EDIT", "LABEL.DJ_CONFIRM", "LABEL.PORTAL_PING", "LABEL.PORTAL_PUSH_SUBSCRIBE", "LABEL.PRESS_KIT_LINK", "NOTIFY.LIST_WRITES", "NOTIFY.PUSH_CHECK", "NOTIFY.PUSH_SUBSCRIBE", "PEOPLE.PORTAL_PING", "PROJECT.AUTO_MARK_HELD", "PROJECT.CALENDAR_PULL", "PROJECT.REFRESH_LINK", "PROJECT.STEVEN_COMPLETION", "SHOW.DJ_CONFIRM", "SOCIAL.MIGRATE_PATHS", "SUNNY.CONNECTOR_OAUTH", "VICTOR.AVATAR"];
+    const EXCLUDED_REVIEWED = ["AGENT.CREATE_ALERT", "AGENT.RUN_CHECK", "CALENDAR.CONNECT", "CLIENT.AUTO_CREATE_CLIENT", "FILES.FOLDER_LINK", "LABEL.ARTIST_SKETCH_SELF_EDIT", "LABEL.DJ_CONFIRM", "LABEL.PORTAL_PING", "LABEL.PORTAL_PUSH_SUBSCRIBE", "LABEL.PRESS_KIT_LINK", "NOTIFY.LIST_WRITES", "NOTIFY.PUSH_CHECK", "NOTIFY.PUSH_SUBSCRIBE", "PEOPLE.PORTAL_PING", "PROJECT.CALENDAR_PULL", "PROJECT.REFRESH_LINK", "PROJECT.STEVEN_COMPLETION", "SHOW.DJ_CONFIRM", "SOCIAL.MIGRATE_PATHS", "SUNNY.CONNECTOR_OAUTH", "VICTOR.AVATAR"];
     const excluded = COVERAGE_MATRIX.filter((r) => r.klass === "INTENTIONALLY_SECURITY_EXCLUDED").map((r) => r.id).sort();
     // G10 — the older system contracts never drift from the action layer (one fact, one source).
     const execDomains = new Set(Object.values(PRIMITIVE_SYSTEM_DOMAIN));

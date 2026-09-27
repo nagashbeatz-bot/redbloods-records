@@ -149,7 +149,7 @@ function main() {
   ok("engineers / Victor are CANONICAL (id links)", v.people.engineers.every((e) => e.quality === "CANONICAL_RELATION") && v.people.victor?.quality === "CANONICAL_RELATION");
   check("money verdict + Finance Brain slice", [v.money?.verdict, !!v.moneyBrain], ["DEBT", true]);
   check("engineer pipeline: versions / open comments", [v.work.engineers?.[0].versions, v.work.engineers?.[0].openComments, v.work.engineers?.[0].paid], [1, 1, false]);
-  check("project actions: who waits for whom", v.work.projectActions, { open: 1, waitingFeedback: 1, waitingVersion: 0, followupOverdue: 1 });
+  check("project actions: who waits for whom (B5: superseded entries are history)", v.work.projectActions && { open: v.work.projectActions.open, waitingFeedback: v.work.projectActions.waitingFeedback, waitingVersion: v.work.projectActions.waitingVersion, superseded: v.work.projectActions.superseded, followupOverdue: v.work.projectActions.followupOverdue }, { open: 1, waitingFeedback: 1, waitingVersion: 0, superseded: 0, followupOverdue: 1 });
   check("meetings", v.work.meetings, { upcoming: 1, total: 1 });
   const codes = v.signals.map((s) => s.code);
   ok("signals: AT_ENGINEER, WAITING_FEEDBACK, OUTSTANDING_CLIENT_MONEY, DEADLINE_PASSED", ["AT_ENGINEER", "WAITING_FEEDBACK", "OUTSTANDING_CLIENT_MONEY", "DEADLINE_PASSED"].every((c) => codes.includes(c)));
@@ -160,7 +160,7 @@ function main() {
   const v1 = buildProjectView(sources(), P(1));
   ok("label project: release link is CANONICAL", v1.people.labelArtists.some((l) => l.quality === "CANONICAL_RELATION"));
   check("clip planning excludes cancelled + moved-to-finance, currencies kept apart", v1.work.clipPlanning, { rows: 2, byCurrency: { "₪": 1500, "$": 200 } });
-  check("Red Films budget paid", v1.work.redFilms?.[0].budgetPaid, 2000);
+  check("Red Films budget paid (per currency)", v1.work.redFilms?.[0].budgetPaid, { "₪": 2000 });
   ok("CLIP_IN_PRODUCTION on the label project", v1.signals.some((s) => s.code === "CLIP_IN_PRODUCTION"));
   const v6 = buildProjectView(sources(), P(6));
   ok("unknown artist → no client, and it says so", v6.people.clients.length === 0 && v6.missing.some((x) => x.includes("לא תואם אף לקוח")));
@@ -205,6 +205,11 @@ function main() {
     const got = createHash("sha256").update(fs.readFileSync(path.join(ROOT, f)).toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
     check(`${f} unchanged since the last Sunny project review (update lib/partner/system/projects.ts + fingerprint together)`, got, want);
   }
+  // B2 (Owner canon 2026-09-27): ONE classifier (stored project_business_type) + the Owner-rule mismatch signal
+  const pv = read("lib/partner/projects/view.ts");
+  ok("B2: project view emits MISMATCH_OWNER_RULE from the shared classification module (no local rule)", /classificationSignal\(identity, rosterIdByNameOf\(/.test(pv) && /from "\.\.\/\.\.\/project-classification"/.test(pv));
+  ok("B2: the projects_deep signal filter knows MISMATCH_OWNER_RULE", read("lib/partner/knowledge/capabilities/projects-deep.ts").includes('"MISMATCH_OWNER_RULE"'));
+  ok("B2: operating / label / company views classify by the stored type only", /const labelWork = isLabelProject\(id\)/.test(read("lib/partner/sunny/operating.ts")) && /const labelWork = isLabelProject\(p\)/.test(read("lib/partner/label/view.ts")) && /labelProjectsOpen: openProjects\.filter\(\(p\) => isLabelProject\(p\)\)/.test(read("lib/partner/company/view.ts")));
   const agents = read("AGENTS.md");
   ok("AGENTS.md requires a Sunny review for project changes", /projects\.ts/.test(agents) && /test-sunny-projects\.tsx/.test(agents));
 
