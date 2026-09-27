@@ -3810,7 +3810,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "255efa06d8085ebdc96b9c80765c4c70a499a34c65f929b31b8bc55c53e6d2f7",
+  "sha256": "75524787973d6b855a1d6d2ca52a327ebd8908d82b271b19463e3c1ebc8ad662",
   "effects": [
    "DELETION",
    "FINANCE",

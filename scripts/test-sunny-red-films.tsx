@@ -215,7 +215,7 @@ function main() {
 
   section("SCENARIO Y — label artist video");
   // B3 (Owner canon 2026-09-27): the clip recoup is NOT_DEFINED (null + the Hebrew reason) — never 50 % of the budget
-  ok("label context + recoup NOT_DEFINED (B3), no priority", PV(P(1)).labelWork === true && PRD(PR_NODATE).money.recoup.status === "NOT_DEFINED" && PRD(PR_NODATE).money.recoup.amount === null && /חסר כלל חוזה/.test(PRD(PR_NODATE).money.recoup.reasonHe) && !/50/.test(JSON.stringify(PRD(PR_NODATE).money.recoup)) && !/priority/.test(JSON.stringify(PV(P(1)))));
+  ok("label context + recoup NOT_DEFINED (B3), no priority", PV(P(1)).labelWork === true && PRD(PR_NODATE).money.recoup.status === "NOT_DEFINED" && PRD(PR_NODATE).money.recoup.amount === null && /אין חוק התחשבנות/.test(PRD(PR_NODATE).money.recoup.reasonHe ?? "") && !/50/.test(JSON.stringify(PRD(PR_NODATE).money.recoup)) && !/priority/.test(JSON.stringify(PV(P(1)))));
 
   section("SCENARIO Z — client video");
   ok("clip income ≠ expense", PV(P(2)).labelWork === false && PV(P(2)).clipDeal.price === 3500 && PV(P(2)).clipDeal.paid === 1500 && PV(P(2)).expenses.total["₪"] === 1100 && /revenue, never a video expense/.test(PV(P(2)).clipDeal.note));

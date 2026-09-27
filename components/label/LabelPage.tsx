@@ -127,7 +127,7 @@ export default function LabelPage() {
   }, [reload]);
 
   type ClipLine = LabelClipLine & { artistName: string };
-  const [clips, setClips] = useState<{ totals: ArtistClipsSummary["totals"]; lines: ClipLine[] } | null>(null);
+  const [clips, setClips] = useState<{ totals: ArtistClipsSummary["totals"]; lines: ClipLine[]; agreement: ArtistClipsSummary["agreement"] } | null>(null);
 
   const [media, setMedia] = useState<{
     totals: ArtistMediaSummary["totals"]; recoupTarget: number; recoupBalance: number; artistCredit: number; records: MediaRec[];
@@ -173,15 +173,25 @@ export default function LabelPage() {
   useEffect(() => {
     const roster = artists ?? [];
     const empty = (): ArtistClipsSummary["totals"] => ({ count: 0, byCurrency: {} });
-    if (roster.length === 0) { setClips({ totals: empty(), lines: [] }); return; }
+    if (roster.length === 0) { setClips({ totals: empty(), lines: [], agreement: { defined: {}, notDefined: {} } }); return; }
     let alive = true;
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/clips`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistClipsSummary | null)[]) => {
         if (!alive) return;
         const t = empty();
         const lines: ClipLine[] = [];
+        // the agreement allocation (lib/label-agreements) summed PER CURRENCY — per-artist results, already allocated
+        const agreement: ArtistClipsSummary["agreement"] = { defined: {}, notDefined: {} };
         results.forEach((res, i) => {
           if (!res) return;
+          for (const [cur, a] of Object.entries(res.agreement?.defined ?? {})) {
+            const x = (agreement.defined[cur] ??= { cashOut: 0, labelShare: 0, artistShare: 0, artistShareFundedByLabel: 0 });
+            x.cashOut += a.cashOut; x.labelShare += a.labelShare; x.artistShare += a.artistShare; x.artistShareFundedByLabel += a.artistShareFundedByLabel;
+          }
+          for (const [cur, a] of Object.entries(res.agreement?.notDefined ?? {})) {
+            const x = (agreement.notDefined[cur] ??= { cashOut: 0, reasons: [] });
+            x.cashOut += a.cashOut; for (const r of a.reasons) if (!x.reasons.includes(r)) x.reasons.push(r);
+          }
           t.count += res.totals.count;
           for (const [cur, b] of Object.entries(res.totals.byCurrency ?? {})) {
             const x = (t.byCurrency[cur] ??= { clientClipPrice: 0, plannedBudget: 0, actualCostPaid: 0, rfLedgerPaid: 0 });
@@ -189,7 +199,7 @@ export default function LabelPage() {
           }
           for (const c of res.clips) lines.push({ ...c, artistName: roster[i].name });
         });
-        setClips({ totals: t, lines });
+        setClips({ totals: t, lines, agreement });
       });
     return () => { alive = false; };
   }, [artists]);
@@ -264,13 +274,17 @@ export default function LabelPage() {
 
   const busy = state === "loading";
 
-  // Top financial KPIs — LABEL P&L only (never artist share / recoup). Balance =
-  // actual income − actual clip spend; projected adds only expected income.
-  // B3: the clip investment is the ACTUAL paid clip cost in Finance (C, ₪ — this P&L is ₪-only), never the planned
-  // budget and never "50 % of the budget". Red Films ledger payments are not in Finance yet (DB-1 pending) and are shown
-  // in the clips section, not here.
+  // Top financial KPIs — LABEL P&L only. Owner decision 2026-09-27 (lib/label-agreements): three different numbers, never
+  // merged — the CASH Redbloods paid for clips (Finance truth), the LABEL's economic share of it, and the ARTIST's share the
+  // label funded (it enters the accounting with the artist — it is NOT label investment). For שליו / אבי a clip is 50 / 50
+  // of the actual paid cost. A paid clip cost with NO agreement rule (another artist / a collab) has no allocation: it is
+  // counted in full as a company cost and shown apart, never guessed as 50 / 50. ₪ only (the P&L is ₪-only).
   const finReady = shows != null && clips != null && media != null;
-  const investActual = clips?.totals.byCurrency["₪"]?.actualCostPaid ?? 0;
+  const clipCashOut = clips?.totals.byCurrency["₪"]?.actualCostPaid ?? 0;
+  const clipLabelShare = clips?.agreement.defined["₪"]?.labelShare ?? 0;
+  const clipArtistFunded = clips?.agreement.defined["₪"]?.artistShareFundedByLabel ?? 0;
+  const clipNotAllocated = clips?.agreement.notDefined["₪"]?.cashOut ?? 0;
+  const investActual = clipLabelShare + clipNotAllocated;  // the label's economic clip cost (+ unallocated cost, in full)
   const incomeActual = (shows?.totals.labelReceived ?? 0) + (media?.totals.labelShareReceived ?? 0);
   const incomeExpected = (shows?.totals.labelExpected ?? 0) + (media?.totals.labelShareExpected ?? 0);
   const balanceActual = incomeActual - investActual;         // label balance (distinct from artistActualBalance)
@@ -378,7 +392,7 @@ export default function LabelPage() {
         <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${!finReady ? BORDER : balanceActual < -0.001 ? "rgba(248,113,113,0.4)" : balanceActual > 0.001 ? "rgba(52,211,153,0.4)" : BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: SUB }}>מאזן הלייבל בפועל</span>
           <span style={{ fontSize: 38, fontWeight: 900, color: finReady ? signColor(balanceActual) : TEXT, letterSpacing: "-0.02em", lineHeight: 1.05, direction: "ltr", textAlign: "right" }}>{finReady ? signedMoney(balanceActual) : "…"}</span>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: finReady ? signColor(balanceActual) : MUTED }}>הכנסות שהתקבלו פחות עלות קליפים ששולמה בכספים (₪)</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: finReady ? signColor(balanceActual) : MUTED }}>הכנסות הלייבל שהתקבלו פחות חלק הלייבל בעלות הקליפים (₪)</span>
         </div>
         {/* 2 · Expected income */}
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -393,6 +407,16 @@ export default function LabelPage() {
           <span style={{ fontSize: 12.5, fontWeight: 700, color: MUTED }}>המצב אם כל ההכנסות הצפויות יתקבלו</span>
         </div>
       </div>
+
+      {/* Clip money — cash out ≠ label share ≠ artist share funded by the label (Owner decision 2026-09-27) */}
+      {finReady && (clipCashOut > 0 || clipNotAllocated > 0) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", fontSize: 12.5, fontWeight: 700, color: SUB, margin: "-2px 4px 14px" }}>
+          <span>עלות קליפים ששולמה בפועל: <b style={{ color: TEXT }}>{money(clipCashOut)}</b></span>
+          <span>חלק הלייבל: <b style={{ color: TEXT }}>{money(clipLabelShare)}</b></span>
+          <span>חלק האמן שמומן ע״י הלייבל (בהתחשבנות מול האמן): <b style={{ color: "#F59E0B" }}>{money(clipArtistFunded)}</b></span>
+          {clipNotAllocated > 0 && <span>ללא חוק חלוקה (נספר במלואו כעלות חברה): <b style={{ color: "#F87171" }}>{money(clipNotAllocated)}</b></span>}
+        </div>
+      )}
 
       {/* Operational KPIs — smaller, secondary */}
       <div className="rb-lab-ops" style={{ marginBottom: 20 }}>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount, fmtMoney, MONEY_CURRENCIES } from "@/lib/shows-types";
+import { showAgreementSplit } from "@/lib/label-agreements";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import TimePickerInput from "@/components/ui/TimePickerInput";
 import RehearsalModal, { type RehearsalSession } from "@/components/shows/RehearsalModal";
@@ -1745,7 +1746,10 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
   onClose: () => void;
   onDone: (updated: Show) => void;
 }) {
-  const split        = computeShowSplit(show);
+  // the SAME split the server closes with (lib/label-agreements showAgreementSplit: net of DJ + counted rehearsals,
+  // 50 / 50 only for an agreement artist — שליו / אבי; any other artist has no defined artist share)
+  const rule         = showAgreementSplit(show, show.rehearsalCounted ?? 0);
+  const split        = { artistFee: rule.status === "DEFINED" ? rule.artistFee : 0 };
   const djRelevant   = (show.dj_fee ?? 0) > 0;
   const artRelevant  = split.artistFee > 0;
   const preset       = trigger === "paid"; // "שולם" was picked → assume settled

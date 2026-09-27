@@ -56,7 +56,7 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
     }
   }
 
-  const recoupTarget = await getRecoupTargetForArtist(artistName);
+  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
   const recouped = round2(recoupedTotal);
   return {
     records,
@@ -81,7 +81,7 @@ export interface MediaInput {
 }
 
 export async function createMedia(artistId: string, artistName: string, input: MediaInput): Promise<MediaWriteResult> {
-  const recoupTarget = await getRecoupTargetForArtist(artistName);
+  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
   const { data, error } = await supabase.rpc("create_label_media_income", {
     p_artist_id: artistId, p_recoup_target: recoupTarget, p_gross: input.grossAmount,
     p_source: input.source ?? "Mobile1", p_report_period: input.reportPeriod ?? "",
@@ -94,7 +94,7 @@ export async function createMedia(artistId: string, artistName: string, input: M
 export async function updateMedia(
   recordId: string, artistId: string, artistName: string, expectedUpdatedAt: string, input: MediaInput,
 ): Promise<MediaWriteResult> {
-  const recoupTarget = await getRecoupTargetForArtist(artistName);
+  const recoupTarget = await getRecoupTargetForArtist(artistName, artistId);
   const { data, error } = await supabase.rpc("update_label_media_income", {
     p_record_id: recordId, p_artist_id: artistId, p_recoup_target: recoupTarget, p_expected_updated_at: expectedUpdatedAt,
     p_gross: input.grossAmount ?? null, p_source: input.source ?? null, p_report_period: input.reportPeriod ?? null,

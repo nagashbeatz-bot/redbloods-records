@@ -144,7 +144,7 @@ const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "�
 // Cycling types for session row badge — excludes "צילום קליפ" (those live in ClipSection)
 const CYCLE_TYPES:      SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
 // Quick-change options shown in the status dropdown (income)
-const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל", "לבדיקה"];
+const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל"];
 // Statuses that count as "paid" in totalPaid calculation
 // Received income = lib/finance/classify.ts isReceivedStatus (שולם | התקבל) — the one status rule (no local copy).
 // Payment method options

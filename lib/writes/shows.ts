@@ -236,7 +236,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
             // The artist ledger stores no currency: only a ₪ show is realized into it (never a silent FX)
             if (fresh.status === "בוצע" && (fresh.currency || "₪") === "₪") {
               try {
-                const { computeShowSplit } = await import("@/lib/shows-types");
+                const { showAgreementSplit } = await import("@/lib/label-agreements");
                 const { isValidYmd } = await import("@/lib/artist-balance-store");
                 const {
                   resolveShowArtistId, logArtistResolutionSkip,
@@ -249,7 +249,11 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
                 } else {
                   const artistId = resolution.artistId;
                   const rehearsalCounted = await fin.getRehearsalCountedForShow(fresh.id);
-                  const artistFee = computeShowSplit(fresh, rehearsalCounted).artistFee;
+                  // Owner decision 2026-09-27: only an agreement artist (שליו / אבי) has a defined split — 50 / 50 of the
+                  // NET profit; any other roster artist is NOT_DEFINED → nothing is realized into the ledger.
+                  const rule = showAgreementSplit(fresh, rehearsalCounted);
+                  const artistFee = rule.status === "DEFINED" ? rule.artistFee : 0;
+                  if (rule.status === "NOT_DEFINED") console.warn(`[shows] close ${fresh.id}: ${rule.reasonHe} — no artist ledger income`);
                   if (artistFee > 0) {
                     // Income: realized the moment the show closes — one row per
                     // show, ever (never a duplicate expected+realized pair).
@@ -456,11 +460,11 @@ export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; delete
 export async function closeShowRecord(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; artistPaid: boolean; artistPaidDate?: string; djName?: string; note?: string }): Promise<UpdateShowResult> {
   const show = await getShow(id);
   if (!show) return { kind: "not_found" };
-  const { computeShowSplit } = await import("@/lib/shows-types");
+  const { showAgreementSplit } = await import("@/lib/label-agreements");
   const { getRehearsalCountedForShow } = await import("@/lib/shows-finance-sync");
-  const split = computeShowSplit(show, await getRehearsalCountedForShow(id));
+  const split = showAgreementSplit(show, await getRehearsalCountedForShow(id));
   const djRelevant = (show.dj_fee ?? 0) > 0;
-  const artRelevant = split.artistFee > 0;
+  const artRelevant = split.status === "DEFINED" && split.artistFee > 0;
   const body: Body = {};
   // D5: "received" records the REMAINING balance as a payment; "not received" leaves Finance as it is (a recorded
   // deposit is never downgraded) — the show's payment status is derived from Finance by the sync.

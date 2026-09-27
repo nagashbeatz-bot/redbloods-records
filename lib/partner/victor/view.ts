@@ -17,7 +17,8 @@ import type { SettingsState } from "../settings/types";
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { validateTx } from "../finance/core";
 import { projectOperating } from "../sunny/operating";
-import { computeVictorBall } from "../../coo/victor-ball";
+import { computeVictorBall, victorVersionKeyOf } from "../../coo/victor-ball";
+import { teamBallCycle } from "../../team-ball-cycle";
 import { isVictorWorkStuck, DEFAULT_STUCK_AFTER_DAYS, VICTOR_STUCK_PUSH_ENABLED } from "../../victor-stuck";
 import { presenceFactsOf } from "../../push-presence-pure";
 import { markerStateOf } from "../../push-claims-pure";
@@ -45,7 +46,10 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
   const p = w.projectId ? idx[w.projectId] ?? null : null;
   const op = w.projectId && p ? projectOperating(src, w.projectId) : null;
   const uploads = w.filesSent.map((f) => f.uploadedAt).filter((x): x is string => !!x);
-  const ball = computeVictorBall({ uploads, filesWithoutTimestamp: w.filesSent.filter((f) => !f.uploadedAt).length, reviews: w.reviews.map((r) => ({ sentAt: r.sentAt, draft: r.draft })) as never }, COO_CONFIG as never);
+  const ball = computeVictorBall({ uploads, filesWithoutTimestamp: w.filesSent.filter((f) => !f.uploadedAt).length, reviews: w.reviews.map((r) => ({ sentAt: r.sentAt, draft: r.draft })) as never,
+    // stale feedback (notes on an already-superseded version) never hands the ball back to Victor — the app's own rule
+    uploadVersions: w.filesSent.map((f) => ({ at: f.uploadedAt ?? null, versionKey: victorVersionKeyOf({ versionLabel: f.versionLabel ?? null, name: f.name ?? null }) })),
+    reviewVersions: w.reviews.filter((r) => !!r.version).map((r) => ({ versionKey: String(r.version), sentAt: r.sentAt ?? null, draft: !!r.draft })) }, COO_CONFIG as never);
   const sendLog = (c.det?.actions?.rows ?? []).filter((a) => a.projectId && a.projectId === w.projectId && (a.linkedWorkId === w.id || /ויקטור/.test(a.recipientName ?? "") || a.recipientRole === "external_producer"))
     .map((a) => {
       // B5: a send-log entry is a send-time snapshot — superseded by a LATER Victor upload (pending_version) or a later
@@ -77,6 +81,9 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
     artistText: p?.artistText ?? null, labelWork: op?.label.labelWork ?? null, clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the CLIENT / project commitment — separate from Victor's internal deadline" } : null,
     internalDeadline: w.internalDeadline ? { date: w.internalDeadline, passed: deadlinePassed, meaning: "Victor's INTERNAL expectation — not a client commitment; passed = investigate, not blame", task: task ? { title: task.title, status: task.status, due: task.dueDate } : null } : null,
     handoff: { state, appRule: ball.ball, lastUploadAt: ball.lastUploadAt, lastNotesSentAt: ball.lastNotesSentAt, daysSinceLastUpload: days(latestUpload, c.today), daysSinceLastNotes: days(lastNotes, c.today), sendLog, sendLogHolder,
+      // the Owner-approved cycle (lib/team-ball-cycle): version → Owner's ball; Owner notes → Victor's ball; new version → Owner
+      cycle: teamBallCycle({ team: "Victor", state: state as never, latestVersionAt: ball.lastUploadAt, lastOwnerFeedbackAt: ball.lastNotesSentAt, sentAt: w.sentDate ?? null, staleFeedbackIgnored: ball.staleFeedback?.length ?? 0, todayYmd: c.today }),
+      staleFeedback: ball.staleFeedback ?? [],
       caveats: ["the Owner's own uploads count as 'uploads' in the app's rule", "outside communication (WhatsApp / phone / in person) is invisible"] },
     files: { entries: w.filesSent.length, versions, latestUpload, byVersion: versions.map((v) => ({ version: v, files: w.filesSent.filter((f) => (f.versionLabel ?? "ללא גרסה") === v).map((f) => ({ name: f.name, uploadedAt: f.uploadedAt, durationSeconds: f.durationSeconds, size: f.size, hasShareLink: f.hasShareLink, path: f.path, uploadedBy: f.uploadedBy ?? "NOT_RECORDED" })) })),
       briefFiles: w.briefFiles.length, receivedEntries: w.filesReceived.length, folder: w.dropboxFolder, hasFolderLink: w.hasFolderLink, storageListing: "NOT_AVAILABLE (capability gap) — stored entries only" },

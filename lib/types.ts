@@ -199,16 +199,32 @@ export interface LabelClipLine {
   clientClipCurrency: string | null;
   actualCostPaid: Record<string, number>;  // C — Finance clip expenses paid (שולם), per currency
   rfLedgerPaid: Record<string, number>;    // Red Films ledger payments NOT yet linked to Finance (DB-1: a linked payment is already in actualCostPaid)
-  recoupStatus: "NOT_DEFINED";
-  artistRecoupBalance: null;               // D — never computed without the artist agreement rule
+  /** D — DEFINED only for שליו טסמה / אבי מולה (Owner decision 2026-09-27, lib/label-agreements): 50 % of the actual paid cost. */
+  recoupStatus: "NOT_DEFINED" | "DEFINED";
+  artistRecoupBalance: null;               // a balance is never computed per clip (the offset is the artist accounting's job)
   recoupReasonHe: string;
+  /** The agreement allocation of the actual paid cost, per currency (cash out ≠ label share ≠ artist share funded by the label). */
+  allocation: LabelAgreementAllocationLine[];
+}
+
+/** One currency of an agreement allocation (lib/label-agreements Allocation, serialized). */
+export type LabelAgreementAllocationLine =
+  | { status: "DEFINED"; currency: string; cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number; basisHe: string }
+  | { status: "NOT_DEFINED"; currency: string; cashOut: number; reasonHe: string };
+
+/** An artist's clip agreement totals PER CURRENCY (never added across currencies). */
+export interface LabelAgreementTotals {
+  defined: Record<string, { cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number }>;
+  notDefined: Record<string, { cashOut: number; reasons: string[] }>;
 }
 
 /** Clip information for one label artist — PER CURRENCY, never added across currencies or layers. */
 export interface ArtistClipsSummary {
   totals: { count: number; byCurrency: Record<string, { clientClipPrice: number; plannedBudget: number; actualCostPaid: number; rfLedgerPaid: number }> };
-  recoupStatus: "NOT_DEFINED";
+  recoupStatus: "NOT_DEFINED" | "DEFINED";
   recoupReasonHe: string;
+  /** Owner decision 2026-09-27: the clip agreement allocation (שליו / אבי only) — cash out / label share / artist share funded. */
+  agreement: LabelAgreementTotals;
   clips: LabelClipLine[];
 }
 
@@ -258,7 +274,7 @@ export interface ArtistMediaSummary {
  * Purely derived at read time — writes nothing, changes no snapshot, offsets no prior record.
  */
 export interface ArtistRecoupSummary {
-  /** D — the clip contribution to the artist's recoup: null = NOT_DEFINED (no artist agreement rule recorded, B3). */
+  /** D — the artist's clip share funded by the label (₪, 50 % of the actual paid clip cost — שליו / אבי only); null = NOT_DEFINED. */
   clipRecoupTarget: number | null;
   clipRecoupStatus: "NOT_DEFINED" | "DEFINED";
   clipRecoupReasonHe: string | null;

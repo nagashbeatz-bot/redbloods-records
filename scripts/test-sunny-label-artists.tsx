@@ -150,7 +150,9 @@ function main() {
   ok("media income with stored recoup snapshot, never touching the ledger", a.money.mediaIncome.receivedArtistShare === 200 && a.money.mediaIncome.lastRecoupAfter === 800 && /never touches the ledger/.test(a.money.mediaIncome.note));
   ok("current cycle from the anchor", a.money.cycles.current?.start === "2026-08-01" && a.money.cycles.current?.totals.balance === 850);
   // B3 (Owner canon 2026-09-27): the clip recoup is NOT_DEFINED (null + reason) — the 8000 budget is planning (B), never 50 % recouped
-  ok("B3: clip recoup NOT_DEFINED with the Hebrew reason; the budget is shown as planning per currency, never halved", a.money.recoup.clipContribution.status === "NOT_DEFINED" && a.money.recoup.clipContribution.amount === null && /חסר כלל חוזה/.test(a.money.recoup.clipContribution.reasonHe) && a.money.recoup.clipMoneyByCurrency["₪"]?.plannedBudget === 8000 && !JSON.stringify(a.money.recoup).includes("4000"));
+  // the agreement is id-first (lib/label-agreements): this fixture's roster row is NOT the registered Shalev id → never inferred from the name
+  ok("agreement id-first: a roster row that only shares the name gets NO agreement (NOT_DEFINED), never the Shalev / Avi rule", a.money.agreement.covered === false && a.money.agreement.rules === "NOT_DEFINED — no agreement recorded for this artist" && a.money.agreement.accounting === null);
+  ok("B3: clip recoup NOT_DEFINED with the Hebrew reason; the budget is shown as planning per currency, never halved", a.money.recoup.clipContribution.status === "NOT_DEFINED" && a.money.recoup.clipContribution.amount === null && /אין חוק התחשבנות/.test(a.money.recoup.clipContribution.reasonHe ?? "") && a.money.recoup.clipMoneyByCurrency["₪"]?.plannedBudget === 8000 && !JSON.stringify(a.money.recoup).includes("4000"));
   const qa = q("artist_view", "view", { artist: `label-artist:${LA_SHALEV}` });
   ok("artist_view summary served", qa.status === "OK" && qa.summary.some((f) => f.code === "LEDGER_BALANCE"));
 

@@ -176,15 +176,15 @@ export const PROJECT_INTEGRITY = {
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
-  "lib/types.ts": "7324ef073281be727639acb0aa7772895b77665fae2809e5e4bb7dd7834b3c82",
+  "lib/types.ts": "3a3984ab1af98635a7c14daabeff64b0bf3934b3ec86e150e2c8f9f23b1c379f",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
   "app/api/projects/[id]/route.ts": "07896b6ff750d23a888f119e04a94b2d1a4cf9929d921e995c501d95ac8b3e74",
   "lib/payment-status.ts": "99ed0806205a2fbaca511835f1cc1adfa3f78713b00026fa9f2c26d2a29b05e3",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
-  "lib/finance/classify.ts": "c7614d80b9f45faab3163e21ff7dc8c2b1345958490b214d97c9bf74d8ca2055",
+  "lib/finance/classify.ts": "737c8f69b79f2b08606b78c26e9a3d4f0312f0b723edd68deea2ab02cd87aefd",
   "lib/project-paths.ts": "69c88d46ab47affddbe1b1d94dcfc118026e94a2bc0e41c85b5e4a5ae7e46b07",
-  "components/ui/ProjectDrawer.tsx": "3db95da70afd95f0edaf74363704706997c8e4390ca692c2c75cd0d30e9b9d42",
+  "components/ui/ProjectDrawer.tsx": "d0afb601d99b1f88fd9cf55a2d3abb7f561a7407cbb0c3201372f1a4878a815e",
   "components/AppShell.tsx": "9e6cab9ae8c07d28f32c07f37a078b05312627a751fa738fa67825eee5f9e800",
 };

@@ -172,7 +172,9 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
   if (engineerWorks?.some((w) => w.status === "נשלח" || w.status === "בתהליך")) signals.push({ code: "AT_ENGINEER", kind: "CANONICAL_FACT", he: "יש עבודת מיקס/מאסטר פתוחה אצל מהנדס." });
   if (victorWorks?.some((w) => w.ball.holder === "owner")) signals.push({ code: "VICTOR_WAITING_OWNER", kind: "DERIVED_SIGNAL", he: "ויקטור מסר ואין תגובה מתועדת של הבעלים אחריו (לא מוכיח שלא טופל)." });
   if (victorWorks?.some((w) => w.ball.holder === "victor")) signals.push({ code: "AT_VICTOR", kind: "DERIVED_SIGNAL", he: "הכדור אצל ויקטור." });
-  if (liveActs?.some((a) => a.status === "pending_feedback")) signals.push({ code: "WAITING_FEEDBACK", kind: "DERIVED_SIGNAL", he: "נשלח משהו ומחכים לתגובה (מעקב שליחות; אין תגובה רשומה אחריו)." });
+  // the Owner-approved cycle: an OUTBOUND pending_feedback waits on the recipient; a "received" one = the Owner's feedback is due
+  if (liveActs?.some((a) => a.status === "pending_feedback" && a.actionType !== "received")) signals.push({ code: "WAITING_FEEDBACK", kind: "DERIVED_SIGNAL", he: "נשלח משהו ומחכים לתגובה של הנמען (מעקב שליחות; אין תגובה רשומה אחריו)." });
+  if (liveActs?.some((a) => a.status === "pending_feedback" && a.actionType === "received")) signals.push({ code: "OWNER_FEEDBACK_DUE", kind: "DERIVED_SIGNAL", he: "התקבלה גרסה ומחכים לפידבק שלך (מעקב שליחות; אין פידבק רשום אחריה)." });
   if (liveActs?.some((a) => a.status === "pending_version")) signals.push({ code: "WAITING_VERSION", kind: "DERIVED_SIGNAL", he: "מחכים לגרסה חדשה (מעקב שליחות; לא הועלתה גרסה אחריו)." });
   if (supersededActs?.length) signals.push({ code: "SEND_LOG_SUPERSEDED", kind: "DERIVED_SIGNAL", he: `${supersededActs.length} רישומי שליחה 'מחכים' כבר נענו לפי ראיות מאוחרות יותר (גרסה / הערות שהועלו אחריהם) — היסטוריה, לא המתנה.` });
   if (status === "הושלם" && delivery && delivery.status !== "delivered") signals.push({ code: "COMPLETED_DELIVERY_OPEN", kind: "DERIVED_SIGNAL", he: `הושלם, סטטוס מסירה: ${delivery.status ?? "?"}.` });

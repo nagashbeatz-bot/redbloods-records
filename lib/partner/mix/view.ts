@@ -21,6 +21,7 @@ import { isClosedStatus, COMPLETED_STATUS } from "../../steven-mix-reminder-pure
 import { APP_PAYMENT_RATIO, isEngineerWorkPaid, engineerPayStatus, isLegacyPaidWithoutDate } from "../../mix-payment-pure";
 import { versionGroupKey, versionGroupLabel } from "../../mix-version-group-pure";
 import { engineerHandoff, maxIso } from "./handoff";
+import { teamBallCycle } from "../../team-ball-cycle";
 import { presenceFactsOf } from "../../push-presence-pure";
 import { markerStateOf } from "../../push-claims-pure";
 
@@ -150,7 +151,11 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
     clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the CLIENT / project commitment — separate from the engineer's internal deadline" } : null,
     internalDeadline: w.internalDeadline ? { date: w.internalDeadline, passed: deadlinePassed, daysOver: deadlinePassed ? days(w.internalDeadline, c.today) : null, meaning: "the engineer's INTERNAL expectation — not a client commitment; passed = investigate, never blame", debt: deadlinePassed && (days(w.internalDeadline, c.today) ?? 0) > 30 ? "HISTORICAL (recorded old state, not an emergency)" : null } : null,
     handoff: { state, basis, lastUploadAt: lastUpload, lastOwnerCommentAt: lastComment, lastPreMixNoteAt: lastPreMix, notesSent: { activeCycleSince: notes.active, recorded: notes.history, note: "recorded only while a reminder cycle is active or reached a reminder" }, lastOwnerFeedbackAt: lastFeedback,
-      daysSinceLastUpload: days(lastUpload, c.today), daysSinceLastFeedback: days(lastFeedback, c.today), sentEvidence: { mixReadyPush: isSteven ? mixReadyPushOf(famRows(c, "PUSH_SENT_ONCE_MARKERS").find((r) => r.key === `steven_mix_ready_pushed_${w.id}`)?.value, !!c.settings) : "n/a (Steven only)", sendLog },
+      daysSinceLastUpload: days(lastUpload, c.today), daysSinceLastFeedback: days(lastFeedback, c.today),
+      // the Owner-approved cycle (lib/team-ball-cycle): version → Owner's ball; Owner feedback → engineer's ball; new version → Owner
+      cycle: teamBallCycle({ team: w.engineerName ?? "המהנדס", state: state as never, latestVersionAt: ho.lastUpload, lastOwnerFeedbackAt: lastFeedback, sentAt: w.sentDate ?? null, staleFeedbackIgnored: ho.staleComments.length, todayYmd: c.today }),
+      staleFeedback: ho.staleComments,
+      sentEvidence: { mixReadyPush: isSteven ? mixReadyPushOf(famRows(c, "PUSH_SENT_ONCE_MARKERS").find((r) => r.key === `steven_mix_ready_pushed_${w.id}`)?.value, !!c.settings) : "n/a (Steven only)", sendLog },
       caveats: ["versions uploaded by the Owner are recorded as the engineer's", "a comment resolve records no who / when", "outside communication (WhatsApp / phone / email) is invisible"] },
     versions: { files: versions.length, rounds: rounds.length, latest: latest ? { label: latest.label, number: latest.number, uploadedAt: latest.uploadedAt, files: latest.files, roles: latest.roles, line: latest.line } : null,
       latestVersionStatus: latest ? latest.versionStatus : [],

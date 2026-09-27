@@ -13,7 +13,7 @@ const NEEDS = ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "PROJECT_DET
 const COVERAGE = [
   partner("סאני אחד על כל החברה: לקוחות, הצעות, פרויקטים, כסף, לייבל, ריליסים, הופעות, הפקה, מיקס, וידאו, יומן, צוות, החלטות, סתירות ופערים — מחובר, לא מועתק."),
   partner("אין ציון ואין דירוג. תשומת לב ≠ בעיה. הסדר קבוע (חוסם אותך → התחייבות ללקוח → כסף → זמן → ממתין לאחרים → אירוע → לייבל → ריליס → סתירה → מערכת) — סדר הצגה, לא עדיפות."),
-  partner("כסף: ממומש ≠ צפוי ≠ פוטנציאלי; לפי מטבע, בלי המרה. פנקס Red Films לא בכספים. הלייבל הוא השקעה מוגנת, לא בעיה."),
+  partner("כסף: ממומש ≠ צפוי ≠ פוטנציאלי; לפי מטבע, בלי המרה. תשלום Red Films מקושר = הוצאה אחת בכספים (נספר פעם אחת); רק תשלום לא מקושר מוצג בנפרד. הלייבל הוא השקעה מוגנת, לא בעיה."),
   partner("תקשורת מחוץ ל-Redbloods לא נראית: 'לא רואה את זה רשום', אף פעם 'לא עשית'. מקור שנכשל = לא ידוע, לא ריק."),
 ];
 export const COMPANY_TOPICS = ["executive", "attention", "cashflow", "client_work", "sales", "label", "releases", "shows", "production", "mix", "video", "calendar", "team", "decisions", "conflicts", "gaps", "changes", "outcomes", "delivery", "friction", "security", "actions", "morning_brief",

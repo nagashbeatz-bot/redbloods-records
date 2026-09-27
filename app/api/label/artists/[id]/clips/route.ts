@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
-import { listArtistClips, artistClipMoney } from "@/lib/label-clips";
+import { listArtistClips, artistClipMoney, artistClipAllocation } from "@/lib/label-clips";
 import { CLIP_RECOUP_NOT_DEFINED_HE } from "@/lib/clip-rf-money-pure";
+import { agreementArtistOf, AGREEMENT_COST_RULES } from "@/lib/label-agreements";
 import type { LabelClipLine, ArtistClipsSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/label/artists/[id]/clips — the artist's clips with A / B / C per currency (B3, Owner canon 2026-09-27):
 // A client clip price, B planned budget, C actual cost (Finance, paid), + the Red Films ledger (not in Finance).
-// Never added together; the recoup (D) is NOT_DEFINED (no artist agreement rule) — never 50 % of the budget.
+// Never added together. D (Owner decision 2026-09-27, lib/label-agreements): for שליו טסמה / אבי מולה the clip is 50 % label
+// / 50 % artist of C — the artist's half is funded by the label (the `agreement` block); any other artist is NOT_DEFINED.
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -20,14 +22,24 @@ export async function GET(
     const artist = await getLabelArtist(id);
     if (!artist) return NextResponse.json({ error: "האמן לא נמצא" }, { status: 404 });
 
-    const clips = await listArtistClips(artist.name);
+    const clips = await listArtistClips(artist.name, artist.id);
     const lines: LabelClipLine[] = clips.map((c) => ({
       id: c.id, title: c.title, status: c.status, projectId: c.projectId,
       plannedBudget: c.plannedBudget, currency: c.currency, clientClipPrice: c.clientClipPrice, clientClipCurrency: c.clientClipCurrency,
       actualCostPaid: c.actualCostPaid, rfLedgerPaid: c.rfLedgerPaid,
-      recoupStatus: "NOT_DEFINED", artistRecoupBalance: null, recoupReasonHe: c.recoup.reasonHe,
+      recoupStatus: c.recoup.status, artistRecoupBalance: null, recoupReasonHe: c.recoup.status === "DEFINED" ? c.recoup.basisHe : c.recoup.reasonHe,
+      allocation: c.allocation.map((a) => a.status === "DEFINED"
+        ? { status: "DEFINED" as const, currency: a.currency, cashOut: a.cashOut, labelShare: a.labelShare, artistShare: a.artistShare, artistShareFundedByLabel: a.artistShareFundedByLabel, basisHe: a.basisHe }
+        : { status: "NOT_DEFINED" as const, currency: a.currency, cashOut: a.cashOut, reasonHe: a.reasonHe }),
     }));
-    const payload: ArtistClipsSummary = { totals: { count: clips.length, byCurrency: artistClipMoney(clips) }, recoupStatus: "NOT_DEFINED", recoupReasonHe: CLIP_RECOUP_NOT_DEFINED_HE, clips: lines };
+    const covered = !!agreementArtistOf({ id: artist.id });
+    const payload: ArtistClipsSummary = {
+      totals: { count: clips.length, byCurrency: artistClipMoney(clips) },
+      recoupStatus: covered ? "DEFINED" : "NOT_DEFINED",
+      recoupReasonHe: covered ? AGREEMENT_COST_RULES.CLIP.basisHe : CLIP_RECOUP_NOT_DEFINED_HE,
+      agreement: artistClipAllocation(clips),
+      clips: lines,
+    };
     return NextResponse.json(payload);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

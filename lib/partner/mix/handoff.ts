@@ -47,7 +47,16 @@ export function engineerHandoff(src: GatewaySources, w: HandoffWork) {
 
   const lastUpload = maxIso(versions.map((v) => v.createdAt ?? v.uploadedAt));
   const notes = isSteven ? notesSentInstants(settings, w.id) : { active: null, history: [] as string[] };
-  const lastComment = maxIso(comments.map((x) => x.createdAt));
+  // STALE feedback (Owner-approved cycle 2026-09-27, lib/team-ball-cycle): a comment on a version that was ALREADY
+  // superseded when it was written — a newer version of the same line (target) had been uploaded before it — is feedback
+  // on an old round: it never hands the ball back to the engineer. Kept as evidence (staleComments), never deleted.
+  const vAt = (v: (typeof versions)[number]) => Date.parse(v.createdAt ?? v.uploadedAt ?? "");
+  const staleComments = comments.filter((x) => {
+    const ver = versions.find((v) => v.id === x.versionId); const ct = Date.parse(x.createdAt ?? "");
+    if (!ver || !Number.isFinite(ct) || !Number.isFinite(vAt(ver))) return false;
+    return versions.some((o) => o.id !== ver.id && (o.targetId ?? null) === (ver.targetId ?? null) && vAt(o) > vAt(ver) && vAt(o) <= ct);
+  });
+  const lastComment = maxIso(comments.filter((x) => !staleComments.includes(x)).map((x) => x.createdAt));
   const lastPreMix = maxIso(preMix.map((n) => n.createdAt));
   const lastFeedback = maxIso([lastComment, lastPreMix, ...notes.history]);
   // "Send to Steven" evidence: a delivered push (status sent) or a pre-2026-09-27 marker; a FAILED claim is not "sent".
@@ -74,6 +83,6 @@ export function engineerHandoff(src: GatewaySources, w: HandoffWork) {
     : sent ? "sent to the engineer, nothing uploaded yet" : "no version, no feedback, no send evidence";
   /** true when the answer rests on upload / feedback timestamps, false when only on status / send evidence */
   const timestampEvidence = !closed && !conflicts.length && (feedbackAfterUpload || uploadAfterFeedback);
-  return { state, basis, conflicts, lastUpload, lastComment, lastPreMix, lastFeedback, notes, mixReadyMarker, sendLog, feedbackAfterUpload, uploadAfterFeedback, sent, timestampEvidence, detailRead: !!det, settingsRead: !!settings };
+  return { state, basis, conflicts, lastUpload, lastComment, lastPreMix, lastFeedback, notes, mixReadyMarker, sendLog, feedbackAfterUpload, uploadAfterFeedback, sent, timestampEvidence, staleComments: staleComments.map((x) => ({ versionId: x.versionId, createdAt: x.createdAt })), detailRead: !!det, settingsRead: !!settings };
 }
 export type EngineerHandoff = ReturnType<typeof engineerHandoff>;

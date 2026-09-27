@@ -172,9 +172,12 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   ok("26. → $: the expected + unpaid artist rows carry $; the PAID DJ row stays ₪ (+ a warning)", cur.kind === "ok" && fee(e, "DJ_FEE")?.currency === "₪" && fee(e, "ARTIST_FEE")?.currency === "$" && income(e).every((r) => r.currency === "$") && /מטבע/.test(String((cur as { financeWarning?: string }).financeWarning)), cur);
 
   console.log("\nCreate");
-  const created = await W.createShowRecord({ name: "חדשה", status: "אושרה", show_price: 3000, dj_fee: 500, payment_status: "שולם", advance_payment: 1000, advance_date: "2026-09-27" });
+  const created = await W.createShowRecord({ name: "חדשה", artist: "שליו טסמה", status: "אושרה", show_price: 3000, dj_fee: 500, payment_status: "שולם", advance_payment: 1000, advance_date: "2026-09-27" });
   const cid = created.show.id;
   ok("27. created as 'שולם' with a 1,000 advance → received exactly 3,000 (advance + the remainder), two payment rows, fee rows צפוי", receivedTotal(cid) === 3000 && paymentRows(cid) === 2 && fee(cid, "DJ_FEE")?.payment_status === "צפוי" && fee(cid, "ARTIST_FEE")?.payment_status === "צפוי" && getShow(cid).payment_status === "שולם", income(cid));
+  // Owner decision 2026-09-27 (lib/label-agreements): the 50 / 50-of-net split is ONLY for שליו / אבי — another artist gets no artist fee row
+  const other = await W.createShowRecord({ name: "אחר", artist: "אמן אחר", status: "אושרה", show_price: 3000, dj_fee: 500, payment_status: "צפוי" });
+  ok("27b. a show of an artist WITHOUT an agreement → the DJ row only, no artist fee row (never the Shalev / Avi split)", !!fee(other.show.id, "DJ_FEE") && !fee(other.show.id, "ARTIST_FEE"), fee(other.show.id, "ARTIST_FEE"));
   const cLead = await W.createShowRecord({ name: "ליד", status: "ליד חדש", show_price: 3000, payment_status: "שולם" });
   ok("28. a lead created as 'שולם' → no money recorded and the mirror is not a lie (לא שולם)", receivedTotal(cLead.show.id) === 0 && getShow(cLead.show.id).payment_status === "לא שולם");
 

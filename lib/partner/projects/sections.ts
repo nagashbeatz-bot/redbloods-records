@@ -185,7 +185,7 @@ function waitingOf(c: Ctx): SectionRow[] {
   for (const a of rows(d?.actions).filter((x) => x.projectId === id && !["approved", "closed", "cancelled"].includes(x.status ?? ""))) {
     const cur = sendEntryCurrent(a, evidenceFor(a, sendEvidence));
     if (cur.state === "SUPERSEDED") continue;
-    const on = a.status === "got_notes" ? "OWNER" : a.recipientRole ? a.recipientRole.toUpperCase() : "UNKNOWN";
+    const on = a.status === "got_notes" || (a.status === "pending_feedback" && a.actionType === "received") ? "OWNER" : a.recipientRole ? a.recipientRole.toUpperCase() : "UNKNOWN";
     out.push(R(`send-log:${a.id}`, `${a.recipientName ?? a.recipientRole ?? "?"} · ${a.status ?? "?"}`, "DERIVED", { waitingOn: on, evidence: "send log entry", current: cur.state, currentBasis: cur.basis, status: a.status, recipient: a.recipientName, role: a.recipientRole, sentOn: a.actionDate, followup: a.followupDate, followupOverdue: !!(a.followupDate && a.followupDate < c.today), content: a.contentType, version: a.versionLabel }));
   }
   // B5: the engineer ball = THE mix handoff evidence rule (lib/partner/mix/handoff — the same answer as mix_view and the

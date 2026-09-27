@@ -41,7 +41,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("16. a show rehearsal's explicit confirmation from the drawer writes בוצע (its own vocabulary), never התקיים", /חזרה להופעה" \? "בוצע" : "התקיים"/.test(drawer));
   ok("17. AppShell never syncs show / finance on load", !/syncShowFinance|\/api\/shows/.test(shell));
   const sync = fs.readFileSync("lib/shows-finance-sync.ts", "utf8");
-  ok("18. the finance sync, the artist ledger and the DJ figure use the same rule (no second rule)", (sync.match(/rehearsalCountedAmount\(/g) ?? []).length >= 2 && /computeShowSplit\(/.test(sync));
+  ok("18. the finance sync, the artist ledger and the DJ figure use the same rule (no second rule)", (sync.match(/rehearsalCountedAmount\(/g) ?? []).length >= 2 && /showAgreementSplit\(show, rehearsalCounted\)/.test(sync) && /computeShowSplit\(/.test(fs.readFileSync("lib/label-agreements.ts", "utf8")));
 
   console.log("\nSunny knows the decision");
   const card = stageCard("REHEARSAL_OPERATIONAL", "התקיים");

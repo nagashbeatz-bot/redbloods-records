@@ -478,6 +478,9 @@ export interface RawVictorWork {
    * not just that some review changed. Optional so existing fixtures never need to change.
    */
   reviewEvents?: Array<{ versionKey: string; sentAt: string | null; draft: boolean }>;
+  /** Additive (team ball cycle, 2026-09-27): files_sent upload time + version group key — lets computeVictorBall ignore
+   *  notes sent on an already-superseded version. Optional so existing fixtures never need to change. */
+  uploadVersions?: Array<{ at: string | null; versionKey: string | null }>;
   /** Additive (Partner Phase C.3, change-readiness) — already fetched by getVictorWork()'s select("*"), not read by any Phase 1a signal/case/priority/brief logic. Optional so existing fixtures never need to change. */
   createdAt?: string | null;
   updatedAt?: string | null;

@@ -19,6 +19,7 @@ import { validateTx } from "../finance/core";
 import { buildCalendarLinkIndex, linkCalendarEvent } from "../calendar/links";
 import { availability, dayList } from "../calendar/availability";
 import { computeShowSplit, feeRowPaidConflicts, rehearsalCountedAmount, showMoneyOf } from "../../shows-types";
+import { showAgreementSplit } from "../../label-agreements";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -92,6 +93,8 @@ export function buildShowView(src: GatewaySources, showId: string) {
   }).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
   const counted = r2(rehearsals.reduce((t, x) => t + x.counted, 0));
   const split = computeShowSplit({ show_price: s.price ?? 0, dj_fee: s.djFee ?? 0 }, counted);
+  // Owner decision 2026-09-27 (lib/label-agreements — the ONE rule): the 50 / 50 of the NET applies ONLY to שליו / אבי
+  const agreement = showAgreementSplit({ artist: s.artistText, show_price: s.price ?? 0, dj_fee: s.djFee ?? 0 }, counted);
   const rowOf = (id: string | null, role: string) => {
     if (!id) return { role, exists: false };
     const t = txById.get(id);
@@ -110,7 +113,12 @@ export function buildShowView(src: GatewaySources, showId: string) {
     currency, agreed: sm.agreed, received: sm.received, remaining: sm.remaining, credit: sm.credit,
     ...(sm.otherCurrencyPayments.length ? { otherCurrencyPayments: sm.otherCurrencyPayments.map((p) => `${p.currency ?? "?"}${p.amount}`), otherCurrencyNote: "never added to this show's money (no FX) — for the Owner" } : {}),
     price: s.price, receivedMirror: s.advancePayment, clientPayment: s.paymentStatus, clientPaymentRule: "derived from Finance: שולם when received ≥ agreed, מקדמה when partly received",
-    djFee: s.djFee, rehearsalsCounted: counted, split: { gross: split.grossAmount, djFee: split.djFee, rehearsalCosts: split.rehearsalCosts, net: split.netAfterDj, artistFee: split.artistFee, labelProfit: split.labelProfit, rule: "net = max(0, price − DJ fee − counted rehearsals); artist = net / 2; label = the rest (the app's own function)" },
+    djFee: s.djFee, rehearsalsCounted: counted,
+    split: agreement.status === "DEFINED"
+      ? { agreement: "DEFINED", artist: agreement.artist.name, gross: split.grossAmount, djFee: split.djFee, rehearsalCosts: split.rehearsalCosts, directExpenses: agreement.directExpenses, net: split.netAfterDj, artistFee: split.artistFee, labelProfit: split.labelProfit,
+          rule: "Owner agreement (שליו טסמה / אבי מולה): revenue − direct show expenses = net; artist 50 % / label 50 % of the NET, never of the gross. Recorded direct expenses = the DJ fee + counted rehearsals (בוצע); any other direct show cost is not recorded on the show" }
+      : { agreement: "NOT_DEFINED", reasonHe: agreement.reasonHe, gross: split.grossAmount, djFee: split.djFee, rehearsalCosts: split.rehearsalCosts, net: split.netAfterDj, artistFee: null, labelProfit: null,
+          rule: "no artist agreement covers this show (only שליו / אבי have one) — no artist / label split is computed; the app creates no artist fee row" },
     storedArtistFeeColumn: s.artistFee, storedArtistFeeNote: "legacy column, never used by the app",
     finance,
   };
@@ -164,14 +172,16 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (upcoming && s.paymentStatus !== "שולם") signals.push({ code: "UPCOMING_UNPAID", kind: "CANONICAL_FACT", he: `תשלום לקוח: ${s.paymentStatus}${s.advancePayment ? ` (מקדמה ${s.advancePayment})` : ""}` });
   if (s.status === "בוצע" && s.paymentStatus !== "שולם" && (s.price ?? 0) > 0) signals.push({ code: "DONE_UNPAID", kind: "CANONICAL_FACT", he: `ההופעה בוצעה, תשלום לקוח: ${s.paymentStatus}` });
   if (UPCOMING.has(s.status ?? "") && !!s.date && s.date < c.today) { signals.push({ code: "DATE_PASSED_NOT_CLOSED", kind: "DERIVED_SIGNAL", he: "התאריך עבר וההופעה לא נסגרה" }); questions.push({ kind: "CLOSE", questionHe: "ההופעה התקיימה? (עוד לא נסגרה במערכת)", why: "date passed, status still confirmed" }); }
-  if (s.status === "בוצע" && rosterMatch && !artist.collaboration && split.artistFee > 0 && !ledger.some((l) => l.type === "הכנסות")) signals.push({ code: "DONE_WITHOUT_LEDGER", kind: "DERIVED_SIGNAL", he: "בוצעה אבל אין הכנסה במאזן האמן (נסגרה בלי דיאלוג הסגירה?)" });
+  if (s.status === "בוצע" && rosterMatch && !artist.collaboration && agreement.status === "DEFINED" && split.artistFee > 0 && !ledger.some((l) => l.type === "הכנסות")) signals.push({ code: "DONE_WITHOUT_LEDGER", kind: "DERIVED_SIGNAL", he: "בוצעה אבל אין הכנסה במאזן האמן (נסגרה בלי דיאלוג הסגירה?)" });
   if (s.status === "בוטל" && ledger.some((l) => l.type === "הכנסות" || l.type === "תשלומים")) signals.push({ code: "LEDGER_KEPT_AFTER_CANCEL", kind: "DERIVED_SIGNAL", he: "הופעה מבוטלת שעדיין יש לה הכנסה / תשלום במאזן האמן" });
   if (s.status === "בוצע" && finance.artistFee.exists && (finance.artistFee as { status?: string | null }).status === "צפוי") signals.push({ code: "ARTIST_ROW_UNPAID_AFTER_DONE", kind: "CANONICAL_FACT", he: "שורת שכר האמן עדיין צפוי — לא נרשם תשלום לאמן בכספים" });
   const openTasks = tasks.filter((t) => t.status === "פתוח");
   // A1: a PAID fee row is never re-priced by the sync — when it no longer matches the show (amount / currency / cancelled),
   // the app's own rule (feeRowPaidConflicts) reports it; Sunny surfaces it as a conflict, never resolves it
+  if (agreement.status === "NOT_DEFINED") signals.push({ code: "SHOW_SPLIT_NOT_DEFINED", kind: "UNKNOWN", he: `חלוקת אמן / לייבל לא מוגדרת להופעה הזאת: ${agreement.reasonHe}` });
   for (const [label, row, amount] of [["DJ", finance.djFee, split.djFee], ["אמן", finance.artistFee, split.artistFee]] as const) {
     if (!row.exists) continue;
+    if (label === "אמן" && agreement.status === "NOT_DEFINED") continue; // no agreement → the sync leaves the row untouched (reported above)
     const r = row as { status?: string | null; amount?: number | null; currency?: string | null };
     const why = feeRowPaidConflicts({ status: r.status, amount: Number(r.amount) || 0, currency: r.currency }, { amount, currency, cancelled: s.status === "בוטל" });
     if (why.length) signals.push({ code: "PAID_FEE_ROW_MISMATCH", kind: "DERIVED_SIGNAL", he: `שורת שכר ${label} שולמה ולא תואמת את ההופעה: ${why.join(" · ")} — לא נדרסת; החלטה שלך` });

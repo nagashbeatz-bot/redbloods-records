@@ -212,7 +212,7 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nShared writers + hardening");
   ok("show routes use the shared writer (create / update / delete / quote)", /createShowRecord\(/.test(read("app/api/shows/route.ts")) && /updateShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /deleteShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /markQuoteSent\(/.test(read("app/api/shows/[id]/quote-sent/route.ts")));
   const ws = read("lib/writes/shows.ts");
-  ok("show money reuses the app's own split (computeShowSplit + counted rehearsals)", /computeShowSplit\(show, await getRehearsalCountedForShow\(id\)\)/.test(ws) && /syncShowFinance/.test(ws));
+  ok("show money reuses the app's own split (the agreement split = computeShowSplit + counted rehearsals, שליו / אבי only)", /showAgreementSplit\(show, await getRehearsalCountedForShow\(id\)\)/.test(ws) && /syncShowFinance/.test(ws) && /computeShowSplit\(/.test(read("lib/label-agreements.ts")));
   ok("HARDENED: the booking ledger sync never adds an expected row next to a close-realized one", /if \(realized\) return;/.test(read("lib/artist-balance-show-sync.ts")) && (read("lib/shows-finance-sync.ts").match(/showId: show\.id,/g) ?? []).length === 2);
   ok("HARDENED: deleting a show rehearsal re-derives the show split", /rehearsal delete split re-sync/.test(read("lib/writes/sessions.ts")));
   ok("HARDENED: Sunny's show delete = the hub (calendar, tasks, finance, show) server-side", /removeFromCalendar: true/.test(ws) && /deleteTaskRecord\(t\)/.test(ws));

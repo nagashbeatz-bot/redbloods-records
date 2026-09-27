@@ -34,7 +34,11 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   // handoff (Victor + Mix)
   WAITING_ON_OWNER: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
   VICTOR_WAITING_OWNER: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
-  WAITING_FEEDBACK: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
+  // 2026-09-27 (Owner-approved ball cycle): an OUTBOUND pending_feedback entry waits on the recipient (artist / client /
+  // team) — never the Owner's move; only a "received" entry (a version reached the Owner) is the Owner's feedback due
+  WAITING_FEEDBACK: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
+  OWNER_FEEDBACK_DUE: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
+  SHOW_SPLIT_NOT_DEFINED: a("SYSTEM_GAP", "OWNER", "DATA_CONFLICT"),
   ENGINEER_RETURNED_WORK: a("NEEDS_ATTENTION", "OWNER", "OWNER_BLOCKING"),
   WAITING_ON_VICTOR: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
   WAITING_ON_ENGINEER: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING"),
@@ -235,7 +239,7 @@ export const SOURCE_PRECEDENCE: ReadonlyArray<{ concept: string; canonical: stri
   { concept: "policy / meaning", canonical: "Owner-confirmed rules (operating model)", secondary: "system contracts (implementation behavior)", onConflict: "Owner policy outranks an implementation assumption; the gap is reported" },
   { concept: "real-world facts the tables lack", canonical: "typed Owner knowledge (P2, active, not superseded / withdrawn)", secondary: "—", onConflict: "live canonical entity state wins for that entity; knowledge stays context" },
   { concept: "who holds the next move", canonical: "the domain evidence rule (uploads vs feedback times; send logs)", secondary: "statuses, send logs", onConflict: "CONFLICTING_EVIDENCE — ask, never blame; outside communication is invisible" },
-  { concept: "artist accounting", canonical: "UNDECIDED — ledger, cycles and media snapshots are separate views; the clip recoup is NOT_DEFINED until the artist agreement rule is recorded (Owner canon 2026-09-27)", secondary: "—", onConflict: "OWNER_DECISION_REQUIRED; never sum; media snapshots computed against the retired target are CONFLICTING_SOURCES" },
+  { concept: "artist accounting", canonical: "the artist ledger is the accounting record; the agreement (שליו / אבי only, Owner 2026-09-27) defines the shares (clip 50 / 50 of the actual paid cost, show 50 / 50 of the net, production / mix / master 100 % label); ledger, cycles and media snapshots stay separate views — a clip share charged in the ledger AND by the media recoup is a registered conflict", secondary: "—", onConflict: "OWNER_DECISION_REQUIRED; never sum; media snapshots computed against the retired target are CONFLICTING_SOURCES" },
   { concept: "label vs client work", canonical: "the ONE stored project business type (Owner rule applied at creation: שליו טסמה / אבי מולה → לייבל)", secondary: "roster-name match, release row, client status, Red Films source (evidence only)", onConflict: "MISMATCH_OWNER_RULE — the Owner's explicit classification fixes it; never an automatic write" },
   { concept: "overdue / session happened / delivered / paid", canonical: "ONE shared rule each (overdue rule, explicit session outcome, delivery record, the shared paid rules)", secondary: "screen-local copies (retired)", onConflict: "a screen and Sunny give the same answer; a remaining difference is reported as CONFLICTING_SOURCES" },
   { concept: "vendor payment", canonical: "Finance expense שולם", secondary: "work paid fields, salary overrides, Red Films payments", onConflict: "CONFLICTING_SOURCES" },
@@ -341,6 +345,7 @@ export const REPO_COVERAGE: ReadonlyArray<{ pattern: string; cls: ModuleClass; d
   { pattern: "^lib/writes/", cls: "CROSS_DOMAIN", domain: "ALL (Universal Actions)", note: "shared validated writers used by BOTH the UI routes and Sunny's typed primitives (extracted from the routes, identical behaviour)" },
   { pattern: "^lib/(vendor-|victor-)", cls: "DOMAIN_OWNED", domain: "VICTOR", note: "Victor store / scope / notify / salary / i18n" },
   { pattern: "^lib/(sound-engineer|mix-|final-file|steven-|riddim-|owner-steven)", cls: "DOMAIN_OWNED", domain: "MIX_PIPELINE / STEVEN", note: "" },
+  { pattern: "^lib/team-ball-cycle", cls: "CROSS_DOMAIN", domain: "VICTOR / MIX_PIPELINE", note: "the Owner-approved ball cycle (version → Owner, feedback → team) named over the app's own evidence rules — no second rule" },
   { pattern: "^lib/(clip-|label-clips)", cls: "DOMAIN_OWNED", domain: "CLIPS / RED_FILMS", note: "" },
   { pattern: "^lib/production-layout", cls: "UI_ONLY", domain: "RED_FILMS", note: "production page section order" },
   { pattern: "^lib/(label-|artist-balance|media-income|beat|release-store|red-artists/)", cls: "DOMAIN_OWNED", domain: "LABEL_ARTISTS / ARTIST_PORTALS", note: "" },

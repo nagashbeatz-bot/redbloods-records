@@ -12,7 +12,7 @@
  */
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
-import { isActualMoneyTx } from "@/lib/finance/classify";
+import { isActualMoneyTx, isDeprecatedPaymentStatus } from "@/lib/finance/classify";
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
 import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
@@ -23,6 +23,8 @@ export interface TransactionInput {
   notes?: string | null; category?: string | null; linkedSessionId?: string | null; expenseScope?: string | null;
 }
 export class FinanceInputError extends Error {}
+/** A deprecated status (lib/finance/classify DEPRECATED_PAYMENT_STATUSES) is never written by a new write. */
+export const DEPRECATED_STATUS_MESSAGE = "הסטטוס 'לבדיקה' הוסר (החלטת בעלים) — בחר צפוי / התקבל / חלקי / בוטל";
 
 /**
  * The expense_scope a NEW row gets: an expense keeps its scope (default כללי); an INCOME row of a project may be
@@ -38,6 +40,7 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
   const txScope = b.scope ?? "project";
   if (!b.type) throw new FinanceInputError("type required");
   if (txScope === "project" && !b.projectId) throw new FinanceInputError("projectId required for project-scoped transactions");
+  if (isDeprecatedPaymentStatus(b.paymentStatus)) throw new FinanceInputError(DEPRECATED_STATUS_MESSAGE);
   const { data, error } = await supabase.from("transactions").insert({
     project_id: txScope === "general" ? null : (b.projectId || null), scope: txScope, type: b.type, date: b.date || null,
     description: b.description || "", artist: b.artist || "", amount: Number(b.amount) || 0, currency: b.currency || "₪",
@@ -55,6 +58,7 @@ export interface TransactionPatch {
 }
 /** PATCH /api/transactions/[id] semantics (field-level; actual money — lib/finance/classify isActualMoneyTx — marks a linked clip row שולם). */
 export async function updateTransactionRecord(id: string, body: TransactionPatch): Promise<Record<string, unknown>> {
+  if (isDeprecatedPaymentStatus(body.paymentStatus)) throw new FinanceInputError(DEPRECATED_STATUS_MESSAGE);
   const patch: Record<string, unknown> = {};
   if (body.date !== undefined) patch.date = body.date || null;
   if (body.description !== undefined) patch.description = body.description;

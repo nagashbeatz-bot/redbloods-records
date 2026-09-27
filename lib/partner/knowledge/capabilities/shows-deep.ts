@@ -13,7 +13,7 @@ const OWNER_FIN = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL
 const NEEDS = ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "PROJECT_DETAIL", "LABEL_DETAIL"] as const;
 export const SHOW_SECTIONS = ["summary", "identity", "artist", "dj", "money", "ledger", "rehearsals", "calendar", "tasks", "notifications", "portal", "signals", "questions", "history"] as const;
 const COVERAGE = [
-  partner("כסף ההופעה לפי הכללים של המערכת עצמה: נטו = מחיר − DJ − חזרות שנספרות; לאמן חצי. להופעה אין מטבע שמור (המערכת רושמת ₪)."),
+  partner("כסף ההופעה לפי הכללים של המערכת עצמה: נטו = מחיר − הוצאות ישירות (DJ + חזרות שנספרות); לשליו טסמה / אבי מולה — חצי מהנטו לאמן וחצי ללייבל (לא מהברוטו); לכל אמן אחר או לשיתוף — החלוקה לא מוגדרת. לכל הופעה מטבע אחד, בלי המרה."),
   partner("DJ לא משובץ אוטומטית: CLEANTONE מנגן ברוב ההופעות, לא בכולן. אישור קיים רק ל-CLEANTONE."),
   partner("אין 'מוכנות להופעה' במערכת — רק ראיות (DJ, אישור, הודעות, חזרות, יומן, תשלום, משימות)."),
   partner("קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם (פער), לא 'אין קבצים'."),

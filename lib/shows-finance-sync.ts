@@ -1,9 +1,10 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
-import { computeShowSplit, rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, type ShowMoney, type ShowMoneyRow } from "@/lib/shows-types";
+import { rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, type ShowMoney, type ShowMoneyRow } from "@/lib/shows-types";
 import { closureFeeStatus, feeRowMayReprice, feeRowPaidConflicts, feeRowStatusAfterSync, FEE_ROW_INITIAL_STATUS, shouldRecordRemainder, type ShowSyncIntent } from "@/lib/shows-types";
 import { syncArtistBalanceFromShow, removeSyncedArtistBalanceEntry } from "@/lib/artist-balance-show-sync";
+import { showAgreementSplit } from "@/lib/label-agreements";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 const REHEARSAL_CATEGORY     = "חזרה";
@@ -358,12 +359,17 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
     }
 
     // ── Artist expense ──
-    // Artist always takes half of the net after the dj (computeShowSplit). When
-    // the dj fee changes, this re-splits the rest automatically (while the row is not paid).
-    // Fin-2: subtract counted rehearsal costs before the 50/50 split so the
-    // artist's cut re-derives from (price − dj − rehearsals)/2.
+    // Owner decision 2026-09-27 (lib/label-agreements showAgreementSplit — the ONE rule): for שליו טסמה / אבי מולה the
+    // artist takes half of the NET show profit (price − DJ − counted rehearsals, the app's own computeShowSplit). When the
+    // dj fee changes, this re-splits the rest automatically (while the row is not paid). Any other artist or a collab text
+    // has NO agreement: no artist fee row is created or re-priced (an existing one is left untouched and reported).
     const rehearsalCounted   = await getRehearsalCountedForShow(show.id);
-    const effectiveArtistFee = computeShowSplit(show, rehearsalCounted).artistFee;
+    const artistRule         = showAgreementSplit(show, rehearsalCounted);
+    if (artistRule.status === "NOT_DEFINED") {
+      if (show.linked_artist_expense_transaction_id) report.feeConflicts.push(`אמן: ${artistRule.reasonHe} — שורת שכר האמן הקיימת לא שונתה`);
+      return report;
+    }
+    const effectiveArtistFee = artistRule.artistFee;
     const hasArtistFee     = effectiveArtistFee > 0;
     // The artist-ledger sync is keyed off "the fee no longer stands" (cancelled / no fee) — exactly as before A1,
     // independent of whether the Finance fee row was paid.

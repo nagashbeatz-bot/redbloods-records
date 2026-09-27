@@ -15,6 +15,7 @@ import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./duplicates";
 import { FINANCE_OWNER_HE, transactionEditVerdict, type FinanceOwnerCode, type TxPatchField } from "@/lib/finance/ownership";
+import { ACTIVE_INCOME_STATUSES } from "@/lib/finance/classify";
 import { INCOME_SCOPES, songClipSplitBeforeAfter, songClipSplitText, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 
 type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string };
@@ -34,8 +35,11 @@ export interface FinanceFamilyWriters {
   readProjectIncomeContext(projectId: string): Promise<{ clipAgreedPrice: number | null; clipCurrency: string; incomes: IncomeRowLike[] }>;
 }
 
-/** Pinned to components/finance/QuickTxModal.tsx + components/ui/ProjectDrawer.tsx by scripts/test-sunny-act-finance.tsx. */
-export const INCOME_STATUSES: readonly string[] = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
+/**
+ * Pinned to components/finance/QuickTxModal.tsx + components/ui/ProjectDrawer.tsx by scripts/test-sunny-act-finance.tsx.
+ * The ACTIVE income vocabulary (lib/finance/classify ACTIVE_INCOME_STATUSES): "לבדיקה" is deprecated (Owner 2026-09-27).
+ */
+export const INCOME_STATUSES: readonly string[] = ACTIVE_INCOME_STATUSES;
 export const EXPENSE_STATUSES: readonly string[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
 export const TX_CURRENCIES: readonly string[] = ["$", "₪", "€"];
 export const EXPENSE_SCOPES: readonly string[] = ["כללי", "קליפ", "מיקס / מאסטר", "שיווק", "סשן", "נסיעות", "ציוד", "אחר"];

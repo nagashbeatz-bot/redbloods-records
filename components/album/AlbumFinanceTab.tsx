@@ -66,7 +66,7 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
   // the server's refusal (e.g. 409 — a row owned by a show / mix / clip writer) is shown, never swallowed
   const [txErr,           setTxErr]           = useState<string | null>(null);
 
-  const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
+  const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל"]; // "לבדיקה" deprecated (Owner 2026-09-27)
   const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
 
   const handleDeleteTx = async (txId: string) => {

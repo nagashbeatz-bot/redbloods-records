@@ -9,9 +9,9 @@
  *   cancelled = "בוטל"                           — never counted anywhere
  *   NOT received = "צפוי" | "לא שולם" | "בוטל"
  *
- * Statuses that do not exist in production ("חלקי", "שולם חלקית", "לבדיקה",
- * "מקדמה") are intentionally given NO special behaviour here: they are simply not
- * "received". Existing per-surface handling of them is left exactly as it was.
+ * Statuses that do not exist in production ("חלקי", "שולם חלקית", "מקדמה") are
+ * intentionally given NO special behaviour here: they are simply not "received".
+ * "לבדיקה" is DEPRECATED (Owner decision 2026-09-27, see DEPRECATED_PAYMENT_STATUSES).
  *
  * THIS FILE IS THE ONE STATUS RULE (Finance single truth, 2026-09-27): every other module
  * (clip-finance, shows-types, agent, health, stats, UI surfaces) imports these helpers instead of
@@ -29,6 +29,21 @@ const RECEIVED = new Set<string>(RECEIVED_STATUSES);
  */
 export const EXPECTED_STATUSES = ["צפוי", "לא שולם", "חלקי"] as const;
 const EXPECTED = new Set<string>(EXPECTED_STATUSES);
+
+/**
+ * DEPRECATED statuses (Owner decision 2026-09-27): "לבדיקה" has no business meaning and is removed from the active
+ * vocabulary. No new write may set it (createTransactionRecord / updateTransactionRecord refuse it); a legacy row that
+ * still carries it stays readable and is never silently counted — it is neither received nor expected. Production
+ * inventory 2026-09-27: 0 transactions, 0 shows, 0 settings rows.
+ */
+export const DEPRECATED_PAYMENT_STATUSES = ["לבדיקה"] as const;
+const DEPRECATED = new Set<string>(DEPRECATED_PAYMENT_STATUSES);
+export function isDeprecatedPaymentStatus(status: string | null | undefined): boolean {
+  return DEPRECATED.has(status ?? "");
+}
+
+/** The ACTIVE income vocabulary every income status picker offers (UI + Sunny). */
+export const ACTIVE_INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל"] as const;
 
 /** True when a payment_status means money is still expected (צפוי / לא שולם / חלקי). */
 export function isExpectedStatus(status: string | null | undefined): boolean {

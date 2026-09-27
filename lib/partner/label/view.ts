@@ -29,6 +29,7 @@ import { isLabelProject } from "../../project-classification";
 import { presenceFactsOf } from "../../push-presence-pure";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 import { clipMoneyByCurrency, clipRecoupContribution } from "../../clip-rf-money-pure";
+import { agreementArtistOf, allocatePaidCost, allocationTotalsByCurrency, costCategoryOfScope, isCollabText, AGREEMENT_COST_RULES, AGREEMENT_SHOW_RULE, AGREEMENT_RULES_VERSION, type Allocation } from "../../label-agreements";
 import { isExpenseFullyPaidStatus } from "../../finance/classify";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -172,8 +173,43 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const clipProds = (c.ops?.redFilms?.rows ?? []).filter((r) => r.productionType === "קליפ" && r.status !== "בוטל" && ((r.projectId && artistProjIds.has(r.projectId)) || tokens(r.artistName).some((t) => low(t) === low(name))));
   const clipProjIds = new Set(clipProds.map((r) => r.projectId).filter((x): x is string => !!x));
   const clipSettings = (fin?.raw.financeSettings ?? []).filter((s) => clipProjIds.has(s.projectId)).map((s) => s.value as Record<string, unknown> | null);
+  // ── the artist agreement (Owner decision 2026-09-27, lib/label-agreements — the ONE rule; שליו / אבי only) ──
+  const agreementArtist = agreementArtistOf({ id: artistId });
+  const paidExpenses = fin ? fin.raw.transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.status) && !!t.projectId) : [];
+  const clipAllocs: Allocation[] = paidExpenses.filter((t) => t.expenseScope === "קליפ" && clipProjIds.has(t.projectId!)).map((t) => {
+    const prod = clipProds.find((r) => r.projectId === t.projectId) ?? null;
+    return allocatePaidCost({ artist: prod && isCollabText(prod.artistName) ? { name: prod.artistName } : { id: artistId, name }, category: "CLIP", amount: Number(t.amount) || 0, currency: t.currency ?? "₪", paid: true });
+  });
+  const labelProjIds = new Set(projects.filter((p) => p.labelWork).map((p) => p.id));
+  const otherAllocs: Allocation[] = paidExpenses.filter((t) => labelProjIds.has(t.projectId!) && t.expenseScope !== "קליפ")
+    .map((t) => allocatePaidCost({ artist: { id: artistId, name }, category: costCategoryOfScope(t.expenseScope), amount: Number(t.amount) || 0, currency: t.currency ?? "₪", paid: true }));
+  const clipTotals = allocationTotalsByCurrency(clipAllocs);
+  const otherTotals = allocationTotalsByCurrency(otherAllocs);
+  const fundedIls = clipTotals.defined["₪"]?.artistShareFundedByLabel ?? 0;
+  // the ACCOUNTING record: a manual ledger expense that names a clip (TEXT_MATCH) and the media recoup snapshots — both
+  // may already charge the same clip share; Sunny reports them side by side and never nets them (CONFLICTING_SOURCES)
+  const ledgerClipCharges = ledger.filter((e) => e.entryType === "הוצאות" && /קליפ|clip/i.test(`${e.description ?? ""} ${e.note ?? ""}`)).map((e) => ({ amount: e.amount, date: e.entryDate, description: e.description, link: "TEXT_MATCH (description names a clip)" }));
+  const ledgerClipChargedIls = r2(ledgerClipCharges.reduce((s, e) => s + (e.amount ?? 0), 0));
+  const mediaRecoupedIls = r2(received.reduce((s, m) => s + (m.recordType === "reversal" ? -1 : 1) * (m.recouped ?? 0), 0));
+  const agreement = {
+    version: AGREEMENT_RULES_VERSION,
+    covered: !!agreementArtist,
+    scopeRule: "Owner decision 2026-09-27: these rules apply ONLY to שליו טסמה and אבי מולה — never inferred for any other artist",
+    rules: agreementArtist ? { production: AGREEMENT_COST_RULES.PRODUCTION.basisHe, mixMaster: AGREEMENT_COST_RULES.MIX_MASTER.basisHe, clip: AGREEMENT_COST_RULES.CLIP.basisHe, show: AGREEMENT_SHOW_RULE.basisHe, other: "כל קטגוריה אחרת — NOT_DEFINED (לא מנחשים)" } : "NOT_DEFINED — no agreement recorded for this artist",
+    clips: { byCurrency: clipTotals.defined, notDefined: clipTotals.notDefined, basis: "ACTUAL PAID Finance clip expenses (שולם) on the artist's clip productions' projects — never the budget, never the price" },
+    mixMasterAndOther: { byCurrency: otherTotals.defined, notDefined: otherTotals.notDefined, basis: "paid Finance expenses on the artist's LABEL projects: מיקס / מאסטר = 100 % label (artist 0); a scope with no Owner rule is NOT_DEFINED. No Finance scope marks music PRODUCTION (e.g. Victor's salary is a company cost, not per artist) — the production rule (100 % label) creates no artist balance anyway" },
+    dimensions: "cashOut (what Redbloods paid — Finance truth) ≠ labelShare (the label's economic share) ≠ artistShare ≠ artistShareFundedByLabel (Redbloods paid the artist's share; it enters the accounting with the artist — it is NOT label investment)",
+    accounting: agreementArtist ? {
+      artistClipShareFundedByLabelIls: fundedIls,
+      ledgerRecordedClipCharges: ledgerClipCharges, ledgerRecordedClipChargedIls: ledgerClipChargedIls,
+      mediaRecoupedAgainstClipsIls: mediaRecoupedIls,
+      state: !ledgerClipCharges.length ? (fundedIls > 0 ? "NOT_RECORDED_IN_LEDGER" : "NOTHING_FUNDED") : Math.abs(ledgerClipChargedIls - fundedIls) < 0.01 ? "LEDGER_MATCHES_AGREEMENT" : "CONFLICTING_SOURCES",
+      doubleOffsetRisk: ledgerClipCharges.length > 0 && mediaRecoupedIls > 0,
+      rule: "A4: the artist's share funded by the label MAY be offset against the artist's future income through the accounting mechanism (the artist ledger). The ledger stays the accounting record; this block is DERIVED from Finance and records nothing. A ledger clip charge that differs from the derived share, or a clip charged in the ledger AND withheld by the media recoup, is reported for the Owner — never netted or fixed by Sunny",
+    } : null,
+  };
   const clipRecoup = {
-    clipContribution: clipRecoupContribution(),
+    clipContribution: clipRecoupContribution(agreementArtist ? { status: "DEFINED", artistShareFundedByLabel: fundedIls, currency: "₪", basisHe: AGREEMENT_COST_RULES.CLIP.basisHe } : null),
     clipMoneyByCurrency: clipMoneyByCurrency({
       clientClipPrices: clipSettings.map((v) => ({ amount: Number(v?.clipAgreedPrice) || 0, currency: typeof v?.currency === "string" ? v.currency : null })),
       plannedBudgets: clipProds.map((r) => ({ amount: r.generalBudget, currency: r.currency ?? null })),
@@ -181,7 +217,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
       rfLedgerPaid: (c.ops?.budgetPayments?.rows ?? []).filter((x) => !x.hasTransaction && clipProds.some((r) => r.id === x.productionId)).map((x) => ({ amount: x.amount, currency: x.currency ?? null })),
     }),
     financeRead: !!fin,
-    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D is NOT_DEFINED until the artist agreement says which clip costs are recouped — never 50 %, never from the budget or the price. Red Films payments are real money: a LINKED payment is its Finance expense (already in C); rfLedgerPaid shows only the UNLINKED ones (DB-1) — never counted twice. The media-income recoup snapshots are still computed with the pre-B3 target (LEGACY) — a conflict for the Owner. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
+    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D (Owner decision 2026-09-27) = the artist's 50 % of C (ACTUAL PAID) — ONLY for שליו / אבי; any other artist NOT_DEFINED — never from the budget or the price. Red Films payments are real money: a LINKED payment is its Finance expense (already in C); rfLedgerPaid shows only the UNLINKED ones (DB-1) — never counted twice. Media-income recoup snapshots stored BEFORE 2026-09-27 were computed with the retired budget-based target; new ones use the agreement share. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
   };
   const money = {
     currencyRule: "the artist ledger, cycles and media income store NO currency (screens show ₪); shows carry one currency each and project / show finance rows carry their own currency — nothing is added across these",
@@ -190,8 +226,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
       current: win ? { ...win, totals: totals(ledger.filter((e) => !!e.entryDate && e.entryDate >= win.start && e.entryDate < win.endExclusive)), rule: "app rule: 2-month windows from the anchor; early close advances the cycle" } : null },
     mediaIncome: { records: media.length, receivedGross: r2(received.reduce((s, m) => s + signed(m, "grossAmount"), 0)), receivedArtistShare: r2(received.reduce((s, m) => s + signed(m, "artistShareGross"), 0)), receivedLabelShare: r2(received.reduce((s, m) => s + signed(m, "labelShare"), 0)), artistPayable: r2(received.reduce((s, m) => s + signed(m, "artistPayable"), 0)), expected: media.filter((m) => m.status === "צפוי").length, lastRecoupAfter,
       rows: media.map((m) => ({ type: m.recordType, status: m.status, gross: m.grossAmount, source: m.source, period: m.reportPeriod, received: m.receivedDate, labelShare: m.labelShare, artistShare: m.artistShareGross, recoupBefore: m.recoupBefore, recouped: m.recouped, payable: m.artistPayable, recoupAfter: m.recoupAfter, notes: m.notes })),
-      note: "stored split + recoup snapshots written by the server at record time — computed against the RETIRED budget-based target (a registered conflict: the clip recoup itself is NOT_DEFINED); media income never touches the ledger" },
+      note: "stored split + recoup snapshots written by the server at record time — the target is the agreement's clip share funded by the label (50 % of the ACTUAL PAID ₪ clip cost, שליו / אבי only) since 2026-09-27; snapshots stored before used the retired budget-based target; media income never touches the ledger" },
     recoup: clipRecoup,
+    agreement,
     labelWorkProjects: fin ? labelWorkMoney : null,
     clientWork: "the same person's client-work projects are NOT artist money (client_view)",
   };

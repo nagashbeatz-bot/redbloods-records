@@ -47,7 +47,7 @@ export const RF_FIELDS: readonly RfField[] = [
   F(P, "status", "CANONICAL", "רעיון → הצעה נשלחה → ממתין לאישור → בתכנון → יום צילום נקבע → צולם → חומרי גלם הועלו → בעריכה → נשלחה גרסה → תיקונים → מאושר → פורסם, or בוטל. Manual; no transition is enforced; no status history. מאושר = the Owner approved the current production stage to proceed (D7) — not client approval / payment / final / delivered."),
   F(P, "project_id", "CANONICAL", "The music project (optional; 10 of 14 carry one). Several productions per project are allowed (no unique guard)."),
   F(P, "client_id", "AMBIGUOUS", "Client id — filled by matching the artist NAME to a client (send clip / new-production modal), so a TEXT_MATCH stored as an id."),
-  F(P, "artist_name", "CANONICAL", "Artist text (copied from the project); the label artist's clip information (A / B / C) matches productions by this name (TEXT_MATCH); the clip recoup itself is NOT_DEFINED."),
+  F(P, "artist_name", "CANONICAL", "Artist text (copied from the project); the label artist's clip information (A / B / C) matches productions by this name (TEXT_MATCH); the clip allocation follows the artist agreement (שליו / אבי: 50 / 50 of the actual paid cost; anyone else NOT_DEFINED)."),
   F(P, "client_name", "DERIVED", "Client name snapshot at creation."),
   F(P, "client_source", "CANONICAL", "פנימי - לייבל / לקוח חיצוני / אמן לייבל / פרויקט שיווקי / אחר. Since 2026-09-27 'שלח קליפ' sets it from the project's classification (לייבל → פנימי - לייבל, לקוח → לקוח חיצוני); existing rows are unchanged (all 14 production rows say פנימי - לייבל, their projects are client projects — CLIENT_SOURCE_MISLABELLED)."),
   F(P, "photographer_name", "CANONICAL", "Photographer — FREE TEXT (no person record)."),
@@ -170,7 +170,7 @@ export const MONEY_MODEL = {
   noDoubleCount: "Sunny never adds a planning row / budget line to an expense. A LINKED Red Films payment IS its Finance expense (paidLinkedInFinance ⊂ actual clip expenses) — never added to it; only paidOutsideFinance (unlinked) is shown apart. Linking checks for a similar UNLINKED Finance expense (same project / amount / currency, ±14 days, similar text, or the line's legacy Finance row) → POSSIBLE_DUPLICATE for the Boss — never summed, never merged automatically.",
   currency: "every money row carries its currency (₪ / $ / €; migration 75bf144e… applied 2026-09-27, every existing row = ₪): productions (budget / client price / advances), budget lines (planned / actual) and their payments (always the line's currency), equipment purchase price, clip rows, Finance. Nothing is converted; totals are grouped by currency, never added across currencies (SET_RF_CURRENCY; refused on a line that already has payments).",
   clipDeal: "clip deal status: אין עסקה / ממתין / חלקי / שולם / יתרת זכות; remaining = max(0, price − received), overpayment = credit. Clip income is excluded from the song's balance.",
-  recoup: "Owner canon 2026-09-27: recoup exists only per the specific artist agreement — the clip contribution to recoup is NOT_DEFINED everywhere (never 50 %, never the budget, never the client price). Active clip productions matched by artist name give INFORMATION per currency only (A client price, B planned budget, C paid clip cost, Red Films ledger). The media-income snapshots still use the retired budget-based target (a registered conflict).",
+  recoup: "Owner canon 2026-09-27: recoup exists only per the specific artist agreement — for שליו / אבי the artist's clip share = 50 % of the ACTUAL PAID cost (funded by the label); for every other artist NOT_DEFINED (never 50 % of the budget, never the client price). Active clip productions matched by artist name give INFORMATION per currency only (A client price, B planned budget, C paid clip cost, Red Films ledger). Media-income snapshots stored before 2026-09-27 used the retired budget-based target; new ones use the agreement share.",
 } as const;
 
 export const CREW_MODEL = {
@@ -198,7 +198,7 @@ export const FILES_MODEL = {
 
 export const OTHER_CONSUMERS = {
   finance: "Finance / Insights / project views separate clip income (expense scope קליפ) from the song's income; the expense scope list offers קליפ for manual entries.",
-  label: "the label page shows clip money A / B / C per currency as information; the clip recoup is NOT_DEFINED; the label P&L counts the actual paid clip cost in Finance (₪), not half the budget.",
+  label: "the label page shows clip money A / B / C per currency as information, and the clip cash out ≠ the label share ≠ the artist share funded by the label (agreement: שליו / אבי 50 / 50 of the actual paid cost); the label P&L counts the LABEL share (a cost with no agreement rule in full, shown apart), never the whole cash out as label share.",
   weekSummary: "the weekly week-strength summary counts production shoot dates (non-cancelled).",
   agent: "the AI chat context lists a project's clip shoot days; agent rules read clip scope.",
   coo: "COO facts read clip money.",
@@ -327,7 +327,7 @@ export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/writes/clip.ts": "854faa39dfa6295ac21fad9e3ccf7810e3f6e29ff294c6721c5aef6d68ea1587",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",
-  "lib/label-clips.ts": "01629fd2a17d5d4353600b237ba2918f64df032f481226a8f62f1a61db8db560",
+  "lib/label-clips.ts": "a956dc71d5fce5ecc5006165c14b49c9531d94027329200ce70eb6124c115d6f",
   "app/api/projects/[id]/clip/send/route.ts": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
   "app/api/projects/[id]/clip/route.ts": "b97d7b15f72005dd63bde526336aa8dc536f3d5155d4d446a1b79060f28d5f15",
   "app/api/projects/[id]/clip/payments/route.ts": "702daa9ca700179488d3427137dbe4ffc3daaf2e015b8dacc0acff965aaae3d5",

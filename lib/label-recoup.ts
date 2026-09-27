@@ -5,8 +5,9 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
  * Unified per-artist "artist debt to label". The CLIP part of the debt (D) comes ONLY from the specific artist
- * agreement. B3 (Owner canon 2026-09-27): no agreement rule is recorded, so callers pass clipRecoupTarget = null
- * (NOT_DEFINED) and every debt figure is null with the Hebrew reason — never 50 %, never the budget, never the price.
+ * agreement (lib/label-agreements, Owner decision 2026-09-27): for שליו טסמה / אבי מולה the target is the artist's share
+ * funded by the label (50 % of the ACTUAL PAID ₪ clip cost); for any other artist callers pass clipRecoupTarget = null
+ * (NOT_DEFINED) and every debt figure is null with the Hebrew reason — never 50 % of the budget, never the price.
  * The artist's income figures (paid shows + signed received media artist-share; expected shows + צפוי media) are
  * computed as before and stay visible.
  *
@@ -21,7 +22,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
  * Pure/stateless: writes nothing, mutates no snapshot, offsets no prior record.
  */
 export interface ArtistRecoupInput {
-  /** D — null = NOT_DEFINED (the only value today; B3). */
+  /** D — the artist's clip share funded by the label (שליו / אבי); null = NOT_DEFINED (every other artist). */
   clipRecoupTarget: number | null;
   mediaArtistShareReceived: number;  // signed Σ artist_share_gross of received media (full share, uncapped)
   mediaExpectedArtistShare: number;  // Σ artist_share_gross of צפוי media income

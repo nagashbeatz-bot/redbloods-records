@@ -98,7 +98,13 @@ Label-artist development is a system contract in `lib/partner/system/label-artis
 It is read through `artist_view` / `artist_portfolio` (`lib/partner/label/view.ts`) and the LABEL_DETAIL source.
 - A change to an artist / release / beat / ledger / cycle / media-income column, a vocabulary, a label / portal / beats route, show → ledger behaviour, the name → slug table or an artist push must update that contract. `scripts/test-sunny-label-artists.tsx` pins the schema, the vocabularies the code declares, the route families and `LABEL_REVIEWED_FINGERPRINTS`.
 - Never invent release cadence, readiness, inactivity thresholds or payout / recoup policy. Keep the ledger, cycles, media income, recoup view, show money and client money separate. The ledger, cycles and media income store no currency (shows carry theirs).
-- **Recoup (Owner canon 2026-09-27):** only per the specific artist agreement. With no recorded rule the clip recoup is `NOT_DEFINED` everywhere — never 50 %, never the budget, never the clip price. The media-income write still passes the retired target (a registered conflict until the Owner's rule).
+- **Recoup (Owner canon 2026-09-27):** only per the specific artist agreement. With no recorded rule the clip recoup is `NOT_DEFINED` everywhere — never 50 % of the budget, never the budget, never the clip price.
+- **The שליו טסמה / אבי מולה agreement (Owner decision 2026-09-27, FINAL):** ONE rule layer, `lib/label-agreements.ts` (pure). It is used by the finance sync, the close-show ledger, the close dialog, the label clips / recoup routes, the label page, the media target and Sunny (`artist_view` money.agreement, `show_view` split). `scripts/test-owner-business-rules.tsx` must pass.
+  - Scope: ONLY those two artists, by id (a name alone never inherits it); any other artist or a collaboration is `NOT_DEFINED`.
+  - Production / mix / master = 100 % label. Clip = 50 / 50 of the ACTUAL PAID cost; the artist's half is funded by the label and may be offset against artist income through the ledger. Show = 50 / 50 of the NET (revenue − DJ − counted rehearsals, the app's own `computeShowSplit`). Any other category = `NOT_DEFINED`.
+  - Cash out ≠ label share ≠ artist share ≠ artist share funded by the label: never merged, per currency. The label P&L counts the LABEL share.
+  - The media-income target is the agreement's funded ₪ share (0 without an agreement); old snapshots keep the retired target.
+  - A clip share charged in the ledger AND withheld by the media recoup is a registered conflict (`LBL_ARTIST_CLIP_SHARE_DOUBLE_OFFSET`). Never net it; never fix it silently.
 - **Identity:** a portal / release resolves by the stable roster id first (Shalev, Avi); name-keyed links are disclosed on rename. A collaboration show is AMBIGUOUS identity and is never attributed. The released date is the FIRST release and is never cleared.
 
 ## Sunny Awareness Check: Shows + DJ
@@ -121,6 +127,17 @@ Victor's work is a system contract in `lib/partner/system/victor.ts`. It covers 
   - Lookups by project id, the folder builder and the raw storage routes are Owner-only, checked in-route as well as at the proxy.
 - A new Victor-reachable route or file operation must use that scope module and extend that test.
 - Remaining findings stay in `SECURITY_GAPS` with an honest status (REPORTED_NOT_FIXED / REMEDIATED with proof / PARTIALLY_REMEDIATED). Fixing an open one is a separate, approved mission.
+
+## Sunny Awareness Check: the team ball cycle + retired income status (2026-09-27)
+
+- **Ball cycle (Owner-approved):** the team uploads a version → the ball is the Owner's (`WAITING_FOR_OWNER_FEEDBACK`); the Owner sends notes → the ball is the team's (`WAITING_FOR_NEW_VERSION_FROM_TEAM`); a new version → the Owner again.
+  - `lib/team-ball-cycle.ts` names the stage over the app's own evidence rules (`computeVictorBall`, `engineerHandoff`). It never adds a second rule.
+  - Feedback on a version that was already superseded when it was given (Victor notes / a Steven comment) never moves the ball.
+  - Time never completes a work.
+  - An outbound `pending_feedback` send waits on the recipient (`WAITING_FEEDBACK`, EXTERNAL); only a received version is the Owner's feedback due (`OWNER_FEEDBACK_DUE`).
+- **'לבדיקה' is retired:** `DEPRECATED_PAYMENT_STATUSES` in `lib/finance/classify.ts`.
+  - The shared finance writer refuses it on create / update (400), and no picker or Sunny status list offers it.
+  - A legacy row stays readable, is neither received nor expected, and is never converted automatically. Production inventory 2026-09-27: 0 rows.
 
 ## Sunny Awareness Check: Steven + Mix Pipeline
 

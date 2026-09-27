@@ -119,7 +119,7 @@ const MODAL_TITLES: Record<FilterKey, string> = {
   balance:  "פירוט — יתרה לגבייה",
 };
 
-const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
+const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל"]; // "לבדיקה" deprecated (Owner 2026-09-27)
 const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
 
 function txStatusBadgeStyle(status: string): React.CSSProperties {

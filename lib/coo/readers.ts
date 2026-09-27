@@ -17,6 +17,7 @@ import { listShows } from "@/lib/shows-store";
 import { listLabelReleases } from "@/lib/release-store";
 import { getAlerts } from "@/lib/agent/alerts-store";
 import type { CooConfig } from "./config";
+import { victorVersionKeyOf } from "./victor-ball";
 import type { CooRawInput, RawFinanceSetting, SourceStatus } from "./types";
 import { addDays, ilYmd } from "./dates";
 
@@ -75,6 +76,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
           filesWithoutTimestamp: (w.filesSent ?? []).filter((f) => !f.uploadedAt).length,
           reviews: Object.values(w.versionReviews ?? {}).map((r) => ({ sentAt: r.sentAt ?? null, draft: r.draft === true })),
           reviewEvents: Object.entries(w.versionReviews ?? {}).map(([versionKey, r]) => ({ versionKey, sentAt: r.sentAt ?? null, draft: r.draft === true })),
+          uploadVersions: (w.filesSent ?? []).map((f) => ({ at: f.uploadedAt ?? null, versionKey: victorVersionKeyOf(f) })),
           linkedTaskId: w.linkedTaskId,
           createdAt: w.createdAt || null, updatedAt: w.updatedAt || null, returnedDate: w.returnedDate || null,
         })),

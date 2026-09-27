@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assertTransactionEditable, deleteTransactionRecord, TransactionOwnedError, updateTransactionRecord } from "@/lib/writes/finance";
+import { assertTransactionEditable, deleteTransactionRecord, FinanceInputError, TransactionOwnedError, updateTransactionRecord } from "@/lib/writes/finance";
 
 // PATCH /api/transactions/[id]  → update a transaction (shared writer lib/writes/finance: field-level; a paid status
 // marks a linked clip row שולם)
@@ -16,6 +16,7 @@ export async function PATCH(
     return NextResponse.json({ transaction: data });
   } catch (err) {
     if (err instanceof TransactionOwnedError) return NextResponse.json({ error: err.message, code: err.verdict.code, owner: err.verdict.owner, forbidden: err.verdict.forbidden }, { status: 409 });
+    if (err instanceof FinanceInputError) return NextResponse.json({ error: err.message }, { status: 400 });
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
   }
 }

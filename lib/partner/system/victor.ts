@@ -80,7 +80,8 @@ export const VICTOR_STATES = {
 } as const;
 
 export const HANDOFF_MODEL = {
-  rule: "the app's ball rule: compare the latest upload time (ALL uploads — the Owner's own uploads included) with the latest notes-sent time (tie tolerance 60 s). Upload later → OWNER holds; notes later → VICTOR holds; missing / legacy / too close → UNKNOWN.",
+  rule: "the app's ball rule: compare the latest upload time (ALL uploads — the Owner's own uploads included) with the latest notes-sent time (tie tolerance 60 s). Upload later → OWNER holds; notes later → VICTOR holds; missing / legacy / too close → UNKNOWN. Notes sent on a version that was ALREADY superseded (another version key uploaded after it and before the notes) are stale: they never move the ball (2026-09-27).",
+  cycle: "Owner-approved cycle (2026-09-27): Victor uploads a version → BALL = OWNER · WAITING_FOR_OWNER_FEEDBACK; the Owner sends notes → BALL = VICTOR · WAITING_FOR_NEW_VERSION_FROM_TEAM; a new version → OWNER again. victor_view handoff.cycle answers who holds the ball, why, the last event, when the version was sent, whether the Owner already sent feedback, whether a new version is awaited and days in state (never a completion by time).",
   evidence: ["upload times (versions)", "notes sent times (per version)", "drafts (not sent)", "status / completion", "send-log entry (pending_version / got_notes)", "internal deadline", "Owner knowledge (blocker)"],
   caveats: ["an Owner upload counts as an 'upload' and can make the rule say the Owner holds the ball", "WhatsApp / phone / in-person are invisible — a stale in-app state is a question, not a conclusion", "age never decides responsibility", "the send log can disagree with the upload / notes evidence — Sunny shows both", "a pending send-log entry answered by LATER in-app evidence (a Victor upload / sent notes) is SUPERSEDED — history, not a wait (2026-09-27); a same-day answer is AMBIGUOUS and stays shown"],
   sunnyStates: ["WAITING_ON_VICTOR", "WAITING_ON_OWNER", "COMPLETED", "UNKNOWN", "CONFLICTING_EVIDENCE"],
@@ -223,7 +224,7 @@ export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/vendor-store.ts": "6f16e4f73e5020dcf7f053b0c414031b750f2064be50ba8a4cd85bd720cbebd0",
   "lib/vendor-folder.ts": "cbd63b60c770a9a01712464848b32e6d26184bdcfc882750395b0361fd385c0d",
   "lib/victor-files.ts": "4852e479431d23c2403a743b6a22bb06cf61965ec98ce340882c439539f2e272",
-  "lib/coo/victor-ball.ts": "90baf51e8c245f368641460819b4e8d7b50c3f6dd71bdc23807ff1f59ba10231",
+  "lib/coo/victor-ball.ts": "ae83deb3f7cd2f06fdff883635d4d954cb9b6f841bcc43803b44348b1130e047",
   "lib/victor-salary-format.ts": "d751da8dbf76d8fbc264416137750d73d7b5da1ae3df1a36949dd9e98025b73b",
   "lib/victor-completed-notify.ts": "96b7c01e0180a2bb409e12991bc7cba8e55830ee9ce6c1a3f1b5b1361722cdfb",
   "lib/victor-upload-notify.ts": "842ec33fc7ca22ebaa761d631c1c3647daa6c69180cadfb4eaf826effc0fbfca",

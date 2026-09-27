@@ -11,7 +11,7 @@
  * Provenance: OWNER_CONFIRMED (the Owner's own words in the Sunny operating-model conversation, 2026-09-25).
  */
 
-export const OWNER_MODEL_VERSION = "2026.09.27-owner-4";
+export const OWNER_MODEL_VERSION = "2026.09.27-owner-5";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -99,8 +99,17 @@ export const OWNER_OPERATING_RULES: readonly OwnerRule[] = [
     ["Mark a DJ / artist fee paid only when the Owner says so (the close-dialog flag, MARK_SHOW_FEE_PAID or a Finance edit).", "Undoing a payment is an explicit correction, never a side effect."],
     ["The client paying in full never pays the DJ or the artist.", "A save never downgrades a paid fee."]), confirmedAt: "2026-09-27" },
   { ...O("RECOUP_ONLY_PER_AGREEMENT", "LABEL", "Recoup exists only according to the specific artist agreement.",
-    ["Until the agreement rule is recorded, the clip recoup is NOT_DEFINED ('לא נקבע'); show the client clip price, planned budget, actual paid cost and Red Films payments per currency as information only."],
+    ["The recorded agreement (SHALEV_AVI_AGREEMENT) defines it for שליו טסמה / אבי מולה; for every other artist the clip recoup is NOT_DEFINED ('לא נקבע') — show the client clip price, planned budget, actual paid cost and Red Films payments per currency as information only."],
     ["Never half of the budget, never the budget, never the client clip price as a recoup.", "No recoup figure may be invented."]), confirmedAt: "2026-09-27" },
+  { ...O("SHALEV_AVI_AGREEMENT", "LABEL", "The accounting rules for שליו טסמה and אבי מולה (ONLY them): production / mix / master = 100 % label; clip = 50 % label / 50 % artist of the ACTUAL PAID cost; show = 50 / 50 of the NET profit (revenue − direct show expenses); any other category = NOT_DEFINED.",
+    ["Apply them through the one rule layer — Finance cash out, label economic share, artist share and the artist share funded by the label are four different numbers.", "The artist share Redbloods funded (e.g. half a clip) enters the accounting with the artist; the artist's future income MAY be offset against it through the accounting mechanism (the artist ledger).", "When data is missing, say exactly what is missing."],
+    ["Never apply these rules to any other artist (present or future) — another artist is NOT_DEFINED.", "Never split promotion, artwork, PR photos, distribution or any other category without an explicit Owner rule.", "Never show the whole paid clip cost as the label's share just because the company paid it.", "Never split a show 50 / 50 of the gross when there are direct show expenses."]), confirmedAt: "2026-09-27" },
+  { ...O("INCOME_STATUS_LEBDIKA_RETIRED", "PAYMENTS", "The income status 'לבדיקה' has no business meaning and is removed from the active vocabulary.",
+    ["No new write may set it (the shared finance writer refuses it; no picker offers it). A legacy row would stay readable and never be silently reclassified — production inventory 2026-09-27: 0 rows."],
+    ["Never count 'לבדיקה' as received or expected.", "Never convert a legacy 'לבדיקה' row automatically."]), confirmedAt: "2026-09-27" },
+  { ...O("TEAM_BALL_CYCLE", "TIME", "Steven / Victor work is a ball cycle: the team uploads a version → the Owner's feedback is pending (ball = Owner); the Owner sends notes → a new version is pending (ball = the team); the team uploads again → the Owner, and so on.",
+    ["Answer who holds the ball, why, the last event that changed it, when the version was sent, whether the Owner already sent feedback, whether a new version is awaited and how long the state has held (over the app's own evidence rules).", "Feedback on a version that was already superseded when it was given does not move the ball."],
+    ["Never keep a 'waiting for the Owner' state after the Owner already sent feedback on the latest version.", "Never infer completion from time alone.", "An outbound pending_feedback send waits on the recipient, not on the Owner."]), confirmedAt: "2026-09-27" },
   { ...O("RF_PAYMENT_IS_COMPANY_EXPENSE", "CASHFLOW", "A Red Films payment marked שולם is a real company expense.",
     ["Count it as real money spent: DB-1 (Owner-approved, live 2026-09-27) — exactly ONE linked Finance expense per payment (שולם, scope קליפ for a clip production, the payment's currency); a new payment links automatically, historical ones through the Owner's typed link action; other production types need an explicit scope (SCOPE_REQUIRED, never invented)."],
     ["Planned budget is not spend.", "A linked payment is counted once (in Finance), never beside its expense.", "A similar unlinked Finance expense is possible-duplicate evidence — the Owner decides, nothing is merged automatically."]), confirmedAt: "2026-09-27" },

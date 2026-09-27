@@ -99,7 +99,7 @@ export const DJ_MODEL = {
 
 export const MONEY_MODEL = {
   currency: "each show has ONE currency (shows.currency ₪ / $ / €); its Finance rows carry it; nothing is converted or added across currencies; a payment in another currency is refused; a non-₪ show is not synced into the currency-less artist ledger (flagged for the Owner)",
-  split: "gross = price; net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label profit = net − artist fee. No rounding (x.5 possible). The stored artist fee column is never used; there is no override.",
+  split: "Owner agreement (2026-09-27, the agreement rule layer — ONLY שליו טסמה / אבי מולה): gross = price; net = max(0, price − DJ fee − counted rehearsal costs) (the recorded direct show expenses); artist fee = net / 2; label profit = net − artist fee — 50 / 50 of the NET, never of the gross. Any other artist or a collaboration text: NOT_DEFINED — no artist fee row is created or re-priced (an existing one is left untouched and reported), nothing is realized into the ledger. No rounding (x.5 possible). The stored artist fee column is never used; there is no override.",
   rehearsalCounted: "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, retired entirely in A3 2026-09-27 — nothing writes it any more) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל",
   advance: "D5 (Owner decision, migration 75bf144e… applied 2026-09-27): money received = SHOW_PAYMENT income rows linked by transactions.show_id (status התקבל / שולם). received = Σ payments; remaining = max(0, agreed − received) held by ONE SHOW_BALANCE_EXPECTED row (צפוי; 0 / בוטל when nothing remains); credit = received − agreed stays visible. Deposit / partial / full / overpayment = RECORD_SHOW_PAYMENT (the shared show-payments writer). Marking שולם / closing with 'received' records the REMAINDER once — never the full price again (no fake revenue). Payments are never deleted, re-priced or cancelled by a sync; a show with payments is never deleted or reverted to a lead. A1 (Owner canon 2026-09-27): received money comes ONLY from a real payment event (RECORD_SHOW_PAYMENT, the שולם intent, close 'received') — a price rise on a paid show never invents income, and there is no implicit undo (the pre-A1 'שולם click undo' branch was removed; reversal = an explicit Finance correction). Historical: the 6 legacy fully-paid income rows became SHOW_PAYMENT (known money); no deposit was invented.",
   showMoneyRule: "showMoneyOf — the one rule shared by the sync, the payment writer, the Shows hub and show_view",
@@ -212,6 +212,7 @@ export const SHOW_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL_F
   { code: "DONE_UNPAID", kind: "CANONICAL_FACT", note: "done, client payment not שולם" },
   { code: "DATE_PASSED_NOT_CLOSED", kind: "DERIVED_SIGNAL", note: "confirmed show whose date passed, not בוצע / בוטל" },
   { code: "DONE_WITHOUT_LEDGER", kind: "DERIVED_SIGNAL", note: "done show of a single roster artist with no ledger income (closed by a plain edit?)" },
+  { code: "SHOW_SPLIT_NOT_DEFINED", kind: "UNKNOWN", note: "the show's artist has no agreement (only שליו / אבי) or is a collaboration — no artist / label split, no artist fee row" },
   { code: "LEDGER_KEPT_AFTER_CANCEL", kind: "DERIVED_SIGNAL", note: "cancelled show that still has realized ledger income / payment" },
   { code: "ARTIST_ROW_UNPAID_AFTER_DONE", kind: "CANONICAL_FACT", note: "done show whose artist-fee row is still expected (the artist's own obligation — never paid by the client payment)" },
   { code: "PAID_FEE_ROW_MISMATCH", kind: "DERIVED_SIGNAL", note: "a DJ / artist fee row already שולם no longer matches the show (amount / currency / a cancelled show) — the app's own rule; the row is never overwritten (A1)" },
@@ -244,7 +245,7 @@ export const SHOW_REVIEWED_FILES = [
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "6dcb358c072b2d029a97c60e5e889fdd02bd56907c0a89b3c92b03b7ecca1c5d",
   "lib/shows-types.ts": "7e319042c14e8f40cffdec3de07586e2eccddeb44e3e4e7df9bfb79526a5e16a",
-  "lib/shows-finance-sync.ts": "fced2804f438bf8425d49c0a5e0ae2f804c00bae17b1be72f17f869c34875c90",
+  "lib/shows-finance-sync.ts": "8b4443be2bb2e9d9b6c389ebae5ccbb07558b816de8157d1c34b9b345c18922f",
   "lib/artist-balance-show-sync.ts": "578ae5accad84c65e945050a5b343398823751e96325f491a6ae9c906821584c",
   "lib/artist-balance-show-sync-pure.ts": "b695fd979b16ebfc38b97a05517fb34505b31db431dc8a3587bf7c11f712eba3",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
