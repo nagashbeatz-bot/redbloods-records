@@ -521,3 +521,54 @@ export async function productionFolderState(productionId: string): Promise<{ has
   if (error) throw new Error(error.message);
   return data ? { hasFolder: !!data.dropbox_folder_path } : null;
 }
+
+/** The screen's YouTube id rule (components/red-films/RedFilmsYouTubeRefs.tsx extractVideoId) — the same accepted shapes. */
+export function youtubeVideoId(url: string): string | null {
+  if (!url.trim()) return null;
+  try {
+    const u = new URL(url.trim());
+    if (u.hostname.includes("youtube.com") && u.searchParams.get("v")) return u.searchParams.get("v");
+    if (u.hostname === "youtu.be") return u.pathname.slice(1).split("?")[0] || null;
+    const m = u.pathname.match(/\/(shorts|embed|v)\/([^/?&]+)/);
+    if (m) return m[2];
+  } catch {
+    const m = url.trim().match(/^[a-zA-Z0-9_-]{11}$/);
+    if (m) return url.trim();
+  }
+  return null;
+}
+/** POST /api/red-films/productions/[id]/reference-links semantics (url + video id required; thumbnail default). */
+export async function addVideoReference(productionId: string, input: { url: string; video_id: string; title?: string; thumbnail_url?: string; provider?: string; notes?: string }) {
+  const { data, error } = await supabase.from("red_films_reference_links").insert({
+    production_id: productionId, url: input.url, video_id: input.video_id, provider: input.provider ?? "youtube", title: input.title ?? "",
+    thumbnail_url: input.thumbnail_url ?? `https://img.youtube.com/vi/${input.video_id}/hqdefault.jpg`, notes: input.notes ?? "",
+  }).select().single();
+  if (error) throw new Error(error.message);
+  return data as Record<string, unknown>;
+}
+export async function videoReferenceCount(productionId: string): Promise<number> {
+  const { count, error } = await supabase.from("red_films_reference_links").select("id", { count: "exact", head: true }).eq("production_id", productionId);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/** PATCH /api/red-films/reference-links/[linkId] — HARDENED (2026-09-27): only title / notes change (it used to write the
+ *  whole request body into the row: url / video id / provider / thumbnail / production could be overwritten). */
+export async function updateVideoReference(linkId: string, body: Record<string, unknown>): Promise<Record<string, unknown> | "empty"> {
+  const patch: Record<string, unknown> = {};
+  for (const k of ["title", "notes"]) if (typeof body[k] === "string") patch[k] = body[k];
+  if (!Object.keys(patch).length) return "empty";
+  const { data, error } = await supabase.from("red_films_reference_links").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", linkId).select().single();
+  if (error) throw new Error(error.message);
+  return data as Record<string, unknown>;
+}
+export async function deleteVideoReference(linkId: string): Promise<void> {
+  const { error } = await supabase.from("red_films_reference_links").delete().eq("id", linkId);
+  if (error) throw new Error(error.message);
+}
+/** Sunny's read: title / notes / provider + whether a link exists (the link itself never leaves). */
+export async function readVideoReference(linkId: string): Promise<{ productionId: string; title: string; notes: string; provider: string } | null> {
+  const { data, error } = await supabase.from("red_films_reference_links").select("production_id, title, notes, provider").eq("id", linkId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? { productionId: String(data.production_id), title: String(data.title ?? ""), notes: String(data.notes ?? ""), provider: String(data.provider ?? "") } : null;
+}

@@ -5,8 +5,9 @@
  * through Sunny (plans never persist URLs). Deleting an entry runs the drawer's cascade on the server (hardened).
  */
 import type { ArgSpec } from "../types";
-import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { finishPlan, linkRef, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { ALBUM_TRACK_STATUSES } from "@/lib/types";
+import { isSafeUrl } from "../persist";
 
 type Row = Record<string, unknown>;
 export interface WorklogFamilyWriters {
@@ -59,7 +60,7 @@ const D = (name: string, required = false): ArgSpec => ({ name, kind: "ymd", req
 const meta = (he: string, en: string, args: readonly ArgSpec[], fields: readonly string[], writer: string, o: Partial<PrimitiveMeta>): PrimitiveMeta =>
   ({ domain: "PROJECT", he, en, args, fields, effects: [], riskClass: "SAFE_REVERSIBLE", reversible: "YES", writer, compensation: "a new approved plan restoring the previous value shown in the preview", ...o });
 
-const logFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSendLogEntry(id); return r ? { projectId: String(r.project_id ?? ""), actionType: String(r.action_type ?? ""), contentType: (r.content_type as string | null) ?? null, versionLabel: (r.version_label as string | null) ?? null, recipientRole: (r.recipient_role as string | null) ?? null, recipientName: (r.recipient_name as string | null) ?? null, status: String(r.status ?? ""), actionDate: (r.action_date as string | null) ?? null, followupDate: (r.followup_date as string | null) ?? null, notes: (r.notes as string | null) ?? null, linkedWork: !!r.linked_work_id } : null; };
+const logFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSendLogEntry(id); return r ? { projectId: String(r.project_id ?? ""), actionType: String(r.action_type ?? ""), contentType: (r.content_type as string | null) ?? null, versionLabel: (r.version_label as string | null) ?? null, recipientRole: (r.recipient_role as string | null) ?? null, recipientName: (r.recipient_name as string | null) ?? null, status: String(r.status ?? ""), actionDate: (r.action_date as string | null) ?? null, followupDate: (r.followup_date as string | null) ?? null, notes: (r.notes as string | null) ?? null, linkedWork: !!r.linked_work_id, sendLink: (r.send_link_ref as string | null) ?? null } : null; };
 async function onLog(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.sendLogEntry, ["send-log"]); if (!k) return refuse("BAD_ENTITY", "צריך רשומת שליחה (send-log:…)");
   const f = await logFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הרשומה");
@@ -71,14 +72,19 @@ async function onTrack(d: WriterDeps, a: Readonly<Record<string, unknown>>): Pro
   const f = await trackFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את השיר");
   return { key: `album-track:${k.id}`, id: k.id, label: `${f.trackNumber}. ${f.title}`, fields: f };
 }
-const LOG_ARGS: readonly ArgSpec[] = [E("contentType", SEND_CONTENT_TYPES), T("versionLabel"), E("recipientRole", SEND_RECIPIENT_ROLES), T("recipientName"), T("recipientPhone"), E("status", SEND_STATUSES), D("actionDate"), D("followupDate"), T("notes")];
+const LOG_ARGS: readonly ArgSpec[] = [E("contentType", SEND_CONTENT_TYPES), T("versionLabel"), E("recipientRole", SEND_RECIPIENT_ROLES), T("recipientName"), T("recipientPhone"), E("status", SEND_STATUSES), D("actionDate"), D("followupDate"), T("notes"), { name: "sendLink", kind: "url", required: false, noteHe: "הקישור ששלחת (Dropbox / WeTransfer / Drive …) — נשמר כמו שהוא, בלי שום פתיחה שלו" }, { name: "removeSendLink", kind: "boolean", required: false }];
 function logPatch(a: Readonly<Record<string, unknown>>): Fields | PlanRefusal {
   const after: Fields = {};
   for (const k of ["contentType", "recipientRole", "status"] as const) if (a[k] !== undefined) after[k] = String(a[k]);
   for (const k of ["versionLabel", "recipientName", "recipientPhone", "notes"] as const) if (a[k] !== undefined) { const t = text(a[k], 300); if (t === null) return refuse("BAD_TEXT", `${k} לא תקין`); after[k] = t.trim(); }
   for (const k of ["actionDate", "followupDate"] as const) if (a[k] !== undefined) { if (!realYmd(a[k])) return refuse("BAD_DATE", "תאריך לא תקין"); after[k] = String(a[k]); }
+  if (a.sendLink !== undefined && a.removeSendLink !== undefined) return refuse("BAD_ARGS", "או קישור חדש או הסרה — לא שניהם");
+  if (a.sendLink !== undefined) { if (!isSafeUrl(a.sendLink)) return refuse("BAD_URL", "קישור לא תקין (http/https, בלי סיסמה / טוקן)"); after.sendLink = String(a.sendLink); }
+  if (a.removeSendLink === true) after.sendLink = null;
   return after;
 }
+/** The link travels as `sendLink`; MAIN's wiring maps it to the writer's link column ("" = removed). */
+const withLink = (x: Fields): Record<string, unknown> => { const { sendLink, ...rest } = x; return sendLink === undefined ? rest : { ...rest, sendLink: sendLink ?? "" }; };
 const isRef = (x: unknown): x is PlanRefusal => !!x && typeof x === "object" && (x as { ok?: unknown }).ok === false;
 
 const sendContext = async (d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> => {
@@ -128,7 +134,7 @@ export const WORKLOG_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "ADD_SEND_LOG_ENTRY", kinds: ["send-log"],
-    meta: meta("רשומה ביומן השליחות של הפרויקט (מי מחכה למי)", "Add a send-log entry to a project (the drawer's 'who waits for whom'); optionally linked to the project's Victor / engineer work (like 'send to Victor / engineer' in the drawer)", [K("project"), E("actionType", SEND_ACTION_TYPES, true), ...LOG_ARGS, K("linkedWork", false)], ["actionType", "status", "actionDate"], "createSendLogEntry (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the entry" }),
+    meta: meta("רשומה ביומן השליחות של הפרויקט (מי מחכה למי)", "Add a send-log entry to a project (the drawer's 'who waits for whom'); optionally linked to the project's Victor / engineer work (like 'send to Victor / engineer' in the drawer)", [K("project"), E("actionType", SEND_ACTION_TYPES, true), ...LOG_ARGS, K("linkedWork", false)], ["actionType", "status", "actionDate", "sendLink"], "createSendLogEntry (lib/writes/worklog)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "delete the entry" }),
     createContext: (d, a) => sendContext(d, a),
     async resolve(d, a) {
       const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
@@ -147,23 +153,23 @@ export const WORKLOG_PRIMITIVES: readonly PrimitiveSpec[] = [
       const w = a.linkedWork !== undefined ? parseKey(a.linkedWork, ["victor-work", "mix-work"]) : null;
       const role = w ? (w.kind === "mix-work" ? "sound_engineer" : "external_producer") : null;
       if (role && p.recipientRole !== undefined && p.recipientRole !== role) return refuse("BAD_ARGS", `עבודה מקושרת מסוג זה מחייבת נמען ${role}`);
-      return { ok: true, after: { actionType: String(a.actionType), status: String(p.status ?? "pending_feedback"), actionDate: String(p.actionDate ?? new Date().toISOString().slice(0, 10)) } };
+      return { ok: true, after: { actionType: String(a.actionType), status: String(p.status ?? "pending_feedback"), actionDate: String(p.actionDate ?? new Date().toISOString().slice(0, 10)), ...(p.sendLink ? { sendLink: p.sendLink } : {}) } };
     },
     async apply(d, _id, after, a) {
       const p = logPatch(a) as Fields;
       const w = a.linkedWork !== undefined ? parseKey(a.linkedWork, ["victor-work", "mix-work"]) : null;
       const link = w ? { linkedWorkId: w.id, recipientRole: w.kind === "mix-work" ? "sound_engineer" : "external_producer" } : {};
-      return { createdId: await d.createSendLogEntry({ projectId: parseKey(a.project, ["project"])!.id, actionType: after.actionType, ...p, ...link, status: after.status, actionDate: after.actionDate }) };
+      return { createdId: await d.createSendLogEntry({ projectId: parseKey(a.project, ["project"])!.id, actionType: after.actionType, ...withLink(p), ...link, status: after.status, actionDate: after.actionDate }) };
     },
     async verify(d, id, after) { const f = await logFields(d, id); return !!f && f.actionType === after.actionType && f.status === after.status; },
     disclosuresHe: ["רשומה ביומן השליחות בלבד — לא נשלח כלום לאף אחד ולא נוצרת עבודה / משימה", "עבודה מקושרת: מחיקת הרשומה בעתיד תמחק גם אותה (כמו במגירה)"],
   },
   {
     actionId: "UPDATE_SEND_LOG_ENTRY", kinds: ["send-log"],
-    meta: meta("עדכון רשומת שליחה (סטטוס / נמען / תאריכים / הערות)", "Update a send-log entry (UI vocabularies enforced)", [K("sendLogEntry"), E("actionType", SEND_ACTION_TYPES), ...LOG_ARGS], ["actionType", "contentType", "versionLabel", "recipientRole", "recipientName", "recipientPhone", "status", "actionDate", "followupDate", "notes"], "updateSendLogEntry (lib/writes/worklog)", {}),
+    meta: meta("עדכון רשומת שליחה (סטטוס / נמען / תאריכים / הערות)", "Update a send-log entry (UI vocabularies enforced)", [K("sendLogEntry"), E("actionType", SEND_ACTION_TYPES), ...LOG_ARGS], ["actionType", "contentType", "versionLabel", "recipientRole", "recipientName", "recipientPhone", "status", "actionDate", "followupDate", "notes", "sendLink"], "updateSendLogEntry (lib/writes/worklog)", {}),
     resolve: onLog, read: logFields,
     plan(a, cur) { const p = logPatch(a); if (isRef(p)) return p; if (a.actionType !== undefined) p.actionType = String(a.actionType); return finishPlan(cur, p); },
-    apply: (d, id, a) => d.updateSendLogEntry(id, { ...a }),
+    apply: (d, id, a) => d.updateSendLogEntry(id, withLink(a)),
     disclosuresHe: ["רק הרשומה משתנה; עבודה מקושרת (מהנדס / ויקטור) לא משתנה"],
   },
   {

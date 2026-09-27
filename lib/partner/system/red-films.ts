@@ -219,7 +219,7 @@ export const RF_ACTIONS: readonly RfActionEntry[] = [
   X({ id: "BUDGET_LINES", action: "Add / edit / delete a budget line", who: "OWNER", enforcement: "PROXY_ONLY", writes: "budget line", finance: null, calendar: null, files: null, project: null, destructive: true, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "—", routes: [`${RF}/productions/[id]/budget-items/route.ts`, `${RF}/budget-items/[itemId]/route.ts`] }),
   X({ id: "BUDGET_PAYMENTS", action: "Record / edit / delete a payment on a budget line (+ receipt upload)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "Red Films payment (NOT Finance)", finance: "none (separate ledger)", calendar: null, files: "receipt upload + public link", project: null, destructive: true, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "—", routes: [`${RF}/budget-items/[itemId]/payments/route.ts`, `${RF}/budget-payments/[paymentId]/route.ts`, `${RF}/budget-payments/[paymentId]/receipt/route.ts`] }),
   X({ id: "DOCUMENTS", action: "Upload / delete a document", who: "OWNER", enforcement: "PROXY_ONLY", writes: "document", finance: null, calendar: null, files: "storage upload (+ public link) / delete", project: null, destructive: true, reversible: "NO", approvalClass: "DESTRUCTIVE", futurePrimitive: "—", routes: [`${RF}/productions/[id]/documents/upload/route.ts`, `${RF}/documents/[docId]/route.ts`] }),
-  X({ id: "REFERENCES", action: "Add / edit / delete reference images and video links", who: "OWNER", enforcement: "PROXY_ONLY", writes: "references", finance: null, calendar: null, files: "image upload (+ public thumbnail link) / delete", project: null, destructive: true, reversible: "NO", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${RF}/productions/[id]/references/upload/route.ts`, `${RF}/references/[refId]/route.ts`, `${RF}/productions/[id]/reference-links/route.ts`, `${RF}/reference-links/[linkId]/route.ts`] }),
+  X({ id: "REFERENCES", action: "Add / edit / delete reference images and video links", who: "OWNER", enforcement: "PROXY_ONLY", writes: "references", finance: null, calendar: null, files: "image upload (+ public thumbnail link) / delete; video link edit = title / notes only (hardened 2026-09-27: the shared writer updateVideoReference accepts only title / notes; the PATCH used to write the whole body)", project: null, destructive: true, reversible: "NO", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${RF}/productions/[id]/references/upload/route.ts`, `${RF}/references/[refId]/route.ts`, `${RF}/productions/[id]/reference-links/route.ts`, `${RF}/reference-links/[linkId]/route.ts`] }),
   X({ id: "STORAGE_FOLDER", action: "Create the production storage folder", who: "OWNER", enforcement: "PROXY_ONLY", writes: "folder path + link", finance: null, calendar: null, files: "storage folder", project: null, destructive: false, reversible: "YES", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "—", routes: [`${RF}/productions/[id]/dropbox-folder/route.ts`] }),
   X({ id: "EQUIPMENT", action: "Add / edit / remove equipment", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "equipment", finance: null, calendar: null, files: null, project: null, destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${RF}/equipment/route.ts`, `${RF}/equipment/[id]/route.ts`] }),
   X({ id: "CLIP_PRICE", action: "Set the project's clip price (syncs a managed production's budget)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "project finance settings", finance: "clip deal price", calendar: null, files: null, project: "managed production budget", destructive: false, reversible: "YES", approvalClass: "FINANCIAL", futurePrimitive: "SET_CLIP_PRICE", routes: [`${PC}/route.ts`] }),
@@ -316,7 +316,7 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/redfilms.ts": "462650efcdb5a27cbeb1b4aba808b9443c9939dc281dfba06ae83f91c6d48b82",
+  "lib/writes/redfilms.ts": "57f8e1d7a430fbcb86bcf520bb0b90dba965a6bb0f0c8ea5c153d82c15ef4a64",
   "lib/writes/clip.ts": "4eccc46270b2b40bcc85692fae9d3e71138f4d13ded0a5519ee0f28196a7af2f",
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
   "lib/clip-production.ts": "9167e4578406e96976576e511bf579dfb10a12ca430616ab107180be0b6e0712",
@@ -330,8 +330,8 @@ export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "app/api/red-films/productions/route.ts": "dd055fbfcdd19fa33cb5d241c7024696a8326b9054e639a420bb5648e2be184a",
   "app/api/red-films/productions/[id]/route.ts": "4a3f25efcd25bd3fea3f90e3aa0105bd181b979ab600c8350265077db1ab759d",
   "app/api/red-films/productions/bulk-permanent-delete/route.ts": "addc4c59d35d171484e063ebb1eeddc5fa3f08b346f03781ff42cd34e8d2dbb2",
-  "app/api/red-films/budget-items/[itemId]/payments/route.ts": "65906950fed4a1321d8c12de8f0da91ae955d1d04cdf5c2ce162f5c131fbfeae",
-  "app/api/red-films/productions/[id]/documents/upload/route.ts": "c2c6843eabb396fb60fd9e607365c7aedcb749c80f3266e340f41d0f8f532afa",
+  "app/api/red-films/budget-items/[itemId]/payments/route.ts": "6baf8589c14dafd90069e137c5d00047c6607ff82e3248edb223b3a2b73f812d",
+  "app/api/red-films/productions/[id]/documents/upload/route.ts": "82561ad85f4861a6189539aeeef435da737df14851266f95138920ae7068800b",
   "components/red-films/RedFilmsStatusBadge.tsx": "4f41f32f43f7c113649db6c0d9e0d484ab9a3cd3fd8dbdf15847f5fe212d699b",
 };
 

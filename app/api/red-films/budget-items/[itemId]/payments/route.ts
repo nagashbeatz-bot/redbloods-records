@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { insertBudgetPayment } from "@/lib/writes/redfilms";
+import { receiptForNewPayment } from "@/lib/writes/uploads";
 import { supabase } from "@/lib/supabase";
 
 export const maxDuration = 300;
@@ -13,23 +14,6 @@ export const maxDuration = 300;
 type Ctx = { params: Promise<{ itemId: string }> };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-function dropboxArg(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
-    `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
-}
-
-function sanitize(s: string): string {
-  return s.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").replace(/\s+/g, " ").trim();
-}
-
-const RECEIPT_EXTS = new Set([
-  "jpg", "jpeg", "png", "webp", "heic", "gif",
-  "pdf", "doc", "docx", "xls", "xlsx",
-]);
-
-const MAX_SIZE = 20 * 1024 * 1024; // 20MB
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
@@ -79,82 +63,16 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     const productionId = item.production_id as string;
     const itemTitle    = (item.title as string) || "תשלום";
 
-    // ── Optional: upload receipt to Dropbox ───────────────────────────────────
-    let receiptFileName    = "";
-    let receiptMimeType    = "";
-    let receiptDropboxPath = "";
-    let receiptDropboxUrl  = "";
-
+    // ── Optional receipt — shared writer (lib/writes/uploads); a storage error is non-fatal (payment without receipt) ──
+    let receipt: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } | undefined;
     if (receiptFile && receiptFile.size > 0) {
-      const ext = receiptFile.name.split(".").pop()?.toLowerCase() ?? "";
-      if (!RECEIPT_EXTS.has(ext)) {
-        return NextResponse.json({ error: `סוג קובץ לא נתמך לאסמכתא: .${ext}` }, { status: 400 });
-      }
-      if (receiptFile.size > MAX_SIZE) {
-        return NextResponse.json({ error: "קובץ גדול מדי — מקסימום 20MB" }, { status: 400 });
-      }
-
-      // Build file name: "{title} - {amount} - {date} - אסמכתא.{ext}"
-      const baseName = `${sanitize(itemTitle)} - ${amount} - ${paymentDate} - אסמכתא.${ext}`;
-      receiptFileName    = baseName.slice(0, 200);
-      receiptDropboxPath = `/Red Films/Productions/${productionId}/receipts/${receiptFileName}`;
-      receiptMimeType    = receiptFile.type ?? "";
-
-      const { getDropboxToken } = await import("@/lib/dropbox-token");
-      const token  = await getDropboxToken();
-      const buffer = Buffer.from(await receiptFile.arrayBuffer());
-
-      const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
-        method: "POST",
-        headers: {
-          Authorization:     `Bearer ${token}`,
-          "Content-Type":    "application/octet-stream",
-          "Dropbox-API-Arg": dropboxArg({
-            path: receiptDropboxPath, mode: "add", autorename: true, mute: false,
-          }),
-        },
-        body: buffer,
-      });
-
-      if (!uploadRes.ok) {
-        const errText = await uploadRes.text();
-        console.error("[budget-payment receipt] Dropbox upload error:", errText);
-        // Non-fatal — create payment without receipt
-        receiptFileName = receiptDropboxPath = receiptDropboxUrl = receiptMimeType = "";
-      } else {
-        const uploaded  = (await uploadRes.json()) as { path_display: string };
-        receiptDropboxPath = uploaded.path_display;
-
-        // Create share link
-        try {
-          const shareRes = await fetch(
-            "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ path: receiptDropboxPath, settings: { requested_visibility: "public" } }),
-            }
-          );
-          if (shareRes.ok) {
-            const sd = (await shareRes.json()) as { url: string };
-            receiptDropboxUrl = sd.url.replace(/[?&]dl=0/, "?dl=1");
-          } else {
-            const sd = (await shareRes.json()) as {
-              error?: { shared_link_already_exists?: { metadata?: { url?: string } } };
-            };
-            const existing = sd?.error?.shared_link_already_exists?.metadata?.url;
-            receiptDropboxUrl = existing
-              ? existing.replace(/[?&]dl=0/, "?dl=1")
-              : `/api/dropbox/stream?path=${encodeURIComponent(receiptDropboxPath)}`;
-          }
-        } catch {
-          receiptDropboxUrl = `/api/dropbox/stream?path=${encodeURIComponent(receiptDropboxPath)}`;
-        }
-      }
+      const rr = await receiptForNewPayment(productionId, itemTitle, amount, paymentDate, receiptFile);
+      if (!rr.ok) return NextResponse.json({ error: rr.error }, { status: rr.status });
+      receipt = rr.receipt;
     }
 
     // ── Insert payment — shared writer (lib/writes/redfilms), the same one Sunny's RECORD_RF_BUDGET_PAYMENT uses ──
-    const ins = await insertBudgetPayment(itemId, { amount, paymentDate, paymentMethod, notes, receipt: receiptFileName ? { fileName: receiptFileName, mimeType: receiptMimeType, dropboxPath: receiptDropboxPath, dropboxUrl: receiptDropboxUrl } : undefined });
+    const ins = await insertBudgetPayment(itemId, { amount, paymentDate, paymentMethod, notes, receipt });
     if (ins.kind === "not_found") return NextResponse.json({ error: "פריט תקציב לא נמצא" }, { status: 404 });
     const data = ins.payment;
 

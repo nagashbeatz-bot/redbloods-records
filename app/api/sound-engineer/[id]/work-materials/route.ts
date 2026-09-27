@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { instructionsFolder, sanitizeFolder } from "@/lib/project-paths";
 import { listMixVersions } from "@/lib/mix-versions-store";
+import { MATERIAL_TYPES, WM_CATEGORY, uploadWorkMaterial, type MaterialType } from "@/lib/writes/uploads";
 import type { WorkMaterialsMeta } from "@/lib/types";
 
 // Large audio / stems can take a while.
 export const maxDuration = 300;
 
-// Files sent TO the engineer live in projects.files with THIS exact category, so
-// the filter is a strict equality (never collides with intake/delivery categories).
-const WM_CATEGORY = "חומרי עבודה";
-
-type MaterialType = "rough" | "reference" | "stems" | "doc";
-const MATERIAL_TYPES: MaterialType[] = ["rough", "reference", "stems", "doc"];
-// Clean, English display label baked into the stored Dropbox filename.
-const TYPE_LABEL: Record<MaterialType, string> = {
-  rough: "Rough Mix", reference: "Reference", stems: "Stems", doc: "Instructions",
-};
+// Category / material types / names live in the shared writer (lib/writes/uploads) — one source for the screen and Sunny.
 
 const isAudioName   = (n: string) => /\.(wav|mp3|m4a|aiff?|flac|ogg|aac|opus)$/i.test(n || "");
 const isArchiveName = (n: string) => /\.(zip|rar|7z)$/i.test(n || "");
@@ -28,13 +19,6 @@ function kindOf(name: string): "audio" | "archive" | "doc" {
   if (isAudioName(name)) return "audio";
   if (isArchiveName(name)) return "archive";
   return "doc";
-}
-
-/** Escape non-ASCII for the Dropbox-API-Arg header (headers must be pure ASCII). */
-function dropboxArg(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
-    `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
 }
 
 /** Resolve a work id → its linked project (or null for a standalone work). */
@@ -134,89 +118,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!file)          return NextResponse.json({ ok: false, error: "חסר קובץ" }, { status: 400 });
     if (!materialType)  return NextResponse.json({ ok: false, error: "materialType לא תקין" }, { status: 400 });
 
-    const r = await resolveProject(workId);
-    if (!r.found)   return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
-    if (!r.project) return NextResponse.json({ ok: false, error: "אין פרויקט מקושר לעבודה — חומרי עבודה זמינים רק לעבודה עם פרויקט" }, { status: 400 });
-
-    const project = r.project;
-    const artist = project.artist ?? "";
-    const projectName = project.name ?? "";
-
-    // Clean physical name: "{projectName} {TypeLabel}[ n].{ext}" — never the
-    // uploaded filename (only its extension is reused). Numbering avoids clashes
-    // within the same material type; autorename is the final safety net.
-    const dot = file.name.lastIndexOf(".");
-    const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : "";
-    const wmFiles = (project.files as FileRow[]).filter((f) => f.category === WM_CATEGORY);
-    const existingNames = new Set(wmFiles.map((f) => f.name ?? ""));
-
-    // References are ALWAYS numbered ("{project} Reference 1", "… Reference 2", …);
-    // the other types use a bare label ("{project} Rough Mix", "… Stems") and only
-    // get a trailing number on an exact-name clash. autorename is the final net.
-    const typeLabel = TYPE_LABEL[materialType];
-    let label = typeLabel;
-    if (materialType === "reference") {
-      const n = wmFiles.filter((f) => f.versionLabel === "reference").length + 1;
-      label = `${typeLabel} ${n}`;
-    }
-    const base = [sanitizeFolder(projectName), label].filter(Boolean).join(" ") || label;
-    let cleanName = ext ? `${base}.${ext}` : base;
-    for (let n = 2; existingNames.has(cleanName); n++) {
-      const numbered = `${base} ${n}`;
-      cleanName = ext ? `${numbered}.${ext}` : numbered;
-    }
-
-    const folder = instructionsFolder(artist, projectName, project.id, project.dropboxFolder);
-    const dropboxPath = `${folder}/${cleanName}`;
-
-    // ── Upload to Dropbox (token stays server-side; no share link) ─────────────
-    const { getDropboxToken } = await import("@/lib/dropbox-token");
-    const token = await getDropboxToken();
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: true, mute: false }),
-      },
-      body: buffer,
-    });
-    if (!uploadRes.ok) {
-      const tx = await uploadRes.text();
-      let detail = tx; try { detail = JSON.parse(tx)?.error_summary ?? tx; } catch {}
-      return NextResponse.json({ ok: false, error: `Dropbox: ${detail}` }, { status: 500 });
-    }
-    const uploaded = (await uploadRes.json()) as { path_display: string; name: string };
-    const finalPath = uploaded.path_display;
-
-    // ── Persist to projects.files (single source of truth; no duplicate) ───────
-    try {
-      const { addFileToProject } = await import("@/lib/projects-store");
-      await addFileToProject(project.id, {
-        name: cleanName,
-        url: `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`,
-        dropboxPath: finalPath,
-        category: WM_CATEGORY,
-        versionLabel: materialType,   // sub-type: rough | reference | stems | doc
-        size: file.size,
-        ...(durationSeconds ? { durationSeconds } : {}),
-      });
-    } catch (dbErr) {
-      // Compensating delete so we never orphan a file without a DB record.
-      try {
-        await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: finalPath }),
-        });
-      } catch { /* best-effort */ }
-      throw dbErr;
-    }
-
+    // Shared writer (lib/writes/uploads) — the same one Sunny's file channel uses.
+    const r = await uploadWorkMaterial(workId, file, materialType, durationSeconds);
+    if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.status });
     return NextResponse.json({
       ok: true,
-      material: toMaterial({ name: cleanName, dropboxPath: finalPath, category: WM_CATEGORY, versionLabel: materialType, durationSeconds, size: file.size }),
+      material: toMaterial({ name: r.cleanName, dropboxPath: r.finalPath, category: WM_CATEGORY, versionLabel: materialType, durationSeconds, size: r.size }),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

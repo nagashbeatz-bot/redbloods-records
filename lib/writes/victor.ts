@@ -13,7 +13,7 @@
  *     JSON column blindly.
  */
 import { supabase } from "@/lib/supabase";
-import type { FileLink, VersionReview } from "@/lib/types";
+import type { BriefSegment, BriefSegmentType, FileLink, VersionReview } from "@/lib/types";
 type VendorWork = NonNullable<Awaited<ReturnType<typeof import("@/lib/vendor-store").getScopedVictorWork>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -355,4 +355,107 @@ export async function victorFolderState(workId: string): Promise<{ hasFolder: bo
   const { getScopedVictorWork } = await import("@/lib/vendor-store");
   const w = await getScopedVictorWork(workId);
   return w ? { hasFolder: !!(w as { dropboxFolder?: string | null }).dropboxFolder } : null;
+}
+
+// ── Victor brief references (the Owner's YouTube / link references on a work; the profile page's add / edit / delete) ──
+type VRef = { id: string; url: string; title: string; note: string; provider: "youtube"; createdAt: string };
+async function refsOf(workId: string): Promise<VRef[] | null> {
+  const { getVictorWorkById } = await import("@/lib/vendor-store");
+  const w = await getVictorWorkById(workId);
+  return w ? ((w.references ?? []) as VRef[]) : null;
+}
+async function saveRefs(workId: string, next: VRef[]): Promise<void> { await ownerPatchVictorWork(workId, { references: next }); }
+/** Sunny's read: ids + title + note + a fingerprint of the link (the link itself never leaves). */
+export async function listVictorReferences(workId: string): Promise<Array<{ id: string; title: string; note: string; url: string }> | null> {
+  const r = await refsOf(workId); return r ? r.map((x) => ({ id: x.id, title: x.title, note: x.note, url: x.url })) : null;
+}
+export async function addVictorReference(workId: string, input: { url: string; title: string; note: string }): Promise<string> {
+  const r = await refsOf(workId); if (!r) throw new Error("work not found");
+  const ref: VRef = { id: crypto.randomUUID(), url: input.url, title: input.title, note: input.note, provider: "youtube", createdAt: new Date().toISOString() };
+  await saveRefs(workId, [...r, ref]);
+  return ref.id;
+}
+export async function updateVictorReference(workId: string, refId: string, patch: { url?: string; title?: string; note?: string }): Promise<void> {
+  const r = await refsOf(workId); if (!r) throw new Error("work not found");
+  if (!r.some((x) => x.id === refId)) throw new Error("reference not found");
+  await saveRefs(workId, r.map((x) => (x.id === refId ? { ...x, ...patch } : x)));
+}
+export async function removeVictorReference(workId: string, refId: string): Promise<void> {
+  const r = await refsOf(workId); if (!r) throw new Error("work not found");
+  await saveRefs(workId, r.filter((x) => x.id !== refId));
+}
+
+// ── Victor brief files: remove one / structure markers (the brief route's DELETE / PATCH + Sunny by handle) ──
+// Segment markers for ONE brief audio file (moved from the brief route). Owner-only (requireOwner) → Victor
+// can never write these. Stored on the matching brief_files[].segments — no new
+// DB column/table. Sanitized server-side so a bad client can't inject junk.
+const SEGMENT_TYPES = new Set<BriefSegmentType>([
+  "intro", "verse1", "prechorus", "chorus1", "verse2", "chorus3",
+  "cpart", "bridge", "finalChorus", "outro", "custom",
+]);
+
+function sanitizeSegments(raw: unknown): BriefSegment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BriefSegment[] = [];
+  for (const s of raw) {
+    if (!s || typeof s !== "object") continue;
+    const o = s as Record<string, unknown>;
+    const type = SEGMENT_TYPES.has(o.type as BriefSegmentType) ? (o.type as BriefSegmentType) : "custom";
+    const start = Number(o.start);
+    const end = Number(o.end);
+    if (!isFinite(start) || !isFinite(end)) continue;
+    const s0 = Math.max(0, start);
+    const e0 = Math.max(s0, end);
+    out.push({
+      id: typeof o.id === "string" && o.id ? o.id.slice(0, 64) : `${s0}-${e0}-${out.length}`,
+      type,
+      ...(type === "custom" && typeof o.label === "string" ? { label: o.label.slice(0, 40) } : {}),
+      color: typeof o.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(o.color) ? o.color : "#8B5CF6",
+      start: s0,
+      end: e0,
+    });
+    if (out.length >= 40) break; // sane cap
+  }
+  return out;
+}
+
+export { sanitizeSegments };
+export async function removeBriefFile(workId: string, dropboxPath: string): Promise<FileLink[] | "not_found"> {
+  const { getVictorWorkById, updateVictorWork } = await import("@/lib/vendor-store");
+  const work = await getVictorWorkById(workId);
+  if (!work) return MISSING;
+  const remaining = (work.briefFiles ?? []).filter((f) => f.dropboxPath !== dropboxPath);
+  if (dropboxPath) {
+    try {
+      const { getDropboxToken } = await import("@/lib/dropbox-token");
+      const token = await getDropboxToken();
+      await fetch("https://api.dropboxapi.com/2/files/delete_v2", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ path: dropboxPath }) });
+    } catch { /* not_found / already gone is fine */ }
+  }
+  await updateVictorWork(workId, { briefFiles: remaining });
+  return remaining;
+}
+export async function setBriefSegments(workId: string, dropboxPath: string, segments: unknown): Promise<FileLink[] | "not_found" | "file_not_found"> {
+  const { getVictorWorkById, updateVictorWork } = await import("@/lib/vendor-store");
+  const work = await getVictorWorkById(workId);
+  if (!work) return MISSING;
+  const clean = sanitizeSegments(segments);
+  let matched = false;
+  const briefFiles = (work.briefFiles ?? []).map((f) => { if (f.dropboxPath !== dropboxPath) return f; matched = true; return { ...f, segments: clean } as FileLink; });
+  if (!matched) return FILE_MISSING;
+  await updateVictorWork(workId, { briefFiles });
+  return briefFiles;
+}
+/** Sunny: the brief files as handles + names + marker counts (never a path). */
+export async function briefFileViews(workId: string): Promise<Array<{ ref: string; name: string; segments: Array<{ type: string; start: number; end: number; label?: string }> }> | null> {
+  const { getVictorWorkById } = await import("@/lib/vendor-store");
+  const { fileRefOf } = await import("@/lib/victor-files");
+  const w = await getVictorWorkById(workId);
+  return w ? (w.briefFiles ?? []).filter((f) => f.dropboxPath).map((f) => ({ ref: fileRefOf(f.dropboxPath!), name: f.name, segments: (f.segments ?? []).map((s) => ({ type: s.type, start: s.start, end: s.end, ...(s.label ? { label: s.label } : {}) })) })) : null;
+}
+export async function briefPathOf(workId: string, ref: string): Promise<string | null> {
+  const { getVictorWorkById } = await import("@/lib/vendor-store");
+  const { fileRefOf } = await import("@/lib/victor-files");
+  const w = await getVictorWorkById(workId);
+  return (w?.briefFiles ?? []).find((f) => f.dropboxPath && fileRefOf(f.dropboxPath) === ref)?.dropboxPath ?? null;
 }

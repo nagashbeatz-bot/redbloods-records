@@ -57,6 +57,28 @@ export const SECRET_PATTERNS: ReadonlyArray<{ id: string; re: RegExp }> = [
   { id: "SECRET_ASSIGNMENT", re: /\b(authorization|cookie|set-cookie|password|passwd|pwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|service[_-]?role|private[_-]?key)\s*[:=]/i },
   { id: "OPAQUE_BLOB", re: /[A-Za-z0-9+/_-]{40,}={0,2}/ },
 ];
+/**
+ * A typed URL ARGUMENT (kind "url") — the ONLY place a URL may appear in a plan: a link the Boss gives Sunny to store in
+ * a Redbloods field that is meant for a link (Owner decision 2026-09-27). Rules: http(s) only; no user / password in
+ * the URL; no credential-like query parameter; no token shape anywhere; no control characters; ≤ 2000 chars; a real
+ * host name (not localhost / an IP). Redbloods never fetches it because it was stored and never runs it as a command.
+ */
+export const URL_MAX_CHARS = 2000;
+const URL_SECRET_PARAM_RE = /^(access_?token|refresh_?token|id_?token|token|api_?key|apikey|key|secret|client_?secret|password|passwd|pwd|pass|auth|authorization|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential|session|sessionid|code)$/i;
+export function urlProblem(v: unknown): string | null {
+  if (typeof v !== "string" || !v.trim() || v.length > URL_MAX_CHARS) return "BAD_URL";
+  if (/[\u0000-\u001F\u007F\s]/.test(v)) return "BAD_URL";
+  let u: URL;
+  try { u = new URL(v); } catch { return "BAD_URL"; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return "URL_SCHEME_NOT_ALLOWED";
+  if (u.username || u.password) return "URL_WITH_CREDENTIALS";
+  const host = u.hostname.toLowerCase();
+  if (!host.includes(".") || host === "localhost" || host.endsWith(".localhost") || /^[\d.]+$/.test(host) || host.includes(":")) return "URL_HOST_NOT_ALLOWED";
+  for (const k of u.searchParams.keys()) if (URL_SECRET_PARAM_RE.test(k)) return "URL_WITH_SECRET";
+  for (const p of SECRET_PATTERNS) if (p.id !== "OPAQUE_BLOB" && p.re.test(v)) return "URL_WITH_SECRET";
+  return null;
+}
+export const isSafeUrl = (v: unknown): v is string => urlProblem(v) === null;
 /** Storage / file-system paths, URLs and internal routes are never business values in a plan. */
 export const LOCATION_PATTERNS: ReadonlyArray<{ id: string; re: RegExp }> = [
   { id: "ABSOLUTE_PATH", re: /(^|\s)(\/[^\s/]+){2,}/ },
@@ -101,6 +123,7 @@ function checkArg(spec: ArgSpec, v: unknown, where: string, known: readonly stri
     case "boolean": return typeof v === "boolean" ? [] : [{ code: "BAD_BOOLEAN", where }];
     case "enum": return typeof v === "string" && (spec.values ?? []).includes(v) ? [] : [{ code: "BAD_ENUM", where }];
     case "text": return typeof v === "string" ? checkScalar(v, where, known) : [{ code: "BAD_TEXT", where }];
+    case "url": { const e = urlProblem(v); return e ? [{ code: e, where }] : known.some((k) => k.length >= 12 && String(v).includes(k)) ? [{ code: "KNOWN_SERVER_SECRET", where }] : []; }
     default: return [{ code: "UNKNOWN_ARG_KIND", where }];
   }
 }
@@ -159,7 +182,9 @@ export function toPersistablePlan(plan: Plan, registry: ReadonlyMap<string, Acti
       const ch = rawCh as PlanStep["changes"][number];
       for (const k of extraKeys(ch, ALLOWED_CHANGE_KEYS)) p.push({ code: "FIELD_NOT_ALLOWED", where: `${cw}.${k}` });
       if (!c.args.some((a) => a.name === ch.field) && !(c.fields ?? []).includes(String(ch.field))) p.push({ code: "CHANGE_FIELD_NOT_DECLARED", where: `${cw}.field` });
-      p.push(...checkScalar(ch.before, `${cw}.before`, known), ...checkScalar(ch.after, `${cw}.after`, known));
+      // a change on a typed URL field carries the validated URL (after) — the ONLY URL a plan may hold
+      const urlField = c.args.some((a) => a.name === ch.field && a.kind === "url");
+      p.push(...checkScalar(ch.before, `${cw}.before`, known), ...(urlField && ch.after !== null ? checkArg({ name: String(ch.field), kind: "url", required: false }, ch.after, `${cw}.after`, known) : checkScalar(ch.after, `${cw}.after`, known)));
     });
     steps.push({
       index: s.index, actionId: s.actionId, actionVersion: s.actionVersion, phase: s.phase, dependsOn: [...(s.dependsOn ?? [])],

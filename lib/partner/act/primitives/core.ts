@@ -37,8 +37,10 @@ import type { SocialFamilyWriters } from "./social";
 import type { SystemFamilyWriters } from "./system";
 import type { FilesFamilyWriters } from "./files";
 import type { BackfillFamilyWriters } from "./backfills";
+import type { UploadFamilyWriters } from "./uploads";
+import type { LinkFamilyWriters } from "./links";
 /** Every shared writer / narrow reader a primitive may use (composed per family). */
-export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters & FilesFamilyWriters & BackfillFamilyWriters;
+export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters & FilesFamilyWriters & BackfillFamilyWriters & UploadFamilyWriters & LinkFamilyWriters;
 export interface CoreWriters {
   readProject(id: string): Promise<{ name: string; notes: string; startDate: string | null; plannedHours: number | null; plannedDays: number | null; projectType: string; parentProject: string; deadline: string | null } | null>;
   writeProject(id: string, patch: Partial<{ notes: string; start_date: string | null; planned_hours: number | null; planned_days: number | null; project_type: string; parent_project: string; deadline: string | null }>): Promise<void>;
@@ -101,6 +103,13 @@ export interface PrimitiveSpec {
 export interface ApplyOutput { createdId?: string; receipt?: Scalar }
 
 // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+/** A stored link as a READ value: a short fingerprint, never the link itself (old links are not read back to Sunny).
+ *  A plan's after-value for a typed URL field is the new URL; verification compares its fingerprint to the fresh read. */
+export function linkRef(u: unknown): string | null {
+  if (typeof u !== "string" || !u.trim()) return null;
+  let h = 2166136261; for (let i = 0; i < u.length; i++) { h ^= u.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return `link#${h.toString(16).padStart(8, "0")}`;
+}
 export const refuse = (code: string, messageHe: string): PlanRefusal => ({ ok: false, code, messageHe });
 export const isRefusal = (x: unknown): x is PlanRefusal => !!x && typeof x === "object" && (x as { ok?: unknown }).ok === false;
 export function parseKey(v: unknown, kinds: readonly string[]): { kind: string; id: string } | null {
@@ -244,7 +253,7 @@ export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecut
       const id = o.createdId ?? stepTargetId(s);
       if (spec.verify) return spec.verify(d, id, after, o);
       const now = await spec.read(d, id);
-      return !!now && Object.entries(after).every(([k, v]) => now[k] === v);
+      return !!now && Object.entries(after).every(([k, v]) => now[k] === v || (typeof v === "string" && now[k] === linkRef(v)));
     },
   };
 }

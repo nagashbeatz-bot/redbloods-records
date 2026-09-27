@@ -13,6 +13,8 @@
  *                                       action of ANOTHER user with no legitimate Owner equivalent, or system machinery that
  *                                       is not an Owner operation (with its Owner equivalent named when one exists).
  * There is no dead end: every NEEDS_HARDENING / BLOCKED row has concrete `requiredWork`. Waves are sequencing only.
+ * Something Redbloods itself cannot do (no route, no screen) is NOT an operation and is not in the census: it is an
+ * IMPROVEMENT_CANDIDATE (registry.ts) — a product / infrastructure proposal for the Boss, never a Sunny gap.
  */
 import { ACTION_CONTRACTS, NEEDS_HARDENING } from "./registry";
 import { WORKFLOW_EVENT_MAP } from "./business-events";
@@ -54,7 +56,6 @@ const OVERRIDES: Readonly<Record<string, Partial<CoverageRow>>> = {
   "PROJECT.SUNNY_DEADLINE": { klass: "EXECUTABLE", targetWave: "LIVE", ownerEquivalent: "UPDATE_PROJECT_DEADLINE", requiredWork: null },
   RECORD_PAID_EXPENSE: { klass: "NEEDS_HARDENING", targetWave: "W3", requiredWork: "wire the existing validated finance RPC into the universal pipeline as a C2 typed primitive (amount + currency repeated in the approval); the dashboard path stays" },
   "VICTOR.RECORD_SALARY_EXPENSE": { klass: "NEEDS_HARDENING", targetWave: "W3", requiredWork: "same finance primitive as RECORD_PAID_EXPENSE for the salary month (paid only when the finance row is שולם)" },
-  "SHOW.REHEARSAL": { klass: "NEEDS_HARDENING", targetWave: "W3", requiredWork: "typed rehearsal primitive preserving TODAY's semantics (D6 vocabulary unchanged; computeShowSplit / rehearsalCountedAmount reused)" },
   "SHOW.RECORD_SHOW_ADVANCE": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W3", ownerEquivalent: "SHOW.EDIT_SHOW (payment status מקדמה, current semantics)", requiredWork: "Boss decision D5 on how a show advance is modelled; until then the current payment-status edit is the path" },
   "RF.MARK_PRODUCTION_APPROVED": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W2", ownerEquivalent: "RF.EDIT_PRODUCTION (status מאושר, current semantics)", requiredWork: "Boss decision D7 on the canonical 'production approved' event; until then the status edit is the path" },
   "SHOW.SET_SHOW_CURRENCY": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W3", requiredWork: "Redbloods has no currency on shows: product decision + approved schema change (shows are ₪ by convention today)" },
@@ -92,12 +93,8 @@ const OVERRIDES: Readonly<Record<string, Partial<CoverageRow>>> = {
   UPDATE_PREMIX_NOTE: { klass: "NEEDS_HARDENING", targetWave: "W2", requiredWork: "expose pre-mix note keys in the mix read view (addressability), then the typed primitive over updateMixTargetNote" },
   MARK_AGENT_ALERT_HANDLED: { klass: "NEEDS_HARDENING", targetWave: "W2", requiredWork: "expose alert ids in a read view + the typed primitive preserving the kill-switch rule (only the exempt alert type while rules are off; never by type, never bulk)" },
   "FILES.FOLDER_LINK": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "SECRET_OR_CREDENTIAL_FLOW", requiredWork: null, targetWave: "NONE", ownerEquivalent: "the only outcome is a PUBLIC bearer link returned to the screen (never stored) — bearer links never reach Sunny (Owner charter); the Boss copies it in the app. Folders with a stored link are Sunny actions (CREATE_DELIVERY_FOLDER, SET_UP_VICTOR_FOLDER, CREATE_PRODUCTION_FOLDER)" },
+  "LABEL.PRESS_KIT_LINK": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "SECRET_OR_CREDENTIAL_FLOW", requiredWork: null, targetWave: "NONE", ownerEquivalent: "the route's only outcome is a PUBLIC bearer press-kit link returned to the screen (getOrCreatePressKitLink) — a bearer share link never reaches Sunny; the press files themselves are UPLOAD_ARTIST_PORTAL_FILE" },
   "PROJECT.REFRESH_LINK": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "SECRET_OR_CREDENTIAL_FLOW", requiredWork: null, targetWave: "NONE", ownerEquivalent: "a file's share link returned to the screen (a bearer link — never Sunny's, Owner charter) + the player's own duration measurement (automatic when a track plays); nothing for the Boss to decide" },
-  "PROJECT.FILE_RENAME_MOVE": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W7", requiredWork: "Redbloods itself has no rename / move of project files (no route, no screen) — the Boss cannot do it in the app either; adding it is a product decision, then a typed primitive over the new writer", ownerEquivalent: null },
-  "PROJECT.MIX_VERSION_UPLOAD": { targetWave: "W5", requiredWork: "BOSS DECISION (the file channel): a new file's bytes must reach Redbloods from the conversation — the upload writer exists; how bytes travel (size limit, type allow-list, where they land) is the decision; then a typed upload primitive over the same writer (a mix version)" },
-  "PROJECT.UPLOAD_PROJECT_FILE": { targetWave: "W5", requiredWork: "BOSS DECISION (the file channel): a new file's bytes must reach Redbloods from the conversation — the upload writer exists; how bytes travel (size limit, type allow-list, where they land) is the decision; then a typed upload primitive over the same writer (a project file)" },
-  "VICTOR.UPLOAD_VERSION": { targetWave: "W5", requiredWork: "BOSS DECISION (the file channel): a new file's bytes must reach Redbloods from the conversation — the upload writer exists; how bytes travel (size limit, type allow-list, where they land) is the decision; then a typed upload primitive over the same writer (a Victor version)" },
-  "LABEL.PROFILE_IMAGE": { targetWave: "W5", requiredWork: "BOSS DECISION (the file channel): a new file's bytes must reach Redbloods from the conversation — the upload writer exists; how bytes travel (size limit, type allow-list, where they land) is the decision; then a typed upload primitive over the same writer (an artist profile image)" },
 };
 
 const VERIFY: Readonly<Record<EffectKey, string>> = {

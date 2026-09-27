@@ -21,7 +21,7 @@ import { issueApprovalToken } from "./approval";
 import { executePlan, type AuditStore, type IdempotencyStore, type PrimitiveExecutor } from "./engine";
 import type { NonceStore } from "./approval";
 import type { PlanStore } from "./store-supabase";
-import { planSafeValue, toPersistablePlan, safeDetail } from "./persist";
+import { isSafeUrl, planSafeValue, toPersistablePlan, safeDetail } from "./persist";
 import { currentOf, executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, type Fields, type WriterDeps } from "./primitives";
 import { validateActInput } from "./mcp-tools";
 import { nextStepsFor } from "./next-step";
@@ -105,7 +105,7 @@ export async function planAction(input: { intentHe: unknown; actionId: unknown; 
   const step: PlanStep = {
     index: 0, actionId, actionVersion: contract.version, args, entities: [t.key], phase: contract.phase,
     expectedFingerprint: fieldsFingerprint(actionId, t.id, t.fields),
-    changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(t.fields[k]), after: planSafeValue(p.after[k]) })),
+    changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(t.fields[k]), after: contract.args.some((a) => a.name === k && a.kind === "url") && isSafeUrl(p.after[k]) ? String(p.after[k]) : planSafeValue(p.after[k]) })),
     dependsOn: [],
   };
   const plan: Plan = {

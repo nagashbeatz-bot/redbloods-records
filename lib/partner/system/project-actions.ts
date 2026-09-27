@@ -178,5 +178,10 @@ export const PROJECT_ACTION_EXCLUSIONS: Readonly<Record<string, string>> = {
   "app/api/red-films/productions/[id]/budget-items/route.ts": "Red Films budget line only (same shared module as above)",
   "app/api/red-films/references/[refId]/route.ts": "Red Films reference image only (same shared module as above)",
   "app/api/social/files/route.ts": "deletes one social content file — inventoried as SOCIAL.DELETE_FILE; its shared writer module (lib/writes/social) also holds the campaign writers that name project_id",
+  "app/api/red-films/productions/[id]/reference-links/route.ts": "Red Films video references (a production's YouTube grid) — the shared Red Films writer module (lib/writes/redfilms) also holds production ↔ project writers; RED_FILMS contract, primitives ADD_RF_VIDEO_REFERENCE",
+  "app/api/red-films/reference-links/[linkId]/route.ts": "Red Films video reference title / notes / delete — the shared Red Films writer module (lib/writes/redfilms); RED_FILMS contract, primitives UPDATE_ / DELETE_RF_VIDEO_REFERENCE",
+  "app/api/red-films/budget-payments/[paymentId]/receipt/route.ts": "Red Films receipt on an existing payment — its shared upload module (lib/writes/uploads) also holds the project-file writers",
+  "app/api/red-films/productions/[id]/documents/upload/route.ts": "Red Films document upload only (same shared upload module)",
+  "app/api/red-films/productions/[id]/references/upload/route.ts": "Red Films reference image upload only (same shared upload module)",
   "app/api/proposals/route.ts": "creates a proposal only — its shared writer module (lib/writes/proposals) also holds the conversion, inventoried as CONVERT_PROPOSAL via the convert route",
 };

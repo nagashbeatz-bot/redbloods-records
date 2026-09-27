@@ -10,7 +10,7 @@
  * The connector never holds a writer: every call is relayed to MAIN, which owns the registry, stores and executors.
  */
 import { ACTION_REGISTRY } from "./registry";
-import { inspectText } from "./persist";
+import { inspectText, urlProblem } from "./persist";
 
 export const ACT_TOOL_NAMES = ["partner_plan_action", "partner_preview_action", "partner_approve_action", "partner_execute_plan", "partner_plan_status"] as const;
 export type ActToolName = (typeof ACT_TOOL_NAMES)[number];
@@ -61,6 +61,7 @@ export function validateActInput(name: string, input: Record<string, unknown>): 
     for (const k of Object.keys(input.args as object)) if (!c.args.some((a) => a.name === k)) return { ok: false, code: `UNKNOWN_ARGUMENT:${k}` };
     for (const [k, v] of Object.entries(input.args as Record<string, unknown>)) {
       if (v !== null && typeof v === "object") return { ok: false, code: `NESTED_ARGUMENT:${k}` };
+      if (c.args.find((a) => a.name === k)?.kind === "url") { const e = urlProblem(v); if (e) return { ok: false, code: `${e}:${k}` }; continue; }
       if (typeof v === "string" && inspectText(v, k).length) return { ok: false, code: `UNSAFE_ARGUMENT:${k}` };
     }
     if (inspectText(String(input.intentHe), "intentHe").length) return { ok: false, code: "UNSAFE_INTENT" };

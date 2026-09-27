@@ -1,135 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSocialFile } from "@/lib/social-files-store";
-import { getCampaign } from "@/lib/social-store";
-import { createDropboxFolder } from "@/lib/dropbox-folder";
+import { uploadSocialContentFile } from "@/lib/writes/uploads";
 
 export const maxDuration = 300;
 
-const MAX_SIZE = 500 * 1024 * 1024; // 500MB
-
-function dropboxArg(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
-    `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const { getDropboxToken } = await import("@/lib/dropbox-token");
-    const token = await getDropboxToken();
-
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const contentItemId = formData.get("contentItemId") as string | null;
     const campaignId = formData.get("campaignId") as string | null;
     const projectId = (formData.get("projectId") as string | null) || null;
-
     if (!file) return NextResponse.json({ error: "חסר קובץ" }, { status: 400 });
     if (!contentItemId || !campaignId) {
       return NextResponse.json({ error: "חסרים contentItemId / campaignId" }, { status: 400 });
     }
-    if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: "הקובץ גדול מדי (מקסימום 500MB)" }, { status: 413 });
-    }
-
-    const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
-
-    let dropboxPath: string;
-    if (projectId) {
-      // פרויקט הפקה — path קיים נשאר
-      dropboxPath = `/${projectId}/Social/${contentItemId}/${sanitizedName}`;
-    } else {
-      // social campaign — תיקיית קמפיין לפי שם
-      const campaign = await getCampaign(campaignId);
-      const campaignFolder = (campaign?.title ?? "")
-        .trim()
-        .replace(/[<>:"/\\|?*]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 60)
-        || `campaign-${campaignId}`;
-      const mediaFolder = `/Social/${campaignFolder}/Media`;
-      await createDropboxFolder(token, `/Social/${campaignFolder}`);
-      await createDropboxFolder(token, mediaFolder);
-      dropboxPath = `${mediaFolder}/${sanitizedName}`;
-    }
-
-    // Upload to Dropbox
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": dropboxArg({
-          path: dropboxPath,
-          mode: "add",
-          autorename: true,
-          mute: false,
-        }),
-      },
-      body: buffer,
-    });
-
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      let detail = errText;
-      try { detail = (JSON.parse(errText) as { error_summary?: string })?.error_summary ?? errText; } catch {}
-      console.error("[social/upload] Dropbox upload error:", detail);
-      return NextResponse.json({ error: `שגיאת Dropbox: ${detail}` }, { status: 500 });
-    }
-
-    const uploaded = (await uploadRes.json()) as { path_display: string; name: string; id: string };
-    const finalPath = uploaded.path_display;
-
-    // Get share link
-    let shareUrl = "";
-    try {
-      const sRes = await fetch("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
-      });
-      if (sRes.ok) {
-        shareUrl = ((await sRes.json()) as { url: string }).url;
-      } else {
-        const sd = (await sRes.json()) as {
-          error?: { shared_link_already_exists?: { metadata?: { url?: string } } };
-        };
-        shareUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
-      }
-      // Fallback: the link already existed but the create response didn't carry its
-      // URL (Dropbox sometimes returns shared_link_already_exists without metadata).
-      // Ask Dropbox for the existing link so we never persist an empty share_link
-      // (that was the cause of blank video thumbnails in the media gallery).
-      if (!shareUrl) {
-        const lRes = await fetch("https://api.dropboxapi.com/2/sharing/list_shared_links", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: finalPath, direct_only: true }),
-        });
-        if (lRes.ok) {
-          const ld = (await lRes.json()) as { links?: { url?: string }[] };
-          shareUrl = ld.links?.[0]?.url ?? "";
-        }
-      }
-    } catch {}
-
-    // Save to DB
-    const fileRecord = await createSocialFile({
-      content_item_id: contentItemId,
-      campaign_id: campaignId,
-      project_id: projectId,
-      file_name: file.name,
-      file_type: file.type || "application/octet-stream",
-      file_size: file.size,
-      dropbox_path: finalPath,
-      dropbox_file_id: uploaded.id ?? "",
-      dropbox_share_link: shareUrl,
-      uploaded_by: "",
-    });
-
-    return NextResponse.json({ ok: true, file: fileRecord });
+    // Shared writer (lib/writes/uploads) — the same one Sunny's file channel uses (500MB limit, same folders, share link).
+    const r = await uploadSocialContentFile(contentItemId, campaignId, projectId, file);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    return NextResponse.json({ ok: true, file: r.file });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[social/upload]", msg);

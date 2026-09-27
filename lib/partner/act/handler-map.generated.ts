@@ -515,15 +515,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/clip-items/[id]/route.ts": {
@@ -560,15 +564,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/clip-items/route.ts": {
@@ -604,15 +612,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/delivery/route.ts": {
@@ -641,9 +653,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "1829502f814b174fc31bca39d4ec69e617d94b0bb5357c0584c80e526b37633a",
+  "sha256": "948b061dec8d9c35212580ddd504f9e38b9cd946d7a068b3a01abd978e7c9750",
   "effects": [
-   "FILES"
+   "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -678,7 +695,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "0222705411707d529d4bf1f7ed02664d093ec9d25d833d2d9aca9050c1890522",
+  "sha256": "919e0b6870962251d2d39e2c5a0c15d9f35bb520f3d3dcb82c9cd984d216b0d6",
   "effects": [
    "DELETION"
   ],
@@ -721,11 +738,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "12afd92bed616586b68411f6c671cc827fda99ba244f3db6f30c74c95495b124",
+  "sha256": "c594a553c9288d3d22a28a9839f20101a6c9777cad43a71cdbad6ae3ff60dad2",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
+   "FINANCE",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": []
@@ -783,11 +802,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "3cba9c3f1eebf81583ec1d88af82cc1b544d2792d776e56491ac59696889648e",
+  "sha256": "9e7b1f7b39b9e22f46b62c8d5ddb1fc8032c2ebdda48a0730f0c3c00aa239226",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
+   "FINANCE",
    "PUSH",
    "SETTINGS"
   ],
@@ -2096,13 +2116,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "65906950fed4a1321d8c12de8f0da91ae955d1d04cdf5c2ce162f5c131fbfeae",
+  "sha256": "6baf8589c14dafd90069e137c5d00047c6607ff82e3248edb223b3a2b73f812d",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2124,15 +2145,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/budget-items/[itemId]/route.ts": {
@@ -2169,15 +2194,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/budget-payments/[paymentId]/receipt/route.ts": {
@@ -2185,10 +2214,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "3ccdc8353266f5e51f70b71b86e26bd30f408f962778e14c9da61cdb925933c9",
+  "sha256": "d27147ed1192a9bf37eb795ae73dad37ea6b21464c2730b29104382d363297bb",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2226,15 +2259,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/documents/[docId]/route.ts": {
@@ -2270,15 +2307,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/equipment/[id]/route.ts": {
@@ -2314,15 +2355,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/equipment/route.ts": {
@@ -2358,15 +2403,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/productions/[id]/budget-items/route.ts": {
@@ -2402,15 +2451,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/productions/[id]/documents/upload/route.ts": {
@@ -2418,10 +2471,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "c2c6843eabb396fb60fd9e607365c7aedcb749c80f3266e340f41d0f8f532afa",
+  "sha256": "82561ad85f4861a6189539aeeef435da737df14851266f95138920ae7068800b",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2446,14 +2503,46 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "63ebcdc7e48b3a23aea24090cb1f55b76a10097feb279bb6144d4f3ea1002b72",
-  "effects": [],
+  "sha256": "be21f154429aed21ab3e28f2f4140483631c854c662470a9d9c8771ef94817bb",
+  "effects": [
+   "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
+  ],
   "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
    "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
    "provider",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
    "thumbnail_url",
    "title",
+   "updated_at",
    "url",
+   "vendor_name",
    "video_id"
   ]
  },
@@ -2462,10 +2551,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "bc30da671baff250379398a226ca396161f7a446c806ad6d98b19aa541035530",
+  "sha256": "0bfb748b1fdc1fa279fc172ab270b0bacf78ea096a77a9da862a8e0d92468f81",
   "effects": [
+   "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2502,15 +2595,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/productions/bulk-permanent-delete/route.ts": {
@@ -2547,15 +2644,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/productions/route.ts": {
@@ -2591,15 +2692,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
    "removed_at",
    "serial_number",
    "status",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/red-films/reference-links/[linkId]/route.ts": {
@@ -2608,11 +2713,48 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "cb65d4d66af2fd223d8bdc94487de7cb732fc5c32b484194461f8e176554c559",
+  "sha256": "0cb8c35deed6e7daf1a22f5c23ac4b668ea2d7d6345da23f58f3e1cbdc121c10",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "EXTERNAL_LINK",
+   "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "acquired_date",
+   "actual_amount",
+   "added_by",
+   "amount",
+   "artist_name",
+   "category",
+   "client_id",
+   "client_name",
+   "currency",
+   "description",
+   "general_budget",
+   "name",
+   "notes",
+   "photographer_name",
+   "planned_amount",
+   "production_type",
+   "projectId",
+   "project_id",
+   "provider",
+   "purchase_price",
+   "purchased_from",
+   "quantity",
+   "removed_at",
+   "serial_number",
+   "status",
+   "thumbnail_url",
+   "title",
+   "updated_at",
+   "url",
+   "vendor_name",
+   "video_id"
+  ]
  },
  "app/api/red-films/references/[refId]/route.ts": {
   "methods": [
@@ -2648,6 +2790,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "production_type",
    "projectId",
    "project_id",
+   "provider",
    "purchase_price",
    "purchased_from",
    "quantity",
@@ -2655,9 +2798,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "serial_number",
    "status",
    "tag",
+   "thumbnail_url",
    "title",
    "updated_at",
-   "vendor_name"
+   "url",
+   "vendor_name",
+   "video_id"
   ]
  },
  "app/api/reports/config/route.ts": {
@@ -3103,11 +3249,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "fbb5a00b7e6fc840a135c6314957e84086d60c6ee11aa0f2a221b0441d78e543",
+  "sha256": "db3b9b9671db57e3d79134b8d2850450a47e7fb72bed64b8831b636da1091882",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -3320,10 +3469,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "55f980e99abfd057c9b2898da30173c9d0d119d81de1cc484d34b7e5b66f77c4",
+  "sha256": "cd379bb37a50baf1796de41938ff5357da710588710577119260e4db175185bd",
   "effects": [
    "DELETION",
-   "FILES"
+   "EXTERNAL_LINK",
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "bpm",
@@ -3351,9 +3504,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "d65c1f7a94e5ce440d8047a2209c1b971467297f5a722741a2502531aed835d8",
+  "sha256": "eeae839b3e84df99f33b5f478086ec0cd1d965fd7ce506faefbc77f74dee8c38",
   "effects": [
    "DELETION",
+   "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
    "PUSH",
@@ -3787,9 +3941,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "error",
    "error_summary",
    "internalDeadline",
+   "note",
    "projectId",
    "projectName",
    "status",
+   "title",
+   "url",
    "useProjectsLayout",
    "vendorName",
    "versionKey",
@@ -3817,9 +3974,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "error",
    "error_summary",
    "internalDeadline",
+   "note",
    "projectId",
    "projectName",
    "status",
+   "title",
+   "url",
    "useProjectsLayout",
    "vendorName",
    "workId",
@@ -3884,9 +4044,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "error",
    "error_summary",
    "internalDeadline",
+   "note",
    "projectId",
    "projectName",
    "status",
+   "title",
+   "url",
    "useProjectsLayout",
    "vendorName",
    "workId",
@@ -3912,14 +4075,32 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "5e2d2c1812b0dd37a68b98099903bf5c0dcec49723762cbce3b3010f66450a81",
+  "sha256": "db7462312ddfa8d093dbeac94a3f1c262a425a253f2d30ff2640a68e2c3c8dcf",
   "effects": [
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
+   "FINANCE",
+   "GOOGLE_TASKS",
+   "PUSH",
    "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "artistName",
+   "error",
+   "error_summary",
+   "internalDeadline",
+   "note",
+   "projectId",
+   "projectName",
+   "status",
+   "title",
+   "url",
+   "useProjectsLayout",
+   "vendorName",
+   "workId",
+   "workTitle"
+  ]
  },
  "app/api/vendor/victor/work/[id]/file/route.ts": {
   "methods": [
@@ -3961,9 +4142,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "error",
    "error_summary",
    "internalDeadline",
+   "note",
    "projectId",
    "projectName",
    "status",
+   "title",
+   "url",
    "useProjectsLayout",
    "vendorName",
    "workId",

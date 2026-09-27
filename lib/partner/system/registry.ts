@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-35";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-36";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -966,4 +966,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-33", date: "2026-09-27", domain: "PROJECTS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "עדכונים גורפים (אישור חזק, תצוגה של כל מה שישתנה): תאריכי התחלה מהסשן הראשון, כרטיסי לקוח חסרים לאמנים, קיבוע תיקיות פרויקטים." },
   { version: "2026.09.27-34", date: "2026-09-27", domain: "PROJECTS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מחיקת פרויקט דרך סאני (אישור חזק, תצוגה של כל מה שנמחק / מתנתק / נשאר); כל שלב נבדק והפרויקט נמחק אחרון." },
   { version: "2026.09.27-35", date: "2026-09-27", domain: "VICTOR", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ויקטור: מחיקת קובץ מעבודה (לפי מזהה), הקמת תיקיית העבודה; Red Films: הקמת תיקיית הפקה." },
+  { version: "2026.09.27-36", date: "2026-09-27", domain: "FILES_DROPBOX", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ערוץ קבצים: קובץ שהבוס שם בתיקיית Sunny Inbox מוצב דרך הכותבים הקנוניים (פרויקט / מסירה / חומרי עבודה / גרסת מיקס / קבצים סופיים / סקיצות / ביטים / תמונות / קבלות / מסמכים / ויקטור / סושיאל) — אחרי אישור; בלי נתיב, בלי מגבלה חדשה" },
+  { version: "2026.09.27-36", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "שדות קישור מוקלדים (הפקה / רפרנס וידאו / סושיאל / ויקטור / יומן שליחה / קליטה): הקישור המדויק מוצג בתצוגה, נשמר רק אחרי אישור, לא נפתח ולא מורץ; PATCH רפרנס וידאו הוקשח לכותרת / הערות" },
 ];

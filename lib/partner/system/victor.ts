@@ -233,7 +233,7 @@ export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "app/api/vendor/victor/work/[id]/route.ts": "ca778b750b4f26f67b926021d5dffc8e4a2e7ef8bdadd88826929f43e05e9d1f",
   "app/api/vendor/victor/work/[id]/file/route.ts": "d2b6101bb57ffbdcd8e2d4be6857802c287caed2bfe92b0b07602cd1f19b516a",
   "app/api/vendor/victor/salary/route.ts": "eccb286ff7725a7e1e2d2169053f20485e97489d2cd8b86c3851cb267598de49",
-  "app/api/dropbox/vendor-upload/route.ts": "3cba9c3f1eebf81583ec1d88af82cc1b544d2792d776e56491ac59696889648e",
+  "app/api/dropbox/vendor-upload/route.ts": "9e7b1f7b39b9e22f46b62c8d5ddb1fc8032c2ebdda48a0730f0c3c00aa239226",
   "app/api/dropbox/vendor-upload/chunk/route.ts": "1b47767b820f9fc32a763d9151e124e04c23a71ec46fe2bce03c8159ac76f474",
   "app/api/dropbox/vendor-folder/route.ts": "0220bc4b0b0171c5f13594b6bd3be812636a2deff0e275bcbe74461d8b101973",
   "lib/victor-scope.ts": "312c3d7a949eb874b2b8b02d93e2f11ce1519f0dce3908fd36789bfda76a8988",

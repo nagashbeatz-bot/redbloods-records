@@ -48,7 +48,6 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 // ── classification inputs (discovered 2026-09-26/27; NOT fixed here — Wave 0 classifies, a hardening mission fixes) ──
 /** Known unsafe / non-atomic behaviour: the action must be hardened before Sunny may execute it. */
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
-  "RF.REFERENCES": "reference links are written as a whole body",
 };
 /** Unsafe behaviour already HARDENED in the shared writers (2026-09-27, Universal Actions) — kept as the audit trail of what changed. */
 export const HARDENED: Readonly<Record<string, string>> = {
@@ -83,6 +82,7 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "PROJECT.BACKFILL_START_DATES": "the backfill write is guarded by start_date IS NULL and failures are reported (lib/writes/backfills; the route uses it)",
   "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": "names created meanwhile are re-checked before insert — no duplicate client (lib/writes/backfills)",
   "PROJECT.DELETE_PROJECT": "each cleanup step is checked and the delete aborts on the first failure; the project row goes LAST so a failure is retry-safe; Victor works go through the shared writer (their tasks too) — lib/writes/project-delete, the route uses it. A single database transaction still needs an approved SQL function (reported)",
+  "RF.REFERENCES": "reference-links PATCH wrote the whole request body into the row → the shared writer updateVideoReference (lib/writes/redfilms) accepts only title / notes (the UI and Sunny use the same writer)",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {
@@ -250,6 +250,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "SOCIAL.PROMOTIONS", domain: "SOCIAL", en: "Create / edit / delete a paid promotion (+ its expense)", routes: ["app/api/social/promotions/route.ts", "app/api/social/promotions/[id]/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "financial primitive (Wave 3)", effects: ["FINANCE"] },
   // Wave 0 / D-decisions kept visible as blocked contracts
   { id: "SHOW.RECORD_SHOW_ADVANCE", domain: "SHOW", en: "Record a show advance payment (D5)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D5 — how a show advance is modelled awaits the Boss", effects: ["FINANCE"] },
+  { id: "SHOW.REHEARSAL_COUNTING_RULE", domain: "SHOW", en: "Decide which rehearsal statuses count toward the show split (D6)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D6 — which rehearsal status counts (auto-marked התקיים vs בוצע / paid) awaits the Boss; today rehearsalCountedAmount runs unchanged", effects: ["FINANCE"] },
   { id: "RF.MARK_PRODUCTION_APPROVED", domain: "RF", en: "Mark a Red Films production approved (D7)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D7 — the 'production approved' state awaits the Boss" },
   { id: "SHOW.SET_SHOW_CURRENCY", domain: "SHOW", en: "Record the currency of a show price", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "shows store no currency", effects: ["FINANCE"] },
   { id: "RF.SET_PAYMENT_CURRENCY", domain: "RF", en: "Record the currency of a Red Films payment", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "Red Films money has no currency column", effects: ["FINANCE"] },
@@ -336,6 +337,13 @@ const LIVE: readonly ActionContract[] = [
   },
 ];
 
+// ── improvement candidates (Boss decision 2026-09-27) ──────────────────────────────────────────────────────────────
+/** Not Redbloods operations (the Boss cannot do them in the app either) — proposals, never census rows, never a Sunny
+ *  gap. Building one is a separate, approved product / infrastructure mission; then it becomes a route + a primitive. */
+export const IMPROVEMENT_CANDIDATES: ReadonlyArray<{ id: string; kind: "PRODUCT" | "INFRASTRUCTURE"; en: string; he: string; today: string; wouldNeed: string }> = [
+  { id: "PROJECT.FILE_RENAME_MOVE", kind: "PRODUCT", en: "Rename / reorder project files, move a project folder", he: "שינוי שם / סידור קבצי פרויקט והעברת תיקייה", today: "no route and no screen in Redbloods (project-actions FILE_RENAME_MOVE, enforcement NO_ROUTE)", wouldNeed: "a product decision (which files, what the player / delivery / send-log references do after a move), a shared writer + a route + a screen, then a typed primitive" },
+  { id: "PROJECT.ATOMIC_DELETE_FN", kind: "INFRASTRUCTURE", en: "Delete a project and its dependents in one database transaction", he: "מחיקת פרויקט ותלויותיו בטרנזקציה אחת במסד הנתונים", today: "DELETE_PROJECT runs the app's ordered dependent cleanup then the row delete (gap PRJ_DELETE_NON_ATOMIC: a mid-way failure can leave partial cleanup; the preview lists every dependent and the result is verified)", wouldNeed: "an approved database function (SQL) called by the shared writer — no SQL is written or run until the Boss approves" },
+];
 // ── explicit exclusions (write routes that are not business actions) ────────────────────────────────────────────────
 /** A write route that is intentionally NOT an action, with the reason. G1 accepts a route only via a contract or here. */
 export const ROUTE_EXCLUSIONS: Readonly<Record<string, string>> = {};
@@ -362,7 +370,7 @@ function build(): ReadonlyMap<string, ActionContract> {
   const prim = new Set(ALL_PRIMITIVES.map((p) => p.actionId));
   ALL_PRIMITIVES.map(fromPrimitive).forEach(add);
   LIVE.filter((c) => !prim.has(c.id)).forEach(add);
-  for (const inv of INVENTORIES) for (const e of inv.entries) add(fromInventory(inv.domain, inv.source, e));
+  for (const inv of INVENTORIES) for (const e of inv.entries) if (e.enforcement !== "NO_ROUTE") add(fromInventory(inv.domain, inv.source, e)); // NO_ROUTE = not a Redbloods operation → IMPROVEMENT_CANDIDATES
   SUPPLEMENTARY.map(fromSupp).forEach(add);
   WAVE1_CANDIDATES.filter((w) => !prim.has(w.id)).map(fromW1).forEach(add);
   // One fact, one source: a census row whose whole outcome the live primitives carry out IS executable (COVERAGE_MAP);

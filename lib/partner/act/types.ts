@@ -26,7 +26,7 @@ export const EFFECT_KEYS: readonly EffectKey[] = ["FINANCE", "LEDGER", "CALENDAR
 /** Execution phase — plans must be ordered INTERNAL → EXTERNAL → COMMUNICATION. */
 export type Phase = "INTERNAL" | "EXTERNAL" | "COMMUNICATION";
 
-export interface ArgSpec { name: string; kind: "entityKey" | "text" | "number" | "ymd" | "time" | "enum" | "boolean" | "money"; required: boolean; values?: readonly string[]; noteHe?: string }
+export interface ArgSpec { name: string; kind: "entityKey" | "text" | "number" | "ymd" | "time" | "enum" | "boolean" | "money" | "url"; required: boolean; values?: readonly string[]; noteHe?: string }
 
 export interface ActionContract {
   id: string;

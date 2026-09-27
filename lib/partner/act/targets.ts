@@ -23,6 +23,9 @@ export const NON_KEY_TARGETS: Readonly<Record<string, string>> = {
   "project-asset": "project + fileRef — a wrong / missing fileRef is refused WITH the project's files (fileRef — name); a file path is never used",
   "album-prev": "project (+ rowId) — a wrong rowId is refused WITH the table's rows (rowId — song)",
   "victor-asset": "victorWork + fileRef — a wrong / missing fileRef is refused WITH the work's files (fileRef — name); never a path",
+  "victor-brief": "victorWork + briefRef — a wrong / missing briefRef is refused WITH the work's brief files (briefRef — name); never a path",
+  "victor-reference": "victorWork + referenceId — a wrong / missing id is refused WITH the work's references (referenceId — title)",
+  upload: "a file-channel placement key (target + inboxItem) — the inboxItem handle comes from the refusal that lists the Sunny Inbox (inboxItem — name — size)",
   notification: "MARK_NOTIFICATIONS_READ with a wrong / missing key is refused WITH your unread notifications (notification:<id> — title)",
 };
 /** Parent kind → the child kinds listed under it (the capability's contract; the test pins it against the primitives). */
@@ -31,7 +34,7 @@ export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {
   "social-campaign": ["social-content", "promotion", "social-attachment"],
   "social-content": ["social-attachment"],
   "mix-work": ["mix-version", "mix-comment", "mix-attachment", "mix-line", "premix-note"],
-  "rf-production": ["rf-budget-line", "rf-payment", "rf-document", "rf-reference"],
+  "rf-production": ["rf-budget-line", "rf-payment", "rf-document", "rf-reference", "rf-video-reference"],
   "label-artist": ["ledger-entry", "media-income"],
   client: ["proposal", "meeting", "task"],
   show: ["session", "task"],
@@ -95,6 +98,7 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       for (const x of rows(d.budgetPayments)) if (x.productionId === pid) add("rf-payment", x.id ?? null, j(x.date, x.amount, x.method));
       for (const x of rows(d.rfDocuments)) if (x.productionId === pid) add("rf-document", x.id, j(x.fileName, x.fileType));
       for (const x of rows(d.rfRefImages)) if (x.productionId === pid) add("rf-reference", x.id, j(x.fileName, x.caption, x.tag));
+      for (const x of rows(d.rfRefLinks)) if (x.productionId === pid) add("rf-video-reference", x.id, j(x.provider, x.title, x.notes));
     } else if (pk === "label-artist") {
       if (!lab) throw new Error("LABEL_DETAIL");
       for (const x of rows(lab.ledger)) if (x.artistId === pid) add("ledger-entry", x.id, j(x.entryDate, x.entryType, x.amount, x.description));

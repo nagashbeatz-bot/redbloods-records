@@ -100,7 +100,7 @@ const CASES: FamilyCase<W>[] = [
   const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: true }, "כן בוס");
   ok("closing needs the three party flags repeated in the approval", rc.a?.status === "CONFIRMATION_VALUES_MISSING" && c.calls.length === 0);
   ok("a regular studio session is not edited as a rehearsal", (await q("UPDATE_SHOW_REHEARSAL", { session: `session:${U(30)}`, status: "בוצע" }, (() => { const x = mk(); x.w.sessions[U(30)].sessionType = "סשן"; return x; })())).status === "WRONG_ENTITY_TYPE");
-  ok("D5 / D6 / D7 stay the Boss's decisions (registry unchanged)", ["SHOW.RECORD_SHOW_ADVANCE", "SHOW.REHEARSAL", "RF.MARK_PRODUCTION_APPROVED"].every((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
+  ok("D5 / D6 / D7 stay the Boss's decisions (registry unchanged)", ["SHOW.RECORD_SHOW_ADVANCE", "SHOW.REHEARSAL_COUNTING_RULE", "RF.MARK_PRODUCTION_APPROVED"].every((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
 
   console.log("\nVocabularies pinned to the code");
   const st = read("lib/shows-types.ts");

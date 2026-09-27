@@ -22,6 +22,13 @@ import type { SocialFamilyWriters } from "./primitives/social";
 import type { SystemFamilyWriters } from "./primitives/system";
 import type { FilesFamilyWriters } from "./primitives/files";
 import type { BackfillFamilyWriters } from "./primitives/backfills";
+import type { UploadFamilyWriters } from "./primitives/uploads";
+import type { LinkFamilyWriters } from "./primitives/links";
+import { PRODUCTION_LINK_FIELDS, SOCIAL_LINK_FIELDS, segmentsText } from "./primitives/links";
+/** Social link arg → the content column (the wiring owns storage column names; primitives only know the typed args). */
+export const SOCIAL_LINK_COLUMNS: Readonly<Record<string, string>> = { assetLink: "asset_link", storageLink: "dropbox_link", postedLink: "posted_url" };
+if (Object.keys(SOCIAL_LINK_COLUMNS).join() !== SOCIAL_LINK_FIELDS.join()) throw new Error("social link args drifted");
+import { linkRef } from "./primitives/core";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -31,7 +38,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -414,13 +421,15 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
   };
 }
 
+const sendLinkBody = (b: Record<string, unknown>): Record<string, unknown> => { if (!("sendLink" in b)) return b; const { sendLink, ...rest } = b; return { ...rest, dropboxUrl: sendLink }; };
 /** Send log + album tracks (lib/writes/worklog). */
 async function worklogFamilyWriters(): Promise<WorklogFamilyWriters> {
   const W = await import("@/lib/writes/worklog");
   return {
-    readSendLogEntry: (id) => W.readSendLogEntry(id),
-    createSendLogEntry: async (b) => String((await W.createSendLogEntry(b)).id),
-    updateSendLogEntry: async (id, b) => { await W.updateSendLogEntry(id, b); },
+    // the stored link never leaves MAIN: primitives see only its fingerprint (send_link_ref) and hand back `sendLink`
+    async readSendLogEntry(id) { const r = await W.readSendLogEntry(id); if (!r) return null; const { dropbox_url, ...rest } = r as Record<string, unknown>; return { ...rest, send_link_ref: linkRef(dropbox_url) }; },
+    createSendLogEntry: async (b) => String((await W.createSendLogEntry(sendLinkBody(b))).id),
+    updateSendLogEntry: async (id, b) => { await W.updateSendLogEntry(id, sendLinkBody(b)); },
     deleteSendLogEntryWithCascade: (id) => W.deleteSendLogEntryWithCascade(id),
     readAlbumTrack: (id) => W.readAlbumTrack(id),
     albumTrackOrder: (pid) => W.albumTrackOrder(pid),
@@ -523,6 +532,92 @@ async function backfillFamilyWriters(): Promise<BackfillFamilyWriters> {
     async createMissingArtistClients() { return W.createArtistClients((await W.missingArtistClients()).missing); },
     async folderFreezeCandidates() { return (await W.folderFreezePlan()).filter((r) => r.willSet).map((r) => ({ id: r.id, name: r.name })); },
     async applyFolderFreezeNow() { const r = await W.applyFolderFreeze((await W.folderFreezePlan()).filter((x) => x.willSet)); return { applied: r.applied.length, failed: r.failed.length }; },
+  };
+}
+
+/** The file channel (lib/writes/inbox + lib/writes/file-channel) — handles only, never a path. */
+async function uploadFamilyWriters(): Promise<UploadFamilyWriters> {
+  const I = await import("@/lib/writes/inbox");
+  const F = await import("@/lib/writes/file-channel");
+  const s = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return {
+    async listInbox() { return (await I.listInbox()).map((x) => ({ ref: x.ref, name: x.name, size: x.size, mime: x.mime })); },
+    async inboxItemView(ref) { const x = await I.inboxItem(ref); return x ? { ref: x.ref, name: x.name, size: x.size, mime: x.mime } : null; },
+    async inboxFits(dest, ref) {
+      const map: Record<string, Parameters<typeof F.fileFits>[0]> = { PROJECT_FILE: "PROJECT_FILE", DELIVERY: "DELIVERY", WORK_MATERIAL: "WORK_MATERIAL", MIX_VERSION: "MIX_VERSION", FINAL_FILE: "FINAL_FILE", COMMENT_ATTACHMENT: "COMMENT_ATTACHMENT", SOCIAL: "SOCIAL", RF_DOCUMENT: "RF_DOCUMENT", RF_REFERENCE: "RF_REFERENCE", RF_RECEIPT: "RF_RECEIPT", VICTOR_FILE: "VICTOR_FILE", VICTOR_BRIEF: "VICTOR_BRIEF", SKETCH_NEW: "SKETCH", SKETCH_VERSION: "SKETCH", SKETCH_BEAT: "SKETCH", BEAT_NEW: "BEAT", BEAT_FILE: "BEAT", PROFILE_IMAGE: "PROFILE_IMAGE", PORTAL_FILE: "PORTAL_FILE", PROJECT_COVER: "PROJECT_COVER" };
+      return map[dest] ? F.fileFits(map[dest], ref) : null;
+    },
+    async placeInboxItem(dest, t, ref, o) {
+      switch (dest) {
+        case "PROJECT_FILE": return F.placeProjectFile(String(t.projectId), ref, { name: s(o.name), subfolder: s(o.subfolder), trackId: s(o.trackId), versionLabel: s(o.versionLabel) });
+        case "DELIVERY": return F.placeInDelivery(String(t.projectId), ref);
+        case "WORK_MATERIAL": return F.placeWorkMaterial(String(t.workId), ref, o.materialType as "rough" | "reference" | "stems" | "doc");
+        case "MIX_VERSION": return F.placeMixVersion(String(t.workId), ref, { label: String(o.label), addToExisting: o.addToExisting === true, mixTargetId: s(o.mixTargetId) ?? null });
+        case "FINAL_FILE": return F.placeFinalFile(String(t.workId), ref);
+        case "COMMENT_ATTACHMENT": return F.placeCommentAttachment(String(t.commentId), ref);
+        case "SOCIAL": return F.placeSocialFile(String(t.contentItemId), String(t.campaignId), t.projectId ?? null, ref);
+        case "RF_DOCUMENT": return F.placeRfDocument(String(t.productionId), ref, String(o.fileType ?? "אחר"), String(o.notes ?? ""));
+        case "RF_REFERENCE": return F.placeRfReference(String(t.productionId), ref, String(o.tag ?? "כללי"));
+        case "RF_RECEIPT": return F.placeRfReceipt(String(t.paymentId), ref);
+        case "VICTOR_FILE": return F.placeVictorFile(String(t.workId), ref, String(o.subFolder), s(o.versionLabel));
+        case "VICTOR_BRIEF": return F.placeVictorBrief(String(t.workId), ref);
+        case "SKETCH_NEW": return F.placeNewSketch(String(t.slug), ref, { title: String(o.title), description: s(o.description), notes: s(o.notes) });
+        case "SKETCH_VERSION": return F.placeSketchVersion(String(t.slug), String(t.sketchId), ref);
+        case "SKETCH_BEAT": return F.placeSketchBeat(String(t.slug), String(t.sketchId), ref);
+        case "BEAT_NEW": return F.placeNewBeat(ref, { name: String(o.name), genre: String(o.genre ?? ""), musicalKey: String(o.musicalKey ?? "") });
+        case "BEAT_FILE": return F.placeBeatFile(String(t.beatId), ref, { name: String(t.name), genre: String(t.genre ?? ""), musicalKey: String(t.musicalKey ?? "") });
+        case "PROFILE_IMAGE": return F.placeArtistProfileImage(String(t.slug), ref);
+        case "PORTAL_FILE": return F.placeArtistPortalFile(String(t.slug), ref, o.kind as "performance" | "pressKit");
+        case "PROJECT_COVER": return F.placeProjectCover(String(t.projectId), ref);
+        case "DISCARD": return F.discardInboxItem(ref);
+      }
+    },
+  };
+}
+
+/** Link fields — a stored link is returned ONLY as a fingerprint (linkRef); the new URL comes from the Boss. */
+async function linkFamilyWriters(): Promise<LinkFamilyWriters> {
+  const RF = await import("@/lib/writes/redfilms");
+  const SO = await import("@/lib/writes/social");
+  const V = await import("@/lib/writes/victor");
+  const lastLine = (t: unknown) => String(t ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop() ?? null;
+  return {
+    async productionLinks(id) {
+      const r = await RF.readProductionRow(id); if (!r) return null;
+      const links: Record<string, string | null> = {};
+      for (const [f, col] of Object.entries(PRODUCTION_LINK_FIELDS)) links[f] = linkRef((r as Record<string, unknown>)[col]);
+      links.addReferenceLink = linkRef(lastLine((r as Record<string, unknown>).ref_links));
+      return { title: String((r as Record<string, unknown>).title ?? ""), links };
+    },
+    async setProductionLinks(id, patch, appendReference) {
+      const body: Record<string, unknown> = { ...patch };
+      for (const k of Object.keys(body)) if (body[k] === null) body[k] = "";
+      if (appendReference) { const r = await RF.readProductionRow(id); const cur = String((r as Record<string, unknown> | null)?.ref_links ?? "").trimEnd(); body.ref_links = cur ? `${cur}\n${appendReference}` : appendReference; }
+      const res = await RF.updateProduction(id, body);
+      if (res.kind !== "ok") throw new Error(`not updated: ${res.kind}`);
+    },
+    youtubeVideoId: (u) => RF.youtubeVideoId(u),
+    videoReferenceCount: (id) => RF.videoReferenceCount(id),
+    async addVideoReference(id, i) { const r = await RF.addVideoReference(id, { url: i.url, video_id: i.videoId, title: i.title, notes: i.notes }); return String(r.id); },
+    async socialContentLinks(id) {
+      const r = await SO.readSocialContent(id); if (!r) return null;
+      const links: Record<string, string | null> = {};
+      for (const [f, col] of Object.entries(SOCIAL_LINK_COLUMNS)) links[f] = linkRef((r as unknown as Record<string, unknown>)[col]);
+      return { title: String(r.title ?? ""), links };
+    },
+    async setSocialContentLinks(id, patch) { const body: Record<string, unknown> = {}; for (const [k, v] of Object.entries(patch)) if (SOCIAL_LINK_COLUMNS[k]) body[SOCIAL_LINK_COLUMNS[k]] = v ?? ""; await SO.updateSocialContent(id, body); },
+    async victorReferenceViews(workId) { const r = await V.listVictorReferences(workId); return r ? r.map((x) => ({ id: x.id, title: x.title, note: x.note, link: linkRef(x.url) })) : null; },
+    addVictorReference: (w, i) => V.addVictorReference(w, i),
+    updateVictorReference: (w, id, p) => V.updateVictorReference(w, id, p),
+    removeVictorReference: (w, id) => V.removeVictorReference(w, id),
+    async previewIntakeLink(u, n) { const I = await import("@/lib/writes/intake"); return I.previewIntakeLink(u, n); },
+    async importIntakeLink(pid, u, n, del) { const I = await import("@/lib/writes/intake"); return I.importIntakeLink(pid, u, n, del); },
+    readVideoReference: (id) => RF.readVideoReference(id),
+    async updateVideoReference(id, p) { const r = await RF.updateVideoReference(id, p); if (r === "empty") throw new Error("nothing to update"); },
+    deleteVideoReference: (id) => RF.deleteVideoReference(id),
+    async briefFileViews(w) { const r = await V.briefFileViews(w); return r ? r.map((x) => ({ ref: x.ref, name: x.name, segments: segmentsText(x.segments) })) : null; },
+    async removeBriefFile(w, ref) { const p = await V.briefPathOf(w, ref); if (!p) throw new Error("brief file not found"); const r = await V.removeBriefFile(w, p); if (!Array.isArray(r)) throw new Error(String(r)); },
+    async setBriefSegments(w, ref, segs) { const p = await V.briefPathOf(w, ref); if (!p) throw new Error("brief file not found"); const r = await V.setBriefSegments(w, p, segs.map((s, i) => ({ id: `${s.start}-${s.end}-${i}`, ...s }))); if (!Array.isArray(r)) throw new Error(String(r)); return "ok"; },
   };
 }
 

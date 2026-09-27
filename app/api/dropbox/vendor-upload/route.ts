@@ -1,7 +1,7 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
-import { queueVictorUploadNotice } from "@/lib/victor-upload-notify";
-import { isWorkId, isWithinRoot, uploadDestination } from "@/lib/victor-scope";
+import { isWorkId } from "@/lib/victor-scope";
+import { uploadVictorWorkFile } from "@/lib/writes/uploads";
 
 export const maxDuration = 300;
 
@@ -16,18 +16,9 @@ export const maxDuration = 300;
  *   subFolder     ג€” "01_From_Redbloods" | "03_Approved"
  */
 
-function dropboxArg(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
-    `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
-}
-
 export async function POST(req: NextRequest) {
   const denied = await requireVictorAccess(); if (denied) return denied;
   try {
-    const { getDropboxToken } = await import("@/lib/dropbox-token");
-    const token = await getDropboxToken();
-
     const formData    = await req.formData();
     const file        = formData.get("file")         as File   | null;
     const workId      = formData.get("workId")       as string | null;
@@ -47,114 +38,15 @@ export async function POST(req: NextRequest) {
     if (!isWorkId(workId)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const role: "owner" | "victor" = (await getAuthRole()) === "owner" ? "owner" : "victor";
 
-    // Resolve the base folder SERVER-SIDE from the workId (creating it on first
-    // use). The client never sends a path, so Victor can upload without ever
-    // receiving the Artist/Project-revealing Dropbox folder.
-    let baseFolder: string;
-    try {
-      const { ensureVendorFolder } = await import("@/lib/vendor-folder");
-      baseFolder = await ensureVendorFolder(workId);
-    } catch (e) {
-      console.error("[vendor-upload] folder resolve failed:", e);
-      return NextResponse.json({ error: "folder not ready" }, { status: 409 });
-    }
-
-    // The destination is derived server-side (lib/victor-scope): inside the work folder only, a plain bucket
-    // name (Victor: Production / 02_From_Victor), a sanitized file name. Anything else -> 403, nothing uploaded.
-    const dropboxPath = uploadDestination(baseFolder, subFolder, file.name, role);
-    if (!dropboxPath) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
-    // Upload to Dropbox
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
-      method: "POST",
-      headers: {
-        Authorization:     `Bearer ${token}`,
-        "Content-Type":    "application/octet-stream",
-        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: true, mute: false }),
-      },
-      body: buffer,
-    });
-
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      let detail = errText;
-      try { detail = JSON.parse(errText)?.error_summary ?? errText; } catch {}
-      return NextResponse.json({ error: `Dropbox: ${detail}` }, { status: 500 });
-    }
-
-    const uploaded   = (await uploadRes.json()) as { path_display: string; name: string };
-    const finalPath  = uploaded.path_display;
-    if (!isWithinRoot(finalPath, baseFolder)) {
-      console.error("[vendor-upload] committed path left the work folder - refusing to record it");
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-    const streamUrl  = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
-
-    // Get share link
-    let shareUrl = "";
-    try {
-      const sRes = await fetch("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
-      });
-      if (sRes.ok) {
-        const sd = await sRes.json() as { url: string };
-        shareUrl = sd.url;
-      } else {
-        const sd = await sRes.json() as { error?: { shared_link_already_exists?: { metadata?: { url?: string } } } };
-        shareUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
-      }
-    } catch {}
-
-    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, uploadedAt: new Date().toISOString(), uploadedBy: role, ...(versionLabel ? { versionLabel } : {}) };
-
-    // Update vendor_project_work.files_sent
-    const { updateVictorWork, fileForVictor } = await import("@/lib/vendor-store");
-    // Fetch current record to append
-    const { supabase } = await import("@/lib/supabase");
-    const { data: row } = await supabase
-      .from("vendor_project_work")
-      .select("files_sent, project_id, vendor_name, title")
-      .eq("id", workId)
-      .maybeSingle();
-
-    // Ownership: only Victor's work rows may receive uploads here.
-    if (!row || (row.vendor_name as string) !== "victor") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-
-    const currentFiles = (row?.files_sent as typeof newFile[]) ?? [];
-    // Idempotent append: a retried / double-submitted upload of the SAME file
-    // commits to the SAME Dropbox path (Dropbox collapses identical content onto
-    // the existing path instead of autorenaming). If that path is already listed,
-    // keep the existing entry untouched and DON'T add a second one; otherwise
-    // append as before. Prevents a duplicate files_sent entry for one real file.
-    const alreadyListed = currentFiles.some((f) => f?.dropboxPath === finalPath);
-    if (!alreadyListed) {
-      await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
-    }
-
-    // ── Owner push (batched, 3-min window) — ONLY when Victor uploaded, and only
-    //    after the file is saved. Best-effort: never block/fail the upload. ──
-    try {
-      if (role === "victor") {
-        let projectName = (row.title as string | null) ?? "";
-        if (!projectName && row.project_id) {
-          const { data: proj } = await supabase
-            .from("projects").select("name").eq("id", row.project_id as string).maybeSingle();
-          projectName = (proj?.name as string) ?? "";
-        }
-        await queueVictorUploadNotice(workId, projectName || "פרויקט", runTotal);
-      }
-    } catch (e) {
-      console.error("[vendor-upload] notify queue failed (non-fatal):", e);
-    }
-
-    // Victor gets the path-free file object (opaque fileRef, no storage path, no share link) - exactly
-    // what his view needs to play / download / delete it; the Owner keeps the full entry.
-    return NextResponse.json({ ok: true, file: role === "victor" ? { ...fileForVictor(newFile), deletable: true } : newFile });
+    // Shared writer (lib/writes/uploads): the base folder is resolved SERVER-SIDE from the workId, the destination is
+    // derived by lib/victor-scope (inside the work folder only, a plain bucket, a sanitized name — anything else 403),
+    // the committed path is re-checked, only Victor's work rows accept files, idempotent append, and the batched Owner
+    // push ONLY when Victor uploaded.
+    const r = await uploadVictorWorkFile(workId, file, { subFolder, role, versionLabel, runTotal });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    const { fileForVictor } = await import("@/lib/vendor-store");
+    // Victor gets the path-free file object (opaque fileRef, no storage path, no share link); the Owner the full entry.
+    return NextResponse.json({ ok: true, file: role === "victor" ? { ...fileForVictor(r.newFile), deletable: true } : r.newFile });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "׳©׳’׳™׳׳× ׳©׳¨׳×";
     console.error("[dropbox/vendor-upload]", msg);
