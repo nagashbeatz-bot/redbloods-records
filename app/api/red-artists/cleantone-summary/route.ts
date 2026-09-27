@@ -44,6 +44,8 @@ export async function GET() {
       status: s.status,
       paymentStatus: fees[s.id]?.DJ_FEE?.status ?? "לא שולם",
       confirmationStatus: s.dj_confirmation_status,
+      // deal type (NOT a payment status): an unpaid collaboration has no fee — the portal shows "שת״פ" and "—"
+      dealType: s.deal_type === "UNPAID_COLLAB" ? "UNPAID_COLLAB" : "PAID",
     });
 
     const upcoming = mine

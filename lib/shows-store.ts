@@ -35,7 +35,7 @@ export function showCalendarSummary(show: Pick<Show, "name" | "artist">): string
 export function showCalendarDescription(show: Pick<Show,
   "name" | "artist" | "booker_name" | "contact_person" | "phone" |
   "location" | "show_price" | "dj_name" | "notes"
-> & { currency?: string | null }): string {
+> & { currency?: string | null; deal_type?: string | null }): string {
   // The show's own currency (shows.currency); a blank / missing one normalizes to ₪ — never a silent ₪ for a $ show.
   const cur = (show.currency ?? "").trim() || "₪";
   const fmt = (n: number) => `${cur}${n.toLocaleString("he-IL")}`;
@@ -48,7 +48,8 @@ export function showCalendarDescription(show: Pick<Show,
     show.location       ? `מקום: ${show.location}`            : null,
     show.dj_name        ? `דיג׳יי: ${show.dj_name}`          : null,
     "",
-    `מחיר הופעה: ${fmt(show.show_price || 0)}`,
+    // an unpaid collaboration has no price at all — never a "₪0" line
+    show.deal_type === "UNPAID_COLLAB" ? "סוג עסקה: שת״פ ללא תשלום" : `מחיר הופעה: ${fmt(show.show_price || 0)}`,
     show.notes          ? `הערות: ${show.notes}`              : null,
   ];
   return lines.filter(l => l !== null).join("\n");
@@ -91,6 +92,7 @@ export async function createShow(input: Partial<CreateShowInput> & { name: strin
       contact_person:    input.contact_person    ?? "",
       phone:             input.phone             ?? "",
       status:            effectiveStatus,
+      deal_type:         input.deal_type         ?? "PAID",
       payment_status:    input.payment_status    ?? "לא שולם",
       show_price:        input.show_price        ?? 0,
       dj_fee:            input.dj_fee            ?? 500,

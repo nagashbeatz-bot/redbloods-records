@@ -56,8 +56,10 @@ export async function GET(
       const currency = s.currency || "₪";
       const fees = feeMap[s.id] ?? { DJ_FEE: null, ARTIST_FEE: null };
 
+      // deal type (NOT a payment status): an unpaid collaboration counts as a show, never as money
+      const unpaidCollab = s.deal_type === "UNPAID_COLLAB";
       lines.push({
-        id: s.id, name: s.name, date: s.date, status: s.status,
+        id: s.id, name: s.name, date: s.date, status: s.status, dealType: unpaidCollab ? "UNPAID_COLLAB" : "PAID",
         paymentStatus: s.payment_status,                            // the CLIENT payment, never rewritten
         showPrice: s.show_price ?? 0, djFee: split.djFee,
         labelProfit: split.labelProfit, artistFee: split.artistFee,
@@ -70,6 +72,7 @@ export async function GET(
       const t = (byCurrency[currency] ??= emptyTotals());
       if (!included) { t.needsAttribution += 1; continue; }
       t.count += 1;
+      if (unpaidCollab) continue; // no label profit / artist / DJ money is expected from it
       if (s.payment_status === "שולם") t.labelReceived += split.labelProfit;
       else t.labelExpected += split.labelProfit;
       // A1: each fee by its own row. A paid row counts in ITS currency (the amount actually paid).

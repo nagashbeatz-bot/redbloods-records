@@ -250,6 +250,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "SHOW.RECORD_SHOW_ADVANCE", domain: "SHOW", en: "Record money received for a show — deposit / partial / full / overpayment (D5: a SHOW_PAYMENT row in Finance)", routes: ["app/api/shows/[id]/payments/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "executed through RECORD_SHOW_PAYMENT", effects: ["FINANCE"] },
   { id: "RF.MARK_PRODUCTION_APPROVED", domain: "RF", en: "Mark the current Red Films stage approved (D7: the Owner approved the current production / edit stage to proceed — not client / payment / final)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed as a status / edit-status change through UPDATE_PRODUCTION_DETAILS" },
   { id: "SHOW.SET_SHOW_CURRENCY", domain: "SHOW", en: "Set the currency of a show (price, DJ fee and its Finance rows)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed through SET_SHOW_CURRENCY", effects: ["FINANCE"] },
+  { id: "SHOW.SET_SHOW_DEAL_TYPE", domain: "SHOW", en: "Switch a show's deal type PAID ↔ UNPAID_COLLAB (not a payment status; PAID → collaboration refused while real money exists)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed through SET_SHOW_DEAL_TYPE", effects: ["FINANCE", "LEDGER", "DELETION"] },
   { id: "RF.SET_PAYMENT_CURRENCY", domain: "RF", en: "Set the currency of Red Films money (production / budget line — its payments follow it / equipment)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed through SET_RF_CURRENCY", effects: ["FINANCE"] },
 ];
 function fromSupp(s: Supp): ActionContract {

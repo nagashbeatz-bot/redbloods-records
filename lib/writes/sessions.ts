@@ -40,6 +40,7 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
   if (!projectId && !cleanTitle) throw new SessionInputError("בחר פרויקט או הזן שם לסשן");
   const costNum = cost === "" || cost == null ? null : Number(cost);
   if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) throw new SessionInputError("עלות לא תקינה");
+  if (sessionType === REHEARSAL_SESSION_TYPE && showId && costNum != null && costNum > 0) await refuseCollabRehearsalCost(showId);
 
   const { data, error } = await supabase.from("sessions").insert({
     project_id: projectId ?? null, title: cleanTitle || null, date: date || null, start_time: startTime || null, end_time: endTime || null,
@@ -131,6 +132,11 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
   if (cost !== undefined) {
     const costNum = cost === "" || cost == null ? null : Number(cost);
     if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) throw new SessionInputError("עלות לא תקינה");
+    if (costNum != null && costNum > 0) {
+      const { data: cur } = await supabase.from("sessions").select("show_id, session_type").eq("id", id).maybeSingle();
+      const c = cur as { show_id: string | null; session_type: string | null } | null;
+      if (c?.show_id && (sessionType ?? c.session_type) === REHEARSAL_SESSION_TYPE) await refuseCollabRehearsalCost(c.show_id);
+    }
     patch.cost = costNum;
   }
   const { data, error } = await supabase.from("sessions").update(patch).eq("id", id).select().single();
@@ -231,4 +237,13 @@ export async function countSessionTransactions(id: string): Promise<number> {
 export async function isShalevProject(projectId: string): Promise<boolean> {
   const { data } = await supabase.from("projects").select("artist").eq("id", projectId).maybeSingle();
   return ((data as { artist?: string } | null)?.artist ?? "").split(/[,،;]/).map((s) => s.trim()).includes("שליו טסמה");
+}
+
+/** Owner decision 2026-09-27: a rehearsal of an unpaid-collaboration show never creates an automatic expense — a cost is
+ *  refused BEFORE any write (the rehearsal itself is booked normally without a cost); a real exceptional expense is
+ *  recorded explicitly in Finance. */
+async function refuseCollabRehearsalCost(showId: string): Promise<void> {
+  const { getShow } = await import("@/lib/shows-store");
+  const { isUnpaidCollab } = await import("@/lib/shows-types");
+  if (isUnpaidCollab(await getShow(showId))) throw new SessionInputError("זו הופעת שת״פ ללא תשלום — לחזרה שלה לא נוצרת הוצאה אוטומטית. קבעו את החזרה בלי עלות; הוצאה חריגה נרשמת פרטנית בכספים");
 }

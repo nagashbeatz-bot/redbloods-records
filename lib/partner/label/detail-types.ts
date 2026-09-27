@@ -15,6 +15,8 @@ export interface DetailMediaIncome { id: string; artistId: string; recordType: s
 export interface DetailBeat { id: string; name: string; genre: string | null; musicalKey: string | null; status: string | null; fileName: string | null; path: string | null; durationSeconds: number | null; createdAt: string | null; assignedTo: Array<{ artistSlug: string; at: string | null }> }
 export interface DetailShow {
   id: string; name: string | null; artistText: string | null; date: string | null; startTime: string | null; location: string | null; contactPerson: string | null; hasPhone: boolean;
+  /** Deal type (NOT a payment status): UNPAID_COLLAB = a normal show with no automatic money at all. Optional = PAID. */
+  dealType?: "PAID" | "UNPAID_COLLAB";
   status: string | null; paymentStatus: string | null; price: number | null; djFee: number | null; artistFee: number | null; advancePayment: number | null; currency?: string | null; notes: string | null;
   artistClientId: string | null; bookerClientId: string | null; bookerName: string | null; djClientId: string | null; djName: string | null; djConfirmationStatus: string | null; djConfirmedAt: string | null;
   hasCalendarEvent: boolean; incomeTxId: string | null; djExpenseTxId: string | null; artistExpenseTxId: string | null; createdAt: string | null; updatedAt: string | null;

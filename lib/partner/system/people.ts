@@ -169,7 +169,7 @@ export const USER_CONTRACTS: readonly UserContract[] = [
       { entity: "role: label DJ", quality: "OWNER_CONFIRMED_RELATION", basis: "taught by the Owner to Sunny (organizational memory)" },
     ],
     tabs: [
-      { id: "HOME", titleHe: "בית", purpose: "Upcoming shows table + label updates; confirm / withdraw each booking.", visibleData: "Show name, artist, date, time, place, his DJ fee, payment pill, confirmation", money: "OWN_FEE_ONLY", writes: [W("Confirm a show", "SERVER_AUTHORIZED", "pending → confirmed; pushes the owner (P_DJ_CONFIRMED)"), W("Withdraw a confirmation", "SERVER_AUTHORIZED", "no push to anyone (gap)")] },
+      { id: "HOME", titleHe: "בית", purpose: "Upcoming shows table + label updates; confirm / withdraw each booking.", visibleData: "Show name, artist, date, time, place, his DJ fee, payment pill, confirmation (an unpaid-collaboration show — deal type UNPAID_COLLAB — is shown like any show, with 'שת״פ' instead of the payment pill and '—' instead of a fee)", money: "OWN_FEE_ONLY", writes: [W("Confirm a show", "SERVER_AUTHORIZED", "pending → confirmed; pushes the owner (P_DJ_CONFIRMED)"), W("Withdraw a confirmation", "SERVER_AUTHORIZED", "no push to anyone (gap)")] },
       { id: "SHOWS", titleHe: "ההופעות שלי", purpose: "All his DJ shows (upcoming + past) with the same confirm controls.", visibleData: "Same table", money: "OWN_FEE_ONLY", writes: [W("Confirm / withdraw", "SERVER_AUTHORIZED", "as above")] },
     ],
     cannot: ["See show status / notes / other money; change his fee; see beats or music; no notification bell."],

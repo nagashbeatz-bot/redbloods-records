@@ -289,7 +289,7 @@ export default function LabelPage() {
   const incomeExpected = (shows?.totals.labelExpected ?? 0) + (media?.totals.labelShareExpected ?? 0);
   const balanceActual = incomeActual - investActual;         // label balance (distinct from artistActualBalance)
   const labelProjectedBalance = Math.round((balanceActual + incomeExpected + Number.EPSILON) * 100) / 100;
-  const openShows = shows ? shows.lines.filter((s) => s.included && s.paymentStatus !== "שולם").length : null;  // unpaid, non-collab
+  const openShows = shows ? shows.lines.filter((s) => s.included && s.dealType !== "UNPAID_COLLAB" && s.paymentStatus !== "שולם").length : null;  // unpaid, non-collab
   const money = (n: number) => {
     const hasFrac = Math.abs(n % 1) > 0.001;
     return `₪${n.toLocaleString("en-US", { minimumFractionDigits: hasFrac ? 2 : 0, maximumFractionDigits: 2 })}`;
@@ -478,7 +478,13 @@ export default function LabelPage() {
                           <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{s.name}</div>
                           <div style={{ fontSize: 11.5, color: MUTED }}>{s.artistName} · {fmtDate(s.date)}</div>
                         </div>
-                        {s.included ? (
+                        {s.dealType === "UNPAID_COLLAB" ? (
+                          // deal type (NOT a payment status): no client payment, no label / artist money — "שת״פ" and "—"
+                          <>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#F472B6", background: "rgba(236,72,153,0.12)", border: "1px solid rgba(236,72,153,0.3)", borderRadius: 100, padding: "3px 10px" }}>שת״פ</span>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: SUB, minWidth: 84, textAlign: "left" }}>—</div>
+                          </>
+                        ) : s.included ? (
                           <>
                             <span style={{ fontSize: 11.5, fontWeight: 700, color: paid ? GREEN : "#F59E0B", background: paid ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${paid ? "rgba(52,211,153,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 100, padding: "3px 10px" }}>לקוח: {s.paymentStatus}</span>
                             <span style={{ fontSize: 11.5, fontWeight: 700, color: artistPaid ? GREEN : SUB, background: artistPaid ? "rgba(52,211,153,0.12)" : "transparent", border: `1px solid ${artistPaid ? "rgba(52,211,153,0.3)" : BORDER2}`, borderRadius: 100, padding: "3px 10px" }}>אמן: {artistPaid ? "שולם" : (s.artistFeeStatus ?? "—")}</span>

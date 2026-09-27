@@ -8,10 +8,10 @@
  */
 import type { ApprovalClass, Enforcement, Who } from "./project-actions";
 
-export const SHOWS_BASELINE_VERSION = "2026.09.27-shows-2";
+export const SHOWS_BASELINE_VERSION = "2026.09.27-shows-3";
 
 /** Live production columns (information_schema, 2026-09-25) — internal, pinned by the test. */
-export const SHOW_SCHEMA_COLUMNS = ["id", "name", "artist", "date", "start_time", "location", "contact_person", "phone", "status", "payment_status", "show_price", "dj_fee", "advance_payment", "notes", "created_at", "updated_at", "artist_client_id", "booker_client_id", "booker_name", "calendar_event_id", "dj_client_id", "dj_name", "linked_income_transaction_id", "linked_dj_expense_transaction_id", "artist_fee", "linked_artist_expense_transaction_id", "dj_confirmation_status", "dj_confirmed_at", "currency"] as const;
+export const SHOW_SCHEMA_COLUMNS = ["id", "name", "artist", "date", "start_time", "location", "contact_person", "phone", "status", "payment_status", "show_price", "dj_fee", "advance_payment", "notes", "created_at", "updated_at", "artist_client_id", "booker_client_id", "booker_name", "calendar_event_id", "dj_client_id", "dj_name", "linked_income_transaction_id", "linked_dj_expense_transaction_id", "artist_fee", "linked_artist_expense_transaction_id", "dj_confirmation_status", "dj_confirmed_at", "currency", "deal_type"] as const;
 
 export type FieldClass = "CANONICAL" | "DERIVED" | "DISPLAY_ONLY" | "LEGACY" | "AMBIGUOUS" | "POSSIBLE_BUG" | "CONFLICT";
 export interface ShowField { field: string; classification: FieldClass; meaning: string; validation: string; writers: string; readers: string; sideEffects: string; history: string; sunnyReads: string }
@@ -35,6 +35,7 @@ export const SHOW_FIELDS: readonly ShowField[] = [
   F("payment_status", "DERIVED", "CLIENT payment, derived from Finance (D5): שולם when received ≥ agreed, מקדמה when partly received; לא שולם / צפוי / בוטל otherwise. Choosing שולם = INTENT: the client paid the whole REMAINING balance (a payment row for it), only when the save moves it from a stored non-שולם value. A save never writes it from the form except a no-money label (לא שולם / צפוי) while Finance holds no payment; undoing a payment is an explicit Finance correction (A1, Owner canon 2026-09-27). (legacy חלקי shown as מקדמה)", "derived by the sync; DB default לא שולם", { sideEffects: "income row received vs expected ONLY (A1: never drives the DJ / artist fee rows — client paid ≠ DJ paid ≠ artist paid)" }),
   F("show_price", "CANONICAL", "Gross (agreed) show price, in the show's currency.", "number, default 0", { sideEffects: "expected balance row (price − received), split" }),
   F("currency", "CANONICAL", "The show's currency (₪ / $ / €, DB check, default ₪ — every row before 2026-09-27 was ₪). Price, DJ fee and every Finance row of the show carry it; never converted, never added across currencies. Refused once money was received.", "DB check ₪ / $ / €", { sideEffects: "its Finance rows' currency; a non-₪ show is not synced into the (currency-less) artist ledger" }),
+  F("deal_type", "CANONICAL", "Deal type (Owner decision 2026-09-27) — NOT a payment status: PAID = the normal finance flow; UNPAID_COLLAB = 'שת״פ ללא תשלום', operationally a completely normal show (artist, portal, calendar, notifications, statuses, DJ confirmation, closing) with ZERO automatic finance activity: no price, expected income, receivable, payment, DJ / artist / rehearsal row, artist ledger entry or 50 / 50 split. Its payment_status is simply not relevant (never 'שת״פ'). It counts as a show everywhere; never as money.", "DB check PAID / UNPAID_COLLAB, NOT NULL, default PAID (migration 2026-09-27; every row before it is PAID)", { writers: "Owner (the 'סוג עסקה' choice in the new-show form / edit form; Sunny CREATE_SHOW dealType + SET_SHOW_DEAL_TYPE) through the shared show writer", readers: "shows hub (badge 'שת״פ', '—' balance, money KPIs exclude it), label page + recoup, DJ portal, calendar description, COO, finance brain, show_view", sideEffects: "UNPAID_COLLAB: the finance sync writes nothing, a payment / fee-paid / money close / rehearsal cost is refused; PAID → UNPAID_COLLAB refused while real money exists (a client payment, a paid fee, a realized ledger entry, a rehearsal expense, any other show row) — otherwise its still-expected rows are removed like a revert to a lead; UNPAID_COLLAB → PAID needs a price and runs the normal flow", sunnyReads: "show_view identity.dealType + money.dealType / moneyApplies; show_portfolio dealType" }),
   F("dj_fee", "CANONICAL", "DJ fee — defaults to 500 at creation even when no DJ is chosen.", "number, default 500 (a bad PATCH value becomes NaN)", { sideEffects: "DJ expense row (created from the fee even without a DJ), split" }),
   F("advance_payment", "DERIVED", "D5: a MIRROR of the money received in Finance (Σ SHOW_PAYMENT rows) — written by the sync, never typed in (a typed advance becomes a payment row).", "number, default 0", { sideEffects: "none — read by the UI 'remaining' and the COO", readers: "hub UI, COO evidence" }),
   F("artist_fee", "LEGACY", "Stored artist fee — NEVER read by any calculation (the split computes it); 0 on every production show.", "number, default 0", { readers: "nobody" }),
@@ -55,6 +56,8 @@ export const SHOW_VOCABULARIES = {
   statuses: ["ליד חדש", "ממתין לתשובה", "צריך פולואפ", "נסגר", "אושרה", "בוצע", "בוטל"],
   paymentStatuses: ["שולם", "לא שולם", "צפוי", "מקדמה", "בוטל"],
   djConfirmation: ["ממתין לאישור", "אושר"],
+  /** NOT a payment status — pinned to lib/shows-types SHOW_DEAL_TYPES by the test. */
+  dealTypes: ["PAID", "UNPAID_COLLAB"],
   groups: { pipeline: ["ליד חדש", "ממתין לתשובה", "צריך פולואפ"], confirmedFinance: ["נסגר", "אושרה", "בוצע"], upcomingConfirmed: ["אושרה", "נסגר"], portalVisible: ["אושרה", "נסגר", "בוצע"], done: ["בוצע"], cancelled: ["בוטל"] },
   formStatuses: { fullForm: ["ממתין לתשובה", "אושרה", "בוצע", "בוטל"], quoteForm: ["ליד חדש", "ממתין לתשובה", "צריך פולואפ"] },
   rehearsalOperational: ["מתוכנן", "בוצע", "בוטל", "התקיים"], // התקיים = legacy only (the pre-D6 page-load auto-mark, retired in A3 2026-09-27) — see rehearsalCounted
@@ -70,6 +73,7 @@ export const SHOW_STATUS_CONSUMERS = [
   { consumer: "artist portals", counts: "אושרה / נסגר / בוצע" },
   { consumer: "DJ portal", counts: "CLEANTONE's shows not cancelled; 'upcoming' = not בוצע (no date / status filter — leads and past unfinished shows can be confirmed)" },
   { consumer: "artist / DJ push", counts: "אושרה / נסגר with date ≥ today" },
+  { consumer: "every money consumer (hub KPIs / unpaid tab / label page / recoup / COO / finance brain / show_view signals)", counts: "never an UNPAID_COLLAB show (deal type) — it still counts in every SHOW count (סה״כ הופעות, upcoming, portals, calendar)" },
 ] as const;
 
 export const LIFECYCLE = [
@@ -83,6 +87,7 @@ export const LIFECYCLE = [
   { transition: "CANCEL (→ בוטל)", entry: "'בטל הופעה' / status", writes: "status", finance: "rows set to בוטל (kept)", ledger: "expected row removed; realized income + payments KEPT", calendar: "event removed only via the hub cancel button", push: "—", tasks: "open show tasks → בוטל; quote task → בוטל", idempotent: "yes" },
   { transition: "DELETE", entry: "hub trash (legacy drawer)", writes: "show deleted", finance: "still-expected rows hard-deleted (by id + the show_id link; rehearsal expenses, SHOW_PAYMENT rows and any שולם / התקבל row are never deleted)", ledger: "expected removed; realized kept (source link cleared)", calendar: "hub (server-side, after the refusal checks) removes the event; legacy drawer does not", push: "—", tasks: "hub HARD-deletes all show tasks", idempotent: "refused by the server before any write while rehearsals exist, a payment was received (HAS_PAYMENTS) or a DJ / artist fee row is שולם (HAS_PAID_FEES); the hub now calls DELETE ?complete=1 (the same server writer as Sunny's DELETE_SHOW), so every refusal is checked before the calendar event or any task is touched — a refused delete changes nothing" },
   { transition: "DJ_CONFIRM / UNCONFIRM", entry: "DJ portal (CLEANTONE or Owner preview)", writes: "confirmation + time (atomic, only for CLEANTONE's shows)", finance: "—", ledger: "—", calendar: "—", push: "confirm → Owner", tasks: "—", idempotent: "already-confirmed returns without a second push" },
+  { transition: "DEAL_TYPE (PAID ↔ UNPAID_COLLAB)", entry: "the 'סוג עסקה' choice in the edit form / Sunny SET_SHOW_DEAL_TYPE", writes: "deal_type (+ price / DJ / artist fee zeroed for a collaboration; the price for PAID)", finance: "→ UNPAID_COLLAB: refused with zero writes while real money exists (client payment, paid fee, realized artist ledger entry, rehearsal expense, any other show row); otherwise the still-expected rows are removed by clearShowFinance (the revert-to-lead removal). → PAID: needs a price; the normal sync runs for the show's state (a done show then closes through the close dialog)", ledger: "a realized entry blocks the switch to a collaboration", calendar: "the event description follows (price line ↔ 'סוג עסקה: שת״פ ללא תשלום')", push: "none", tasks: "—", idempotent: "yes" },
 ] as const;
 
 export const DJ_MODEL = {
@@ -102,6 +107,7 @@ export const MONEY_MODEL = {
   split: "Owner agreement (2026-09-27, the agreement rule layer — ONLY שליו טסמה / אבי מולה): gross = price; net = max(0, price − DJ fee − counted rehearsal costs) (the recorded direct show expenses); artist fee = net / 2; label profit = net − artist fee — 50 / 50 of the NET, never of the gross. Any other artist or a collaboration text: NOT_DEFINED — no artist fee row is created or re-priced (an existing one is left untouched and reported), nothing is realized into the ledger. No rounding (x.5 possible). The stored artist fee column is never used; there is no override.",
   rehearsalCounted: "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, retired entirely in A3 2026-09-27 — nothing writes it any more) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל",
   advance: "D5 (Owner decision, migration 75bf144e… applied 2026-09-27): money received = SHOW_PAYMENT income rows linked by transactions.show_id (status התקבל / שולם). received = Σ payments; remaining = max(0, agreed − received) held by ONE SHOW_BALANCE_EXPECTED row (צפוי; 0 / בוטל when nothing remains); credit = received − agreed stays visible. Deposit / partial / full / overpayment = RECORD_SHOW_PAYMENT (the shared show-payments writer). Marking שולם / closing with 'received' records the REMAINDER once — never the full price again (no fake revenue). Payments are never deleted, re-priced or cancelled by a sync; a show with payments is never deleted or reverted to a lead. A1 (Owner canon 2026-09-27): received money comes ONLY from a real payment event (RECORD_SHOW_PAYMENT, the שולם intent, close 'received') — a price rise on a paid show never invents income, and there is no implicit undo (the pre-A1 'שולם click undo' branch was removed; reversal = an explicit Finance correction). Historical: the 6 legacy fully-paid income rows became SHOW_PAYMENT (known money); no deposit was invented.",
+  dealType: "Owner decision 2026-09-27: deal_type UNPAID_COLLAB ('שת״פ ללא תשלום') = 0 automatic income + 0 automatic expense. syncShowFinance writes nothing for it; RECORD_SHOW_PAYMENT / MARK_SHOW_FEE_PAID / a money close / a rehearsal cost are refused; no split, no ledger. A real exceptional expense (DJ / rehearsal / travel) is recorded explicitly in Finance, never automated. It is a DEAL TYPE, never a payment status (payment_status keeps its neutral default and is not read)",
   showMoneyRule: "showMoneyOf — the one rule shared by the sync, the payment writer, the Shows hub and show_view",
   listMoney: "GET /api/shows attaches received / remaining / credit per show from Finance (one read, the same rule) — the Shows hub never trusts the advance mirror for money",
   rows: [
@@ -243,9 +249,9 @@ export const SHOW_REVIEWED_FILES = [
   "app/api/shows/route.ts", "app/api/shows/[id]/route.ts",
 ] as const;
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/shows-store.ts": "6dcb358c072b2d029a97c60e5e889fdd02bd56907c0a89b3c92b03b7ecca1c5d",
-  "lib/shows-types.ts": "7e319042c14e8f40cffdec3de07586e2eccddeb44e3e4e7df9bfb79526a5e16a",
-  "lib/shows-finance-sync.ts": "8b4443be2bb2e9d9b6c389ebae5ccbb07558b816de8157d1c34b9b345c18922f",
+  "lib/shows-store.ts": "62db5ba2642c0db7d2bff609e13c72feeed3f1dd67748002a2327693b809eae7",
+  "lib/shows-types.ts": "4ff774de1368126c2f9ad65dba06e417a341e452cc75c667a4edd162ab993aa3",
+  "lib/shows-finance-sync.ts": "d7abe648a28ea15c9ffb10ff92ea208f5b5f16902e549665a90c4cff018b369c",
   "lib/artist-balance-show-sync.ts": "578ae5accad84c65e945050a5b343398823751e96325f491a6ae9c906821584c",
   "lib/artist-balance-show-sync-pure.ts": "b695fd979b16ebfc38b97a05517fb34505b31db431dc8a3587bf7c11f712eba3",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",

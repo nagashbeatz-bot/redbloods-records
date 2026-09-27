@@ -109,7 +109,21 @@ export function buildShowView(src: GatewaySources, showId: string) {
     payments: sm.payments.map((p) => ({ amount: p.amount, currency: p.currency, date: p.date ?? null, status: p.status })),
     expectedBalance: sm.expected ? { amount: sm.expected.amount, status: sm.expected.status } : null,
     rehearsalRows: rehearsals.filter((x) => x.financeRow).length, note: "D5: rows are linked by transactions.show_id; actual money = SHOW_PAYMENT rows (שולם / התקבל)" };
-  const money = {
+  // Owner decision 2026-09-27: the deal type is NOT a payment status. An unpaid collaboration is a normal show whose
+  // money layer does not apply: no price, no receivable, no payment status, no split, no automatic rows (a real
+  // exceptional expense is recorded explicitly in Finance). It still counts as a show everywhere.
+  const unpaidCollab = s.dealType === "UNPAID_COLLAB";
+  const money = unpaidCollab ? {
+    dealType: "UNPAID_COLLAB" as const, dealTypeHe: "שת״פ ללא תשלום", moneyApplies: false,
+    currency, agreed: null, received: sm.received, remaining: null, credit: null,
+    price: null, receivedMirror: null, clientPayment: null, clientPaymentRule: "not relevant — an unpaid collaboration has no payment status (the stored column is ignored, never 'שת״פ')",
+    djFee: null, rehearsalsCounted: counted,
+    split: { agreement: "NOT_APPLICABLE" as const, reasonHe: "שת״פ ללא תשלום — אין הכנסה ואין חלוקה", gross: 0, djFee: 0, rehearsalCosts: counted, net: 0, artistFee: null, labelProfit: null,
+      rule: "an unpaid collaboration creates no expected income, receivable, DJ / artist / rehearsal row, artist ledger entry or 50 / 50 split" },
+    storedArtistFeeColumn: s.artistFee, storedArtistFeeNote: "legacy column, never used by the app",
+    finance,
+  } : {
+    dealType: "PAID" as const, dealTypeHe: "בתשלום", moneyApplies: true,
     currency, agreed: sm.agreed, received: sm.received, remaining: sm.remaining, credit: sm.credit,
     ...(sm.otherCurrencyPayments.length ? { otherCurrencyPayments: sm.otherCurrencyPayments.map((p) => `${p.currency ?? "?"}${p.amount}`), otherCurrencyNote: "never added to this show's money (no FX) — for the Owner" } : {}),
     price: s.price, receivedMirror: s.advancePayment, clientPayment: s.paymentStatus, clientPaymentRule: "derived from Finance: שולם when received ≥ agreed, מקדמה when partly received",
@@ -157,7 +171,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (PIPELINE.has(s.status ?? "")) signals.push({ code: "PIPELINE", kind: "CANONICAL_FACT", he: `בשלב ${s.status}` });
   if (artist.collaboration) signals.push({ code: "COLLABORATION", kind: "CANONICAL_FACT", he: "כמה אמנים — אין סנכרון מאזן" });
   if (!s.djClientId && s.status !== "בוטל") { signals.push({ code: "NO_DJ", kind: "CANONICAL_FACT", he: "אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן." }); if (!PIPELINE.has(s.status ?? "")) questions.push({ kind: "DJ", questionHe: "מי ה-DJ בהופעה?", why: "no DJ recorded; never auto-assigned" }); }
-  if (!s.djClientId && (s.djFee ?? 0) > 0 && s.status !== "בוטל") signals.push({ code: "DJ_FEE_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `שכר DJ ${s.djFee} בלי DJ${finance.djFee.exists ? " (ונוצרה שורת הוצאה)" : ""}` });
+  if (!unpaidCollab && !s.djClientId && (s.djFee ?? 0) > 0 && s.status !== "בוטל") signals.push({ code: "DJ_FEE_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `שכר DJ ${s.djFee} בלי DJ${finance.djFee.exists ? " (ונוצרה שורת הוצאה)" : ""}` });
   if (isCleantone && s.djConfirmationStatus === "ממתין לאישור" && s.status !== "בוטל") { signals.push({ code: "DJ_AWAITING_CONFIRMATION", kind: "CANONICAL_FACT", he: "CLEANTONE עוד לא אישר" }); if (upcoming) questions.push({ kind: "DJ_CONFIRM", questionHe: "CLEANTONE עוד לא אישר — לשלוח לו / לבדוק איתו?", why: "confirmation pending (Sunny never sends)" }); }
   if (isCleantone && s.djConfirmationStatus === "אושר") signals.push({ code: "DJ_CONFIRMED", kind: "CANONICAL_FACT", he: `CLEANTONE אישר${s.djConfirmedAt ? ` (${s.djConfirmedAt.slice(0, 10)})` : ""}` });
   if (isCleantone && s.djConfirmationStatus === "אושר" && s.djConfirmedAt && s.updatedAt && s.updatedAt > s.djConfirmedAt) signals.push({ code: "DJ_CONFIRMED_BEFORE_CHANGE", kind: "DERIVED_SIGNAL", he: "ההופעה שונתה אחרי אישור ה-DJ (שינוי תאריך לא מאפס אישור)" });
@@ -168,19 +182,20 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (nd.state === "NOT_SENT" && nd.eligibleNow) signals.push({ code: "DJ_NOT_NOTIFIED", kind: "CANONICAL_FACT", he: "ה-DJ עוד לא קיבל הודעה על ההופעה" });
   if (rehearsals.length) signals.push({ code: "REHEARSALS_RECORDED", kind: "CANONICAL_FACT", he: `${rehearsals.length} חזרות רשומות` });
   if (CONFIRMED.has(s.status ?? "") && !s.hasCalendarEvent) signals.push({ code: "NO_CALENDAR_EVENT", kind: "CANONICAL_FACT", he: "אין אירוע ביומן להופעה" });
-  if (CONFIRMED.has(s.status ?? "") && !(s.price ?? 0)) { signals.push({ code: "PRICE_MISSING", kind: "CANONICAL_FACT", he: "אין מחיר להופעה (0) — אין שורת הכנסה" }); questions.push({ kind: "PRICE", questionHe: "מה המחיר של ההופעה?", why: "confirmed / done with price 0" }); }
-  if (upcoming && s.paymentStatus !== "שולם") signals.push({ code: "UPCOMING_UNPAID", kind: "CANONICAL_FACT", he: `תשלום לקוח: ${s.paymentStatus}${s.advancePayment ? ` (מקדמה ${s.advancePayment})` : ""}` });
-  if (s.status === "בוצע" && s.paymentStatus !== "שולם" && (s.price ?? 0) > 0) signals.push({ code: "DONE_UNPAID", kind: "CANONICAL_FACT", he: `ההופעה בוצעה, תשלום לקוח: ${s.paymentStatus}` });
+  // money signals never apply to an unpaid collaboration (no new signal either — being a collaboration is not a problem)
+  if (!unpaidCollab && CONFIRMED.has(s.status ?? "") && !(s.price ?? 0)) { signals.push({ code: "PRICE_MISSING", kind: "CANONICAL_FACT", he: "אין מחיר להופעה (0) — אין שורת הכנסה" }); questions.push({ kind: "PRICE", questionHe: "מה המחיר של ההופעה?", why: "confirmed / done with price 0" }); }
+  if (!unpaidCollab && upcoming && s.paymentStatus !== "שולם") signals.push({ code: "UPCOMING_UNPAID", kind: "CANONICAL_FACT", he: `תשלום לקוח: ${s.paymentStatus}${s.advancePayment ? ` (מקדמה ${s.advancePayment})` : ""}` });
+  if (!unpaidCollab && s.status === "בוצע" && s.paymentStatus !== "שולם" && (s.price ?? 0) > 0) signals.push({ code: "DONE_UNPAID", kind: "CANONICAL_FACT", he: `ההופעה בוצעה, תשלום לקוח: ${s.paymentStatus}` });
   if (UPCOMING.has(s.status ?? "") && !!s.date && s.date < c.today) { signals.push({ code: "DATE_PASSED_NOT_CLOSED", kind: "DERIVED_SIGNAL", he: "התאריך עבר וההופעה לא נסגרה" }); questions.push({ kind: "CLOSE", questionHe: "ההופעה התקיימה? (עוד לא נסגרה במערכת)", why: "date passed, status still confirmed" }); }
-  if (s.status === "בוצע" && rosterMatch && !artist.collaboration && agreement.status === "DEFINED" && split.artistFee > 0 && !ledger.some((l) => l.type === "הכנסות")) signals.push({ code: "DONE_WITHOUT_LEDGER", kind: "DERIVED_SIGNAL", he: "בוצעה אבל אין הכנסה במאזן האמן (נסגרה בלי דיאלוג הסגירה?)" });
+  if (!unpaidCollab && s.status === "בוצע" && rosterMatch && !artist.collaboration && agreement.status === "DEFINED" && split.artistFee > 0 && !ledger.some((l) => l.type === "הכנסות")) signals.push({ code: "DONE_WITHOUT_LEDGER", kind: "DERIVED_SIGNAL", he: "בוצעה אבל אין הכנסה במאזן האמן (נסגרה בלי דיאלוג הסגירה?)" });
   if (s.status === "בוטל" && ledger.some((l) => l.type === "הכנסות" || l.type === "תשלומים")) signals.push({ code: "LEDGER_KEPT_AFTER_CANCEL", kind: "DERIVED_SIGNAL", he: "הופעה מבוטלת שעדיין יש לה הכנסה / תשלום במאזן האמן" });
-  if (s.status === "בוצע" && finance.artistFee.exists && (finance.artistFee as { status?: string | null }).status === "צפוי") signals.push({ code: "ARTIST_ROW_UNPAID_AFTER_DONE", kind: "CANONICAL_FACT", he: "שורת שכר האמן עדיין צפוי — לא נרשם תשלום לאמן בכספים" });
+  if (!unpaidCollab && s.status === "בוצע" && finance.artistFee.exists && (finance.artistFee as { status?: string | null }).status === "צפוי") signals.push({ code: "ARTIST_ROW_UNPAID_AFTER_DONE", kind: "CANONICAL_FACT", he: "שורת שכר האמן עדיין צפוי — לא נרשם תשלום לאמן בכספים" });
   const openTasks = tasks.filter((t) => t.status === "פתוח");
   // A1: a PAID fee row is never re-priced by the sync — when it no longer matches the show (amount / currency / cancelled),
   // the app's own rule (feeRowPaidConflicts) reports it; Sunny surfaces it as a conflict, never resolves it
-  if (agreement.status === "NOT_DEFINED") signals.push({ code: "SHOW_SPLIT_NOT_DEFINED", kind: "UNKNOWN", he: `חלוקת אמן / לייבל לא מוגדרת להופעה הזאת: ${agreement.reasonHe}` });
+  if (!unpaidCollab && agreement.status === "NOT_DEFINED") signals.push({ code: "SHOW_SPLIT_NOT_DEFINED", kind: "UNKNOWN", he: `חלוקת אמן / לייבל לא מוגדרת להופעה הזאת: ${agreement.reasonHe}` });
   for (const [label, row, amount] of [["DJ", finance.djFee, split.djFee], ["אמן", finance.artistFee, split.artistFee]] as const) {
-    if (!row.exists) continue;
+    if (!row.exists || unpaidCollab) continue;
     if (label === "אמן" && agreement.status === "NOT_DEFINED") continue; // no agreement → the sync leaves the row untouched (reported above)
     const r = row as { status?: string | null; amount?: number | null; currency?: string | null };
     const why = feeRowPaidConflicts({ status: r.status, amount: Number(r.amount) || 0, currency: r.currency }, { amount, currency, cancelled: s.status === "בוטל" });
@@ -198,7 +213,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
     ...[notifications.artist, notifications.dj].flatMap((n, i) => ((n as { sentAt?: string | null }).sentAt ? [{ at: (n as unknown as { sentAt: string }).sentAt, event: i === 0 ? "sent to the artist" : "sent to the DJ", kind: "RECORDED" }] : [])),
   ].filter((h) => h.at).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 
-  return { key, found: true as const, identity: { name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, contact: s.contactPerson, hasPhone: s.hasPhone, notes: s.notes },
+  return { key, found: true as const, identity: { name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, dealType: money.dealType, contact: s.contactPerson, hasPhone: s.hasPhone, notes: s.notes },
     artist, booker, dj, money, ledger, rehearsals, calendar, tasks, notifications, portal, performanceFiles: "per-artist audio files in the artist's storage folder — Sunny cannot list them (CAPABILITY_GAP), never 'no files'",
     signals, questions, history, unavailable };
 }
@@ -207,7 +222,7 @@ export type ShowView = NonNullable<ReturnType<typeof buildShowView>>;
 export function showPortfolio(src: GatewaySources) {
   const c = ctxOf(src);
   return (c.ld?.shows?.rows ?? []).map((s: DetailShow) => buildShowView(src, s.id)!).filter(Boolean).map((v) => ({
-    key: v.key, name: v.identity.name, date: v.identity.date, status: v.identity.status, artist: v.artist.text, dj: v.dj?.displayName ?? null, djConfirmation: v.dj?.confirmation ?? null,
+    key: v.key, name: v.identity.name, date: v.identity.date, status: v.identity.status, dealType: v.money.dealType, artist: v.artist.text, dj: v.dj?.displayName ?? null, djConfirmation: v.dj?.confirmation ?? null,
     price: v.money.price, clientPayment: v.money.clientPayment, artistFee: v.money.split.artistFee, labelProfit: v.money.split.labelProfit, rehearsals: v.rehearsals.length,
     artistNotified: (v.notifications.artist as { state: string }).state, djNotified: (v.notifications.dj as { state: string }).state, ledgerRows: v.ledger.length, signals: [...new Set(v.signals.map((x) => x.code))], openQuestions: v.questions.length,
   })).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));

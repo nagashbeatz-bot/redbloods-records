@@ -11,7 +11,7 @@
 import { supabase } from "@/lib/supabase";
 import { getShow } from "@/lib/shows-store";
 import type { Show, ShowMoney } from "@/lib/shows-types";
-import { isMoneyCurrency } from "@/lib/shows-types";
+import { isMoneyCurrency, isUnpaidCollab, UNPAID_COLLAB_NO_MONEY_HE } from "@/lib/shows-types";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 export const PAYMENT_METHODS = ["", "העברה בנקאית", "מזומן", "ביט", "פייבוקס", "צ'ק", "כרטיס אשראי", "PayPal", "אחר"] as const;
@@ -19,7 +19,7 @@ const REFUSED = "refused" as const;
 const MISSING = "not_found" as const;
 export type RecordShowPaymentResult =
   | { kind: typeof MISSING }
-  | { kind: typeof REFUSED; code: "NOT_CONFIRMED" | "BAD_AMOUNT" | "BAD_DATE" | "CURRENCY_MISMATCH" | "DUPLICATE" | "BAD_METHOD"; messageHe: string }
+  | { kind: typeof REFUSED; code: "NOT_CONFIRMED" | "UNPAID_COLLAB" | "BAD_AMOUNT" | "BAD_DATE" | "CURRENCY_MISMATCH" | "DUPLICATE" | "BAD_METHOD"; messageHe: string }
   | { kind: "ok"; transactionId: string; before: ShowMoney; after: ShowMoney };
 
 export async function showPaymentState(showId: string): Promise<{ show: Show; money: ShowMoney } | null> {
@@ -33,6 +33,8 @@ export async function recordShowPayment(showId: string, p: { amount: unknown; da
   const st = await showPaymentState(showId);
   if (!st) return { kind: MISSING };
   const { show, money } = st;
+  // an unpaid collaboration never receives a payment row (switch the deal type to PAID first)
+  if (isUnpaidCollab(show)) return { kind: REFUSED, code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
   const fin = await import("@/lib/shows-finance-sync");
   if (!fin.isConfirmedShowStatus(show.status) && show.status !== "בוטל") return { kind: REFUSED, code: "NOT_CONFIRMED", messageHe: "ההופעה עוד לא מאושרת (ליד) — קודם לאשר אותה, ואז לרשום תשלום" };
   const amount = typeof p.amount === "number" ? p.amount : Number(p.amount);

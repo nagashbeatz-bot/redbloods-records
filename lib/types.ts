@@ -147,6 +147,8 @@ export interface ProjectReleaseDetails {
 
 /** Per-show label-finance line for a label artist (shows-only; computed via computeShowSplit). */
 export interface LabelShowLine {
+  /** Deal type (NOT a payment status): UNPAID_COLLAB counts as a show, never as money. */
+  dealType?: "PAID" | "UNPAID_COLLAB";
   id: string;
   name: string;
   date: string | null;

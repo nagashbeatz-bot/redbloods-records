@@ -15,6 +15,26 @@ export const isMoneyCurrency = (x: unknown): x is MoneyCurrency => typeof x === 
 /** "₪1,500" / "$1,500" / "€1,500" — every amount is shown with its own currency. */
 export function fmtMoney(n: number, currency: string | null | undefined): string { return `${currency || "₪"}${(Number(n) || 0).toLocaleString("he-IL")}`; }
 
+// ─── Show DEAL TYPE (Owner decision 2026-09-27) — NOT a payment status ─────────────────────────────────────────────
+// PAID = the normal finance flow. UNPAID_COLLAB = "שת״פ ללא תשלום": operationally a completely normal show (artist,
+// portal, calendar, notifications, statuses, DJ confirmation, closing) with ZERO automatic finance activity — no
+// expected income / receivable / payment / DJ / artist / rehearsal row, no artist ledger, no split. Its payment_status
+// column is simply not relevant (never "שת״פ"). A real exceptional expense is recorded explicitly in Finance.
+export const SHOW_DEAL_TYPES = ["PAID", "UNPAID_COLLAB"] as const;
+export type ShowDealType = typeof SHOW_DEAL_TYPES[number];
+export const SHOW_DEAL_TYPE_LABELS: Record<ShowDealType, string> = { PAID: "בתשלום", UNPAID_COLLAB: "שת״פ ללא תשלום" };
+/** The badge shown where a paid show shows its payment status. */
+export const UNPAID_COLLAB_BADGE = "שת״פ";
+export const isShowDealType = (x: unknown): x is ShowDealType => typeof x === "string" && (SHOW_DEAL_TYPES as readonly string[]).includes(x);
+/** THE ONE rule every writer, reader, signal and Sunny uses. A missing value (a pre-column row) is PAID. */
+export function isUnpaidCollab(show: { deal_type?: string | null } | null | undefined): boolean {
+  return show?.deal_type === "UNPAID_COLLAB";
+}
+/** Does the show carry money at all (expected income, receivable, profit, payment signals)? */
+export const showHasMoney = (show: { deal_type?: string | null } | null | undefined) => !isUnpaidCollab(show);
+/** The Hebrew refusal for any finance operation on an unpaid collaboration. */
+export const UNPAID_COLLAB_NO_MONEY_HE = "הופעת שת״פ ללא תשלום — אין לה פעילות כספית אוטומטית (אין מחיר, מקדמה, תשלום או שכר). הוצאה חריגה נרשמת פרטנית בכספים; אם ההופעה הפכה לבתשלום — קודם משנים את סוג העסקה.";
+
 export type ShowStatus    = typeof SHOW_STATUSES[number];
 export type PaymentStatus = typeof PAYMENT_STATUSES[number] | "חלקי";
 
@@ -38,6 +58,8 @@ export interface Show {
   contact_person: string;
   phone: string;
   status: ShowStatus;
+  /** Deal type (PAID / UNPAID_COLLAB) — NOT a payment status. An UNPAID_COLLAB show has no automatic money at all. */
+  deal_type?: ShowDealType;
   payment_status: PaymentStatus;
   show_price: number;
   dj_fee: number;

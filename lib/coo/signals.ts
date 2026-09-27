@@ -551,7 +551,7 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
   const sh = state.shows;
   if (sh) {
     for (const s of sh.upcoming) {
-      if (s.paymentStatus === "שולם" || s.daysTo === null || s.daysTo > cfg.showUnpaidUpcomingDays) continue;
+      if (s.dealType === "UNPAID_COLLAB" || s.paymentStatus === "שולם" || s.daysTo === null || s.daysTo > cfg.showUnpaidUpcomingDays) continue;
       out.push(makeSignal(c, {
         type: "SHOW_UNPAID_UPCOMING", key: s.id, entity: { type: "show", id: s.id, name: s.name }, role: "primary",
         title: rich(`הופעה בעוד ${s.daysTo} ${daysWord(s.daysTo)} — התשלום: ${s.paymentStatus}`), short: rich(`הופעה בעוד ${s.daysTo} ${daysWord(s.daysTo)}, לא שולם`),

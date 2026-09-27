@@ -31,7 +31,8 @@ export interface FinanceProjectRow { id: string; name: string; status: string; i
 /** settings key `finance_<projectId>` (any projectId — orphans included). */
 export interface FinanceSettingRow { projectId: string; value: unknown }
 export interface EngineerWorkRow { id: string; projectId: string | null; engineerName: string | null; status: string | null; agreedPrice: unknown; amountPaid: unknown; currency: string | null; linkedTransactionId: string | null; paymentDate?: string | null }
-export interface FinanceShowRow { id: string; date: string | null; status: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
+/** dealType: PAID / UNPAID_COLLAB (NOT a payment status) — an unpaid collaboration is never money (no price signal, no receivable). */
+export interface FinanceShowRow { id: string; date: string | null; status: string | null; dealType?: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }

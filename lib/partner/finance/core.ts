@@ -401,7 +401,8 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   sig("CURRENCY_AMBIGUOUS", "FACT", currencyMismatchEv.length, currencyMismatchEv);
   sig("RECURRING_CLASSIFICATION_UNKNOWN", "UNKNOWN", unknownClassificationThisMonth, expenseTx.filter((t) => t.received && t.date?.startsWith(month.key) && classification[t.row.id] === "UNKNOWN_CLASSIFICATION").map((t) => txEv(t, "EXPENSE_CLASS_UNKNOWN")));
   sig("ORPHAN_PRICE_SETTINGS", "FACT", orphanEv.length, orphanEv, {}, "NEEDS_OWNER_REVIEW");
-  const showNoPrice = raw.shows.filter((s) => s.status === "בוצע" && !((num(s.price) ?? 0) > 0));
+  // an unpaid collaboration has no price by definition — never a missing-price signal
+  const showNoPrice = raw.shows.filter((s) => s.status === "בוצע" && s.dealType !== "UNPAID_COLLAB" && !((num(s.price) ?? 0) > 0));
   sig("SHOW_PRICE_MISSING", "FACT", showNoPrice.length, showNoPrice.map((s) => ({ sourceType: "show" as const, sourceId: s.id, date: s.date, status: s.status, reasonCode: "COMPLETED_SHOW_WITHOUT_PRICE" })));
   const dupKey = (t: Tx) => [t.type, t.amount, t.currency, t.date, t.row.projectId, t.row.category, t.row.status].join("|");
   const dupGroups = new Map<string, Tx[]>();

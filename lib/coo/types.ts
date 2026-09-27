@@ -269,6 +269,8 @@ export interface ProposalFact {
 
 export interface ShowFact {
   id: string;
+  /** PAID / UNPAID_COLLAB (NOT a payment status). */
+  dealType?: string;
   name: string;
   status: string;
   paymentStatus: string;
@@ -491,6 +493,8 @@ export interface RawProposal {
   followupDate: string | null; linkedProjectId: string | null;
 }
 export interface RawShow {
+  /** PAID / UNPAID_COLLAB (NOT a payment status) — an unpaid collaboration is never a payment alert. */
+  dealType?: string;
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
   price: number; advance: number; currency?: string; incomeTxId: string | null;
   /** Additive (Partner Phase B.1) — already fetched by listShows()'s select("*"), just not read by Phase 1a signals/cases.

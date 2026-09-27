@@ -354,6 +354,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   void rf;
   for (const s of raw.shows) {
     if (s.status !== "בוצע") continue;
+    if (s.dealType === "UNPAID_COLLAB") continue; // an unpaid collaboration carries no money — nothing is incomplete
     const price = Number(s.price);
     const inc = s.incomeTxId ? txById.get(s.incomeTxId) : null;
     // D5: actual show money = SHOW_PAYMENT rows linked by show_id (status שולם / התקבל)

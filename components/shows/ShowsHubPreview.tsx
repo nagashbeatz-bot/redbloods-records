@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
-import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount, fmtMoney, MONEY_CURRENCIES } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount, fmtMoney, MONEY_CURRENCIES, isUnpaidCollab, UNPAID_COLLAB_BADGE, SHOW_DEAL_TYPE_LABELS, type ShowDealType } from "@/lib/shows-types";
 import { showAgreementSplit } from "@/lib/label-agreements";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import TimePickerInput from "@/components/ui/TimePickerInput";
@@ -43,6 +43,9 @@ const PAY_COLOR: Record<PaymentStatus, { bg: string; text: string }> = {
   "בוטל":    { bg: "rgba(107,114,128,0.18)", text: "#9CA3AF" },
   "חלקי":    { bg: "rgba(245,158,11,0.18)",  text: "#F59E0B" }, // legacy → shown as "מקדמה"
 };
+
+/** Deal-type badge (NOT a payment status): an unpaid collaboration shows "שת״פ" where a paid show shows its payment. */
+const COLLAB_COLOR = { bg: "rgba(236,72,153,0.16)", text: "#F472B6" };
 
 /** Legacy "חלקי" rows are shown as "מקדמה"; never display "חלקי". */
 function payLabel(status: string): string {
@@ -85,7 +88,8 @@ function isReceivedShow(s: Show): boolean {
   return ps === "שולם" || ps === "התקבל";
 }
 function isFinanciallyConfirmedShow(s: Show): boolean {
-  return FINANCIALLY_CONFIRMED_STATUSES.has(s.status);
+  // an unpaid collaboration never participates in money (it still counts as a show)
+  return FINANCIALLY_CONFIRMED_STATUSES.has(s.status) && !isUnpaidCollab(s);
 }
 // Shared by the "הופעות קרובות" card, the upCount KPI, and the "קרובות" tab so
 // all three agree. Upcoming = future/today date, status אושרה/נסגר, not cancelled.
@@ -113,6 +117,7 @@ function calcRemaining(s: Show) {
   // data — which is exactly the case we defend against (kept in-file; the type
   // in lib/shows-types.ts is left untouched).
   const ps: string = s.payment_status;
+  if (isUnpaidCollab(s)) return 0;                     // no debt to begin with (shown as "—", never ₪0)
   if (ps === "בוטל" || s.status === "בוטל") return 0;  // nothing to collect
   if (typeof s.remaining === "number") return s.remaining; // D5: Finance (attached by GET /api/shows) is the truth
   if (ps === "שולם" || ps === "התקבל") return 0; // received in full
@@ -289,8 +294,13 @@ function ShowCard({ show, accent, grad, onClick, selected, index }: {
         <div style={{ fontSize: 10, color: MUTED }}>{show.location || "—"}</div>
         <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
           <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
-          <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>
+          {isUnpaidCollab(show)
+            ? <Badge bg={COLLAB_COLOR.bg} text={COLLAB_COLOR.text}>{UNPAID_COLLAB_BADGE}</Badge>
+            : <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>}
         </div>
+        {isUnpaidCollab(show) ? (
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BDR}`, fontSize: 11, color: MUTED, textAlign: "center" }}>{SHOW_DEAL_TYPE_LABELS.UNPAID_COLLAB}</div>
+        ) : (
         <div style={{ display: "flex", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BDR}` }}>
           {[
             { label: "מחיר",  val: fmtMoney(show.show_price, show.currency),    color: TEXT  },
@@ -303,6 +313,7 @@ function ShowCard({ show, accent, grad, onClick, selected, index }: {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
@@ -355,6 +366,8 @@ interface FormState {
   currency: string;
   booker_client_id: string | null;
   dj_client_id: string | null; dj_name: string;
+  /** Deal type — NOT a payment status. UNPAID_COLLAB hides every money field and sends no money. */
+  deal_type: ShowDealType;
 }
 
 const FORM_DEFAULTS: FormState = {
@@ -364,6 +377,7 @@ const FORM_DEFAULTS: FormState = {
   currency: "₪",
   booker_client_id: null,
   dj_client_id: null, dj_name: "",
+  deal_type: "PAID",
 };
 
 function showToForm(s: Show): FormState {
@@ -387,6 +401,7 @@ function showToForm(s: Show): FormState {
     booker_client_id: s.booker_client_id ?? null,
     dj_client_id:     s.dj_client_id    ?? null,
     dj_name:          s.dj_name         ?? "",
+    deal_type:        s.deal_type === "UNPAID_COLLAB" ? "UNPAID_COLLAB" : "PAID",
   };
 }
 
@@ -409,8 +424,9 @@ function ShowFormModal({
   const [err, setErr] = useState<string | null>(null);
   const [addToCalendar, setAddToCalendar] = useState(mode === "create");
   // Compact "הצעת מחיר" vs full "הופעה" form. A pipeline record opens as a quote.
+  // (an unpaid collaboration has no quote — a price quote is a paid-deal step — so it always opens as the full form)
   const [formMode, setFormMode] = useState<"show" | "quote">(
-    mode === "edit" && editShow && PIPELINE_STATUSES.has(editShow.status) ? "quote" : "show",
+    mode === "edit" && editShow && PIPELINE_STATUSES.has(editShow.status) && !isUnpaidCollab(editShow) ? "quote" : "show",
   );
   // The record's id once it exists (edit → its id; a quote we POSTed → its new id).
   // Drives PATCH-vs-POST so a saved quote is never duplicated on a re-click / convert.
@@ -624,6 +640,9 @@ function ShowFormModal({
       setErr("כדי להוסיף ליומן צריך לבחור תאריך");
       return;
     }
+    const collab = form.deal_type === "UNPAID_COLLAB";
+    // UNPAID_COLLAB → PAID needs a price (the normal finance flow then runs for the show's state)
+    if (!collab && editShow && isUnpaidCollab(editShow) && !((Number(form.show_price) || 0) > 0)) { setErr("מעבר להופעה בתשלום דורש מחיר הופעה"); return; }
     setSaving(true);
     setErr(null);
     try {
@@ -637,10 +656,14 @@ function ShowFormModal({
         contact_person:   form.contact_person.trim(),
         phone:            form.phone.trim(),
         status:           form.status,
-        show_price:       Number(form.show_price) || 0,
-        dj_fee:           Number(form.dj_fee) || 0,
-        artist_fee:       Number(form.artist_fee) || 0,
-        currency:         form.currency,
+        deal_type:        form.deal_type,
+        // an unpaid collaboration sends no money at all (price / DJ / artist / currency / payment / deposit)
+        ...(collab ? {} : {
+          show_price:       Number(form.show_price) || 0,
+          dj_fee:           Number(form.dj_fee) || 0,
+          artist_fee:       Number(form.artist_fee) || 0,
+          currency:         form.currency,
+        }),
         notes:            form.notes.trim(),
         dj_client_id:     form.dj_client_id ?? null,
         dj_name:          form.dj_name.trim(),
@@ -659,10 +682,10 @@ function ShowFormModal({
       const isUpdate = savedId != null;
       // A1: the client payment status is INTENT, sent only when the user actually changed it ("שולם" = the client paid
       // the rest → the server records the remainder once). An unrelated edit never re-sends it (no invented income).
-      if (!isUpdate || form.payment_status !== initForm.payment_status) payload.payment_status = form.payment_status;
+      if (!collab && (!isUpdate || form.payment_status !== initForm.payment_status)) payload.payment_status = form.payment_status;
       // D5: a deposit typed on a NEW show is money received → recorded as a Finance payment by the server.
       // On an existing show the received amount comes from Finance (use 'רשום תשלום' in the show panel).
-      if (!isUpdate && (Number(form.advance_payment) || 0) > 0) payload.advance_payment = Number(form.advance_payment) || 0;
+      if (!collab && !isUpdate && (Number(form.advance_payment) || 0) > 0) payload.advance_payment = Number(form.advance_payment) || 0;
       const url    = isUpdate ? `/api/shows/${savedId}` : "/api/shows";
       const method = isUpdate ? "PATCH" : "POST";
       const res    = await fetch(url, {
@@ -862,6 +885,27 @@ function ShowFormModal({
                   >{label}</button>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── Deal type (NOT a payment status): paid show / unpaid collaboration ── */}
+          {formMode === "show" && (
+            <div>
+              <label style={labelStyle}>סוג עסקה</label>
+              <div style={{ display: "flex", gap: 6, background: BG2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4 }}>
+                {(["PAID", "UNPAID_COLLAB"] as const).map((d) => {
+                  const active = form.deal_type === d;
+                  return (
+                    <button key={d} type="button" onClick={() => { setErr(null); set("deal_type", d); }}
+                      style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                        background: active ? (d === "PAID" ? BRAND : COLLAB_COLOR.text) : "transparent", color: active ? "#fff" : TEXT2, transition: "none" }}
+                    >{d === "PAID" ? "הופעה בתשלום" : SHOW_DEAL_TYPE_LABELS.UNPAID_COLLAB}</button>
+                  );
+                })}
+              </div>
+              {form.deal_type === "UNPAID_COLLAB" && (
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>הופעה רגילה לכל דבר (אמן, פורטל, יומן, התראות, סגירה) — בלי שום פעילות כספית אוטומטית. הוצאה חריגה נרשמת פרטנית בכספים.</div>
+              )}
             </div>
           )}
 
@@ -1155,14 +1199,14 @@ function ShowFormModal({
                 // Approved + future date → default payment to "צפוי", but never
                 // override a manual choice (only when still the default "לא שולם").
                 const isFuture = !!form.date && form.date > new Date().toISOString().slice(0, 10);
-                if (v === "אושרה" && isFuture && form.payment_status === "לא שולם") {
+                if (v === "אושרה" && isFuture && form.payment_status === "לא שולם" && form.deal_type !== "UNPAID_COLLAB") {
                   set("payment_status", "צפוי");
                 }
               }} style={selectFieldStyle}>
                 {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div>
+            {form.deal_type !== "UNPAID_COLLAB" && <div>
               <label style={labelStyle}>סטטוס תשלום</label>
               <select value={form.payment_status} onChange={e => set("payment_status", e.target.value as PaymentStatus)} style={selectFieldStyle}>
                 {(PAYMENT_STATUSES.includes(form.payment_status as typeof PAYMENT_STATUSES[number])
@@ -1170,7 +1214,7 @@ function ShowFormModal({
                   : [form.payment_status, ...PAYMENT_STATUSES]
                 ).map(p => <option key={p} value={p}>{payLabel(p)}</option>)}
               </select>
-            </div>
+            </div>}
           </div>
 
           {/* DJ dropdown */}
@@ -1188,8 +1232,8 @@ function ShowFormModal({
             )}
           </div>
 
-          {/* Row: prices — no spin buttons */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {/* Row: prices — no spin buttons (an unpaid collaboration has none) */}
+          {form.deal_type !== "UNPAID_COLLAB" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>מחיר הופעה {form.currency}</label>
               <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
@@ -1218,7 +1262,7 @@ function ShowFormModal({
                 {MONEY_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-          </div>
+          </div>}
 
           {/* Notes */}
           <div>
@@ -1451,7 +1495,9 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
             <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 10 }}>{show.name}</div>
             <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
               <Badge bg={STATUS_COLOR[show.status]?.bg ?? "rgba(255,255,255,0.1)"} text={STATUS_COLOR[show.status]?.text ?? TEXT2}>{show.status}</Badge>
-              <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>
+              {isUnpaidCollab(show)
+                ? <Badge bg={COLLAB_COLOR.bg} text={COLLAB_COLOR.text}>{UNPAID_COLLAB_BADGE}</Badge>
+                : <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>}
               {show.calendar_event_id && <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 ביומן</Badge>}
             </div>
           </div>
@@ -1498,6 +1544,10 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
                 />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                {isUnpaidCollab(show) ? (<>
+                  <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סוג עסקה</span>
+                  <Badge bg={COLLAB_COLOR.bg} text={COLLAB_COLOR.text}>{SHOW_DEAL_TYPE_LABELS.UNPAID_COLLAB}</Badge>
+                </>) : (<>
                 <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס תשלום</span>
                 <StatusPicker
                   value={show.payment_status}
@@ -1507,6 +1557,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
                   onChange={val => handlePatch("payment_status", val)}
                   disabled={savingField === "payment_status"}
                 />
+                </>)}
               </div>
               {show.calendar_event_id && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1517,7 +1568,13 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
             </div>
           </div>
 
-          {/* סיכום כספי */}
+          {/* סיכום כספי — an unpaid collaboration has none (no price, no balance, no payment actions) */}
+          {isUnpaidCollab(show) ? (
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            {sectionLabel("כספים", "💰")}
+            <div style={{ fontSize: 13, color: TEXT2 }}>{SHOW_DEAL_TYPE_LABELS.UNPAID_COLLAB} — אין מחיר, אין יתרה לגבייה ואין פעילות כספית אוטומטית. הוצאה חריגה נרשמת פרטנית בכספים.</div>
+          </div>
+          ) : (
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
             {sectionLabel("סיכום כספי", "💰")}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1550,6 +1607,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow, onRefresh }: 
               </div>
             )}
           </div>
+          )}
 
           {/* חזרות להופעה */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
@@ -1994,7 +2052,7 @@ export default function ShowsHubPreview() {
   const tabCounts = useMemo(() => ({
     all:       shows.length,
     upcoming:  shows.filter(isUpcomingShow).length,
-    unpaid:    shows.filter(s => s.payment_status === "לא שולם").length,
+    unpaid:    shows.filter(s => s.payment_status === "לא שולם" && !isUnpaidCollab(s)).length,
     followup:  shows.filter(s => s.status === "צריך פולואפ").length,
     done:      shows.filter(s => s.status === "בוצע").length,
     cancelled: shows.filter(s => s.status === "בוטל").length,
@@ -2003,7 +2061,7 @@ export default function ShowsHubPreview() {
   function tabFilter(s: Show): boolean {
     switch (tab) {
       case "upcoming":  return isUpcomingShow(s);
-      case "unpaid":    return s.payment_status === "לא שולם";
+      case "unpaid":    return s.payment_status === "לא שולם" && !isUnpaidCollab(s);
       case "followup":  return s.status === "צריך פולואפ";
       case "done":      return s.status === "בוצע";
       case "cancelled": return s.status === "בוטל";
@@ -2016,7 +2074,7 @@ export default function ShowsHubPreview() {
     const base = shows.filter(s => {
       if (!tabFilter(s)) return false;
       if (filterSt  && s.status         !== filterSt)  return false;
-      if (filterPay && s.payment_status !== filterPay) return false;
+      if (filterPay && (isUnpaidCollab(s) || s.payment_status !== filterPay)) return false;
       if (q && !`${s.name} ${s.artist} ${s.location} ${s.contact_person ?? ""} ${s.booker_name ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -2102,7 +2160,8 @@ export default function ShowsHubPreview() {
     // Intercept "close" actions: open the close-show modal instead of patching now.
     if ((field === "status" && value === "בוצע") || (field === "payment_status" && value === "שולם")) {
       const show = shows.find(s => s.id === id);
-      if (show) { setCloseShow({ show, trigger: field === "status" ? "done" : "paid" }); return; }
+      // an unpaid collaboration closes operationally only — no money questions (status is saved directly below)
+      if (show && !isUnpaidCollab(show)) { setCloseShow({ show, trigger: field === "status" ? "done" : "paid" }); return; }
     }
     setPatching({ id, field });
     try {
@@ -2113,7 +2172,7 @@ export default function ShowsHubPreview() {
       if (field === "status" && value === "אושרה") {
         const show    = shows.find(s => s.id === id);
         const isFuture = !!show?.date && show.date > new Date().toISOString().slice(0, 10);
-        if (isFuture && (!show?.payment_status || show.payment_status === "לא שולם")) {
+        if (isFuture && !isUnpaidCollab(show) && (!show?.payment_status || show.payment_status === "לא שולם")) {
           body.payment_status = "צפוי";
         }
       }
@@ -2394,17 +2453,19 @@ export default function ShowsHubPreview() {
                                 />
                               </td>
                               <td style={{ padding: "10px 16px" }} onClick={e => e.stopPropagation()}>
-                                <StatusPicker
+                                {isUnpaidCollab(s) ? <Badge bg={COLLAB_COLOR.bg} text={COLLAB_COLOR.text}>{UNPAID_COLLAB_BADGE}</Badge> : <StatusPicker
                                   value={s.payment_status}
                                   options={PAYMENT_STATUSES}
                                   colorMap={PAY_COLOR}
                                   labelFor={payLabel}
                                   onChange={val => patchStatus(s.id, "payment_status", val)}
                                   disabled={patching?.id === s.id && patching.field === "payment_status"}
-                                />
+                                />}
                               </td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
+                                {isUnpaidCollab(s)
+                                  ? <span style={{ color: MUTED, fontWeight: 700 }}>—</span>
+                                  : <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>}
                               </td>
                               {/* Delete cell — fixed 44px, trash button only, confirm handled by central modal */}
                               <td style={{ padding: "10px 12px", width: 44 }} onClick={e => e.stopPropagation()}>

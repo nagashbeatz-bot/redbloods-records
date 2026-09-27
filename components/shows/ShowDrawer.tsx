@@ -312,7 +312,7 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <Badge bg={sc.bg} text={sc.text}>{draft.status}</Badge>
-            <Badge bg={pc.bg} text={pc.text}>{draft.payment_status}</Badge>
+            {draft.deal_type === "UNPAID_COLLAB" ? <Badge bg="rgba(236,72,153,0.16)" text="#F472B6">שת״פ</Badge> : <Badge bg={pc.bg} text={pc.text}>{draft.payment_status}</Badge>}
           </div>
           {/* Quick action — schedule a rehearsal for this show (independent session). */}
           <button onClick={() => setRehearsalModal(true)} style={{
@@ -476,7 +476,7 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
                 <div style={{ height: 1, background: "#1A1A1A", margin: "10px 0" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "#555" }}>יתרה לתשלום</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: remaining > 0 ? "#10B981" : "#6B7280" }}>₪{remaining.toLocaleString()}</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: remaining > 0 ? "#10B981" : "#6B7280" }}>{draft.deal_type === "UNPAID_COLLAB" ? "—" : `₪${remaining.toLocaleString()}`}</span>
                 </div>
               </div>
             </div>

@@ -186,6 +186,7 @@ export const MONEY_MODEL = {
   agreement: "Owner decision 2026-09-27 (the ONE agreement rule layer; ONLY שליו טסמה / אבי מולה, never inferred for another artist): production / mix / master = 100 % label (a real company cost, no artist share, no artist debt); clip = 50 % label / 50 % artist (the artist's half is an artist EXPENSE in the ledger — the amount the Owner recorded is the record, e.g. 'קליפ - פרנציפ' 2,480); show = 50 / 50 of the NET profit (revenue − direct show expenses: DJ + counted rehearsals); media = 50 / 50 of the income; any other category NOT_DEFINED. The Red Films actual cost (Finance cash out, e.g. 4,955) and the artist ledger are DIFFERENT dimensions — never merged. ACCOUNTING = the bi-monthly CYCLE (the app's cycle windows from the anchor; Shalev's current cycle 2026-08-10 → 2026-10-10): income, expenses, shows, media and payments meet in the cycle balance; no income is matched to a specific expense.",
   recoup: "Owner canon 2026-09-27: there is NO clip recoup. For שליו / אבי the clip share is an artist expense in the cycle (agreement above); for every other artist there is no agreement — NOT_DEFINED ('לא נקבע') in every reader (recoup route, clips route, label page, Sunny) — never 50 % of the budget, never the budget, never the client clip price. The artist's income figures (paid show artist fees from the ARTIST_FEE rows + received media artist share; expected shows + expected media) stay visible, and clip money A / B / C + the Red Films ledger are shown per currency as information only. The label P&L counts the LABEL's economic share of the actual paid clip cost (₪; a cost with no agreement rule in full, shown apart), never the whole cash out as label share.",
   portalMoney: "Shalev sees the full ledger + cycles read-only; Avi, CLEANTONE (team) and Nagash have no balance tab; Shalev's summary endpoint returns no balance; CLEANTONE sees his DJ fee + payment status per show",
+  unpaidCollab: "Owner decision 2026-09-27: a show with deal type UNPAID_COLLAB ('שת״פ ללא תשלום') counts as a show for the artist (portal, calendar, count) but never as money — no expected label / artist / DJ money on the label page, recoup or ledger; the label page shows 'שת״פ' and '—'",
   thirdView: "the artist summary endpoint reads the show ARTIST_FEE rows by their canonical show money role (never category / text) with the artist's exact name; paid = that fee row's own status (never the client payment); totals PER CURRENCY — the older ₪-only paid / expected totals stay ₪-only and are never a mixed sum",
 } as const;
 
@@ -352,7 +353,7 @@ export const LABEL_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/beats-store.ts": "eb8b5bf1212f6192339d838cbb3a346e5370298796de2cd47296da3d2ee29bb3",
   "lib/red-artists/portal-registry.ts": "3abda335adba30d4bfaa024376538351e5717b5de55a2797bf9287ea127227dc",
   "lib/red-artists/availability.ts": "54ddcaafe25eee87705989d5550189d63ad54cb73723a43e03e9857a0aae3cf4",
-  "lib/shows-types.ts": "7e319042c14e8f40cffdec3de07586e2eccddeb44e3e4e7df9bfb79526a5e16a",
+  "lib/shows-types.ts": "4ff774de1368126c2f9ad65dba06e417a341e452cc75c667a4edd162ab993aa3",
 };
 
 /** Every API route family touching label artists (internal — the test re-discovers routes and requires a match). */

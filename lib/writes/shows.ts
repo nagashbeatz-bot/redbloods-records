@@ -8,7 +8,7 @@
 import { supabase } from "@/lib/supabase";
 import { createShow, getShow, patchShow, deleteShow, showCalendarSummary, showCalendarTimes, showCalendarDescription } from "@/lib/shows-store";
 import type { PatchShowInput, ShowStatus, PaymentStatus, Show } from "@/lib/shows-store";
-import { isMoneyCurrency, paymentIntentFromBody, SHOW_MONEY_ROLES, SHOW_NO_MONEY_LABELS } from "@/lib/shows-types";
+import { isMoneyCurrency, isShowDealType, isUnpaidCollab, paymentIntentFromBody, SHOW_MONEY_ROLES, SHOW_NO_MONEY_LABELS, UNPAID_COLLAB_NO_MONEY_HE } from "@/lib/shows-types";
 
 /** D5: a show whose Finance holds money actually received (SHOW_PAYMENT rows) is never deleted or reverted to a lead. */
 async function receivedPaymentsOf(showId: string): Promise<number> {
@@ -28,7 +28,7 @@ async function resolveArtistName(show: Show): Promise<Show> {
 // Fields that, when changed, should sync to Google Calendar
 const CALENDAR_SYNC_FIELDS = new Set([
   "name", "artist", "date", "start_time", "location",
-  "booker_name", "contact_person", "phone", "show_price", "dj_fee",
+  "booker_name", "contact_person", "phone", "show_price", "dj_fee", "deal_type",
 ]);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +37,11 @@ type Body = Record<string, any>;
 /** POST /api/shows semantics (the caller validated the name). */
 export async function createShowRecord(body: Body): Promise<{ show: Show; calendarWarning?: string; paymentWarning?: string }> {
     if (body.currency !== undefined && !isMoneyCurrency(body.currency)) throw new Error("מטבע לא נתמך (₪ / $ / €)");
+    if (body.deal_type !== undefined && !isShowDealType(body.deal_type)) throw new Error("סוג עסקה לא מוכר (PAID / UNPAID_COLLAB)");
+    // Owner decision 2026-09-27: an unpaid collaboration carries NO money at all — any money in the request is refused
+    // (never silently dropped); the show itself is created exactly like any other show.
+    const collab = body.deal_type === "UNPAID_COLLAB";
+    if (collab && (Number(body.show_price) > 0 || Number(body.dj_fee) > 0 || Number(body.artist_fee) > 0 || Number(body.advance_payment) > 0 || body.payment_status === "שולם")) throw new Error(UNPAID_COLLAB_NO_MONEY_HE);
     // Create show without calendar_event_id first
     const show = await createShow({
       name:             body.name.trim(),
@@ -50,14 +55,16 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
       contact_person:   body.contact_person?.trim()    ?? "",
       phone:            body.phone?.trim()             ?? "",
       status:           body.status                    ?? "ליד חדש",
+      deal_type:        collab ? "UNPAID_COLLAB" : "PAID",
       // A1: only a no-money label is stored as typed; "שולם" is INTENT (recorded below as a real payment), and
       // מקדמה / חלקי / בוטל are derived from Finance — never persisted from the form.
-      payment_status:   SHOW_NO_MONEY_LABELS.includes(body.payment_status) ? body.payment_status : "לא שולם",
-      show_price:       Number(body.show_price)        || 0,
-      dj_fee:           body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
+      // (an unpaid collaboration: the column keeps its neutral default — it is simply not relevant, never "שת״פ")
+      payment_status:   !collab && SHOW_NO_MONEY_LABELS.includes(body.payment_status) ? body.payment_status : "לא שולם",
+      show_price:       collab ? 0 : Number(body.show_price) || 0,
+      dj_fee:           collab ? 0 : body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
       dj_client_id:     body.dj_client_id          ?? null,
       dj_name:          body.dj_name?.trim()        ?? "",
-      artist_fee:       body.artist_fee !== undefined ? Number(body.artist_fee) : 0,
+      artist_fee:       collab ? 0 : body.artist_fee !== undefined ? Number(body.artist_fee) : 0,
       advance_payment:  0, // D5: a mirror of the received money in Finance (an advance given here is RECORDED below)
       currency:         isMoneyCurrency(body.currency) ? body.currency : "₪",
       notes:            body.notes?.trim()             ?? "",
@@ -68,7 +75,7 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
     await syncShowFinance(show);
     // D5: an advance typed on creation is money received — it becomes a SHOW_PAYMENT row (never a number on the show)
     let paymentWarning: string | undefined;
-    const advance = Number(body.advance_payment) || 0;
+    const advance = collab ? 0 : Number(body.advance_payment) || 0;
     if (advance > 0) {
       const { recordShowPayment } = await import("@/lib/writes/show-payments");
       const r = await recordShowPayment(show.id, { amount: advance, date: typeof body.advance_date === "string" ? body.advance_date : new Date().toISOString().slice(0, 10), method: typeof body.payment_method === "string" ? body.payment_method : "" });
@@ -76,7 +83,7 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
     }
     // A1: created as "שולם" = the client paid → the REMAINDER (after an advance given here) is recorded once, as a
     // real payment row. DJ / artist fee rows stay "צפוי" (their own obligations).
-    const paidIntent = body.payment_status === "שולם";
+    const paidIntent = !collab && body.payment_status === "שולם";
     if (paidIntent) {
       const fresh = await getShow(show.id);
       if (fresh) await syncShowFinance(fresh, { markRemainderReceived: true });
@@ -119,7 +126,7 @@ export type UpdateShowResult =
   | { kind: "not_found" }
   | { kind: "ok"; show: Show; calendarWarning?: string; paymentReversalNeeded?: { amount: number; entryDate: string }; financeWarning?: string }
   | { kind: "balance_sync_failed"; show: Show; balanceSyncError: string }
-  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS" | "HAS_PAID_FEES"; messageHe: string };
+  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS" | "HAS_PAID_FEES" | "DEAL_TYPE" | "UNPAID_COLLAB" | "DEAL_SWITCH_BLOCKED" | "PRICE_REQUIRED"; messageHe: string };
 
 /** PATCH /api/shows/[id] semantics. */
 export async function updateShowRecord(id: string, body: Body): Promise<UpdateShowResult> {
@@ -176,8 +183,36 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     // the rest → the sync records the REMAINDER once. A no-money label (לא שולם / צפוי) is kept only while Finance holds
     // no payment; everything else is derived from Finance by the sync. Undoing a payment is an explicit Finance
     // correction — never a picker value (a SHOW_PAYMENT row is never turned back into "expected" by a save).
-    const intent = paymentIntentFromBody(body.payment_status, existing.payment_status);
-    if (SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0) patch.payment_status = body.payment_status as PaymentStatus;
+    // ── Deal type (Owner decision 2026-09-27): PAID ↔ UNPAID_COLLAB — NOT a payment status ──────────────────────
+    if (body.deal_type !== undefined && !isShowDealType(body.deal_type)) return { kind: "refused", code: "DEAL_TYPE", messageHe: "סוג עסקה לא מוכר (PAID / UNPAID_COLLAB)" };
+    const wasCollab = isUnpaidCollab(existing);
+    const toCollab = body.deal_type !== undefined ? body.deal_type === "UNPAID_COLLAB" : wasCollab;
+    if (toCollab) {
+      // an unpaid collaboration carries no money: money in the request is refused (never silently dropped)
+      const cs = body.closeShow && typeof body.closeShow === "object" ? body.closeShow : null;
+      if (Number(body.show_price) > 0 || Number(body.dj_fee) > 0 || Number(body.artist_fee) > 0 || body.payment_status === "שולם" || (cs && (cs.incomeReceived || cs.djPaid || cs.artistPaid))) {
+        return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
+      }
+      delete patch.show_price; delete patch.dj_fee; delete patch.artist_fee;
+    }
+    if (!wasCollab && toCollab) {
+      // PAID → UNPAID_COLLAB: only when nothing real would be lost. Real money (a client payment, a paid fee, a realized
+      // artist ledger entry, a rehearsal expense, any other show row) is never deleted / cancelled / hidden → refused.
+      const { unpaidCollabSwitchBlockers } = await import("@/lib/shows-finance-sync");
+      const blockers = await unpaidCollabSwitchBlockers(existing);
+      if (blockers.length) return { kind: "refused", code: "DEAL_SWITCH_BLOCKED", messageHe: `אי אפשר להפוך את ההופעה לשת״פ ללא תשלום — כבר יש לה פעילות כספית אמיתית: ${blockers.join(" · ")}. לא מוחקים ולא מבטלים כסף אמיתי; מטפלים בזה פרטנית בכספים קודם` };
+      Object.assign(patch, { deal_type: "UNPAID_COLLAB", show_price: 0, dj_fee: 0, artist_fee: 0, payment_status: "לא שולם" as PaymentStatus });
+    }
+    if (wasCollab && !toCollab) {
+      // UNPAID_COLLAB → PAID: needs the price; then the normal finance flow runs for the show's current state
+      if (!(Number(body.show_price) > 0)) return { kind: "refused", code: "PRICE_REQUIRED", messageHe: "מעבר להופעה בתשלום דורש מחיר (גדול מ-0) — ואז נוצר תהליך הכספים הרגיל לפי מצב ההופעה" };
+      patch.deal_type = "PAID";
+      if (body.dj_fee === undefined) patch.dj_fee = 0; // never an implicit 500 DJ fee on a converted show
+    }
+
+    // an unpaid collaboration never records a payment intent and never stores a payment label
+    const intent = toCollab ? {} : paymentIntentFromBody(body.payment_status, existing.payment_status);
+    if (!toCollab && SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0) patch.payment_status = body.payment_status as PaymentStatus;
 
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);
@@ -206,9 +241,13 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     let balanceSyncError: string | undefined;
 
     // ── Sync canonical Finance transactions when a finance-relevant field changed ──
-    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow", "currency"].some((k) => k in body)) {
+    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow", "currency", "deal_type"].some((k) => k in body)) {
       const fin = await import("@/lib/shows-finance-sync");
-      if (!fin.isConfirmedShowStatus(show.status) && show.status !== "בוטל") {
+      if (isUnpaidCollab(show)) {
+        // zero automatic finance activity; a PAID → UNPAID_COLLAB switch (gated above) removes the still-expected rows
+        // of the paid phase through the SAME safe removal a revert to a lead uses (only unpaid expected / DJ / artist)
+        if (!wasCollab) await fin.clearShowFinance(show);
+      } else if (!fin.isConfirmedShowStatus(show.status) && show.status !== "בוטל") {
         // Reverted to a pipeline status (e.g. "ממתין לתשובה") → remove the show's
         // Finance transactions entirely (not "בוטל"); keep the show itself.
         await fin.clearShowFinance(show);
@@ -460,6 +499,13 @@ export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; delete
 export async function closeShowRecord(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; artistPaid: boolean; artistPaidDate?: string; djName?: string; note?: string }): Promise<UpdateShowResult> {
   const show = await getShow(id);
   if (!show) return { kind: "not_found" };
+  if (isUnpaidCollab(show)) {
+    // an unpaid collaboration closes OPERATIONALLY only: no money flags, no payment, no ledger (Owner decision 2026-09-27)
+    if (c.incomeReceived || c.djPaid || c.artistPaid) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
+    const stamp = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
+    const summary = `סגירת הופעה ${stamp}: שת״פ ללא תשלום${c.note?.trim() ? ` — ${c.note.trim()}` : ""}`;
+    return updateShowRecord(id, { ...(c.markDone ? { status: "בוצע" } : {}), notes: [show.notes?.trim(), summary].filter(Boolean).join("\n") });
+  }
   const { showAgreementSplit } = await import("@/lib/label-agreements");
   const { getRehearsalCountedForShow } = await import("@/lib/shows-finance-sync");
   const split = showAgreementSplit(show, await getRehearsalCountedForShow(id));
@@ -558,7 +604,7 @@ export async function showFeeRows(show: Pick<Show, "id" | "linked_dj_expense_tra
 
 export type SetShowFeePaidResult =
   | { kind: "not_found" }
-  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED"; messageHe: string }
+  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB"; messageHe: string }
   | { kind: "ok"; transactionId: string; before: string | null; after: string };
 
 /**
@@ -577,6 +623,7 @@ export async function setShowFeePaid(showId: string, role: unknown, paid: unknow
   if (typeof method !== "string" || !(PAYMENT_METHODS as readonly string[]).includes(method)) return { kind: "refused", code: "BAD_METHOD", messageHe: "אמצעי תשלום לא מוכר" };
   const show = await getShow(showId);
   if (!show) return { kind: "not_found" };
+  if (isUnpaidCollab(show)) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
   const row = (await showFeeRows(show))[role];
   const who = role === SHOW_MONEY_ROLES.DJ ? "ה-DJ" : "האמן";
   if (!row) return { kind: "refused", code: "NO_FEE_ROW", messageHe: `להופעה אין שורת שכר ${who} בפיננסים` };

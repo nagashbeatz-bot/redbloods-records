@@ -140,7 +140,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     // SENT only for the show's CURRENT version (name / date / time / place); an older version is SENT_PREVIOUS_VERSION
     const fp = computeShowNotifyFingerprint({ name: s.name ?? "", date: s.date, startTime: s.startTime, location: s.location });
     const notify = (fam: string) => { const rows = settingRows(c, fam); if (rows === null) return "UNKNOWN"; const row = rows.find((r) => r.key.endsWith(`:${s.id}`)); if (!row) return "NOT_SENT"; return showNotifyStateOf(((row as { value?: unknown }).value ?? null) as ShowNotifyClaimValue | null, fp).state; };
-    return { key: `show:${s.id}`, role, name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, paymentStatus: s.paymentStatus, price: s.price, djFee: s.djFee, artistFee: s.artistFee, advancePayment: s.advancePayment,
+    // deal type (NOT a payment status): an unpaid collaboration has no payment status / price — never money, still a show
+    const unpaidCollab = s.dealType === "UNPAID_COLLAB";
+    return { key: `show:${s.id}`, role, name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, dealType: unpaidCollab ? "UNPAID_COLLAB" as const : "PAID" as const, paymentStatus: unpaidCollab ? null : s.paymentStatus, price: unpaidCollab ? null : s.price, djFee: s.djFee, artistFee: s.artistFee, advancePayment: s.advancePayment,
       splitNote: `net before rehearsals = ${r2(net)} (price − DJ fee); artist fee = half of net after counted rehearsal costs (stored artist fee ${s.artistFee ?? "—"})`, currency: "NOT_STORED (screens show ₪)",
       dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : null,
       booker: s.bookerClientId ? `client:${s.bookerClientId}` : s.bookerName, rehearsals: rehearsals.map((x) => ({ date: x.date, status: x.status })), hasCalendarEvent: s.hasCalendarEvent,
@@ -309,7 +311,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   for (const s of shows) {
     if (s.upcoming && s.status !== "בוטל") { signals.push({ code: "UPCOMING_SHOW", kind: "CANONICAL_FACT", he: `הופעה ${s.name ?? ""} ב-${s.date} (${s.status})`, entity: s.key }); nextSteps.push({ step: `הופעה ${s.date}`, evidence: `DJ: ${s.dj ? `${s.dj.name ?? "?"} (${s.dj.confirmation})` : "לא רשום"} · חזרות: ${s.rehearsals.length} · נשלח לאמן: ${s.sentToArtist}`, entity: s.key }); }
     if (s.role === "ARTIST" && !s.dj && s.status !== "בוטל" && SHOW_ACTIVE.has(s.status ?? "") && s.upcoming) { signals.push({ code: "SHOW_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `להופעה ב-${s.date} אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן: לאשר.`, entity: s.key }); questions.push({ kind: "SHOW_DJ", questionHe: `מי ה-DJ בהופעה ב-${s.date}?`, why: "no DJ recorded; never auto-assigned" }); }
-    if (s.status === "בוצע" && s.paymentStatus !== "שולם" && s.paymentStatus !== "בוטל") signals.push({ code: "SHOW_DONE_UNPAID", kind: "CANONICAL_FACT", he: `הופעה ${s.date} בוצעה, תשלום לקוח: ${s.paymentStatus}`, entity: s.key });
+    if (s.dealType !== "UNPAID_COLLAB" && s.status === "בוצע" && s.paymentStatus !== "שולם" && s.paymentStatus !== "בוטל") signals.push({ code: "SHOW_DONE_UNPAID", kind: "CANONICAL_FACT", he: `הופעה ${s.date} בוצעה, תשלום לקוח: ${s.paymentStatus}`, entity: s.key });
   }
   const moving = projects.some((p) => p.open && ((p.victor?.length ?? 0) > 0 || (p.engineers ?? []).some((e) => !["אושר", "בוטל"].includes(e.status ?? "")) || (p.sessions?.upcoming ?? 0) > 0));
   if (!moving && futureSessions.length === 0 && !releaseRows.some((r) => r.active && r.targetDate && r.targetDate >= c.today)) {

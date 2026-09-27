@@ -328,6 +328,8 @@ export type CleantoneShow = {
   // Only "שולם" = paid; any other value renders as "לא שולם". Read-only for the DJ.
   paymentStatus: string;
   confirmationStatus: "ממתין לאישור" | "אושר" | null;
+  /** Deal type (NOT a payment status): UNPAID_COLLAB = no fee at all — shown as "שת״פ" / "—". */
+  dealType?: "PAID" | "UNPAID_COLLAB";
 };
 export type CleantoneSummary = { shows: { upcoming: CleantoneShow[]; done: CleantoneShow[] }; updates: PortalUpdate[] };
 
@@ -3140,6 +3142,7 @@ function BalanceCycleRemindModal({ artistId, onClose }: { artistId: string; onCl
 type Show = {
   id: string; name: string; date: string; time: string; location: string; status: string;
   artist?: string; djFee?: number; currency?: string; paymentStatus?: string; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
+  dealType?: "PAID" | "UNPAID_COLLAB";
 };
 // Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
@@ -3163,6 +3166,17 @@ function ShowStatusPill({ status }: { status: string }) {
 // ("צפוי", "בוטל", no row) → "לא שולם" (red). The DJ only needs to know "was I
 // paid" — the Owner marks it (close dialog / Finance / Sunny MARK_SHOW_FEE_PAID).
 const PAYMENT_RED = "#F87171";
+/** Deal-type pill (NOT a payment status): an unpaid collaboration has no fee to be paid. */
+function CollabPill() {
+  const col = "#F472B6";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 7px ${col}` }} />
+      שת״פ
+    </span>
+  );
+}
+
 function PaymentStatusPill({ status }: { status?: string }) {
   const paid = status === "שולם";
   const col = paid ? GREEN : PAYMENT_RED;
@@ -3416,10 +3430,10 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               {isCleantoneVariant && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>עבור: {s.artist || "—"}</div>}
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "start" }}>{s.date} · {s.time}</div>
               <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
-              {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0, s.currency)}</div>}
+              {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{s.dealType === "UNPAID_COLLAB" ? "—" : fmtMoney(s.djFee ?? 0, s.currency)}</div>}
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {!isCleantoneVariant && <ShowStatusPill status={s.status} />}
-                {isCleantoneVariant && <PaymentStatusPill status={s.paymentStatus} />}
+                {isCleantoneVariant && (s.dealType === "UNPAID_COLLAB" ? <CollabPill /> : <PaymentStatusPill status={s.paymentStatus} />)}
                 {showSendButton && !isCleantoneVariant && <NotifyShalevButton showId={s.id} />}
                 {isCleantoneVariant && onConfirmed && <DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} />}
                 {cleantoneSend && <NotifyShalevButton showId={s.id} endpoint={`/api/shows/${s.id}/notify-dj`} />}
@@ -3444,8 +3458,8 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
-              {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0, s.currency)}</div>}
-              {isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><PaymentStatusPill status={s.paymentStatus} /></div>}
+              {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{s.dealType === "UNPAID_COLLAB" ? "—" : fmtMoney(s.djFee ?? 0, s.currency)}</div>}
+              {isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}>{s.dealType === "UNPAID_COLLAB" ? <CollabPill /> : <PaymentStatusPill status={s.paymentStatus} />}</div>}
               {!isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>}
               {showSendButton && !isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
               {isCleantoneVariant && onConfirmed && <div style={{ display: "flex", justifyContent: "center" }}><DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} /></div>}
@@ -3471,6 +3485,7 @@ function toCleantoneShowRow(s: CleantoneShow): Show {
   return {
     id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status,
     artist: s.artist || "—", djFee: s.djFee, currency: s.currency, paymentStatus: s.paymentStatus, confirmationStatus: s.confirmationStatus,
+    dealType: s.dealType,
   };
 }
 

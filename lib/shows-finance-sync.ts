@@ -1,7 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
-import { rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, type ShowMoney, type ShowMoneyRow } from "@/lib/shows-types";
+import { isUnpaidCollab, rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, type ShowMoney, type ShowMoneyRow } from "@/lib/shows-types";
 import { closureFeeStatus, feeRowMayReprice, feeRowPaidConflicts, feeRowStatusAfterSync, FEE_ROW_INITIAL_STATUS, shouldRecordRemainder, type ShowSyncIntent } from "@/lib/shows-types";
 import { syncArtistBalanceFromShow, removeSyncedArtistBalanceEntry } from "@/lib/artist-balance-show-sync";
 import { showAgreementSplit } from "@/lib/label-agreements";
@@ -166,9 +166,11 @@ export async function getRehearsalCountedForShow(showId: string): Promise<number
  */
 export async function syncRehearsalFinance(
   rehearsal: { id: string; date: string | null; cost: number | null },
-  show: { id: string; name: string; artist: string; currency?: string | null },
+  show: { id: string; name: string; artist: string; currency?: string | null; deal_type?: string | null },
   paymentStatus?: string,
 ): Promise<void> {
+  // an unpaid collaboration never gets an automatic rehearsal expense (the writer refuses a cost first; last guard)
+  if (isUnpaidCollab(show)) return;
   try {
     const cost = Number(rehearsal.cost) || 0;
     const { data: existing } = await supabase
@@ -276,6 +278,10 @@ async function readFeeRow(id: string): Promise<{ id: string; status: string | nu
  */
 export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Promise<ShowSyncReport> {
   const report: ShowSyncReport = { feeConflicts: [] };
+  // Owner decision 2026-09-27: an unpaid collaboration (deal_type UNPAID_COLLAB) has ZERO automatic finance activity —
+  // no expected income, payment mirror, DJ / artist row or artist ledger entry. Rows of an earlier PAID phase are
+  // removed only by the guarded deal-type switch (lib/writes/shows.ts), never here.
+  if (isUnpaidCollab(show)) return report;
   try {
     const isCancelled = show.status === "בוטל";
     const isConfirmed = CONFIRMED_STATUSES.has(show.status);
@@ -662,5 +668,35 @@ export async function getShowFeeRowsMap(shows: ReadonlyArray<Pick<Show, "id"> & 
     return r ? { id: r.id, status: r.payment_status, amount: Number(r.amount) || 0, currency: r.currency || "₪", date: r.date, party: r.artist ?? "" } : null;
   };
   for (const s of shows) out[s.id] = { DJ_FEE: pick(s.id, SHOW_MONEY_ROLES.DJ, s.linked_dj_expense_transaction_id), ARTIST_FEE: pick(s.id, SHOW_MONEY_ROLES.ARTIST, s.linked_artist_expense_transaction_id) };
+  return out;
+}
+
+// ── Deal type switch PAID → UNPAID_COLLAB (Owner decision 2026-09-27) ────────────────────────────────────────────────
+/** What makes a PAID show unsafe to turn into an unpaid collaboration: real money or records that the existing safe
+ *  removal (clearShowFinance: only still-expected balance / unpaid DJ / unpaid artist rows) would not remove. Read-only.
+ *  Empty = the switch may run (the still-expected rows are then removed by clearShowFinance). Real money is never
+ *  deleted, cancelled or hidden to make a show a collaboration. */
+export async function unpaidCollabSwitchBlockers(show: Show): Promise<string[]> {
+  const out: string[] = [];
+  // EVERY row of the show (income AND expense — showFinanceRows is income-only), through the canonical show_id link
+  type R = { id: string; show_money_role: string | null; payment_status: string | null; amount: number | null; currency: string | null };
+  const { data, error: rErr } = await supabase.from("transactions").select("id, show_money_role, payment_status, amount, currency").eq("show_id", show.id);
+  if (rErr) throw new Error(rErr.message);
+  const rows = (data ?? []) as R[];
+  const amt = (r: R) => `${r.currency || "₪"}${Number(r.amount).toLocaleString("en-US")}`;
+  const moved = (r: R) => r.payment_status === "שולם" || r.payment_status === "התקבל";
+  const received = rows.filter((r) => r.show_money_role === SHOW_MONEY_ROLES.PAYMENT || (r.show_money_role === SHOW_MONEY_ROLES.EXPECTED && moved(r)));
+  if (received.length) out.push(`תשלומי לקוח שהתקבלו (${received.map(amt).join(" · ")})`);
+  const paidFees = await paidShowFeeRows(show);
+  if (paidFees.length) out.push(`שכר ששולם (${paidFees.map((r) => `${r.role === "DJ_FEE" ? "DJ" : "אמן"} ${r.currency}${Number(r.amount).toLocaleString("en-US")}`).join(" · ")})`);
+  const rehearsal = rows.filter((r) => r.show_money_role === SHOW_MONEY_ROLES.REHEARSAL);
+  if (rehearsal.length) out.push(`הוצאות חזרה רשומות בכספים (${rehearsal.length})`);
+  const known = [SHOW_MONEY_ROLES.PAYMENT, SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST, SHOW_MONEY_ROLES.REHEARSAL] as readonly string[];
+  const other = rows.filter((r) => !known.includes(String(r.show_money_role)));
+  if (other.length) out.push(`רשומות כספיות נוספות של ההופעה (${other.length})`);
+  // the artist ledger: a realized income / payment written by the close flow (keyed by the show) is real accounting
+  const { data: ledger, error } = await supabase.from("artist_balance_entries").select("id, entry_type").eq("source_show_id", show.id);
+  if (error) throw new Error(error.message);
+  if ((ledger ?? []).length) out.push(`רשומות במאזן האמן (${(ledger as Array<{ entry_type: string }>).map((x) => x.entry_type).join(" · ")})`);
   return out;
 }

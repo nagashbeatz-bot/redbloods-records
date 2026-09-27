@@ -27,7 +27,7 @@ import * as SM from "../lib/partner/system/shows";
 import { DOMAIN_CONTRACTS, FORBIDDEN_SERVED_TERMS, SYSTEM_BASELINE_VERSION, CAPABILITY_CHANGES, validateSystemRegistry } from "../lib/partner/system";
 import { DOMAIN_KNOWLEDGE_DEPTH, KNOWLEDGE_GAPS, validateKnowledgeGaps } from "../lib/partner/system/gaps";
 import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
-import { SHOW_STATUSES, PAYMENT_STATUSES, DJ_CONFIRMATION_STATUSES } from "../lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES, DJ_CONFIRMATION_STATUSES, SHOW_DEAL_TYPES } from "../lib/shows-types";
 import { computeShowNotifyFingerprint } from "../lib/show-notify-pure";
 import { C_CLEAN, C_SHALEV, LA_AVI, LA_CLEAN, LA_NAGASH, LA_SHALEV, NOW, U, input } from "./fixtures/integrity-company";
 import { empty, tx } from "./fixtures/finance-mirror";
@@ -103,6 +103,8 @@ function main() {
   check("show statuses = the code", [...SM.SHOW_VOCABULARIES.statuses], [...SHOW_STATUSES]);
   check("payment statuses = the code", [...SM.SHOW_VOCABULARIES.paymentStatuses], [...PAYMENT_STATUSES]);
   check("DJ confirmation = the code", [...SM.SHOW_VOCABULARIES.djConfirmation], [...DJ_CONFIRMATION_STATUSES]);
+  check("deal types = the code (a deal type, NOT a payment status)", [...SM.SHOW_VOCABULARIES.dealTypes], [...SHOW_DEAL_TYPES]);
+  ok("the deal type never becomes a payment status value", !(PAYMENT_STATUSES as readonly string[]).some((p) => /שת|collab/i.test(p)));
   ok("confirmed-finance group = the finance sync constant", /CONFIRMED_STATUSES = new Set\(\["נסגר", ?"אושרה", ?"בוצע"\]\)/.test(read("lib/shows-finance-sync.ts").replace(/\s+/g, " ")) || read("lib/shows-finance-sync.ts").includes('"נסגר","אושרה","בוצע"') || read("lib/shows-finance-sync.ts").includes('"נסגר", "אושרה", "בוצע"'));
   const walk = (d: string): string[] => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(`${d}/${e.name}`) : e.name === "route.ts" ? [`${d}/${e.name}`] : []);
   const routes = walk("app/api").filter((f) => /^app\/api\/shows\//.test(f) || /\.from\(\s*["']shows["']\)|shows-store|shows-finance-sync|show-notify|dj-show-notify|dj-confirm-notify|show-quote-followup|cleantone|show_id|showId/.test(read(f)));

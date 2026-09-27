@@ -378,9 +378,9 @@ const selSt: React.CSSProperties = {
 };
 
 /** Totals per currency — amounts in different currencies are never added (no FX). */
-function sumShowsByCurrency(list: Array<{ show_price: number; currency?: string }>): string {
+function sumShowsByCurrency(list: Array<{ show_price: number; currency?: string; deal_type?: string }>): string {
   const by = new Map<string, number>();
-  for (const s of list) by.set(s.currency || "₪", (by.get(s.currency || "₪") ?? 0) + (s.show_price || 0));
+  for (const s of list) if (s.deal_type !== "UNPAID_COLLAB") by.set(s.currency || "₪", (by.get(s.currency || "₪") ?? 0) + (s.show_price || 0));
   return by.size ? [...by.entries()].map(([c, n]) => `${c}${n.toLocaleString()}`).join(" · ") : "₪0";
 }
 
@@ -551,8 +551,8 @@ export default function ShowsPage() {
                     <div style={{ fontSize: 12, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{show.location || "—"}</div>
                   )}
                   <div><Badge bg={sc.bg} text={sc.text}>{show.status}</Badge></div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#C0C0C0" }}>₪{(show.show_price || 0).toLocaleString()}</div>
-                  <div><Badge bg={pc.bg} text={pc.text}>{show.payment_status}</Badge></div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#C0C0C0" }}>{show.deal_type === "UNPAID_COLLAB" ? "—" : `₪${(show.show_price || 0).toLocaleString()}`}</div>
+                  <div>{show.deal_type === "UNPAID_COLLAB" ? <Badge bg="rgba(236,72,153,0.16)" text="#F472B6">שת״פ</Badge> : <Badge bg={pc.bg} text={pc.text}>{show.payment_status}</Badge>}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "#333", fontSize: 14 }}>›</div>
                 </div>
               );

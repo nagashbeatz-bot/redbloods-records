@@ -11,7 +11,7 @@
  * Provenance: OWNER_CONFIRMED (the Owner's own words in the Sunny operating-model conversation, 2026-09-25).
  */
 
-export const OWNER_MODEL_VERSION = "2026.09.27-owner-6";
+export const OWNER_MODEL_VERSION = "2026.09.27-owner-7";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -145,7 +145,8 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
       { item: "artist", knownFrom: "CANONICAL_DATA", note: "resolved via the label roster / clients (never guessed)" },
       { item: "date", knownFrom: "ASK_OWNER", note: "usually given in the Owner's sentence" },
       { item: "already registered?", knownFrom: "CANONICAL_DATA", note: "an existing show for the artist on that date" },
-      { item: "price + currency", knownFrom: "ASK_OWNER" },
+      { item: "deal type — בתשלום / שת״פ ללא תשלום", knownFrom: "ASK_OWNER", note: "Owner decision 2026-09-27: a DEAL TYPE, never a payment status. When the Owner says 'שת״פ ללא תשלום', price / DJ fee / split / deposit are NOT asked — the show is operationally normal with zero automatic money" },
+      { item: "price + currency", knownFrom: "ASK_OWNER", note: "only for a paid show (never asked for שת״פ ללא תשלום)" },
       { item: "venue / location", knownFrom: "ASK_OWNER" },
       { item: "start time", knownFrom: "ASK_OWNER", note: "optional" },
       { item: "status (closed or still waiting for an answer)", knownFrom: "ASK_OWNER", note: "default when created: ממתין לתשובה" },

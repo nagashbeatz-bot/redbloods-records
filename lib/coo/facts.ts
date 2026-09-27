@@ -226,7 +226,7 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     const facts: ShowFact[] = raw.shows.map((s) => {
       const d = parseYmd(s.date);
       return {
-        id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, currency: normalizeCurrency(s.currency), incomeTxId: s.incomeTxId,
+        id: s.id, name: s.name, status: s.status, dealType: s.dealType ?? "PAID", paymentStatus: s.paymentStatus, dateYmd: d, daysTo: d ? diffDays(today, d) : null, price: s.price, advance: s.advance, currency: normalizeCurrency(s.currency), incomeTxId: s.incomeTxId,
         djClientId: s.djClientId ?? null, djConfirmationStatus: s.djConfirmationStatus ?? null, djConfirmedAt: s.djConfirmedAt ?? null,
       };
     });
@@ -234,10 +234,12 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
     const upcoming = facts.filter((s) => CONFIRMED_SHOW.has(s.status) && !cancelled(s) && s.daysTo !== null && s.daysTo >= 0)
       .sort((a, b) => (a.daysTo as number) - (b.daysTo as number));
     const done = facts.filter((s) => s.status === "בוצע" && !cancelled(s));
-    const doneUnpaid = done.filter((s) => s.paymentStatus !== "שולם" && s.price > 0);
+    // an unpaid collaboration (deal type) is never money: no collection alert, no missing-price data-quality item
+    const moneyShow = (s: ShowFact) => s.dealType !== "UNPAID_COLLAB";
+    const doneUnpaid = done.filter((s) => moneyShow(s) && s.paymentStatus !== "שולם" && s.price > 0);
     const performedDates = done.map((s) => s.dateYmd).filter((d): d is string => !!d).sort();
     shows = { total: facts.length, upcoming, doneUnpaid, leadsCount: facts.filter((s) => LEAD_SHOW.has(s.status)).length, lastPerformedYmd: performedDates.length ? performedDates[performedDates.length - 1] : null };
-    const zeroPriced = done.filter((s) => s.paymentStatus !== "שולם" && !(s.price > 0));
+    const zeroPriced = done.filter((s) => moneyShow(s) && s.paymentStatus !== "שולם" && !(s.price > 0));
     if (zeroPriced.length) dq.push(dqi("shows.done_no_price", "הופעות שבוצעו בלי מחיר ובלי סטטוס תשלום 'שולם'", zeroPriced.length, "לא ניתן לדעת אם יש כסף לגבות — לא נכללות בהתראת גבייה.", "warn"));
     coverage.push(cov("shows", "הופעות", facts.length, facts.length, "לכל הופעה מטבע משלה (shows.currency) — סכומים לא מחוברים בין מטבעות; רק הופעות שנרשמו במערכת. אין נתוני 'לידים' בפועל."));
   } else unavailable("shows", "הופעות");

@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     const excluded = new Map<string, { currency: string; shows: number; artistPaid: number; artistExpected: number }>();
     for (const s of relevant) {
       if (parseArtistNames(s.artist || "").length > 1) continue;   // collab → needs attribution, excluded
+      if (s.deal_type === "UNPAID_COLLAB") continue;               // an unpaid collaboration carries no artist money
       const split = computeShowSplit(s, rehMap[s.id] ?? 0);
       const art = feeMap[s.id]?.ARTIST_FEE ?? null;
       const paid = art?.status === "שולם";

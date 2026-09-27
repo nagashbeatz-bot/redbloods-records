@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runCases, mkDeps, fullFlow, U, OWNER, type FamilyCase } from "./fixtures/act-harness";
 import { approveAction, executeAction, planAction, previewAction } from "../lib/partner/act/service";
-import { CLEANTONE_DEFAULT_FEE, CLEANTONE_ID, REHEARSAL_STATUSES, SHOW_FEE_ROLES, SHOW_PAYMENT_STATUSES, SHOW_PRIMITIVES, SHOW_STATUSES, type ShowView } from "../lib/partner/act/primitives/shows";
+import { CLEANTONE_DEFAULT_FEE, CLEANTONE_ID, REHEARSAL_STATUSES, SHOW_DEAL_TYPES, SHOW_FEE_ROLES, SHOW_PAYMENT_STATUSES, SHOW_PRIMITIVES, SHOW_STATUSES, type ShowView } from "../lib/partner/act/primitives/shows";
 import { ACTION_REGISTRY } from "../lib/partner/act/registry";
 
 let pass = 0, fail = 0;
@@ -20,7 +20,7 @@ type Sess = { projectId: string | null; showId: string | null; title: string; da
 type NS = { status: "sent" | "failed" | "processing"; version: string; sentAt?: string };
 interface W { shows: Record<string, ShowView>; clients: Record<string, string>; sessions: Record<string, Sess>; connected: boolean; sent: string[]; quote: string[]; closed: string[]; notify: { artist: Record<string, NS>; dj: Record<string, NS> }; pushOk: boolean }
 const FUT = "2099-05-01";
-const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", djFeeStatus: "צפוי", djFeeAmount: 500, artistFeeStatus: "צפוי", artistFeeAmount: 3750, ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
+const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", dealType: "PAID", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", djFeeStatus: "צפוי", djFeeAmount: 500, artistFeeStatus: "צפוי", artistFeeAmount: 3750, ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
 const world = (): W => ({
   shows: { [U(1)]: sv({}), [U(2)]: sv({ name: "ליד", status: "ליד חדש", financeRows: 0, hasCalendarEvent: false, djClientId: null, djName: "", djFee: 0 }) },
   clients: { [U(60)]: "שליו טסמה", [CLEANTONE_ID]: "CLEANTONE", [U(61)]: "DJ אחר" },
@@ -40,12 +40,12 @@ function fakeSend(w: W, who: "artist" | "dj", id: string) {
 }
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
-  const map: Record<string, keyof ShowView> = { name: "name", date: "date", start_time: "startTime", location: "location", contact_person: "contactPerson", phone: "phone", booker_name: "bookerName", notes: "notes", show_price: "showPrice", payment_status: "paymentStatus", currency: "currency", advance_payment: "advancePayment", dj_client_id: "djClientId", dj_name: "djName", dj_fee: "djFee", status: "status" };
+  const map: Record<string, keyof ShowView> = { deal_type: "dealType", name: "name", date: "date", start_time: "startTime", location: "location", contact_person: "contactPerson", phone: "phone", booker_name: "bookerName", notes: "notes", show_price: "showPrice", payment_status: "paymentStatus", currency: "currency", advance_payment: "advancePayment", dj_client_id: "djClientId", dj_name: "djName", dj_fee: "djFee", status: "status" };
   const writers = {
     async readClient(id: string) { return w.clients[id] ? { name: w.clients[id], phone: "", email: "", type: "אמן", status: "פעיל", notes: "" } : null; },
     async calendarConnected() { return w.connected; },
     async readShow(id: string) { return w.shows[id] ? { ...w.shows[id], rehearsals: Object.values(w.sessions).filter((s) => s.showId === id).length } : null; },
-    async createShow(b: Record<string, unknown>) { calls.push("createShow"); const id = U(++n); w.shows[id] = sv({ name: String(b.name), status: String(b.status), showPrice: Number(b.show_price), djFee: Number(b.dj_fee), djClientId: (b.dj_client_id as string) ?? null, djName: String(b.dj_name ?? ""), date: (b.date as string) ?? null, financeRows: 0, hasCalendarEvent: b.addToCalendar === true, currency: String(b.currency ?? "₪"), received: Number(b.advance_payment) || 0 }); return { id, calendarWarning: null }; },
+    async createShow(b: Record<string, unknown>) { calls.push("createShow"); const id = U(++n); w.shows[id] = sv({ name: String(b.name), status: String(b.status), dealType: String(b.deal_type ?? "PAID"), showPrice: Number(b.show_price), djFee: Number(b.dj_fee), djClientId: (b.dj_client_id as string) ?? null, djName: String(b.dj_name ?? ""), date: (b.date as string) ?? null, financeRows: 0, hasCalendarEvent: b.addToCalendar === true, currency: String(b.currency ?? "₪"), received: Number(b.advance_payment) || 0 }); return { id, calendarWarning: null }; },
     async updateShow(id: string, b: Record<string, unknown>) {
       calls.push("updateShow"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const };
       if (b.removeFromCalendar) s.hasCalendarEvent = false; if (b.addToCalendar) s.hasCalendarEvent = true;
@@ -78,6 +78,7 @@ const CASES: FamilyCase<W>[] = [
   { id: "SET_SHOW_MONEY", args: { show: S1, showPrice: 8500 }, confirm: "כן בוס, 8500", bad: { show: S1, paymentStatus: "חלקי" }, missing: { show: `show:${U(9)}`, showPrice: 1 }, stale: (w) => { w.shows[U(1)].showPrice = 7000; }, check: (w) => w.shows[U(1)].showPrice === 8500 && w.shows[U(1)].remaining === 8500 },
   { id: "RECORD_SHOW_PAYMENT", args: { show: S1, amount: 3000, date: "2099-04-01", paymentMethod: "העברה בנקאית" }, confirm: "כן בוס, 3000 2099-04-01", bad: { show: S1, amount: -5, date: "2099-04-01" }, missing: { show: `show:${U(9)}`, amount: 1, date: "2099-04-01" }, wrongKind: { show: `client:${U(60)}`, amount: 1, date: "2099-04-01" }, stale: (w) => { w.shows[U(1)].received = 500; }, check: (w, c) => w.shows[U(1)].received === 3000 && w.shows[U(1)].remaining === 5000 && c.join() === "recordShowPayment" },
   { id: "MARK_SHOW_FEE_PAID", args: { show: S1, role: "DJ_FEE", paid: true, date: "2099-05-02", paymentMethod: "ביט" }, bad: { show: S1, role: "HOST_FEE", paid: true }, missing: { show: `show:${U(9)}`, role: "DJ_FEE", paid: true }, wrongKind: { show: `client:${U(60)}`, role: "DJ_FEE", paid: true }, stale: (w) => { w.shows[U(1)].djFeeStatus = "בוטל"; }, check: (w, c) => w.shows[U(1)].djFeeStatus === "שולם" && w.shows[U(1)].artistFeeStatus === "צפוי" && w.shows[U(1)].received === 0 && c.join() === "setShowFeePaid" },
+  { id: "SET_SHOW_DEAL_TYPE", args: { show: S1, dealType: "UNPAID_COLLAB" }, bad: { show: S1, dealType: "FREE" }, missing: { show: `show:${U(9)}`, dealType: "UNPAID_COLLAB" }, stale: (w) => { w.shows[U(1)].showPrice = 1; }, check: (w) => w.shows[U(1)].dealType === "UNPAID_COLLAB" },
   { id: "SET_SHOW_CURRENCY", args: { show: S1, currency: "$" }, confirm: "כן בוס, $", bad: { show: S1, currency: "GBP" }, missing: { show: `show:${U(9)}`, currency: "$" }, stale: (w) => { w.shows[U(1)].showPrice = 1; }, check: (w) => w.shows[U(1)].currency === "$" },
   { id: "ASSIGN_SHOW_DJ", args: { show: S1, djClient: `client:${U(61)}`, djFee: 700 }, confirm: "כן בוס, DJ אחר ₪700", bad: { show: S1, djClient: `client:${U(61)}` }, missing: { show: `show:${U(9)}`, remove: true }, stale: (w) => { w.shows[U(1)].djFee = 600; }, check: (w) => w.shows[U(1)].djClientId === U(61) && w.shows[U(1)].djName === "DJ אחר" && w.shows[U(1)].djFee === 700 },
   { id: "CONFIRM_SHOW", args: { show: S2, status: "אושרה" }, confirm: "כן בוס, אושרה", bad: { show: S2, status: "בוצע" }, missing: { show: `show:${U(9)}`, status: "אושרה" }, stale: (w) => { w.shows[U(2)].status = "צריך פולואפ"; }, check: (w) => w.shows[U(2)].status === "אושרה" },
@@ -205,6 +206,7 @@ const CASES: FamilyCase<W>[] = [
   const st = read("lib/shows-types.ts");
   ok("show statuses = lib/shows-types SHOW_STATUSES", st.includes(`SHOW_STATUSES = [${SHOW_STATUSES.map((x) => `"${x}"`).join(",")}]`));
   ok("show fee roles = lib/shows-types SHOW_MONEY_ROLES DJ / ARTIST", st.includes(`DJ: "${SHOW_FEE_ROLES[0]}", ARTIST: "${SHOW_FEE_ROLES[1]}"`));
+  ok("show deal types = lib/shows-types SHOW_DEAL_TYPES (NOT a payment status)", st.includes(`SHOW_DEAL_TYPES = [${SHOW_DEAL_TYPES.map((x) => `"${x}"`).join(", ")}] as const`));
   ok("show payment statuses = lib/shows-types PAYMENT_STATUSES", st.includes(`PAYMENT_STATUSES = [${SHOW_PAYMENT_STATUSES.map((x) => `"${x}"`).join(",")}]`));
   ok("rehearsal statuses = RehearsalModal OP_STATUSES", read("components/shows/RehearsalModal.tsx").includes(`OP_STATUSES = [${REHEARSAL_STATUSES.map((x) => `"${x}"`).join(", ")}]`));
   ok("CLEANTONE id = lib/red-artists/cleantone.ts", read("lib/red-artists/cleantone.ts").includes(`CLEANTONE_CLIENT_ID = "${CLEANTONE_ID}"`));

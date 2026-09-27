@@ -22,7 +22,7 @@ export async function readLabelDetailRaw(client: OperationsReadClient): Promise<
     r("label_media_income", "id, label_artist_id, record_type, reverses_id, gross_amount, source, report_period, received_date, status, notes, label_share, artist_share_gross, recoup_before, recouped, artist_payable, recoup_after, created_at, updated_at"),
     r("beats", "id, name, genre, musical_key, status, file_name, dropbox_path, duration_seconds, created_at"),
     r("beat_artist_assignments", "beat_id, artist_slug, created_at"),
-    r("shows", "id, name, artist, date, start_time, location, contact_person, phone, status, payment_status, show_price, dj_fee, artist_fee, advance_payment, currency, notes, artist_client_id, booker_client_id, booker_name, dj_client_id, dj_name, dj_confirmation_status, dj_confirmed_at, calendar_event_id, linked_income_transaction_id, linked_dj_expense_transaction_id, linked_artist_expense_transaction_id, created_at, updated_at"),
+    r("shows", "id, name, artist, date, start_time, location, contact_person, phone, status, deal_type, payment_status, show_price, dj_fee, artist_fee, advance_payment, currency, notes, artist_client_id, booker_client_id, booker_name, dj_client_id, dj_name, dj_confirmation_status, dj_confirmed_at, calendar_event_id, linked_income_transaction_id, linked_dj_expense_transaction_id, linked_artist_expense_transaction_id, created_at, updated_at"),
   ]);
   const assignments = assign ? assign.rows : null;
   return {
@@ -33,7 +33,7 @@ export async function readLabelDetailRaw(client: OperationsReadClient): Promise<
     beats: beats && assignments ? mapSection(beats, (x) => (s(x.id) && s(x.name) ? { id: String(x.id), name: String(x.name), genre: s(x.genre), musicalKey: s(x.musical_key), status: s(x.status), fileName: s(x.file_name), path: s(x.dropbox_path), durationSeconds: n(x.duration_seconds), createdAt: s(x.created_at),
       assignedTo: assignments.filter((a) => a.beat_id === x.id).map((a) => ({ artistSlug: String(a.artist_slug), at: s(a.created_at) })) } : null)) : null,
     shows: mapSection(shows, (x) => (s(x.id) ? { id: String(x.id), name: s(x.name), artistText: s(x.artist), date: s(x.date), startTime: s(x.start_time), location: t(x.location), contactPerson: s(x.contact_person), hasPhone: has(x.phone),
-      status: s(x.status), paymentStatus: s(x.payment_status), price: n(x.show_price), djFee: n(x.dj_fee), artistFee: n(x.artist_fee), advancePayment: n(x.advance_payment), currency: s(x.currency) ?? "₪", notes: t(x.notes),
+      status: s(x.status), dealType: s(x.deal_type) === "UNPAID_COLLAB" ? "UNPAID_COLLAB" : "PAID", paymentStatus: s(x.payment_status), price: n(x.show_price), djFee: n(x.dj_fee), artistFee: n(x.artist_fee), advancePayment: n(x.advance_payment), currency: s(x.currency) ?? "₪", notes: t(x.notes),
       artistClientId: s(x.artist_client_id), bookerClientId: s(x.booker_client_id), bookerName: s(x.booker_name), djClientId: s(x.dj_client_id), djName: s(x.dj_name), djConfirmationStatus: s(x.dj_confirmation_status), djConfirmedAt: s(x.dj_confirmed_at),
       hasCalendarEvent: has(x.calendar_event_id), incomeTxId: s(x.linked_income_transaction_id), djExpenseTxId: s(x.linked_dj_expense_transaction_id), artistExpenseTxId: s(x.linked_artist_expense_transaction_id), createdAt: s(x.created_at), updatedAt: s(x.updated_at) } : null)),
   };
