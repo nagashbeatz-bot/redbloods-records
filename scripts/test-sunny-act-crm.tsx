@@ -108,16 +108,16 @@ const CASES: FamilyCase<W>[] = [
 
   console.log("\nFamily-specific");
   {
-    const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "DELETE_CLIENT", { client: C1 }, "כן");
-    ok("deleting a client needs the word מחיקה (plain 'כן' refused, nothing deleted)", r.a?.status === "CONFIRMATION_VALUES_MISSING" && !!h.w.clients[U(1)] && h.calls.length === 0, r.a?.status);
+    const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "DELETE_CLIENT", { client: C1 }, "מאשר");
+    ok("deleting a client: the preview says מחיקה; a plain \"מאשר\" approves the exact plan (no repeated word)", JSON.stringify(r.p).includes("מחיקה") && r.e?.status === "APPLIED_AS_EXPECTED" && !h.w.clients[U(1)], r.e?.status);
     const p = await planAction({ intentHe: "x", actionId: "DELETE_CLIENT", args: { client: C1 } }, OWNER, mkDeps(mk().writers).d);
     ok("the delete preview says the client's proposals are deleted with it (DB cascade, hardened writer)", p.status === "PREVIEW" && JSON.stringify(p).includes("יימחקו גם 1 הצעות"));
     const d2 = await planAction({ intentHe: "x", actionId: "CREATE_CLIENT", args: { name: "שליו" } }, OWNER, mkDeps(mk().writers).d);
     ok("a duplicate client name is refused (the app does not allow duplicates)", d2.status === "DUPLICATE", d2.status);
-    const m = mk(); const rm = await fullFlow(mkDeps(m.writers).d, "UPDATE_PROPOSAL_AMOUNT", { proposal: P1, amount: 6000 }, "כן בוס");
-    ok("a proposal amount change needs the exact amount in the approval", rm.a?.status === "CONFIRMATION_VALUES_MISSING" && m.w.proposals[U(10)].amount === 5000, rm.a?.status);
-    const i = mk(); const ri = await fullFlow(mkDeps(i.writers).d, "CREATE_CALENDAR_INVITE", { summary: "x", start: "2026-10-09T11:00", end: "2026-10-09T12:00", attendees: "x@y.co" }, "כן בוס, 2026-10-09T11:00");
-    ok("an invite needs every attendee repeated in the approval (external communication)", ri.a?.status === "CONFIRMATION_VALUES_MISSING" && i.calls.length === 0, ri.a?.status);
+    const m = mk(); const rm = await fullFlow(mkDeps(m.writers).d, "UPDATE_PROPOSAL_AMOUNT", { proposal: P1, amount: 6000 }, "מאשר אבל 6500");
+    ok("\"מאשר אבל 6500\" is not an approval of the 6000 plan (APPROVAL_WITH_CHANGES, nothing written)", rm.a?.status === "APPROVAL_WITH_CHANGES" && m.w.proposals[U(10)].amount === 5000, rm.a?.status);
+    const i = mk(); const ri = await fullFlow(mkDeps(i.writers).d, "CREATE_CALENDAR_INVITE", { summary: "x", start: "2026-10-09T11:00", end: "2026-10-09T12:00", attendees: "x@y.co" }, "מאשר");
+    ok("an invite: the preview lists every attendee; a plain \"מאשר\" sends exactly that plan", JSON.stringify(ri.p).includes("x@y.co") && ri.e?.status === "APPLIED_AS_EXPECTED", ri.e?.status);
     ok("CREATE_CALENDAR_INVITE declares EMAIL (Google emails the guests)", ACTION_REGISTRY.get("CREATE_CALENDAR_INVITE")!.effects.includes("EMAIL" as never));
     const c = mk(); c.w.proposals[U(10)].linkedProjectId = U(40);
     const pc = await planAction({ intentHe: "x", actionId: "CONVERT_PROPOSAL", args: { proposal: P1 } }, OWNER, mkDeps(c.writers).d);
@@ -133,8 +133,8 @@ const CASES: FamilyCase<W>[] = [
     ok("mirroring to Google Tasks without a due date is refused", gm.status === "MISSING_DATE");
     const gl = await planAction({ intentHe: "x", actionId: "DELETE_GOOGLE_TASK", args: { googleTask: "gtask:GLINKED99" } }, OWNER, mkDeps(mk().writers).d);
     ok("a Google Task linked to a Redbloods task is deleted only through DELETE_TASK", gl.status === "USE_TASK_ACTION");
-    const dg = mk(); const rd = await fullFlow(mkDeps(dg.writers).d, "DISCONNECT_GOOGLE_CALENDAR", {}, "כן בוס");
-    ok("disconnecting Google needs the word ניתוק (C3); nothing changes on plain approval", rd.a?.status === "CONFIRMATION_VALUES_MISSING" && dg.w.connected, rd.a?.status);
+    const dg = mk(); const rd = await fullFlow(mkDeps(dg.writers).d, "DISCONNECT_GOOGLE_CALENDAR", {}, "רגע, לא");
+    ok("disconnecting Google (C3): \"רגע, לא\" is not an approval — nothing changes", rd.a?.status === "NOT_AN_APPROVAL" && dg.w.connected, rd.a?.status);
     ok("the disconnect primitive never reads the token (only connected / not)", !/loadToken|google_calendar_token/.test(read("lib/partner/act/primitives/crm.ts")));
     ok("every CRM delete is C3 (strong approval) and declares DELETION", CRM_PRIMITIVES.filter((p) => p.actionId.startsWith("DELETE_")).every((p) => ACTION_REGISTRY.get(p.actionId)?.confirmation === "C3_STRONG_APPROVAL" && ACTION_REGISTRY.get(p.actionId)!.effects.includes("DELETION" as never)));
     const EXT = ["CREATE_PROPOSAL", "SET_PROPOSAL_FOLLOWUP", "CONVERT_PROPOSAL", "DELETE_PROPOSAL", "DELETE_CLIENT", "CREATE_MEETING", "UPDATE_MEETING", "DELETE_MEETING", "CREATE_TASK", "UPDATE_TASK", "SET_TASK_STATUS", "DELETE_TASK", "SYNC_GOOGLE_TASKS_NOW", "CREATE_CALENDAR_EVENT", "CREATE_CALENDAR_INVITE", "UPDATE_CALENDAR_EVENT", "DELETE_CALENDAR_EVENT", "CREATE_GOOGLE_TASK"];

@@ -484,6 +484,14 @@ export async function notifyShowArtist(id: string) {
   const { notifyShalevAboutShow } = await import("@/lib/show-notify");
   return notifyShalevAboutShow(show);
 }
+/** READ-ONLY: the artist (Shalev) + DJ (CLEANTONE) send state of a show, from the canonical claim rows. null = no show. */
+export async function showNotifyStates(id: string) {
+  const show = await getShow(id);
+  if (!show) return null;
+  const [{ readShalevShowNotifyState }, { readDjShowNotifyState }] = await Promise.all([import("@/lib/show-notify"), import("@/lib/dj-show-notify")]);
+  const [artist, dj] = await Promise.all([readShalevShowNotifyState(show), readDjShowNotifyState(show)]);
+  return { artist, dj };
+}
 export async function notifyShowDj(id: string) {
   const show = await getShow(id);
   if (!show) return { ok: false as const, reason: "not_found" as const };

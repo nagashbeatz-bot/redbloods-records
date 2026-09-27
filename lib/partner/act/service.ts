@@ -7,7 +7,8 @@
  *   plan     — natural language was already turned into { actionId, typed args } by Claude; the SERVER resolves and
  *              type-checks the entity, reads live state, computes the exact change, persists the plan, returns the preview.
  *   preview  — re-reads live state for a persisted plan (tells the Boss if it changed meanwhile).
- *   approve  — relays the Boss's explicit approval text for THIS plan hash → a one-time approval token (never stored).
+ *   approve  — relays the Boss's explicit approval ("מאשר" is enough — no repeated values) for THIS plan hash → a
+ *              one-time approval token (never stored). Words that change the plan are a new request, never an approval.
  *   execute  — the engine; then a fresh read + the derived next step.
  *   status   — recorded outcome / events / detail of a plan (a retry reads this instead of executing again), or the
  *              Boss's own action history (filters + cursor pagination; read-only; tokens / secrets are never stored).
@@ -21,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import type { ActionContract, Plan, PlanOutcome, PlanStep } from "./types";
 import { buildPreview, confirmationFor, highestRisk, planHash, validatePlan } from "./plan";
 import { issueApprovalToken } from "./approval";
+import { classifyApprovalText } from "./approval-text";
 import { executePlan, type AuditStore, type IdempotencyStore, type PrimitiveExecutor } from "./engine";
 import type { NonceStore } from "./approval";
 import type { PlanStore } from "./store-supabase";
@@ -107,7 +109,7 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
     changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(t.fields[k]), after: contract.args.some((a) => a.name === k && a.kind === "url") && isSafeUrl(p.after[k]) ? String(p.after[k]) : planSafeValue(p.after[k]) })),
     dependsOn: [],
   };
-  return { step, contract, key: t.key, label: t.label, fields: t.fields, after: p.after, requiredValues: spec.requiredValues?.(args, p.after) ?? [], warnings: spec.warnings?.(t.fields) ?? [], disclosuresHe: spec.disclosuresHe };
+  return { step, contract, key: t.key, label: t.label, fields: t.fields, after: p.after, requiredValues: spec.requiredValues?.(args, p.after) ?? [], warnings: spec.warnings?.(t.fields, args) ?? [], disclosuresHe: spec.disclosuresHe };
 }
 const isBuilt = (x: BuiltStep | ActResult): x is BuiltStep => "step" in x && !!(x as BuiltStep).step;
 
@@ -206,9 +208,17 @@ export async function approveAction(input: { planId: unknown; planHash: unknown;
   if (d.nowMs() > Date.parse(plan.expiresAt)) return refused("EXPIRED", "התוכנית פגה — צריך תצוגה חדשה");
   const text = typeof input.confirmationText === "string" ? input.confirmationText.trim() : "";
   if (!text || text.length > 500) return refused("APPROVAL_MISSING", "צריך את האישור המפורש שלך, בוס");
-  const pv = buildPreview(plan, d.registry, { requiredConfirmationValues: requiredValuesOf(plan) });
-  if (pv.requiredConfirmationValues.some((v) => !text.includes(v))) return refused("CONFIRMATION_VALUES_MISSING", "האישור צריך לחזור על הערכים המדויקים", { requiredConfirmationValues: pv.requiredConfirmationValues });
-  const token = issueApprovalToken(d.approvalSecret, { planHash: hash, ownerId: c.ownerId, clientId: c.clientId, nowMs: d.nowMs(), requiredValues: pv.requiredConfirmationValues });
+  // Owner decision 2026-09-27: "מאשר" after a clear preview is enough (no repeated values). The safety is the binding
+  // below (plan hash + Owner + client + expiry + one-time nonce) and the fresh re-read / stale check at execution.
+  const verdict = classifyApprovalText(text, planValuesOf(plan));
+  if (!verdict.ok) return verdict.code === "APPROVAL_WITH_CHANGES"
+    ? refused("APPROVAL_WITH_CHANGES", "בוס, זה שינוי של התוכנית ולא אישור שלה — לא אישרתי כלום. אבנה תוכנית חדשה עם השינוי ואראה לך אותה")
+    : refused("NOT_AN_APPROVAL", "לא זיהיתי אישור, בוס — לא אישרתי כלום");
+  // never guess between open previews: a plan superseded by a NEWER open preview of this Owner + client is not approvable
+  const newer = await newerOpenPreview(plan, c, d);
+  if (newer === "UNKNOWN") return refused("AMBIGUITY_CHECK_FAILED", "לא הצלחתי לוודא שאין תצוגה פתוחה אחרת — לא אישרתי כלום");
+  if (newer) return refused("AMBIGUOUS_OPEN_PREVIEWS", "בוס, יש תצוגה חדשה יותר שמחכה לאישור — לא אנחש לאיזו התכוונת. איזו לבצע? (אם את הקודמת — אכין לה תצוגה מחדש)", { newerPlanId: newer });
+  const token = issueApprovalToken(d.approvalSecret, { planHash: hash, ownerId: c.ownerId, clientId: c.clientId, nowMs: d.nowMs() });
   // the token and the confirmation text are returned to the caller only — never stored
   return { status: "APPROVED_PENDING_EXECUTION", planId: plan.planId, planHash: hash, approvalToken: token, noteHe: "האישור תקף לתוכנית הזאת בלבד, פעם אחת, ל-10 דקות" };
 }
@@ -253,7 +263,22 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
     messageHe: ok ? (out.status === "NO_CHANGE" ? "בוס, לא היה מה לשנות — המצב כבר כזה" : "בוצע בוס — בדקתי מחדש והשינוי קיים") : out.status === "STALE" ? "בוס, המצב השתנה מאז התצוגה, לא ביצעתי כלום. צריך תצוגה חדשה" : out.status === "PARTIALLY_APPLIED" ? `בוס, התהליך בוצע חלקית: שלבים ${partial?.applied.map((i) => i + 1).join(", ") || "—"} בוצעו, ${partial?.failed.map((i) => i + 1).join(", ") || "—"} נכשל, ${partial?.notRun.map((i) => i + 1).join(", ") || "—"} לא רצו. זה המצב החי עכשיו` : "בוס, הפעולה לא בוצעה — הנה מה שקרה",
   };
 }
-/** The exact values the Boss's approval must repeat, recomputed deterministically from the stored plan. */
+/** Every value the plan itself carries (arguments, after-values, key values) — only so a voluntary repeat is never read as a change. */
+function planValuesOf(plan: Plan): string[] {
+  const flat = (v: unknown): string[] => (v === null || v === undefined ? [] : Array.isArray(v) ? v.flatMap(flat) : typeof v === "object" ? Object.values(v as object).flatMap(flat) : [String(v)]);
+  return [...requiredValuesOf(plan), ...plan.steps.flatMap((s) => [...flat(s.args), ...s.changes.flatMap((c) => flat(c.after))]), ...plan.steps.flatMap((s) => s.entities)];
+}
+/** The newest OTHER open (unexecuted, unexpired) plan of this Owner + client created after this one; "UNKNOWN" = could not check (fail closed). */
+async function newerOpenPreview(plan: Plan, c: Caller, d: ActServiceDeps): Promise<string | null | "UNKNOWN"> {
+  if (!d.stores.plans.history) return "UNKNOWN";
+  try {
+    const h = await d.stores.plans.history(c.ownerId, { limit: 50, before: null, since: null, actionId: null, entity: null }); // newest first — newer plans are at the top
+    const now = d.nowMs();
+    const open = h.items.find((x) => x.plan.planId !== plan.planId && x.plan.clientId === c.clientId && Date.parse(x.plan.createdAt) > Date.parse(plan.createdAt) && now <= Date.parse(x.plan.expiresAt) && x.executions.length === 0 && !x.eventTypes.some((t) => /APPROVED|EXECUT|VERIFIED|OUTCOME|STALE|REFUS|FAIL|EXPIRED/.test(t)));
+    return open ? open.plan.planId : null;
+  } catch { return "UNKNOWN"; }
+}
+/** The key values of the plan (money, recipients, targets) — shown in the preview; the Boss does NOT have to repeat them. */
 function requiredValuesOf(plan: Plan): string[] {
   return plan.steps.flatMap((s) => {
     const spec = PRIMITIVES_BY_ID.get(s.actionId);

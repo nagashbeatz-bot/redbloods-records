@@ -145,7 +145,8 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
   const existing = date ? shows.find((s) => s.dateYmd === date) ?? null : null;
   const labelDj = kn.find((k) => k.kind === "ORGANIZATIONAL_ROLE" && (k.value as Record<string, unknown>).role === "LABEL_DJ");
   const djFreq = kn.find((k) => k.kind === "ENTITY_RELATIONSHIP" && (k.value as Record<string, unknown>).relation === "PARTICIPATES_IN_SHOWS");
-  const marker = (fam: string, showId: string) => { const sec = settings?.families[fam]; return !settings ? "UNKNOWN" : !sec ? "UNKNOWN" : sec.rows.some((r) => r.key.endsWith(`:${showId}`)) ? "SENT" : "NOT_SENT"; };
+  // the claim row's own status: "sent" only after a successful push; a failed / in-flight send is never shown as sent
+  const marker = (fam: string, showId: string) => { const sec = settings?.families[fam]; if (!settings || !sec) return "UNKNOWN"; const row = sec.rows.find((r) => r.key.endsWith(`:${showId}`)); if (!row) return "NOT_SENT"; const v = ((row as { value?: unknown }).value ?? {}) as { status?: string }; return v.status === "failed" ? "FAILED" : v.status === "processing" ? "PROCESSING" : "SENT"; };
   const known: Array<{ item: string; value: unknown; source: string }> = [{ item: "artist", value: { key: artistKey, name, labelArtist: !!la }, source: "CANONICAL_DATA" }];
   const questions: OwnerQuestion[] = [];
   if (!date) questions.push({ kind: "MISSING_DETAIL", questionHe: `באיזה תאריך ההופעה של ${name}?`, why: "no date given" });
@@ -166,8 +167,8 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
     ? { status: cal!.status, events: cal!.events.filter((e) => (e.allDay ? e.start <= date && date < e.end : e.start.slice(0, 10) === date)).map((e) => ({ title: e.title, allDay: e.allDay, start: e.start, holiday: e.holidayCalendar })) }
     : { status: cal?.status ?? "NOT_LOADED", events: null, note: "date outside the loaded window or calendar unreadable — conflicts unknown" }) : null;
   const notifications = existing ? [
-    { push: "P_SHOW_TO_ARTIST", state: marker("SHOW_SENT_TO_ARTIST", existing.id), proposal: marker("SHOW_SENT_TO_ARTIST", existing.id) === "NOT_SENT" ? "ask the Owner whether to send the existing artist notification (Sunny cannot send it — NOTIFY_ARTIST_DJ is NOT_YET_EXECUTABLE)" : null },
-    { push: "P_SHOW_TO_DJ", state: existing.djClientId ? marker("SHOW_SENT_TO_DJ", existing.id) : "NOT_APPLICABLE_NO_DJ", proposal: existing.djClientId && marker("SHOW_SENT_TO_DJ", existing.id) === "NOT_SENT" ? "ask the Owner whether to send the existing DJ notification" : null },
+    { push: "P_SHOW_TO_ARTIST", state: marker("SHOW_SENT_TO_ARTIST", existing.id), proposal: ["NOT_SENT", "FAILED"].includes(marker("SHOW_SENT_TO_ARTIST", existing.id)) ? "ask the Owner whether to send the artist notification (NOTIFY_SHOW_ARTIST — preview + his approval)" : null },
+    { push: "P_SHOW_TO_DJ", state: existing.djClientId ? marker("SHOW_SENT_TO_DJ", existing.id) : "NOT_APPLICABLE_NO_DJ", proposal: existing.djClientId && ["NOT_SENT", "FAILED"].includes(marker("SHOW_SENT_TO_DJ", existing.id)) ? "ask the Owner whether to send the DJ notification (NOTIFY_SHOW_DJ — preview + his approval)" : null },
   ] : [{ push: "P_SHOW_TO_ARTIST", state: "NOT_APPLICABLE_YET", proposal: "after the show is registered and its details are complete, ask the Owner whether to notify the artist" }, { push: "P_SHOW_TO_DJ", state: "NOT_APPLICABLE_YET", proposal: "after a DJ is assigned, ask the Owner whether to notify the DJ" }];
   const rehearsals = existing ? (ok(src.operations) as OperationsRaw | null)?.calendarLinks?.rows.filter((l) => l.kind === "SESSION" && l.showId === existing.id).length ?? null : null;
   return { resolved: true as const, workflow: "NEW_SHOW", artist: name, date, existingShow: existing ? `show:${existing.id}` : null, known, questions, rehearsalsLinked: rehearsals, calendarOnDate, downstream: model.downstream, notifications, actions: model.actions, epistemic: "DERIVED" };

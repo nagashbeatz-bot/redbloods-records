@@ -53,8 +53,8 @@ const CASES: FamilyCase<W>[] = [
   const q = (id: string, h = mk()) => planAction({ intentHe: "x", actionId: id, args: {} }, OWNER, mkDeps(h.writers).d);
   const done = mk(); done.w.projects.forEach((p) => { p.start = p.start ?? "2026-01-01"; p.folder = p.folder ?? "f"; }); done.w.clients.push("אבי מולה", "לקוח חדש");
   ok("nothing to do → refused (no empty bulk plan)", (await Promise.all(BACKFILL_PRIMITIVES.map((p) => q(p.actionId, done)))).every((r) => r.status === "NO_CHANGE_NEEDED"));
-  const m = mk(); const r = await fullFlow(mkDeps(m.writers).d, "CREATE_MISSING_ARTIST_CLIENTS", {}, "כן בוס");
-  ok("a bulk write needs 'עדכון גורף' in the approval", r.a?.status === "CONFIRMATION_VALUES_MISSING" && m.calls.length === 0);
+  const m = mk(); const r = await fullFlow(mkDeps(m.writers).d, "CREATE_MISSING_ARTIST_CLIENTS", {}, "מאשר");
+  ok("a bulk write: the preview names the exact set; a plain \"מאשר\" approves that exact set (no repeated words, 2026-09-27)", JSON.stringify(r.p).includes("עדכון גורף") && r.e?.status === "APPLIED_AS_EXPECTED", r.e?.status);
   const pv = await q("BACKFILL_PROJECT_START_DATES");
   ok("the preview lists exactly what will change (project → date) and the ones left alone", JSON.stringify(pv).includes("קרוב → 2026-03-01") && !JSON.stringify(pv).includes("אלבום → "));
   ok("no storage path in the folder-freeze plan", !JSON.stringify(await q("FREEZE_PROJECT_FOLDERS")).includes("/Projects/"));

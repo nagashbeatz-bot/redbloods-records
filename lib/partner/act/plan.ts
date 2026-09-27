@@ -74,6 +74,6 @@ export function buildPreview(p: Plan, registry: ReadonlyMap<string, ActionContra
     }),
     riskClass: p.riskClass, confirmation: p.confirmation, requiredConfirmationValues: o.requiredConfirmationValues ?? [],
     missingHe: o.missingHe ?? [], duplicateWarningsHe: o.duplicateWarningsHe ?? [], expiresAt: p.expiresAt,
-    approvalRule: "כל שינוי מחכה לאישור שלך, בוס. אחרי אישור אני קורא שוב את המצב החי — אם משהו השתנה, אני לא מבצע ומראה תצוגה חדשה.",
+    approvalRule: "כל שינוי מחכה לאישור שלך, בוס — מספיק \"מאשר\" (בלי לחזור על סכומים / תאריכים). האישור תקף לתוכנית המדויקת הזאת בלבד, פעם אחת; שינוי כלשהו = תוכנית חדשה. אחרי אישור אני קורא שוב את המצב החי — אם משהו השתנה, אני לא מבצע ומראה תצוגה חדשה.",
   };
 }

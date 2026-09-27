@@ -107,8 +107,9 @@ export interface FamilyCase<Wd> {
 export async function runCases<Wd>(cases: readonly FamilyCase<Wd>[], mk: () => { w: Wd; calls: string[]; writers: object }, ok: (name: string, cond: boolean, detail?: unknown) => void) {
   for (const c of cases) {
     const h = mk(); const { d } = mkDeps(h.writers);
-    const { p, a, e } = await fullFlow(d, c.id, c.args, c.confirm ?? YES);
-    ok(`${c.id}: happy path → plan → preview → approval → execute → exact verification`, p.status === "PREVIEW" && e?.status === "APPLIED_AS_EXPECTED" && c.check(h.w, h.calls), { p: p.status, pm: p.messageHe ?? p.codes, a: a?.status, e: e?.status, steps: e?.steps, calls: h.calls });
+    // Owner decision 2026-09-27: a plain "מאשר" approves every action (money, deletes, push included) — no repeated values
+    const { p, a, e } = await fullFlow(d, c.id, c.args, "מאשר");
+    ok(`${c.id}: happy path → plan → preview → plain "מאשר" → execute → exact verification`, p.status === "PREVIEW" && e?.status === "APPLIED_AS_EXPECTED" && c.check(h.w, h.calls), { p: p.status, pm: p.messageHe ?? p.codes, a: a?.status, e: e?.status, steps: e?.steps, calls: h.calls });
     const b = mk(); const bb = mkDeps(b.writers); const pb = await planAction({ intentHe: "x", actionId: c.id, args: c.bad }, OWNER, bb.d);
     ok(`${c.id}: invalid args refused (no plan, no write)`, pb.status !== "PREVIEW" && b.calls.length === 0 && !bb.db.rows(ACT_TABLES.plans).length, pb.status);
     if (c.missing) { const m = mk(); const pm = await planAction({ intentHe: "x", actionId: c.id, args: c.missing }, OWNER, mkDeps(m.writers).d); ok(`${c.id}: missing entity refused`, pm.status === "ENTITY_NOT_FOUND", pm.status); }

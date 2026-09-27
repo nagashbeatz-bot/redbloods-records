@@ -138,11 +138,3 @@ export async function financeOwnerOf(id: string): Promise<"SHOW" | "MIX_WORK" | 
   return null;
 }
 
-/** Rows with the same project, type, amount, currency and date (duplicate warning before a create). */
-export async function countSimilarTransactions(t: { projectId: string | null; type: string; amount: number; currency: string; date: string }): Promise<number> {
-  let q = supabase.from("transactions").select("id", { count: "exact", head: true }).eq("type", t.type).eq("amount", t.amount).eq("currency", t.currency).eq("date", t.date);
-  q = t.projectId ? q.eq("project_id", t.projectId) : q.is("project_id", null);
-  const { count, error } = await q;
-  if (error) throw new Error(error.message);
-  return count ?? 0;
-}

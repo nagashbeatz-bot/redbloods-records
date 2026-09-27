@@ -122,7 +122,8 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const mapShow = (s: DetailShow, role: "ARTIST" | "DJ") => {
     const rehearsals = (c.det?.sessions?.rows ?? []).filter((x) => x.showId === s.id);
     const net = Math.max(0, (s.price ?? 0) - (s.djFee ?? 0));
-    const notify = (fam: string) => { const rows = settingRows(c, fam); return rows === null ? "UNKNOWN" : rows.some((r) => r.key.endsWith(`:${s.id}`)) ? "SENT" : "NOT_SENT"; };
+    // the claim row's own status: "sent" only after a successful push; a failed / in-flight send is never shown as sent
+    const notify = (fam: string) => { const rows = settingRows(c, fam); if (rows === null) return "UNKNOWN"; const row = rows.find((r) => r.key.endsWith(`:${s.id}`)); if (!row) return "NOT_SENT"; const v = ((row as { value?: unknown }).value ?? {}) as { status?: string }; return v.status === "failed" ? "FAILED" : v.status === "processing" ? "PROCESSING" : "SENT"; };
     return { key: `show:${s.id}`, role, name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, paymentStatus: s.paymentStatus, price: s.price, djFee: s.djFee, artistFee: s.artistFee, advancePayment: s.advancePayment,
       splitNote: `net before rehearsals = ${r2(net)} (price − DJ fee); artist fee = half of net after counted rehearsal costs (stored artist fee ${s.artistFee ?? "—"})`, currency: "NOT_STORED (screens show ₪)",
       dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : null,

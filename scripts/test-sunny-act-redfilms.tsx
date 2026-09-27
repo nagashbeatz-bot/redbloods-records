@@ -33,6 +33,7 @@ const world = (): W => ({
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const writers = {
+    async similarRecords() { return []; }, // duplicate awareness is proven in test-sunny-polish-1.tsx
     async productionFolderState(id: string) { return w.prods[id] ? { hasFolder: w.folders.has(id) } : null; },
     async createProductionFolder(id: string) { calls.push("createProductionFolder"); w.folders.add(id); },
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id], artist: "", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },

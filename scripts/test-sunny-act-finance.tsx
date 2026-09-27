@@ -30,7 +30,7 @@ function mk() {
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id], artist: "", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },
     async readTransaction(id: string) { return w.tx[id] ? { ...w.tx[id] } : null; },
     async financeOwnerOf(id: string) { return w.owner[id] ?? null; },
-    async countSimilarTransactions(t: { projectId: string | null; type: string; amount: number; currency: string; date: string }) { return Object.values(w.tx).filter((x) => x.projectId === t.projectId && x.type === t.type && x.amount === t.amount && x.currency === t.currency && x.date === t.date).length; },
+    async similarRecords(q: { kind: string; projectId?: string | null; type?: string; amount?: number; currency?: string }) { return q.kind !== "TRANSACTION" ? [] : Object.values(w.tx).filter((x) => x.projectId === q.projectId && x.type === q.type && x.amount === q.amount && x.currency === q.currency).map((x) => ({ date: x.date, amount: x.amount, currency: x.currency, text: [x.description, x.notes].filter(Boolean).join(" · ") })); },
     async createTransaction(t: Tx) { calls.push("createTransaction"); const id = U(++n); w.tx[id] = { ...t }; return id; },
     async updateTransaction(id: string, p: Record<string, unknown>) { calls.push("updateTransaction"); const t = w.tx[id]; for (const [k, v] of Object.entries(p)) { if (k === "project_id") t.projectId = v as string | null; else (t as unknown as Record<string, unknown>)[k] = v; } },
     async deleteTransaction(id: string) { calls.push("deleteTransaction"); delete w.tx[id]; },
@@ -63,10 +63,10 @@ const CASES: FamilyCase<W>[] = [
   const q = (id: string, args: Record<string, unknown>, h = mk()) => planAction({ intentHe: "x", actionId: id, args }, OWNER, mkDeps(h.writers).d);
   ok("no currency default: a transaction without a currency is refused", (await q("ADD_TRANSACTION", { project: P10, type: "income", amount: 10, paymentStatus: "צפוי", date: "2026-09-20" })).status !== "PREVIEW");
   ok("the status vocabulary is per type (an expense cannot be 'התקבל')", (await q("ADD_TRANSACTION", { type: "expense", amount: 10, currency: "₪", paymentStatus: "התקבל", date: "2026-09-20" })).status === "BAD_ENUM");
-  const m = mk(); const rm = await fullFlow(mkDeps(m.writers).d, "ADD_TRANSACTION", { type: "expense", amount: 400, currency: "$", paymentStatus: "שולם", date: "2026-09-20" }, "כן בוס, שולם");
-  ok("the approval must repeat the exact amount + currency (plain yes refused, nothing written)", rm.a?.status === "CONFIRMATION_VALUES_MISSING" && m.calls.length === 0, rm.a?.status);
+  const m = mk(); const rm = await fullFlow(mkDeps(m.writers).d, "ADD_TRANSACTION", { type: "expense", amount: 400, currency: "$", paymentStatus: "שולם", date: "2026-09-20" }, "כן, מאשר");
+  ok("money: the preview shows amount + currency; \"כן, מאשר\" is enough (no repeated values)", JSON.stringify(rm.p).includes('"$"') && rm.e?.status === "APPLIED_AS_EXPECTED", rm.e?.status);
   const cur = mk(); const rc = await fullFlow(mkDeps(cur.writers).d, "ADD_TRANSACTION", { type: "expense", amount: 400, currency: "$", paymentStatus: "שולם", date: "2026-09-20" }, "כן בוס, ₪400 שולם");
-  ok("a different currency in the approval does not match (no silent FX)", rc.a?.status === "CONFIRMATION_VALUES_MISSING" && cur.calls.length === 0);
+  ok("a different currency in the approval is a change, not an approval (no silent FX)", rc.a?.status === "APPROVAL_WITH_CHANGES" && cur.calls.length === 0, rc.a?.status);
   for (const id of ["UPDATE_TRANSACTION_DETAILS", "SET_TRANSACTION_AMOUNT", "SET_TRANSACTION_STATUS", "MOVE_TRANSACTION", "DELETE_TRANSACTION"]) {
     const args: Record<string, unknown> = { transaction: T2, ...(id === "UPDATE_TRANSACTION_DETAILS" ? { description: "x" } : id === "SET_TRANSACTION_AMOUNT" ? { amount: 9 } : id === "SET_TRANSACTION_STATUS" ? { paymentStatus: "שולם" } : id === "MOVE_TRANSACTION" ? { toGeneral: true } : {}) };
     ok(`${id} on a show-owned row is routed to the show's action (never silently overwritten)`, (await q(id, args)).status === "USE_OWNER_ACTION");
@@ -78,7 +78,7 @@ const CASES: FamilyCase<W>[] = [
   const pw = await q("SET_TRANSACTION_STATUS", { transaction: T1, paymentStatus: "חלקי" });
   ok("partial is disclosed as NOT received", pw.status === "PREVIEW" && JSON.stringify(pw).includes("חלקי, צפוי, לא שולם, בוטל — לא"));
   const dup = await q("ADD_TRANSACTION", { project: P10, type: "income", amount: 3000, currency: "₪", paymentStatus: "צפוי", date: "2026-09-01" });
-  ok("a same-day same-amount row shows a duplicate warning", dup.status === "PREVIEW" && JSON.stringify(dup).includes("כפילות"));
+  ok("a same-day same-amount row in the same project is surfaced BEFORE the plan (POSSIBLE_DUPLICATE, or at least a 'דומה' warning)", dup.status === "POSSIBLE_DUPLICATE" || (dup.status === "PREVIEW" && JSON.stringify(dup).includes("קיימת רשומה")), { s: dup.status, m: dup.messageHe });
   ok("every finance money primitive is FINANCIAL with FINANCE declared and at least C2", ["ADD_TRANSACTION", "SET_TRANSACTION_AMOUNT", "SET_TRANSACTION_STATUS", "MOVE_TRANSACTION", "SPLIT_INCOME", "SET_AGREED_PRICE"].every((id) => { const c = ACTION_REGISTRY.get(id)!; return c.riskClass === "FINANCIAL" && c.effects.includes("FINANCE" as never) && c.confirmation !== "C1_APPROVAL"; }));
   ok("DELETE_TRANSACTION is C3", ACTION_REGISTRY.get("DELETE_TRANSACTION")!.confirmation === "C3_STRONG_APPROVAL");
 

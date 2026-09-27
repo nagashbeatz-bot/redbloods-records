@@ -84,3 +84,18 @@ export function decideShowNotifyClaim(existing: ShowNotifyClaimValue | null, fin
 export function isUpcomingShowStatus(status: string): boolean {
   return status === "אושרה" || status === "נסגר";
 }
+
+/** The send state of one recipient for a show, read from its claim row (READ-ONLY — never claims, never sends). */
+export type ShowNotifyState = "SENT" | "SENT_PREVIOUS_VERSION" | "FAILED" | "PROCESSING" | "NOT_SENT";
+/**
+ * The same semantics as decideShowNotifyClaim: SENT only when the row is "sent" for the show's CURRENT version (name /
+ * date / time / location). A row sent for an older version = SENT_PREVIOUS_VERSION (the writer would send again).
+ */
+export function showNotifyStateOf(existing: ShowNotifyClaimValue | null, fingerprint: string): { state: ShowNotifyState; sentAt: string | null } {
+  if (!existing || typeof existing !== "object") return { state: "NOT_SENT", sentAt: null };
+  const sentAt = typeof existing.sentAt === "string" ? existing.sentAt : null;
+  if (existing.fingerprint !== fingerprint) return { state: sentAt || existing.status === "sent" ? "SENT_PREVIOUS_VERSION" : "NOT_SENT", sentAt };
+  if (existing.status === "sent") return { state: "SENT", sentAt };
+  if (existing.status === "processing") return { state: "PROCESSING", sentAt: null };
+  return { state: "FAILED", sentAt: null };
+}

@@ -10,6 +10,8 @@ import {
   decideShowNotifyClaim,
   isUpcomingShowStatus,
   classifyPushResult,
+  showNotifyStateOf,
+  type ShowNotifyState,
   type ShowNotifyClaimValue,
 } from "./show-notify-pure";
 
@@ -150,4 +152,16 @@ export async function notifyDjAboutShow(show: Show): Promise<NotifyDjShowResult>
   }
 
   return { ok: true, djSent: djResults.filter((r) => r.status === "fulfilled").length, ownerSent };
+}
+
+/**
+ * READ-ONLY: this show's send state from its claim row (the canonical sent-state — the same row the writer marks "sent"
+ * only after a successful push). Never claims, never sends, never writes. Used by Sunny's action layer so a fresh read
+ * after a send says "sent" and an already-sent version is never offered again. A read error throws (never "not sent").
+ */
+export async function readDjShowNotifyState(show: Show): Promise<{ state: ShowNotifyState; sentAt: string | null }> {
+  const { data, error } = await supabase.from("settings").select("value").eq("key", djShowNotifyClaimKey(show.id)).maybeSingle();
+  if (error) throw new Error(`[dj-show-notify] state read failed: ${error.message}`);
+  const fingerprint = computeShowNotifyFingerprint({ name: show.name, date: show.date, startTime: show.start_time, location: show.location });
+  return showNotifyStateOf((data?.value ?? null) as ShowNotifyClaimValue | null, fingerprint);
 }

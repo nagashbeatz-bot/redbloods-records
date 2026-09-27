@@ -79,7 +79,7 @@ async function approveExec(d: Parameters<typeof planAction>[2], p: Record<string
     const p = await plan(d, [STEPS[0], { actionId: "REMOVE_VICTOR_REFERENCE", args: { victorWork: VW, referenceId: U(40) } }]);
     ok("B4. a destructive step makes the whole plan C3 and lists its required value", p.status === "PREVIEW" && (p.preview as { confirmation: string }).confirmation === "C3_STRONG_APPROVAL" && (p.requiredConfirmationValues as string[]).includes("מחיקה"), p.preview);
     const noVal = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: YES }, OWNER, d);
-    ok("B5. approval without the destructive step's exact value is refused", noVal.status === "CONFIRMATION_VALUES_MISSING" && h.calls.length === 0);
+    ok("B5. a plain approval of the whole compound plan is enough (bound to its hash — no repeated values) and nothing runs before execute", noVal.status === "APPROVED_PENDING_EXECUTION" && h.calls.length === 0, noVal.status);
     const r = await approveExec(d, p, "כן בוס, מחיקה");
     ok("B6. with the value → both steps applied", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.vrefs.length === 0, r.e?.status);
   }

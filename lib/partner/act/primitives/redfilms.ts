@@ -12,6 +12,7 @@
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { dupContext, dupGate, dupWarnings, SEPARATE_ARG } from "./duplicates";
 
 type Row = Record<string, unknown>;
 export interface RedFilmsFamilyWriters {
@@ -130,6 +131,13 @@ async function onDeal(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
   const p = await d.readProjectMeta(k.id); if (!p) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט");
   return { key: `project:${k.id}`, id: k.id, label: p.name, fields: (await dealFields(d, k.id))! };
 }
+/** Duplicate awareness (POLISH FIX #1): the same budget line / project clip income + amount, near the date, similar notes. */
+const rfPayDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
+  const k = parseKey(a.budgetLine, ["rf-budget-line"]);
+  return dupContext(d, k && typeof a.amount === "number" ? { kind: "RF_PAYMENT", budgetLineId: k.id, amount: a.amount } : null, { date: realYmd(a.paymentDate) ? String(a.paymentDate) : null, text: str(a.notes) ?? "", currency: "" });
+};
+const clipDup = (d: WriterDeps, id: string, a: Readonly<Record<string, unknown>>, currency: string) =>
+  dupContext(d, typeof a.amount === "number" ? { kind: "CLIP_PAYMENT", projectId: id, amount: a.amount } : null, { date: realYmd(a.date) ? String(a.date) : null, text: [str(a.description), str(a.notes)].filter(Boolean).join(" "), currency });
 export const RF_EQUIPMENT_CATEGORY: readonly string[] = ["מצלמות", "עדשות", "ייצוב", "תאורה", "סאונד", "אביזרים", "אחר"];
 const equipFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readEquipmentRow(id); return r ? { name: String(r.name ?? ""), category: String(r.category ?? ""), quantity: Number(r.quantity) || 0, purchasePrice: r.purchase_price === null || r.purchase_price === undefined ? null : Number(r.purchase_price), purchasedFrom: String(r.purchased_from ?? ""), serialNumber: String(r.serial_number ?? ""), notes: String(r.notes ?? ""), status: String(r.status ?? "קיים") } : null; };
 const bulkIds = (v: unknown): string[] | null => { if (typeof v !== "string") return null; const ids = v.split(/[,;\s]+/).filter(Boolean).map((x) => parseKey(x, ["rf-production"])?.id ?? ""); return ids.length && ids.length <= 50 && ids.every(Boolean) && new Set(ids).size === ids.length ? ids : null; };
@@ -266,14 +274,19 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "RECORD_RF_BUDGET_PAYMENT", kinds: ["rf-payment"],
-    meta: meta("רישום תשלום על שורת תקציב (לדג'ר של Red Films)", "Record a payment on a budget line in the Red Films payments ledger (no receipt file — uploads are the file channel)", [K("budgetLine"), M("amount", true), { name: "paymentDate", kind: "ymd", required: true }, T("paymentMethod"), T("notes")], ["amount", "paymentDate"], "insertBudgetPayment (lib/writes/redfilms)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the payment" }),
-    createContext: async (d, a) => { const k = parseKey(a.budgetLine, ["rf-budget-line"]); return { lineTitle: k ? String((await d.readBudgetLineRow(k.id))?.title ?? "") || null : null }; },
-    async resolve(d, a) { const r = await onLine(d, a); if ("ok" in r) return r; return { key: "rf-payment:new", id: "new", label: `תשלום ${r.label}`, fields: { lineTitle: String(r.fields.title) || null } }; },
+    meta: meta("רישום תשלום על שורת תקציב (לדג'ר של Red Films)", "Record a payment on a budget line in the Red Films payments ledger (no receipt file — uploads are the file channel)", [K("budgetLine"), M("amount", true), { name: "paymentDate", kind: "ymd", required: true }, T("paymentMethod"), T("notes"), SEPARATE_ARG], ["amount", "paymentDate", "paymentMethod", "notes"], "insertBudgetPayment (lib/writes/redfilms)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the payment" }),
+    createContext: async (d, a) => { const k = parseKey(a.budgetLine, ["rf-budget-line"]); return { lineTitle: k ? String((await d.readBudgetLineRow(k.id))?.title ?? "") || null : null, ...(await rfPayDup(d, a)) }; },
+    async resolve(d, a) { const r = await onLine(d, a); if ("ok" in r) return r; return { key: "rf-payment:new", id: "new", label: `תשלום ${r.label}`, fields: { lineTitle: String(r.fields.title) || null, ...(await rfPayDup(d, a)) } }; },
     read: payFields,
-    plan(a) { if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום חייב להיות גדול מ-0"); if (!realYmd(a.paymentDate)) return refuse("BAD_DATE", "תאריך לא תקין"); return { ok: true, after: { amount: a.amount, paymentDate: String(a.paymentDate) } }; },
+    plan(a, cur) {
+      if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום חייב להיות גדול מ-0"); if (!realYmd(a.paymentDate)) return refuse("BAD_DATE", "תאריך לא תקין");
+      const g = dupGate(a, cur, "רשומת תשלום"); if (g) return g;
+      return { ok: true, after: { amount: a.amount, paymentDate: String(a.paymentDate), paymentMethod: str(a.paymentMethod) ?? "", notes: str(a.notes) ?? "" } };
+    },
     async apply(d, _id, after, a) { return { createdId: await d.insertBudgetPaymentRecord(parseKey(a.budgetLine, ["rf-budget-line"])!.id, { amount: Number(after.amount), paymentDate: String(after.paymentDate), paymentMethod: str(a.paymentMethod) ?? "", notes: str(a.notes) ?? "" }) }; },
     async verify(d, id, after) { const f = await payFields(d, id); return !!f && f.amount === after.amount; },
     requiredValues: (_a, after) => [ils(Number(after.amount)), String(after.paymentDate)],
+    warnings: (c, a) => dupWarnings(c, a),
     disclosuresHe: ["תשלומי Red Films הם דג'ר נפרד — הם לא רשומת כספים של החברה", NO_CUR, "בלי אסמכתא (העלאת קובץ = ערוץ הקבצים)"],
   },
   {
@@ -381,12 +394,18 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "ADD_CLIP_PAYMENT", kinds: ["project"],
-    meta: meta("תשלום קליפ נוסף", "Add one clip payment (income with scope קליפ) to the project", [K("project"), M("amount", true), E("paymentStatus", ["התקבל", "שולם", "צפוי", "לא שולם", "בוטל"]), { name: "date", kind: "ymd", required: false }, T("category"), T("description"), T("notes")], ["paymentCount"], "addClipPayments (lib/writes/clip)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the payment (Finance primitives)" }),
-    resolve: onDeal, read: dealFields,
-    plan(a, cur) { if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום לא תקין"); if (a.date !== undefined && !realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין"); return { ok: true, after: { paymentCount: Number(cur.paymentCount) + 1 } }; },
+    meta: meta("תשלום קליפ נוסף", "Add one clip payment (income with scope קליפ) to the project", [K("project"), M("amount", true), E("paymentStatus", ["התקבל", "שולם", "צפוי", "לא שולם", "בוטל"]), { name: "date", kind: "ymd", required: false }, T("category"), T("description"), T("notes"), SEPARATE_ARG], ["paymentCount"], "addClipPayments (lib/writes/clip)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the payment (Finance primitives)" }),
+    async resolve(d, a) { const r = await onDeal(d, a); if (!("key" in r)) return r; return { ...r, fields: { ...r.fields, ...(await clipDup(d, r.id, a, String(r.fields.currency))) } }; },
+    async read(d, id, a) { const f = await dealFields(d, id); return f && a ? { ...f, ...(await clipDup(d, id, a, String(f.currency))) } : f; },
+    plan(a, cur) {
+      if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום לא תקין"); if (a.date !== undefined && !realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין");
+      const g = dupGate(a, cur, "רשומת תשלום קליפ"); if (g) return g;
+      return { ok: true, after: { paymentCount: Number(cur.paymentCount) + 1 } };
+    },
+    async verify(d, id, after) { const f = await dealFields(d, id); return !!f && f.paymentCount === after.paymentCount; },
     async apply(d, id, _after, a) { const r = await d.addClipPayments(id, { amount: a.amount, paymentStatus: a.paymentStatus ?? "צפוי", date: a.date, category: a.category, description: a.description, notes: a.notes }); if (r !== "ok") throw new Error(`not added: ${r}`); },
     requiredValues: (a) => [String(Number(a.amount).toLocaleString("en-US")), String(a.paymentStatus ?? "צפוי")],
-    warnings: (c) => [`מטבע הפרויקט: ${c.currency} (לא מומר)`],
+    warnings: (c, a) => [`מטבע הפרויקט: ${c.currency} (לא מומר)`, ...(a ? [`התשלום: ${c.currency}${Number(a.amount).toLocaleString("en-US")} · ${String(a.paymentStatus ?? "צפוי")}${str(a.date) ? ` · ${a.date}` : ""}${str(a.description) ? ` · ${a.description}` : ""}`] : []), ...dupWarnings(c, a)],
     disclosuresHe: ["רשומת הכנסה אחת (שיוך קליפ) במטבע של הפרויקט", "לא נשלח כלום"],
   },
   {

@@ -38,7 +38,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()) };
+  return { similarRecords: async (q) => (await import("@/lib/writes/duplicates")).similarRecords(q), ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -193,7 +193,6 @@ async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
   return {
     readTransaction: (id) => F.readTransaction(id),
     financeOwnerOf: (id) => F.financeOwnerOf(id),
-    countSimilarTransactions: (t) => F.countSimilarTransactions(t),
     createTransaction: async (t) => String((await F.createTransactionRecord(t)).id),
     updateTransaction: async (id, patch) => { await F.updateTransactionRecord(id, patch as Parameters<typeof F.updateTransactionRecord>[1]); },
     deleteTransaction: (id) => F.deleteTransactionRecord(id),
@@ -223,6 +222,7 @@ async function showFamilyWriters(): Promise<ShowFamilyWriters> {
     markShowQuoteSent: async (id) => (await W.markQuoteSent(id)).kind,
     async notifyShowArtist(id) { const r = await W.notifyShowArtist(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
     async notifyShowDj(id) { const r = await W.notifyShowDj(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
+    showNotifyStates: (id) => W.showNotifyStates(id),
   };
 }
 

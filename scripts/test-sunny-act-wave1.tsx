@@ -50,19 +50,24 @@ class FakeDb {
     const res = (data: unknown, error: { code?: string; message: string } | null) => Promise.resolve({ data, error });
     const from = (t: string) => {
       const filters: Array<[string, string, unknown]> = [];
-      let orderCol: string | null = null, asc = true, mode: "select" | "update" = "select", patch: Row | null = null;
-      const match = (r: Row) => filters.every(([op, c, v]) => op === "eq" ? r[c] === v : r[c] !== v);
+      let orderCol: string | null = null, asc = true, mode: "select" | "update" = "select", patch: Row | null = null, lim: number | null = null;
+      const match = (r: Row) => filters.every(([op, c, v]) => op === "eq" ? r[c] === v : op === "neq" ? r[c] !== v : op === "in" ? (v as unknown[]).includes(r[c]) : op === "lt" ? String(r[c]) < String(v) : String(r[c]) >= String(v));
       const run = () => {
         if (db.failOn === t || db.failOn === `${t}:${mode}`) return res(null, { message: "simulated database failure" });
         let rs = db.rows(t).filter(match);
         if (mode === "update") { for (const r of rs) Object.assign(r, patch); }
         if (orderCol) rs = [...rs].sort((a, b) => ((a[orderCol!] as number) < (b[orderCol!] as number) ? -1 : 1) * (asc ? 1 : -1));
+        if (lim !== null) rs = rs.slice(0, lim);
         return res(rs.map((r) => ({ ...r })), null);
       };
       const chain = {
         eq(c: string, v: unknown) { filters.push(["eq", c, v]); return chain; },
         neq(c: string, v: unknown) { filters.push(["neq", c, v]); return chain; },
         order(c: string, o?: { ascending?: boolean }) { orderCol = c; asc = o?.ascending !== false; return chain; },
+        in(c: string, v: unknown[]) { filters.push(["in", c, v]); return chain; },
+        lt(c: string, v: unknown) { filters.push(["lt", c, v]); return chain; },
+        gte(c: string, v: unknown) { filters.push(["gte", c, v]); return chain; },
+        limit(n: number) { lim = n; return chain; },
         select() { return chain; },
         maybeSingle() { return run().then((r) => ({ data: (r.data as Row[] | null)?.[0] ?? null, error: r.error })); },
         then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { return run().then(onF, onR); },

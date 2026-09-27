@@ -161,7 +161,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     return { planId: `pl_${"t".repeat(16)}${Math.random().toString(36).slice(2, 8)}`, ownerId: OWNER, clientId: CLIENT, intentHe: "בדיקה", steps, riskClass: risk, confirmation: conf as Plan["confirmation"], effects: [...new Set(cs.flatMap((c) => c.effects))], createdAt: new Date(NOW).toISOString(), expiresAt: new Date(NOW + 15 * 60_000).toISOString(), ...over };
   };
   const deps = (executors: Record<string, PrimitiveExecutor>) => { const st = memoryStores(); return { st, d: { nowMs: NOW, secret: SECRET, registry: REG, executors: new Map(Object.entries(executors)), nonces: st.nonces, idem: st.idem, audit: st.audit } }; };
-  const approve = (p: Plan, o: { values?: string[]; ownerId?: string; clientId?: string; nowMs?: number } = {}) => issueApprovalToken(SECRET, { planHash: planHash(p), ownerId: o.ownerId ?? OWNER, clientId: o.clientId ?? CLIENT, nowMs: o.nowMs ?? NOW, requiredValues: o.values });
+  const approve = (p: Plan, o: { ownerId?: string; clientId?: string; nowMs?: number } = {}) => issueApprovalToken(SECRET, { planHash: planHash(p), ownerId: o.ownerId ?? OWNER, clientId: o.clientId ?? CLIENT, nowMs: o.nowMs ?? NOW });
   const run = (p: Plan, token: string, d: ReturnType<typeof deps>["d"], o: { ownerId?: string; clientId?: string; text?: string } = {}) => executePlan(p, { token, ownerId: o.ownerId ?? OWNER, clientId: o.clientId ?? CLIENT, confirmationText: o.text ?? "כן, בוס מאשר" }, d);
 
   console.log("Engine: approval / stale / idempotency / orchestration");
@@ -249,9 +249,10 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     world.a = "1"; const a = plan([step(0, "T.A", "a", "13")]); const ad = deps({ "T.A": exec("a") });
     ok("24. without an approval token nothing executes", (await run(a, "", ad.d)).status === "REFUSED" && world.a === "1");
     const pay = plan([step(0, "T.PAY", "a", "500")]); const pd = deps({ "T.PAY": exec("a") });
-    const tk = approve(pay, { values: ["500", "₪"] });
-    ok("24b. C2: the confirmation must repeat the exact previewed values", (await run(pay, tk, pd.d, { text: "כן" })).refusal === "CONFIRMATION_VALUES_MISSING" && world.a === "1");
-    ok("24c. C2 with the exact values executes", (await run(pay, approve(pay, { values: ["500", "₪"] }), pd.d, { text: "כן, 500 ₪" })).status === "APPLIED_AS_EXPECTED");
+    // Owner decision 2026-09-27: the Boss never repeats values — the token is bound to the exact plan hash
+    ok("24b. C2: a plain approval of the exact plan hash executes (no repeated values)", (await run(pay, approve(pay), pd.d, { text: "מאשר" })).status === "APPLIED_AS_EXPECTED" && world.a === "500");
+    const other = plan([step(0, "T.PAY", "a", "600")]);
+    ok("24c. a token for plan A never executes plan B (plan hash binding)", (await run(other, approve(pay), deps({ "T.PAY": exec("a") }).d)).refusal === "PLAN_MISMATCH" && world.a === "500");
   }
   { // 23. partner:act ≠ autonomy
     const cfg = readMcpConfig({ PARTNER_MCP_ENABLED: "true", PARTNER_MCP_BASE_URL: "https://example.test", PARTNER_MCP_SECRET: "s".repeat(64), REDBLOODS_MCP_ONLY: "true", PARTNER_MCP_ANSWER_ENABLED: "true", PARTNER_MCP_KNOWLEDGE_ENABLED: "true" });

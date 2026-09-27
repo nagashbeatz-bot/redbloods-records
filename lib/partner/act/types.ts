@@ -94,7 +94,7 @@ export interface Preview {
   steps: ReadonlyArray<{ index: number; meaningHe: string; entities: readonly string[]; changes: PlanStep["changes"]; effectsHe: readonly string[]; willNotHappenHe: readonly string[] }>;
   riskClass: RiskClass;
   confirmation: ConfirmationClass;
-  /** For C2/C3: the exact values the Boss's confirmation must repeat (amount / currency / recipient …). */
+  /** The plan's key values (amount / currency / recipient …), highlighted in the preview. The Boss does NOT repeat them: "מאשר" is enough (2026-09-27). */
   requiredConfirmationValues: readonly string[];
   missingHe: readonly string[];
   duplicateWarningsHe: readonly string[];

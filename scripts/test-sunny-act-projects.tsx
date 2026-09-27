@@ -70,8 +70,8 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nFamily-specific");
   {
     const h = mk(); const { d } = mkDeps(h.writers);
-    const r = await fullFlow(d, "RESET_PROJECT_COVER", { project: `project:${U(1)}` }, "כן");
-    ok("a destructive reset needs the required word in the approval (plain 'כן' is refused, nothing deleted)", r.a?.status === "CONFIRMATION_VALUES_MISSING" && h.w.projects[U(1)].cover !== null && h.calls.length === 0, r.a?.status);
+    const r = await fullFlow(d, "RESET_PROJECT_COVER", { project: `project:${U(1)}` }, "מאושר");
+    ok("a destructive reset: \"מאושר\" after the preview is enough (bound to the plan hash)", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.projects[U(1)].cover === null, r.e?.status);
     ok("RESET_PROJECT_COVER is C3 (strong) and declares FILES + DELETION", ACTION_REGISTRY.get("RESET_PROJECT_COVER")?.confirmation === "C3_STRONG_APPROVAL" && ["FILES", "DELETION"].every((e) => ACTION_REGISTRY.get("RESET_PROJECT_COVER")!.effects.includes(e as never)));
     const p = await planAction({ intentHe: "x", actionId: "CREATE_PROJECT", args: { name: "קרוב אלייך" } }, OWNER, mkDeps(mk().writers).d);
     ok("creating a project whose name already exists shows a duplicate warning in the preview", p.status === "PREVIEW" && JSON.stringify(p.preview).includes("כבר קיים פרויקט באותו שם"));

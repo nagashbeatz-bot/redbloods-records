@@ -87,8 +87,8 @@ const CASES: FamilyCase<W>[] = [
   ok("settings go through the app's own validator", (await q("UPDATE_VICTOR_SETTINGS", { monthlyGoal: 5000 })).status === "INVALID_SETTINGS");
   const ov = await q("SET_VICTOR_SALARY_OVERRIDE", { workMonth: "2026-06", status: "שולם" });
   ok("an override is disclosed as a statement that never changes the finance row", ov.status === "PREVIEW" && JSON.stringify(ov).includes("לא משנה אותה"));
-  const s = mk(); const rs = await fullFlow(mkDeps(s.writers).d, "RECORD_VICTOR_SALARY_MONTH", { workMonth: "2026-09", amount: 550, currency: "$" }, "כן בוס");
-  ok("a salary row needs the month + exact money + status in the approval", rs.a?.status === "CONFIRMATION_VALUES_MISSING" && s.calls.length === 0);
+  const s = mk(); const rs = await fullFlow(mkDeps(s.writers).d, "RECORD_VICTOR_SALARY_MONTH", { workMonth: "2026-09", amount: 550, currency: "$" }, "מאשר ב-500");
+  ok("\"מאשר ב-500\" on a $550 salary plan is a change → nothing written", rs.a?.status === "APPROVAL_WITH_CHANGES" && s.calls.length === 0, rs.a?.status);
   ok("sends are EXTERNAL_COMMUNICATION with PUSH; removal is C3", ["NOTIFY_VICTOR_WORK", "SEND_VICTOR_VERSION_NOTES", "SET_VICTOR_WORK_STATUS"].every((id) => ACTION_REGISTRY.get(id)!.effects.includes("PUSH" as never)) && ACTION_REGISTRY.get("REMOVE_VICTOR_WORK")!.confirmation === "C3_STRONG_APPROVAL");
   ok("statuses = lib/types VICTOR_STATUSES", read("lib/types.ts").includes(`VICTOR_STATUSES: VictorStatus[] = [${VICTOR_STATUS_VALUES.map((x) => `"${x}"`).join(", ")}]`));
 

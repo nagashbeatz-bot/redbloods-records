@@ -73,8 +73,8 @@ const CASES: FamilyCase<W>[] = [
   ok("asking for a calendar event while Google is disconnected is refused (never a silent 'done')", p4.status === "NOT_CONNECTED");
   const p5 = await planAction({ intentHe: "x", actionId: "SCHEDULE_SESSION", args: { title: "x", date: "2026-10-05", startTime: "11:00" } }, OWNER, mkDeps(nc.writers).d);
   ok("without a calendar request a disconnected Google does not block the booking", p5.status === "PREVIEW");
-  const iv = mk(); const ri = await fullFlow(mkDeps(iv.writers).d, "SCHEDULE_SESSION_WITH_INVITE", { project: `project:${U(11)}`, date: "2026-10-06", startTime: "10:00", inviteEmails: "a@b.co, c@d.co", publicTitle: "x" }, "כן בוס, 2026-10-06 10:00 a@b.co");
-  ok("an invite needs every guest repeated in the approval", ri.a?.status === "CONFIRMATION_VALUES_MISSING" && iv.calls.length === 0, ri.a?.status);
+  const iv = mk(); const ri = await fullFlow(mkDeps(iv.writers).d, "SCHEDULE_SESSION_WITH_INVITE", { project: `project:${U(11)}`, date: "2026-10-06", startTime: "10:00", inviteEmails: "a@b.co, c@d.co", publicTitle: "x" }, "מאשר אבל בלי c@d.co");
+  ok("\"מאשר אבל בלי …\" on an invite is a change → nothing sent", ri.a?.status === "APPROVAL_WITH_CHANGES" && iv.calls.length === 0, ri.a?.status);
   ok("SCHEDULE_SESSION_WITH_INVITE is external communication (EMAIL) with C3", ACTION_REGISTRY.get("SCHEDULE_SESSION_WITH_INVITE")!.effects.includes("EMAIL" as never) && ACTION_REGISTRY.get("SCHEDULE_SESSION_WITH_INVITE")!.confirmation !== "C1_APPROVAL");
   const pd = await planAction({ intentHe: "x", actionId: "DELETE_SESSION", args: { session: S1 } }, OWNER, mkDeps(mk().writers).d);
   ok("deleting a session with a linked finance row says the row is kept", pd.status === "PREVIEW" && JSON.stringify(pd).includes("רשומות כספים מקושרות לסשן — הן נשארות"));

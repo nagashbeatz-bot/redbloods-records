@@ -10,6 +10,7 @@
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { dupContext, dupGate, dupWarnings, SEPARATE_ARG, type DupQuery } from "./duplicates";
 import { weekDaysFor } from "@/lib/red-artists/week";
 import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
 
@@ -111,6 +112,20 @@ async function sketchRead(d: WriterDeps, id: string): Promise<Fields | null> {
   return s ? { ...s, slug: art.portalSlug, artistName: art.name } : null;
 }
 
+/** Duplicate awareness (POLISH FIX #1): the same artist + type + amount, near the date, with a similar description. */
+/** the noun in the question (display only — never a type comparison): an expense entry type → הוצאה, an income one → הכנסה */
+const ledgerNoun = (a: Readonly<Record<string, unknown>>) => { const t = String(a.entryType); return t.startsWith("הוצאות") ? "הוצאה ".trim() : t.startsWith("הכנסות") ? "הכנסה ".trim() : "רשומה"; };
+const ledgerDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
+  const k = parseKey(a.labelArtist, ["label-artist"]);
+  const q: DupQuery | null = k && typeof a.amount === "number" && LEDGER_TYPES.includes(String(a.entryType)) ? { kind: "LEDGER_ENTRY", artistId: k.id, entryType: String(a.entryType), amount: a.amount } : null;
+  return dupContext(d, q, { date: realYmd(a.entryDate) ? String(a.entryDate) : null, text: [str(a.description), str(a.note)].filter(Boolean).join(" "), currency: "₪" });
+};
+const mediaDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
+  const k = parseKey(a.labelArtist, ["label-artist"]);
+  const q: DupQuery | null = k && typeof a.grossAmount === "number" ? { kind: "MEDIA_INCOME", artistId: k.id, grossAmount: a.grossAmount } : null;
+  return dupContext(d, q, { date: realYmd(a.receivedDate) ? String(a.receivedDate) : null, text: [str(a.reportPeriod), str(a.notes)].filter(Boolean).join(" "), currency: "₪" });
+};
+
 export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── artists ──
   {
@@ -137,19 +152,21 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── ledger ──
   {
     actionId: "ADD_LEDGER_ENTRY", kinds: ["ledger-entry"],
-    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note")], ["entryType", "amount", "entryDate"], "createArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action)" }),
-    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null }; },
-    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "ledger-entry:new", id: "new", label: `מאזן ${r.label}`, fields: { artistName: r.label } }; },
+    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note"), SEPARATE_ARG], ["entryType", "amount", "entryDate", "description", "note"], "createArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action)" }),
+    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await ledgerDup(d, a)) }; },
+    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "ledger-entry:new", id: "new", label: `מאזן ${r.label}`, fields: { artistName: r.label, ...(await ledgerDup(d, a)) } }; },
     read: ledgerFields,
-    plan(a) {
+    plan(a, cur) {
       if (!LEDGER_TYPES.includes(String(a.entryType))) return refuse("BAD_ENUM", "סוג רשומה לא מוכר");
       if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "הסכום חייב להיות חיובי");
       if (!realYmd(a.entryDate)) return refuse("BAD_DATE", "תאריך לא תקין");
-      return { ok: true, after: { entryType: String(a.entryType), amount: a.amount, entryDate: String(a.entryDate) } };
+      const g = dupGate(a, cur, ledgerNoun(a)); if (g) return g;
+      return { ok: true, after: { entryType: String(a.entryType), amount: a.amount, entryDate: String(a.entryDate), description: str(a.description)?.trim() ?? "", note: str(a.note)?.trim() ?? "" } };
     },
     async apply(d, _id, after, a) { return { createdId: await d.createLedgerEntry({ artistId: parseKey(a.labelArtist, ["label-artist"])!.id, entryType: String(after.entryType), amount: Number(after.amount), entryDate: String(after.entryDate), description: str(a.description)?.trim() ?? "", note: str(a.note)?.trim() ?? "" }) }; },
     async verify(d, id, after) { const e = await d.readLedgerEntry(id); return !!e && e.amount === after.amount && e.entryType === after.entryType; },
     requiredValues: (_a, after) => [String(after.entryType), ils(Number(after.amount))],
+    warnings: (c, a) => dupWarnings(c, a),
     disclosuresHe: ["רשומה אחת במאזן האמן; הכספים של החברה לא משתנים (מאזן ≠ כספים)", NO_CUR, "לא יישלח Push"],
   },
   {
@@ -227,19 +244,21 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── media income ──
   {
     actionId: "ADD_MEDIA_INCOME", kinds: ["media-income"],
-    meta: meta("הכנסת מדיה לאמן (סטרימינג / זכויות)", "Record media income for an artist (the app's RPC splits label / artist share and recoup)", [K("labelArtist"), { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes")], ["grossAmount", "reportPeriod", "status"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
-    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null }; },
-    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "media-income:new", id: "new", label: `מדיה ${r.label}`, fields: { artistName: r.label } }; },
+    meta: meta("הכנסת מדיה לאמן (סטרימינג / זכויות)", "Record media income for an artist (the app's RPC splits label / artist share and recoup)", [K("labelArtist"), { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), SEPARATE_ARG], ["grossAmount", "reportPeriod", "status", "source", "notes"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
+    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await mediaDup(d, a)) }; },
+    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "media-income:new", id: "new", label: `מדיה ${r.label}`, fields: { artistName: r.label, ...(await mediaDup(d, a)) } }; },
     read: mediaFields,
-    plan(a) {
+    plan(a, cur) {
       if (typeof a.grossAmount !== "number" || !(a.grossAmount > 0)) return refuse("BAD_MONEY", "סכום ברוטו חיובי");
       const p = text(a.reportPeriod, 60); if (p === null) return refuse("BAD_TEXT", "תקופת דוח חסרה");
       if (a.receivedDate !== undefined && !realYmd(a.receivedDate)) return refuse("BAD_DATE", "תאריך לא תקין");
-      return { ok: true, after: { grossAmount: a.grossAmount, reportPeriod: p.trim(), status: String(a.status ?? "התקבל") } };
+      const g = dupGate(a, cur, "הכנסת מדיה"); if (g) return g;
+      return { ok: true, after: { grossAmount: a.grossAmount, reportPeriod: p.trim(), status: String(a.status ?? "התקבל"), source: str(a.source)?.trim() || "Mobile1", notes: str(a.notes)?.trim() ?? "" } };
     },
     async apply(d, _id, after, a) { const r = await d.createMediaRecord(parseKey(a.labelArtist, ["label-artist"])!.id, { grossAmount: Number(after.grossAmount), source: str(a.source)?.trim() || "Mobile1", reportPeriod: String(after.reportPeriod), receivedDate: str(a.receivedDate) ?? null, status: String(after.status), notes: str(a.notes)?.trim() ?? "" }); if (!r.ok || !r.id) throw new Error(`media not recorded: ${r.message ?? "unknown"}`); return { createdId: r.id }; },
     async verify(d, id, after) { const m = await d.readMediaRecord(id); return !!m && m.grossAmount === after.grossAmount && m.status === after.status; },
     requiredValues: (_a, after) => [ils(Number(after.grossAmount)), String(after.reportPeriod)],
+    warnings: (c, a) => dupWarnings(c, a),
     disclosuresHe: ["החלוקה בין הלייבל לאמן והקיזוז (recoup) מחושבים בבסיס הנתונים — לא מחדש כאן", "הכנסות מדיה נפרדות מהמאזן ומהכספים", NO_CUR, "לא יישלח Push"],
   },
   {

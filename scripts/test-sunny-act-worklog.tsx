@@ -83,7 +83,7 @@ const CASES: FamilyCase<W>[] = [
   const rv = await fullFlow(mkDeps(v.writers).d, "DELETE_SEND_LOG_ENTRY", { sendLogEntry: L11 }, "כן בוס, מחיקה");
   ok("a non-engineer linked send cascades into the Victor path (server-side)", rv.e?.status === "APPLIED_AS_EXPECTED" && v.w.cascades.join() === "victor_work");
   const r0 = mk(); const r0f = await fullFlow(mkDeps(r0.writers).d, "DELETE_SEND_LOG_ENTRY", { sendLogEntry: L11 }, "כן בוס");
-  ok("the delete needs the word מחיקה in the approval", r0f.a?.status === "CONFIRMATION_VALUES_MISSING" && r0.calls.length === 0);
+  ok("a delete: \"כן בוס\" after the preview is enough (no repeated מחיקה)", r0f.e?.status === "APPLIED_AS_EXPECTED", r0f.e?.status);
   const lk = mk(); const rl = await fullFlow(mkDeps(lk.writers).d, "ADD_SEND_LOG_ENTRY", { project: P1, actionType: "sent", linkedWork: `victor-work:${U(60)}` });
   ok("a send-log entry can be linked to the project's Victor work (role forced to external_producer — the cascade stays right)", rl.e?.status === "APPLIED_AS_EXPECTED" && Object.values(lk.w.log).some((e) => e.recipient_role === "external_producer"), rl.e?.status);
   ok("a work of another project is refused", (await q("ADD_SEND_LOG_ENTRY", { project: P1, actionType: "sent", linkedWork: `victor-work:${U(61)}` })).status === "WRONG_PROJECT");

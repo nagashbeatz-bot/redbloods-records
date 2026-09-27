@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-38";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-39";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -974,4 +974,7 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-37", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D7 הוחלט: 'מאושר' = הבוס אישר את השלב הנוכחי להמשיך לשלב הבא — לא אישור לקוח / תשלום / גרסה סופית / מסירה; הקישור הסופי מסומן 'גרסה סופית'" },
   { version: "2026.09.27-38", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D5: תשלומי הופעה בפיננסים (מקדמה / חלקי / מלא / עודף) דרך RECORD_SHOW_PAYMENT; התקבל / יתרה / זיכוי נגזרים מכלל אחד; מטבע לכל הופעה (SET_SHOW_CURRENCY) בלי המרה" },
   { version: "2026.09.27-38", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מטבע לכל הפקה / שורת תקציב (התשלומים במטבע השורה) / ציוד (SET_RF_CURRENCY); סיכומים לפי מטבע" },
+  { version: "2026.09.27-39", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "POLISH #1: שליחת הופעה לאמן / ל-DJ — הקריאה הטרייה של סאני קוראת את סטטוס השליחה האמיתי (שורת ה-claim שהשולח מסמן 'נשלח' רק אחרי הצלחה); גרסה שכבר נשלחה = ALREADY_SENT, שליחה שנכשלה = FAILED, לעולם לא 'נשלח'" },
+  { version: "2026.09.27-39", date: "2026-09-27", domain: "FINANCE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "POLISH #1: לפני יצירת רשומה כספית (כספים / מאזן אמן / מדיה / Red Films / קליפ / תשלום הופעה) סאני בודקת רשומה דומה באותו הקשר, סוג, מטבע וסכום ושואלת את הבוס 'אותה או נוספת?' — בלי מחיקה, בלי חסימה של רשומה נוספת" },
+  { version: "2026.09.27-39", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "POLISH #1: אישור פשוט — 'מאשר' אחרי תצוגה ברורה מספיק (בלי לחזור על ערכים); האישור קשור ל-hash המדויק של התוכנית, לבעלים, ללקוח, לתוקף ול-nonce חד-פעמי; 'מאשר אבל…' = תוכנית חדשה; תצוגה ישנה כשיש חדשה פתוחה = לא מנחשים" },
 ];

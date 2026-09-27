@@ -10,6 +10,7 @@
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { dupContext, dupGate, dupWarnings, SEPARATE_ARG, type DupQuery } from "./duplicates";
 
 type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string };
 type FinSettings = { agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string };
@@ -17,7 +18,6 @@ export type FinanceOwner = "SHOW" | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | null
 export interface FinanceFamilyWriters {
   readTransaction(id: string): Promise<Tx | null>;
   financeOwnerOf(id: string): Promise<FinanceOwner>;
-  countSimilarTransactions(t: { projectId: string | null; type: string; amount: number; currency: string; date: string }): Promise<number>;
   createTransaction(t: { projectId: string | null; scope: string; type: string; date: string; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string }): Promise<string>;
   updateTransaction(id: string, patch: Record<string, unknown>): Promise<void>;
   deleteTransaction(id: string): Promise<void>;
@@ -71,14 +71,15 @@ const settingsRead = async (d: WriterDeps, id: string): Promise<Fields | null> =
 async function addContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> {
   const k = parseKey(a.project, ["project"]);
   const p = k ? await d.readProjectMeta(k.id) : null;
-  const similar = typeof a.amount === "number" && typeof a.currency === "string" && realYmd(a.date) ? await d.countSimilarTransactions({ projectId: k?.id ?? null, type: String(a.type), amount: a.amount, currency: a.currency, date: a.date }) : 0;
-  return { projectName: p ? p.name : null, similar };
+  // duplicate awareness (POLISH FIX #1): the same project / general scope + type + currency + amount, near the date
+  const q: DupQuery | null = typeof a.amount === "number" && typeof a.currency === "string" && (a.type === "income" || a.type === "expense") ? { kind: "TRANSACTION", projectId: k?.id ?? null, type: String(a.type), amount: a.amount, currency: a.currency } : null;
+  return { projectName: p ? p.name : null, ...(await dupContext(d, q, { date: realYmd(a.date) ? String(a.date) : null, text: [str(a.description), str(a.notes)].filter(Boolean).join(" "), currency: String(a.currency ?? "") })) };
 }
 
 export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "ADD_TRANSACTION", kinds: ["transaction"],
-    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false)], ["type", "amount", "currency", "paymentStatus", "date"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
+    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false), SEPARATE_ARG], ["type", "amount", "currency", "paymentStatus", "date", "description"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
     createContext: addContext,
     async resolve(d, a) {
       if (a.project !== undefined && !parseKey(a.project, ["project"])) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
@@ -87,7 +88,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
       return { key: "transaction:new", id: "new", label: c.projectName ? `רשומה כספית — ${c.projectName}` : "רשומה כספית כללית", fields: c };
     },
     read: async (d, id) => { const t = await d.readTransaction(id); return t ? { ...t } : null; },
-    plan(a) {
+    plan(a, cur) {
       const type = String(a.type);
       if (type !== "income" && type !== "expense") return refuse("BAD_ENUM", "סוג: הכנסה או הוצאה");
       if (typeof a.amount !== "number" || !Number.isFinite(a.amount) || a.amount <= 0) return refuse("BAD_MONEY", "סכום חייב להיות גדול מ-0");
@@ -97,7 +98,8 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (a.expenseScope !== undefined && type !== "expense") return refuse("BAD_ARGS", "שיוך הוצאה רק להוצאה");
       for (const k of ["description", "artist", "category", "notes", "receiptRef"]) if (a[k] !== undefined && text(a[k], 500) === null) return refuse("BAD_TEXT", `${k} לא תקין`);
       if (a.session !== undefined && !parseKey(a.session, ["session"])) return refuse("BAD_ENTITY", "סשן לא תקין");
-      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date) } };
+      const g = dupGate(a, cur, typeHe(type)); if (g) return g;
+      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date), description: str(a.description)?.trim() ?? "" } };
     },
     async apply(d, _id, after, a) {
       const k = parseKey(a.project, ["project"]);
@@ -105,7 +107,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     async verify(d, id, after) { const t = await d.readTransaction(id); return !!t && t.amount === after.amount && t.currency === after.currency && t.paymentStatus === after.paymentStatus && t.type === after.type; },
     requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus)],
-    warnings(c) { return Number(c.similar) > 0 ? [`כבר יש ${c.similar} רשומה עם אותו סוג, סכום, מטבע ותאריך — ודא שזו לא כפילות`] : []; },
+    warnings: (c, a) => dupWarnings(c, a),
     disclosuresHe: ["נוצרת רשומה כספית אחת; שום רשומה אחרת לא משתנה", "מטבעות לא מחוברים ולא מומרים", "לא יישלח Push או הודעה"],
   },
   {

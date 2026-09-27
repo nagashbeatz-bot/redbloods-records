@@ -74,8 +74,8 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nFamily rules");
   const q = (id: string, args: Record<string, unknown>, h = mk()) => planAction({ intentHe: "x", actionId: id, args }, OWNER, mkDeps(h.writers).d);
   ok("one campaign per project", (await q("CREATE_SOCIAL_CAMPAIGN", { project: P2 })).status === "DUPLICATE");
-  const m = mk(); const r0 = await fullFlow(mkDeps(m.writers).d, "SET_PROMOTION_ACTUAL_SPEND", { promotion: PR40, amount: 480 }, "כן בוס");
-  ok("the actual spend needs the exact ₪ amount in the approval", r0.a?.status === "CONFIRMATION_VALUES_MISSING" && m.calls.length === 0);
+  const m = mk(); const r0 = await fullFlow(mkDeps(m.writers).d, "SET_PROMOTION_ACTUAL_SPEND", { promotion: PR40, amount: 480 }, "מאשר");
+  ok("the actual spend: the preview shows ₪480; a plain \"מאשר\" records exactly that", JSON.stringify(r0.p).includes("480") && r0.e?.status === "APPLIED_AS_EXPECTED", r0.e?.status);
   const tw = mk(); const d = mkDeps(tw.writers).d;
   await fullFlow(d, "SET_PROMOTION_ACTUAL_SPEND", { promotion: PR40, amount: 480 }, "כן בוס, ₪480");
   const r2 = await fullFlow(d, "SET_PROMOTION_ACTUAL_SPEND", { promotion: PR40, amount: 520 }, "כן בוס, ₪520");

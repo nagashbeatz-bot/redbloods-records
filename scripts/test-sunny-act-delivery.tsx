@@ -53,8 +53,8 @@ const CASES: FamilyCase<W>[] = [
   const back = mk(); back.w.delivery[U(2)].deliveryStatus = "delivered"; back.w.delivery[U(2)].deliveredAt = "2026-09-20";
   const rb = await fullFlow(mkDeps(back.writers).d, "SET_DELIVERY_STATUS", { project: P2, status: "ready" });
   ok("back to ready clears the delivered date", rb.e?.status === "APPLIED_AS_EXPECTED" && back.w.delivery[U(2)].deliveredAt === null);
-  const nl = mk(); const rn = await fullFlow(mkDeps(nl.writers).d, "CREATE_DELIVERY_FOLDER", { project: P1 }, "כן בוס");
-  ok("creating a public link needs 'קישור ציבורי' in the approval", rn.a?.status === "CONFIRMATION_VALUES_MISSING" && nl.calls.length === 0);
+  const nl = mk(); const rn = await fullFlow(mkDeps(nl.writers).d, "CREATE_DELIVERY_FOLDER", { project: P1 }, "מאשר");
+  ok("a public link: the preview says קישור ציבורי; a plain \"מאשר\" approves the exact plan", JSON.stringify(rn.p).includes("קישור ציבורי") && rn.e?.status === "APPLIED_AS_EXPECTED", rn.e?.status);
   const pr = await q("CREATE_DELIVERY_FOLDER", { project: P1 });
   ok("no path / link in the plan or preview", !/Redbloods|dropbox\.com|https?:/.test(JSON.stringify(pr)));
   ok("the delete is C3 destructive; create declares FILES + EXTERNAL_LINK", ACTION_REGISTRY.get("DELETE_DELIVERY_FOLDER")!.confirmation === "C3_STRONG_APPROVAL" && ["FILES", "EXTERNAL_LINK"].every((e) => ACTION_REGISTRY.get("CREATE_DELIVERY_FOLDER")!.effects.includes(e as never)));

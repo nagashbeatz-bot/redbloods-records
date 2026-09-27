@@ -138,7 +138,7 @@ export const CALENDAR_MODEL = {
 } as const;
 
 export const NOTIFICATION_MODEL = [
-  { id: "SHOW_TO_ARTIST", trigger: "Owner presses 'שלח' in Shalev's portal shows tab", recipient: "Shalev (+ Owner ack 'שליו עודכן')", eligibility: "artist text contains Shalev; status אושרה / נסגר; date ≥ today", dedupe: "claim per show + fingerprint of name / date / time / place (money edits never reopen it)", marker: "show sent to artist (status processing / sent / failed + fingerprint + sent time)", deepLink: "Shalev's shows tab", guard: "production only" },
+  { id: "SHOW_TO_ARTIST", trigger: "Owner presses 'שלח' in Shalev's portal shows tab", recipient: "Shalev (+ Owner ack 'שליו עודכן')", eligibility: "artist text contains Shalev; status אושרה / נסגר; date ≥ today", dedupe: "claim per show + fingerprint of name / date / time / place (money edits never reopen it)", marker: "show sent to artist (status processing / sent / failed + fingerprint + sent time) — read-only readShalevShowNotifyState / readDjShowNotifyState (POLISH #1, 2026-09-27): Sunny's NOTIFY_SHOW_ARTIST / _DJ fresh read = SENT only when the row is 'sent' for the current version; already sent → ALREADY_SENT (no second offer); failed → FAILED, never 'sent'", deepLink: "Shalev's shows tab", guard: "production only" },
   { id: "SHOW_TO_DJ", trigger: "Owner presses 'שלח' for the DJ", recipient: "CLEANTONE (+ Owner ack)", eligibility: "DJ = CLEANTONE; status אושרה / נסגר; date ≥ today", dedupe: "same claim model", marker: "show sent to DJ", deepLink: "DJ portal shows", guard: "production only" },
   { id: "DJ_CONFIRMED", trigger: "CLEANTONE confirms", recipient: "Owner", eligibility: "a real transition", dedupe: "per show + confirmation time", marker: null, deepLink: "DJ portal shows", guard: "production only" },
   { id: "SESSION_CREATED_SHALEV", trigger: "a session on a Shalev project", recipient: "Shalev + Owner", eligibility: "rehearsals have no project → never fire", dedupe: "per session", marker: null, deepLink: "schedule", guard: "production only" },
@@ -246,9 +246,9 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
-  "lib/show-notify.ts": "36d21aa31146c992d4a00302add47e9d44be5c88b98e1708309ba7650c650b46",
-  "lib/show-notify-pure.ts": "a41ebb19cff070217271feab12a4c4d8cba12cdb76da469c2e01fbfccf8e46ec",
-  "lib/dj-show-notify.ts": "4866f1caf5f53d3d0e221f4b4bd593361624a26e7e84a5f4087d864a27aedbf9",
+  "lib/show-notify.ts": "e34620394d6b55cab4413460ce4411a2933d5473aa75a0946d1a4fcbeda3e77e",
+  "lib/show-notify-pure.ts": "8cde3a74655cd7d93b2832c9a9fc50212861e8f9ebd7eeafb44881026eefb977",
+  "lib/dj-show-notify.ts": "a6b2faf555de56bf78a5b1952ada1fdfe59784242045de62343ad7b2099e6a0c",
   "lib/dj-confirm-notify.ts": "6f2542f077f0ac2fc4ddf64ba068faac9564cfc10e87838cec51a135d8e6c0e6",
   "lib/show-quote-followup.ts": "4ab61b81333b94c00556e7d188a4adbf5949c4d5ddc7267f62dda697877c3b17",
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",

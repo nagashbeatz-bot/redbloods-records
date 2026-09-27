@@ -8,7 +8,10 @@
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { dupCandidates, dupField, dupGate, dupWarnings, SEPARATE_ARG } from "./duplicates";
 
+/** SENT = sent for the show's CURRENT version (name / date / time / location); SENT_PREVIOUS_VERSION = the writer would send again. */
+export type NotifyState = { state: "SENT" | "SENT_PREVIOUS_VERSION" | "FAILED" | "PROCESSING" | "NOT_SENT"; sentAt: string | null };
 export type ShowView = { name: string; artist: string; artistClientId: string | null; bookerName: string; bookerClientId: string | null; date: string | null; startTime: string | null; location: string; contactPerson: string; phone: string; status: string; paymentStatus: string; showPrice: number; djFee: number; djClientId: string | null; djName: string; djConfirmation: string | null; advancePayment: number; notes: string; hasCalendarEvent: boolean; financeRows: number; rehearsals: number; currency: string; received: number; remaining: number; credit: number; payments: string };
 type UpdateResult = { kind: "ok" | "not_found" | "balance_sync_failed" | "refused"; warning?: string | null };
 export interface ShowFamilyWriters {
@@ -21,6 +24,8 @@ export interface ShowFamilyWriters {
   markShowQuoteSent(id: string): Promise<"ok" | "skipped" | "not_found">;
   notifyShowArtist(id: string): Promise<{ ok: boolean; reason?: string }>;
   notifyShowDj(id: string): Promise<{ ok: boolean; reason?: string }>;
+  /** READ-ONLY: the canonical send state (the claim rows the senders mark "sent" only after a successful push). */
+  showNotifyStates(id: string): Promise<{ artist: NotifyState; dj: NotifyState } | null>;
 }
 
 /** Pinned to lib/shows-types.ts SHOW_STATUSES / PAYMENT_STATUSES and lib/red-artists/cleantone.ts by the family test. */
@@ -55,6 +60,37 @@ async function onShow(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
   const f = await showFields(d, k.id);
   if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את ההופעה");
   return { key: `show:${k.id}`, id: k.id, label: `${f.name}${f.date ? ` (${f.date})` : ""}`, fields: f };
+}
+/** Duplicate awareness (POLISH FIX #1): the show's own payments with the same amount (from the live read — no extra query). */
+function showPayDupFields(a: Readonly<Record<string, unknown>>, cur: Fields): Fields {
+  const rows = String(cur.payments ?? "").split(";").filter(Boolean).map((x) => { const [amt, date] = x.split("@"); return { amount: Number(amt), date: date || null, currency: String(cur.currency), text: "" }; }).filter((r) => r.amount === a.amount);
+  return { similarRecords: dupField(dupCandidates(rows, { date: realYmd(a.date) ? String(a.date) : null, text: "" }), String(cur.currency)) };
+}
+/** The show + one recipient's real send state (read-only; a read failure throws — never "not sent"). */
+async function notifyFields(d: WriterDeps, id: string, who: "artist" | "dj"): Promise<Fields | null> {
+  const f = await showFields(d, id);
+  if (!f) return null;
+  const st = await d.showNotifyStates(id);
+  if (!st) return null;
+  const n = st[who];
+  return who === "artist"
+    ? { ...f, artistNotified: n.state === "SENT", artistNotifyState: n.state, artistSentAt: n.sentAt }
+    : { ...f, djNotified: n.state === "SENT", djNotifyState: n.state, djSentAt: n.sentAt };
+}
+async function onNotifyShow(d: WriterDeps, a: Readonly<Record<string, unknown>>, who: "artist" | "dj"): Promise<ResolvedTarget | PlanRefusal> {
+  const r = await onShow(d, a);
+  if (!("key" in r)) return r;
+  const f = await notifyFields(d, r.id, who);
+  return f ? { ...r, fields: f } : refuse("ENTITY_NOT_FOUND", "לא מצאתי את ההופעה");
+}
+/** Never offer a second send of a version that was already sent (the writer would refuse it anyway: already_sent). */
+function notifyGate(cur: Fields, who: "artist" | "dj"): PlanRefusal | null {
+  const state = String(cur[who === "artist" ? "artistNotifyState" : "djNotifyState"]);
+  const at = cur[who === "artist" ? "artistSentAt" : "djSentAt"];
+  const whom = who === "artist" ? "לשליו" : "ל-DJ";
+  if (state === "SENT") return refuse("ALREADY_SENT", `בוס, ההופעה הזאת כבר נשלחה ${whom}${at ? ` (${String(at).slice(0, 16).replace("T", " ")} UTC)` : ""} — אותה גרסה לא נשלחת שוב. אם שם / תאריך / שעה / מקום ישתנו, אפשר לשלוח מחדש`);
+  if (state === "PROCESSING") return refuse("SEND_IN_PROGRESS", `שליחה ${whom} כבר בתהליך — לא שולחת שוב`);
+  return null;
 }
 const ok = (r: UpdateResult) => { if (r.kind === "not_found") throw new Error("show not found"); if (r.kind === "refused") throw new Error(`refused: ${r.warning ?? ""}`); if (r.kind === "balance_sync_failed") throw new Error("the show was saved but the artist balance close-sync failed — re-running the same close is safe"); };
 /** Resolve a client key to its name (artist / booker / DJ). */
@@ -248,30 +284,31 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "NOTIFY_SHOW_ARTIST", kinds: ["show"],
     meta: meta("שליחת ההופעה לאמן (Push לשליו)", "Send an upcoming show to the artist (Shalev) — the app builds the push itself; one send per show version", [K("show")], ["artistNotified"], "notifyShalevAboutShow (lib/writes/shows)", { effects: ["PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await onShow(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, artistNotified: false } }; },
-    async read(d, id) { const f = await showFields(d, id); return f ? { ...f, artistNotified: false } : null; },
+    resolve: (d, a) => onNotifyShow(d, a, "artist"),
+    read: (d, id) => notifyFields(d, id, "artist"),
     plan(_a, cur) {
       if (!String(cur.artist).split(/[,،;]/).map((x) => x.trim()).includes("שליו טסמה")) return refuse("NOT_SHALEV", "שליחה לאמן קיימת היום רק לשליו");
       if (!cur.date || String(cur.date) < new Date().toISOString().slice(0, 10)) return refuse("NOT_UPCOMING", "אפשר לשלוח רק הופעה עתידית");
-      return { ok: true, after: { artistNotified: true } };
+      return notifyGate(cur, "artist") ?? { ok: true, after: { artistNotified: true } };
     },
     async apply(d, id) { const r = await d.notifyShowArtist(id); if (!r.ok) throw new Error(`not sent: ${r.reason}`); return { receipt: "sent" }; },
-    verify: async (_d, _id, _a, out) => out.receipt === "sent",
+    // the writer marks the claim row "sent" only after a successful push -> the fresh read must say so
+    async verify(d, id, _a, out) { const f = await notifyFields(d, id, "artist"); return out.receipt === "sent" && f?.artistNotified === true; },
     requiredValues: () => ["שליו"],
     disclosuresHe: ["נשלח Push לשליו (ועותק אליך) עם תאריך, שעה ומקום — התוכן נבנה בשרת", "גרסה שכבר נשלחה לא נשלחת שוב", "שום רשומה לא משתנה"],
   },
   {
     actionId: "NOTIFY_SHOW_DJ", kinds: ["show"],
     meta: meta("שליחת ההופעה ל-DJ (Push לקלינטון)", "Send an upcoming show to DJ CLEANTONE — the app builds the push itself; one send per show version", [K("show")], ["djNotified"], "notifyDjAboutShow (lib/writes/shows)", { effects: ["PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await onShow(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, djNotified: false } }; },
-    async read(d, id) { const f = await showFields(d, id); return f ? { ...f, djNotified: false } : null; },
+    resolve: (d, a) => onNotifyShow(d, a, "dj"),
+    read: (d, id) => notifyFields(d, id, "dj"),
     plan(_a, cur) {
       if (cur.djClientId !== CLEANTONE_ID) return refuse("NOT_CLEANTONE", "שליחה ל-DJ קיימת היום רק לקלינטון");
       if (!cur.date || String(cur.date) < new Date().toISOString().slice(0, 10)) return refuse("NOT_UPCOMING", "אפשר לשלוח רק הופעה עתידית");
-      return { ok: true, after: { djNotified: true } };
+      return notifyGate(cur, "dj") ?? { ok: true, after: { djNotified: true } };
     },
     async apply(d, id) { const r = await d.notifyShowDj(id); if (!r.ok) throw new Error(`not sent: ${r.reason}`); return { receipt: "sent" }; },
-    verify: async (_d, _id, _a, out) => out.receipt === "sent",
+    async verify(d, id, _a, out) { const f = await notifyFields(d, id, "dj"); return out.receipt === "sent" && f?.djNotified === true; },
     requiredValues: () => ["קלינטון"],
     disclosuresHe: ["נשלח Push ל-DJ CLEANTONE (ועותק אליך) — התוכן נבנה בשרת", "גרסה שכבר נשלחה לא נשלחת שוב", "שום רשומה לא משתנה"],
   },
@@ -289,7 +326,7 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "RECORD_SHOW_PAYMENT", kinds: ["show"],
-    meta: meta("רישום תשלום שהתקבל על הופעה (מקדמה / תשלום חלקי / תשלום מלא / עודף)", "Record money actually received for a show: ONE income row in Finance (התקבל, linked to the show, in the show's currency); the expected balance, the derived payment status and the DJ / artist rows follow. Never double-counts: received = Σ payments", [K("show"), { name: "amount", kind: "money", required: true }, { name: "date", kind: "ymd", required: true }, { name: "currency", kind: "enum", required: false, values: SHOW_CURRENCIES }, { name: "paymentMethod", kind: "enum", required: false, values: SHOW_PAYMENT_METHODS }, T("note")], ["received", "remaining", "credit"], "recordShowPayment (lib/writes/show-payments)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "a transaction correction in Finance (a new approved plan) — a payment row is never deleted silently" }),
+    meta: meta("רישום תשלום שהתקבל על הופעה (מקדמה / תשלום חלקי / תשלום מלא / עודף)", "Record money actually received for a show: ONE income row in Finance (התקבל, linked to the show, in the show's currency); the expected balance, the derived payment status and the DJ / artist rows follow. Never double-counts: received = Σ payments", [K("show"), { name: "amount", kind: "money", required: true }, { name: "date", kind: "ymd", required: true }, { name: "currency", kind: "enum", required: false, values: SHOW_CURRENCIES }, { name: "paymentMethod", kind: "enum", required: false, values: SHOW_PAYMENT_METHODS }, T("note"), SEPARATE_ARG], ["received", "remaining", "credit"], "recordShowPayment (lib/writes/show-payments)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "a transaction correction in Finance (a new approved plan) — a payment row is never deleted silently" }),
     resolve: onShow, read: showFields,
     plan(a, cur) {
       if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום לא תקין");
@@ -298,7 +335,8 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (a.paymentMethod !== undefined && !SHOW_PAYMENT_METHODS.includes(String(a.paymentMethod))) return refuse("BAD_ENUM", "אמצעי תשלום לא מוכר");
       if (a.note !== undefined && text(a.note, 300) === null) return refuse("BAD_TEXT", "הערה לא תקינה");
       if (PIPELINE.includes(String(cur.status))) return refuse("NOT_CONFIRMED", "ההופעה עוד ליד — קודם לאשר אותה (CONFIRM_SHOW), ואז לרשום תשלום");
-      if (String(cur.payments).split(";").includes(`${a.amount}@${a.date}`)) return refuse("DUPLICATE", `כבר רשום תשלום של ${cm(a.amount, cur.currency)} ב-${a.date} להופעה הזאת`);
+      // same amount on the same day = hold for the Boss (the same payment, or an additional one?) — never a silent block
+      const g = dupGate(a, showPayDupFields(a, cur), "רשומת תשלום"); if (g) return g;
       const received = Math.round((Number(cur.received) + a.amount) * 100) / 100;
       const agreed = Number(cur.showPrice);
       return { ok: true, after: { received, remaining: Math.max(0, Math.round((agreed - received) * 100) / 100), credit: Math.max(0, Math.round((received - agreed) * 100) / 100) } };
@@ -310,7 +348,7 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.received === after.received && s.remaining === after.remaining && s.credit === after.credit; },
     requiredValues: (a, _after) => [`${a.amount}`, String(a.date)],
-    warnings: (c) => [`מחיר ${cm(c.showPrice, c.currency)} · התקבל עד היום ${cm(c.received, c.currency)} · יתרה ${cm(c.remaining, c.currency)}${Number(c.credit) > 0 ? ` · עודף ${cm(c.credit, c.currency)}` : ""}`],
+    warnings: (c, a) => [`מחיר ${cm(c.showPrice, c.currency)} · התקבל עד היום ${cm(c.received, c.currency)} · יתרה ${cm(c.remaining, c.currency)}${Number(c.credit) > 0 ? ` · עודף ${cm(c.credit, c.currency)}` : ""}`, ...(a ? dupWarnings(showPayDupFields(a, c), a) : [])],
     disclosuresHe: ["נרשמת שורת הכנסה אחת בפיננסים (התקבל) — מקושרת להופעה, במטבע שלה", "היתרה הצפויה = מחיר פחות כל מה שהתקבל; תשלום שמכסה את כל היתרה סוגר אותה, ועודף נשאר גלוי (לא נעלם)", "סטטוס התשלום של ההופעה נגזר מהתשלומים (מקדמה / שולם); שורות ה-DJ והאמן מתעדכנות לפי הכלל של האפליקציה", "אותו סכום באותו תאריך לא נרשם פעמיים", "לא יישלח Push"],
   },
   {

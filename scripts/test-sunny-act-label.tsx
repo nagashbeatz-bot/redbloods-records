@@ -34,6 +34,7 @@ function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const sk = (slug: string, id: string) => w.sketches[slug]?.find((s) => s.id === id);
   const writers = {
+    async similarRecords() { return []; }, // duplicate awareness is proven in test-sunny-polish-1.tsx
     async readLabelArtistFull(id: string) { return w.artists[id] ? { ...w.artists[id] } : null; },
     async countLabelArtistsNamed(name: string) { return Object.values(w.artists).filter((a) => a.name === name).length; },
     async createLabelArtistRecord(a: { name: string; status: string; notes: string }) { calls.push("createLabelArtistRecord"); const id = U(++n); w.artists[id] = { ...a, portalSlug: null }; return id; },
@@ -119,8 +120,8 @@ const CASES: FamilyCase<W>[] = [
   const miss = await q("RATE_SKETCH", { labelArtist: A1, sketchId: "sk_zzzz9", rating: 3 });
   ok("a wrong sketch id is answered with the artist's active sketches (addressability)", miss.status === "ENTITY_NOT_FOUND" && String(miss.messageHe).includes("sk_aaaa1 — קרוב") && String(miss.messageHe).includes("sk_bbbb2 — רחוק"), miss.messageHe);
   ok("the sketch push exists only for Avi / Shalev", (await q("NOTIFY_SKETCH", { labelArtist: A1, sketchId: "sk_aaaa1" }, nn)).status === "NOT_ENABLED");
-  const rr = mk(); const rs = await fullFlow(mkDeps(rr.writers).d, "ADD_LEDGER_ENTRY", { labelArtist: A1, entryType: "תשלומים", amount: 700, entryDate: "2026-09-20" }, "כן בוס");
-  ok("a ledger entry needs its type + exact amount in the approval", rs.a?.status === "CONFIRMATION_VALUES_MISSING" && rr.calls.length === 0);
+  const rr = mk(); const rs = await fullFlow(mkDeps(rr.writers).d, "ADD_LEDGER_ENTRY", { labelArtist: A1, entryType: "תשלומים", amount: 700, entryDate: "2026-09-20" }, "מאשר, תעשה 750");
+  ok("\"מאשר, תעשה 750\" on a 700 ledger plan is a change → no write, a new plan is needed", rs.a?.status === "APPROVAL_WITH_CHANGES" && rr.calls.length === 0, rs.a?.status);
   ok("pushes are EXTERNAL_COMMUNICATION with PUSH; deletes / cancel are C3", ["SEND_CYCLE_REMINDER", "ASSIGN_BEAT", "NOTIFY_SKETCH"].every((id) => ACTION_REGISTRY.get(id)!.effects.includes("PUSH" as never)) && ["DELETE_LEDGER_ENTRY", "DELETE_BEAT", "CANCEL_MEDIA_INCOME", "ARCHIVE_SKETCH"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
 
   console.log("\nVocabularies pinned to the code");

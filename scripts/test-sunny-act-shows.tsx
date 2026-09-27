@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runCases, mkDeps, fullFlow, U, OWNER, type FamilyCase } from "./fixtures/act-harness";
-import { planAction } from "../lib/partner/act/service";
+import { approveAction, executeAction, planAction, previewAction } from "../lib/partner/act/service";
 import { CLEANTONE_DEFAULT_FEE, CLEANTONE_ID, REHEARSAL_STATUSES, SHOW_PAYMENT_STATUSES, SHOW_PRIMITIVES, SHOW_STATUSES, type ShowView } from "../lib/partner/act/primitives/shows";
 import { ACTION_REGISTRY } from "../lib/partner/act/registry";
 
@@ -17,15 +17,27 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 type Sess = { projectId: string | null; showId: string | null; title: string; date: string | null; startTime: string | null; endTime: string | null; status: string; sessionType: string; notes: string; location: string; photographer: string; hasCalendarEvent: boolean };
-interface W { shows: Record<string, ShowView>; clients: Record<string, string>; sessions: Record<string, Sess>; connected: boolean; sent: string[]; quote: string[]; closed: string[] }
+type NS = { status: "sent" | "failed" | "processing"; version: string; sentAt?: string };
+interface W { shows: Record<string, ShowView>; clients: Record<string, string>; sessions: Record<string, Sess>; connected: boolean; sent: string[]; quote: string[]; closed: string[]; notify: { artist: Record<string, NS>; dj: Record<string, NS> }; pushOk: boolean }
 const FUT = "2099-05-01";
 const sv = (o: Partial<ShowView>): ShowView => ({ name: "הופעה בחיפה", artist: "שליו טסמה", artistClientId: U(60), bookerName: "מזמין", bookerClientId: null, date: FUT, startTime: "21:00", location: "חיפה", contactPerson: "", phone: "", status: "אושרה", paymentStatus: "לא שולם", showPrice: 8000, djFee: 500, djClientId: CLEANTONE_ID, djName: "CLEANTONE", djConfirmation: "ממתין לאישור", advancePayment: 0, notes: "", hasCalendarEvent: true, financeRows: 3, rehearsals: 0, currency: "₪", received: 0, credit: 0, payments: "", ...o, remaining: o.remaining ?? Math.max(0, (o.showPrice ?? 8000) - (o.received ?? 0)) });
 const world = (): W => ({
   shows: { [U(1)]: sv({}), [U(2)]: sv({ name: "ליד", status: "ליד חדש", financeRows: 0, hasCalendarEvent: false, djClientId: null, djName: "", djFee: 0 }) },
   clients: { [U(60)]: "שליו טסמה", [CLEANTONE_ID]: "CLEANTONE", [U(61)]: "DJ אחר" },
   sessions: { [U(30)]: { projectId: null, showId: U(1), title: "הופעה בחיפה", date: "2099-04-28", startTime: "18:00", endTime: "20:00", status: "מתוכנן", sessionType: "חזרה להופעה", notes: "", location: "", photographer: "", hasCalendarEvent: false } },
-  connected: true, sent: [], quote: [], closed: [],
+  connected: true, sent: [], quote: [], closed: [], notify: { artist: {}, dj: {} }, pushOk: true,
 });
+/** The fake claim row = the real semantics: marked "sent" ONLY after a successful push, per show version (name / date / time / location). */
+const versionOf = (s: ShowView) => JSON.stringify([s.name, s.date, s.startTime, s.location]);
+const stateOf = (row: NS | undefined, v: string) => (!row ? { state: "NOT_SENT" as const, sentAt: null } : row.version !== v ? { state: row.sentAt ? "SENT_PREVIOUS_VERSION" as const : "NOT_SENT" as const, sentAt: row.sentAt ?? null } : row.status === "sent" ? { state: "SENT" as const, sentAt: row.sentAt ?? null } : row.status === "processing" ? { state: "PROCESSING" as const, sentAt: null } : { state: "FAILED" as const, sentAt: null });
+function fakeSend(w: W, who: "artist" | "dj", id: string) {
+  const s = w.shows[id]; if (!s) return { ok: false, reason: "not_found" };
+  const v = versionOf(s); const row = w.notify[who][id];
+  if (row && row.version === v && row.status === "sent") return { ok: false, reason: "already_sent" };
+  if (!w.pushOk) { w.notify[who][id] = { status: "failed", version: v }; return { ok: false, reason: "send_failed" }; }
+  w.sent.push(`${who}:${id}`); w.notify[who][id] = { status: "sent", version: v, sentAt: "2099-04-20T10:00:00.000Z" };
+  return { ok: true };
+}
 function mk() {
   const w = world(); const calls: string[] = []; let n = 500;
   const map: Record<string, keyof ShowView> = { name: "name", date: "date", start_time: "startTime", location: "location", contact_person: "contactPerson", phone: "phone", booker_name: "bookerName", notes: "notes", show_price: "showPrice", payment_status: "paymentStatus", currency: "currency", advance_payment: "advancePayment", dj_client_id: "djClientId", dj_name: "djName", dj_fee: "djFee", status: "status" };
@@ -47,8 +59,9 @@ function mk() {
     async recordShowPayment(id: string, p: { amount: number; date: string }) { calls.push("recordShowPayment"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const }; s.received += p.amount; s.remaining = Math.max(0, s.showPrice - s.received); s.credit = Math.max(0, s.received - s.showPrice); s.payments = [s.payments, `${p.amount}@${p.date}`].filter(Boolean).join(";"); s.paymentStatus = s.remaining === 0 ? "שולם" : "מקדמה"; return { kind: "ok" as const, transactionId: U(700) }; },
     async deleteShowCompletely(id: string) { calls.push("deleteShowCompletely"); if (Object.values(w.sessions).some((s) => s.showId === id)) return { kind: "has_rehearsals" as const }; delete w.shows[id]; return { kind: "ok" as const }; },
     async markShowQuoteSent(id: string) { calls.push("markShowQuoteSent"); w.quote.push(id); return "ok" as const; },
-    async notifyShowArtist(id: string) { calls.push("notifyShowArtist"); w.sent.push(`artist:${id}`); return { ok: true }; },
-    async notifyShowDj(id: string) { calls.push("notifyShowDj"); w.sent.push(`dj:${id}`); return { ok: true }; },
+    async notifyShowArtist(id: string) { calls.push("notifyShowArtist"); return fakeSend(w, "artist", id); },
+    async notifyShowDj(id: string) { calls.push("notifyShowDj"); return fakeSend(w, "dj", id); },
+    async showNotifyStates(id: string) { const s = w.shows[id]; if (!s) return null; const v = versionOf(s); return { artist: stateOf(w.notify.artist[id], v), dj: stateOf(w.notify.dj[id], v) }; },
     async readSession(id: string) { return w.sessions[id] ? { ...w.sessions[id] } : null; },
     async countSessionTransactions() { return 1; },
     async createSession(s: Sess & { showId?: string | null }) { calls.push("createSession"); const id = U(++n); w.sessions[id] = { ...s, showId: s.showId ?? null, hasCalendarEvent: false }; return { id, calendarError: null }; },
@@ -102,10 +115,58 @@ const CASES: FamilyCase<W>[] = [
   ok("artist notify exists only for Shalev; DJ notify only for CLEANTONE", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, other)).status === "NOT_SHALEV" && (await q("NOTIFY_SHOW_DJ", { show: S1 }, other)).status === "NOT_CLEANTONE");
   ok("notify is EXTERNAL_COMMUNICATION with PUSH declared", ["NOTIFY_SHOW_ARTIST", "NOTIFY_SHOW_DJ"].every((id) => ACTION_REGISTRY.get(id)!.effects.includes("PUSH" as never) && ACTION_REGISTRY.get(id)!.riskClass === "EXTERNAL_COMMUNICATION"));
   ok("a show with rehearsals cannot be deleted", (await q("DELETE_SHOW", { show: S1 })).status === "HAS_REHEARSALS");
-  const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: true }, "כן בוס");
-  ok("closing needs the three party flags repeated in the approval", rc.a?.status === "CONFIRMATION_VALUES_MISSING" && c.calls.length === 0);
+  const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: true }, "מאשר");
+  ok("closing: the preview lists the three party flags; a plain \"מאשר\" approves the exact plan (no repeated values)", JSON.stringify(rc.p).includes("requiredConfirmationValues") && rc.e?.status === "APPLIED_AS_EXPECTED" && c.calls.join() === "closeShow");
   ok("a regular studio session is not edited as a rehearsal", (await q("UPDATE_SHOW_REHEARSAL", { session: `session:${U(30)}`, status: "בוצע" }, (() => { const x = mk(); x.w.sessions[U(30)].sessionType = "סשן"; return x; })())).status === "WRONG_ENTITY_TYPE");
   ok("D5 is decided: recording show money is executable through RECORD_SHOW_PAYMENT", ACTION_REGISTRY.get("SHOW.RECORD_SHOW_ADVANCE")?.availabilityDetail === "EXECUTABLE");
+
+  console.log("\nPOLISH FIX #1 — Push sent-state (fakes only: no real push)");
+  { // A1 + A5: artist
+    const h = mk(); const d = mkDeps(h.writers).d;
+    const r = await fullFlow(d, "NOTIFY_SHOW_ARTIST", { show: S1 }, "מאשר");
+    const fresh = (r.e?.freshState as { fields?: Record<string, { value: unknown }> } | null)?.fields;
+    ok("A1. artist sent → the claim row is sent AND the fresh read says artistNotified = true", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.notify.artist[U(1)]?.status === "sent" && fresh?.artistNotified?.value === true && fresh?.artistNotifyState?.value === "SENT", { e: r.e?.status, fresh });
+    ok("A5. the fresh read carries when it was sent", fresh?.artistSentAt?.value === "2099-04-20T10:00:00.000Z");
+    const again = await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_ARTIST", args: { show: S1 } }, OWNER, d);
+    ok("A6. already sent → Sunny never offers a second send (ALREADY_SENT, no push)", again.status === "ALREADY_SENT" && h.w.sent.length === 1 && String(again.messageHe).includes("כבר נשלחה"), again.status);
+  }
+  { // A2: DJ, independent of the artist
+    const h = mk(); const d = mkDeps(h.writers).d;
+    const r = await fullFlow(d, "NOTIFY_SHOW_DJ", { show: S1 }, "מאשר");
+    const fresh = (r.e?.freshState as { fields?: Record<string, { value: unknown }> } | null)?.fields;
+    ok("A2. DJ sent → djNotified = true in the fresh read; the artist state is untouched", r.e?.status === "APPLIED_AS_EXPECTED" && fresh?.djNotified?.value === true && !h.w.notify.artist[U(1)], { e: r.e?.status, fresh });
+    ok("A2b. the artist can still be sent after the DJ (separate claim rows)", (await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_ARTIST", args: { show: S1 } }, OWNER, d)).status === "PREVIEW");
+    ok("A2c. DJ already sent → ALREADY_SENT", (await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_DJ", args: { show: S1 } }, OWNER, d)).status === "ALREADY_SENT");
+  }
+  { // A3: failed push
+    const h = mk(); h.w.pushOk = false; const d = mkDeps(h.writers).d;
+    const r = await fullFlow(d, "NOTIFY_SHOW_ARTIST", { show: S1 }, "מאשר");
+    const st = await h.writers.showNotifyStates(U(1));
+    ok("A3. a failed push is never marked sent: the outcome is not success and the state is FAILED (artistNotified false)", r.e?.status !== "APPLIED_AS_EXPECTED" && st?.artist.state === "FAILED" && h.w.sent.length === 0, r.e?.status);
+    ok("A3b. after a failure a new send may be planned (a retry is allowed, never automatic)", (await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_ARTIST", args: { show: S1 } }, OWNER, d)).status === "PREVIEW" && h.w.sent.length === 0);
+  }
+  { // A4: refresh / re-read never sends
+    const h = mk(); const d = mkDeps(h.writers).d;
+    const p = await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_ARTIST", args: { show: S1 } }, OWNER, d);
+    for (let i = 0; i < 3; i++) await previewAction({ planId: p.planId }, OWNER, d);
+    await h.writers.showNotifyStates(U(1)); await h.writers.readShow(U(1));
+    ok("A4. planning, re-previewing and re-reading never send a push", p.status === "PREVIEW" && h.w.sent.length === 0 && !h.calls.some((x) => x.startsWith("notify")));
+    // a push sent through another channel (the portal button) after the preview → the plan is STALE → no second push
+    fakeSend(h.w, "artist", U(1));
+    const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: "מאשר" }, OWNER, d);
+    const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: "מאשר" }, OWNER, d);
+    ok("A6b. sent elsewhere after the preview → STALE, no duplicate push", e.status === "STALE" && h.w.sent.length === 1, e.status);
+  }
+  { // a changed show version re-opens the send (the writer's own rule)
+    const h = mk(); const d = mkDeps(h.writers).d;
+    await fullFlow(d, "NOTIFY_SHOW_ARTIST", { show: S1 }, "מאשר");
+    h.w.shows[U(1)].startTime = "22:30";
+    const st = await h.writers.showNotifyStates(U(1));
+    ok("A7. a new show version (time changed) → SENT_PREVIOUS_VERSION and a new send may be planned", st?.artist.state === "SENT_PREVIOUS_VERSION" && (await planAction({ intentHe: "x", actionId: "NOTIFY_SHOW_ARTIST", args: { show: S1 } }, OWNER, d)).status === "PREVIEW");
+  }
+  const nsrc = read("lib/show-notify.ts") + read("lib/dj-show-notify.ts");
+  ok("A8. the real senders still mark 'sent' only after classifyPushResult === sent, and the state readers only SELECT", /status: "sent", fingerprint/.test(nsrc) && /export async function readShalevShowNotifyState[\s\S]{0,600}\.select\("value"\)/.test(nsrc) && /export async function readDjShowNotifyState[\s\S]{0,600}\.select\("value"\)/.test(nsrc) && !/export async function read(Shalev|Dj)ShowNotifyState[\s\S]{0,700}\.(insert|update|upsert)\(/.test(nsrc));
+  ok("A9. show_view / label view / operating model read the same claim rows by their status (a failed send is never 'sent')", /"\^show_notify:"/.test(read("lib/partner/system/settings.ts")) && /"\^dj_show_notify:"/.test(read("lib/partner/system/settings.ts")) && [read("lib/partner/shows/view.ts"), read("lib/partner/label/view.ts"), read("lib/partner/sunny/operating.ts")].every((x) => /status === "failed" \? "FAILED"/.test(x)));
 
   console.log("\nVocabularies pinned to the code");
   const st = read("lib/shows-types.ts");

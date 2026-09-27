@@ -4,7 +4,8 @@
  * Every primitive reuses the SAME shared server writer the Redbloods UI uses. Kinds: UPDATE (existing record),
  * CREATE (target "new"; the fingerprint covers the creation context, e.g. duplicates), COMMAND (a registered side-effect
  * operation such as a send or a sync), DELETE (exact target + dependents previewed). Sensitive primitives declare the
- * exact values the Boss's approval must repeat (requiredValues) — money, recipients, targets, counts.
+ * key values highlighted in the preview (requiredValues) — money, recipients, targets, counts. Since 2026-09-27 the Boss
+ * never repeats them: "מאשר" approves the exact plan hash.
  *
  * A primitive: resolves + type-checks its target entity, reads the live fields it will touch, validates the typed
  * arguments, computes the exact after-values (no-op → refused), writes ONLY those fields through the shared writer, and
@@ -14,6 +15,7 @@ import { createHash } from "node:crypto";
 import { canonicalJson } from "../plan";
 import { ENTITY_KEY_RE, MAX_TEXT_CHARS } from "../persist";
 import type { ArgSpec, EffectKey, PlanStep, RiskClass } from "../types";
+import type { DuplicateWriters } from "./duplicates";
 import type { PrimitiveExecutor } from "../engine";
 import { LABEL_ARTIST_STATUSES, PROJECT_TYPES, RELEASE_STAGES, VICTOR_OUTCOMES, VICTOR_WORK_STATES } from "@/lib/types";
 
@@ -40,7 +42,7 @@ import type { BackfillFamilyWriters } from "./backfills";
 import type { UploadFamilyWriters } from "./uploads";
 import type { LinkFamilyWriters } from "./links";
 /** Every shared writer / narrow reader a primitive may use (composed per family). */
-export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters & FilesFamilyWriters & BackfillFamilyWriters & UploadFamilyWriters & LinkFamilyWriters;
+export type WriterDeps = DuplicateWriters & CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters & VictorFamilyWriters & LabelFamilyWriters & RedFilmsFamilyWriters & WorklogFamilyWriters & DeliveryFamilyWriters & SocialFamilyWriters & SystemFamilyWriters & FilesFamilyWriters & BackfillFamilyWriters & UploadFamilyWriters & LinkFamilyWriters;
 export interface CoreWriters {
   readProject(id: string): Promise<{ name: string; notes: string; startDate: string | null; plannedHours: number | null; plannedDays: number | null; projectType: string; parentProject: string; deadline: string | null } | null>;
   writeProject(id: string, patch: Partial<{ notes: string; start_date: string | null; planned_hours: number | null; planned_days: number | null; project_type: string; parent_project: string; deadline: string | null }>): Promise<void>;
@@ -80,8 +82,8 @@ export interface PrimitiveSpec {
   /** CREATE primitives: the creation context (fingerprinted for stale detection; target id is "new"). */
   createContext?(d: WriterDeps, args: Readonly<Record<string, unknown>>): Promise<Fields>;
   /** Warnings the preview must show (e.g. a record with the same name already exists). */
-  warnings?(current: Fields): string[];
-  /** Exact values the Boss's approval text must repeat (C2 / C3). */
+  warnings?(current: Fields, args?: Readonly<Record<string, unknown>>): string[];
+  /** Key values highlighted in the preview (C2 / C3); informational — the approval is bound to the plan hash, not to repeated words. */
   requiredValues?(args: Readonly<Record<string, unknown>>, after: Fields): string[];
   /** Custom verification (creates / commands); default = re-read the target and compare the after-fields. */
   verify?(d: WriterDeps, id: string, after: Fields, output: ApplyOutput): Promise<boolean>;

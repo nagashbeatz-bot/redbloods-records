@@ -93,8 +93,8 @@ const CASES: FamilyCase<W>[] = [
   const f = mk(); f.w.failNext = true;
   const rf = await fullFlow(mkDeps(f.writers).d, "UPLOAD_FINAL_FILE", { work: WK, inboxItem: R1 }, C);
   ok("a failed placement is FAILED and the item stays in the inbox", rf.e?.status !== "APPLIED_AS_EXPECTED" && !!f.w.inbox[R1], rf.e?.status);
-  const n = mk(); const rn = await fullFlow(mkDeps(n.writers).d, "UPLOAD_TO_DELIVERY", { project: P, inboxItem: R1 }, "כן בוס");
-  ok("a placement needs 'העלאה' in the approval", rn.a?.status === "CONFIRMATION_VALUES_MISSING" && n.calls.length === 0);
+  const n = mk(); const rn = await fullFlow(mkDeps(n.writers).d, "UPLOAD_TO_DELIVERY", { project: P, inboxItem: R1 }, "מאשר");
+  ok("a placement: a plain \"מאשר\" approves the exact previewed placement", rn.e?.status === "APPLIED_AS_EXPECTED", rn.e?.status);
   const pv = await q("UPLOAD_PROJECT_FILE", { project: P, inboxItem: R1 });
   ok("the preview names the file, its size and the destination — no path", JSON.stringify(pv).includes("Mix 4.wav") && JSON.stringify(pv).includes("MB") && !JSON.stringify(pv).includes("/Projects/"));
   ok("placements are C2 (FILE_MUTATION); replacing a beat and discarding are C3", UPLOAD_PRIMITIVES.filter((p) => !["REPLACE_BEAT_FILE", "DISCARD_INBOX_ITEM"].includes(p.actionId)).every((p) => ACTION_REGISTRY.get(p.actionId)!.confirmation === "C2_APPROVAL_WITH_VALUES") && ["REPLACE_BEAT_FILE", "DISCARD_INBOX_ITEM"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));

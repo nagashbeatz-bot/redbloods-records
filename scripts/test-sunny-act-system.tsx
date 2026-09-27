@@ -73,8 +73,8 @@ const CASES: FamilyCase<W>[] = [
   ok("a currency only for the revenue goal", (await q("SET_BUSINESS_GOAL", { goal: "weeklySessions", target: 10, currency: "$" })).status === "BAD_ARGS");
   const ne = mk(); ne.w.emailOk = false;
   ok("no report email when the server has no email configured", (await q("SEND_REPORT_NOW", { report: "weekly" }, ne)).status === "NOT_CONFIGURED");
-  const m1 = mk(); const r1 = await fullFlow(mkDeps(m1.writers).d, "SEND_REPORT_NOW", { report: "morning" }, "כן בוס");
-  ok("a report email needs the report's name in the approval", r1.a?.status === "CONFIRMATION_VALUES_MISSING" && m1.calls.length === 0);
+  const m1 = mk(); const r1 = await fullFlow(mkDeps(m1.writers).d, "SEND_REPORT_NOW", { report: "morning" }, "לא");
+  ok("\"לא\" is never an approval — no report email", r1.a?.status === "NOT_AN_APPROVAL" && m1.calls.length === 0, r1.a?.status);
   ok("mark-all is BULK (C3); report email C3 with EMAIL; disconnect C3; maintenance C3", ["MARK_ALL_NOTIFICATIONS_READ", "SEND_REPORT_NOW", "DISCONNECT_DROPBOX", "SET_MAINTENANCE_MODE"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL") && ACTION_REGISTRY.get("SEND_REPORT_NOW")!.effects.includes("EMAIL" as never));
   ok("no credential / address argument anywhere in the family", SYSTEM_PRIMITIVES.every((p) => p.meta.args.every((a) => !/token|secret|password|email|address|url/i.test(a.name))));
 
