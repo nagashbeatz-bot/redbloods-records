@@ -301,7 +301,7 @@ export const ARTIST_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL
   { code: "LABEL_PROJECT_WITHOUT_RELEASE", kind: "DERIVED_SIGNAL", note: "label work with no release row (the COO flags it too)" },
   { code: "UPCOMING_SESSION", kind: "CANONICAL_FACT", note: "a future session on an artist project" },
   { code: "UPCOMING_SHOW", kind: "CANONICAL_FACT", note: "a future show" },
-  { code: "SHOW_WITHOUT_DJ", kind: "CANONICAL_FACT", note: "an active show with no DJ recorded — never auto-filled with CLEANTONE" },
+  { code: "SHOW_WITHOUT_DJ", kind: "CANONICAL_FACT", note: "an active show with no DJ recorded — never auto-filled with CLEANTONE; not raised for an unpaid collaboration (UNPAID_COLLAB needs no DJ by default)" },
   { code: "SHOW_DONE_UNPAID", kind: "CANONICAL_FACT", note: "a בוצע show whose client payment is not שולם" },
   { code: "NO_UPCOMING_RECORDED_WORK", kind: "DERIVED_SIGNAL", note: "no open moving project, no future session and no planned release recorded — evidence only, never a judgement" },
   { code: "LEDGER_BALANCE", kind: "DERIVED_SIGNAL", note: "the artist ledger balance (currency not stored)" },

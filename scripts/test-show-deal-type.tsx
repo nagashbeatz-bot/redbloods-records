@@ -214,6 +214,18 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   ok("G14. artist notifications are untouched by the deal type (the notify message / fingerprint never read money)", !/deal_type|dealType/.test(src2("lib/show-notify-pure.ts") + src2("lib/dj-show-notify.ts") + src2("lib/show-notify.ts")));
   ok("G15. the calendar description rule: collaboration → 'סוג עסקה: שת״פ ללא תשלום', PAID → the price line", store.showCalendarDescription({ ...BASE, show_price: 0, dj_name: "", notes: "", deal_type: "UNPAID_COLLAB" } as never).includes("שת״פ ללא תשלום") && store.showCalendarDescription({ ...BASE, show_price: 3000, dj_name: "", notes: "", deal_type: "PAID" } as never).includes("מחיר הופעה: ₪3,000"));
 
+  console.log("\nI. No DJ is needed by default for a collaboration (Owner 2026-09-27) — PAID unchanged");
+  const noDjCollab = buildShowView(src([ds({ id: "dj1", djClientId: null, djName: null })]), "dj1")!;
+  ok("I1. a collaboration without a DJ → NO NO_DJ signal and no 'who is the DJ?' question", !noDjCollab.signals.some((x) => x.code === "NO_DJ") && !noDjCollab.questions.some((q) => q.kind === "DJ"));
+  const noDjPaid = buildShowView(src([ds({ id: "dj2", dealType: "PAID", price: 3000, djClientId: null, djName: null })]), "dj2")!;
+  ok("I2. a PAID show without a DJ still raises NO_DJ + the DJ question exactly as before", noDjPaid.signals.some((x) => x.code === "NO_DJ") && noDjPaid.questions.some((q) => q.kind === "DJ"));
+  const djCollab = buildShowView(src([ds({ id: "dj3", djClientId: "client-dj-9", djName: "DJ אורח" })]), "dj3")!;
+  ok("I3. a collaboration WITH an explicit DJ keeps the DJ information (the view names him), no NO_DJ, and still no money", !!djCollab.dj && JSON.stringify(djCollab.dj).includes("DJ אורח") && !djCollab.signals.some((x) => x.code === "NO_DJ") && djCollab.money.moneyApplies === false, djCollab.dj);
+  ok("I4. the new-show form creates the 'לסגור דיג׳יי' task only for a PAID show without a DJ", /const noDj = form\.deal_type !== "UNPAID_COLLAB" && !form\.dj_client_id && !form\.dj_name\.trim\(\);/.test(hub) && /לסגור דיג׳יי להופעה/.test(hub));
+  ok("I5. label view: SHOW_WITHOUT_DJ is not raised for a collaboration (PAID condition otherwise unchanged)", /s\.role === "ARTIST" && !s\.dj && s\.dealType !== "UNPAID_COLLAB" && s\.status !== "בוטל" && SHOW_ACTIVE\.has/.test(src2("lib/partner/label/view.ts")));
+  const w2 = await W.createShowRecord({ ...BASE, name: "שת״פ עם DJ", status: "אושרה", deal_type: "UNPAID_COLLAB", dj_name: "DJ אורח" });
+  ok("I6. a collaboration created WITH a DJ saves him (operational) — still no transaction", w2.show.dj_name === "DJ אורח" && txOf(w2.show.id).length === 0);
+
   console.log("\nH. Sunny: canonical deal type, typed actions, contracts");
   const SM = await import("../lib/partner/system/shows");
   ok("H1. the show contract: deal_type is a CANONICAL column, vocabulary PAID / UNPAID_COLLAB = the code, NOT a payment status", (SM.SHOW_SCHEMA_COLUMNS as readonly string[]).includes("deal_type") && SM.SHOW_FIELDS.find((f) => f.field === "deal_type")?.classification === "CANONICAL" && JSON.stringify(SM.SHOW_VOCABULARIES.dealTypes) === JSON.stringify(T.SHOW_DEAL_TYPES) && !(SM.SHOW_VOCABULARIES.paymentStatuses as readonly string[]).some((p) => /שת/.test(p)));

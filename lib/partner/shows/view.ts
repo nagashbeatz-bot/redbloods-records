@@ -170,7 +170,9 @@ export function buildShowView(src: GatewaySources, showId: string) {
   if (upcoming) signals.push({ code: "UPCOMING", kind: "CANONICAL_FACT", he: `הופעה ב-${s.date}${s.startTime ? ` ${s.startTime}` : ""}` });
   if (PIPELINE.has(s.status ?? "")) signals.push({ code: "PIPELINE", kind: "CANONICAL_FACT", he: `בשלב ${s.status}` });
   if (artist.collaboration) signals.push({ code: "COLLABORATION", kind: "CANONICAL_FACT", he: "כמה אמנים — אין סנכרון מאזן" });
-  if (!s.djClientId && s.status !== "בוטל") { signals.push({ code: "NO_DJ", kind: "CANONICAL_FACT", he: "אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן." }); if (!PIPELINE.has(s.status ?? "")) questions.push({ kind: "DJ", questionHe: "מי ה-DJ בהופעה?", why: "no DJ recorded; never auto-assigned" }); }
+  // an unpaid collaboration does not need a DJ by default: no NO_DJ / "who is the DJ?" just because none is recorded
+  // (an explicitly assigned DJ keeps every DJ signal — confirmation, notification)
+  if (!unpaidCollab && !s.djClientId && s.status !== "בוטל") { signals.push({ code: "NO_DJ", kind: "CANONICAL_FACT", he: "אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן." }); if (!PIPELINE.has(s.status ?? "")) questions.push({ kind: "DJ", questionHe: "מי ה-DJ בהופעה?", why: "no DJ recorded; never auto-assigned" }); }
   if (!unpaidCollab && !s.djClientId && (s.djFee ?? 0) > 0 && s.status !== "בוטל") signals.push({ code: "DJ_FEE_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `שכר DJ ${s.djFee} בלי DJ${finance.djFee.exists ? " (ונוצרה שורת הוצאה)" : ""}` });
   if (isCleantone && s.djConfirmationStatus === "ממתין לאישור" && s.status !== "בוטל") { signals.push({ code: "DJ_AWAITING_CONFIRMATION", kind: "CANONICAL_FACT", he: "CLEANTONE עוד לא אישר" }); if (upcoming) questions.push({ kind: "DJ_CONFIRM", questionHe: "CLEANTONE עוד לא אישר — לשלוח לו / לבדוק איתו?", why: "confirmation pending (Sunny never sends)" }); }
   if (isCleantone && s.djConfirmationStatus === "אושר") signals.push({ code: "DJ_CONFIRMED", kind: "CANONICAL_FACT", he: `CLEANTONE אישר${s.djConfirmedAt ? ` (${s.djConfirmedAt.slice(0, 10)})` : ""}` });

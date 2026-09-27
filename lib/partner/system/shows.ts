@@ -92,7 +92,7 @@ export const LIFECYCLE = [
 
 export const DJ_MODEL = {
   identity: "the DJ is a CLIENT record (usually type איש צוות) chosen in the form; CLEANTONE = the app's fixed client id; he is TEAM (the label's DJ), not a label artist — his former label-artist row was removed 2026-09-27 (Owner decision), nothing about his DJ shows changed",
-  default: "NO default DJ anywhere — never preselected; a show saved without a DJ creates a 'close a DJ' task",
+  default: "NO default DJ anywhere — never preselected; a PAID show saved without a DJ creates a 'close a DJ' task (the new-show form); an unpaid collaboration (deal type UNPAID_COLLAB) does not — it needs no DJ by default, and an explicitly chosen DJ is handled as for any show (Owner decision 2026-09-27)",
   otherDjs: "any crew client can be the DJ; only CLEANTONE has confirmation, a portal and push",
   confirmation: "becoming CLEANTONE → ממתין לאישור (null if done / cancelled); changing away → null; NOT reset by date / time / place change or cancellation",
   fee: "dj_fee (default 500) → a DJ expense row, created even with no DJ chosen; DJ paid state = that row's status — set only explicitly (close flag / MARK_SHOW_FEE_PAID / Finance), never from the client payment (A1)",
@@ -203,7 +203,7 @@ export const SHOW_WORKFLOWS: readonly ShowWorkflow[] = [
 export const SHOW_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; note: string }> = [
   { code: "UPCOMING", kind: "CANONICAL_FACT", note: "confirmed show with a future date" },
   { code: "PIPELINE", kind: "CANONICAL_FACT", note: "lead / quote status" },
-  { code: "NO_DJ", kind: "CANONICAL_FACT", note: "no DJ recorded — never auto-filled with CLEANTONE" },
+  { code: "NO_DJ", kind: "CANONICAL_FACT", note: "no DJ recorded — never auto-filled with CLEANTONE; never raised for an unpaid collaboration (deal type UNPAID_COLLAB needs no DJ by default — an explicit DJ is handled normally)" },
   { code: "DJ_FEE_WITHOUT_DJ", kind: "CANONICAL_FACT", note: "a DJ fee (and DJ expense row) without a DJ" },
   { code: "DJ_AWAITING_CONFIRMATION", kind: "CANONICAL_FACT", note: "CLEANTONE assigned, not confirmed" },
   { code: "DJ_CONFIRMED", kind: "CANONICAL_FACT", note: "CLEANTONE confirmed" },

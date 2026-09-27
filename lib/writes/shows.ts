@@ -212,7 +212,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
 
     // an unpaid collaboration never records a payment intent and never stores a payment label
     const intent = toCollab ? {} : paymentIntentFromBody(body.payment_status, existing.payment_status);
-    if (!toCollab && SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0) patch.payment_status = body.payment_status as PaymentStatus;
+    if (SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0 && !toCollab) patch.payment_status = body.payment_status as PaymentStatus;
 
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);

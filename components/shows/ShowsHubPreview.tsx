@@ -699,11 +699,12 @@ function ShowFormModal({
       if (isUpdate) {
         onSaved("ההופעה עודכנה בהצלחה ✓");
       } else {
-        // Auto-create task if no DJ selected
+        // Auto-create task if no DJ selected — never for an unpaid collaboration (it does not need a DJ by default;
+        // a DJ chosen explicitly is saved and handled as for any show)
         let taskCreated = false;
         let taskFailed  = false;
         let gtaskLinked = false;  // Google Task also linked
-        const noDj = !form.dj_client_id && !form.dj_name.trim();
+        const noDj = form.deal_type !== "UNPAID_COLLAB" && !form.dj_client_id && !form.dj_name.trim();
         if (noDj) {
           // due_date = tomorrow (not show.date)
           const tomorrow = new Date();
