@@ -329,6 +329,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
       } else {
         await syncArtistBalanceFromShow({
           showArtist: show.artist,
+          showId: show.id,
           showName: show.name,
           showDate: show.date,
           transactionId: show.linked_artist_expense_transaction_id,
@@ -356,6 +357,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
         // already excludes cancelled/no-fee shows).
         await syncArtistBalanceFromShow({
           showArtist: show.artist,
+          showId: show.id,
           showName: show.name,
           showDate: show.date,
           transactionId: id,

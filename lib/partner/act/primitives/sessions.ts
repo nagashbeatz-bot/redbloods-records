@@ -11,7 +11,7 @@ export interface SessionFamilyWriters {
   readSession(id: string): Promise<Sess | null>;
   countSessionTransactions(id: string): Promise<number>;
   isShalevProject(projectId: string): Promise<boolean>;
-  createSession(s: { projectId: string | null; title: string | null; date: string; startTime: string; endTime: string | null; status: string; sessionType: string; notes: string; location: string; photographer: string; addToCalendar: boolean; invite: { emails: string[]; publicTitle: string; publicDescription?: string } | null }): Promise<{ id: string; calendarError: string | null }>;
+  createSession(s: { projectId: string | null; title: string | null; date: string; startTime: string; endTime: string | null; status: string; sessionType: string; notes: string; location: string; photographer: string; addToCalendar: boolean; invite: { emails: string[]; publicTitle: string; publicDescription?: string } | null; showId?: string | null; cost?: number | null; paymentStatus?: string }): Promise<{ id: string; calendarError: string | null }>;
   updateSession(id: string, patch: Record<string, unknown>): Promise<{ calendarSynced: boolean | null }>;
   deleteSession(id: string): Promise<{ calendarDeleted: boolean | null }>;
 }

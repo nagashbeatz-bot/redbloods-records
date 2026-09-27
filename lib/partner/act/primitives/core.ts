@@ -25,8 +25,11 @@ export const MIX_VERSION_STATUSES = ["בבדיקה", "מוכן", "מאושר", "
 import type { ProjectFamilyWriters } from "./projects";
 import type { CrmFamilyWriters } from "./crm";
 import type { SessionFamilyWriters } from "./sessions";
+import type { FinanceFamilyWriters } from "./finance";
+import type { ShowFamilyWriters } from "./shows";
+import type { MixFamilyWriters } from "./mix";
 /** Every shared writer / narrow reader a primitive may use (composed per family). */
-export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters;
+export type WriterDeps = CoreWriters & ProjectFamilyWriters & CrmFamilyWriters & SessionFamilyWriters & FinanceFamilyWriters & ShowFamilyWriters & MixFamilyWriters;
 export interface CoreWriters {
   readProject(id: string): Promise<{ name: string; notes: string; startDate: string | null; plannedHours: number | null; plannedDays: number | null; projectType: string; parentProject: string; deadline: string | null } | null>;
   writeProject(id: string, patch: Partial<{ notes: string; start_date: string | null; planned_hours: number | null; planned_days: number | null; project_type: string; parent_project: string; deadline: string | null }>): Promise<void>;
@@ -75,8 +78,9 @@ export interface PrimitiveSpec {
   kinds: readonly string[];
   /** Resolve the target from the typed args (direct key, or a parent key + a deterministic selector). */
   resolve(d: WriterDeps, args: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal>;
-  /** Re-read the same target by id (fingerprint / verify). */
-  read(d: WriterDeps, id: string): Promise<Fields | null>;
+  /** Re-read the same target by id (fingerprint / verify). `args` is given for the fingerprint re-read, so context
+   *  that depends on the typed arguments (e.g. the name of a DJ being assigned) is read the same way as in resolve. */
+  read(d: WriterDeps, id: string, args?: Readonly<Record<string, unknown>>): Promise<Fields | null>;
   /** Validate the typed args against the live fields → the exact after-values of the changed fields only. */
   plan(args: Readonly<Record<string, unknown>>, current: Fields): { ok: true; after: Fields } | PlanRefusal;
   /** Write ONLY `after` through the shared writer (CREATE returns the new id; COMMAND may return a receipt). */
@@ -207,7 +211,7 @@ export const stepTargetId = (s: PlanStep) => { const k = s.entities[0] ?? ""; re
 export async function currentOf(spec: PrimitiveSpec, d: WriterDeps, s: { args: Readonly<Record<string, unknown>>; entities: readonly string[] }): Promise<Fields | null> {
   const k = s.entities[0] ?? "";
   const id = k.slice(k.indexOf(":") + 1);
-  return spec.createContext && id === "new" ? spec.createContext(d, s.args) : spec.read(d, id);
+  return spec.createContext && id === "new" ? spec.createContext(d, s.args) : spec.read(d, id, s.args);
 }
 
 export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecutor {

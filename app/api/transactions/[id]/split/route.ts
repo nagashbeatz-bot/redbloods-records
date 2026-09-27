@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
-import { touchProject } from "@/lib/projects-store";
+import { splitIncome } from "@/lib/writes/finance";
 import { requireOwner } from "@/lib/require-auth";
 
 // POST /api/transactions/[id]/split
@@ -24,24 +23,13 @@ export async function POST(
   const receivedDate  = typeof body.receivedDate === "string" && body.receivedDate ? body.receivedDate : null;
   const paymentMethod = typeof body.paymentMethod === "string" ? body.paymentMethod : "";
 
-  const { data, error } = await supabase.rpc("split_income_transaction", {
-    p_id: id,
-    p_paid: paid,
-    p_received_date: receivedDate,
-    p_payment_method: paymentMethod,
-  });
-
-  if (error) {
+  // Shared writer (lib/writes/finance) — the same atomic RPC Sunny's SPLIT_INCOME uses.
+  const r = await splitIncome(id, paid, receivedDate, paymentMethod);
+  if (r.status === "error") {
     // Map the RPC's custom SQLSTATEs to HTTP status codes.
-    const code = error.code;
-    const status = code === "TX404" ? 404 : code === "TX409" ? 409 : code === "TX400" ? 400 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+    const status = r.code === "TX404" ? 404 : r.code === "TX409" ? 409 : r.code === "TX400" ? 400 : 500;
+    return NextResponse.json({ error: r.message }, { status });
   }
-
-  // Bump the project's updated_at (parity with the other transaction mutations).
-  const { data: tx } = await supabase.from("transactions").select("project_id").eq("id", id).maybeSingle();
-  const pid = (tx as { project_id?: string | null } | null)?.project_id;
-  if (pid) touchProject(pid).catch(() => {});
-
+  const data = r.result;
   return NextResponse.json({ ok: true, ...(data as Record<string, unknown>) });
 }

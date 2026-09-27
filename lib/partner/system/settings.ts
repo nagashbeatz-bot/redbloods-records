@@ -141,6 +141,7 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/victor-completed-notify.ts",
   "lib/victor-presence-notify.ts",
   "lib/victor-upload-notify.ts",
+  "lib/writes/finance.ts",
   "lib/writes/projects.ts",
   "lib/writes/proposals.ts",
 ] as const;

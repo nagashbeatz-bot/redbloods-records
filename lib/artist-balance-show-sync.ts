@@ -72,10 +72,19 @@ export async function syncArtistBalanceFromShow(params: {
   showDate: string | null;
   transactionId: string;
   amount: number;
+  /** HARDENED 2026-09-27: when given, an earning row the close-show sync already realized for this show + artist
+   *  (keyed by source_show_id) wins — no second, expected row is ever inserted next to it. */
+  showId?: string;
 }): Promise<void> {
   try {
     const artistId = await resolveSyncEnabledArtistId(params.showArtist);
     if (!artistId) return; // not Shalev / ambiguous / unregistered — silently out of scope
+    if (params.showId) {
+      const { data: realized, error: rErr } = await supabase.from("artist_balance_entries").select("id")
+        .eq("source_show_id", params.showId).eq("artist_id", artistId).in("entry_type", ["הכנסות", "הכנסות צפויות"]).maybeSingle();
+      if (rErr) { console.error(`[artist-balance-show-sync] realized lookup failed for show ${params.showId}:`, rErr.message); return; }
+      if (realized) return; // the show's single earning row already exists (close sync) — never a duplicate
+    }
 
     const entryDate = params.showDate ?? new Date().toISOString().slice(0, 10);
     const description = `הופעה - ${params.showName}`;

@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-20";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-23";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -227,10 +227,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "All income and expenses (project, general, clip, show, marketing, team), project price / debt, receivables, Victor salary, profitability — per currency, never converted.",
     canonicalSource: "Finance transactions + per-project finance settings (agreed price, currency, exception, clip price); the Finance Brain (Partner) is the most complete interpretation.",
     entityTypes: ["transaction", "receivable"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
     readCapabilities: ["finance_position", "finance_receivables", "finance_flows", "finance_integrity", "victor_salary"], learnKinds: ["PAYMENT_REPORTED_BY_OWNER"], proposableActions: [],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("INCOME_RECEIVED", "CANONICAL_BUSINESS_RULE", "Income is RECEIVED only when its status is שולם or התקבל."),
       R("EXPENSE_PAID", "CANONICAL_BUSINESS_RULE", "An expense is PAID only when its status is שולם (התקבל on an expense is invalid)."),
@@ -308,10 +308,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Label artists' live shows from lead to close: price, client payment, DJ fee, rehearsals, artist / label split, portals and calendar.",
     canonicalSource: "Show records (status, client payment status, price, DJ fee, DJ client id + confirmation, artist text, booker) + their three linked Finance transactions + rehearsal sessions.",
     entityTypes: ["show"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
     readCapabilities: ["show_view", "show_portfolio", "artist_view", "shows", "sessions", "tasks"], learnKinds: ["ENTITY_RELATIONSHIP", "PAYMENT_REPORTED_BY_OWNER", "FOLLOW_UP_EXPECTATION", "PROCESS_FRICTION"], proposableActions: [],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("SHOW_SPLIT_APP_RULE", "CANONICAL_BUSINESS_RULE", "Show split: net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label = the rest; no rounding. The stored artist-fee column is legacy and never used."),
       R("REHEARSAL_COUNTED_RULE", "IMPLEMENTATION_BEHAVIOR", "A rehearsal cost counts when the rehearsal is בוצע or paid; חלקי never; planned / cancelled unpaid never; the auto-mark status התקיים is never counted."),
@@ -351,7 +351,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "DJ CLEANTONE's work as the label's show DJ: assignment, confirmation, fee, his portal.",
     canonicalSource: "Shows where the DJ client id is DJ CLEANTONE's client record; DJ fee transactions.",
     entityTypes: ["dj"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"],
     readCapabilities: ["show_view", "show_portfolio", "artist_view", "shows", "relations"], learnKinds: ["ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "ENTITY_ALIAS"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
@@ -483,9 +483,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Steven's mix / master work: versions, notes, final files, deadlines, payment, and his supplier portal.",
     canonicalSource: "Sound-engineer work records where the engineer is exactly 'Steven' + mix versions, comments, targets, final files.",
     entityTypes: ["vendor"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["team_steven", "mix_pipeline", "mix_view", "mix_portfolio"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("STEVEN_SCOPE_BY_NAME", "CANONICAL_BUSINESS_RULE", "Steven owns a work only when the engineer name is exactly 'Steven' (his access guard)."),
       R("STEVEN_PROJECT_TYPES", "CANONICAL_BUSINESS_RULE", "New project-linked work can be sent to Steven only for שיר / רידים / אלבום / EP."),
@@ -820,7 +820,7 @@ const A = (id: string, domain: string, meaning: string, cls: BusinessActionContr
   ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval: EXECUTABLE_THROUGH_SUNNY.has(id) ? "OWNER_CONFIRMATION_IN_CONVERSATION" : approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: EXECUTABLE_THROUGH_SUNNY.has(id), reason, ...(primitive ? { primitive } : {}) });
 /** Business actions Sunny executes through Claude today (Universal Action Layer; each only after the Owner approves the
  *  exact preview). Kept equal to lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES by G10. */
-const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["CALENDAR_WRITE", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_TASK", "DELETE_CALENDAR_EVENT", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS"]);
+const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["ASSIGN_SHOW_DJ", "CALENDAR_WRITE", "CLOSE_SHOW", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_SHOW", "CREATE_TASK", "CREATE_TRANSACTION", "DELETE_CALENDAR_EVENT", "EDIT_OR_DELETE_TRANSACTION", "MIX_WORKFLOW", "NOTIFY_ARTIST_DJ", "RECORD_RECEIVED_INCOME", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "SET_PROJECT_AGREED_PRICE", "SPLIT_INCOME", "STEVEN_PAYMENT", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS", "UPDATE_SHOW_STATUS"]);
 export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("UPDATE_PROJECT_DEADLINE", "PROJECTS", "Change a project's deadline", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Existing validated Partner primitive; Sunny proposes (preview), the Owner approves / executes in the dashboard.", "UPDATE_PROJECT_DEADLINE"),
   A("RECORD_PAID_EXPENSE", "FINANCE", "Record that a known expense was paid (Victor salary month)", "VALIDATED_ACTION_EXISTS", "HIGH", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Executable only from the dashboard; through Sunny it is refused (finance execution via MCP is off).", "RECORD_PAID_EXPENSE"),
@@ -939,4 +939,9 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-20", date: "2026-09-27", domain: "TASKS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "משימות: יצירה (עם שיקוף ל-Google Tasks), עדכון, סטטוס, מחיקה, סנכרון — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
   { version: "2026.09.27-20", date: "2026-09-27", domain: "GOOGLE_CALENDAR", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "יומן: אירוע, אירוע עם הזמנה, עדכון, מחיקה, Google Task, ניתוק — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
   { version: "2026.09.27-20", date: "2026-09-27", domain: "SESSIONS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "סשנים: קביעה (עם יומן / הזמנה לאמן), עדכון (האירוע זז), מחיקה — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-21", date: "2026-09-27", domain: "FINANCE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "כספים: רישום הכנסה / הוצאה, פרטים, סכום / מטבע, סטטוס, העברה בין פרויקטים, מחיקה, פיצול הכנסה, מחיר מוסכם, הערות וחריגה — תמיד עם הסכום והמטבע המדויקים באישור שלך, בלי המרה, ורשומות של הופעה / מיקס / Red Films רק דרך הפעולה שלהן." },
+  { version: "2026.09.27-22", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "הופעות: יצירה, פרטים, כסף (כולל מקדמה בסמנטיקה של היום), אישור, החזרה לליד, ביטול, סגירה (מי קיבל / שולם + מאזן האמן), יומן, פולואפ להצעה, שליחה לאמן, מחיקה וחזרות — כל אחת רק באישורך; D5 / D6 לא שונו." },
+  { version: "2026.09.27-22", date: "2026-09-27", domain: "LABEL_DJ", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "DJ: בחירה / החלפה / הסרה עם שכר מפורש (קלינטון 500₪ רק כברירת מחדל שאתה מאשר, אף פעם לא אוטומטית) ושליחת ההופעה לקלינטון." },
+  { version: "2026.09.27-23", date: "2026-09-27", domain: "STEVEN", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "Steven: סימון שולם (כמו בדף שלו — הוצאה ששולמה + Push אישור תשלום), 'שלח ל-Steven' ו'שלח הערות' — רק באישורך; העלאת קבצים עוד לא (ערוץ קבצים)." },
+  { version: "2026.09.27-23", date: "2026-09-27", domain: "MIX_PIPELINE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מיקס: פתיחת עבודה, פרטים, סטטוס (כולל זרימת ההשלמה), מחיר, סדר, סנכרון הוצאה, הערות, מחיקת גרסה, שורות רידים והערות טרום-מיקס, מחיקת עבודה (הוצאה שלא שולמה נמחקת איתה)." },
 ];

@@ -49,17 +49,12 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
   "PROJECT.PROMOTE_CLIP_ITEM": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
   "RF.PROMOTE_CLIP_ROW": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
-  "LABEL.SHOW_LIFECYCLE": "show → ledger sync can write a duplicate ledger row",
-  "SHOW.CLOSE_SHOW": "show → ledger sync can write a duplicate ledger row",
-  "SHOW.EDIT_SHOW": "show → ledger sync can write a duplicate ledger row; client payment has no validation",
   "RF.CANCEL_PRODUCTION": "the cancel side effects (task / calendar cleanup) run before the save succeeds",
   "PROJECT.DELIVERY": "whole-body write of the delivery record",
   "PROJECT.ALBUM_SETTINGS": "whole-body write of the album finance / previous-system settings",
   "PROJECT.SOCIAL": "whole-body writes of campaigns / content",
   "RF.REFERENCES": "reference links are written as a whole body",
   "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
-  "PROJECT.EDIT_TRANSACTION": "can move a transaction to another project; finance links can dangle",
-  "PROJECT.DELETE_ENGINEER_WORK": "the engineer expense is left behind (dangling finance link)",
   "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
   "PROJECT.SEND_LOG_DELETE": "the cascade into engineer / Victor work runs in the browser, not the server",
   "PROJECT.EDIT_VICTOR_WORK": "a Victor save can fail silently (no error surfaced)",
@@ -74,6 +69,11 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "CLIENT.UPDATE_CLIENT": "Sunny's field-level edit merges into the current record (nothing blanked); rename is a separate C3 action with the cascade count",
   "CLIENT.UPDATE_PROPOSAL": "Sunny's primitives validate status (the code vocabulary), amount (≥ 0) and currency (₪ / $) before the shared writer",
   "PROJECT.LINK_PROPOSAL": "Sunny's link primitive checks that the project exists before writing",
+  "PROJECT.EDIT_TRANSACTION": "Sunny's MOVE_TRANSACTION checks the target project and refuses sync-owned or session-linked rows; edits of show / mix / Red Films rows go through their families (lib/writes/finance financeOwnerOf)",
+  "LABEL.SHOW_LIFECYCLE": "the booking-time ledger sync skips a show whose earning row the close already realized (source_show_id) — no second expected row (lib/artist-balance-show-sync.ts)",
+  "SHOW.CLOSE_SHOW": "same ledger guard; the close is one server-side writer (closeShowRecord) with the dialog's exact semantics",
+  "SHOW.EDIT_SHOW": "same ledger guard; Sunny's show primitives validate price / payment status / DJ fee before the shared writer (the route itself still accepts raw values)",
+  "PROJECT.DELETE_ENGINEER_WORK": "deleting a work removes its UNPAID linked expense; a paid one is kept as history (lib/writes/mix deleteEngineerWorkClean — the route uses it too)",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {

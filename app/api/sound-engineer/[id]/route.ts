@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   updateSoundEngineerWork,
-  deleteSoundEngineerWork,
   forceSyncTransaction,
 } from "@/lib/sound-engineer-store";
 import { requireOwner } from "@/lib/require-auth";
+import { deleteEngineerWorkClean } from "@/lib/writes/mix";
 import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
 import type { StevenCompletionOutcome } from "@/lib/steven-completed-pure";
 
@@ -57,7 +57,8 @@ export async function PATCH(
 
 /**
  * DELETE /api/sound-engineer/[id]
- * Removes the work record. Does NOT delete the linked expense transaction.
+ * Removes the work record (shared writer lib/writes/mix). HARDENED 2026-09-27: its linked expense is removed too when
+ * it is NOT paid; a paid expense is kept as history.
  */
 export async function DELETE(
   _req: NextRequest,
@@ -65,8 +66,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await deleteSoundEngineerWork(id);
-    return NextResponse.json({ ok: true });
+    const r = await deleteEngineerWorkClean(id);
+    return NextResponse.json({ ok: true, removedExpense: r.removedExpense });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

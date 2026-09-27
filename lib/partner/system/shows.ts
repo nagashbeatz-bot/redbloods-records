@@ -8,7 +8,7 @@
  */
 import type { ApprovalClass, Enforcement, Who } from "./project-actions";
 
-export const SHOWS_BASELINE_VERSION = "2026.09.25-shows-1";
+export const SHOWS_BASELINE_VERSION = "2026.09.27-shows-2";
 
 /** Live production columns (information_schema, 2026-09-25) — internal, pinned by the test. */
 export const SHOW_SCHEMA_COLUMNS = ["id", "name", "artist", "date", "start_time", "location", "contact_person", "phone", "status", "payment_status", "show_price", "dj_fee", "advance_payment", "notes", "created_at", "updated_at", "artist_client_id", "booker_client_id", "booker_name", "calendar_event_id", "dj_client_id", "dj_name", "linked_income_transaction_id", "linked_dj_expense_transaction_id", "artist_fee", "linked_artist_expense_transaction_id", "dj_confirmation_status", "dj_confirmed_at"] as const;
@@ -119,7 +119,7 @@ export const LEDGER_SYNC = {
     "a price change after close does not update the realized income unless the close is re-sent",
     "unticking 'artist paid' deletes nothing (a warning only)",
     "collaboration shows are skipped by both paths",
-    "a close-inserted income without the artist-fee key could later meet a booking insert — a second expected row is possible (only if the booking sync had not run)",
+    "HARDENED 2026-09-27: a close-realized income (source_show_id) now blocks the booking sync from inserting a second, expected row for the same show + artist",
     "the close dialog previews the artist amount WITHOUT rehearsal costs while the server deducts them",
   ],
   djLedger: "the DJ has no ledger; his money is the DJ-fee row",
@@ -237,8 +237,8 @@ export const SHOW_REVIEWED_FILES = [
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "a53af88357604ae6120b9165275bc42ebd020c3fb691fd6ccdc4b062694acf09",
   "lib/shows-types.ts": "d97e5e51cd921bff4b0b604a5500e22933c339ad767a6847a63df844115dff29",
-  "lib/shows-finance-sync.ts": "9160fc47886538a308f411d37018942d58a031378f16ced541ac9b9afe7f57be",
-  "lib/artist-balance-show-sync.ts": "f50e003a0835783db4bd37049d602f4ff82a927cfdb0d3e31592301ddd503764",
+  "lib/shows-finance-sync.ts": "a680e9058a3a769ebf94af21f2e64268987fd814efeca90a1d96573505cce6ba",
+  "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
   "lib/show-notify.ts": "36d21aa31146c992d4a00302add47e9d44be5c88b98e1708309ba7650c650b46",
@@ -248,8 +248,8 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/show-quote-followup.ts": "4ab61b81333b94c00556e7d188a4adbf5949c4d5ddc7267f62dda697877c3b17",
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",
   "lib/red-artists/cleantone.ts": "ca64bf791b7d13822a5fc29eb541f276e08dedcf1d7d77270f5a9b9c22edf5cf",
-  "app/api/shows/route.ts": "4aad6a055b7193dc00f4a67424913affeb24af3d00dbb13ffe33bdb7ecd2dfc8",
-  "app/api/shows/[id]/route.ts": "d543ac125672f8d66c65dcd2326f80c4112158f409dd0f316f090771fe49fe42",
+  "app/api/shows/route.ts": "0c0f51cd4185854bec7bc1aa491015a396b4ec1da7f09d8f6259ebc575c043da",
+  "app/api/shows/[id]/route.ts": "b2ea75f1e68b431af3274f32b7954097bccdb98f14ac8bea858915e8410a3f04",
 };
 
 /** Route families touching shows (internal — the test re-discovers routes). */

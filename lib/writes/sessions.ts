@@ -179,11 +179,22 @@ export async function updateSession(id: string, body: SessionPatch): Promise<{ s
   return { session: data as Record<string, unknown>, calendarSynced };
 }
 
-/** Delete a session, then its Google event (best-effort, outcome reported). Linked expense rows are NOT deleted. */
+/** Delete a session, then its Google event (best-effort, outcome reported). Linked expense rows are NOT deleted; a
+ *  deleted show rehearsal re-derives the show split (hardened). */
 export async function deleteSession(id: string): Promise<{ calendarDeleted: boolean | null; calendarError: string | null }> {
-  const { data: session } = await supabase.from("sessions").select("calendar_event_id, project_id").eq("id", id).single();
+  const { data: session } = await supabase.from("sessions").select("calendar_event_id, project_id, show_id, session_type").eq("id", id).single();
   const { error } = await supabase.from("sessions").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  // HARDENED (2026-09-27): a deleted show rehearsal no longer counts — re-derive the show's split exactly as a
+  // rehearsal create / edit does (its expense row is kept, per the no-auto-delete rule).
+  const rehShowId = (session as { show_id?: string | null; session_type?: string } | null)?.show_id;
+  if (rehShowId && (session as { session_type?: string }).session_type === REHEARSAL_SESSION_TYPE) {
+    try {
+      const { getShow } = await import("@/lib/shows-store");
+      const show = await getShow(rehShowId);
+      if (show) { const { syncShowFinance } = await import("@/lib/shows-finance-sync"); await syncShowFinance(show); }
+    } catch (e) { console.error("[sessions] rehearsal delete split re-sync error:", e); }
+  }
   const calEventId = session?.calendar_event_id as string | null;
   let calendarDeleted: boolean | null = null;
   let calendarError: string | null = null;

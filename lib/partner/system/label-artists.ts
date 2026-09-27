@@ -340,7 +340,7 @@ export const LABEL_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/dashboard-releases.ts": "76d16f16c4624ab262e36c1ead9c95e2d6be447b0d54dd5e7b40190e9e1ef4a2",
   "lib/artist-balance-store.ts": "17a94547cf830d1d3b4fd9ef0276a8e77deccda7d823628532c515c9046a8bcf",
   "lib/artist-balance-cycles-store.ts": "e05ac92a21cbb374487cb014f1000c7eda6970455cc6d9fccb5d015924b55ffe",
-  "lib/artist-balance-show-sync.ts": "f50e003a0835783db4bd37049d602f4ff82a927cfdb0d3e31592301ddd503764",
+  "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",
   "lib/media-income-store.ts": "576044795299390987bf414634d95ba9703eea72e18d04aa8c83ab3cf3c52d5a",

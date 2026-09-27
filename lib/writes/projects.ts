@@ -62,3 +62,10 @@ export async function countProjectsNamed(name: string): Promise<number> {
   if (error) throw new Error(error.message);
   return count ?? 0;
 }
+
+/** The project's canonical type ("" when unset), or null when the project does not exist. */
+export async function projectTypeOfProject(projectId: string): Promise<string | null> {
+  const { data, error } = await supabase.from("projects").select("project_type").eq("id", projectId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? String((data as { project_type?: string | null }).project_type ?? "") : null;
+}

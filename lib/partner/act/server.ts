@@ -10,6 +10,9 @@ import type { CoreWriters, WriterDeps } from "./primitives";
 import type { ProjectFamilyWriters } from "./primitives/projects";
 import type { CrmFamilyWriters } from "./primitives/crm";
 import type { SessionFamilyWriters } from "./primitives/sessions";
+import type { FinanceFamilyWriters } from "./primitives/finance";
+import type { ShowFamilyWriters } from "./primitives/shows";
+import type { MixFamilyWriters } from "./primitives/mix";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -19,7 +22,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()) };
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -162,6 +165,105 @@ async function sessionFamilyWriters(): Promise<SessionFamilyWriters> {
     async createSession(s) { const r = await S.createSession(s); return { id: String(r.session.id), calendarError: r.calendarError }; },
     updateSession: async (id, patch) => ({ calendarSynced: (await S.updateSession(id, patch as Parameters<typeof S.updateSession>[1])).calendarSynced }),
     deleteSession: async (id) => ({ calendarDeleted: (await S.deleteSession(id)).calendarDeleted }),
+  };
+}
+
+/** Finance family (lib/writes/finance). */
+async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
+  const F = await import("@/lib/writes/finance");
+  return {
+    readTransaction: (id) => F.readTransaction(id),
+    financeOwnerOf: (id) => F.financeOwnerOf(id),
+    countSimilarTransactions: (t) => F.countSimilarTransactions(t),
+    createTransaction: async (t) => String((await F.createTransactionRecord(t)).id),
+    updateTransaction: async (id, patch) => { await F.updateTransactionRecord(id, patch as Parameters<typeof F.updateTransactionRecord>[1]); },
+    deleteTransaction: (id) => F.deleteTransactionRecord(id),
+    async splitIncome(id, paid, date, method) { const r = await F.splitIncome(id, paid, date, method); return r.status === "ok" ? "ok" : r.code === "TX404" ? "not_found" : r.code === "TX409" ? "conflict" : "invalid"; },
+    readFinanceSettings: (id) => F.readFinanceSettings(id),
+    setFinanceSettings: async (id, patch) => { await F.setFinanceSettings(id, patch); },
+  };
+}
+
+/** Shows + DJ family (lib/writes/shows; rehearsals go through the sessions writers). */
+async function showFamilyWriters(): Promise<ShowFamilyWriters> {
+  const W = await import("@/lib/writes/shows");
+  const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
+  const kind = (r: Awaited<ReturnType<typeof W.updateShowRecord>>) => ({ kind: r.kind, warning: r.kind === "ok" ? r.calendarWarning ?? null : null });
+  return {
+    async readShow(id) {
+      const s = await W.readShow(id);
+      if (!s) return null;
+      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id) };
+    },
+    async createShow(body) { const r = await W.createShowRecord(body); return { id: r.show.id, calendarWarning: r.calendarWarning ?? null }; },
+    updateShow: async (id, body) => kind(await W.updateShowRecord(id, body)),
+    closeShow: async (id, c) => kind(await W.closeShowRecord(id, c)),
+    deleteShowCompletely: async (id) => ({ kind: (await W.deleteShowCompletely(id)).kind }),
+    markShowQuoteSent: async (id) => (await W.markQuoteSent(id)).kind,
+    async notifyShowArtist(id) { const r = await W.notifyShowArtist(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
+    async notifyShowDj(id) { const r = await W.notifyShowDj(id); return r.ok ? { ok: true } : { ok: false, reason: String(r.reason) }; },
+  };
+}
+
+/** Mix / mastering family (lib/sound-engineer-store, lib/mix-*-store, lib/riddim-work, lib/writes/mix, the Steven notifiers). */
+async function mixFamilyWriters(): Promise<MixFamilyWriters> {
+  const SE = await import("@/lib/sound-engineer-store");
+  const M = await import("@/lib/writes/mix");
+  const C = await import("@/lib/mix-comments-store");
+  const V = await import("@/lib/mix-versions-store");
+  const TG = await import("@/lib/mix-targets-store");
+  const N = await import("@/lib/mix-target-notes-store");
+  const RW = await import("@/lib/riddim-work");
+  const { projectTypeOfProject } = await import("@/lib/writes/projects");
+  type WType = Parameters<typeof SE.createSoundEngineerWork>[1]["workType"];
+  type WStatus = Parameters<typeof SE.createSoundEngineerWork>[1]["status"];
+  return {
+    async readEngineerWork(id) {
+      const w = await SE.getSoundEngineerWork(id);
+      if (!w) return null;
+      const exp = await M.engineerWorkExpense(id);
+      return { projectId: w.projectId, projectType: w.projectType ?? "", title: w.projectName || w.workTitle || "", engineerName: w.engineerName, workType: w.workType, status: w.status, agreedPrice: w.agreedPrice, currency: w.currency, amountPaid: w.amountPaid, paymentDate: w.paymentDate, sentDate: w.sentDate, internalDeadline: w.internalDeadline, notes: w.notes ?? "", expenseStatus: exp ? exp.status : null };
+    },
+    listEngineerOrder: async (eng) => (await SE.listSoundEngineerWork(eng)).map((w) => w.id),
+    projectTypeOf: (pid) => projectTypeOfProject(pid),
+    createEngineerWork: async (pid, f) => (await SE.createSoundEngineerWork(pid, { ...f, workType: f.workType as WType, status: f.status as WStatus })).id,
+    updateEngineerWork: async (id, f) => { await SE.updateSoundEngineerWork(id, f as Parameters<typeof SE.updateSoundEngineerWork>[1]); },
+    recordEngineerPayment: (id, paid, date) => M.recordEngineerPayment(id, paid, date),
+    deleteEngineerWork: (id) => M.deleteEngineerWorkClean(id),
+    reorderEngineerWork: (ids) => SE.reorderSoundEngineerWork(ids),
+    forceEngineerFinanceSync: async (id) => (await SE.forceSyncTransaction(id)).txId,
+    async readMixCommentFull(id) {
+      const c = await C.getMixComment(id);
+      if (!c) return null;
+      const v = await V.getMixVersion(c.mixVersionId);
+      return { versionId: c.mixVersionId, workId: v?.soundEngineerWorkId ?? "", text: c.commentText, timestampSeconds: c.timestampSeconds, status: c.status, attachments: c.attachments?.length ?? 0 };
+    },
+    createMixComment: async (c) => (await C.createMixComment({ mixVersionId: c.versionId, timestampSeconds: c.timestampSeconds, commentText: c.text, author: null, role: c.role })).id,
+    editMixComment: async (id, p) => { await C.updateMixComment(id, p); },
+    deleteMixComment: (id) => M.deleteMixCommentWithAttachments(id),
+    deleteMixVersion: (id) => M.deleteMixVersionWithFile(id),
+    isRiddimWork: async (wid) => (await RW.assertRiddimWork(wid)).ok,
+    async readMixTarget(id) { const t = await TG.getMixTarget(id); return t ? { workId: t.workId, name: t.displayName, kind: t.targetKind, removed: !!t.removedAt } : null; },
+    async addRiddimLine(wid, name) { await TG.ensureInstrumental(wid); const r = await TG.addArtistTarget(wid, name); return { status: r.status, id: r.target.id }; },
+    renameRiddimLine: async (id, name) => (await TG.renameArtistTarget(id, name)).status,
+    removeRiddimLine: async (id) => (await TG.softRemoveTarget(id)).status,
+    async readPremixNote(id) { const n = await N.getMixTargetNote(id); return n ? { targetId: n.mixTargetId, text: n.noteText, status: n.status } : null; },
+    createPremixNote: async (tid, text) => (await N.createMixTargetNote({ mixTargetId: tid, noteText: text })).id,
+    updatePremixNote: async (id, p) => { await N.updateMixTargetNote(id, p as { noteText?: string; status?: "open" | "resolved" }); },
+    deletePremixNote: (id) => N.deleteMixTargetNote(id),
+    async notifyMixReady(wid, again) {
+      const w = await SE.getSoundEngineerWork(wid); if (!w) return { ok: false, reason: "not_found" };
+      const { notifyStevenMixReady } = await import("@/lib/steven-mix-ready-notify");
+      const r = await notifyStevenMixReady({ id: w.id, displayName: SE.stevenDisplayName(w) }, { resend: again }) as { ok: boolean; alreadySent?: boolean; skipped?: boolean };
+      return { ok: r.ok, alreadySent: r.alreadySent, skipped: r.skipped };
+    },
+    async sendMixNotes(wid, versionId) {
+      const w = await SE.getSoundEngineerWork(wid); if (!w) return { ok: false, reason: "not_found" };
+      const { notifyStevenMixNotes } = await import("@/lib/steven-notes-notify");
+      const ctx = versionId ? await RW.resolveMixLineContext(w.id, versionId) : null;
+      const r = await notifyStevenMixNotes({ id: w.id, displayName: SE.stevenDisplayName(w), projectId: w.projectId ?? null }, ctx ? { kind: "version", ...ctx } : null) as { ok: boolean; skipped?: boolean };
+      return { ok: r.ok, skipped: r.skipped };
+    },
   };
 }
 

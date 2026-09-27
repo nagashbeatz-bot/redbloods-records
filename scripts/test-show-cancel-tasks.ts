@@ -79,7 +79,7 @@ check("empty showId → selects nothing", selectShowTasksToCancel([t("a", "פת�
 
 // ── Guard: the route wires this ONLY into the בוטל branch ─────────────────────
 {
-  const route = readFileSync(join(__dirname, "..", "app", "api", "shows", "[id]", "route.ts"), "utf8");
+  const route = readFileSync(join(__dirname, "..", "lib", "writes", "shows.ts"), "utf8"); // the PATCH logic lives in the shared writer since 2026-09-27
   const call  = "cancelOpenShowTasks(id)";
   check("route calls the helper exactly once", route.split(call).length - 1, 1);
   // The call must sit after `show.status === "בוטל"` and before the confirmed

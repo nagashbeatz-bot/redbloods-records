@@ -188,7 +188,7 @@ async function main() {
   ok("domain SHOWS: purpose, rules, side effects, notifications, limitations — and NO internal surfaces", !!shows.items[0]?.fields.purpose && !("surfaces" in (shows.items[0]?.fields ?? {})) && (shows.items[0]?.fields.notifications as unknown[]).length >= 3);
   const acts = q("system_awareness", { mode: "actions", params: { domain: "SHOWS" }, });
   const cs = acts.items.find((i) => i.id === "CREATE_SHOW")!;
-  check("'can you create a show?' → exists, FUTURE_PRIMITIVE_REQUIRED, with the inputs to collect", [cs.fields.class, cs.fields.approval], ["FUTURE_PRIMITIVE_REQUIRED", "OWNER_APPROVAL_IN_DASHBOARD"]);
+  check("'can you create a show?' → exists, executable as a typed action approved by the Owner in the conversation, with the inputs to collect", [cs.fields.class, cs.fields.approval, cs.fields.sunnyCanExecuteToday], ["FUTURE_PRIMITIVE_REQUIRED", "OWNER_CONFIRMATION_IN_CONVERSATION", true]);
   const push = q("system_awareness", { mode: "actions", params: { domain: "PUSH_NOTIFICATIONS" } });
   check("'can you send push?' → a legitimate future action needing explicit Owner approval, not executable today", push.items.map((i) => [i.fields.class, i.fields.sunnyCanExecuteToday, (i.fields.confirmations as string[]).includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED")]), [["FUTURE_PRIMITIVE_REQUIRED", false, true]]);
   const cal = q("system_awareness", { mode: "coverage", params: { domain: "GOOGLE_CALENDAR" } });

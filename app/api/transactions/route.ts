@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { touchProject } from "@/lib/projects-store";
+import { createTransactionRecord, FinanceInputError, setFinanceSettings } from "@/lib/writes/finance";
 import { requireOwner } from "@/lib/require-auth";
 
 // GET /api/transactions?projectId=xxx   → transactions + finance settings for one project
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// POST /api/transactions  → create a new transaction
+// POST /api/transactions  → create a new transaction (shared writer lib/writes/finance — also Sunny's ADD_TRANSACTION)
 export async function POST(req: NextRequest) {
   const unauth = await requireOwner(); if (unauth) return unauth;
   const body = await req.json();
@@ -72,47 +72,16 @@ export async function POST(req: NextRequest) {
     currency, paymentStatus, paymentMethod, receiptRef, notes, category,
     linkedSessionId, expenseScope,
   } = body;
-
-  const txScope = scope ?? "project";
-
-  if (!type) {
-    return NextResponse.json({ error: "type required" }, { status: 400 });
+  try {
+    const data = await createTransactionRecord({ projectId, scope, type, date, description, artist, amount, currency, paymentStatus, paymentMethod, receiptRef, notes, category, linkedSessionId, expenseScope });
+    return NextResponse.json({ transaction: data });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ error: msg }, { status: err instanceof FinanceInputError ? 400 : 500 });
   }
-  if (txScope === "project" && !projectId) {
-    return NextResponse.json({ error: "projectId required for project-scoped transactions" }, { status: 400 });
-  }
-
-  const { data, error } = await supabase
-    .from("transactions")
-    .insert({
-      project_id:        txScope === "general" ? null : (projectId || null),
-      scope:             txScope,
-      type,
-      date:              date              || null,
-      description:       description       || "",
-      artist:            artist            || "",
-      amount:            Number(amount)    || 0,
-      currency:          currency          || "₪",
-      payment_status:    paymentStatus     || "צפוי",
-      payment_method:    paymentMethod     || "",
-      receipt_ref:       receiptRef        || "",
-      notes:             notes             || "",
-      category:          category          || "",
-      linked_session_id: linkedSessionId   || "",
-      expense_scope:     type === "expense" ? (expenseScope || "כללי") : "כללי",
-    })
-    .select()
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Bump project's updated_at for project-scoped transactions
-  if (txScope === "project" && projectId) touchProject(projectId).catch(() => {});
-
-  return NextResponse.json({ transaction: data });
 }
 
-// PATCH /api/transactions?projectId=xxx&type=settings  → update finance settings
+// PATCH /api/transactions?projectId=xxx&type=settings  → update finance settings (merged; shared writer)
 export async function PATCH(req: NextRequest) {
   const unauth = await requireOwner(); if (unauth) return unauth;
   const projectId = req.nextUrl.searchParams.get("projectId");
@@ -126,29 +95,10 @@ export async function PATCH(req: NextRequest) {
     agreedPrice, currency, financialNotes,
     financeException, financeExceptionReason, financeExceptionDate,
   } = await req.json();
-
-  // Read existing value first so we can merge
-  const { data: existing } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", `finance_${projectId}`)
-    .maybeSingle();
-
-  const existing_val = (existing?.value ?? {}) as Record<string, unknown>;
-  const merged = {
-    ...existing_val,
-    ...(agreedPrice            !== undefined ? { agreedPrice:    Number(agreedPrice)    } : {}),
-    ...(currency               !== undefined ? { currency                               } : {}),
-    ...(financialNotes         !== undefined ? { financialNotes                         } : {}),
-    ...(financeException       !== undefined ? { financeException:       Boolean(financeException) } : {}),
-    ...(financeExceptionReason !== undefined ? { financeExceptionReason                 } : {}),
-    ...(financeExceptionDate   !== undefined ? { financeExceptionDate                   } : {}),
-  };
-
-  const { error } = await supabase
-    .from("settings")
-    .upsert({ key: `finance_${projectId}`, value: merged }, { onConflict: "key" });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, value: merged });
+  try {
+    const merged = await setFinanceSettings(projectId, { agreedPrice, currency, financialNotes, financeException, financeExceptionReason, financeExceptionDate });
+    return NextResponse.json({ ok: true, value: merged });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
+  }
 }

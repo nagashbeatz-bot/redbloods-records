@@ -168,4 +168,6 @@ export const PROJECT_ACTIONS: readonly ProjectActionEntry[] = [
 export const PROJECT_ACTION_EXCLUSIONS: Readonly<Record<string, string>> = {
   "app/api/push/check/route.ts": "legacy push check — reads projects to decide a push, never changes project data (covered by the Push contracts)",
   "app/api/vendor/victor/salary/route.ts": "Victor salary months (finance domain) — not a project mutation",
+  "app/api/clients/route.ts": "creates a client only — its shared writer module (lib/writes/clients) also holds the rename cascade, inventoried as CLIENT_RENAME_REWRITES via app/api/clients/[id]",
+  "app/api/proposals/route.ts": "creates a proposal only — its shared writer module (lib/writes/proposals) also holds the conversion, inventoried as CONVERT_PROPOSAL via the convert route",
 };

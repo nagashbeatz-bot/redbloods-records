@@ -89,7 +89,9 @@ export function buildHandlerMap() {
     const methods = [...new Set([...src.matchAll(WRITE_RE)].map((m) => m[1] || m[2]))].sort();
     const getWrites = getSegment(src).some((seg) => DB_WRITE_RE.test(seg) || [...seg.matchAll(/\b([a-z][A-Za-z0-9]*)\s*\(/g)].some((m) => WRITER_CALL_RE.test(m[1])));
     if (!methods.length && !getWrites) continue;
-    out[rel] = { methods, getWrites, sha256: crypto.createHash("sha256").update(raw).digest("hex"), effects: [...effectsOf(rel)].sort(), fields: acceptedFields(src) };
+    // A route that hands the parsed body to a shared writer (lib/writes/*) accepts what that writer reads.
+    const writerFields = [...src.matchAll(/from\s+["']@\/lib\/writes\/([a-z-]+)["']/g)].flatMap((m) => acceptedFields(stripComments(fs.readFileSync(path.join(ROOT, `lib/writes/${m[1]}.ts`), "utf8"))));
+    out[rel] = { methods, getWrites, sha256: crypto.createHash("sha256").update(raw).digest("hex"), effects: [...effectsOf(rel)].sort(), fields: [...new Set([...acceptedFields(src), ...writerFields])].sort() };
   }
   return out;
 }

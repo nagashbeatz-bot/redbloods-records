@@ -136,7 +136,7 @@ async function main() {
 
   section("4. PROOF: every mutating project route is in the action inventory");
   const inventoried = new Set(PROJECT_ACTIONS.flatMap((a) => a.internal.routes));
-  const touching = walk(path.join(ROOT, "app/api")).map(rel).filter((f) => { const t = code(read(f)); return /export (async )?function (POST|PUT|PATCH|DELETE)|export const (POST|PUT|PATCH|DELETE)/.test(t) && /projectId|project_id|"projects"|projects-store|linked_project|touchProject|updateProject|sound_engineer|vendor_project_work|project_actions|clip_items|album_tracks|final_files|mix_/.test(t); });
+  const touching = walk(path.join(ROOT, "app/api")).map(rel).filter((f) => { const raw = read(f); const t = code(raw) + [...raw.matchAll(/from "@\/lib\/writes\/([a-z-]+)"/g)].map((m) => code(read(`lib/writes/${m[1]}.ts`))).join("\n"); return /export (async )?function (POST|PUT|PATCH|DELETE)|export const (POST|PUT|PATCH|DELETE)/.test(t) && /projectId|project_id|"projects"|projects-store|linked_project|touchProject|updateProject|sound_engineer|vendor_project_work|project_actions|clip_items|album_tracks|final_files|mix_/.test(t); });
   check("mutating project routes missing from the inventory", touching.filter((f) => !inventoried.has(f) && !PROJECT_ACTION_EXCLUSIONS[f]), []);
   check("inventory routes that do not exist", [...inventoried].filter((f) => !fs.existsSync(path.join(ROOT, f))), []);
   ok(`${touching.length} mutating project routes found, ${PROJECT_ACTIONS.length} inventory entries`, touching.length >= 50 && PROJECT_ACTIONS.length >= 70);

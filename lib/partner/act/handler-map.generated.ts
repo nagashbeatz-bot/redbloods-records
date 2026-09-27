@@ -262,7 +262,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "GOOGLE_TASKS"
   ],
-  "fields": []
+  "fields": [
+   "due_date",
+   "notes",
+   "status",
+   "title"
+  ]
  },
  "app/api/clients/[id]/route.ts": {
   "methods": [
@@ -297,7 +302,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "SETTINGS"
   ],
   "fields": [
-   "name"
+   "email",
+   "name",
+   "notes",
+   "phone",
+   "status",
+   "type"
   ]
  },
  "app/api/clip-items/[id]/promote/route.ts": {
@@ -1071,7 +1081,17 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "CALENDAR",
    "DELETION"
   ],
-  "fields": []
+  "fields": [
+   "addToCalendar",
+   "clientId",
+   "clientName",
+   "date",
+   "duration",
+   "location",
+   "notes",
+   "projectId",
+   "time"
+  ]
  },
  "app/api/meetings/route.ts": {
   "methods": [
@@ -1434,7 +1454,20 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "SETTINGS"
   ],
   "fields": [
-   "projectName"
+   "amount",
+   "clientId",
+   "currency",
+   "followupDate",
+   "followup_date",
+   "linkedProjectId",
+   "linked_project_id",
+   "notes",
+   "projectName",
+   "sentDate",
+   "sent_date",
+   "status",
+   "title",
+   "updated_at"
   ]
  },
  "app/api/proposals/[id]/route.ts": {
@@ -1449,7 +1482,21 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "GOOGLE_TASKS",
    "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "amount",
+   "clientId",
+   "currency",
+   "followupDate",
+   "followup_date",
+   "linkedProjectId",
+   "linked_project_id",
+   "notes",
+   "sentDate",
+   "sent_date",
+   "status",
+   "title",
+   "updated_at"
+  ]
  },
  "app/api/proposals/route.ts": {
   "methods": [
@@ -1467,10 +1514,15 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "clientId",
    "currency",
    "followupDate",
+   "followup_date",
+   "linkedProjectId",
+   "linked_project_id",
    "notes",
    "sentDate",
+   "sent_date",
    "status",
-   "title"
+   "title",
+   "updated_at"
   ]
  },
  "app/api/push/check/route.ts": {
@@ -2021,19 +2073,28 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PUSH"
   ],
   "fields": [
+   "addToCalendar",
+   "calendarEventId",
    "cost",
    "date",
    "endIso",
    "endTime",
+   "end_time",
+   "invite",
    "location",
    "notes",
    "paymentStatus",
    "photographer",
+   "projectId",
    "sessionType",
+   "session_type",
+   "showId",
    "startIso",
    "startTime",
+   "start_time",
    "status",
-   "summary"
+   "summary",
+   "title"
   ]
  },
  "app/api/sessions/auto-mark/route.ts": {
@@ -2079,16 +2140,23 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "calendarEventId",
    "cost",
    "date",
+   "endIso",
    "endTime",
+   "end_time",
+   "invite",
    "location",
    "notes",
    "paymentStatus",
    "photographer",
    "projectId",
    "sessionType",
+   "session_type",
    "showId",
+   "startIso",
    "startTime",
+   "start_time",
    "status",
+   "summary",
    "title"
   ]
  },
@@ -2123,13 +2191,42 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "5c7001093b7a00f93f20a3c21bc933008e07c65f9ed8a5e37abfe03f4899fde6",
+  "sha256": "559ebb430478896ff4860604084cf6303496517b93a477523848fa565e6d9686",
   "effects": [
+   "CALENDAR",
    "DELETION",
    "FINANCE",
-   "LEDGER"
+   "GOOGLE_TASKS",
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
-  "fields": []
+  "fields": [
+   "addToCalendar",
+   "advance_payment",
+   "artist",
+   "artistPaidDate",
+   "artist_client_id",
+   "artist_fee",
+   "booker_client_id",
+   "booker_name",
+   "calendar_event_id",
+   "closeShow",
+   "contact_person",
+   "date",
+   "dj_client_id",
+   "dj_fee",
+   "dj_name",
+   "location",
+   "name",
+   "notes",
+   "payment_status",
+   "phone",
+   "removeFromCalendar",
+   "show_price",
+   "start_time",
+   "status"
+  ]
  },
  "app/api/shows/[id]/route.ts": {
   "methods": [
@@ -2137,12 +2234,15 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "d543ac125672f8d66c65dcd2326f80c4112158f409dd0f316f090771fe49fe42",
+  "sha256": "b2ea75f1e68b431af3274f32b7954097bccdb98f14ac8bea858915e8410a3f04",
   "effects": [
    "CALENDAR",
    "DELETION",
    "FINANCE",
-   "LEDGER"
+   "GOOGLE_TASKS",
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "addToCalendar",
@@ -2176,21 +2276,27 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "4aad6a055b7193dc00f4a67424913affeb24af3d00dbb13ffe33bdb7ecd2dfc8",
+  "sha256": "0c0f51cd4185854bec7bc1aa491015a396b4ec1da7f09d8f6259ebc575c043da",
   "effects": [
    "CALENDAR",
    "DELETION",
    "FINANCE",
-   "LEDGER"
+   "GOOGLE_TASKS",
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "addToCalendar",
    "advance_payment",
    "artist",
+   "artistPaidDate",
    "artist_client_id",
    "artist_fee",
    "booker_client_id",
    "booker_name",
+   "calendar_event_id",
+   "closeShow",
    "contact_person",
    "date",
    "dj_client_id",
@@ -2201,6 +2307,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "notes",
    "payment_status",
    "phone",
+   "removeFromCalendar",
    "show_price",
    "start_time",
    "status"
@@ -2437,9 +2544,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "da3f0ca0867c1f4d7150abe043dfbd5522b2f926a6843304074e8728943ddbe7",
+  "sha256": "bb55a72ff67bb6ac8be231bc9bfec8a06702032fa87df0b7bc4a5729a2b351ab",
   "effects": [
    "DELETION",
+   "FILES",
    "FINANCE",
    "PUSH",
    "SETTINGS"
@@ -2603,10 +2711,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "7a7d9e517b6f72c8f0ef754815d4d7fc809a8f1a1f070e68fdc02c29e4fe440d",
+  "sha256": "01ce16c9991ff80506deaacf198cc9bf85c2bfaa3c3776885c2c49211a636bbb",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2677,10 +2788,13 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "2d14376cbda8d3366f0b13d8303a7c6655924093d20faaafb77b715cc0659e19",
+  "sha256": "43980ba036d402b531887b3e74ead0f00115b613e42d4ae5d4ecf967d5cf4e8f",
   "effects": [
    "DELETION",
-   "FILES"
+   "FILES",
+   "FINANCE",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": []
  },
@@ -2872,12 +2986,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "dc53bceeb18a728c85e4e231f65fa270e3eb7c180da9786eb095400d26b264ea",
+  "sha256": "6a3141ad5aa3156bd59698103279f709912a23175d3db8b728e98ceebcec65b6",
   "effects": [
    "DELETION",
-   "FINANCE"
+   "FINANCE",
+   "SETTINGS"
   ],
   "fields": [
+   "agreedPrice",
    "amount",
    "artist",
    "category",
@@ -2886,6 +3002,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "description",
    "expenseScope",
    "expense_scope",
+   "financeException",
+   "financeExceptionDate",
+   "financeExceptionReason",
+   "financialNotes",
    "linkedSessionId",
    "linked_session_id",
    "notes",
@@ -2893,6 +3013,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "paymentStatus",
    "payment_method",
    "payment_status",
+   "projectId",
    "project_id",
    "receiptRef",
    "receipt_ref",
@@ -2905,14 +3026,41 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "9b6eff6411d8f8d930d55637f7dea10cd2080c2421730452f64fe5153cdab3c1",
+  "sha256": "b96e6f843353d69a420d4bbf1e0fc270af02e92aa28320ebe7bc478d12d4c12a",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "FINANCE",
+   "SETTINGS"
   ],
   "fields": [
+   "agreedPrice",
+   "amount",
+   "artist",
+   "category",
+   "currency",
+   "date",
+   "description",
+   "expenseScope",
+   "expense_scope",
+   "financeException",
+   "financeExceptionDate",
+   "financeExceptionReason",
+   "financialNotes",
+   "linkedSessionId",
+   "linked_session_id",
+   "notes",
    "paidAmount",
    "paymentMethod",
-   "receivedDate"
+   "paymentStatus",
+   "payment_method",
+   "payment_status",
+   "projectId",
+   "project_id",
+   "receiptRef",
+   "receipt_ref",
+   "receivedDate",
+   "scope",
+   "type"
   ]
  },
  "app/api/transactions/route.ts": {
@@ -2921,13 +3069,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "b26bc16939cb6d69d01091644c5adfbb7b86be0c9ae1d60d9e4fe2486ca6094c",
+  "sha256": "af9434f10aa722b7240007f1a8045f6e8ff185ec0b994dcddcd00418bb8692ac",
   "effects": [
    "DELETION",
    "FINANCE",
    "SETTINGS"
   ],
   "fields": [
+   "agreedPrice",
    "amount",
    "artist",
    "category",
@@ -2935,12 +3084,22 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "date",
    "description",
    "expenseScope",
+   "expense_scope",
+   "financeException",
+   "financeExceptionDate",
+   "financeExceptionReason",
+   "financialNotes",
    "linkedSessionId",
+   "linked_session_id",
    "notes",
    "paymentMethod",
    "paymentStatus",
+   "payment_method",
+   "payment_status",
    "projectId",
+   "project_id",
    "receiptRef",
+   "receipt_ref",
    "scope",
    "type"
   ]
