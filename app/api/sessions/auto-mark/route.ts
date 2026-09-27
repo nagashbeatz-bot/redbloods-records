@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { SHOW_REHEARSAL_SESSION_TYPE } from "@/lib/shows-types";
 
 /**
  * POST /api/sessions/auto-mark
  *
  * Automatically marks "מתוכנן" sessions as "התקיים" when their end time has passed.
+ * NEVER a show rehearsal (D6, Owner decision 2026-09-27): a rehearsal's status carries money meaning (only בוצע counts
+ * toward the show split), so only the Owner moves it — opening the app must not change what a show is worth.
  *
  * Body: { clientNow: string }
  *   clientNow — local datetime string without timezone, e.g. "2026-05-15T14:01:00"
@@ -20,7 +23,7 @@ export async function POST(req: NextRequest) {
     // Fetch all "מתוכנן" sessions that have both a date and end_time
     const { data: rows, error } = await supabase
       .from("sessions")
-      .select("id, date, end_time")
+      .select("id, date, end_time, session_type, show_id")
       .eq("status", "מתוכנן")
       .not("date", "is", null)
       .not("end_time", "is", null);
@@ -32,6 +35,7 @@ export async function POST(req: NextRequest) {
 
     // Filter: sessions whose end datetime has passed (string comparison — same format, implicit local time)
     const toMark = rows.filter((s) => {
+      if (s.session_type === SHOW_REHEARSAL_SESSION_TYPE || s.show_id) return false; // show rehearsals are never auto-marked (D6)
       const sessionEnd = `${s.date}T${s.end_time}:00`; // e.g. "2026-05-15T14:00:00"
       return sessionEnd < clientNow;
     });

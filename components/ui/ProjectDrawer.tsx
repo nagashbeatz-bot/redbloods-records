@@ -593,6 +593,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
     const toMark = list.filter((s) => {
       if (s.status !== "מתוכנן") return false;
+      if (String(s.session_type) === "חזרה להופעה") return false; // D6: a show rehearsal is never auto-marked (money meaning)
       if (!s.date || !s.end_time) return false;
       const sessionEnd = `${s.date}T${s.end_time}:00`;
       return sessionEnd < clientNow;

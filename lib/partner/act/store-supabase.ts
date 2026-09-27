@@ -33,7 +33,12 @@ export interface PlanStore {
   executions(planId: string): Promise<Array<{ stepIndex: number; actionId: string; status: string; outcome: StepOutcome | null }>>;
   /** Event types recorded for a plan (status reads; details are sanitized). */
   events(planId: string): Promise<Array<{ type: string; step: number | null; at: string }>>;
+  /** The Owner's plans, newest first (cursor = created_at of the last item), with their recorded executions + event types. */
+  history?(ownerId: string, q: HistoryQuery): Promise<{ items: Array<{ plan: Plan; executions: Array<{ stepIndex: number; status: string }>; eventTypes: string[]; executedAt: string | null }>; nextBefore: string | null }>;
 }
+export interface HistoryQuery { limit: number; before: string | null; since: string | null; actionId: string | null; entity: string | null }
+/** Rows scanned per history page when filtering by action / entity (the plan JSON is filtered here, never by raw SQL). */
+const HISTORY_SCAN = 200;
 
 export function supabaseActStores(sb: SupabaseClient) {
   const plans: PlanStore = {
@@ -66,6 +71,38 @@ export function supabaseActStores(sb: SupabaseClient) {
       const { data, error } = await sb.from(ACT_TABLES.events).select("event_type, step_index, created_at").eq("plan_id", planId).order("id", { ascending: true });
       if (error) fail("read_events", error);
       return ((data ?? []) as Array<{ event_type: string; step_index: number | null; created_at: string }>).map((r) => ({ type: r.event_type, step: r.step_index, at: r.created_at }));
+    },
+    async history(ownerId, q) {
+      const limit = Math.max(1, Math.min(q.limit, 50));
+      const filtered = !!(q.actionId || q.entity);
+      let query = sb.from(ACT_TABLES.plans).select("plan_id, plan, plan_hash, created_at").eq("owner_id", ownerId);
+      if (q.before) query = query.lt("created_at", q.before);
+      if (q.since) query = query.gte("created_at", q.since);
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(filtered ? HISTORY_SCAN : limit + 1);
+      if (error) fail("read_history", error);
+      const all = ((data ?? []) as Array<{ plan_id: string; plan: Plan; plan_hash: string; created_at: string }>).filter((r) => planHash(r.plan) === r.plan_hash); // a tampered row is never served
+      const hit = all.filter((r) => (!q.actionId || r.plan.steps.some((s) => s.actionId === q.actionId)) && (!q.entity || r.plan.steps.some((s) => s.entities.includes(q.entity!))));
+      const rows = hit.slice(0, limit);
+      const more = hit.length > limit || (filtered && all.length === HISTORY_SCAN);
+      const nextBefore = more ? (hit.length > limit ? rows[rows.length - 1].created_at : all[all.length - 1].created_at) : null;
+      if (!rows.length) return { items: [], nextBefore };
+      const ids = rows.map((r) => r.plan_id);
+      const [{ data: ex, error: e2 }, { data: ev, error: e3 }] = await Promise.all([
+        sb.from(ACT_TABLES.executions).select("plan_id, step_index, status, recorded_at").in("plan_id", ids),
+        sb.from(ACT_TABLES.events).select("plan_id, event_type").in("plan_id", ids),
+      ]);
+      if (e2) fail("read_history_executions", e2);
+      if (e3) fail("read_history_events", e3);
+      const exs = (ex ?? []) as Array<{ plan_id: string; step_index: number; status: string; recorded_at: string | null }>;
+      const evs = (ev ?? []) as Array<{ plan_id: string; event_type: string }>;
+      return {
+        items: rows.map((r) => {
+          const mine = exs.filter((x) => x.plan_id === r.plan_id);
+          const at = mine.map((x) => x.recorded_at).filter((x): x is string => !!x).sort();
+          return { plan: r.plan, executions: mine.map((x) => ({ stepIndex: x.step_index, status: x.status })), eventTypes: [...new Set(evs.filter((x) => x.plan_id === r.plan_id).map((x) => x.event_type))], executedAt: at.length ? at[at.length - 1] : null };
+        }),
+        nextBefore,
+      };
     },
   };
 

@@ -179,7 +179,7 @@ export const MONEY_MODEL = {
   currency: "the ledger, cycles, media income and shows store NO currency (screens show ₪); finance rows carry a currency. Sunny never adds a currency-less ledger amount to a currency-bearing row and never mixes ₪ / $.",
   ledgerFormula: "current balance = income − payments − expenses (expected income / expected expenses are shown but not counted)",
   cycles: "anchor date per artist (set once; editable only before the first close; optional first-cycle start). Windows are 2 calendar months from the anchor (end exclusive). Current cycle = max(cycle of today, number of closed cycles) — an early close advances it. Totals per window, no carry-over. Close refused before the window ends unless forced; a closed cycle is an immutable snapshot (unique per artist + index).",
-  showToLedgerBooking: "Shalev only: when a show is confirmed (נסגר / אושרה / בוצע) with an artist fee > 0, an EXPECTED income row = artist fee (half of price − DJ fee − counted rehearsal costs), dated the show date, deduped by the artist-fee finance row; frozen once a manual income exists; removed (expected only) when the show is cancelled / reverted / deleted.",
+  showToLedgerBooking: "Shalev only: when a show is confirmed (נסגר / אושרה / בוצע) with an artist fee > 0, an EXPECTED income row = artist fee (half of price − DJ fee − counted rehearsal costs; D6: only a בוצע rehearsal counts, a legacy auto-marked התקיים keeps the pre-D6 rule), dated the show date, deduped by the artist-fee finance row; frozen once a manual income exists; removed (expected only) when the show is cancelled / reverted / deleted.",
   showToLedgerClose: "all roster artists (single exact artist token): closing a show as בוצע through the close-show dialog promotes / links / inserts an INCOME row = artist fee (deduped per show + artist) and, if 'artist paid' is ticked, a PAYMENT row (app-level dedupe). Unticking 'paid' deletes nothing (a warning is returned). Reopen / cancel after close leaves income and payment rows. Setting בוצע by a normal edit writes nothing.",
   djSeparation: "the DJ fee is only subtracted in the split; the DJ has his own finance row and no ledger",
   mediaIncome: "created / updated / cancelled only through server transactions that compute label share, artist share and recoup (before / recouped / payable / after) against a recoup target passed by the server; a received record is corrected only by an appended reversal. Media income does NOT touch the ledger or cycles.",
@@ -349,7 +349,7 @@ export const LABEL_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/beats-store.ts": "eb8b5bf1212f6192339d838cbb3a346e5370298796de2cd47296da3d2ee29bb3",
   "lib/red-artists/portal-registry.ts": "ed1434690be4f62b8cb7e119f07e3e6bdeba00db307d90164c14bb197e8776e9",
   "lib/red-artists/availability.ts": "7f698e3d6ede717cc3ab34671695c1c630ab7bdeccfd1983307e6cbbf6846ccf",
-  "lib/shows-types.ts": "d97e5e51cd921bff4b0b604a5500e22933c339ad767a6847a63df844115dff29",
+  "lib/shows-types.ts": "df9ed7a0912f659686185418e814a6f72daccf3b784582c9257d5d2758c6e5a5",
 };
 
 /** Every API route family touching label artists (internal — the test re-discovers routes and requires a match). */

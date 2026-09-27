@@ -10,7 +10,8 @@
  * Stale ≠ urgent; quality before speed; the order shown is never a priority.
  */
 import { LIFECYCLES } from "./transitions";
-import { NEEDS_HARDENING } from "./registry";
+import { ACTION_REGISTRY, NEEDS_HARDENING } from "./registry";
+import { COVERAGE_MAP } from "./coverage-map";
 import { WORKFLOW_EVENT_MAP } from "./business-events";
 
 export type BallHolder = "BOSS" | "ARTIST" | "CLIENT" | "VICTOR" | "STEVEN" | "ENGINEER" | "DJ" | "RED_FILMS" | "SYSTEM" | "UNKNOWN";
@@ -56,5 +57,59 @@ export function nextStepsFor(lifecycleId: string, state: string): NextStepPropos
     lifecycle: l.id, state, ball: h?.ball ?? "UNKNOWN", needsBossApproval: true,
     candidateActions: terminal ? [] : [...new Set([...l.setBy, ...l.special.filter((s) => !s.from || s.from === state).map((s) => s.via)])],
     noteHe: terminal ? "מצב סופי — אין צעד הבא" : "הצעה בלבד, בוס. כל צעד מחכה לאישור שלך.",
+  };
+}
+
+// ── STAGE CARD: one record's stage → what happened, what is expected, from whom, and what Sunny can do now ─────────────
+/** Owner-decided meanings of specific states (never a second rule — the app's own rules stay the source). */
+export const STATE_MEANINGS: Readonly<Record<string, string>> = {
+  "RF_PRODUCTION_STATUS:מאושר": "D7 (Owner decision 2026-09-27): the Owner approved the CURRENT production stage to proceed to the next stage — not client approval, not payment, not the final version, not delivery, not the whole production",
+  "RF_EDIT_STATUS:מאושר": "D7: the Owner approved the current EDIT stage to proceed (e.g. to publishing) — not client approval, not payment, not delivery",
+  "REHEARSAL_OPERATIONAL:בוצע": "D6: the rehearsal happened — its cost counts toward the show split",
+  "REHEARSAL_OPERATIONAL:מתוכנן": "D6: planned — does not count toward the show split (even if paid) until the Owner marks it בוצע",
+  "REHEARSAL_OPERATIONAL:בוטל": "D6: cancelled — does not count toward the show split",
+  "REHEARSAL_OPERATIONAL:התקיים": "D6 legacy: written by the old page-load auto-mark, not by the Owner — keeps the pre-D6 rule (counts only if paid) until the Owner confirms בוצע / בוטל",
+};
+export interface StageCard {
+  lifecycle: string; currentStage: string; meaningEn: string | null; terminal: boolean;
+  lastRecordedEvent: { at: string | null; basis: string };
+  nextExpectedEvent: string; expectedFrom: BallHolder; evidence: readonly string[];
+  confidence: "RECORDED_STATE_DERIVED_NEXT" | "UNKNOWN";
+  ownerAction: readonly string[]; sunnyAction: readonly string[]; blockingUnknowns: readonly string[];
+}
+/** Executable primitives behind a census id (the id itself when it is a primitive; its COVERAGE_MAP primitives otherwise). */
+function executableBehind(id: string): string[] {
+  const c = ACTION_REGISTRY.get(id);
+  const direct = c && c.availabilityDetail === "EXECUTABLE" && c.internal.source === "lib/partner/act/primitives" ? [id] : [];
+  const via = (COVERAGE_MAP[id]?.by ?? []).filter((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "EXECUTABLE");
+  return [...new Set([...direct, ...via])];
+}
+/**
+ * STAGE_CARD (pure): the state comes from a live domain view (project_view, show_view, mix_view, video_view …); this
+ * adds the lifecycle meaning, the expected next event, whose move it is, and the typed actions Sunny can plan now
+ * (each still needs the Boss's approval). Nothing is invented: an unrecorded timestamp / holder is a blocking unknown.
+ */
+export function stageCard(lifecycleId: string, state: string, lastEventAt: string | null = null): StageCard | null {
+  const l = LIFECYCLES.find((x) => x.id === lifecycleId);
+  if (!l || !l.states.includes(state)) return null;
+  const terminal = l.terminal.includes(state);
+  const h = HANDOFF_MODEL.find((x) => x.stateOrSignal.split(" / ").includes(state));
+  const exp = NEXT_EXPECTED_EVENT.find((e) => e.lifecycle === l.id && e.fromState === state);
+  const candidates = terminal ? [] : [...new Set([...l.setBy, ...l.special.filter((s) => !s.from || s.from === state).map((s) => s.via)])];
+  const sunnyAction = [...new Set(candidates.flatMap(executableBehind))].sort();
+  const ball: BallHolder = h?.ball ?? "UNKNOWN";
+  const meaningEn = STATE_MEANINGS[`${l.id}:${state}`] ?? null;
+  const blocking: string[] = [];
+  if (!terminal && ball === "UNKNOWN") blocking.push("whose move it is is not recorded for this state — read the record's own evidence (send log, versions, notes) before assuming");
+  if (!lastEventAt) blocking.push("no recorded timestamp for the last event — a passed date never proves it happened");
+  if (meaningEn?.startsWith("D6 legacy")) blocking.push("the Owner has not confirmed whether this rehearsal happened (בוצע) or not (בוטל)");
+  return {
+    lifecycle: l.id, currentStage: state, meaningEn, terminal,
+    lastRecordedEvent: { at: lastEventAt, basis: lastEventAt ? "recorded timestamp" : "not recorded" },
+    nextExpectedEvent: exp?.expectedEn ?? "unknown", expectedFrom: terminal ? "SYSTEM" : ball,
+    evidence: [h ? `${h.workflow}: ${h.evidenceEn}` : "no handoff rule for this state", `lifecycle ${l.id} (${l.kind})`],
+    confidence: "RECORDED_STATE_DERIVED_NEXT",
+    ownerAction: terminal ? [] : ball === "BOSS" ? ["the move is the Boss's (review / decide)", "approve any plan Sunny proposes"] : ["approve any plan Sunny proposes"],
+    sunnyAction, blockingUnknowns: blocking,
   };
 }

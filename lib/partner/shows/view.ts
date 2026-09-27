@@ -86,7 +86,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
     const tx = (fin?.raw.transactions ?? []).find((t) => t.linkedSessionId === x.id) ?? null;
     const pay = tx?.status ?? null;
     return { date: x.date, start: x.startTime, status: x.status, type: x.type, cost: x.cost, paymentStatus: pay, counted: rehearsalCountedAmount(x.status, pay, x.cost), hasCalendarEvent: x.hasCalendarEvent, financeRow: !!tx,
-      note: x.status === "התקיים" ? "auto-marked 'התקיים' — the app's rule never counts it" : null };
+      note: x.status === "התקיים" ? "legacy auto-marked 'התקיים' (before D6) — counts only if paid; the Owner should confirm בוצע / בוטל" : x.status === "מתוכנן" && x.cost ? "planned — does not count toward the split until marked בוצע (D6)" : null };
   }).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
   const counted = r2(rehearsals.reduce((t, x) => t + x.counted, 0));
   const split = computeShowSplit({ show_price: s.price ?? 0, dj_fee: s.djFee ?? 0 }, counted);

@@ -686,7 +686,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 ["files_edit_folder","תיקיית עריכה"],
                 ["version_1_link","גרסה 1"],
                 ["version_2_link","גרסה 2"],
-                ["final_version_link","גרסה מאושרת"],
+                ["final_version_link","גרסה סופית"],
               ] as const).map(([field, label]) => (
                 <div key={field}>
                   <SLabel>{label}</SLabel>
@@ -728,7 +728,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 {[
                   ["📁 חומרי גלם",prod.files_raw_link],
                   ["📂 תיקיית עריכה",prod.files_edit_folder],
-                  ["✅ גרסה מאושרת",prod.final_version_link],
+                  ["✅ גרסה סופית",prod.final_version_link],
                 ].map(([lbl,val]) => val ? (
                   <div key={lbl} style={{ ...INNER_TILE, padding: "9px 12px" }}>
                     <div style={{ fontSize: 10, color: "#8A8A92", marginBottom: 4 }}>{lbl}</div>

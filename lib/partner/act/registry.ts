@@ -91,10 +91,8 @@ const LEGACY: Readonly<Record<string, string>> = {
   "PROJECT.BACKFILL_START_DATES": "one-off backfill with no screen",
   "CLIENT.BACKFILL_CLIENTS_FROM_PROJECTS": "one-off backfill with no screen (a GET that writes)",
 };
-/** Blocked until the Boss decides (D5 show advance / D6 rehearsal vocabulary / D7 production approved). */
-const OWNER_DECISION: Readonly<Record<string, string>> = {
-  "SHOW.REHEARSAL": "D6 — the rehearsal vocabulary / money rule awaits the Boss's decision",
-};
+/** Blocked until the Boss decides. D6 (2026-09-27) and D7 (2026-09-27) are decided; D5 waits on the approved SQL. */
+const OWNER_DECISION: Readonly<Record<string, string>> = {};
 
 // ── derivation ───────────────────────────────────────────────────────────────────────────────────────────────────────
 const has = (s: string | null | undefined) => !!s && s !== "—" && s.trim() !== "";
@@ -250,8 +248,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "SOCIAL.PROMOTIONS", domain: "SOCIAL", en: "Create / edit / delete a paid promotion (+ its expense)", routes: ["app/api/social/promotions/route.ts", "app/api/social/promotions/[id]/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "financial primitive (Wave 3)", effects: ["FINANCE"] },
   // Wave 0 / D-decisions kept visible as blocked contracts
   { id: "SHOW.RECORD_SHOW_ADVANCE", domain: "SHOW", en: "Record a show advance payment (D5)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D5 — how a show advance is modelled awaits the Boss", effects: ["FINANCE"] },
-  { id: "SHOW.REHEARSAL_COUNTING_RULE", domain: "SHOW", en: "Decide which rehearsal statuses count toward the show split (D6)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D6 — which rehearsal status counts (auto-marked התקיים vs בוצע / paid) awaits the Boss; today rehearsalCountedAmount runs unchanged", effects: ["FINANCE"] },
-  { id: "RF.MARK_PRODUCTION_APPROVED", domain: "RF", en: "Mark a Red Films production approved (D7)", routes: [], detail: "BLOCKED_BY_OWNER_DECISION", reason: "D7 — the 'production approved' state awaits the Boss" },
+  { id: "RF.MARK_PRODUCTION_APPROVED", domain: "RF", en: "Mark the current Red Films stage approved (D7: the Owner approved the current production / edit stage to proceed — not client / payment / final)", routes: [], detail: "NEEDS_PRIMITIVE", reason: "executed as a status / edit-status change through UPDATE_PRODUCTION_DETAILS" },
   { id: "SHOW.SET_SHOW_CURRENCY", domain: "SHOW", en: "Record the currency of a show price", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "shows store no currency", effects: ["FINANCE"] },
   { id: "RF.SET_PAYMENT_CURRENCY", domain: "RF", en: "Record the currency of a Red Films payment", routes: [], detail: "BLOCKED_BY_DATA_MODEL", reason: "Red Films money has no currency column", effects: ["FINANCE"] },
 ];
@@ -343,6 +340,8 @@ const LIVE: readonly ActionContract[] = [
 export const IMPROVEMENT_CANDIDATES: ReadonlyArray<{ id: string; kind: "PRODUCT" | "INFRASTRUCTURE"; en: string; he: string; today: string; wouldNeed: string }> = [
   { id: "PROJECT.FILE_RENAME_MOVE", kind: "PRODUCT", en: "Rename / reorder project files, move a project folder", he: "שינוי שם / סידור קבצי פרויקט והעברת תיקייה", today: "no route and no screen in Redbloods (project-actions FILE_RENAME_MOVE, enforcement NO_ROUTE)", wouldNeed: "a product decision (which files, what the player / delivery / send-log references do after a move), a shared writer + a route + a screen, then a typed primitive" },
   { id: "PROJECT.ATOMIC_DELETE_FN", kind: "INFRASTRUCTURE", en: "Delete a project and its dependents in one database transaction", he: "מחיקת פרויקט ותלויותיו בטרנזקציה אחת במסד הנתונים", today: "DELETE_PROJECT runs the app's ordered dependent cleanup then the row delete (gap PRJ_DELETE_NON_ATOMIC: a mid-way failure can leave partial cleanup; the preview lists every dependent and the result is verified)", wouldNeed: "an approved database function (SQL) called by the shared writer — no SQL is written or run until the Boss approves" },
+  { id: "RF.APPROVAL_HISTORY", kind: "PRODUCT", en: "Record who approved which Red Films stage / version and when", he: "תיעוד מי אישר איזה שלב / גרסה ב-Red Films ומתי", today: "D7: 'מאושר' is a stage status only (the Owner approved the current stage to proceed); no approval history exists", wouldNeed: "an Owner product decision + approved schema (approved_at / approved_by / an approval events table / per-version approval)" },
+  { id: "SUNNY.CLAUDE_FILE_TRANSFER", kind: "PRODUCT", en: "Move a file attached in the Claude conversation straight into Redbloods (OWNER_DEFERRED_CLAUDE_FILE_TRANSFER)", he: "העברת קובץ שצורף לשיחה ב-Claude ישירות ל-Redbloods", today: "Owner-deferred (2026-09-27): new files reach Redbloods through the Sunny Inbox folder (fallback) and are placed by the UPLOAD_* primitives after approval; existing-file operations work from Claude", wouldNeed: "an Owner decision to open a secured receiving endpoint (deposit ticket / MCP App) — not built" },
 ];
 // ── explicit exclusions (write routes that are not business actions) ────────────────────────────────────────────────
 /** A write route that is intentionally NOT an action, with the reason. G1 accepts a route only via a contract or here. */

@@ -56,7 +56,7 @@ export const SHOW_VOCABULARIES = {
   djConfirmation: ["ממתין לאישור", "אושר"],
   groups: { pipeline: ["ליד חדש", "ממתין לתשובה", "צריך פולואפ"], confirmedFinance: ["נסגר", "אושרה", "בוצע"], upcomingConfirmed: ["אושרה", "נסגר"], portalVisible: ["אושרה", "נסגר", "בוצע"], done: ["בוצע"], cancelled: ["בוטל"] },
   formStatuses: { fullForm: ["ממתין לתשובה", "אושרה", "בוצע", "בוטל"], quoteForm: ["ליד חדש", "ממתין לתשובה", "צריך פולואפ"] },
-  rehearsalOperational: ["מתוכנן", "בוצע", "בוטל", "התקיים (auto-mark — never counted)"],
+  rehearsalOperational: ["מתוכנן", "בוצע", "בוטל", "התקיים"], // התקיים = legacy only (the pre-D6 page-load auto-mark) — see rehearsalCounted
 } as const;
 
 /** Where consumers disagree about which shows count (reported, never normalized). */
@@ -99,7 +99,7 @@ export const DJ_MODEL = {
 export const MONEY_MODEL = {
   currency: "shows store NO currency; the finance sync writes every show / DJ / artist / rehearsal row as ₪ — a foreign-currency show would be recorded as ₪ (registered gap)",
   split: "gross = price; net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label profit = net − artist fee. No rounding (x.5 possible). The stored artist fee column is never used; there is no override.",
-  rehearsalCounted: "a rehearsal cost counts when its operational status is בוצע, or when it is paid (שולם / התקבל); חלקי never counts; planned / cancelled unpaid never count; the auto-mark status 'התקיים' is NOT counted",
+  rehearsalCounted: "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל",
   advance: "stored amount only — not a finance row; the UI shows remaining = price − advance; מקדמה counts as unpaid in finance",
   rows: [
     { row: "INCOME", category: "הופעה", scope: "הופעה", when: "confirmed + price > 0", status: "בוטל if cancelled; התקבל if client paid; else צפוי", amount: "price", party: "booker name, else artist, else 'לקוח'" },
@@ -236,7 +236,7 @@ export const SHOW_REVIEWED_FILES = [
 ] as const;
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "a53af88357604ae6120b9165275bc42ebd020c3fb691fd6ccdc4b062694acf09",
-  "lib/shows-types.ts": "d97e5e51cd921bff4b0b604a5500e22933c339ad767a6847a63df844115dff29",
+  "lib/shows-types.ts": "df9ed7a0912f659686185418e814a6f72daccf3b784582c9257d5d2758c6e5a5",
   "lib/shows-finance-sync.ts": "a680e9058a3a769ebf94af21f2e64268987fd814efeca90a1d96573505cce6ba",
   "lib/artist-balance-show-sync.ts": "a63d2c42adcabba67566e424a974fa88e7e135d8438a02416bcb339e7dbfd235",
   "lib/artist-balance-show-sync-pure.ts": "bf0bfad2538c4c10a907638e923d029b06f8b1c2eb1f03cf7997c66cf021a0a7",

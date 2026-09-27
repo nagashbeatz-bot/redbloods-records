@@ -20,11 +20,38 @@ import { ACTION_CONTRACTS, NEEDS_HARDENING } from "./registry";
 import { WORKFLOW_EVENT_MAP } from "./business-events";
 import { COVERAGE_MAP } from "./coverage-map";
 import { ALL_PRIMITIVES } from "./primitives";
+import { UPLOAD_PRIMITIVES } from "./primitives/uploads";
 const PRIMITIVE_IDS = new Set(ALL_PRIMITIVES.map((p) => p.actionId));
 import type { ActionContract, ConfirmationClass, EffectKey, Wave } from "./types";
 
 export type CoverageClass = "EXECUTABLE" | "NEEDS_HARDENING" | "BLOCKED_BY_MISSING_CAPABILITY" | "INTENTIONALLY_SECURITY_EXCLUDED";
 export type ExclusionKind = "SECRET_OR_CREDENTIAL_FLOW" | "IDENTITY_BOUND_OTHER_USER" | "SYSTEM_MACHINERY_NOT_AN_OWNER_OPERATION";
+/**
+ * CLAUDE OPERABILITY (Owner directive 2026-09-27): can the Boss complete the operation from the Sunny conversation in
+ * Claude, without an unnecessary manual Redbloods / Dropbox / UI step? Tracked beside the backend class for every row.
+ *   EXECUTABLE_FROM_CLAUDE               intent → resolve → live read → plan → preview → approval → execute → verify, all in Claude
+ *   OWNER_DEFERRED_CLAUDE_FILE_TRANSFER  the operation needs NEW file bytes; conversation → Redbloods transfer is deferred by the
+ *                                        Owner (the file reaches the Sunny Inbox outside Claude; placement is then from Claude)
+ *   HUMAN_INTERACTION_REQUIRED           a genuine boundary: OAuth / device registration, or another person's identity-bound act
+ *   INTENTIONALLY_SECURITY_EXCLUDED      a bearer secret / system machinery — not an Owner operation Sunny should perform
+ *   WAITING_ON_OWNER_DECISION            blocked by an open Owner decision / SQL approval
+ *   ENGINEERING_GAP                      must be 0 (a gap is built, not reported)
+ */
+export type ClaudeOperability = "EXECUTABLE_FROM_CLAUDE" | "OWNER_DEFERRED_CLAUDE_FILE_TRANSFER" | "HUMAN_INTERACTION_REQUIRED" | "INTENTIONALLY_SECURITY_EXCLUDED" | "WAITING_ON_OWNER_DECISION" | "ENGINEERING_GAP";
+/** Genuine human boundaries (reviewed 2026-09-27): why a person — not Sunny — must act. */
+export const HUMAN_BOUNDARIES: Readonly<Record<string, string>> = {
+  "CALENDAR.CONNECT": "Google OAuth consent — only the Boss can sign in and grant it",
+  "SUNNY.CONNECTOR_OAUTH": "the Claude connector's own OAuth consent — only the Boss can approve it",
+  "NOTIFY.PUSH_SUBSCRIBE": "device registration — happens on the Boss's device",
+  "NOTIFY.PUSH_CHECK": "device re-subscribe / test push — happens on the Boss's device",
+  "LABEL.PORTAL_PUSH_SUBSCRIBE": "an artist's own device registration",
+  "LABEL.DJ_CONFIRM": "CLEANTONE's own confirmation of his availability (another person's statement)",
+  "SHOW.DJ_CONFIRM": "CLEANTONE's own confirmation of his availability (another person's statement)",
+  "VICTOR.AVATAR": "Victor's own profile picture in his portal",
+  "LABEL.ARTIST_SKETCH_SELF_EDIT": "the artist's own edits in the portal (the Boss's equivalents — sketch edit / version / delete — are executable from Claude)",
+};
+/** File-channel primitives that need NEW bytes in the Sunny Inbox (removing an inbox item needs none). */
+export const NEW_FILE_PRIMITIVES: ReadonlySet<string> = new Set(UPLOAD_PRIMITIVES.map((p) => p.actionId).filter((id) => id !== "DISCARD_INBOX_ITEM"));
 export type TargetWave = "LIVE" | "W2" | "W3" | "W4" | "W5" | "W6" | "W7" | "W8" | "NONE";
 export interface CoverageRow {
   id: string; domain: string; meaningEn: string;
@@ -37,6 +64,8 @@ export interface CoverageRow {
   approval: ConfirmationClass;
   verification: string;
   effects: readonly EffectKey[];
+  /** Claude operability (see ClaudeOperability) + why, and the part that needs new file bytes when only part of the row does. */
+  claude: ClaudeOperability; claudeReason: string | null;
 }
 
 /** Dependency-ordered sequencing (NOT capability exclusions). */
@@ -57,7 +86,6 @@ const OVERRIDES: Readonly<Record<string, Partial<CoverageRow>>> = {
   RECORD_PAID_EXPENSE: { klass: "NEEDS_HARDENING", targetWave: "W3", requiredWork: "wire the existing validated finance RPC into the universal pipeline as a C2 typed primitive (amount + currency repeated in the approval); the dashboard path stays" },
   "VICTOR.RECORD_SALARY_EXPENSE": { klass: "NEEDS_HARDENING", targetWave: "W3", requiredWork: "same finance primitive as RECORD_PAID_EXPENSE for the salary month (paid only when the finance row is שולם)" },
   "SHOW.RECORD_SHOW_ADVANCE": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W3", ownerEquivalent: "SHOW.EDIT_SHOW (payment status מקדמה, current semantics)", requiredWork: "Boss decision D5 on how a show advance is modelled; until then the current payment-status edit is the path" },
-  "RF.MARK_PRODUCTION_APPROVED": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W2", ownerEquivalent: "RF.EDIT_PRODUCTION (status מאושר, current semantics)", requiredWork: "Boss decision D7 on the canonical 'production approved' event; until then the status edit is the path" },
   "SHOW.SET_SHOW_CURRENCY": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W3", requiredWork: "Redbloods has no currency on shows: product decision + approved schema change (shows are ₪ by convention today)" },
   "RF.SET_PAYMENT_CURRENCY": { klass: "BLOCKED_BY_MISSING_CAPABILITY", targetWave: "W3", requiredWork: "Redbloods has no currency on Red Films money: product decision + approved schema change" },
   "PROJECT.HIDE": { requiredWork: "typed primitive over updateProject(is_hidden) (legacy drawer semantics kept)" },
@@ -116,7 +144,7 @@ const waveOf = (c: ActionContract): TargetWave => (c.wave === "W0" || c.wave ===
 export function coverageOf(c: ActionContract): CoverageRow {
   const effects = [...new Set([...c.effects])];
   const verification = effects.length ? effects.map((e) => VERIFY[e]).join(" + ") : "fresh read of exactly the changed fields";
-  const base: CoverageRow = { id: c.id, domain: c.domain, meaningEn: c.meaningEn, klass: "NEEDS_HARDENING", exclusionKind: null, targetWave: waveOf(c), requiredWork: null, ownerEquivalent: null, approval: c.confirmation, verification, effects };
+  const base: CoverageRow = { id: c.id, domain: c.domain, meaningEn: c.meaningEn, klass: "NEEDS_HARDENING", exclusionKind: null, targetWave: waveOf(c), requiredWork: null, ownerEquivalent: null, approval: c.confirmation, verification, effects, claude: "ENGINEERING_GAP", claudeReason: null };
   const d = c.availabilityDetail;
   if (d === "EXECUTABLE") Object.assign(base, { klass: "EXECUTABLE", targetWave: "LIVE" });
   else if (d === "SUNNY_NATIVE") Object.assign(base, { klass: "EXECUTABLE", targetWave: "LIVE", requiredWork: null, ownerEquivalent: "Sunny's own channel" });
@@ -137,7 +165,17 @@ export function coverageOf(c: ActionContract): CoverageRow {
     else base.ownerEquivalent = `${cov.by.join(" + ")} (live; remaining: ${cov.remaining ?? "see required work"})`;
   }
   if (base.klass === "NEEDS_HARDENING" && base.targetWave === "NONE") base.targetWave = "W2";
+  Object.assign(base, claudeOf(base, cov?.by ?? []));
   return base;
+}
+function claudeOf(r: CoverageRow, coveredBy: readonly string[]): Pick<CoverageRow, "claude" | "claudeReason"> {
+  if (r.klass === "BLOCKED_BY_MISSING_CAPABILITY") return { claude: "WAITING_ON_OWNER_DECISION", claudeReason: r.requiredWork };
+  if (r.klass === "NEEDS_HARDENING") return { claude: "ENGINEERING_GAP", claudeReason: r.requiredWork };
+  if (r.klass === "INTENTIONALLY_SECURITY_EXCLUDED") return HUMAN_BOUNDARIES[r.id] ? { claude: "HUMAN_INTERACTION_REQUIRED", claudeReason: HUMAN_BOUNDARIES[r.id] } : { claude: "INTENTIONALLY_SECURITY_EXCLUDED", claudeReason: r.ownerEquivalent };
+  const fileOnly = NEW_FILE_PRIMITIVES.has(r.id) || (coveredBy.length > 0 && coveredBy.every((x) => NEW_FILE_PRIMITIVES.has(x)));
+  if (fileOnly) return { claude: "OWNER_DEFERRED_CLAUDE_FILE_TRANSFER", claudeReason: "needs a NEW file: it reaches the Sunny Inbox outside Claude (Owner-deferred conversation transfer); placing it is then planned, approved and verified from Claude" };
+  const filePart = coveredBy.filter((x) => NEW_FILE_PRIMITIVES.has(x));
+  return { claude: "EXECUTABLE_FROM_CLAUDE", claudeReason: filePart.length ? `executable from Claude; only adding a NEW file (${filePart.join(", ")}) needs the file in the Sunny Inbox first (Owner-deferred transfer)` : null };
 }
 
 export const COVERAGE_MATRIX: readonly CoverageRow[] = ACTION_CONTRACTS.map(coverageOf);
@@ -154,5 +192,5 @@ export const WORKFLOW_COVERAGE = Object.entries(WORKFLOW_EVENT_MAP).map(([event,
 
 export function coverageSummary() {
   const by = <K extends string>(f: (r: CoverageRow) => K) => COVERAGE_MATRIX.reduce<Record<string, number>>((m, r) => { const k = f(r); m[k] = (m[k] ?? 0) + 1; return m; }, {});
-  return { total: COVERAGE_MATRIX.length, byClass: by((r) => r.klass), byWave: by((r) => r.targetWave), byExclusion: by((r) => r.exclusionKind ?? "—") };
+  return { total: COVERAGE_MATRIX.length, byClass: by((r) => r.klass), byClaude: by((r) => r.claude), byWave: by((r) => r.targetWave), byExclusion: by((r) => r.exclusionKind ?? "—") };
 }

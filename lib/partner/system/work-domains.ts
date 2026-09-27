@@ -49,7 +49,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
       routes: [
         rt("app/api/sessions/route.ts", "GET/POST/PATCH(?type=limit)", "OWNER_IN_ROUTE", "creates a session (+ optional Google event, + rehearsal expense sync); PATCH limit upserts session_limit_ (no in-route check — proxy only)", "Shalev push when the project artist is שליו טסמה"),
         rt("app/api/sessions/[id]/route.ts", "PATCH/DELETE", "OWNER_IN_ROUTE", "edits date/time/status/type/notes/photographer/location/cost (updates an existing event only); DELETE removes the row then its Google event"),
-        rt("app/api/sessions/auto-mark/route.ts", "POST", "PROXY_ONLY", "marks מתוכנן sessions whose end time passed as התקיים (called on every app load with the browser clock)"),
+        rt("app/api/sessions/auto-mark/route.ts", "POST", "PROXY_ONLY", "marks מתוכנן sessions whose end time passed as התקיים (called on every app load with the browser clock) — never a show rehearsal (D6)"),
         rt("app/api/sessions/calendar-pull/route.ts", "GET", "CRON_SECRET", "copies moved Google times back into sessions; can set התקיים → מתוכנן when the event end is in the future; never deletes"),
         rt("app/api/sessions/sync/route.ts", "GET", "PROXY_ONLY", "read-only report of sessions whose calendar event is missing"),
       ],
@@ -58,7 +58,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     rules: [
       R("SESSION_HAPPENED_NOT_PROVEN", "IMPLEMENTATION_BEHAVIOR", "התקיים can be written automatically on app load when the end time passes (browser clock) — it is not proof the session happened; a passed date with מתוכנן means 'not recorded'."),
       R("SESSION_CANCEL_KEEPS_EVENT", "POSSIBLE_BUG", "Changing a session to בוטל does not delete or change its Google event; only deleting the session deletes the event."),
-      R("REHEARSAL_TWO_VOCABULARIES", "CONFLICT", "Show rehearsals are edited with מתוכנן / בוצע / בוטל and the show split counts only בוצע, but the app-wide auto-mark turns a passed rehearsal into התקיים — so an auto-marked rehearsal is not counted."),
+      R("REHEARSAL_TWO_VOCABULARIES", "OWNER_POLICY", "Show rehearsals use מתוכנן / בוצע / בוטל. D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל. The page-load auto-mark (and the project drawer's local auto-mark) skip show rehearsals, so opening the app never changes a show's money."),
       R("SESSION_NEEDS_UPDATE_DEAD_RULE", "POSSIBLE_BUG", "The agent rule 'session needs update' looks for status נקבע, which sessions never use — the rule can never fire."),
       R("SESSION_CLIENT_DRAWER_TYPE", "POSSIBLE_BUG", "Booking a session from the client drawer sends the LOCATION as the session type."),
       R("SESSION_DELETE_EXPENSE_ORPHAN", "POSSIBLE_BUG", "Deleting a session keeps its rehearsal / shoot expense transaction."),
@@ -68,7 +68,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     integrations: ["GOOGLE_CALENDAR (events)", "FINANCE (rehearsal / shoot expenses via linked session id)", "PUSH (Shalev)"],
     security: ["session create / edit / delete check the Owner in-route", "auto-mark, sync and the limit PATCH rely on the central proxy only", "calendar-pull is public-bypassed and protected by a cron secret"],
     production20260925: { total: 75, "סשן|התקיים": 70, "סשן|מתוכנן": 1, "חזרה להופעה|התקיים": 2, "צילום קליפ|התקיים": 2, withCalendarEvent: 55, withProject: 59, showRehearsals: 2 },
-    anomalies: ["2 show rehearsals are התקיים (auto-marked) — the show split counts only בוצע", "15 studio sessions have no project (standalone titles)"],
+    anomalies: ["2 show rehearsals are legacy התקיים (auto-marked before D6) — one (180₪, paid) still counts under the legacy rule and awaits the Owner's בוצע / בוטל", "15 studio sessions have no project (standalone titles)"],
     gaps: ["WK_SESSION_HAPPENED_UNPROVEN", "WK_REHEARSAL_STATUS_CONFLICT"],
     sunnyReads: ["session_view", "sessions", "project_view", "calendar"],
   },

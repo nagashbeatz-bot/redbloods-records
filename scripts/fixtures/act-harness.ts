@@ -27,17 +27,23 @@ export class FakeDb {
     const from = (t: string) => {
       const filters: Array<[string, string, unknown]> = [];
       let orderCol: string | null = null, asc = true, mode: "select" | "update" = "select", patch: Row | null = null;
-      const match = (r: Row) => filters.every(([op, c, v]) => (op === "eq" ? r[c] === v : r[c] !== v));
+      let lim: number | null = null;
+      const match = (r: Row) => filters.every(([op, c, v]) => (op === "eq" ? r[c] === v : op === "neq" ? r[c] !== v : op === "lt" ? String(r[c]) < String(v) : op === "gte" ? String(r[c]) >= String(v) : (v as unknown[]).includes(r[c])));
       const run = () => {
         if (db.failOn === t || db.failOn === `${t}:${mode}`) return res(null, { message: "simulated database failure" });
         let rs = db.rows(t).filter(match);
         if (mode === "update") for (const r of rs) Object.assign(r, patch);
         if (orderCol) rs = [...rs].sort((a, b) => ((a[orderCol!] as number) < (b[orderCol!] as number) ? -1 : 1) * (asc ? 1 : -1));
+        if (lim !== null) rs = rs.slice(0, lim);
         return res(rs.map((r) => ({ ...r })), null);
       };
       const chain = {
         eq(c: string, v: unknown) { filters.push(["eq", c, v]); return chain; },
         neq(c: string, v: unknown) { filters.push(["neq", c, v]); return chain; },
+        lt(c: string, v: unknown) { filters.push(["lt", c, v]); return chain; },
+        gte(c: string, v: unknown) { filters.push(["gte", c, v]); return chain; },
+        in(c: string, v: unknown[]) { filters.push(["in", c, v]); return chain; },
+        limit(n: number) { lim = n; return chain; },
         order(c: string, o?: { ascending?: boolean }) { orderCol = c; asc = o?.ascending !== false; return chain; },
         select() { return chain; },
         maybeSingle() { return run().then((r) => ({ data: (r.data as Row[] | null)?.[0] ?? null, error: r.error })); },
@@ -46,7 +52,7 @@ export class FakeDb {
       return {
         insert(row: Row) {
           if (db.failOn === t || db.failOn === `${t}:insert`) return res(null, { message: "simulated database failure" });
-          const r: Row = { ...row, ...(t === ACT_TABLES.events ? { id: ++db.seq, created_at: new Date().toISOString() } : {}) };
+          const r: Row = { ...row, ...(t === ACT_TABLES.events ? { id: ++db.seq, created_at: new Date().toISOString() } : {}), ...(t === ACT_TABLES.executions && !("recorded_at" in row) ? { recorded_at: null } : {}) };
           for (const key of KEYS[t] ?? []) if (db.rows(t).some((x) => key.every((k) => x[k] === r[k]))) return res(null, { code: "23505", message: "duplicate key" });
           db.rows(t).push(JSON.parse(JSON.stringify(r)));
           return res(null, null);

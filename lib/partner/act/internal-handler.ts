@@ -41,17 +41,17 @@ export async function handleInternalAct(req: InternalActRequest, env: Record<str
   if (!(ACT_OPS as readonly string[]).includes(String(o.op)) || typeof o.ownerId !== "string" || typeof o.clientId !== "string" || !o.input || typeof o.input !== "object" || Array.isArray(o.input)) return { status: 400, body: { error: "bad_request" } };
   const caller: Caller = { ownerId: o.ownerId, clientId: o.clientId };
   const input = o.input as Record<string, unknown>;
-  const allowed: Record<ActOp, readonly string[]> = { plan: ["intentHe", "actionId", "args"], preview: ["planId"], approve: ["planId", "planHash", "confirmationText"], execute: ["planId", "approvalToken", "confirmationText"], status: ["planId"] };
+  const allowed: Record<ActOp, readonly string[]> = { plan: ["intentHe", "actionId", "args", "steps"], preview: ["planId"], approve: ["planId", "planHash", "confirmationText"], execute: ["planId", "approvalToken", "confirmationText"], status: ["planId", "history", "limit", "before", "since", "actionId", "entity", "outcome"] };
   const op = o.op as ActOp;
   if (Object.keys(input).some((k) => !allowed[op].includes(k))) return { status: 400, body: { error: "bad_request" } };
   let d: ActServiceDeps;
   try { d = await deps(); } catch { return { status: 503, body: { error: "act_unavailable" } }; }
   try {
-    const r = op === "plan" ? await planAction(input as { intentHe: unknown; actionId: unknown; args: unknown }, caller, d)
+    const r = op === "plan" ? await planAction(input as { intentHe: unknown; actionId?: unknown; args?: unknown; steps?: unknown }, caller, d)
       : op === "preview" ? await previewAction(input as { planId: unknown }, caller, d)
       : op === "approve" ? await approveAction(input as { planId: unknown; planHash: unknown; confirmationText: unknown }, caller, d)
       : op === "execute" ? await executeAction(input as { planId: unknown; approvalToken: unknown; confirmationText: unknown }, caller, d)
-      : await planStatus(input as { planId: unknown }, caller, d);
+      : await planStatus(input, caller, d);
     return { status: 200, body: r };
   } catch {
     return { status: 200, body: { status: "FAILED_CLOSED", messageHe: "משהו נכשל בצד השרת — שום דבר לא דווח כמבוצע. אבדוק את המצב לפני שאגיד משהו." } };

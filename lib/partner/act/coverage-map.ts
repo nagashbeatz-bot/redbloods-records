@@ -217,6 +217,8 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "LABEL.PROFILE_IMAGE": { by: ["SET_ARTIST_PROFILE_IMAGE"], full: true },
   "VICTOR.UPLOAD_VERSION": { by: ["UPLOAD_VICTOR_FILE"], full: true },
   // ── File Channel (Sunny Inbox) + typed URL fields (Boss decisions 2026-09-27) ──
+  "RF.MARK_PRODUCTION_APPROVED": { by: ["UPDATE_PRODUCTION_DETAILS"], full: true },
+  // ── Compound plans + action history + D6 / D7 + Claude operability (2026-09-27) ──
 };
 
 /** Which Sunny system domain (lib/partner/system DOMAIN_CONTRACTS id) each registered primitive belongs to. Every

@@ -3,7 +3,7 @@
  * for rehearsals) — the same writers the Shows hub uses. Show money is the app's own rule (computeShowSplit /
  * rehearsalCountedAmount inside the shared sync); shows store no currency (₪ by convention — disclosed). The DJ is
  * exactly who the Boss names: CLEANTONE is never auto-assigned, and his 500₪ is an operating default the Boss confirms
- * or overrides, never applied silently. D5 (advance), D6 (rehearsal vocabulary), D7 are unchanged: today's semantics.
+ * or overrides, never applied silently. D5 (advance) is unchanged (today's semantics); D6 is decided (only בוצע counts; the page-load auto-mark skips show rehearsals).
  */
 import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
@@ -269,8 +269,8 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     warnings: (c) => [`${c.name}${c.date ? ` · ${c.date}` : ""}: ${c.financeRows} רשומות כספים יימחקו${c.hasCalendarEvent ? ", האירוע ביומן יימחק" : ""}, משימות ההופעה יימחקו`],
     disclosuresHe: ["כמו מחיקה מהמרכז: היומן, המשימות, רשומות הכספים ואז ההופעה", "הכנסה ותשלומים שמומשו במאזן האמן נשארים", "לא יישלח Push"],
   },
-  // ── show rehearsals (today's D6 semantics: מתוכנן / בוצע / בוטל, cost + שולם / לא שולם; the split counts per
-  //    rehearsalCountedAmount; an auto-marked התקיים is never counted — the vocabulary decision stays the Boss's) ──
+  // ── show rehearsals (D6, Owner decision: מתוכנן / בוצע / בוטל; only בוצע counts toward the split — per
+  //    rehearsalCountedAmount; a legacy auto-marked התקיים keeps the pre-D6 rule until the Boss confirms it) ──
   {
     actionId: "BOOK_SHOW_REHEARSAL", kinds: ["session"],
     meta: meta("קביעת חזרה להופעה", "Book a rehearsal for a show exactly like the rehearsal dialog (cost → one rehearsal expense; the show split re-derives)", [K("show"), { name: "date", kind: "ymd", required: true }, { name: "startTime", kind: "time", required: true }, { name: "endTime", kind: "time", required: true }, { name: "status", kind: "enum", required: false, values: REHEARSAL_STATUSES }, { name: "cost", kind: "money", required: false }, { name: "paymentStatus", kind: "enum", required: false, values: ["שולם", "לא שולם"] }, T("location"), T("notes"), { name: "addToCalendar", kind: "boolean", required: false }], ["date", "startTime", "endTime", "status", "cost"], "createSession (lib/writes/sessions) — rehearsal path", { effects: ["FINANCE", "CALENDAR"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the rehearsal (separate approved action)" }),
@@ -318,7 +318,7 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, id, after) { await d.updateSession(id, { ...after }); },
     async verify(d, id, after) { const s = await d.readSession(id); return !!s && Object.entries(after).every(([k, v]) => k === "cost" || k === "paymentStatus" || (s as unknown as Record<string, unknown>)[k] === v); },
     requiredValues: (_a, after) => [...[after.date, after.startTime].filter((x) => x !== undefined).map(String), ...(typeof after.cost === "number" ? [ils(after.cost)] : []), ...(after.paymentStatus !== undefined ? [String(after.paymentStatus)] : [])],
-    disclosuresHe: ["הוצאת החזרה וחלוקת ההופעה מחושבות מחדש (כמו בדיאלוג); האירוע ביומן זז", "D6 לא שונה: רק 'בוצע' או 'שולם' נספרים", "לא יישלח Push"],
+    disclosuresHe: ["הוצאת החזרה וחלוקת ההופעה מחושבות מחדש (כמו בדיאלוג); האירוע ביומן זז", "D6: רק 'בוצע' נספר בחלוקה; 'מתוכנן' ו'בוטל' לא נספרים (גם אם שולמו)", "לא יישלח Push"],
   },
   {
     actionId: "DELETE_SHOW_REHEARSAL", kinds: ["session"],

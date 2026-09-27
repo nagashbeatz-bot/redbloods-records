@@ -154,7 +154,7 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     async apply(d, id, a) { const r = await d.updateProductionRecord(id, snake(a)); if (r !== "ok") throw new Error(`not updated: ${r}`); },
     requiredValues: (_a, after) => [after.status, after.shootDate].filter((x) => x !== undefined).map(String),
-    disclosuresHe: ["תאריך צילום שעבר לא מוכיח שצולם", "סטטוס 'מאושר' הוא ערך הסטטוס של היום — ההחלטה D7 לא שונתה", "לא נשלח כלום לאף אחד"],
+    disclosuresHe: ["תאריך צילום שעבר לא מוכיח שצולם", "'מאושר' (D7) = אישרת את השלב הנוכחי להמשיך לשלב הבא — לא אישור לקוח, לא תשלום, לא גרסה סופית, לא מסירה", "לא נשלח כלום לאף אחד"],
   },
   {
     actionId: "SET_PRODUCTION_MONEY", kinds: ["rf-production"],

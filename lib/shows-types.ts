@@ -82,19 +82,15 @@ export function computeShowSplit(
 }
 
 /**
- * Fin-2 — how much of a single rehearsal's cost counts toward the show's
- * distributable-base deduction. Pure, shared by the Finance sync (server) and
- * the Shows UI (client) so both agree exactly.
+ * Fin-2 / D6 (Owner decision 2026-09-27, FINAL) — how much of a single show rehearsal's cost counts toward the
+ * show's distributable-base deduction. Pure, shared by the Finance sync (server), the Shows UI and Sunny.
  *
- *   operationalStatus ∈ "מתוכנן" | "בוצע" | "בוטל"   (sessions.status)
- *   paymentStatus     ∈ "לא שולם" | "שולם" | "חלקי" | "בוטל" | null  (its transaction)
- *
- * Rules (partial "חלקי" is intentionally NOT supported — no canonical paid-amount
- * source; such a rehearsal is never counted and is surfaced as needs-attention):
- *   בוצע (any paid state, except חלקי) → full cost   (real obligation)
- *   מתוכנן/בוטל + שולם                 → full cost   (money already out)
- *   מתוכנן/בוטל + לא שולם              → 0
- *   any + חלקי                         → 0  (flagged elsewhere, never invented)
+ *   בוצע    → the full cost counts (the rehearsal happened; the obligation exists whatever its payment state)
+ *   מתוכנן  → 0  (planned — even if already paid, it does not reduce the split until it is marked בוצע)
+ *   בוטל    → 0
+ *   התקיים  → LEGACY only: the generic page-load auto-mark used to write it on show rehearsals (it no longer does).
+ *             Such a row keeps the pre-D6 rule (counts only when its expense is שולם / התקבל) so no recorded split
+ *             changes silently; Sunny flags it for the Owner to confirm (בוצע / בוטל).
  */
 export function rehearsalCountedAmount(
   operationalStatus: string | null | undefined,
@@ -103,10 +99,17 @@ export function rehearsalCountedAmount(
 ): number {
   const c = Number(cost) || 0;
   if (c <= 0) return 0;
-  if (paymentStatus === "חלקי") return 0;            // unsupported — never counted
-  if (operationalStatus === "בוצע") return c;        // obligation exists regardless of payment
-  if (paymentStatus === "שולם" || paymentStatus === "התקבל") return c; // planned/cancelled but paid
-  return 0;                                          // planned/cancelled & unpaid
+  if (operationalStatus === "בוצע") return c;
+  if (operationalStatus === REHEARSAL_LEGACY_AUTOMARK_STATUS) return paymentStatus === "שולם" || paymentStatus === "התקבל" ? c : 0;
+  return 0; // מתוכנן / בוטל / anything else
+}
+/** sessions.session_type of a show rehearsal. */
+export const SHOW_REHEARSAL_SESSION_TYPE = "חזרה להופעה";
+/** The status the old generic auto-mark wrote on show rehearsals (kept only for rows written before D6). */
+export const REHEARSAL_LEGACY_AUTOMARK_STATUS = "התקיים";
+/** A legacy auto-marked rehearsal that the Owner has not confirmed as בוצע / בוטל (surfaced, never decided for him). */
+export function isRehearsalLegacyAutoMarked(operationalStatus: string | null | undefined): boolean {
+  return operationalStatus === REHEARSAL_LEGACY_AUTOMARK_STATUS;
 }
 
 /** True if a rehearsal's payment is "חלקי" — unsupported, surfaced as needs-attention. */

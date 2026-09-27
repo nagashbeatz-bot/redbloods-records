@@ -22,7 +22,7 @@ export interface BackgroundWriter {
 const W = (w: Omit<BackgroundWriter, "sunny">): BackgroundWriter => ({ ...w, sunny: "NEVER_TRIGGERS" });
 
 export const BACKGROUND_WRITERS: readonly BackgroundWriter[] = [
-  W({ id: "SESSION_AUTO_MARK", trigger: "PAGE_LOAD", routes: ["app/api/sessions/auto-mark/route.ts"], jobs: ["PAGE_LOAD_WRITES"], writesEn: "passed planned sessions → held (device clock)", sendsPush: false, noteEn: "AppShell on load; the device clock decides — never proof a session happened" }),
+  W({ id: "SESSION_AUTO_MARK", trigger: "PAGE_LOAD", routes: ["app/api/sessions/auto-mark/route.ts"], jobs: ["PAGE_LOAD_WRITES"], writesEn: "passed planned sessions → held (device clock) — never a show rehearsal (D6)", sendsPush: false, noteEn: "AppShell on load; the device clock decides — never proof a session happened; show rehearsals are skipped so page load never changes show money" }),
   W({ id: "TASKS_GOOGLE_SYNC", trigger: "PAGE_LOAD", routes: ["app/api/calendar/tasks/sync/route.ts"], jobs: ["PAGE_LOAD_WRITES"], writesEn: "tasks completed in Google Tasks → בוצע", sendsPush: false, noteEn: "Tasks page on load" }),
   W({ id: "PUSH_RESUBSCRIBE", trigger: "PAGE_LOAD", routes: ["app/api/push/subscribe/route.ts"], jobs: ["PAGE_LOAD_WRITES"], writesEn: "the device push subscription", sendsPush: false, noteEn: "PushManager; never calls /api/push/check and never sends a push" }),
   W({ id: "NOTIFICATIONS_HOUSEKEEPING", trigger: "GET_THAT_WRITES", routes: ["app/api/notifications/route.ts"], jobs: ["PAGE_LOAD_WRITES"], writesEn: "notification housekeeping on list", sendsPush: false, noteEn: "the bell's list read" }),

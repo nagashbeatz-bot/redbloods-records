@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-36";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-37";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -314,7 +314,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("SHOW_SPLIT_APP_RULE", "CANONICAL_BUSINESS_RULE", "Show split: net = max(0, price − DJ fee − counted rehearsal costs); artist fee = net / 2; label = the rest; no rounding. The stored artist-fee column is legacy and never used."),
-      R("REHEARSAL_COUNTED_RULE", "IMPLEMENTATION_BEHAVIOR", "A rehearsal cost counts when the rehearsal is בוצע or paid; חלקי never; planned / cancelled unpaid never; the auto-mark status התקיים is never counted."),
+      R("REHEARSAL_COUNTED_RULE", "OWNER_POLICY", "D6 (Owner decision 2026-09-27): a show rehearsal cost counts only when the rehearsal is בוצע (whatever its payment state); מתוכנן (even if paid) and בוטל never count; a legacy התקיים (written by the old page-load auto-mark, which no longer touches show rehearsals) keeps the pre-D6 rule — counts only if paid — until the Owner confirms בוצע / בוטל."),
       R("SHOW_FINANCE_ROWS", "IMPLEMENTATION_BEHAVIOR", "Confirmed shows (נסגר / אושרה / בוצע) get income / DJ-fee / artist-fee rows (₪, linked by id, 'show_id:' note); cancel → rows בוטל; back to pipeline → rows HARD-deleted even when received; the DJ-fee row is created even with no DJ.", ["FINANCE"]),
       R("SHOW_NO_CURRENCY", "IMPLEMENTATION_BEHAVIOR", "Shows store no currency; every show finance row is written as ₪."),
       R("SHOW_STATUS_UNVALIDATED", "POSSIBLE_BUG", "Show status / payment status are not validated server-side; list / create routes rely on the proxy only."),
@@ -543,6 +543,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("RF_STATUS_VOCAB", "CANONICAL_BUSINESS_RULE", "Production status: רעיון → הצעה נשלחה → ממתין לאישור → בתכנון → יום צילום נקבע → צולם → חומרי גלם הועלו → בעריכה → נשלחה גרסה → תיקונים → מאושר → פורסם (or בוטל)."),
+      R("RF_APPROVED_MEANING", "OWNER_POLICY", "D7 (Owner decision 2026-09-27): 'מאושר' means the Owner approved the CURRENT Red Films workflow stage to proceed to the next stage — on the production status it is the production stage, on the edit status the edit stage. It is NOT client approval, payment, the final version, delivery, completion or a global approval of the production. No approval history is recorded (who / when / which version) — an improvement candidate, not a blocker."),
       R("RF_SEPARATE_LEDGER", "CANONICAL_BUSINESS_RULE", "Red Films budget payments are a separate ledger — they never create Finance transactions (Finance does not see Red Films spend).", ["FINANCE"]),
       R("RF_MANAGED_CLIP_BUDGET", "CANONICAL_BUSINESS_RULE", "A managed clip's budget follows the project's clip price (one-way) and cannot be edited in Red Films; legacy productions are not managed.", ["CLIPS"]),
       R("RF_PUBLIC_RECEIPTS", "POSSIBLE_BUG", "Receipts and documents are uploaded with PUBLIC Dropbox links (privacy)."),
@@ -968,4 +969,6 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-35", date: "2026-09-27", domain: "VICTOR", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ויקטור: מחיקת קובץ מעבודה (לפי מזהה), הקמת תיקיית העבודה; Red Films: הקמת תיקיית הפקה." },
   { version: "2026.09.27-36", date: "2026-09-27", domain: "FILES_DROPBOX", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "ערוץ קבצים: קובץ שהבוס שם בתיקיית Sunny Inbox מוצב דרך הכותבים הקנוניים (פרויקט / מסירה / חומרי עבודה / גרסת מיקס / קבצים סופיים / סקיצות / ביטים / תמונות / קבלות / מסמכים / ויקטור / סושיאל) — אחרי אישור; בלי נתיב, בלי מגבלה חדשה" },
   { version: "2026.09.27-36", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "שדות קישור מוקלדים (הפקה / רפרנס וידאו / סושיאל / ויקטור / יומן שליחה / קליטה): הקישור המדויק מוצג בתצוגה, נשמר רק אחרי אישור, לא נפתח ולא מורץ; PATCH רפרנס וידאו הוקשח לכותרת / הערות" },
+  { version: "2026.09.27-37", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D6 הוחלט: רק חזרה 'בוצע' נספרת בחלוקת ההופעה; 'מתוכנן' ו'בוטל' לא; הסימון האוטומטי בטעינת האפליקציה לא נוגע יותר בחזרות; 'התקיים' ישן נשאר בכלל הקודם עד אישור הבוס. תוכניות מרובות שלבים (אירוע עסקי אחד = תצוגה אחת + אישור אחד) והיסטוריית פעולות" },
+  { version: "2026.09.27-37", date: "2026-09-27", domain: "RED_FILMS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "D7 הוחלט: 'מאושר' = הבוס אישר את השלב הנוכחי להמשיך לשלב הבא — לא אישור לקוח / תשלום / גרסה סופית / מסירה; הקישור הסופי מסומן 'גרסה סופית'" },
 ];

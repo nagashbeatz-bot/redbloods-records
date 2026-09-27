@@ -59,7 +59,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("the older dashboard-only finance path is fully carried out through Claude now (RECORD_VICTOR_SALARY_MONTH + SET_TRANSACTION_STATUS) — nothing is dashboard-only", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE_VIA_DASHBOARD_APPROVAL").length === 0 && ["PROJECT.SUNNY_DEADLINE", "RECORD_PAID_EXPENSE", "VICTOR.RECORD_SALARY_EXPENSE"].every((id) => ACTION_REGISTRY.get(id)?.availabilityDetail === "EXECUTABLE"));
   ok("every NEEDS_HARDENING key is a real contract in that bucket", Object.keys(NEEDS_HARDENING).every((k) => ACTION_REGISTRY.get(k)?.availability === "SUNNY_NEEDS_HARDENING"));
   ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" || PRIMITIVES_BY_ID.has(w.id) ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && (ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE") === COVERED(w.id))));
-  const DEFERRED = ["SHOW.RECORD_SHOW_ADVANCE", "RF.MARK_PRODUCTION_APPROVED", "SHOW.REHEARSAL_COUNTING_RULE"];
+  const DEFERRED = ["SHOW.RECORD_SHOW_ADVANCE"];
   ok("D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION (not implemented)", DEFERRED.every((d) => ACTION_REGISTRY.get(d)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
 
   // ── G1: every write handler maps to an action or an explicit exclusion ──
@@ -439,6 +439,21 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     ok("G9a. no server actions (\"use server\") anywhere", !all.some((f) => /^\s*["']use server["']/m.test(read(f))), all.filter((f) => /^\s*["']use server["']/m.test(read(f))));
     const clientWriters = all.filter((f) => /^\s*["']use client["']/m.test(read(f)) && /\.from\(\s*["'][a-z_]+["']\s*\)[\s\S]{0,200}?\.(insert|update|upsert|delete)\s*\(/.test(read(f)));
     ok("G9b. no browser-side database write (client components never write tables directly)", clientWriters.length === 0, clientWriters);
+  }
+
+  console.log("G12 — Claude operability (every row: can the Boss finish it from the Sunny conversation?)");
+  {
+    const { COVERAGE_MATRIX, HUMAN_BOUNDARIES, NEW_FILE_PRIMITIVES } = await import("../lib/partner/act/matrix");
+    const { IMPROVEMENT_CANDIDATES } = await import("../lib/partner/act/registry");
+    const CL6 = ["EXECUTABLE_FROM_CLAUDE", "OWNER_DEFERRED_CLAUDE_FILE_TRANSFER", "HUMAN_INTERACTION_REQUIRED", "INTENTIONALLY_SECURITY_EXCLUDED", "WAITING_ON_OWNER_DECISION", "ENGINEERING_GAP"];
+    ok("G12a. every row has exactly one Claude-operability class", COVERAGE_MATRIX.every((r) => CL6.includes(r.claude)));
+    ok("G12b. a backend gap is a Claude gap (no row is 'operable from Claude' before it is executable)", COVERAGE_MATRIX.every((r) => (r.klass === "NEEDS_HARDENING") === (r.claude === "ENGINEERING_GAP") && (r.claude !== "EXECUTABLE_FROM_CLAUDE" || r.klass === "EXECUTABLE")));
+    ok("G12c. ENGINEERING_GAP = 0", COVERAGE_MATRIX.filter((r) => r.claude === "ENGINEERING_GAP").length === 0, COVERAGE_MATRIX.filter((r) => r.claude === "ENGINEERING_GAP").map((r) => r.id));
+    ok("G12d. OWNER_DEFERRED_CLAUDE_FILE_TRANSFER is only an operation that needs NEW file bytes", COVERAGE_MATRIX.filter((r) => r.claude === "OWNER_DEFERRED_CLAUDE_FILE_TRANSFER").every((r) => NEW_FILE_PRIMITIVES.has(r.id) || (COVERAGE_MAP[r.id]?.by ?? []).every((x) => NEW_FILE_PRIMITIVES.has(x))));
+    const HUMAN_REVIEWED = ["CALENDAR.CONNECT", "LABEL.ARTIST_SKETCH_SELF_EDIT", "LABEL.DJ_CONFIRM", "LABEL.PORTAL_PUSH_SUBSCRIBE", "NOTIFY.PUSH_CHECK", "NOTIFY.PUSH_SUBSCRIBE", "SHOW.DJ_CONFIRM", "SUNNY.CONNECTOR_OAUTH", "VICTOR.AVATAR"];
+    ok("G12e. the human boundaries are exactly the reviewed list (OAuth / device / another person) and each is a backend exclusion", JSON.stringify(Object.keys(HUMAN_BOUNDARIES).sort()) === JSON.stringify(HUMAN_REVIEWED) && HUMAN_REVIEWED.every((id) => COVERAGE_MATRIX.find((r) => r.id === id)?.claude === "HUMAN_INTERACTION_REQUIRED"));
+    ok("G12f. no census row is a feature Redbloods does not have (those are IMPROVEMENT_CANDIDATES)", IMPROVEMENT_CANDIDATES.every((c) => !COVERAGE_MATRIX.some((r) => r.id === c.id)));
+    ok("G12g. the file transfer is an Owner-deferred candidate, never a hidden gap", IMPROVEMENT_CANDIDATES.some((c) => c.id === "SUNNY.CLAUDE_FILE_TRANSFER"));
   }
 
   console.log("AGENTS.md");

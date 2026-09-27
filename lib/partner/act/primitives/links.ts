@@ -78,7 +78,7 @@ export const LINK_PRIMITIVES: readonly PrimitiveSpec[] = [
     async read(d, id) { const r = await d.productionLinks(id); return r ? { ...r.links } : null; },
     plan(a, cur) { const p = linkPatch(a, [...Object.keys(PRODUCTION_LINK_FIELDS), "addReferenceLink"]); if (p && (p as PlanRefusal).ok === false) return p as PlanRefusal; return finishPlan(cur, p as Fields); },
     async apply(d, id, after) { await d.setProductionLinks(id, toColumns(after, PRODUCTION_LINK_FIELDS), (after.addReferenceLink as string | undefined) ?? null); },
-    disclosuresHe: [...NEVER, "'מאושר' / 'גרסה מאושרת' לא נקבעים מזה (D7 לא הוחלט)"],
+    disclosuresHe: [...NEVER, "קישור הגרסה הסופית לא משנה סטטוס — 'מאושר' (D7) הוא אישור שלב, ונקבע רק בפעולת סטטוס"],
   },
   {
     actionId: "ADD_RF_VIDEO_REFERENCE", kinds: ["rf-production"],

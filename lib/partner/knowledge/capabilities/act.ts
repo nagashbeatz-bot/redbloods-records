@@ -14,7 +14,7 @@ import { bossCanSunnyCannot } from "../../act/coverage";
 import { COVERAGE_MATRIX, WAVE_PLAN, WORKFLOW_COVERAGE, coverageSummary } from "../../act/matrix";
 import { LIFECYCLES } from "../../act/transitions";
 import { buildActionTargets, NON_KEY_TARGETS, RESOLVE_KINDS, TARGET_KINDS } from "../../act/targets";
-import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, PROCESS_IMPROVEMENT_SIGNALS, nextStepsFor } from "../../act/next-step";
+import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, PROCESS_IMPROVEMENT_SIGNALS, nextStepsFor, stageCard } from "../../act/next-step";
 import type { ActionContract } from "../../act/types";
 import { byCount, item, partner, record, result, sfact, unavailable } from "./common";
 
@@ -92,16 +92,20 @@ export const actionRegistryCap: KnowledgeCapability = {
 
 export const nextStepsCap: KnowledgeCapability = {
   id: "next_steps", domain: "PARTNER", titleHe: "הצעד הבא — אצל מי הכדור ומה צפוי",
-  descriptionForModel: "Next-step models (proposals only, never executed, never a score): handoffs = whose move per workflow (reusing the app's own ball rules); expected = what Redbloods expects next per lifecycle state; step = candidate actions for one lifecycle state (params lifecycle + state); label = the label operating model; signals = process-improvement signals from known hardening findings. Stale ≠ urgent; the order is never a priority.",
+  descriptionForModel: "Next-step models (proposals only, never executed, never a score): handoffs = whose move per workflow (reusing the app's own ball rules); expected = what Redbloods expects next per lifecycle state; step = candidate actions for one lifecycle state (params lifecycle + state); stage = the STAGE CARD of one record: take lifecycle + state (+ last_event_at) from the record's live domain view → currentStage + Owner-decided meaning, lastRecordedEvent, nextExpectedEvent, expectedFrom, evidence, confidence, ownerAction, sunnyAction (typed actions Sunny can plan now, each after the Boss's approval) and blockingUnknowns; label = the label operating model; signals = process-improvement signals from known hardening findings. Stale ≠ urgent; the order is never a priority.",
   examplesHe: ["אצל מי הכדור?", "מה הצעד הבא בפרויקט במיקס?", "מה צפוי לקרות אחרי שהצעה נשלחה?", "מה אפשר לשפר בתהליך?"],
-  modes: { handoffs: { descriptionForModel: "Whose move per workflow" }, expected: { descriptionForModel: "Expected next event per lifecycle state (param lifecycle)" }, step: { descriptionForModel: "Candidate next actions (params lifecycle + state)" }, label: { descriptionForModel: "Label operating model" }, signals: { descriptionForModel: "Process-improvement signals" } }, defaultMode: "handoffs",
-  params: { lifecycle: { kind: "text", maxLength: 40, descriptionForModel: "a lifecycle id (e.g. PROJECT_STATUS, MIX_WORK_STATUS)" }, state: { kind: "text", maxLength: 40, descriptionForModel: "the current state value (Hebrew as stored)" } },
+  modes: { handoffs: { descriptionForModel: "Whose move per workflow" }, expected: { descriptionForModel: "Expected next event per lifecycle state (param lifecycle)" }, step: { descriptionForModel: "Candidate next actions (params lifecycle + state)" }, stage: { descriptionForModel: "The stage card of one record (params lifecycle + state from its live view; optional last_event_at)" }, label: { descriptionForModel: "Label operating model" }, signals: { descriptionForModel: "Process-improvement signals" } }, defaultMode: "handoffs",
+  params: { lifecycle: { kind: "text", maxLength: 40, descriptionForModel: "a lifecycle id (e.g. PROJECT_STATUS, MIX_WORK_STATUS)" }, state: { kind: "text", maxLength: 40, descriptionForModel: "the current state value (Hebrew as stored)" }, last_event_at: { kind: "text", maxLength: 40, descriptionForModel: "the record's last recorded timestamp (ISO) from its view, if any" } },
   paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 600, access: OWNER, needs: [],
   read(_src, q) {
     if (q.mode === "expected") return result(NEXT_EXPECTED_EVENT.filter((e) => !q.params.lifecycle || e.lifecycle === q.params.lifecycle).map((e, i) => item({ id: `${e.lifecycle}:${i}`, label: partner(`${e.lifecycle} · ${e.fromState}`), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { ...e } })));
     if (q.mode === "step") {
       const p = nextStepsFor(q.params.lifecycle ?? "", q.params.state ?? "");
       return p ? result([item({ id: `${p.lifecycle}:${p.state}`, label: partner(p.noteHe), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { ...p } })]) : result([], { completeness: "UNKNOWN", missing: [{ fact: "lifecycle / state", whyNeeded: "pass params.lifecycle (an id) + params.state (a value of that lifecycle)" }] });
+    }
+    if (q.mode === "stage") {
+      const c = stageCard(q.params.lifecycle ?? "", q.params.state ?? "", q.params.last_event_at ?? null);
+      return c ? result([item({ id: `${c.lifecycle}:${c.currentStage}`, label: partner(c.meaningEn ?? `${c.lifecycle} · ${c.currentStage}`), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { ...c } })]) : result([], { completeness: "UNKNOWN", missing: [{ fact: "lifecycle / state", whyNeeded: `lifecycle one of: ${LIFECYCLES.map((l) => l.id).join(", ")}` }] });
     }
     if (q.mode === "label") return result([item({ id: "label", label: partner(LABEL_OPERATING_MODEL.principleHe), epistemic: "OWNER_DECISION", source: "SYSTEM_CONTRACTS", fields: { ...LABEL_OPERATING_MODEL } })]);
     if (q.mode === "signals") return result(PROCESS_IMPROVEMENT_SIGNALS.map((s) => item({ id: s.id, label: partner(s.frictionEn), epistemic: "OBSERVATION", source: "SYSTEM_CONTRACTS", fields: { ...s } })));

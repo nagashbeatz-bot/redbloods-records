@@ -117,7 +117,7 @@ const CASES: FamilyCase<W>[] = [
   ok("a project with a managed production is not sent again", (await q("SEND_CLIP_TO_RED_FILMS", { project: J40 })).status === "NO_CHANGE_NEEDED");
   const pv = await q("SET_PRODUCTION_MONEY", { production: P2, clientPrice: 5000 });
   ok("planning ≠ spend is disclosed", pv.status === "PREVIEW" && JSON.stringify(pv).includes("תכנון ≠ הוצאה בפועל"));
-  ok("status מאושר is allowed as today's status (D7 still the Boss's decision)", (await q("UPDATE_PRODUCTION_DETAILS", { production: P2, status: "מאושר" })).status === "PREVIEW" && ACTION_REGISTRY.get("RF.MARK_PRODUCTION_APPROVED")?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION");
+  ok("status מאושר = D7 stage approval: plannable through the status primitive, and 'mark approved' is executable through it", (await q("UPDATE_PRODUCTION_DETAILS", { production: P2, status: "מאושר" })).status === "PREVIEW" && ACTION_REGISTRY.get("RF.MARK_PRODUCTION_APPROVED")?.availabilityDetail === "EXECUTABLE");
   ok("only cancelled productions are deleted permanently", (await q("DELETE_CANCELLED_PRODUCTIONS", { productions: `rf-production:${U(3)}, rf-production:${U(2)}` })).status === "NOT_CANCELLED");
   ok("no primitive writes a link / URL field", !RF_PRIMITIVES.some((p) => p.meta.args.some((a) => /link|url/i.test(a.name))));
   ok("money primitives are FINANCIAL; deletes are C3", ["SET_PRODUCTION_MONEY", "RECORD_RF_BUDGET_PAYMENT", "SET_CLIP_PRICE", "OPEN_CLIP_DEAL", "ADD_CLIP_PAYMENT"].every((id) => ACTION_REGISTRY.get(id)!.riskClass === "FINANCIAL") && ["DELETE_RF_BUDGET_LINE", "DELETE_RF_BUDGET_PAYMENT", "DELETE_CLIP_ROW", "PROMOTE_CLIP_ROW"].every((id) => ACTION_REGISTRY.get(id)!.confirmation === "C3_STRONG_APPROVAL"));
