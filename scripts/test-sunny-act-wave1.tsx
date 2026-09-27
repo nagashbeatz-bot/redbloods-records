@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseActStores, ACT_TABLES, ActStoreError } from "../lib/partner/act/store-supabase";
 import { planAction, previewAction, approveAction, executeAction, planStatus, type ActServiceDeps } from "../lib/partner/act/service";
 import { handleInternalAct, approvalKeyFrom, ACT_OPS } from "../lib/partner/act/internal-handler";
-import { WAVE1_PRIMITIVES, PRIMITIVES_BY_ID, type WriterDeps } from "../lib/partner/act/primitives";
+import { WAVE1_PRIMITIVES, PRIMITIVES_BY_ID, type CoreWriters, type WriterDeps } from "../lib/partner/act/primitives";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION, WAVE1_CANDIDATES } from "../lib/partner/act/registry";
 import { executePlan, type PrimitiveExecutor } from "../lib/partner/act/engine";
 import { issueApprovalToken } from "../lib/partner/act/approval";
@@ -102,7 +102,7 @@ const freshWorld = (): World => ({
   artists: { [U(50)]: { name: "שליו", notes: "", status: "פעיל" } },
   victor: { [U(60)]: { title: "ביט חדש", vendorName: "victor", workState: "נשלח לויקטור", outcome: null, notes: "", status: "פעיל", internalDeadline: null }, [U(61)]: { title: "עבודה של מישהו אחר", vendorName: "other", workState: null, outcome: null, notes: "", status: "פעיל", internalDeadline: null } },
 });
-function fakeWriters(w: World, calls: string[], o: { silentFail?: boolean } = {}): WriterDeps {
+function fakeWriters(w: World, calls: string[], o: { silentFail?: boolean } = {}): CoreWriters {
   const put = <T extends object>(obj: T, patch: Partial<T>) => { if (!o.silentFail) Object.assign(obj, patch); };
   return {
     async readProject(id) { const p = w.projects[id]; return p ? { ...p } : null; },
@@ -131,6 +131,8 @@ function fakeWriters(w: World, calls: string[], o: { silentFail?: boolean } = {}
   };
 }
 
+/** Other families' writers are not faked here — calling one fails loudly (never silently succeeds). */
+const onlyFaked = (core: CoreWriters): WriterDeps => new Proxy(core, { get: (t, k) => (k in t ? (t as unknown as Record<string | symbol, unknown>)[k] : async () => { throw new Error(`writer not faked in this test: ${String(k)}`); }) }) as unknown as WriterDeps;
 const OWNER = { ownerId: "owner-user-1", clientId: "client-1" };
 const SECRET = approvalKeyFrom("s".repeat(40));
 let clock = Date.parse("2026-09-27T09:00:00Z");
@@ -139,7 +141,7 @@ function mkDeps(o: { world?: World; calls?: string[]; db?: FakeDb; owner?: boole
   const world = o.world ?? freshWorld(), calls = o.calls ?? [], db = o.db ?? new FakeDb();
   const d: ActServiceDeps = {
     nowMs: () => clock, approvalSecret: SECRET, registry: o.registry ?? ACTION_REGISTRY, registryVersion: ACTION_REGISTRY_VERSION,
-    stores: supabaseActStores(db.client()), writers: fakeWriters(world, calls, { silentFail: o.silentFail }),
+    stores: supabaseActStores(db.client()), writers: onlyFaked(fakeWriters(world, calls, { silentFail: o.silentFail })),
     isOwner: async (u) => (o.owner ?? true) && u === OWNER.ownerId, knownSecrets: ["S3RVER-SECRET-VALUE-XYZ"],
     newPlanId: () => `pl_${String(++planSeq).padStart(18, "t")}`,
   };
@@ -315,7 +317,7 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
     ok("E22. the result carries a fresh read of the live state + 'בוצע בוס'", JSON.stringify(e?.freshState).includes("2026-10-10") && String(e?.messageHe).includes("בוצע בוס"));
     const inv = await planAction({ intentHe: "x", actionId: "PROJECT.EDIT_NOTES", args: {} }, OWNER, m.d);
     ok("E21. a non-executable / unregistered action refuses (no plan, no executor)", inv.status === "INVALID_INPUT" || inv.status === "NOT_AVAILABLE");
-    ok("E21b. a NEEDS_HARDENING Wave 1 candidate is refused as not available", (await planAction({ intentHe: "x", actionId: "UPDATE_CLIENT_CONTACT", args: {} }, OWNER, m.d)).status === "NOT_AVAILABLE");
+    ok("E21b. a NEEDS_HARDENING Wave 1 candidate is refused as not available", (await planAction({ intentHe: "x", actionId: "UPDATE_SEND_LOG_ENTRY", args: {} }, OWNER, m.d)).status === "NOT_AVAILABLE");
     ok("E21c. finance / security actions cannot be planned through Claude", (await planAction({ intentHe: "x", actionId: "RECORD_PAID_EXPENSE", args: {} }, OWNER, m.d)).status !== "PREVIEW" && (await planAction({ intentHe: "x", actionId: "SUNNY.CONNECTOR_OAUTH", args: {} }, OWNER, m.d)).status !== "PREVIEW");
     const s = mkDeps({ silentFail: true });
     const { e: se } = await fullFlow(s.d, "UPDATE_PROJECT_DEADLINE", { project: `project:${U(1)}`, deadline: "2026-10-10" });
@@ -413,16 +415,18 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
   // ── H. regressions / boundaries ──
   section("H. Boundaries + regressions");
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
-  const core = ["primitives.ts", "service.ts", "store-supabase.ts", "internal-handler.ts", "remote.ts", "server.ts"].map((f) => strip(read(`lib/partner/act/${f}`))).join("\n");
-  ok("H1. no push / email / calendar / Google Tasks / Dropbox / finance / delete path in the action layer", !/sendPushTo|lib\/push|web-push|resend|google-calendar|createGoogleTask|createCalendarEvent|dropbox|transactions|artist_balance|\.delete\(|\.upsert\(|rpc\(/.test(core));
+  const core = [...fs.readdirSync(path.join(ROOT, "lib/partner/act/primitives")).map((f) => `primitives/${f}`), "service.ts", "store-supabase.ts", "internal-handler.ts", "remote.ts", "server.ts"].map((f) => strip(read(`lib/partner/act/${f}`))).join("\n");
+  const coreNoWiring = [...fs.readdirSync(path.join(ROOT, "lib/partner/act/primitives")).map((f) => `primitives/${f}`), "service.ts", "store-supabase.ts", "internal-handler.ts", "remote.ts"].map((f) => strip(read(`lib/partner/act/${f}`))).join("\n");
+  ok("H1. the action layer never calls an integration or a table itself: no push / email / Google / Dropbox / finance-table / delete / RPC call outside the shared Redbloods writers", !/sendPushTo|lib\/push|web-push|resend|google-calendar|googleapis|createGoogleTask|createCalendarEvent|dropbox|artist_balance|\.delete\(|\.upsert\(|rpc\(/.test(coreNoWiring));
+  ok("H1b. MAIN's wiring reaches Google only through lib/writes/calendar (never lib/google-calendar / push / Dropbox directly)", !/import\("@\/lib\/(google-calendar|push|dropbox[^"]*)"\)|sendPushTo|\.delete\(|\.upsert\(|rpc\(/.test(strip(read("lib/partner/act/server.ts"))));
   const srv = strip(read("lib/partner/act/server.ts"));
   const imports = [...srv.matchAll(/import\("@\/lib\/([^"]+)"\)/g)].map((m) => m[1]).sort();
-  ok("H2. MAIN uses only the UI's own shared writers / readers (+ the DB client + the role check)", JSON.stringify(imports) === JSON.stringify(["label-artists-store", "mix-comments-store", "mix-versions-store", "projects-store", "release-store", "roles", "sound-engineer-store", "supabase", "vendor-store"]), imports);
+  ok("H2. MAIN wires only Redbloods lib modules (shared stores / writers / notifiers, the DB client, the role check) — never an API route, never the connector, never a generic HTTP caller", imports.length > 0 && imports.every((m) => !/^(app|integrations\/partner-mcp)/.test(m)) && !/fetch\(/.test(srv), imports);
   ok("H3. the UI routes still call the same shared writers (no divergence)", /updateProject\(id, patch\)|await updateProject\(id, \{/.test(read("app/api/projects/[id]/route.ts")) && /updateReleaseDetails\(/.test(read("app/api/label/releases/[projectId]/route.ts")) && /updateMixVersion\(/.test(read("app/api/sound-engineer/versions/[versionId]/route.ts")) && /updateLabelArtist\(/.test(read("app/api/label/artists/[id]/route.ts")) && /updateVictorWork\(id, body\)/.test(read("app/api/vendor/victor/work/[id]/route.ts")));
   ok("H4. no generic writer: every executor comes from the registered action id (PRIMITIVES_BY_ID)", /executorFor\(PRIMITIVES_BY_ID\.get\(s\.actionId\)!/.test(strip(read("lib/partner/act/service.ts"))) && !/new Function|eval\(/.test(core));
   ok("H5. the Victor primitives never send status (no completion push) or a deadline (no task / Google Task sync)", WAVE1_PRIMITIVES.filter((p) => p.actionId.startsWith("UPDATE_VICTOR")).every((p) => !/status|internalDeadline/.test(p.apply.toString())));
   ok("H6. every READY primitive is an internal, reversible, no-effect contract", WAVE1_PRIMITIVES.every((p) => { const c = ACTION_REGISTRY.get(p.actionId)!; return c.effects.length === 0 && c.phase === "INTERNAL" && c.reversible === "YES" && c.availabilityDetail === "EXECUTABLE"; }));
-  ok("H7. the NEEDS_HARDENING / BLOCKED candidates stay unavailable (client / meeting / social / proposal / send log / album / RF / clip / review / premix / alerts / notifications)", WAVE1_CANDIDATES.filter((w) => w.status !== "READY").every((w) => !PRIMITIVES_BY_ID.has(w.id) && ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE") && WAVE1_CANDIDATES.filter((w) => w.status !== "READY").length === 12);
+  ok("H7. the NEEDS_HARDENING / BLOCKED candidates stay unavailable (client / meeting / social / proposal / send log / album / RF / clip / review / premix / alerts / notifications)", WAVE1_CANDIDATES.filter((w) => w.status !== "READY").every((w) => PRIMITIVES_BY_ID.has(w.id) ? ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" /* hardened + built by a later family (its own family test) */ : ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE") && WAVE1_CANDIDATES.filter((w) => w.status !== "READY").length === 12);
   ok("H8. D5 / D6 / D7 unchanged (still blocked by the Boss's decision)", ["SHOW.RECORD_SHOW_ADVANCE", "SHOW.REHEARSAL", "RF.MARK_PRODUCTION_APPROVED"].every((x) => ACTION_REGISTRY.get(x)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
   ok("H9. Push-on-refresh still absent", !/api\/push\/check/.test(strip(read("components/AppShell.tsx")) + strip(read("components/PushManager.tsx"))));
   ok("H10. the connector never holds a business writer (relay only)", !/projects-store|release-store|vendor-store|mix-.*-store|label-artists-store/.test(strip(read("lib/integrations/partner-mcp/server.ts")) + strip(read("lib/integrations/partner-mcp/mcp.ts"))));

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listProjects, createProject } from "@/lib/projects-store";
+import { listProjects } from "@/lib/projects-store";
+import { createClientProject } from "@/lib/writes/projects";
 import { attachProjectSortMeta } from "@/lib/projects-sort-meta";
 import { attachCovers } from "@/lib/project-cover-store";
-import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { requireOwner } from "@/lib/require-auth";
 
 // GET /api/projects           — visible projects only (default)
@@ -37,25 +37,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "שם הפרויקט חסר" }, { status: 400 });
     }
 
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    const project = await createProject({
-      name:           name.trim(),
-      artist:         artist?.trim()        || "",
-      status:         status                || "לא התחיל",
-      start_date:     today,
-      deadline:       deadline              || null,
-      notes:          notes?.trim()         || "",
-      project_type:   projectType           || "",
-      parent_project: parentProject         || "",
-      // Projects created from the generic Projects UI / proposals are client work.
-      // Label releases are created explicitly via /api/label/projects.
-      project_business_type: "לקוח",
-    });
-
-    // Auto-create missing artists in clients table (fire-and-forget)
-    if (artist?.trim()) {
-      upsertArtistsFromProject(artist).catch(() => {});
-    }
+    // Projects created from the generic Projects UI / proposals are client work (label releases: /api/label/projects).
+    // Shared writer (lib/writes/projects) — the same one Sunny's CREATE_PROJECT primitive uses.
+    const project = await createClientProject({ name, artist, status, deadline, notes, projectType, parentProject });
 
     return NextResponse.json({ ok: true, id: project.id, project });
   } catch (err) {

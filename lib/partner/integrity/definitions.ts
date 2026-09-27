@@ -85,7 +85,7 @@ export const OWNER_COMPANY_DEFINITIONS: readonly OwnerCompanyDefinition[] = [
 export const SESSION_STATUS_VOCABULARY = {
   writers: {
     statuses: ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"],
-    files: ["app/api/sessions/route.ts", "app/api/sessions/auto-mark/route.ts", "components/ui/ProjectDrawer.tsx"],
+    files: ["lib/writes/sessions.ts", "app/api/sessions/route.ts", "app/api/sessions/auto-mark/route.ts", "components/ui/ProjectDrawer.tsx"],
   },
   legacyReaders: [
     { file: "lib/agent/rules.ts", expects: ["נקבע"] },

@@ -205,9 +205,10 @@ export const OTHER_CONSUMERS = {
   agentAlerts: "no video alert type exists.",
 } as const;
 
-export interface RfActionEntry { id: string; action: string; who: Who; enforcement: Enforcement; writes: string; finance: string | null; calendar: string | null; files: string | null; project: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY"; futurePrimitive: string; internal: { routes: readonly string[] } }
+/** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */
+export interface RfActionEntry { id: string; action: string; who: Who; enforcement: Enforcement; writes: string; finance: string | null; calendar: string | null; files: string | null; project: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE"; futurePrimitive: string; internal: { routes: readonly string[] } }
 type RA = Omit<RfActionEntry, "sunnyToday" | "internal"> & { routes: readonly string[] };
-const X = (e: RA): RfActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "KNOWLEDGE_ONLY", internal: { routes } }; };
+const X = (e: RA): RfActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "SEE_ACTION_COVERAGE", internal: { routes } }; };
 const RF = "app/api/red-films", PC = "app/api/projects/[id]/clip", CL = "app/api/clip-items";
 export const RF_ACTIONS: readonly RfActionEntry[] = [
   X({ id: "CREATE_PRODUCTION", action: "Create a Red Films production (new-production modal)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "production", finance: null, calendar: null, files: null, project: "optional link", destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "CREATE_VIDEO_PRODUCTION", routes: [`${RF}/productions/route.ts`] }),

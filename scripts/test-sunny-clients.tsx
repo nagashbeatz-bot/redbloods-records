@@ -111,16 +111,18 @@ function main() {
   check("every proposal status has semantics", CM.PROPOSAL_STATUS_SEMANTICS.map((s) => s.status).sort(), [...CM.CLIENT_VOCABULARIES.proposalStatuses].sort());
   ok("meeting statuses = the drawer's meeting status union", CM.CLIENT_VOCABULARIES.meetingStatuses.every((s) => read("components/clients/ClientDrawer.tsx").includes(`"${s}"`)));
   const walk = (d: string): string[] => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(`${d}/${e.name}`) : e.name === "route.ts" ? [`${d}/${e.name}`] : []);
-  const touching = walk("app/api").filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|["'`][^"'`]*\bclients\(|from "@\/lib\/clients-store"/.test(read(f))).sort();
+  const touching = walk("app/api").filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|["'`][^"'`]*\bclients\(|from "@\/lib\/clients-store"|from "@\/lib\/writes\/(clients|proposals)"/.test(read(f))).sort();
   check("every API route touching clients / proposals is inventoried", touching.filter((f) => !(f in CM.CLIENT_ROUTE_INVENTORY)), []);
   check("no stale route in the inventory", Object.keys(CM.CLIENT_ROUTE_INVENTORY).filter((f) => !touching.includes(f)), []);
+  const writers = fs.readdirSync(path.join(ROOT, "lib/writes")).map((f) => `lib/writes/${f}`).filter((f) => /\.from\(\s*["'](clients|proposals)["']\)|from "@\/lib\/clients-store"/.test(read(f))).sort();
+  check("every shared writer touching clients / proposals is inventoried (and none is stale)", JSON.stringify(writers), JSON.stringify(Object.keys(CM.CLIENT_WRITER_INVENTORY).sort()));
   for (const [f, want] of Object.entries(CM.CLIENT_REVIEWED_FINGERPRINTS)) {
     const got = createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex");
     check(`${f} unchanged since the last Sunny client review (update lib/partner/system/clients.ts + fingerprint together)`, got, want);
   }
   ok("every client action names existing routes", CM.CLIENT_ACTIONS.every((a) => a.internal.routes.length > 0 && a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r)))));
   ok("every mutating client / proposal route is covered by an action", ["app/api/clients/route.ts", "app/api/clients/[id]/route.ts", "app/api/proposals/route.ts", "app/api/proposals/[id]/route.ts", "app/api/proposals/[id]/convert/route.ts", "app/api/projects/sync-artists/route.ts"].every((r) => CM.CLIENT_ACTIONS.some((a) => a.internal.routes.includes(r))));
-  ok("no client / proposal action is executable by Sunny today", CM.CLIENT_ACTIONS.every((a) => a.sunnyToday === "KNOWLEDGE_ONLY"));
+  ok("client / proposal actions do not restate executability (the action coverage matrix is the one source)", CM.CLIENT_ACTIONS.every((a) => a.sunnyToday === "SEE_ACTION_COVERAGE"));
   ok("destructive actions carry the DESTRUCTIVE class", CM.CLIENT_ACTIONS.filter((a) => a.destructive).every((a) => a.approvalClass === "DESTRUCTIVE"));
   const reader = code(read("lib/partner/clients/detail-reader.ts"));
   ok("client detail reader is SELECT-only and scrubs free text", !/\.(insert|update|upsert|delete|rpc)\(/.test(reader) && /scrubSecrets/.test(reader) && CLIENT_DETAIL_SOURCES.length === 2);

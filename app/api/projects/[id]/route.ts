@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, updateProject, deleteProject } from "@/lib/projects-store";
-import { projectBaseFolder } from "@/lib/project-paths";
+import { freezeFolderPatch, statusPatch } from "@/lib/writes/projects";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { supabase } from "@/lib/supabase";
 import { listTasks, deleteTask } from "@/lib/tasks-store";
@@ -178,8 +178,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
       // Auto-manage end_date when status changes
       if (field === "status") {
-        const today = new Date().toISOString().split("T")[0];
-        patch.end_date = value === "הושלם" ? today : null;
+        patch.end_date = statusPatch(value).end_date;
       }
 
       // Freeze-before-rename: a name change must NEVER relocate the Dropbox
@@ -188,9 +187,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       // an existing dropbox_folder.
       if (field === "name") {
         const current = await getProject(id);
-        if (current && !((current.dropboxFolder ?? "").trim())) {
-          patch.dropbox_folder = projectBaseFolder(current.artist ?? "", current.name ?? "", id);
-        }
+        Object.assign(patch, freezeFolderPatch(current ? { id, artist: current.artist, name: current.name, dropboxFolder: current.dropboxFolder } : null));
       }
 
       await updateProject(id, patch);
@@ -246,19 +243,15 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (artist !== undefined || name !== undefined) {
       const current = await getProject(id);
       oldArtistFull = current?.artist ?? "";
-      if (name !== undefined && current && !((current.dropboxFolder ?? "").trim())) {
-        freezeFolder = projectBaseFolder(current.artist ?? "", current.name ?? "", id);
+      if (name !== undefined && current) {
+        freezeFolder = freezeFolderPatch({ id, artist: current.artist, name: current.name, dropboxFolder: current.dropboxFolder }).dropbox_folder ?? null;
       }
     }
 
-    const today = new Date().toISOString().split("T")[0];
     await updateProject(id, {
       ...(name           !== undefined && { name:           name.trim() }),
       ...(artist         !== undefined && { artist:         artist.trim() }),
-      ...(status         !== undefined && {
-        status,
-        end_date: status === "הושלם" ? today : null,
-      }),
+      ...(status         !== undefined && statusPatch(status)),
       ...(startDate      !== undefined && { start_date:     startDate || null }),
       ...(deadline       !== undefined && { deadline:       deadline || null }),
       ...(notes          !== undefined && { notes:          notes.trim() }),

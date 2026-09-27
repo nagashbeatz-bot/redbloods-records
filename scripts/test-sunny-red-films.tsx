@@ -120,7 +120,7 @@ function main() {
   ok(`every video route belongs to a family (${routes.length})`, routes.every((r) => RF.RF_ROUTE_GROUPS.some((g) => new RegExp(g.pattern).test(r))));
   const actionRoutes = new Set([...RF.RF_ACTIONS.flatMap((a) => a.internal.routes), ...RF.RF_READ_ROUTES]);
   check("every video route is an inventoried action or a known read route", routes.filter((r) => !actionRoutes.has(r)), []);
-  ok("every action route exists; no action is executable by Sunny", RF.RF_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "KNOWLEDGE_ONLY"));
+  ok("every action route exists; executability is served only by the action coverage matrix", RF.RF_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
   const scopeWriters = [...walk("app/api"), ...fs.readdirSync(path.join(ROOT, "components/ui")).map((f) => `components/ui/${f}`)].filter((f) => fs.statSync(path.join(ROOT, f)).isFile() && /expense_?[sS]cope:\s*(CLIP_SCOPE|"קליפ")|expenseScope:\s*"קליפ"/.test(code(read(f))));
   check("the known writers of expense scope קליפ (promote, clip payments, shoot-day expense)", scopeWriters.sort(), ["app/api/clip-items/[id]/promote/route.ts", "app/api/projects/[id]/clip/payments/route.ts", "components/ui/ProjectDrawer.tsx", "components/ui/ProjectDrawerV2.tsx" /* a local clip-deal summary preview, not a write */].sort());
   for (const [f, want] of Object.entries(RF.RF_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Red Films review (update lib/partner/system/red-films.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);

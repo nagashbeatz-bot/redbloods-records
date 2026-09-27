@@ -862,6 +862,30 @@ export async function getCalendarEvent(
   }
 }
 
+// ─── Read a single event with its descriptive fields (Sunny typed calendar actions) ──
+
+/**
+ * READ-ONLY. One event on the main calendar with summary / place / description and Israel-local start / end
+ * ("YYYY-MM-DDTHH:MM", or "YYYY-MM-DD" for all-day). null when missing or cancelled. Attendee emails are NOT returned
+ * (only a count), so a preview never copies a guest list.
+ */
+export async function getCalendarEventDetail(
+  eventId: string,
+  calendarId: string = CALENDAR_ID
+): Promise<{ summary: string; start: string; end: string; location: string; description: string; attendeeCount: number } | null> {
+  try {
+    const auth     = await getAuthenticatedClient();
+    const calendar = google.calendar({ version: "v3", auth });
+    const { data } = await calendar.events.get({ calendarId, eventId });
+    if (!data || data.status === "cancelled") return null;
+    const at = (x?: { dateTime?: string | null; date?: string | null } | null) =>
+      x?.dateTime ? `${ilDateStr(new Date(x.dateTime))}T${ilTimeStr(new Date(x.dateTime))}` : (x?.date ?? "");
+    return { summary: data.summary ?? "", start: at(data.start), end: at(data.end), location: data.location ?? "", description: data.description ?? "", attendeeCount: data.attendees?.length ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Event deletion ───────────────────────────────────────────────────────────
 
 export async function deleteCalendarEvent(
@@ -989,6 +1013,19 @@ export async function updateGoogleTaskDue(taskId: string, due: string): Promise<
     task:     taskId,
     requestBody: { due: `${due}T00:00:00.000Z` },
   });
+}
+
+/** READ-ONLY. One Google Task (title / due YYYY-MM-DD / status) from the default list; null when missing / deleted. */
+export async function getGoogleTaskDetail(taskId: string): Promise<{ title: string; due: string | null; status: string } | null> {
+  try {
+    const auth  = await getAuthenticatedClient();
+    const tasks = google.tasks({ version: "v1", auth });
+    const { data } = await tasks.tasks.get({ tasklist: "@default", task: taskId });
+    if (!data || data.deleted) return null;
+    return { title: data.title ?? "", due: data.due ? data.due.slice(0, 10) : null, status: data.status ?? "" };
+  } catch {
+    return null;
+  }
 }
 
 /** Deletes a task from the user's default Google Tasks list by task id. */

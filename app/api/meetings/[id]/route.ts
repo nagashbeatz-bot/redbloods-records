@@ -1,41 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { updateMeeting, deleteMeeting } from "@/lib/writes/meetings";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PATCH /api/meetings/[id]
+// PATCH /api/meetings/[id] — shared writer (lib/writes/meetings): the Google event follows a date / time / place change.
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
     const body = await req.json();
-
-    const allowed = ["date", "time", "duration", "location", "notes", "status", "project_id"];
-    const updates: Record<string, unknown> = {};
-    for (const k of allowed) {
-      if (k in body) updates[k] = body[k];
-    }
-
-    const { data, error } = await supabase
-      .from("meetings")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, meeting: data });
+    const r = await updateMeeting(id, body);
+    return NextResponse.json({ ok: true, meeting: r.meeting, calendarSynced: r.calendarSynced });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאה" }, { status: 500 });
   }
 }
 
-// DELETE /api/meetings/[id]
+// DELETE /api/meetings/[id] — shared writer: the linked Google event is removed too (best-effort).
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    const { error } = await supabase.from("meetings").delete().eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    const r = await deleteMeeting(id);
+    return NextResponse.json({ ok: true, calendarRemoved: r.calendarRemoved });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאה" }, { status: 500 });
   }

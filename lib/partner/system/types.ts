@@ -127,8 +127,9 @@ export interface BusinessActionContract {
   approval: Approval;
   /** The confirmation classes a Sunny primitive for this action must enforce (derived from risk + explicit extras). */
   confirmations: readonly ConfirmationClass[];
-  /** Whether Sunny itself can execute it today. Always false in this baseline (approval / execution happen in the dashboard). */
-  sunnyCanExecuteToday: false;
+  /** Whether Sunny can execute it through Claude today (each time only after the Owner approves the exact preview).
+   *  Guarded against drift by G10 (lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES). */
+  sunnyCanExecuteToday: boolean;
   /** The Partner action type id when VALIDATED_ACTION_EXISTS. */
   primitive?: string;
   /** Why it is not YET available to Sunny / what a primitive must handle. */

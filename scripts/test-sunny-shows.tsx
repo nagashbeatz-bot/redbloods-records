@@ -109,7 +109,7 @@ function main() {
   check("every show-related route belongs to a route family", routes.filter((f) => !SM.SHOW_ROUTE_GROUPS.some((g) => new RegExp(g.pattern).test(f))), []);
   for (const [f, want] of Object.entries(SM.SHOW_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny show review (update lib/partner/system/shows.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   ok("fingerprints cover every reviewed file", Object.keys(SM.SHOW_REVIEWED_FINGERPRINTS).length === SM.SHOW_REVIEWED_FILES.length);
-  ok("every show action names existing routes; none executable", SM.SHOW_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "KNOWLEDGE_ONLY"));
+  ok("every show action names existing routes; executability is served only by the action coverage matrix", SM.SHOW_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
   const view = code(read("lib/partner/shows/view.ts"));
   ok("money reuses the app's own split + rehearsal rule (no second rule)", /computeShowSplit\(/.test(view) && /rehearsalCountedAmount\(/.test(view) && !/\/\s*2\b/.test(view.replace(/net \/ 2/g, "")));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/shows-deep.ts"))));

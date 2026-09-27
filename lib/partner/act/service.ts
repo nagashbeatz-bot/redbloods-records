@@ -21,7 +21,7 @@ import { executePlan, type AuditStore, type IdempotencyStore, type PrimitiveExec
 import type { NonceStore } from "./approval";
 import type { PlanStore } from "./store-supabase";
 import { planSafeValue, toPersistablePlan, safeDetail } from "./persist";
-import { executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, type Fields, type WriterDeps } from "./primitives";
+import { currentOf, executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, type Fields, type WriterDeps } from "./primitives";
 import { validateActInput } from "./mcp-tools";
 import { nextStepsFor } from "./next-step";
 
@@ -71,7 +71,7 @@ const executableContract = (id: string, d: ActServiceDeps) => {
 async function liveView(step: PlanStep, d: ActServiceDeps) {
   const spec = PRIMITIVES_BY_ID.get(step.actionId)!;
   const id = step.entities[0].slice(step.entities[0].indexOf(":") + 1);
-  const cur = await spec.read(d.writers, id);
+  const cur = await currentOf(spec, d.writers, step);
   const planned = cur ? spec.plan(step.args, cur) : null;
   const fp = fieldsFingerprint(step.actionId, id, cur);
   return {
@@ -116,7 +116,8 @@ export async function planAction(input: { intentHe: unknown; actionId: unknown; 
   if (!persistable.ok) return refused("NOT_PERSISTABLE", "הבקשה מכילה תוכן שאסור לשמור (סוד / נתיב / קישור) — נסח אותה בלי זה", { codes: [...new Set(persistable.problems.map((x) => x.code))] });
   const { planHash: hash } = await d.stores.plans.save(persistable.json, d.registry, d.registryVersion, d.knownSecrets);
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PLAN_CREATED", step: null, detail: `${actionId}@${contract.version}`, ownerId: c.ownerId, clientId: c.clientId });
-  const preview = buildPreview(persistable.json, d.registry);
+  const requiredValues = spec.requiredValues?.(args, p.after) ?? [];
+  const preview = buildPreview(persistable.json, d.registry, { requiredConfirmationValues: requiredValues, duplicateWarningsHe: spec.warnings?.(t.fields) ?? [] });
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PREVIEWED", step: null, detail: "server-side preview returned", ownerId: c.ownerId, clientId: c.clientId });
   return {
     status: "PREVIEW", planId: plan.planId, planHash: hash, expiresAt: plan.expiresAt,
@@ -150,7 +151,7 @@ export async function approveAction(input: { planId: unknown; planHash: unknown;
   if (d.nowMs() > Date.parse(plan.expiresAt)) return refused("EXPIRED", "התוכנית פגה — צריך תצוגה חדשה");
   const text = typeof input.confirmationText === "string" ? input.confirmationText.trim() : "";
   if (!text || text.length > 500) return refused("APPROVAL_MISSING", "צריך את האישור המפורש שלך, בוס");
-  const pv = buildPreview(plan, d.registry);
+  const pv = buildPreview(plan, d.registry, { requiredConfirmationValues: requiredValuesOf(plan) });
   if (pv.requiredConfirmationValues.some((v) => !text.includes(v))) return refused("CONFIRMATION_VALUES_MISSING", "האישור צריך לחזור על הערכים המדויקים", { requiredConfirmationValues: pv.requiredConfirmationValues });
   const token = issueApprovalToken(d.approvalSecret, { planHash: hash, ownerId: c.ownerId, clientId: c.clientId, nowMs: d.nowMs(), requiredValues: pv.requiredConfirmationValues });
   // the token and the confirmation text are returned to the caller only — never stored
@@ -176,7 +177,7 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
   const s0 = plan.steps[0];
   const spec = PRIMITIVES_BY_ID.get(s0.actionId)!;
   const id = s0.entities[0].slice(s0.entities[0].indexOf(":") + 1);
-  const now: Fields | null = await spec.read(d.writers, id);
+  const now: Fields | null = id === "new" ? null : await spec.read(d.writers, id);
   const next = nextStepFor(s0.actionId, now);
   const ok = out.status === "APPLIED_AS_EXPECTED" || out.status === "NO_CHANGE";
   return {
@@ -185,6 +186,14 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
     nextStep: next ? { ...next, epistemic: "DERIVED" } : null,
     messageHe: ok ? (out.status === "NO_CHANGE" ? "בוס, לא היה מה לשנות — המצב כבר כזה" : "בוצע בוס — בדקתי מחדש והשינוי קיים") : out.status === "STALE" ? "בוס, המצב השתנה מאז התצוגה, לא ביצעתי כלום. צריך תצוגה חדשה" : "בוס, הפעולה לא בוצעה — הנה מה שקרה",
   };
+}
+/** The exact values the Boss's approval must repeat, recomputed deterministically from the stored plan. */
+function requiredValuesOf(plan: Plan): string[] {
+  return plan.steps.flatMap((s) => {
+    const spec = PRIMITIVES_BY_ID.get(s.actionId);
+    const after = Object.fromEntries(s.changes.map((c) => [c.field, c.after])) as Fields;
+    return spec?.requiredValues?.(s.args, after) ?? [];
+  });
 }
 function nextStepFor(actionId: string, now: Fields | null) {
   if (!now) return null;

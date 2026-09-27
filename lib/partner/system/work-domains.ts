@@ -114,7 +114,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     vocabularies: { status: ["נקבעה", "התקיימה", "בוטלה"] },
     relations: [{ to: "CLIENT", via: "client id text", quality: "CANONICAL_RELATION", note: "no FK; name snapshot can drift" }, { to: "PROJECT", via: "project id text", quality: "CANONICAL_RELATION" }, { to: "CALENDAR_EVENT", via: "stored event id", quality: "CANONICAL_RELATION" }],
     internal: {
-      routes: [rt("app/api/meetings/route.ts", "GET/POST", "PROXY_ONLY", "books a meeting (+ Google event when requested)"), rt("app/api/meetings/[id]/route.ts", "PATCH/DELETE", "PROXY_ONLY", "edits date/time/duration/location/notes/status/project; DELETE removes the row — neither touches the Google event")],
+      routes: [rt("app/api/meetings/route.ts", "GET/POST", "PROXY_ONLY", "books a meeting (+ Google event when requested)"), rt("app/api/meetings/[id]/route.ts", "PATCH/DELETE", "PROXY_ONLY", "edits date/time/duration/location/notes/status/project — since 2026-09-27 the linked Google event follows a date / time / duration / place change; DELETE removes the row and its Google event (best-effort)")],
       vocabularySources: { status: { file: "components/clients/ClientDrawer.tsx", pattern: "MEETING_STATUS_COLOR[^=]*=\\s*\\{([^}]+)\\}" } },
     },
     rules: [

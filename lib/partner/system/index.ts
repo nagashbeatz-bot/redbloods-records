@@ -37,7 +37,8 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
     if (d.support.read === "FULL" && d.freshness === "NOT_CONNECTED") e.push(`${d.id}: FULL read cannot be NOT_CONNECTED`);
     if (d.support.learn !== "MISSING" && d.support.learn !== "INTENTIONALLY_UNAVAILABLE" && d.learnKinds.length === 0) e.push(`${d.id}: learn ${d.support.learn} but no knowledge kind`);
     // Universal Action Layer Wave 1 (2026-09-27): SUNNY_CORE (the action layer) may be PARTIAL — never FULL / never "forbidden forever".
-    if (d.support.execute !== "NOT_YET_EXECUTABLE" && d.support.execute !== "MISSING" && !(d.id === "SUNNY_CORE" && d.support.execute === "PARTIAL")) e.push(`${d.id}: Sunny execute is NOT_YET_EXECUTABLE in this baseline (never "forbidden forever")`);
+    if (d.support.execute !== "NOT_YET_EXECUTABLE" && d.support.execute !== "MISSING" && d.support.execute !== "PARTIAL") e.push(`${d.id}: Sunny execute is NOT_YET_EXECUTABLE or PARTIAL (typed, Owner-approved actions) — never FULL, never "forbidden forever"`);
+    if (d.support.execute === "PARTIAL" && d.approval !== "OWNER_CONFIRMATION_IN_CONVERSATION") e.push(`${d.id}: an executable domain is approved by the Owner in the conversation (per action)`);
     for (const r of d.rules) if (!/^[A-Z][A-Z0-9_]{2,50}$/.test(r.id)) e.push(`${d.id}.${r.id}: bad rule id`);
     for (const n of d.notifications ?? []) if (n.sunnyMayTrigger !== false) e.push(`${d.id}.${n.id}: Sunny may never trigger notifications`);
     if (!d.limitationsHe.every((l) => l.length > 0)) e.push(`${d.id}: empty limitation`);
@@ -53,7 +54,7 @@ export function validateSystemRegistry(o: { capabilityIds: readonly string[]; kn
     if (a.class === "VALIDATED_ACTION_EXISTS" && !a.primitive && a.id !== "ANSWER_QUESTION") e.push(`action ${a.id}: validated but no primitive`);
     if (a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY" && !a.confirmations.includes("OWNER_APPROVAL_REQUIRED")) e.push(`action ${a.id}: every mutation needs OWNER_APPROVAL_REQUIRED`);
     if (a.class === "SECURITY_RESTRICTED" && a.domain !== "PLATFORM_ACCESS") e.push(`action ${a.id}: SECURITY_RESTRICTED is only for auth / roles / credentials`);
-    if (a.sunnyCanExecuteToday !== false) e.push(`action ${a.id}: no action is executable by Sunny in this baseline`);
+    if (a.sunnyCanExecuteToday && a.class === "SECURITY_RESTRICTED") e.push(`action ${a.id}: a security-restricted action is never executable by Sunny`);
     if (a.financialRisk === "HIGH" && !a.confirmations.includes("FINANCIAL_CONFIRMATION_REQUIRED") && a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY") e.push(`action ${a.id}: high financial risk needs FINANCIAL_CONFIRMATION_REQUIRED`);
     if (a.externalRisk !== "NONE" && !a.confirmations.includes("EXTERNAL_EFFECT_CONFIRMATION_REQUIRED") && a.class !== "READ_ONLY" && a.class !== "LEARN_ONLY") e.push(`action ${a.id}: external effects need EXTERNAL_EFFECT_CONFIRMATION_REQUIRED`);
   }

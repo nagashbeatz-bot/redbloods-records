@@ -233,9 +233,10 @@ export const ARTIST_PUSHES: ReadonlyArray<{ id: string; trigger: string; recipie
   { id: "PORTAL_PRESENCE", trigger: "artist opens the portal", recipients: "Owner", source: "PAGE_LOAD", dedupe: "per tab session + 60 s", marker: "last entry", deepLink: null, guard: "production" },
 ];
 
-export interface LabelActionEntry { id: string; area: "ARTIST" | "RELEASE" | "BEATS" | "LEDGER" | "CYCLES" | "MEDIA" | "SHOWS" | "SESSIONS" | "PORTAL" | "AVAILABILITY" | "SKETCHES" | "NOTIFY"; action: string; who: Who | "ARTIST"; enforcement: Enforcement; entryPoint: string; writes: string; sideEffects: string; finance: string | null; calendar: string | null; push: string | null; external: boolean; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY"; futurePrimitive: string; internal: { routes: readonly string[] } }
+/** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */
+export interface LabelActionEntry { id: string; area: "ARTIST" | "RELEASE" | "BEATS" | "LEDGER" | "CYCLES" | "MEDIA" | "SHOWS" | "SESSIONS" | "PORTAL" | "AVAILABILITY" | "SKETCHES" | "NOTIFY"; action: string; who: Who | "ARTIST"; enforcement: Enforcement; entryPoint: string; writes: string; sideEffects: string; finance: string | null; calendar: string | null; push: string | null; external: boolean; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE"; futurePrimitive: string; internal: { routes: readonly string[] } }
 type LA = Omit<LabelActionEntry, "sunnyToday" | "internal"> & { routes: readonly string[] };
-const X = (e: LA): LabelActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "KNOWLEDGE_ONLY", internal: { routes } }; };
+const X = (e: LA): LabelActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "SEE_ACTION_COVERAGE", internal: { routes } }; };
 const AR = "app/api/label/artists/[id]";
 
 export const LABEL_ACTIONS: readonly LabelActionEntry[] = [

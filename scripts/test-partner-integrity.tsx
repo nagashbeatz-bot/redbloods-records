@@ -206,7 +206,7 @@ void (async () => {
   check("Agent Alerts untouched", diff("lib/agent"), "");
   check("no migration added", diff("supabase"), "");
   ok("the Gateway reaches the register only through the CompanyReadContext (server) and types — never by building it", !/buildCompanyIntegrityRegister|integrity\/detectors/.test(fs.readdirSync(path.join(root, "lib/partner/gateway")).map((f) => read(`lib/partner/gateway/${f}`)).join("\n")));
-  ok("session writers really store the declared statuses", SESSION_STATUS_VOCABULARY.writers.files.some((fl) => read(fl).includes("התקיים")) && read("app/api/sessions/route.ts").includes("מתוכנן"));
+  ok("session writers really store the declared statuses", SESSION_STATUS_VOCABULARY.writers.files.some((fl) => read(fl).includes("התקיים")) && read("lib/writes/sessions.ts").includes("מתוכנן"));
   ok("legacy readers really expect the declared statuses", SESSION_STATUS_VOCABULARY.legacyReaders.every((r) => r.expects.every((s) => read(r.file).includes(`"${s}"`))));
   ok("both Steven writers exist in code", STEVEN_PAYMENT_WRITERS.every((w) => read(w.file).includes(w.marker)));
   check("PORTAL_ARTISTS = the roster (supporting source)", Object.keys(PORTAL_ARTISTS).sort(), [...LABEL_ROSTER_DEFINITION.rosterNames].sort());

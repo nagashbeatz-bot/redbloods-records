@@ -175,8 +175,10 @@ export const PROJECT_INTEGRITY = {
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "33977432a48347e93dfe0d4bac8c450b71fe1d9bac34bf3a5596545ae8beb22f",
   "lib/types.ts": "f1a0d3b1450c72b2cf50edafd1900d4fef1f6cdead9864227b0e2074d96363a8",
-  "app/api/projects/route.ts": "0d47fb66bc1bef0f008ac05bc32579643eb9739a39f5838b1e3e766caf713b92",
-  "app/api/projects/[id]/route.ts": "09e3269e3451bf9271c6d05f3ec31ee124c378aa048bb97844a784d68a286229",
+  // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
+  // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
+  "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
+  "app/api/projects/[id]/route.ts": "064774379a5e280ef713c6c382fde313a9438ea37b6039430fb4f5e2ea85448e",
   "lib/payment-status.ts": "f2a0e2c061e0862c0595918d0389c17cc156f73d646e7c7891054d51baf538e8",
   "lib/clip-finance.ts": "c862ac29cd8849cd1a0234bea8f79ff6715b7d303ae21f285f76b4b1b70a492b",
   "lib/finance/classify.ts": "7a40590e70ca5c22423d1bbe88352aa7cc64a72252c54d1b0a651a3c4beded9f",

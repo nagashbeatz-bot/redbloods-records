@@ -8,7 +8,8 @@
  *                  the label operating model and process-improvement signals. Proposals only — nothing executes.
  */
 import type { KnowledgeCapability, KnowledgeItem } from "../types";
-import { ACTION_CONTRACTS, ACTION_REGISTRY, ACTION_REGISTRY_VERSION, WAVE1_CANDIDATES } from "../../act/registry";
+import { ACTION_CONTRACTS, ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "../../act/registry";
+import { ALL_PRIMITIVES } from "../../act/primitives";
 import { bossCanSunnyCannot } from "../../act/coverage";
 import { COVERAGE_MATRIX, WAVE_PLAN, WORKFLOW_COVERAGE, coverageSummary } from "../../act/matrix";
 import { LIFECYCLES } from "../../act/transitions";
@@ -22,6 +23,14 @@ const served = (c: ActionContract) => {
   return { ...rest, meaningHe: c.meaningHe ?? null };
 };
 const row = (c: ActionContract): KnowledgeItem => item({ id: c.id, label: partner(c.meaningHe ?? c.meaningEn), epistemic: "FACT", source: "SYSTEM_CONTRACTS", fields: served(c) as unknown as Record<string, unknown> });
+/** Derived from the ONE primitive list — never a hand-kept count. */
+function liveCoverageHe(): string {
+  const n = ALL_PRIMITIVES.length;
+  const eff = new Set(ALL_PRIMITIVES.flatMap((p) => p.meta.effects));
+  const has = (e: string) => eff.has(e as never);
+  const ext = [has("CALENDAR") ? "יומן Google" : "", has("GOOGLE_TASKS") ? "Google Tasks" : "", has("EMAIL") ? "הזמנות שגוגל שולח במייל" : "", has("PUSH") ? "Push שהאפליקציה עצמה שולחת" : "", has("DELETION") ? "מחיקות" : "", has("FINANCE") ? "כספים" : "", has("FILES") ? "קבצים" : ""].filter(Boolean);
+  return `${n} פעולות רשומות ומוקלדות. דרך Claude כל אחת פועלת רק אחרי שהפעלת את הרשאת הפעולות, ורק אחרי שאישרת את התצוגה המדויקת שלה (מחיקות, כסף והזמנות — רק כשחזרת על הערכים המדויקים). השפעות שכבר אפשריות, תמיד מוצגות לפני האישור: ${ext.join(", ") || "אין"}. אין גישת כתיבה כללית, ואף פעם לא סיסמאות / טוקנים / הרשאות.`;
+}
 const APPROVAL_RULE_HE = "כל שינוי, בוס, מחכה לאישור המפורש שלך על התצוגה המדויקת. רמת סיכון לא מתירה ביצוע בלי אישור.";
 
 export const actionRegistryCap: KnowledgeCapability = {
@@ -67,7 +76,7 @@ export const actionRegistryCap: KnowledgeCapability = {
     const g = bossCanSunnyCannot();
     return result([
       item({ id: "gap", label: partner("מה אתה יכול לעשות ב-Redbloods וסאני עוד לא"), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { ...g } }),
-      item({ id: "wave1", label: partner("מועמדות לגל 1 (לא מומש — מחכה ל-GO שלך)"), epistemic: "FACT", source: "SYSTEM_CONTRACTS", fields: { candidates: WAVE1_CANDIDATES.map((w) => ({ id: w.id, he: w.he })) } }),
+      item({ id: "live", label: partner("פעולות שסאני יכולה לבצע עכשיו (כל אחת רק אחרי האישור המפורש שלך)"), epistemic: "DERIVED", source: "SYSTEM_CONTRACTS", fields: { byDomain: byCount(ALL_PRIMITIVES.map((p) => p.meta.domain)), actions: ALL_PRIMITIVES.map((p) => ({ id: p.actionId, he: p.meta.he, effects: p.meta.effects })) } }),
     ], {
       summary: [
         sfact("REGISTRY_VERSION", "גרסת רישום הפעולות", ACTION_REGISTRY_VERSION, "FACT", "SYSTEM_CONTRACTS"),
@@ -75,7 +84,7 @@ export const actionRegistryCap: KnowledgeCapability = {
         sfact("WAVES", "פעולות לפי גל", byCount(ACTION_CONTRACTS.map((c) => c.wave)), "DERIVED", "SYSTEM_CONTRACTS"),
         sfact("APPROVAL_RULE", "כלל האישור", APPROVAL_RULE_HE, "OWNER_DECISION", "SYSTEM_CONTRACTS"),
       ],
-      coverage: [partner("גל 1: 13 פעולות פנימיות והפיכות מוכנות. דרך Claude הן פועלות רק אחרי שהפעלת את הרשאת הפעולות, וכל אחת רק אחרי שאישרת את התצוגה המדויקת שלה. רישום הוצאה ששולמה נשאר בדשבורד בלבד. בלי כספים, יומן, קבצים, מחיקות, Push או הודעות.")],
+      coverage: [partner(liveCoverageHe())],
     });
   },
 };

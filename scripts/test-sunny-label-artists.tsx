@@ -124,7 +124,7 @@ function main() {
   ok("route inventory is substantial (≥ 80 routes)", labelRoutes.length >= 80);
   for (const [f, want] of Object.entries(LM.LABEL_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny label review (update lib/partner/system/label-artists.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   ok("every label action names existing routes", LM.LABEL_ACTIONS.every((a) => a.internal.routes.length > 0 && a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r)))));
-  ok("no label action executable by Sunny today", LM.LABEL_ACTIONS.every((a) => a.sunnyToday === "KNOWLEDGE_ONLY"));
+  ok("label actions do not restate executability (the action coverage matrix is the one source)", LM.LABEL_ACTIONS.every((a) => a.sunnyToday === "SEE_ACTION_COVERAGE"));
   ok("destructive actions carry the DESTRUCTIVE class", LM.LABEL_ACTIONS.filter((a) => a.destructive && a.area === "BEATS").every((a) => a.approvalClass === "DESTRUCTIVE"));
   ok("every artist push is mapped with a source and dedupe; Sunny never sends", LM.ARTIST_PUSHES.length >= 14 && LM.ARTIST_PUSHES.every((p) => p.source && p.dedupe));
   ok("18 workflows classified", LM.ARTIST_WORKFLOWS.length === 18 && LM.ARTIST_WORKFLOWS.every((w) => ["SUPPORTED", "PARTIAL", "NOT_SUPPORTED"].includes(w.support)));

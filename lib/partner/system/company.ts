@@ -322,6 +322,7 @@ export const APPROVAL_MODEL = ["read = no approval", "durable Owner knowledge: p
 // ── repo → Sunny coverage (every non-partner lib module) ─────────────────────────────────────────────────────────────
 export type ModuleClass = "DOMAIN_OWNED" | "CROSS_DOMAIN" | "INFRASTRUCTURE" | "SECRET_SECURITY" | "LEGACY" | "UI_ONLY";
 export const REPO_COVERAGE: ReadonlyArray<{ pattern: string; cls: ModuleClass; domain: string; note: string }> = [
+  { pattern: "^lib/writes/", cls: "CROSS_DOMAIN", domain: "ALL (Universal Actions)", note: "shared validated writers used by BOTH the UI routes and Sunny's typed primitives (extracted from the routes, identical behaviour)" },
   { pattern: "^lib/(vendor-|victor-)", cls: "DOMAIN_OWNED", domain: "VICTOR", note: "Victor store / scope / notify / salary / i18n" },
   { pattern: "^lib/(sound-engineer|mix-|final-file|steven-|riddim-|owner-steven)", cls: "DOMAIN_OWNED", domain: "MIX_PIPELINE / STEVEN", note: "" },
   { pattern: "^lib/(clip-|label-clips)", cls: "DOMAIN_OWNED", domain: "CLIPS / RED_FILMS", note: "" },

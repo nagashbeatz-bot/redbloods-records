@@ -16,6 +16,9 @@
  */
 import { ACTION_CONTRACTS, NEEDS_HARDENING } from "./registry";
 import { WORKFLOW_EVENT_MAP } from "./business-events";
+import { COVERAGE_MAP } from "./coverage-map";
+import { ALL_PRIMITIVES } from "./primitives";
+const PRIMITIVE_IDS = new Set(ALL_PRIMITIVES.map((p) => p.actionId));
 import type { ActionContract, ConfirmationClass, EffectKey, Wave } from "./types";
 
 export type CoverageClass = "EXECUTABLE" | "NEEDS_HARDENING" | "BLOCKED_BY_MISSING_CAPABILITY" | "INTENTIONALLY_SECURITY_EXCLUDED";
@@ -88,23 +91,6 @@ const OVERRIDES: Readonly<Record<string, Partial<CoverageRow>>> = {
   "PEOPLE.PORTAL_PING": { klass: "INTENTIONALLY_SECURITY_EXCLUDED", exclusionKind: "IDENTITY_BOUND_OTHER_USER", requiredWork: null, targetWave: "NONE" },
   UPDATE_PREMIX_NOTE: { klass: "NEEDS_HARDENING", targetWave: "W2", requiredWork: "expose pre-mix note keys in the mix read view (addressability), then the typed primitive over updateMixTargetNote" },
   MARK_AGENT_ALERT_HANDLED: { klass: "NEEDS_HARDENING", targetWave: "W2", requiredWork: "expose alert ids in a read view + the typed primitive preserving the kill-switch rule (only the exempt alert type while rules are off; never by type, never bulk)" },
-  UPDATE_MEETING: { targetWave: "W4" },
-};
-
-/** Broad inventory operations whose business outcome is ALREADY fully executable through a live Wave 1 primitive. */
-const FULLY_COVERED_BY: Readonly<Record<string, string>> = {
-  "PROJECT.EDIT_NOTES": "UPDATE_PROJECT_NOTES", "PROJECT.EDIT_START_DATE": "UPDATE_PROJECT_PLANNING", "PROJECT.EDIT_PLANNED": "UPDATE_PROJECT_PLANNING",
-  "PROJECT.EDIT_TYPE": "UPDATE_PROJECT_TYPE_OR_PARENT", "PROJECT.EDIT_PARENT": "UPDATE_PROJECT_TYPE_OR_PARENT",
-  "PROJECT.UPDATE_RELEASE": "UPDATE_RELEASE_DETAILS + CHANGE_RELEASE_STAGE", "LABEL.UPDATE_RELEASE": "UPDATE_RELEASE_DETAILS + CHANGE_RELEASE_STAGE",
-  "MIX.RESOLVE_COMMENT": "RESOLVE_MIX_COMMENT + REOPEN_MIX_COMMENT",
-};
-/** Broad operations PARTLY covered today: the rest stays in its wave. */
-const PARTLY_COVERED_BY: Readonly<Record<string, string>> = {
-  "LABEL.UPDATE_LABEL_ARTIST": "UPDATE_LABEL_ARTIST_NOTES_STATUS (notes / status live; name / image remain)",
-  "VICTOR.CHANGE_STATUS": "UPDATE_VICTOR_WORK_STATE + UPDATE_VICTOR_OUTCOME (live; status → הושלם with its completion push remains W6)",
-  "MIX.EDIT_OR_DELETE_VERSION": "UPDATE_MIX_VERSION_STATUS_OR_LABEL (edit live; file delete remains W7)",
-  "PROJECT.EDIT_DEADLINE": "UPDATE_PROJECT_DEADLINE (the deadline itself is live; the UI path's communication side remains W6)",
-  "VICTOR.EDIT_BRIEF": "UPDATE_VICTOR_NOTES (internal notes live; brief files / references remain W5)",
 };
 
 const VERIFY: Readonly<Record<EffectKey, string>> = {
@@ -141,8 +127,11 @@ export function coverageOf(c: ActionContract): CoverageRow {
   else if (d === "EXECUTABLE_VIA_DASHBOARD_APPROVAL") Object.assign(base, { requiredWork: "wire into the universal pipeline", targetWave: "W3" });
   const o = OVERRIDES[c.id];
   if (o) Object.assign(base, o);
-  if (FULLY_COVERED_BY[c.id]) Object.assign(base, { klass: "EXECUTABLE", targetWave: "LIVE", requiredWork: null, ownerEquivalent: FULLY_COVERED_BY[c.id] });
-  if (PARTLY_COVERED_BY[c.id]) base.ownerEquivalent = PARTLY_COVERED_BY[c.id];
+  const cov = COVERAGE_MAP[c.id];
+  if (cov && cov.by.every((x) => PRIMITIVE_IDS.has(x))) {
+    if (cov.full) Object.assign(base, { klass: "EXECUTABLE", targetWave: "LIVE", requiredWork: null, ownerEquivalent: cov.by.join(" + ") });
+    else base.ownerEquivalent = `${cov.by.join(" + ")} (live; remaining: ${cov.remaining ?? "see required work"})`;
+  }
   if (base.klass === "NEEDS_HARDENING" && base.targetWave === "NONE") base.targetWave = "W2";
   return base;
 }

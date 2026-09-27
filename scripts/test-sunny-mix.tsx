@@ -145,7 +145,7 @@ function main() {
   const actionRoutes = new Set(MX.MIX_ACTIONS.flatMap((a) => a.internal.routes));
   const mutating = routes.filter((r) => /export async function (POST|PATCH|DELETE|PUT)\b/.test(read(r)));
   check("every mutating mix route is an inventoried action or portal infrastructure", mutating.filter((r) => !actionRoutes.has(r) && !(MX.MIX_INFRA_ROUTES as readonly string[]).includes(r)), []);
-  ok("every action route exists; no action is executable by Sunny", MX.MIX_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "KNOWLEDGE_ONLY"));
+  ok("every action route exists; executability is served only by the action coverage matrix", MX.MIX_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
   for (const [f, want] of Object.entries(MX.MIX_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Mix review (update lib/partner/system/mix.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   check("fingerprints cover every reviewed file", Object.keys(MX.MIX_REVIEWED_FINGERPRINTS).sort(), [...MX.MIX_REVIEWED_FILES].sort());
   const view = code(read("lib/partner/mix/view.ts"));

@@ -15,6 +15,7 @@ import { RF_ACTIONS } from "@/lib/partner/system/red-films";
 import { SHOW_ACTIONS } from "@/lib/partner/system/shows";
 import { VICTOR_ACTIONS } from "@/lib/partner/system/victor";
 import { HANDLER_MAP } from "./handler-map.generated";
+import { ALL_PRIMITIVES, type PrimitiveSpec } from "./primitives";
 import type { ActionContract, ArgSpec, Availability, AvailabilityDetail, ConfirmationClass, EffectKey, Phase, RiskClass, Wave } from "./types";
 import { EFFECT_KEYS, RISK_ORDER } from "./types";
 import { LABEL_ARTIST_STATUSES, PROJECT_TYPES, RELEASE_STAGES, VICTOR_OUTCOMES, VICTOR_WORK_STATES } from "@/lib/types";
@@ -46,19 +47,12 @@ const INVENTORIES: ReadonlyArray<{ domain: string; entries: readonly InvEntry[];
 // ── classification inputs (discovered 2026-09-26/27; NOT fixed here — Wave 0 classifies, a hardening mission fixes) ──
 /** Known unsafe / non-atomic behaviour: the action must be hardened before Sunny may execute it. */
 export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
-  "PROJECT.EDIT_SESSION": "a date-only edit leaves the calendar event on the old date",
-  "PROJECT.EDIT_MEETING": "meeting edits / deletes never touch the calendar event (orphaned event)",
-  "CLIENT.MEETING_HELD_OR_CANCELLED": "meeting edits / deletes never touch the calendar event (orphaned event)",
-  "PROJECT.CONVERT_PROPOSAL": "not transactional; a double click can create two projects (race)",
-  "CLIENT.CONVERT_PROPOSAL": "not transactional; a double click can create two projects (race)",
   "PROJECT.PROMOTE_CLIP_ITEM": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
   "RF.PROMOTE_CLIP_ROW": "not atomic: the expense is created, then the row is deleted (race / duplicate expense)",
   "LABEL.SHOW_LIFECYCLE": "show → ledger sync can write a duplicate ledger row",
   "SHOW.CLOSE_SHOW": "show → ledger sync can write a duplicate ledger row",
   "SHOW.EDIT_SHOW": "show → ledger sync can write a duplicate ledger row; client payment has no validation",
   "RF.CANCEL_PRODUCTION": "the cancel side effects (task / calendar cleanup) run before the save succeeds",
-  "CLIENT.UPDATE_CLIENT": "full-replacement PATCH: an omitted field is blanked (empty type becomes אחר)",
-  "CLIENT.UPDATE_PROPOSAL": "no enum / amount validation on the route",
   "PROJECT.DELIVERY": "whole-body write of the delivery record",
   "PROJECT.ALBUM_SETTINGS": "whole-body write of the album finance / previous-system settings",
   "PROJECT.SOCIAL": "whole-body writes of campaigns / content",
@@ -66,10 +60,20 @@ export const NEEDS_HARDENING: Readonly<Record<string, string>> = {
   "PROJECT.DELETE_PROJECT": "not transactional; a failure mid-way leaves partial data",
   "PROJECT.EDIT_TRANSACTION": "can move a transaction to another project; finance links can dangle",
   "PROJECT.DELETE_ENGINEER_WORK": "the engineer expense is left behind (dangling finance link)",
-  "PROJECT.LINK_PROPOSAL": "the linked project id is not checked",
   "PROJECT.DELETE_PROJECT_FILE": "the path is never checked against the project",
   "PROJECT.SEND_LOG_DELETE": "the cascade into engineer / Victor work runs in the browser, not the server",
   "PROJECT.EDIT_VICTOR_WORK": "a Victor save can fail silently (no error surfaced)",
+};
+/** Unsafe behaviour already HARDENED in the shared writers (2026-09-27, Universal Actions) — kept as the audit trail of what changed. */
+export const HARDENED: Readonly<Record<string, string>> = {
+  "PROJECT.EDIT_SESSION": "a date / time edit now moves the linked Google event server-side even without absolute times (lib/writes/sessions)",
+  "PROJECT.EDIT_MEETING": "a date / time / duration / place edit moves the Google event; a delete removes it (lib/writes/meetings)",
+  "CLIENT.MEETING_HELD_OR_CANCELLED": "a date / time / duration / place edit moves the Google event; a delete removes it (lib/writes/meetings)",
+  "PROJECT.CONVERT_PROPOSAL": "CAS claim on the proposal (linked project IS NULL + updated_at): a second concurrent conversion is refused (lib/writes/proposals)",
+  "CLIENT.CONVERT_PROPOSAL": "CAS claim on the proposal (linked project IS NULL + updated_at): a second concurrent conversion is refused (lib/writes/proposals)",
+  "CLIENT.UPDATE_CLIENT": "Sunny's field-level edit merges into the current record (nothing blanked); rename is a separate C3 action with the cascade count",
+  "CLIENT.UPDATE_PROPOSAL": "Sunny's primitives validate status (the code vocabulary), amount (≥ 0) and currency (₪ / $) before the shared writer",
+  "PROJECT.LINK_PROPOSAL": "Sunny's link primitive checks that the project exists before writing",
 };
 /** Legacy surfaces the Boss no longer uses — kept knowable, never offered. */
 const LEGACY: Readonly<Record<string, string>> = {
@@ -182,9 +186,6 @@ function fromInventory(domain: string, source: string, e: InvEntry): ActionContr
   };
 }
 const NEEDS_HARDENING_HE: Readonly<Record<string, string>> = {
-  "PROJECT.EDIT_SESSION": "שינוי תאריך בלבד לא מזיז את האירוע ביומן",
-  "PROJECT.EDIT_MEETING": "עריכת / מחיקת פגישה לא מעדכנת את היומן",
-  "CLIENT.MEETING_HELD_OR_CANCELLED": "עריכת / מחיקת פגישה לא מעדכנת את היומן",
 };
 
 // ── supplementary contracts: every write route no domain inventory owns ─────────────────────────────────────────────
@@ -197,7 +198,7 @@ const SUPPLEMENTARY: readonly Supp[] = [
   { id: "AGENT.UPDATE_GOALS", domain: "AGENT", en: "Edit the Boss's agent goals", routes: ["app/api/agent/goals/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "needs a typed primitive (Owner goals are settings)", effects: ["SETTINGS"] },
   // calendar / Google Tasks
   { id: "CALENDAR.CONNECT", domain: "CALENDAR", en: "Connect Google Calendar (OAuth callback stores the token)", routes: ["app/api/calendar/callback/route.ts"], detail: "SECURITY_EXCLUDED", reason: "credentials — never Sunny", security: true },
-  { id: "CALENDAR.DISCONNECT", domain: "CALENDAR", en: "Disconnect Google Calendar (revoke token)", routes: ["app/api/calendar/status/route.ts"], detail: "SECURITY_EXCLUDED", reason: "credentials — never Sunny", security: true },
+  { id: "CALENDAR.DISCONNECT", domain: "CALENDAR", en: "Disconnect Google Calendar (delete the stored token)", routes: ["app/api/calendar/status/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "typed high-impact primitive; the token itself is never read or exposed", effects: ["SETTINGS", "CALENDAR", "GOOGLE_TASKS"] },
   { id: "CALENDAR.CHECK_SLOT", domain: "CALENDAR", en: "Check a manual slot against the calendar (read via POST)", routes: ["app/api/calendar/check-slot/route.ts"], detail: "SUNNY_NATIVE", reason: "a read: Sunny already reads the live calendar (calendar capability)" },
   { id: "CALENDAR.CREATE_EVENT", domain: "CALENDAR", en: "Create a calendar event", routes: ["app/api/calendar/create-event/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "needs a typed calendar primitive storing the event id on its record", effects: ["CALENDAR"] },
   { id: "CALENDAR.UPDATE_OR_DELETE_EVENT", domain: "CALENDAR", en: "Move / edit / delete a calendar event", routes: ["app/api/calendar/events/[id]/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "needs a typed calendar primitive (Wave 4)", effects: ["CALENDAR", "DELETION"] },
@@ -331,13 +332,30 @@ const LIVE: readonly ActionContract[] = [
 export const ROUTE_EXCLUSIONS: Readonly<Record<string, string>> = {};
 
 // ── build ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/** A READY contract, built from the primitive's own metadata (one source of truth). */
+function fromPrimitive(p: PrimitiveSpec): ActionContract {
+  const m = p.meta;
+  return {
+    id: p.actionId, version: 1, domain: m.domain, meaningHe: m.he, meaningEn: m.en, businessEvents: [], args: m.args, fields: m.fields,
+    preconditions: ["the target exists (or, for a create, the creation context is unchanged)", "the live fields match the previewed fingerprint", "the Boss approved this exact plan"],
+    riskClass: m.riskClass, confirmation: confirmationOf(m.riskClass), effects: m.effects, possibleEffects: [], phase: phaseOf(m.effects), reversible: m.reversible,
+    compensation: m.compensation ?? null, idempotency: p.createContext ? "EXECUTION_KEY_PLUS_NATURAL_DUPLICATE_WARNING" : "EXECUTION_KEY",
+    availability: "SUNNY_EXECUTABLE", availabilityDetail: "EXECUTABLE", reason: "typed primitive over the same shared writer the Redbloods screens use",
+    wave: WAVE1_IDS.has(p.actionId) ? "W1" : waveOfRisk(m.riskClass), disclosuresHe: p.disclosuresHe,
+    internal: { routes: [], source: "lib/partner/act/primitives", writer: m.writer, verifier: p.verify ? "custom verification (lib/partner/act/primitives)" : "fresh read of the same fields (lib/partner/act/primitives)" },
+  };
+}
+const WAVE1_IDS = new Set([...WAVE1_CANDIDATES.map((w) => w.id), "UPDATE_PROJECT_DEADLINE"]);
+
 function build(): ReadonlyMap<string, ActionContract> {
   const m = new Map<string, ActionContract>();
   const add = (c: ActionContract) => { if (m.has(c.id)) throw new Error(`duplicate action id ${c.id}`); m.set(c.id, c); };
-  LIVE.forEach(add);
+  const prim = new Set(ALL_PRIMITIVES.map((p) => p.actionId));
+  ALL_PRIMITIVES.map(fromPrimitive).forEach(add);
+  LIVE.filter((c) => !prim.has(c.id)).forEach(add);
   for (const inv of INVENTORIES) for (const e of inv.entries) add(fromInventory(inv.domain, inv.source, e));
   SUPPLEMENTARY.map(fromSupp).forEach(add);
-  WAVE1_CANDIDATES.map(fromW1).forEach(add);
+  WAVE1_CANDIDATES.filter((w) => !prim.has(w.id)).map(fromW1).forEach(add);
   return m;
 }
 export const ACTION_REGISTRY: ReadonlyMap<string, ActionContract> = build();

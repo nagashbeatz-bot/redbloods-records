@@ -3,10 +3,8 @@
  * DELETE /api/tasks/[id] — permanently delete a task
  */
 import { NextRequest, NextResponse } from "next/server";
+import { deleteTaskRecord, patchTaskRecord } from "@/lib/writes/tasks";
 import {
-  getTask,
-  patchTask,
-  deleteTask,
   validateRelated,
   TASK_STATUSES,
   TASK_RELATED_TYPES,
@@ -83,28 +81,9 @@ export async function PATCH(
       return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
     }
 
-    // Fetch calendar_event_id before patching so we know whether to sync
-    const existingTask = patch.status !== undefined ? await getTask(id) : null;
-
-    const task = await patchTask(id, patch);
-
-    // Sync completion status to Google Tasks (best-effort, non-fatal)
-    if (patch.status !== undefined && existingTask?.calendar_event_id) {
-      const googleTaskId = existingTask.calendar_event_id;
-      try {
-        const { isConnected, updateGoogleTaskStatus } = await import("@/lib/google-calendar");
-        if (await isConnected()) {
-          const completed = patch.status === "בוצע" || patch.status === "בוטל";
-          await updateGoogleTaskStatus(googleTaskId, completed);
-        }
-      } catch (gErr) {
-        // Not Found or auth error — log a warning but don't fail the local update
-        console.warn(`[PATCH /api/tasks/${id}] Google Tasks sync failed (ignored):`, gErr);
-        return NextResponse.json({ task, syncWarning: "Google Tasks לא עודכן" });
-      }
-    }
-
-    return NextResponse.json({ task });
+    // Shared writer (lib/writes/tasks): status → Google done / undone; due date → Google due (hardened 2026-09-27).
+    const r = await patchTaskRecord(id, patch);
+    return NextResponse.json(r.syncWarning ? { task: r.task, syncWarning: r.syncWarning } : { task: r.task });
   } catch (e) {
     console.error(`[PATCH /api/tasks/${id}]`, e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
@@ -117,20 +96,10 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    const task = await getTask(id);
-    if (!task) {
+    // Shared writer (lib/writes/tasks): a linked Google Task is deleted first — a failure aborts the whole delete.
+    if ((await deleteTaskRecord(id)) === "not_found") {
       return NextResponse.json({ ok: false, error: "משימה לא נמצאה" }, { status: 404 });
     }
-
-    // If a Google Task is linked, delete it first — failure aborts the whole operation
-    if (task.calendar_event_id) {
-      const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
-      if (await isConnected()) {
-        await deleteGoogleTask(task.calendar_event_id);
-      }
-    }
-
-    await deleteTask(id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(`[DELETE /api/tasks/${id}]`, e);

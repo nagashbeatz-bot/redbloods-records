@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
 import { requireOwner } from "@/lib/require-auth";
-import { notifySessionCreatedForShalev } from "@/lib/session-notify";
-
-const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
-
-/** YYYY-MM-DD + 1 day (UTC-safe) — for a calendar end that crosses midnight. */
-function addDayStr(d: string): string {
-  const [y, m, dd] = d.split("-").map(Number);
-  const nd = new Date(Date.UTC(y, m - 1, dd) + 86400000);
-  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, "0")}-${String(nd.getUTCDate()).padStart(2, "0")}`;
-}
+import { setSessionLimit } from "@/lib/writes/projects";
+import { createSession, SessionInputError, REHEARSAL_SESSION_TYPE } from "@/lib/writes/sessions";
 
 // ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
@@ -109,138 +100,16 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST /api/sessions — create new session ──────────────────────────────────
+// Shared writer (lib/writes/sessions) — the same one Sunny's SCHEDULE_SESSION primitives use.
 export async function POST(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json();
     const { projectId, title, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location, showId, cost, paymentStatus } = body;
-    const cleanTitle = typeof title === "string" ? title.trim() : "";
-
-    // A session must be tied to a project OR carry a manual title (independent
-    // session). Never create a project here.
-    if (!projectId && !cleanTitle) {
-      return NextResponse.json({ error: "בחר פרויקט או הזן שם לסשן" }, { status: 400 });
-    }
-
-    // Rehearsal cost (nullable, non-negative — DB also enforces the check).
-    const costNum = (cost === "" || cost == null) ? null : Number(cost);
-    if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) {
-      return NextResponse.json({ error: "עלות לא תקינה" }, { status: 400 });
-    }
-
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert({
-        project_id:        projectId ?? null,
-        title:             cleanTitle || null,
-        date:              date              || null,
-        start_time:        startTime         || null,
-        end_time:          endTime           || null,
-        status:            status            || "מתוכנן",
-        session_type:      sessionType       || "סשן",
-        notes:             notes             || "",
-        calendar_event_id: calendarEventId   || null,
-        photographer:      photographer      || "",
-        location:          location          || "",
-        show_id:           showId            || null,
-        cost:              costNum,
-      })
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-
-    // Optionally create Google Calendar event
-    let calendarError: string | null = null;
-    if (addToCalendar && date && startTime) {
-      try {
-        const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
-        if (await isConnected()) {
-          const calStart = `${date}T${startTime}:00`;
-          // Compute end in Israel local time — same approach as meetings to avoid timezone confusion
-          let calEnd: string;
-          if (endTime) {
-            // If end is at/before start it crossed midnight → put it on the next day
-            // so the calendar event has a correct positive duration.
-            const [sH, sM] = startTime.split(":").map(Number);
-            const [eH, eM] = endTime.split(":").map(Number);
-            const endDate  = (eH * 60 + eM) <= (sH * 60 + sM) ? addDayStr(date) : date;
-            calEnd = `${endDate}T${endTime}:00`;
-          } else {
-            const [hh, mm] = startTime.split(":").map(Number);
-            const endTotalMin = hh * 60 + mm + 60; // default +1 hour
-            const eHh = String(Math.floor(endTotalMin / 60) % 24).padStart(2, "0");
-            const eMm = String(endTotalMin % 60).padStart(2, "0");
-            calEnd = `${date}T${eHh}:${eMm}:00`;
-          }
-          const isFilming = sessionType === "צילום קליפ";
-          let summary: string;
-          if (projectId) {
-            const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
-            summary = proj
-              ? isFilming
-                ? `צילום קליפ: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}${photographer ? ` (${photographer})` : ""}`
-                : `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
-              : isFilming ? "צילום קליפ" : "סשן";
-          } else {
-            // Independent session — the manual title IS the calendar event name.
-            summary = cleanTitle || (isFilming ? "צילום קליפ" : "סשן");
-          }
-          // Rehearsal-for-a-show gets a clear, dedicated calendar title. Additive:
-          // existing session types keep their titles untouched.
-          if (sessionType === "חזרה להופעה" && cleanTitle) {
-            summary = `חזרה להופעה - ${cleanTitle}`;
-          }
-          const event = await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
-          const calId  = (event as { id?: string }).id ?? null;
-          if (calId) {
-            await supabase.from("sessions").update({ calendar_event_id: calId }).eq("id", data.id);
-          }
-        } else {
-          calendarError = "Google Calendar לא מחובר";
-        }
-      } catch (err) {
-        calendarError = err instanceof Error ? err.message : "שגיאה ביצירת אירוע ביומן";
-      }
-    }
-
-    // Rehearsal → canonical Finance (idempotent) + re-derive the show's split.
-    // showId is validated against a real show (getShow → null otherwise), so an
-    // unverified/foreign show_id never creates finance rows.
-    if (sessionType === REHEARSAL_SESSION_TYPE && showId) {
-      try {
-        const { getShow } = await import("@/lib/shows-store");
-        const show = await getShow(showId);
-        if (show) {
-          const { syncRehearsalFinance, syncShowFinance } = await import("@/lib/shows-finance-sync");
-          const pay = paymentStatus === "שולם" ? "שולם" : "לא שולם";
-          await syncRehearsalFinance({ id: data.id, date: data.date, cost: data.cost }, show, pay);
-          await syncShowFinance(show);
-        }
-      } catch (e) {
-        console.error("[sessions POST] rehearsal finance sync error:", e);
-      }
-    }
-
-    // Project-only side effects — skipped for independent (project-less) sessions.
-    if (projectId) {
-      // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
-      touchProject(projectId).catch(() => {});
-      // Auto-fill start_date from earliest session if not yet set
-      ensureProjectStartDate(projectId).catch(() => {});
-    }
-
-    // Push owner + Shalev iff this session belongs to one of his real projects
-    // (checked inside — a no-op otherwise). Fire-and-forget: only reached once
-    // the session row above has actually been created, and a push failure must
-    // never fail this response.
-    notifySessionCreatedForShalev({
-      id: data.id, projectId: data.project_id ?? null,
-      date: data.date, startTime: data.start_time, endTime: data.end_time,
-    }).catch((e) => console.error("[sessions POST] shalev push error:", e));
-
-    return NextResponse.json({ session: data, calendarError });
+    const r = await createSession({ projectId, title, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location, showId, cost, paymentStatus });
+    return NextResponse.json({ session: r.session, calendarError: r.calendarError });
   } catch (err) {
+    if (err instanceof SessionInputError) return NextResponse.json({ error: err.message }, { status: 400 });
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[sessions POST]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -258,12 +127,7 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
       }
       const { limit } = await req.json();
-      const { error } = await supabase.from("settings").upsert({
-        key:        `session_limit_${projectId}`,
-        value:      { limit: Number(limit) },
-        updated_at: new Date().toISOString(),
-      });
-      if (error) throw new Error(error.message);
+      await setSessionLimit(projectId, Number(limit)); // shared writer (lib/writes/projects)
       return NextResponse.json({ ok: true, limit: Number(limit) });
     }
 

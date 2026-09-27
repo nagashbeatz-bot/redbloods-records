@@ -246,3 +246,13 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
   - G8: every mutating UI fetch (button / form / toggle / upload / delete) maps to a registered write handler.
   - G9: no server actions and no browser-side database writes.
 - A new mutation anywhere fails these guards until it is registered.
+
+### Universal Action Layer — primitive families (one mission, 2026-09-27)
+
+- **Primitives live per family in `lib/partner/act/primitives/`** (`core.ts` framework, `wave1.ts`, `projects.ts`, `crm.ts`, `sessions.ts`, …) and are listed once in `primitives/index.ts`. The registry builds each READY contract from the primitive's `meta` — one source.
+- **Every primitive calls a shared writer in `lib/writes/*`, and the UI route calls the SAME writer.** A route whose logic is inline is refactored into `lib/writes/<family>.ts` first; hardening (validation, CAS claims, calendar follow-through, dependent cleanup) is done there, so the UI benefits too. Record each fix in `HARDENED` (`registry.ts`) and remove it from `NEEDS_HARDENING`.
+- **The action layer reaches integrations only through `lib/writes/*`** (Google via `lib/writes/calendar.ts`); primitives, service, stores and relay never call Google / push / Dropbox / a table directly (H1 / H1b / 27).
+- **External effects are declared and previewed:** CALENDAR / GOOGLE_TASKS / EMAIL (invites) / PUSH (only a push the app's own writer already sends) / DELETION / FINANCE. Deletes, money and invitations list the exact values the Boss must repeat (`requiredValues`); a disconnected integration is refused, never reported as done.
+- **Coverage:** every census operation carried out by primitives has a `COVERAGE_MAP` entry (`full` or `remaining`). Every primitive has a `PRIMITIVE_SYSTEM_DOMAIN` entry, and every business action it executes a `BUSINESS_ACTION_PRIMITIVES` entry — G10 keeps `DOMAIN_CONTRACTS.support.execute` and `BUSINESS_ACTIONS.sunnyCanExecuteToday` equal to them. Domain action inventories do not restate executability (`sunnyToday: "SEE_ACTION_COVERAGE"`).
+- **Each family has a test** (`scripts/test-sunny-act-<family>.tsx`, on `scripts/fixtures/act-harness.ts`): happy path with exact verification, invalid args, missing entity, wrong type, stale → no write, no approval → no write, plus family rules, pinned vocabularies and shared-writer checks.
+- **The `partner:act` consent text and the served coverage line stay accurate** (typed registered actions only, never generic write access; the effects list is derived from the primitives).

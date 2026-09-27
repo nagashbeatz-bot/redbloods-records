@@ -280,9 +280,10 @@ export const OTHER_CONSUMERS = {
   calendar: "no mix calendar events; only optional Google Tasks from the mix setup. Sessions relate by project only.",
 } as const;
 
-export interface MixActionEntry { id: string; action: string; who: Who | "OWNER_OR_STEVEN"; enforcement: Enforcement; writes: string; finance: string | null; push: string | null; files: string | null; project: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY"; futurePrimitive: string; internal: { routes: readonly string[] } }
+/** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */
+export interface MixActionEntry { id: string; action: string; who: Who | "OWNER_OR_STEVEN"; enforcement: Enforcement; writes: string; finance: string | null; push: string | null; files: string | null; project: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE"; futurePrimitive: string; internal: { routes: readonly string[] } }
 type MA = Omit<MixActionEntry, "sunnyToday" | "internal"> & { routes: readonly string[] };
-const X = (e: MA): MixActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "KNOWLEDGE_ONLY", internal: { routes } }; };
+const X = (e: MA): MixActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "SEE_ACTION_COVERAGE", internal: { routes } }; };
 const SE = "app/api/sound-engineer", SS = "app/api/supplier/steven";
 export const MIX_ACTIONS: readonly MixActionEntry[] = [
   X({ id: "ASSIGN_ENGINEER", action: "Create an engineer work (mix setup / Steven page / project drawer)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "work (לא נשלח)", finance: "price sync only on the generic path with a price", push: null, files: null, project: "mix setup also sets the project status במיקס", destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "ASSIGN_MIX_ENGINEER", routes: [`${SE}/route.ts`] }),

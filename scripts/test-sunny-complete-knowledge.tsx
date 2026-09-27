@@ -140,7 +140,7 @@ async function main() {
   check("mutating project routes missing from the inventory", touching.filter((f) => !inventoried.has(f) && !PROJECT_ACTION_EXCLUSIONS[f]), []);
   check("inventory routes that do not exist", [...inventoried].filter((f) => !fs.existsSync(path.join(ROOT, f))), []);
   ok(`${touching.length} mutating project routes found, ${PROJECT_ACTIONS.length} inventory entries`, touching.length >= 50 && PROJECT_ACTIONS.length >= 70);
-  check("Sunny can execute only the deadline action today", PROJECT_ACTIONS.filter((a) => a.sunnyToday !== "KNOWLEDGE_ONLY").map((a) => a.id), ["SUNNY_DEADLINE"]);
+  check("Sunny can execute only the deadline action today", PROJECT_ACTIONS.filter((a) => a.sunnyToday !== "SEE_ACTION_COVERAGE").map((a) => a.id), ["SUNNY_DEADLINE"]);
   check("irreversible high-risk actions are DESTRUCTIVE / BULK class", PROJECT_ACTIONS.filter((a) => a.reversible === "NO" && a.risk === "HIGH" && !["DESTRUCTIVE", "BULK"].includes(a.approvalClass ?? "")).map((a) => a.id), []);
   ok("action contract has all 16 fields + 6 approval classes", ACTION_CONTRACT_FIELDS.length === 16 && Object.keys(APPROVAL_CLASSES).length === 6);
   const ai = sa("action_inventory");

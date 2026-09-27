@@ -12,7 +12,7 @@
  */
 import type { ApprovalClass, Enforcement, Who } from "./project-actions";
 
-export const CLIENTS_BASELINE_VERSION = "2026.09.25-clients-1";
+export const CLIENTS_BASELINE_VERSION = "2026.09.27-clients-2";
 
 export type FieldClass = "CANONICAL" | "DERIVED" | "DISPLAY_ONLY" | "LEGACY" | "AMBIGUOUS" | "POSSIBLE_BUG" | "CONFLICT";
 export interface EntityField {
@@ -207,9 +207,10 @@ export const CLIENT_HISTORY_MODEL = {
   sunnyRule: "a DERIVED timeline from stored dates only — change history is never invented from current timestamps",
 } as const;
 
-export interface ClientActionEntry { id: string; group: "CLIENTS" | "PROPOSALS" | "MEETINGS" | "TASKS"; action: string; who: Who; enforcement: Enforcement; entryPoint: string; input: string; writes: string; sideEffects: string; finance: string | null; calendar: string | null; push: string | null; destructive: boolean; external: boolean; financial: boolean; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY"; futurePrimitive: string; seeProjectAction?: string; internal: { routes: readonly string[] } }
+/** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */
+export interface ClientActionEntry { id: string; group: "CLIENTS" | "PROPOSALS" | "MEETINGS" | "TASKS"; action: string; who: Who; enforcement: Enforcement; entryPoint: string; input: string; writes: string; sideEffects: string; finance: string | null; calendar: string | null; push: string | null; destructive: boolean; external: boolean; financial: boolean; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE"; futurePrimitive: string; seeProjectAction?: string; internal: { routes: readonly string[] } }
 type CA = Omit<ClientActionEntry, "sunnyToday" | "internal"> & { routes: readonly string[] };
-const A = (e: CA): ClientActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "KNOWLEDGE_ONLY", internal: { routes } }; };
+const A = (e: CA): ClientActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "SEE_ACTION_COVERAGE", internal: { routes } }; };
 const CR = "app/api/clients/route.ts", CI = "app/api/clients/[id]/route.ts", PR = "app/api/proposals/route.ts", PI = "app/api/proposals/[id]/route.ts";
 
 /** Every client / proposal mutation in the app (2026-09-25). None is executable by Sunny today. */
@@ -218,16 +219,16 @@ export const CLIENT_ACTIONS: readonly ClientActionEntry[] = [
   A({ id: "AUTO_CREATE_CLIENT", group: "CLIENTS", action: "Automatic client from a project's artist", who: "SYSTEM", enforcement: "AUTOMATIC", entryPoint: "project create / artist change / conversion", input: "artist text", writes: "clients (type אמן, status חדש)", sideEffects: "exact-case check; insert errors ignored; never removes", finance: null, calendar: null, push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "—", routes: ["app/api/projects/route.ts", "app/api/projects/[id]/route.ts", "app/api/proposals/[id]/convert/route.ts"] }),
   A({ id: "BACKFILL_CLIENTS_FROM_PROJECTS", group: "CLIENTS", action: "One-off backfill: create missing clients from every project artist (a GET that writes; no UI)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "none (manual URL)", input: "—", writes: "clients", sideEffects: "exact-case match", finance: null, calendar: null, push: null, destructive: false, external: false, financial: false, approvalClass: "BULK", futurePrimitive: "—", routes: ["app/api/projects/sync-artists/route.ts"] }),
   A({ id: "UPDATE_CLIENT", group: "CLIENTS", action: "Edit client (full overwrite; empty type → אחר)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "Clients page ✎ / drawer ⋯", input: "every field", writes: "clients", sideEffects: "rename rewrites project artist text (see CLIENT_RENAME_REWRITES)", finance: null, calendar: null, push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "UPDATE_CLIENT", seeProjectAction: "CLIENT_RENAME_REWRITES", routes: [CI] }),
-  A({ id: "DELETE_CLIENT", group: "CLIENTS", action: "Delete client (hard; no confirmation when no project names them)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "Clients page ✕", input: "client", writes: "clients; DB cascades proposals + alerts; shows / send log set null", sideEffects: "meetings, tasks, Red Films rows keep a dangling id; follow-up tasks / Google Tasks stay", finance: "project-less income keeps the artist text", calendar: "Google Tasks stay", push: null, destructive: true, external: false, financial: false, approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_CLIENT", routes: [CI] }),
+  A({ id: "DELETE_CLIENT", group: "CLIENTS", action: "Delete client (hard; no confirmation when no project names them)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "Clients page ✕", input: "client", writes: "clients; DB cascades proposals + alerts; shows / send log set null", sideEffects: "since 2026-09-27 each proposal is deleted through deleteProposal first (its follow-up task + Google Task removed); meetings, other tasks, Red Films rows keep a dangling id", finance: "project-less income keeps the artist text", calendar: "Google Tasks stay", push: null, destructive: true, external: false, financial: false, approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_CLIENT", routes: [CI] }),
   A({ id: "CREATE_PROPOSAL", group: "PROPOSALS", action: "Create proposal", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "client drawer 'הצעה חדשה' (type tile → form)", input: "title, amount, currency, status (any string), sent date (today), follow-up date (today + 3)", writes: "proposals; tasks (follow-up) when a date is set", sideEffects: "follow-up task + Google Task", finance: null, calendar: "Google Task", push: null, destructive: false, external: true, financial: false, approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "CREATE_PROPOSAL", routes: [PR] }),
   A({ id: "UPDATE_PROPOSAL", group: "PROPOSALS", action: "Edit proposal (status / amount / dates / notes; no validation)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "proposal card ✎", input: "any field", writes: "proposals; follow-up task sync", sideEffects: "empty follow-up silently becomes today + 3 in the UI; status changes never close the task", finance: null, calendar: "Google Task create / update / delete", push: null, destructive: false, external: true, financial: false, approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "UPDATE_PROPOSAL / CHANGE_PROPOSAL_STATUS / SET_FOLLOW_UP", seeProjectAction: "LINK_PROPOSAL", routes: [PI] }),
   A({ id: "MARK_PROPOSAL_LOST", group: "PROPOSALS", action: "Mark proposal לא נסגר (legacy dashboard)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "/dashboard-old grid", input: "—", writes: "proposals.status", sideEffects: "follow-up task stays open", finance: null, calendar: null, push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "CHANGE_PROPOSAL_STATUS", routes: [PI] }),
   A({ id: "DELETE_PROPOSAL", group: "PROPOSALS", action: "Delete proposal (double click)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "proposal card ✕", input: "proposal", writes: "proposals; follow-up task + Google Task deleted (best effort)", sideEffects: "—", finance: null, calendar: "Google Task deleted", push: null, destructive: true, external: true, financial: false, approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_PROPOSAL", routes: [PI] }),
-  A({ id: "CONVERT_PROPOSAL", group: "PROPOSALS", action: "Convert proposal to project (not transactional)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "proposal card '⇒ הפוך לפרויקט'", input: "project name", writes: "projects, settings (price), proposals, tasks", sideEffects: "see CONVERSION_FLOW", finance: "agreed price set", calendar: "Google Task completed", push: null, destructive: false, external: true, financial: true, approvalClass: "FINANCIAL", futurePrimitive: "CONVERT_PROPOSAL", seeProjectAction: "CONVERT_PROPOSAL", routes: ["app/api/proposals/[id]/convert/route.ts"] }),
+  A({ id: "CONVERT_PROPOSAL", group: "PROPOSALS", action: "Convert proposal to project (CAS-claimed since 2026-09-27: a concurrent second conversion is refused; later steps are still separate writes)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "proposal card '⇒ הפוך לפרויקט'", input: "project name", writes: "projects, settings (price), proposals, tasks", sideEffects: "see CONVERSION_FLOW", finance: "agreed price set", calendar: "Google Task completed", push: null, destructive: false, external: true, financial: true, approvalClass: "FINANCIAL", futurePrimitive: "CONVERT_PROPOSAL", seeProjectAction: "CONVERT_PROPOSAL", routes: ["app/api/proposals/[id]/convert/route.ts"] }),
   A({ id: "NEW_PROJECT_FROM_CLIENT", group: "CLIENTS", action: "New project from the client drawer (artist = client name)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", entryPoint: "client drawer '+ פרויקט חדש'", input: "name, type, status (לא התחיל / בעבודה), deadline", writes: "projects", sideEffects: "business type לקוח", finance: null, calendar: null, push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "CREATE_PROJECT", seeProjectAction: "CREATE_PROJECT", routes: ["app/api/projects/route.ts"] }),
   A({ id: "SESSION_FROM_CLIENT", group: "CLIENTS", action: "New session from the client drawer (+ optional payment row with artist = client name)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "client drawer 'סשן חדש'", input: "session fields, optional amount", writes: "sessions; transactions (artist text)", sideEffects: "payment row linked to the client by text only", finance: "optional income row", calendar: "optional event", push: "Shalev session push when the project is Shalev's", destructive: false, external: true, financial: true, approvalClass: "FINANCIAL", futurePrimitive: "SCHEDULE_SESSION", routes: ["app/api/sessions/route.ts", "app/api/transactions/route.ts"] }),
   A({ id: "CREATE_MEETING", group: "MEETINGS", action: "New meeting with the client (+ optional calendar event)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "client drawer 'פגישה חדשה'", input: "date, time, duration, location, notes, project", writes: "meetings (status נקבעה)", sideEffects: "calendar failure still saves the meeting", finance: null, calendar: "event 'פגישה עם …'", push: null, destructive: false, external: true, financial: false, approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "SCHEDULE_MEETING", seeProjectAction: "ADD_MEETING", routes: ["app/api/meetings/route.ts"] }),
-  A({ id: "MEETING_HELD_OR_CANCELLED", group: "MEETINGS", action: "Mark meeting התקיימה / בוטלה, edit, delete", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "client drawer ✓ / ✕ / 🗑", input: "status / fields", writes: "meetings", sideEffects: "the Google event is never updated or deleted", finance: null, calendar: "orphan event", push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "UPDATE_MEETING", seeProjectAction: "EDIT_MEETING", routes: ["app/api/meetings/[id]/route.ts"] }),
+  A({ id: "MEETING_HELD_OR_CANCELLED", group: "MEETINGS", action: "Mark meeting התקיימה / בוטלה, edit, delete", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "client drawer ✓ / ✕ / 🗑", input: "status / fields", writes: "meetings", sideEffects: "since 2026-09-27 a date / time / duration / place edit moves the Google event and a delete removes it; a status change leaves it", finance: null, calendar: "event follows edits / is removed with the meeting", push: null, destructive: false, external: false, financial: false, approvalClass: "STANDARD", futurePrimitive: "UPDATE_MEETING", seeProjectAction: "EDIT_MEETING", routes: ["app/api/meetings/[id]/route.ts"] }),
   A({ id: "CLIENT_TASK", group: "TASKS", action: "Task related to a client (Tasks page)", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "Tasks page (client picker)", input: "title, due, client", writes: "tasks (related_type client)", sideEffects: "Google Task mirror", finance: null, calendar: "Google Task", push: null, destructive: false, external: true, financial: false, approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "CREATE_TASK", routes: ["app/api/tasks/route.ts"] }),
 ];
 
@@ -295,18 +296,25 @@ export const CLIENT_INTEGRITY = {
 /** Server-side client / proposal / meeting files. A semantic change must review this contract and update the fingerprint. */
 export const CLIENT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/clients-store.ts": "ebb90e6828853739ac5fda2afa7793d61382a23e9c926901383614290c84cc6e",
-  "app/api/clients/route.ts": "bb1cf6cae04a25673ff087d9465299fc88c9c8db8abda3cefed771d4b2bd9ecd",
-  "app/api/clients/[id]/route.ts": "98f3f335e86d4a3041d80baa51a0d3df076d184cb9b6cbe67244406007e58a6c",
-  "app/api/proposals/route.ts": "88990298305caa2cfc288e7e3dad5002f1594220d13fa6462d57e59a5e00fdce",
-  "app/api/proposals/[id]/route.ts": "78ee80cd9ab1d252b824dbc5125d323439770dfa0fddfdb050875184b0b77105",
-  "app/api/proposals/[id]/convert/route.ts": "a08297d8d9b4903b687e539a5e4b2887998b38ac6e6949a95a1f1b073fc74368",
+  "app/api/clients/route.ts": "51ed5a95bbd0d54c84cc3a47bfd1a89d716628e99c6b6fad81cb599bd7fc4e5d",
+  "app/api/clients/[id]/route.ts": "f6930caba4e09a8eb60fed3e512da0818942f08a812e4346c135ea6c8922aa2e",
+  "app/api/proposals/route.ts": "4f24dcc1d314847455cc551c10107c1e1f48af2207dbd256a84392f0c7be1efb",
+  "app/api/proposals/[id]/route.ts": "0e0b7ec900523c49dd0c41677dd9e96cab3e97af67e01a006bf939151e3a0251",
+  "app/api/proposals/[id]/convert/route.ts": "c96caa3413bb3424da68a44bdc9e38fac9e10eb11741acbc1cb931be97c5a1b0",
   "app/api/proposals/all/route.ts": "038c4babad0ecafca5317441c001deb5bf1572bf3e3ebf2413ebbc603bc0251a",
-  "app/api/meetings/route.ts": "b97f70befae4adabd5e048f803aea25683b2927e3c7ca48082c78ea3bf73a52c",
-  "app/api/meetings/[id]/route.ts": "b1c2203236067cb2b8ec982fef8ccfa021e26e92af2f2d3a1521ad6081ca205b",
+  "app/api/meetings/route.ts": "36f8855c8e0418f4516624a4841e23db27f19194099d65a89a9dc5eb51a3b5dd",
+  "app/api/meetings/[id]/route.ts": "1d7f11ae5a0e15c10ea809eec0957a663d9afe49e3d5c83da55c76b664251b03",
   "lib/tasks-store.ts": "72b1eb5ee4c8f7d05c60858290ae183bc18ec3008513d743ba4bca4f314fa6c7",
 };
 
 /** Every API route file that reads or writes the clients / proposals tables (the test re-discovers them from the repo). */
+/** Shared writers (lib/writes/*) that read or write clients / proposals — used by the routes AND Sunny's typed actions. */
+export const CLIENT_WRITER_INVENTORY: Readonly<Record<string, string>> = {
+  "lib/writes/clients.ts": "create / field-level edit / rename cascade / delete (proposals + their follow-up tasks first) / duplicate + link counts",
+  "lib/writes/proposals.ts": "create (+ follow-up task) / edit / delete / CAS-claimed conversion / project existence check",
+  "lib/writes/projects.ts": "project creation + artist change add missing clients from the artist text (app/api/projects/route.ts, app/api/projects/[id]/route.ts)",
+};
+
 export const CLIENT_ROUTE_INVENTORY: Readonly<Record<string, string>> = {
   "app/api/clients/route.ts": "list / create clients",
   "app/api/clients/[id]/route.ts": "client + linked projects (name match) / edit (rename rewrites projects) / delete",
@@ -321,7 +329,6 @@ export const CLIENT_ROUTE_INVENTORY: Readonly<Record<string, string>> = {
   "app/api/shows/[id]/route.ts": "reads client names for a show",
   "app/api/shows/[id]/quote-sent/route.ts": "reads the client name for a show quote",
   "app/api/agent/check/route.ts": "proposal follow-up rule (switched off)",
-  "app/api/projects/route.ts": "project creation adds missing clients from the artist text",
   "app/api/label/artists/[id]/recoup/route.ts": "parses artist names (client-store name splitter) to match a label artist's projects",
   "app/api/label/artists/[id]/shows/route.ts": "parses artist names (client-store name splitter) for a label artist's shows",
 };

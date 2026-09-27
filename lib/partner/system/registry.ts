@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-19";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-20";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -24,12 +24,12 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Every piece of studio / label work (song, clip, song+clip, EP, album, riddim, lessons, other) with status, deadline, artist(s), business type (client / label) and its files, finance settings, sessions and engineers.",
     canonicalSource: "Project records in Redbloods OS; per-project finance settings (agreed price, currency, finance exception, clip price); project files list (Dropbox metadata).",
     entityTypes: ["project"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
     readCapabilities: ["project_view", "project_portfolio", "projects", "project_actions", "tasks", "deliveries", "albums", "sessions", "mix_pipeline", "red_films", "clip_planning", "finance_receivables"],
     learnKinds: ["PROJECT_BLOCKER", "FOLLOW_UP_EXPECTATION", "RELEASE_PRIORITY", "PAYMENT_REPORTED_BY_OWNER"],
     proposableActions: ["UPDATE_PROJECT_DEADLINE"],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("PROJECT_STATUS_VOCAB", "CANONICAL_BUSINESS_RULE", "Project status is one of: לא התחיל (default), בעבודה, מחכה למיקס, במיקס, הושלם, בהשהייה, בוטל."),
       R("PROJECT_COMPLETION_END_DATE", "IMPLEMENTATION_BEHAVIOR", "Setting a project to הושלם stamps its end date today; any other status clears it."),
@@ -56,7 +56,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "People and companies Redbloods works with: artists, clients, team members — type, status, and their projects / proposals / meetings.",
     canonicalSource: "Client records; projects link to clients by artist NAME; proposals, meetings and shows link by client id.",
     entityTypes: ["client", "dj"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
     readCapabilities: ["client_view", "client_portfolio", "clients", "proposals", "meetings", "relations", "system_awareness"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "FOLLOW_UP_EXPECTATION"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
@@ -81,10 +81,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Price quotes to clients, their follow-up, and conversion into a project.",
     canonicalSource: "Proposal records (client id, amount + currency, status, follow-up date, linked project id); a follow-up task per proposal.",
     entityTypes: ["proposal"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
     readCapabilities: ["client_view", "client_portfolio", "proposals", "tasks", "system_awareness"], learnKinds: ["FOLLOW_UP_EXPECTATION"], proposableActions: [],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("PROPOSAL_VOCAB", "CANONICAL_BUSINESS_RULE", "Proposal status: הצעה נשלחה, ממתין לתשובה (default), צריך פולואפ, נסגר, לא נסגר, לחזור בעתיד. Open = anything except נסגר / לא נסגר."),
       R("PROPOSAL_FOLLOWUP_TASK_TEXT_LINK", "IMPLEMENTATION_BEHAVIOR", "A proposal's follow-up task is linked by an id marker inside the task text (weak link) and may mirror to a Google Task.", ["TASKS", "GOOGLE_CALENDAR"]),
@@ -106,10 +106,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Studio sessions, mix channel-cleaning, rehearsals (incl. show rehearsals) and clip shoot days — scheduled work on a date/time, optionally mirrored to Google Calendar.",
     canonicalSource: "Session records (project id or standalone title, show id for show rehearsals, date / time, status, type, calendar event id, cost).",
     entityTypes: ["session"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"],
     readCapabilities: ["sessions", "session_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("SESSION_VOCAB", "CANONICAL_BUSINESS_RULE", "Session status: מתוכנן, התקיים, בוטל, נדחה, לא הגיע. Types: סשן, ניקוי מיקס, חזרה, צילום קליפ, חזרה להופעה."),
       R("SESSION_AUTOMARK", "IMPLEMENTATION_BEHAVIOR", "A planned session whose end time has passed is marked התקיים automatically when the Owner opens the app (uses the device clock)."),
@@ -131,10 +131,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The Owner's LIVE Google Calendar (every calendar: sessions, shows, meetings, personal events, holidays, all-day, recurring, invited) — a HORIZONTAL time-context source for every Redbloods domain (projects, clients, shows, releases, tasks, team), plus Google Tasks mirrored from Redbloods tasks.",
     canonicalSource: "Google Calendar (external) is the source of truth; the Redbloods MAIN service is the trusted integration owner (stored OAuth credential, automatic token refresh). Redbloods records store event ids (sessions / meetings / shows / social content) — the only canonical links.",
     entityTypes: ["calendar_event"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["AVAILABLE", "READ_ONLY"],
     readCapabilities: ["calendar", "project_view", "integrations"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("CALENDAR_REAUTH", "IMPLEMENTATION_BEHAVIOR", "The app asks the Owner to reconnect only when Google definitively rejects the stored credential; transient errors never lock the app."),
       R("CALENDAR_ATTENDEE_INVITES", "IMPLEMENTATION_BEHAVIOR", "Creating a calendar event from the app can invite attendees and email them; session events never have attendees."),
@@ -154,9 +154,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "To-dos and follow-ups (general, per client, per project, per Red Films production, per show).",
     canonicalSource: "Task records (title, status, due date, related entity, show id, mirrored Google Task id).",
     entityTypes: ["task"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["tasks", "task_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("TASK_VOCAB", "CANONICAL_BUSINESS_RULE", "Task status: פתוח, בוצע, בוטל."),
       R("TASK_GOOGLE_SYNC", "IMPLEMENTATION_BEHAVIOR", "Completing the mirrored Google Task marks the local task בוצע (Google → Redbloods only).", ["GOOGLE_CALENDAR"]),
@@ -170,9 +170,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Meetings with clients / about projects.",
     canonicalSource: "Meeting records (client id + duplicated client name, project id, date, time, duration, status, calendar event id).",
     entityTypes: ["meeting"],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["meetings", "client_view", "meeting_view"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [R("MEETING_VOCAB", "CANONICAL_BUSINESS_RULE", "Meeting status: נקבעה, התקיימה, בוטלה."), R("MEETING_NO_OUTCOME", "IMPLEMENTATION_BEHAVIOR", "A meeting has no outcome field and its status is updated only by hand: a past meeting still נקבעה may or may not have happened."), R("MEETING_CLIENT_NO_FK", "IMPLEMENTATION_BEHAVIOR", "A meeting stores the client id as text (no FK) plus a name snapshot that a client rename does not update.", ["CLIENTS"])],
     sideEffects: [E("MEETING_CALENDAR", "A meeting is booked with a calendar event", "A Google event is created at booking only.", ["GOOGLE_CALENDAR"], "MANUAL")],
     limitationsHe: ["לפגישה אין תוצאה / המשך מתועד; פגישה שעברה ועדיין 'נקבעה' — לא ידוע אם התקיימה.", "שינוי / ביטול פגישה לא מעדכן את אירוע היומן."],
@@ -259,7 +259,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The label roster (שליו טסמה, אבי מולה, DJ CLEANTONE, נגש ביטס …): their projects, releases, shows, clips, balance, media income and recoup.",
     canonicalSource: "Label-artist records; artist ↔ project / show / clip links are by NAME except releases, balance entries and media income (by id).",
     entityTypes: ["label-artist"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE"],
     readCapabilities: ["artist_view", "artist_portfolio", "label_roster", "releases", "shows", "integrity", "beats", "balance_cycles", "relations", "system_awareness"], learnKinds: ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "RELEASE_PRIORITY"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
@@ -415,9 +415,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "The label release pipeline of label projects: stage, target date, blocker, next action, released date.",
     canonicalSource: "Release details per label project (label artist id, stage, target date, stage-entered and released dates).",
     entityTypes: ["release"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["artist_view", "artist_portfolio", "releases"], learnKinds: ["RELEASE_PRIORITY", "PROJECT_BLOCKER"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("RELEASE_STAGE_DB_CHECKED", "CANONICAL_BUSINESS_RULE", "Release stages are DB-checked (רעיון … מוכן ליציאה, יצא, בהשהייה); active = not יצא / בהשהייה. A stage change resets the stage start; stage edits use an optimistic lock; no push / finance / calendar side effect."),
       R("RELEASED_AT_CLEARED", "POSSIBLE_BUG", "Moving a release away from יצא clears its release date — release history is lost."),
@@ -449,9 +449,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Production work sent to Victor, his uploads and version reviews, and his monthly salary.",
     canonicalSource: "Victor work records (state, dates, files sent / received, version reviews) + Victor settings + salary month records and Finance salary transactions.",
     entityTypes: ["vendor", "recurring"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY"], readCapabilities: ["victor_view", "victor_portfolio", "team_victor", "victor_salary", "memory"], learnKinds: ["VENDOR_COMMITMENT"], proposableActions: [],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("VICTOR_WORK_UNIT", "CANONICAL_BUSINESS_RULE", "The unit of Victor work is a vendor work record (vendor victor) — with or without a project; a project may be sent again (no duplicate guard)."),
       R("VICTOR_STATUS_OWNER_ONLY", "IMPLEMENTATION_BEHAVIOR", "Only the Owner changes status / deadline / outcome; work_state is set at send time and never updated; completing can also complete the project (Owner's choice)."),
@@ -512,9 +512,9 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     purpose: "Mix / master work with every sound engineer (Steven, Bill, external engineers by name): versions, review comments, riddim mix lines, final files, payment.",
     canonicalSource: "Sound-engineer work records (engineer name is free text) + mix versions / targets / comments / final files.",
     entityTypes: ["engineer_work", "mix_version", "final_file"],
-    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "PARTIAL", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY", "LEARN_AVAILABLE"], readCapabilities: ["mix_pipeline", "mix_view", "mix_portfolio"], learnKinds: ["VENDOR_COMMITMENT", "PROJECT_BLOCKER"], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("MIX_VERSION_TO_PROJECT", "CANONICAL_BUSINESS_RULE", "A full mix version on a project-linked work is copied into the project's files (player); deleting the version leaves the copy (POSSIBLE_BUG).", ["PROJECTS", "FILES_DROPBOX"]),
       R("RIDDIM_MODE", "CANONICAL_BUSINESS_RULE", "Riddim mode is driven only by the project type רידים; mix labels are numbered per mix line."),
@@ -712,7 +712,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
     readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
-    approval: "OWNER_APPROVAL_IN_DASHBOARD", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("OWNER_CONTEXT_APPEND_ONLY", "CANONICAL_BUSINESS_RULE", "Owner answers are append-only; a revision supersedes, history is never rewritten."),
       R("LIVE_BEATS_MEMORY", "CANONICAL_BUSINESS_RULE", "Live canonical state wins over remembered knowledge; memory is context, never a fact."),
@@ -817,7 +817,10 @@ const confirmationsOf = (id: string, cls: ActionClass, financialRisk: BusinessAc
     ...(EXTRA_CONFIRMATION[id] ?? []),
   ])];
 const A = (id: string, domain: string, meaning: string, cls: BusinessActionContract["class"], financialRisk: BusinessActionContract["financialRisk"], externalRisk: BusinessActionContract["externalRisk"], approval: BusinessActionContract["approval"], reason: string, primitive?: string): BusinessActionContract =>
-  ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: false, reason, ...(primitive ? { primitive } : {}) });
+  ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval: EXECUTABLE_THROUGH_SUNNY.has(id) ? "OWNER_CONFIRMATION_IN_CONVERSATION" : approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: EXECUTABLE_THROUGH_SUNNY.has(id), reason, ...(primitive ? { primitive } : {}) });
+/** Business actions Sunny executes through Claude today (Universal Action Layer; each only after the Owner approves the
+ *  exact preview). Kept equal to lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES by G10. */
+const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["CALENDAR_WRITE", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_TASK", "DELETE_CALENDAR_EVENT", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS"]);
 export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("UPDATE_PROJECT_DEADLINE", "PROJECTS", "Change a project's deadline", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Existing validated Partner primitive; Sunny proposes (preview), the Owner approves / executes in the dashboard.", "UPDATE_PROJECT_DEADLINE"),
   A("RECORD_PAID_EXPENSE", "FINANCE", "Record that a known expense was paid (Victor salary month)", "VALIDATED_ACTION_EXISTS", "HIGH", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Executable only from the dashboard; through Sunny it is refused (finance execution via MCP is off).", "RECORD_PAID_EXPENSE"),
@@ -925,4 +928,15 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-17", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני יודע מה הוא יכול ומה עוד לא (action_registry) ואצל מי הכדור / מה הצעד הבא (next_steps) — הצעות בלבד." },
   { version: "2026.09.27-18", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "NOT_YET_EXECUTABLE", noteHe: "גל 1 נבנה ונבדק: 13 פעולות פנימיות והפיכות (הערות / תכנון / סוג / דדליין של פרויקט, פרטי ושלב ריליס, סימון / פתיחה של הערת מיקס, סטטוס / תווית גרסה, הערות / סטטוס אמן, מצב / תוצאה / הערות של עבודת ויקטור) עם תוכנית, תצוגה, אישורך, בדיקת מצב, ביצוע חד-פעמי ואימות. עדיין כבוי — נדלק רק באישורך המפורש." },
   { version: "2026.09.27-19", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "גל 1 הופעל: 13 פעולות זמינות דרך Claude אחרי חיבור מחדש ואישורך לכל פעולה. מטריצת כיסוי 100%: כל פעולה ב-Redbloods מסווגת עם גל יעד ומה צריך לבנות — בלי מבוי סתום." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "PROJECTS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "פרויקטים: סטטוס, הסתרה, שם, אמן, סוג עסקי, קאבר, מגבלת סשנים, יצירת פרויקט (בנוסף לגל 1) — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "RELEASES", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "ריליסים: שיר לייבל חדש והמרה לריליס (בנוסף לפרטים ולשלב) — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "MIX_PIPELINE", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "מיקס: סימון / פתיחת הערה, סטטוס / תווית גרסה (גל 1) — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "LABEL_ARTISTS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "אמני לייבל: הערות וסטטוס (גל 1) — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "VICTOR", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "ויקטור: מצב עבודה, תוצאה והערות (גל 1) — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "CLIENTS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "לקוחות: יצירה, עדכון פרטים, שינוי שם (עם עדכון הפרויקטים), מחיקה — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "PROPOSALS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "הצעות מחיר: יצירה, פרטים, סכום, סטטוס, מעקב, קישור לפרויקט, המרה לפרויקט, מחיקה — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "MEETINGS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "פגישות: קביעה, עדכון (האירוע ביומן זז), מחיקה — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "TASKS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "משימות: יצירה (עם שיקוף ל-Google Tasks), עדכון, סטטוס, מחיקה, סנכרון — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "GOOGLE_CALENDAR", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "יומן: אירוע, אירוע עם הזמנה, עדכון, מחיקה, Google Task, ניתוק — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
+  { version: "2026.09.27-20", date: "2026-09-27", domain: "SESSIONS", dimension: "execute", from: "NOT_YET_EXECUTABLE", to: "PARTIAL", noteHe: "סשנים: קביעה (עם יומן / הזמנה לאמן), עדכון (האירוע זז), מחיקה — כל פעולה רק אחרי שאישרת את התצוגה המדויקת שלה, בוס." },
 ];

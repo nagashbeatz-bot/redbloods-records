@@ -147,9 +147,10 @@ export const PREPARATION_MODEL = {
   performanceFiles: "per ARTIST (not per show) audio files in the artist's storage folder (no database metadata); Shalev and the Owner can upload; no delete; Sunny cannot list them (storage gap)",
 } as const;
 
-export interface ShowActionEntry { id: string; action: string; who: Who | "DJ"; enforcement: Enforcement; entryPoint: string; writes: string; finance: string | null; ledger: string | null; calendar: string | null; push: string | null; external: boolean; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "KNOWLEDGE_ONLY"; futurePrimitive: string; internal: { routes: readonly string[] } }
+/** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */
+export interface ShowActionEntry { id: string; action: string; who: Who | "DJ"; enforcement: Enforcement; entryPoint: string; writes: string; finance: string | null; ledger: string | null; calendar: string | null; push: string | null; external: boolean; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE"; futurePrimitive: string; internal: { routes: readonly string[] } }
 type SA = Omit<ShowActionEntry, "sunnyToday" | "internal"> & { routes: readonly string[] };
-const X = (e: SA): ShowActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "KNOWLEDGE_ONLY", internal: { routes } }; };
+const X = (e: SA): ShowActionEntry => { const { routes, ...rest } = e; return { ...rest, sunnyToday: "SEE_ACTION_COVERAGE", internal: { routes } }; };
 const S = "app/api/shows/route.ts", SI = "app/api/shows/[id]/route.ts";
 export const SHOW_ACTIONS: readonly ShowActionEntry[] = [
   X({ id: "CREATE_SHOW", action: "Create a show / quote", who: "OWNER", enforcement: "PROXY_ONLY", entryPoint: "hub 'הופעה חדשה' / 'הצעת מחיר'", writes: "show (+ quick client)", finance: "rows when confirmed", ledger: "Shalev expected income when confirmed", calendar: "event (default on)", push: null, external: true, destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "CREATE_SHOW", routes: [S] }),

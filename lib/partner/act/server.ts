@@ -6,7 +6,10 @@ import "server-only";
  * and nothing here is a generic writer. Built lazily, only when the action endpoint is enabled and authenticated.
  */
 import type { ActServiceDeps } from "./service";
-import type { WriterDeps } from "./primitives";
+import type { CoreWriters, WriterDeps } from "./primitives";
+import type { ProjectFamilyWriters } from "./primitives/projects";
+import type { CrmFamilyWriters } from "./primitives/crm";
+import type { SessionFamilyWriters } from "./primitives/sessions";
 import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
@@ -16,6 +19,10 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
+  return { ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()) };
+}
+
+async function coreWriters(): Promise<CoreWriters> {
   const { getProject, updateProject } = await import("@/lib/projects-store");
   const { getReleaseDetails, updateReleaseDetails } = await import("@/lib/release-store");
   const { getSoundEngineerWork } = await import("@/lib/sound-engineer-store");
@@ -63,6 +70,98 @@ export async function realWriterDeps(): Promise<WriterDeps> {
       return w ? { title: (w.title ?? "").trim() || w.projectName || "", vendorName: w.vendorName, workState: w.workState ?? null, outcome: w.outcome ?? null, notes: w.notes ?? "" } : null;
     },
     writeVictorWork: (id, patch) => updateVictorWork(id, patch as VPatch),
+  };
+}
+
+/** Projects family (lib/writes/projects + the existing project / release / cover stores). */
+async function projectFamilyWriters(): Promise<ProjectFamilyWriters> {
+  const { getProject, updateProject } = await import("@/lib/projects-store");
+  const { getReleaseDetails, setProjectBusinessType, createLabelSongRelease, convertProjectToLabelRelease } = await import("@/lib/release-store");
+  const { getProjectCover, saveThemeCover, resetProjectCover } = await import("@/lib/project-cover-store");
+  const W = await import("@/lib/writes/projects");
+  type Theme = Parameters<typeof saveThemeCover>[1];
+  type Biz = Parameters<typeof setProjectBusinessType>[1];
+  type RelIn = Parameters<typeof convertProjectToLabelRelease>[2];
+  return {
+    async readProjectMeta(id) {
+      const p = await getProject(id);
+      return p ? { name: p.name ?? "", artist: p.artist ?? "", status: p.status ?? "", isHidden: !!p.isHidden, businessType: p.businessType ?? "", projectType: p.projectType ?? "", hasRelease: !!(await getReleaseDetails(id)) } : null;
+    },
+    writeProjectStatus: (id, status) => updateProject(id, W.statusPatch(status)),
+    writeProjectHidden: (id, hidden) => updateProject(id, { is_hidden: hidden }),
+    renameProject: (id, name) => W.renameProject(id, name),
+    changeProjectArtist: (id, artist) => W.changeProjectArtist(id, artist),
+    setProjectBusinessType: (id, t) => setProjectBusinessType(id, t as Biz),
+    async readProjectCover(id) { const c = await getProjectCover(id); return c ? { theme: String(c.theme), customImage: !!c.customImage } : null; },
+    saveProjectCoverTheme: async (id, theme) => { await saveThemeCover(id, theme as Theme); },
+    resetProjectCover: (id) => resetProjectCover(id),
+    readSessionLimit: (id) => W.getSessionLimit(id),
+    setSessionLimit: (id, n) => W.setSessionLimit(id, n),
+    countProjectsNamed: (name) => W.countProjectsNamed(name),
+    createClientProject: async (f) => (await W.createClientProject(f)).id,
+    createLabelSong: (f) => createLabelSongRelease({ ...f, releaseStage: f.releaseStage as RelIn["releaseStage"] }),
+    convertToLabelRelease: async (pid, aid, input) => (await convertProjectToLabelRelease(pid, aid, { ...input, releaseStage: input.releaseStage as RelIn["releaseStage"] })).status,
+  };
+}
+
+/** Clients / proposals / meetings / tasks / calendar family (lib/writes/{clients,proposals,meetings,tasks} + lib/google-calendar). */
+async function crmFamilyWriters(): Promise<CrmFamilyWriters> {
+  const { getClient } = await import("@/lib/clients-store");
+  const C = await import("@/lib/writes/clients");
+  const P = await import("@/lib/writes/proposals");
+  const M = await import("@/lib/writes/meetings");
+  const T = await import("@/lib/writes/tasks");
+  const G = await import("@/lib/writes/calendar");
+  const { getTask } = await import("@/lib/tasks-store");
+  type TaskIn = Parameters<typeof T.createTaskWithOptionalGoogle>[0];
+  type TaskPatch = Parameters<typeof T.patchTaskRecord>[1];
+  return {
+    async readClient(id) { const c = await getClient(id); return c ? { name: c.name ?? "", phone: c.phone ?? "", email: c.email ?? "", type: String(c.type ?? ""), status: String(c.status ?? ""), notes: c.notes ?? "" } : null; },
+    countClientsNamed: (name) => C.countClientsNamed(name),
+    countClientLinks: (id) => C.countClientLinks(id),
+    projectsNamingArtist: async (name) => (await C.projectsNamingArtist(name)).length,
+    createClient: async (c) => (await C.createClientRecord(c)).id,
+    patchClient: async (id, patch) => { await C.patchClient(id, patch); },
+    deleteClient: async (id) => { await C.deleteClientRecord(id); },
+    readProposal: (id) => P.readProposal(id),
+    createProposal: async (p) => String((await P.createProposal(p)).id),
+    updateProposal: async (id, patch) => { await P.updateProposal(id, patch as Parameters<typeof P.updateProposal>[1]); },
+    deleteProposal: (id) => P.deleteProposal(id),
+    async convertProposal(id, name) { const r = await P.convertProposal(id, name); return r.status === "ok" ? { status: "ok", projectId: r.project.id } : { status: r.status }; },
+    projectExists: (id) => P.projectExists(id),
+    readMeeting: (id) => M.readMeeting(id),
+    async createMeeting(m) { const c = await getClient(m.clientId); if (!c) throw new Error("client not found"); const r = await M.createMeeting({ ...m, clientName: c.name }); return { id: String(r.meeting.id), calendarError: r.calendarError }; },
+    updateMeeting: async (id, patch) => ({ calendarSynced: (await M.updateMeeting(id, patch)).calendarSynced }),
+    deleteMeeting: async (id) => { await M.deleteMeeting(id); },
+    async readTask(id) { const t = await getTask(id); return t ? { title: t.title, notes: t.notes ?? null, status: t.status, relatedType: t.related_type, relatedId: t.related_id ?? null, dueDate: t.due_date ?? null, startTime: t.start_time ?? null, endTime: t.end_time ?? null, mirrored: !!t.calendar_event_id } : null; },
+    createTask: (t, mirror) => T.createTaskWithOptionalGoogle(t as TaskIn, mirror),
+    patchTask: async (id, patch) => { await T.patchTaskRecord(id, patch as TaskPatch); },
+    deleteTask: (id) => T.deleteTaskRecord(id),
+    syncGoogleTasks: async () => ({ synced: (await T.syncCompletedGoogleTasks()).synced }),
+    countOpenTasksTitled: (title) => T.countOpenTasksTitled(title),
+    calendarConnected: () => G.calendarConnected(),
+    readCalendarEvent: (id) => G.readEvent(id),
+    addCalendarEvent: (e) => G.addEvent(e),
+    editCalendarEvent: (id, patch) => G.editEvent(id, patch),
+    removeCalendarEvent: (id) => G.removeEvent(id),
+    addGoogleTask: (title, due, notes) => G.addStandaloneGoogleTask(title, due, notes),
+    readGoogleTask: (id) => G.readGoogleTask(id),
+    googleTaskLinkedToTask: (id) => G.googleTaskLinkedToTask(id),
+    removeGoogleTask: (id) => G.removeGoogleTask(id),
+    disconnectGoogle: () => G.disconnectGoogle(),
+  };
+}
+
+/** Sessions family (lib/writes/sessions). */
+async function sessionFamilyWriters(): Promise<SessionFamilyWriters> {
+  const S = await import("@/lib/writes/sessions");
+  return {
+    readSession: (id) => S.readSession(id),
+    countSessionTransactions: (id) => S.countSessionTransactions(id),
+    isShalevProject: (id) => S.isShalevProject(id),
+    async createSession(s) { const r = await S.createSession(s); return { id: String(r.session.id), calendarError: r.calendarError }; },
+    updateSession: async (id, patch) => ({ calendarSynced: (await S.updateSession(id, patch as Parameters<typeof S.updateSession>[1])).calendarSynced }),
+    deleteSession: async (id) => ({ calendarDeleted: (await S.deleteSession(id)).calendarDeleted }),
   };
 }
 

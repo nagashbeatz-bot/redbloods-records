@@ -22,7 +22,9 @@ import { ACT_TOOL_DEFINITIONS, actToolsAvailable, validateActInput } from "../li
 import { FORBIDDEN_ARG_NAME_RE, knownSecretValues, safeDetail, toPersistablePlan } from "../lib/partner/act/persist";
 import { HANDOFF_MODEL, LABEL_OPERATING_MODEL, NEXT_EXPECTED_EVENT, nextStepsFor } from "../lib/partner/act/next-step";
 import { EFFECT_KEYS, type ActionContract, type Plan, type PlanStep } from "../lib/partner/act/types";
-import { BUSINESS_ACTIONS } from "../lib/partner/system/registry";
+import { ALL_PRIMITIVES, PRIMITIVES_BY_ID } from "../lib/partner/act/primitives";
+import { BUSINESS_ACTIONS, BUSINESS_ACTIONS as SYS_BUSINESS_ACTIONS, DOMAIN_CONTRACTS } from "../lib/partner/system/registry";
+import { BUSINESS_ACTION_PRIMITIVES, PRIMITIVE_SYSTEM_DOMAIN } from "../lib/partner/act/coverage-map";
 import { WORKFLOW_MODELS, OWNER_OPERATING_RULES } from "../lib/partner/system/owner-model";
 import { BACKGROUND_JOBS } from "../lib/partner/system/platform-domains";
 import * as PC from "../lib/partner/system/project-columns";
@@ -52,10 +54,10 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("registry is non-trivial (≥ 230 contracts)", ACTION_CONTRACTS.length >= 230, ACTION_CONTRACTS.length);
   ok("every contract has a version ≥ 1, a reason, a wave and a confirmation", ACTION_CONTRACTS.every((c) => c.version >= 1 && c.reason.length > 3 && !!c.wave && !!c.confirmation));
   ok("security-sensitive ⇔ NOT_DELEGATED and never executable", ACTION_CONTRACTS.every((c) => (c.riskClass === "SECURITY_SENSITIVE") === (c.confirmation === "NOT_DELEGATED")) && ACTION_CONTRACTS.filter((c) => c.riskClass === "SECURITY_SENSITIVE").every((c) => c.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
-  ok("Wave 1: EXACTLY the 13 READY primitives execute through Claude (each only after the Boss approves its plan)", JSON.stringify(ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE").map((c) => c.id).sort()) === JSON.stringify(["CHANGE_RELEASE_STAGE", "REOPEN_MIX_COMMENT", "RESOLVE_MIX_COMMENT", "UPDATE_LABEL_ARTIST_NOTES_STATUS", "UPDATE_MIX_VERSION_STATUS_OR_LABEL", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_NOTES", "UPDATE_PROJECT_PLANNING", "UPDATE_PROJECT_TYPE_OR_PARENT", "UPDATE_RELEASE_DETAILS", "UPDATE_VICTOR_NOTES", "UPDATE_VICTOR_OUTCOME", "UPDATE_VICTOR_WORK_STATE"]), ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE").map((c) => c.id).sort());
+  ok("EVERY executable contract is exactly a registered typed primitive (no other path executes)", JSON.stringify(ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE").map((c) => c.id).sort()) === JSON.stringify(ALL_PRIMITIVES.map((p) => p.actionId).sort()));
   ok("dashboard-only: the paid-expense finance primitive + the two inventory twins (no finance through Claude)", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE_VIA_DASHBOARD_APPROVAL").map((c) => c.id).sort().join() === ["PROJECT.SUNNY_DEADLINE", "RECORD_PAID_EXPENSE", "VICTOR.RECORD_SALARY_EXPENSE"].join());
   ok("every NEEDS_HARDENING key is a real contract in that bucket", Object.keys(NEEDS_HARDENING).every((k) => ACTION_REGISTRY.get(k)?.availability === "SUNNY_NEEDS_HARDENING"));
-  ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE")));
+  ok("every Wave 1 candidate is a W1 contract covering existing contracts; READY ones name their shared writer, the rest are not executable", WAVE1_CANDIDATES.length === 24 && WAVE1_CANDIDATES.every((w) => ACTION_REGISTRY.get(w.id)?.wave === "W1" && w.covers.every((c) => ACTION_REGISTRY.has(c)) && (w.status === "READY" || PRIMITIVES_BY_ID.has(w.id) ? !!ACTION_REGISTRY.get(w.id)!.internal.writer && ACTION_REGISTRY.get(w.id)!.availabilityDetail === "EXECUTABLE" : ACTION_REGISTRY.get(w.id)!.internal.writer === null && ACTION_REGISTRY.get(w.id)!.availabilityDetail !== "EXECUTABLE")));
   const DEFERRED = ["SHOW.RECORD_SHOW_ADVANCE", "RF.MARK_PRODUCTION_APPROVED", "SHOW.REHEARSAL"];
   ok("D5 / D6 / D7 stay BLOCKED_BY_OWNER_DECISION (not implemented)", DEFERRED.every((d) => ACTION_REGISTRY.get(d)?.availabilityDetail === "BLOCKED_BY_OWNER_DECISION"));
 
@@ -240,7 +242,8 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     ok("21b. no registered executor → refused (there is no fallback / generic writer)", /NO_EXECUTOR/.test((await run(u, approve(u), nd.d)).refusal ?? ""));
     const s = plan([step(0, "T.SEC", "a", "x")]);
     ok("22. a security-sensitive action is never delegated", validatePlan(s, REG).some((x) => x.code === "NOT_DELEGATED"));
-    ok("22b. every real security contract is excluded", ["CALENDAR.CONNECT", "CALENDAR.DISCONNECT", "FILES.DISCONNECT_DROPBOX", "SUNNY.CONNECTOR_OAUTH", "NOTIFY.PUSH_SUBSCRIBE", "NOTIFY.PUSH_CHECK", "SYSTEM.MAINTENANCE"].every((id) => ACTION_REGISTRY.get(id)?.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
+    // CALENDAR.DISCONNECT is an Owner operation (typed DISCONNECT_GOOGLE_CALENDAR, C3; the token is never read) — not a credential flow.
+    ok("22b. every real security contract is excluded", ["CALENDAR.CONNECT", "FILES.DISCONNECT_DROPBOX", "SUNNY.CONNECTOR_OAUTH", "NOTIFY.PUSH_SUBSCRIBE", "NOTIFY.PUSH_CHECK", "SYSTEM.MAINTENANCE"].every((id) => ACTION_REGISTRY.get(id)?.availability === "SUNNY_INTENTIONALLY_EXCLUDED"));
     world.a = "1"; const a = plan([step(0, "T.A", "a", "13")]); const ad = deps({ "T.A": exec("a") });
     ok("24. without an approval token nothing executes", (await run(a, "", ad.d)).status === "REFUSED" && world.a === "1");
     const pay = plan([step(0, "T.PAY", "a", "500")]); const pd = deps({ "T.PAY": exec("a") });
@@ -335,8 +338,8 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   ok("28. currency separation: RECORD_PAID_EXPENSE requires an explicit currency; money args never merge", ACTION_REGISTRY.get("RECORD_PAID_EXPENSE")!.args.some((a) => a.name === "currency" && a.kind === "enum"));
   ok("27b. no finance-module file was edited by the action layer (fingerprint pinned by existing finance tests)", !/payment-status|finance\/classify/.test(actSrc.match(/import[^;]+;/g)?.join("") ?? ""));
   ok("29. agent alerts: only 'mark handled' is a (W1) candidate; alert creation stays automatic context", ACTION_REGISTRY.get("AGENT.CREATE_ALERT")?.availabilityDetail === "SYSTEM_AUTOMATIC" && ACTION_REGISTRY.get("MARK_AGENT_ALERT_HANDLED")?.wave === "W1");
-  ok("30. calendar writes are not executable (Wave 4)", ACTION_CONTRACTS.filter((c) => c.effects.includes("CALENDAR")).every((c) => c.availabilityDetail !== "EXECUTABLE"));
-  ok("31. Dropbox / file writes are not executable (Wave 5+)", ACTION_CONTRACTS.filter((c) => c.effects.includes("FILES")).every((c) => c.availabilityDetail !== "EXECUTABLE"));
+  ok("30. every executable calendar / Google Tasks primitive needs at least C2 (values repeated) and discloses the external write", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE" && c.effects.some((e) => e === "CALENDAR" || e === "GOOGLE_TASKS")).every((c) => c.confirmation !== "C1_APPROVAL" && c.phase !== "INTERNAL"));
+  ok("31. every executable file primitive needs at least C2 and declares FILES (deletion → C3)", ACTION_CONTRACTS.filter((c) => c.availabilityDetail === "EXECUTABLE" && c.effects.includes("FILES")).every((c) => c.confirmation !== "C1_APPROVAL" && (!c.effects.includes("DELETION") || c.confirmation === "C3_STRONG_APPROVAL")));
 
   // ── identity + served knowledge ──
   console.log("Owner identity + served knowledge");
@@ -368,7 +371,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
   console.log("O. What can the Boss do that Sunny cannot yet do?");
   const g = bossCanSunnyCannot();
   ok("every Boss action is classified into exactly one of the four buckets", Object.values(g.byBucket).reduce((s, n) => s + n, 0) === g.bossActions - g.sunnyExecutableViaClaude);
-  ok("Wave 1: Sunny executes exactly the 13 READY primitives via Claude (with approval)", g.sunnyExecutableViaClaude === 13);
+  ok("Sunny executes exactly the registered primitives via Claude (each with approval)", g.sunnyExecutableViaClaude === ALL_PRIMITIVES.length);
   ok("every gap has a wave", Object.values(g.byWave).flat().length === g.bossActions - g.sunnyExecutableViaClaude);
   console.log(`     Boss actions ${g.bossActions}; buckets ${JSON.stringify(g.byBucket)}; waves ${JSON.stringify(Object.fromEntries(Object.entries(g.byWave).map(([k, v]) => [k, v!.length])))}`);
 
@@ -384,6 +387,11 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
     ok("G7d. EXECUTABLE rows are live (a registered executable primitive, Sunny's own channel, or fully covered by one)", COVERAGE_MATRIX.filter((r) => r.klass === "EXECUTABLE").every((r) => r.targetWave === "LIVE"));
     const EXCLUDED_REVIEWED = ["AGENT.CREATE_ALERT", "AGENT.RUN_CHECK", "CALENDAR.CONNECT", "CLIENT.AUTO_CREATE_CLIENT", "LABEL.ARTIST_SKETCH_SELF_EDIT", "LABEL.DJ_CONFIRM", "LABEL.PORTAL_PING", "LABEL.PORTAL_PUSH_SUBSCRIBE", "NOTIFY.LIST_WRITES", "NOTIFY.PUSH_CHECK", "NOTIFY.PUSH_SUBSCRIBE", "PEOPLE.PORTAL_PING", "PROJECT.AUTO_MARK_HELD", "PROJECT.CALENDAR_PULL", "PROJECT.STEVEN_COMPLETION", "SHOW.DJ_CONFIRM", "SUNNY.CONNECTOR_OAUTH", "VICTOR.AVATAR"];
     const excluded = COVERAGE_MATRIX.filter((r) => r.klass === "INTENTIONALLY_SECURITY_EXCLUDED").map((r) => r.id).sort();
+    // G10 — the older system contracts never drift from the action layer (one fact, one source).
+    const execDomains = new Set(Object.values(PRIMITIVE_SYSTEM_DOMAIN));
+    ok("G10a. every registered primitive names its Sunny system domain", ALL_PRIMITIVES.every((p) => !!PRIMITIVE_SYSTEM_DOMAIN[p.actionId] && DOMAIN_CONTRACTS.some((d) => d.id === PRIMITIVE_SYSTEM_DOMAIN[p.actionId])) && Object.keys(PRIMITIVE_SYSTEM_DOMAIN).every((id) => PRIMITIVES_BY_ID.has(id)));
+    ok("G10b. a system domain's execute support is PARTIAL exactly when a registered primitive executes in it (SUNNY_CORE: the layer itself)", DOMAIN_CONTRACTS.every((d) => d.id === "SUNNY_CORE" ? d.support.execute === "PARTIAL" : (execDomains.has(d.id) ? d.support.execute === "PARTIAL" || d.support.execute === "FULL" : d.support.execute === "NOT_YET_EXECUTABLE")), DOMAIN_CONTRACTS.filter((d) => d.id !== "SUNNY_CORE" && (execDomains.has(d.id) !== (d.support.execute !== "NOT_YET_EXECUTABLE"))).map((d) => d.id));
+    ok("G10c. BUSINESS_ACTIONS.sunnyCanExecuteToday is true exactly for the business actions a registered primitive executes", SYS_BUSINESS_ACTIONS.every((a) => a.sunnyCanExecuteToday === !!BUSINESS_ACTION_PRIMITIVES[a.id]) && Object.entries(BUSINESS_ACTION_PRIMITIVES).every(([id, ps]) => SYS_BUSINESS_ACTIONS.some((a) => a.id === id) && ps.length > 0 && ps.every((x) => PRIMITIVES_BY_ID.has(x))), SYS_BUSINESS_ACTIONS.filter((a) => a.sunnyCanExecuteToday !== !!BUSINESS_ACTION_PRIMITIVES[a.id]).map((a) => a.id));
     ok("G7e. the exclusion list is exactly the reviewed one (a new exclusion needs review here)", JSON.stringify(excluded) === JSON.stringify(EXCLUDED_REVIEWED), excluded);
     ok("G7f. every exclusion is one of the three allowed kinds (secret / identity-bound other user / system machinery)", COVERAGE_MATRIX.filter((r) => r.klass === "INTENTIONALLY_SECURITY_EXCLUDED").every((r) => ["SECRET_OR_CREDENTIAL_FLOW", "IDENTITY_BOUND_OTHER_USER", "SYSTEM_MACHINERY_NOT_AN_OWNER_OPERATION"].includes(String(r.exclusionKind))));
     ok("G7g. finance, calendar, files, communication, delete and bulk are NOT excluded (they have destination waves)", COVERAGE_MATRIX.filter((r) => r.effects.some((e) => ["FINANCE", "LEDGER", "CALENDAR", "GOOGLE_TASKS", "FILES", "PUSH", "EMAIL", "DELETION"].includes(e))).every((r) => r.klass !== "INTENTIONALLY_SECURITY_EXCLUDED" || EXCLUDED_REVIEWED.includes(r.id)));

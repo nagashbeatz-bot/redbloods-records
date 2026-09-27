@@ -257,8 +257,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "6eed4e5f9b597171be411bc9e43e125d3daebe45c4aecf7739779555f9e7e44f",
-  "effects": [],
+  "sha256": "327a252b91863aac0daf95d97cdcbe00b22f07967f20a3932fb2ba33d97a71f9",
+  "effects": [
+   "DELETION",
+   "GOOGLE_TASKS"
+  ],
   "fields": []
  },
  "app/api/clients/[id]/route.ts": {
@@ -267,9 +270,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "98f3f335e86d4a3041d80baa51a0d3df076d184cb9b6cbe67244406007e58a6c",
+  "sha256": "f6930caba4e09a8eb60fed3e512da0818942f08a812e4346c135ea6c8922aa2e",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
    "email",
@@ -285,17 +290,14 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "bb1cf6cae04a25673ff087d9465299fc88c9c8db8abda3cefed771d4b2bd9ecd",
+  "sha256": "51ed5a95bbd0d54c84cc3a47bfd1a89d716628e99c6b6fad81cb599bd7fc4e5d",
   "effects": [
-   "DELETION"
+   "DELETION",
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
-   "email",
-   "name",
-   "notes",
-   "phone",
-   "status",
-   "type"
+   "name"
   ]
  },
  "app/api/clip-items/[id]/promote/route.ts": {
@@ -1064,8 +1066,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "b1c2203236067cb2b8ec982fef8ccfa021e26e92af2f2d3a1521ad6081ca205b",
+  "sha256": "1d7f11ae5a0e15c10ea809eec0957a663d9afe49e3d5c83da55c76b664251b03",
   "effects": [
+   "CALENDAR",
    "DELETION"
   ],
   "fields": []
@@ -1075,9 +1078,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "b97f70befae4adabd5e048f803aea25683b2927e3c7ca48082c78ea3bf73a52c",
+  "sha256": "36f8855c8e0418f4516624a4841e23db27f19194099d65a89a9dc5eb51a3b5dd",
   "effects": [
-   "CALENDAR"
+   "CALENDAR",
+   "DELETION"
   ],
   "fields": [
    "addToCalendar",
@@ -1207,9 +1211,12 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "getWrites": false,
   "sha256": "70cade06e5de12c4f03343af5a1b7a5eebcf0157c9a1d09262a83a74a960b069",
   "effects": [
+   "CALENDAR",
    "DELETION",
    "FILES",
    "FINANCE",
+   "GOOGLE_TASKS",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -1343,7 +1350,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "09e3269e3451bf9271c6d05f3ec31ee124c378aa048bb97844a784d68a286229",
+  "sha256": "064774379a5e280ef713c6c382fde313a9438ea37b6039430fb4f5e2ea85448e",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -1355,7 +1362,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "fields": [
    "artist",
    "deadline",
-   "dropbox_folder",
    "end_date",
    "field",
    "isHidden",
@@ -1391,7 +1397,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "0d47fb66bc1bef0f008ac05bc32579643eb9739a39f5838b1e3e766caf713b92",
+  "sha256": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
   "effects": [
    "DELETION",
    "FILES",
@@ -1421,7 +1427,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "a08297d8d9b4903b687e539a5e4b2887998b38ac6e6949a95a1f1b073fc74368",
+  "sha256": "c96caa3413bb3424da68a44bdc9e38fac9e10eb11741acbc1cb931be97c5a1b0",
   "effects": [
    "DELETION",
    "GOOGLE_TASKS",
@@ -1437,35 +1443,24 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "78ee80cd9ab1d252b824dbc5125d323439770dfa0fddfdb050875184b0b77105",
+  "sha256": "0e0b7ec900523c49dd0c41677dd9e96cab3e97af67e01a006bf939151e3a0251",
   "effects": [
    "DELETION",
-   "GOOGLE_TASKS"
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
-  "fields": [
-   "amount",
-   "currency",
-   "followupDate",
-   "followup_date",
-   "linkedProjectId",
-   "linked_project_id",
-   "notes",
-   "sentDate",
-   "sent_date",
-   "status",
-   "title",
-   "updated_at"
-  ]
+  "fields": []
  },
  "app/api/proposals/route.ts": {
   "methods": [
    "POST"
   ],
   "getWrites": false,
-  "sha256": "88990298305caa2cfc288e7e3dad5002f1594220d13fa6462d57e59a5e00fdce",
+  "sha256": "4f24dcc1d314847455cc551c10107c1e1f48af2207dbd256a84392f0c7be1efb",
   "effects": [
    "DELETION",
-   "GOOGLE_TASKS"
+   "GOOGLE_TASKS",
+   "SETTINGS"
   ],
   "fields": [
    "amount",
@@ -2017,28 +2012,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "1b2fcfc76a912c37c6c10fc4322d5a9b975361c2e7ebfefc0e01d06c80204e24",
+  "sha256": "98dfee401a019eebb647cd19c6d979b2dba8dbd2f3df9cf3f501e239b4266a86",
   "effects": [
    "CALENDAR",
    "DELETION",
    "FINANCE",
-   "LEDGER"
+   "LEDGER",
+   "PUSH"
   ],
   "fields": [
    "cost",
    "date",
    "endIso",
    "endTime",
-   "end_time",
    "location",
    "notes",
    "paymentStatus",
    "photographer",
    "sessionType",
-   "session_type",
    "startIso",
    "startTime",
-   "start_time",
    "status",
    "summary"
   ]
@@ -2072,7 +2065,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7cb3e17725e97b77a0c6871dc5b8c337b595543a58b891b58b01da49fac2bca6",
+  "sha256": "a11dfcc76d9c59664ddbd8d8238171feab46cae4691b44294aba559079c7e3d4",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -2835,7 +2828,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "43ddd7be754a3fd3a5787daa6a25e66c46d92b3a2be99f1687fece99bb373492",
+  "sha256": "006df8b22edeca4b746a63144b91b349a5564e16b9225261886420bb579d5cfe",
   "effects": [
    "DELETION",
    "GOOGLE_TASKS"

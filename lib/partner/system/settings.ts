@@ -101,7 +101,6 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/projects/[id]/clip/route.ts",
   "app/api/projects/[id]/clip/send/route.ts",
   "app/api/projects/[id]/route.ts",
-  "app/api/proposals/[id]/convert/route.ts",
   "app/api/push/check/route.ts",
   "app/api/sessions/route.ts",
   "app/api/transactions/route.ts",
@@ -142,6 +141,8 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/victor-completed-notify.ts",
   "lib/victor-presence-notify.ts",
   "lib/victor-upload-notify.ts",
+  "lib/writes/projects.ts",
+  "lib/writes/proposals.ts",
 ] as const;
 
 export function familyOfKey(key: string): SettingsFamily | null {

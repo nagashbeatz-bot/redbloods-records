@@ -103,7 +103,7 @@ function main() {
   ok(`every Victor route belongs to a family or is a known cross-domain reader (${extra.length} cross-domain: ${extra.join(", ")})`, extra.every((f) => /^app\/api\/(projects|agent|push|coo|reports|tasks|team|dashboard|label)/.test(f)));
   for (const [f, want] of Object.entries(VM.VICTOR_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Victor review (update lib/partner/system/victor.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   ok("fingerprints cover every reviewed file", Object.keys(VM.VICTOR_REVIEWED_FINGERPRINTS).length === VM.VICTOR_REVIEWED_FILES.length);
-  ok("every Victor action names existing routes; only the approved salary action is executable", VM.VICTOR_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r)))) && VM.VICTOR_ACTIONS.filter((a) => a.sunnyToday !== "KNOWLEDGE_ONLY").map((a) => a.id).join() === "RECORD_SALARY_EXPENSE");
+  ok("every Victor action names existing routes; only the approved salary action is executable", VM.VICTOR_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r)))) && VM.VICTOR_ACTIONS.filter((a) => a.sunnyToday !== "SEE_ACTION_COVERAGE").map((a) => a.id).join() === "RECORD_SALARY_EXPENSE");
   const view = code(read("lib/partner/victor/view.ts"));
   ok("handoff reuses the app's own ball rule (no second rule)", /computeVictorBall\(/.test(view) && /COO_CONFIG/.test(view));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/victor-deep.ts"))));
