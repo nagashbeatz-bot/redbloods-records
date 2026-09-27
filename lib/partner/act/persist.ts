@@ -11,7 +11,8 @@
  *   planId, ownerId, clientId, intentHe (short business text), createdAt, expiresAt, riskClass, confirmation, effects[],
  *   steps[]: index, actionId, actionVersion, phase, dependsOn[], expectedFingerprint (64-hex or null),
  *            entities[] (canonical entity keys "kind:id" only — never a storage path),
- *            args{} (ONLY the contract's declared, typed arguments),
+ *            args{} (ONLY the contract's declared, typed arguments; the one server-issued value allowed is a
+ *                    duplicateAck — exact format dack1.<expiry ms>.<64-hex HMAC>, validated strictly, nothing else),
  *            changes[] {field = a declared argument name, before / after = scalar business values}.
  * Never allowed: passwords, cookies, OAuth / access / refresh tokens, service keys, API / webhook / encryption secrets,
  *   Authorization headers, connector or Dropbox / Google credentials, approval tokens, raw file-system / storage paths,
@@ -20,6 +21,7 @@
  */
 import type { ActionContract, ArgSpec, Plan, PlanStep } from "./types";
 import { EFFECT_KEYS, RISK_ORDER } from "./types";
+import { DUPLICATE_ACK_RE } from "./approval";
 
 export const MAX_TEXT_CHARS = 2000;
 export const MAX_INTENT_CHARS = 300;
@@ -113,7 +115,12 @@ function checkScalar(v: unknown, where: string, known: readonly string[], maxLen
   if (typeof v === "string") return v.length > maxLen ? [{ code: "TEXT_TOO_LONG", where }] : inspectText(v, where, known);
   return [{ code: "NOT_A_SCALAR", where }];
 }
+/** The server-issued duplicate acknowledgement (an HMAC over public plan data — it authorises nothing by itself). Its
+ *  64-hex part would trip the opaque-blob scan, so it is accepted ONLY in this exact shape, and only under this name. */
+export const DUP_ACK_ARG_NAME = "duplicateAck";
+export const isDuplicateAckValue = (v: unknown): v is string => typeof v === "string" && DUPLICATE_ACK_RE.test(v);
 function checkArg(spec: ArgSpec, v: unknown, where: string, known: readonly string[]): PersistProblem[] {
+  if (spec.name === DUP_ACK_ARG_NAME) return spec.kind === "text" && isDuplicateAckValue(v) ? [] : [{ code: "BAD_DUPLICATE_ACK", where }];
   switch (spec.kind) {
     case "entityKey": return typeof v === "string" && ENTITY_KEY_RE.test(v) ? inspectText(v, where, known) : [{ code: "BAD_ENTITY_KEY", where }];
     case "ymd": return typeof v === "string" && YMD_RE.test(v) ? [] : [{ code: "BAD_DATE", where }];

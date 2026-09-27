@@ -104,7 +104,9 @@ export interface Preview {
 
 export type StepStatus = "APPLIED_AS_EXPECTED" | "NO_CHANGE" | "FAILED" | "STALE" | "CONFLICT" | "NOT_RUN";
 export type PlanStatus = "APPLIED_AS_EXPECTED" | "PARTIALLY_APPLIED" | "NO_CHANGE" | "FAILED" | "STALE" | "ROLLED_BACK" | "ROLLBACK_PARTIAL" | "REFUSED";
-export interface StepOutcome { index: number; actionId: string; status: StepStatus; detail: string; replayed: boolean }
+/** One step's outcome. `createdKey` = the canonical entity key ("kind:id") of the record a CREATE step made (never a
+ *  path); `at` = when the engine claimed / settled the step (ISO, engine clock — used only for in-progress detection). */
+export interface StepOutcome { index: number; actionId: string; status: StepStatus; detail: string; replayed: boolean; createdKey?: string; at?: string }
 export interface PlanOutcome { planId: string; planHash: string; status: PlanStatus; refusal: string | null; steps: readonly StepOutcome[] }
 
 export type PlanEventType = "PLAN_CREATED" | "PREVIEWED" | "APPROVED" | "STEP_EXECUTED" | "STEP_FAILED" | "VERIFIED" | "COMPENSATED" | "STALE" | "REFUSED";

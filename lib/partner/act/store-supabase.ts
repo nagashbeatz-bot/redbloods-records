@@ -9,17 +9,34 @@
  *   executions  — one row per step execution key (primary key → the claim is atomic; a retry reads the recorded outcome)
  *   plan_events — append-only (the DB blocks UPDATE / DELETE / TRUNCATE); details are already sanitized + capped
  * The service role holds exactly INSERT + SELECT (and UPDATE on executions only, to record the outcome of a claim).
+ * Every executed step has exactly ONE executions row (UNIQUE(plan_id, step_index)): a step that ran is claimed (INSERT
+ * CLAIMED, with the claim time in the outcome jsonb so a stuck claim can be aged) and then recorded (UPDATE CLAIMED →
+ * terminal); a step that never ran (STALE / NOT_RUN) is settled with ONE INSERT of its terminal status. The status values
+ * are exactly the DB CHECK set; the outcome jsonb is allowlisted (index, actionId, status, sanitized detail, a canonical
+ * createdKey, an ISO time) — never a token, a confirmation text, a path or a link.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AuditEvent, AuditStore, IdempotencyStore } from "./engine";
+import type { AuditEvent, AuditStore, ClaimMeta, IdempotencyStore } from "./engine";
 import type { NonceConsumption, NonceStore } from "./approval";
 import type { ActionContract, Plan, StepOutcome, StepStatus } from "./types";
-import { toPersistablePlan, safeDetail, MAX_DETAIL_CHARS } from "./persist";
+import { toPersistablePlan, safeDetail, ENTITY_KEY_RE, MAX_DETAIL_CHARS } from "./persist";
 import { planHash } from "./plan";
 
 export const ACT_TABLES = { plans: "partner_action_plans", approvals: "partner_action_approvals", executions: "partner_action_executions", events: "partner_action_plan_events" } as const;
 const UNIQUE_VIOLATION = "23505";
 const STEP_STATUSES: readonly StepStatus[] = ["APPLIED_AS_EXPECTED", "NO_CHANGE", "FAILED", "STALE", "CONFLICT", "NOT_RUN"];
+/** Statuses a step that never ran may be settled with (no claim). */
+const SETTLE_STATUSES: readonly StepStatus[] = ["STALE", "NOT_RUN"];
+const ISO_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+/** The ONLY outcome JSON ever stored (rebuilt, never copied). */
+function storedOutcome(o: StepOutcome): StepOutcome {
+  return {
+    index: o.index, actionId: o.actionId, status: o.status, detail: safeDetail(o.detail).slice(0, MAX_DETAIL_CHARS), replayed: false,
+    ...(typeof o.createdKey === "string" && ENTITY_KEY_RE.test(o.createdKey) ? { createdKey: o.createdKey } : {}),
+    ...(typeof o.at === "string" && ISO_AT.test(o.at) ? { at: o.at } : {}),
+  };
+}
+const claimAt = (m: ClaimMeta) => (typeof m.atMs === "number" && Number.isFinite(m.atMs) ? new Date(m.atMs).toISOString() : new Date().toISOString());
 
 export class ActStoreError extends Error { constructor(public readonly op: string, detail: string) { super(`act store ${op} failed: ${detail.slice(0, 160)}`); } }
 const fail = (op: string, e: { message?: string } | null | undefined): never => { throw new ActStoreError(op, e?.message ?? "unknown"); };
@@ -29,12 +46,12 @@ export interface PlanStore {
   save(plan: Plan, registry: ReadonlyMap<string, ActionContract>, registryVersion: string, knownSecrets?: readonly string[]): Promise<{ planHash: string }>;
   /** Load a plan by id (null = not found). */
   load(planId: string): Promise<Plan | null>;
-  /** Recorded step outcomes of a plan (status reads). */
+  /** Recorded step outcomes of a plan (status reads). For a CLAIMED row, `outcome` carries only { at } (the claim time). */
   executions(planId: string): Promise<Array<{ stepIndex: number; actionId: string; status: string; outcome: StepOutcome | null }>>;
   /** Event types recorded for a plan (status reads; details are sanitized). */
   events(planId: string): Promise<Array<{ type: string; step: number | null; at: string }>>;
   /** The Owner's plans, newest first (cursor = created_at of the last item), with their recorded executions + event types. */
-  history?(ownerId: string, q: HistoryQuery): Promise<{ items: Array<{ plan: Plan; executions: Array<{ stepIndex: number; status: string }>; eventTypes: string[]; executedAt: string | null }>; nextBefore: string | null }>;
+  history?(ownerId: string, q: HistoryQuery): Promise<{ items: Array<{ plan: Plan; executions: Array<{ stepIndex: number; status: string; outcome?: StepOutcome | null }>; eventTypes: string[]; executedAt: string | null }>; nextBefore: string | null }>;
 }
 export interface HistoryQuery { limit: number; before: string | null; since: string | null; actionId: string | null; entity: string | null }
 /** Rows scanned per history page when filtering by action / entity (the plan JSON is filtered here, never by raw SQL). */
@@ -88,18 +105,18 @@ export function supabaseActStores(sb: SupabaseClient) {
       if (!rows.length) return { items: [], nextBefore };
       const ids = rows.map((r) => r.plan_id);
       const [{ data: ex, error: e2 }, { data: ev, error: e3 }] = await Promise.all([
-        sb.from(ACT_TABLES.executions).select("plan_id, step_index, status, recorded_at").in("plan_id", ids),
+        sb.from(ACT_TABLES.executions).select("plan_id, step_index, status, outcome, recorded_at").in("plan_id", ids),
         sb.from(ACT_TABLES.events).select("plan_id, event_type").in("plan_id", ids),
       ]);
       if (e2) fail("read_history_executions", e2);
       if (e3) fail("read_history_events", e3);
-      const exs = (ex ?? []) as Array<{ plan_id: string; step_index: number; status: string; recorded_at: string | null }>;
+      const exs = (ex ?? []) as Array<{ plan_id: string; step_index: number; status: string; outcome: StepOutcome | null; recorded_at: string | null }>;
       const evs = (ev ?? []) as Array<{ plan_id: string; event_type: string }>;
       return {
         items: rows.map((r) => {
           const mine = exs.filter((x) => x.plan_id === r.plan_id);
           const at = mine.map((x) => x.recorded_at).filter((x): x is string => !!x).sort();
-          return { plan: r.plan, executions: mine.map((x) => ({ stepIndex: x.step_index, status: x.status })), eventTypes: [...new Set(evs.filter((x) => x.plan_id === r.plan_id).map((x) => x.event_type))], executedAt: at.length ? at[at.length - 1] : null };
+          return { plan: r.plan, executions: mine.map((x) => ({ stepIndex: x.step_index, status: x.status, outcome: x.outcome ?? null })), eventTypes: [...new Set(evs.filter((x) => x.plan_id === r.plan_id).map((x) => x.event_type))], executedAt: at.length ? at[at.length - 1] : null };
         }),
         nextBefore,
       };
@@ -124,17 +141,23 @@ export function supabaseActStores(sb: SupabaseClient) {
       return r.outcome;
     },
     async claim(key, meta) {
-      const { error } = await sb.from(ACT_TABLES.executions).insert({ execution_key: key, plan_id: meta.planId, step_index: meta.stepIndex, action_id: meta.actionId, action_version: meta.actionVersion, status: "CLAIMED" });
+      const { error } = await sb.from(ACT_TABLES.executions).insert({ execution_key: key, plan_id: meta.planId, step_index: meta.stepIndex, action_id: meta.actionId, action_version: meta.actionVersion, status: "CLAIMED", outcome: { at: claimAt(meta) } });
       if (!error) return true;
       if (error.code === UNIQUE_VIOLATION) return false; // someone already claimed this step → never execute twice
       return fail("claim_execution", error);
     },
     async record(key, o) {
       if (!STEP_STATUSES.includes(o.status)) throw new ActStoreError("record_execution", "unknown step status");
-      const outcome: StepOutcome = { index: o.index, actionId: o.actionId, status: o.status, detail: safeDetail(o.detail).slice(0, MAX_DETAIL_CHARS), replayed: false };
-      const { data, error } = await sb.from(ACT_TABLES.executions).update({ status: o.status, outcome, recorded_at: new Date().toISOString() }).eq("execution_key", key).eq("status", "CLAIMED").select("execution_key");
+      const { data, error } = await sb.from(ACT_TABLES.executions).update({ status: o.status, outcome: storedOutcome(o), recorded_at: new Date().toISOString() }).eq("execution_key", key).eq("status", "CLAIMED").select("execution_key");
       if (error) fail("record_execution", error);
       if (!data || (data as unknown[]).length !== 1) throw new ActStoreError("record_execution", "the claimed row was not found (or was already recorded)");
+    },
+    async settle(key, meta, o) {
+      if (!SETTLE_STATUSES.includes(o.status)) throw new ActStoreError("settle_execution", "only a step that never ran is settled without a claim");
+      const { error } = await sb.from(ACT_TABLES.executions).insert({ execution_key: key, plan_id: meta.planId, step_index: meta.stepIndex, action_id: meta.actionId, action_version: meta.actionVersion, status: o.status, outcome: storedOutcome({ ...o, at: o.at ?? claimAt(meta) }), recorded_at: new Date().toISOString() });
+      if (!error) return true;
+      if (error.code === UNIQUE_VIOLATION) return false; // the step already has its one row
+      return fail("settle_execution", error);
     },
   };
 

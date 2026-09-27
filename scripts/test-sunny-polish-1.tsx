@@ -56,7 +56,11 @@ const writes = (c: string[]) => c.filter((x) => !x.startsWith("similarRecords"))
   }
   {
     const h = mk(); const { d } = mkDeps(h.writers);
-    const r = await fullFlow(d, "ADD_LEDGER_ENTRY", LEDGER({ separateFromSimilar: true }), "מאשר");
+    const blind = await plan(d, LEDGER({ separateFromSimilar: true }));
+    ok("B2a. separateFromSimilar alone (no server ack) is refused — Claude cannot bypass the Boss's decision", blind.status === "DUPLICATE_ACK_REQUIRED" && writes(h.calls).length === 0, blind.status);
+    const held = await plan(d, LEDGER());
+    ok("B2c. the POSSIBLE_DUPLICATE refusal carries a server ack (dack1.<exp>.<hex>) to use only after the Boss says 'additional'", held.status === "POSSIBLE_DUPLICATE" && /^dack1\.\d{13}\.[0-9a-f]{64}$/.test(String(held.duplicateAck)), held);
+    const r = await fullFlow(d, "ADD_LEDGER_ENTRY", LEDGER({ separateFromSimilar: true, duplicateAck: held.duplicateAck }), "מאשר");
     const pj = JSON.stringify(r.p);
     ok("B2. the Boss said 'additional' → the plan is allowed, the preview still lists the existing one and says it is recorded separately", r.p.status === "PREVIEW" && pj.includes("קיימת רשומה") && pj.includes("נרשמת כרשומה נוספת"), r.p);
     ok("B5. the preview shows every important field, including the description", pj.includes("\"description\"") && pj.includes("רישום לאקו") && pj.includes("\"entryType\"") && pj.includes("\"entryDate\""));

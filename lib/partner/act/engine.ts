@@ -5,26 +5,42 @@
  * writer → fresh reread + verify → per-step outcome → audit. A retry returns the recorded outcome and never executes twice.
  * A failure stops every later step; a COMMUNICATION step never runs after any failure. Nothing is ever reported as done
  * without verification. There is no generic writer: a step can only run through an executor registered for its action.
+ *
+ * Reliability (2026-09-27):
+ *   - Every step of an executed plan gets exactly ONE recorded row: APPLIED / NO_CHANGE / FAILED through claim → record;
+ *     STALE / NOT_RUN settled directly (no claim — the step never ran). A lost claim (CONFLICT) is never written: the row
+ *     belongs to the run that holds it, and this run stops at once (nothing later is settled or executed).
+ *   - A plan that already has recorded outcomes is never executed again: a replay of the SAME consumed token returns the
+ *     recorded outcome; a fresh token for it is refused (ALREADY_EXECUTED).
+ *   - Self-stale fix: each step's re-check / execution reads its creation context with the ids created by EARLIER steps
+ *     of THIS run left out (StepContext.excludeCreated) — the plan's own creations never make it STALE, any external
+ *     change still does. The expected fingerprint is never recomputed.
  */
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
 import { verifyApproval, type NonceStore } from "./approval";
-import { safeDetail, toPersistablePlan } from "./persist";
+import { ENTITY_KEY_RE, safeDetail, toPersistablePlan } from "./persist";
 
+export interface ClaimMeta { planId: string; stepIndex: number; actionId: string; actionVersion: number; /** engine clock (ms) — stored so a stuck claim can be aged */ atMs?: number }
 export interface IdempotencyStore {
-  /** The recorded outcome for this execution key, if any (a replay returns it). */
+  /** The recorded (terminal) outcome for this execution key, if any (a replay returns it). A CLAIMED row is not an outcome. */
   recorded(key: string): Promise<StepOutcome | null>;
   /** Claim the key once (DB unique constraint in production). false = someone already claimed it. */
-  claim(key: string, meta: { planId: string; stepIndex: number; actionId: string; actionVersion: number }): Promise<boolean>;
+  claim(key: string, meta: ClaimMeta): Promise<boolean>;
+  /** CLAIMED → terminal outcome (the claimed row only). */
   record(key: string, outcome: StepOutcome): Promise<void>;
+  /** A terminal row for a step that never ran (STALE / NOT_RUN) — inserted without a claim. false = the step already has a row. */
+  settle(key: string, meta: ClaimMeta, outcome: StepOutcome): Promise<boolean>;
 }
+/** What a step may know about its own run: the ids earlier steps of THIS plan created (left out of duplicate context). */
+export interface StepContext { excludeCreated: readonly string[] }
 export interface AuditEvent { planId: string; planHash: string; type: PlanEventType; step: number | null; detail: string; ownerId: string; clientId: string }
 export interface AuditStore { append(e: AuditEvent): Promise<void> }
 /** A registered primitive's server side (MAIN). There is no fallback / generic executor. */
 export interface PrimitiveExecutor {
-  /** Fresh read → the fingerprint of exactly the state the step was previewed against. */
-  fingerprint(step: PlanStep): Promise<string>;
-  execute(step: PlanStep, priorOutputs: ReadonlyMap<number, unknown>): Promise<{ changed: boolean; output?: unknown }>;
+  /** Fresh read → the fingerprint of exactly the state the step was previewed against (ctx: this run's own creations left out). */
+  fingerprint(step: PlanStep, ctx?: StepContext): Promise<string>;
+  execute(step: PlanStep, priorOutputs: ReadonlyMap<number, unknown>, ctx?: StepContext): Promise<{ changed: boolean; output?: unknown }>;
   /** Fresh read after execution: did the canonical state become what the preview said? */
   verify(step: PlanStep, output: unknown): Promise<boolean>;
 }
@@ -68,45 +84,63 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     await log("REFUSED", null, v.refusal);
     return refuse(plan, hash, v.refusal);
   }
+  // 2b. a plan that already has recorded outcomes is never executed again (a fresh token cannot re-run it)
+  const recordedBefore = await Promise.all(plan.steps.map((s) => d.idem.recorded(executionKey(hash, s))));
+  if (recordedBefore.some(Boolean)) {
+    await log("REFUSED", null, "ALREADY_EXECUTED");
+    return { planId: plan.planId, planHash: hash, status: "REFUSED", refusal: "ALREADY_EXECUTED", steps: plan.steps.map((s, i) => (recordedBefore[i] ? { ...recordedBefore[i]!, replayed: true } : { index: s.index, actionId: s.actionId, status: "NOT_RUN" as StepStatus, detail: "no recorded outcome for this step", replayed: false })) };
+  }
   await log("APPROVED", null, "owner approval verified");
+  const at = new Date(d.nowMs).toISOString();
+  const meta = (s: PlanStep): ClaimMeta => ({ planId: plan.planId, stepIndex: s.index, actionId: s.actionId, actionVersion: s.actionVersion, atMs: d.nowMs });
+  /** a terminal row for a step that did not run; a store failure never turns "did not run" into anything else */
+  const settle = async (s: PlanStep, o: StepOutcome) => { try { await d.idem.settle(executionKey(hash, s), meta(s), o); } catch { /* the response still says exactly what happened */ } };
   // 3. fresh reread + stale check for every independent step BEFORE anything executes
   const executors = d.executors;
   for (const s of plan.steps) {
     if (s.expectedFingerprint === null) continue;
-    const already = await d.idem.recorded(executionKey(hash, s));
-    if (already) continue;
     const now = await executors.get(s.actionId)!.fingerprint(s);
     if (now !== s.expectedFingerprint) {
       await log("STALE", s.index, "live state changed since the preview");
-      return { planId: plan.planId, planHash: hash, status: "STALE", refusal: null, steps: plan.steps.map((x) => ({ index: x.index, actionId: x.actionId, status: (x.index === s.index ? "STALE" : "NOT_RUN") as StepStatus, detail: x.index === s.index ? "live state changed — a new preview is required" : "not run (plan stale)", replayed: false })) };
+      const steps = plan.steps.map((x): StepOutcome => ({ index: x.index, actionId: x.actionId, status: x.index === s.index ? "STALE" : "NOT_RUN", detail: x.index === s.index ? "live state changed — a new preview is required" : "not run (plan stale)", replayed: false, at }));
+      for (const x of plan.steps) await settle(x, steps[x.index]);
+      return { planId: plan.planId, planHash: hash, status: "STALE", refusal: null, steps };
     }
   }
   // 4. execute in order
   const results: StepOutcome[] = [];
   const outputs = new Map<number, unknown>();
+  const created: string[] = [];
   let failed = false;
   for (const s of plan.steps) {
     const key = executionKey(hash, s);
-    const prior = await d.idem.recorded(key);
-    if (prior) { results.push({ ...prior, replayed: true }); if (prior.status === "FAILED" || prior.status === "CONFLICT") failed = true; continue; }
-    if (failed) { results.push({ index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: s.phase === "COMMUNICATION" ? "communication never runs after a failed step" : "not run after an earlier failure", replayed: false }); continue; }
-    if (s.dependsOn.some((i) => results[i]?.status !== "APPLIED_AS_EXPECTED" && results[i]?.status !== "NO_CHANGE")) { failed = true; results.push({ index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: "a prerequisite step did not apply", replayed: false }); continue; }
+    if (failed) { const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: s.phase === "COMMUNICATION" ? "communication never runs after a failed step" : "not run after an earlier failure", replayed: false, at }; results.push(o); await settle(s, o); continue; }
+    if (s.dependsOn.some((i) => results[i]?.status !== "APPLIED_AS_EXPECTED" && results[i]?.status !== "NO_CHANGE")) { failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: "a prerequisite step did not apply", replayed: false, at }; results.push(o); await settle(s, o); continue; }
     const ex = executors.get(s.actionId)!;
-    if (s.expectedFingerprint !== null && (await ex.fingerprint(s)) !== s.expectedFingerprint) {
-      failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "live state changed immediately before execution", replayed: false };
-      results.push(o); await log("STALE", s.index, o.detail); continue;
+    const ctx: StepContext = { excludeCreated: [...created] };
+    if (s.expectedFingerprint !== null && (await ex.fingerprint(s, ctx)) !== s.expectedFingerprint) {
+      failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "live state changed immediately before execution", replayed: false, at };
+      results.push(o); await log("STALE", s.index, o.detail); await settle(s, o); continue;
     }
-    if (!(await d.idem.claim(key, { planId: plan.planId, stepIndex: s.index, actionId: s.actionId, actionVersion: s.actionVersion }))) { failed = true; results.push({ index: s.index, actionId: s.actionId, status: "CONFLICT", detail: "already being executed (duplicate request)", replayed: false }); continue; }
+    if (!(await d.idem.claim(key, meta(s)))) {
+      // another run holds this step: stop at once — never settle / execute anything it may still be doing
+      results.push({ index: s.index, actionId: s.actionId, status: "CONFLICT", detail: "already being executed (duplicate request)", replayed: false });
+      for (const x of plan.steps.slice(s.index + 1)) results.push({ index: x.index, actionId: x.actionId, status: "NOT_RUN", detail: "not run here — another execution of this plan is in progress", replayed: false });
+      break;
+    }
     let o: StepOutcome;
     try {
-      const r = await ex.execute(s, outputs);
+      const r = await ex.execute(s, outputs, ctx);
       outputs.set(s.index, r.output);
+      const cid = (r.output as { createdId?: unknown } | undefined)?.createdId;
+      if (typeof cid === "string" && cid) created.push(cid);
       const ok = await ex.verify(s, r.output);
-      o = { index: s.index, actionId: s.actionId, status: !ok ? "FAILED" : r.changed ? "APPLIED_AS_EXPECTED" : "NO_CHANGE", detail: ok ? "verified by a fresh read" : "executed but the fresh read does not match the preview", replayed: false };
+      const createdKey = createdKeyOf(s, cid);
+      o = { index: s.index, actionId: s.actionId, status: !ok ? "FAILED" : r.changed ? "APPLIED_AS_EXPECTED" : "NO_CHANGE", detail: ok ? "verified by a fresh read" : "executed but the fresh read does not match the preview", replayed: false, at, ...(createdKey ? { createdKey } : {}) };
       await log(ok ? "VERIFIED" : "STEP_FAILED", s.index, o.detail);
       if (ok) await log("STEP_EXECUTED", s.index, r.changed ? "changed" : "no change");
     } catch (e) {
-      o = { index: s.index, actionId: s.actionId, status: "FAILED", detail: safeDetail(`execution error: ${(e as Error).message}`, d.knownSecrets).slice(0, 200), replayed: false };
+      o = { index: s.index, actionId: s.actionId, status: "FAILED", detail: safeDetail(`execution error: ${(e as Error).message}`, d.knownSecrets).slice(0, 200), replayed: false, at };
       await log("STEP_FAILED", s.index, o.detail);
     }
     await d.idem.record(key, o);
@@ -114,6 +148,13 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     if (o.status === "FAILED") failed = true;
   }
   return summarize(plan, hash, results);
+}
+/** The canonical key of the record a CREATE step made ("kind:<created id>") — only for a step planned on "kind:new". */
+export function createdKeyOf(s: PlanStep, createdId: unknown): string | undefined {
+  const k = s.entities[0] ?? "";
+  if (typeof createdId !== "string" || !createdId || !k.endsWith(":new")) return undefined;
+  const key = `${k.slice(0, k.indexOf(":"))}:${createdId}`;
+  return ENTITY_KEY_RE.test(key) ? key : undefined;
 }
 
 function summarize(plan: Plan, hash: string, steps: StepOutcome[]): PlanOutcome {
@@ -131,7 +172,12 @@ export function memoryStores() {
   const events: AuditEvent[] = [];
   return {
     nonces: { consume: async (c: { nonce: string }) => (nonces.has(c.nonce) ? false : (nonces.add(c.nonce), true)) } satisfies NonceStore,
-    idem: { recorded: async (k: string) => recorded.get(k) ?? null, claim: async (k: string) => (claimed.has(k) ? false : (claimed.add(k), true)), record: async (k: string, o: StepOutcome) => { recorded.set(k, o); } } satisfies IdempotencyStore,
+    idem: {
+      recorded: async (k: string) => recorded.get(k) ?? null,
+      claim: async (k: string) => (claimed.has(k) ? false : (claimed.add(k), true)),
+      record: async (k: string, o: StepOutcome) => { recorded.set(k, o); },
+      settle: async (k: string, _m: ClaimMeta, o: StepOutcome) => (claimed.has(k) || recorded.has(k) ? false : (claimed.add(k), recorded.set(k, o), true)),
+    } satisfies IdempotencyStore,
     audit: { append: async (e: AuditEvent) => { events.push(e); } } satisfies AuditStore,
     events,
   };

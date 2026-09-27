@@ -311,7 +311,7 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
     const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: YES }, OWNER, m.d);
     const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: YES }, OWNER, m.d);
     ok("D18. execute after the live state changed → STALE", e.status === "STALE" && String(e.messageHe).includes("תצוגה חדשה"));
-    ok("D19. no write on stale; the other change is untouched", m.calls.length === 0 && m.world.projects[U(1)].deadline === "2026-10-05" && m.db.rows(ACT_TABLES.executions).length === 0 && m.db.rows(ACT_TABLES.events).some((x) => x.event_type === "STALE"));
+    ok("D19. no write on stale; the other change is untouched; the step's ONE row records STALE (never claimed)", m.calls.length === 0 && m.world.projects[U(1)].deadline === "2026-10-05" && m.db.rows(ACT_TABLES.executions).map((x) => x.status).join() === "STALE" && m.db.rows(ACT_TABLES.events).some((x) => x.event_type === "STALE"));
   }
 
   // ── E. Execution ──
@@ -347,8 +347,8 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
     const [x, y] = await Promise.all([executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: YES }, OWNER, m.d), executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: YES }, OWNER, m.d)]);
     ok("F25. a simulated network retry (two concurrent executes) mutates once", m.calls.length === 1 && [x.status, y.status].includes("APPLIED_AS_EXPECTED") && m.world.projects[U(1)].notes === "הערה קיימת\nשורה");
     const a2 = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: YES }, OWNER, m.d);
-    const z = await executeAction({ planId: p.planId, approvalToken: a2.approvalToken, confirmationText: YES }, OWNER, m.d);
-    ok("F24. a connector retry with a NEW approval of the same plan returns the recorded outcome, never a second write", z.status === "APPLIED_AS_EXPECTED" && (z.steps as Array<{ replayed: boolean }>)[0].replayed && m.calls.length === 1 && m.world.projects[U(1)].notes === "הערה קיימת\nשורה");
+    const z = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: YES }, OWNER, m.d);
+    ok("F24. a NEW approval of an executed plan is refused (ALREADY_EXECUTED + the recorded state); a retry of the same token returns the record — never a second write", a2.status === "ALREADY_EXECUTED" && a2.planStatus === "EXECUTED" && z.status === "APPLIED_AS_EXPECTED" && (z.steps as Array<{ replayed: boolean }>)[0].replayed && m.calls.length === 1 && m.world.projects[U(1)].notes === "הערה קיימת\nשורה", { a2: a2.status, z: z.status });
     const st = await planStatus({ planId: p.planId }, OWNER, m.d);
     ok("F24b. plan status reads the recorded outcome", st.status === "EXECUTED" && (st.steps as Array<{ status: string }>)[0].status === "APPLIED_AS_EXPECTED");
   }
@@ -371,7 +371,7 @@ async function fullFlow(d: ActServiceDeps, actionId: string, args: Record<string
     ok("P1. step 1 applied, step 2 failed → PARTIALLY_APPLIED", out.status === "PARTIALLY_APPLIED" && out.steps[0].status === "APPLIED_AS_EXPECTED" && out.steps[1].status === "FAILED");
     ok("P2. the dependent communication step never runs", out.steps[2].status === "NOT_RUN" && !done.includes("msg") && w.msg === "0");
     const evs = db.rows(ACT_TABLES.events).map((e) => e.event_type);
-    ok("P3. the audit records reality (VERIFIED + STEP_FAILED, no success claim for step 2)", evs.includes("VERIFIED") && evs.includes("STEP_FAILED") && db.rows(ACT_TABLES.executions).map((x) => x.status).sort().join() === "APPLIED_AS_EXPECTED,FAILED");
+    ok("P3. the audit records reality (VERIFIED + STEP_FAILED, no success claim for step 2); every step has ONE row (step 3 = NOT_RUN)", evs.includes("VERIFIED") && evs.includes("STEP_FAILED") && db.rows(ACT_TABLES.executions).sort((x, y) => Number(x.step_index) - Number(y.step_index)).map((x) => x.status).join() === "APPLIED_AS_EXPECTED,FAILED,NOT_RUN");
     ok("P4. the failure detail is redacted in storage", !JSON.stringify(db.tables).includes("hunter2"));
   }
 

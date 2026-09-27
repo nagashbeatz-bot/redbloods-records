@@ -16,7 +16,7 @@ import { canonicalJson } from "../plan";
 import { ENTITY_KEY_RE, MAX_TEXT_CHARS } from "../persist";
 import type { ArgSpec, EffectKey, PlanStep, RiskClass } from "../types";
 import type { DuplicateWriters } from "./duplicates";
-import type { PrimitiveExecutor } from "../engine";
+import type { PrimitiveExecutor, StepContext } from "../engine";
 import { LABEL_ARTIST_STATUSES, PROJECT_TYPES, RELEASE_STAGES, VICTOR_OUTCOMES, VICTOR_WORK_STATES } from "@/lib/types";
 
 export type Scalar = string | number | boolean | null;
@@ -234,12 +234,30 @@ export async function currentOf(spec: PrimitiveSpec, d: WriterDeps, s: { args: R
   return spec.createContext && id === "new" ? spec.createContext(d, s.args) : spec.read(d, id, s.args);
 }
 
+/**
+ * The writer view a step reads its creation context through: records created by EARLIER steps of the same plan
+ * (ctx.excludeCreated — ids the engine collected from this run's outputs) are left out of the duplicate reader, so a
+ * plan never goes STALE / trips the duplicate gate on its own creations. Every other change (a record someone else
+ * added, an edited record) still changes the fingerprint → STALE. Never used to hide anything from a preview.
+ */
+export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
+  const ex = new Set((ctx?.excludeCreated ?? []).filter((x) => typeof x === "string" && x));
+  if (!ex.size) return d;
+  return new Proxy(d, {
+    get(t, k) {
+      if (k === "similarRecords") return async (q: Parameters<WriterDeps["similarRecords"]>[0]) => (await t.similarRecords(q)).filter((r) => !r.id || !ex.has(String(r.id)));
+      const v = Reflect.get(t, k);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+}
+
 export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecutor {
   return {
-    fingerprint: async (s) => fieldsFingerprint(spec.actionId, stepTargetId(s), await currentOf(spec, d, s)),
-    async execute(s) {
+    fingerprint: async (s, ctx) => fieldsFingerprint(spec.actionId, stepTargetId(s), await currentOf(spec, withExcluded(d, ctx), s)),
+    async execute(s, _prior, ctx) {
       const id = stepTargetId(s);
-      const cur = await currentOf(spec, d, s);
+      const cur = await currentOf(spec, withExcluded(d, ctx), s);
       if (!cur) throw new Error("target not found");
       const p = spec.plan(s.args, cur);
       if (!p.ok) {

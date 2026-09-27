@@ -15,8 +15,10 @@
  */
 import { refuse, type Fields, type PlanRefusal } from "./core";
 
-/** One existing record with the same context + amount (from the typed reader; no ids / paths are carried). */
-export interface DupRow { date: string | null; amount: number; currency: string | null; text: string }
+/** One existing record with the same context + amount (from the typed reader; no paths are carried). `id` is INTERNAL:
+ *  it only lets the engine leave out records created by earlier steps of the SAME plan (never rendered, never in the
+ *  fingerprinted summary). */
+export interface DupRow { id?: string; date: string | null; amount: number; currency: string | null; text: string }
 export type DupKind = "LEDGER_ENTRY" | "TRANSACTION" | "MEDIA_INCOME" | "RF_PAYMENT" | "SHOW_PAYMENT" | "CLIP_PAYMENT";
 /** The focused, context-bound query (exact equality on context + amount; the reader never scans globally). */
 export type DupQuery =
@@ -72,7 +74,9 @@ const fmtOne = (c: DupCandidate, cur: string) => `${fmtDate(c.date)} · ${c.curr
 export function dupField(c: readonly DupCandidate[], currency: string): string {
   return c.map((x) => `${x.level === "LIKELY_SAME" ? "כמעט זהה" : "דומה"}: ${fmtOne(x, currency)}`).join(" | ");
 }
-/** Live context fields for a CREATE: the same-amount records near the new one. A read failure throws (never "none"). */
+/** Live context fields for a CREATE: the same-amount records near the new one. A read failure throws (never "none").
+ *  Records created by earlier steps of the same plan are removed by the engine's writer view (excludeCreated), so a
+ *  plan never goes STALE or trips the gate on its own creations; any other new record still does. */
 export async function dupContext(d: DuplicateWriters, q: DupQuery | null, n: { date: string | null; text: string; currency: string }): Promise<Fields> {
   if (!q) return { similarRecords: "" };
   return { similarRecords: dupField(dupCandidates(await d.similarRecords(q), n), n.currency) };
@@ -82,7 +86,7 @@ export function dupGate(a: Readonly<Record<string, unknown>>, cur: Fields, nounH
   const s = String(cur.similarRecords ?? "");
   if (!s.includes("כמעט זהה") || a.separateFromSimilar === true) return null;
   const first = s.split(" | ").find((x) => x.startsWith("כמעט זהה"))!.replace(/^כמעט זהה: /, "");
-  return refuse("POSSIBLE_DUPLICATE", `בוס, כבר קיימת ${nounHe} דומה: ${first}. זו אותה ${nounHe} או ${nounHe} נוספת? (אם נוספת — אתכנן שוב עם separateFromSimilar: true; לא נמחק ולא ישתנה כלום)`);
+  return refuse("POSSIBLE_DUPLICATE", `בוס, כבר קיימת ${nounHe} דומה: ${first}. זו אותה ${nounHe} או ${nounHe} נוספת? (רק אם אמרת שנוספת — אתכנן שוב עם separateFromSimilar: true + duplicateAck מהתשובה הזאת; לא נמחק ולא ישתנה כלום)`);
 }
 /** Preview warnings: every candidate, and — when the Boss said "separate" — that it is recorded as an additional one. */
 export function dupWarnings(cur: Fields, a?: Readonly<Record<string, unknown>>): string[] {
@@ -91,4 +95,46 @@ export function dupWarnings(cur: Fields, a?: Readonly<Record<string, unknown>>):
   return [...s.split(" | ").map((x) => `קיימת רשומה ${x}`), ...(a?.separateFromSimilar === true ? ["לפי ההחלטה שלך — נרשמת כרשומה נוספת, בנפרד מהקיימת"] : [])];
 }
 /** The optional argument that records the Boss's "it is an additional one" decision. */
-export const SEPARATE_ARG = { name: "separateFromSimilar", kind: "boolean", required: false, noteHe: "true = הבוס אישר שזו רשומה נוספת ולא אותה רשומה שכבר קיימת" } as const;
+export const SEPARATE_ARG = { name: "separateFromSimilar", kind: "boolean", required: false, noteHe: "true = הבוס אישר שזו רשומה נוספת ולא אותה רשומה שכבר קיימת (רק עם duplicateAck)" } as const;
+/** The server-issued acknowledgement from the POSSIBLE_DUPLICATE refusal (dack1.<exp>.<64-hex>) — separateFromSimilar is
+ *  honoured only with a valid one for the same Owner / client / action / arguments / current similar records. */
+export const DUP_ACK_ARG = { name: "duplicateAck", kind: "text", required: false, noteHe: "האישור שהשרת החזיר עם POSSIBLE_DUPLICATE — רק אחרי שהבוס אמר שזו רשומה נוספת" } as const;
+/** Every money CREATE takes both (one shared layer). */
+export const DUP_ARGS = [SEPARATE_ARG, DUP_ACK_ARG] as const;
+
+// ── duplicates INSIDE one compound plan (pure; from the typed arguments only) ─────────────────────────────────────
+/** The money CREATE actions that carry the duplicate layer (the same six that take DUP_ARGS). */
+export const DUP_ACTIONS = ["ADD_LEDGER_ENTRY", "ADD_TRANSACTION", "ADD_MEDIA_INCOME", "RECORD_RF_BUDGET_PAYMENT", "ADD_CLIP_PAYMENT", "RECORD_SHOW_PAYMENT"] as const;
+const s_ = (v: unknown) => (typeof v === "string" ? v : "");
+const n_ = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const d_ = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+/** The same context the live reader uses (entity + type + currency + amount), built from one step's typed arguments. */
+export function dupDescriptor(actionId: string, a: Readonly<Record<string, unknown>>): { ctx: string; amount: number; date: string | null; text: string } | null {
+  const t = (...xs: unknown[]) => xs.map(s_).filter(Boolean).join(" ");
+  const m = (ctx: string, amount: unknown, date: unknown, text: string) => { const x = n_(amount); return x === null ? null : { ctx: `${actionId}|${ctx}`, amount: x, date: d_(date), text }; };
+  switch (actionId) {
+    case "ADD_TRANSACTION": return m(`${s_(a.project) || "general"}|${s_(a.type)}|${s_(a.currency)}`, a.amount, a.date, t(a.description, a.notes));
+    case "ADD_LEDGER_ENTRY": return m(`${s_(a.labelArtist)}|${s_(a.entryType)}`, a.amount, a.entryDate, t(a.description, a.note));
+    case "ADD_MEDIA_INCOME": return m(s_(a.labelArtist), a.grossAmount, a.receivedDate, t(a.reportPeriod, a.notes));
+    case "RECORD_RF_BUDGET_PAYMENT": return m(s_(a.budgetLine), a.amount, a.paymentDate, t(a.notes));
+    case "ADD_CLIP_PAYMENT": return m(s_(a.project), a.amount, a.date, t(a.description, a.notes));
+    case "RECORD_SHOW_PAYMENT": return m(`${s_(a.show)}|${s_(a.currency)}`, a.amount, a.date, t(a.note));
+    default: return null;
+  }
+}
+export interface InPlanDup { step: number; other: number; level: "LIKELY_SAME" | "SIMILAR"; summary: string }
+/** Each money CREATE step compared with the EARLIER steps of the same plan (same context + amount, near date, text). */
+export function inPlanDuplicates(steps: ReadonlyArray<{ actionId: string; args: Readonly<Record<string, unknown>> }>): InPlanDup[] {
+  const ds = steps.map((s) => dupDescriptor(s.actionId, s.args));
+  const out: InPlanDup[] = [];
+  ds.forEach((x, i) => {
+    if (!x) return;
+    for (let j = 0; j < i; j++) {
+      const y = ds[j];
+      if (!y || y.ctx !== x.ctx || y.amount !== x.amount) continue;
+      const c = dupCandidates([{ date: y.date, amount: y.amount, currency: null, text: y.text }], { date: x.date, text: x.text })[0];
+      if (c) out.push({ step: i, other: j, level: c.level, summary: `שלב ${j + 1}: ${fmtOne(c, "")}` });
+    }
+  });
+  return out;
+}
