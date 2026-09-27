@@ -48,8 +48,9 @@ export interface GatewayFinance {
  * from the modules that own them, never duplicated here.
  */
 export interface GatewayAppIdentities {
-  /** DJ CLEANTONE: his client record id + his label-artist display name (lib/red-artists/cleantone.ts). */
-  cleantone: { clientId: string; labelArtistName: string } | null;
+  /** DJ CLEANTONE (team — the label's DJ, NOT a label artist): his client record id, his app display name, and the
+   *  retired label-artist key older Owner knowledge still carries (an alias of this identity; lib/red-artists/cleantone.ts). */
+  cleantone: { clientId: string; displayName: string; retiredKeys: readonly string[] } | null;
 }
 
 export interface GatewaySources {

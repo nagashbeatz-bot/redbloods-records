@@ -21,12 +21,12 @@ import { createGatewayReadContext, APP_IDENTITIES, type GatewayReadContext } fro
 import { resolveCurrentOwnerContexts } from "../investigation/context-store";
 import type { PersistedOwnerContext } from "../investigation/context-row";
 import { ilYmd } from "../../coo/dates";
-import { PORTAL_ARTISTS } from "../../red-artists/portal-registry";
+import { LABEL_PORTAL_NAMES } from "../../red-artists/portal-registry";
 import { buildCompanyIntegrityRegister } from "../integrity/register";
 import type { IntegrityExtras } from "../integrity/detectors";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import { readIntegrityExtras, type CompanyExtrasReadClient } from "./readers";
-import { createOwnerKnowledgeStore, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
+import { createOwnerKnowledgeStore, withIdentityAliases, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
 import type { Avail } from "../gateway/core";
 import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
 import { readProjectDetailRaw } from "../projects/detail-reader";
@@ -89,8 +89,7 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
       finance: live.status === "OK" ? { raw: live.raw } : null,
       memory: memory?.status === "OK" ? memory.value : null,
       extras: ex,
-      portalArtistNames: Object.keys(PORTAL_ARTISTS),
-      cleantoneClientId: APP_IDENTITIES.cleantone?.clientId ?? null,
+      portalArtistNames: [...LABEL_PORTAL_NAMES],
       ownerContexts: contexts,
     });
   });
@@ -98,7 +97,10 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     if (!ownerKnowledgeEnabled()) return undefined;
     try {
       const r = await createOwnerKnowledgeStore(supabase as unknown as OwnerKnowledgeTableClient).list();
-      return r.status === "OK" ? { status: "OK", value: r.records } : { status: "UNAVAILABLE", detail: r.status === "READ_FAILED" ? r.detail : `invalid stored knowledge rows (${r.count})` };
+      // DJ CLEANTONE's retired label-artist key (Owner knowledge recorded before 2026-09-27) → his live DJ / client identity
+      const ct = APP_IDENTITIES.cleantone;
+      const aliases: Record<string, readonly string[]> = ct ? Object.fromEntries(ct.retiredKeys.map((k) => [k, [`dj:${ct.clientId}`, `client:${ct.clientId}`]])) : {};
+      return r.status === "OK" ? { status: "OK", value: withIdentityAliases(r.records, aliases) } : { status: "UNAVAILABLE", detail: r.status === "READ_FAILED" ? r.detail : `invalid stored knowledge rows (${r.count})` };
     } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
   const operations = once(async (): Promise<Avail<OperationsRaw>> => {

@@ -23,6 +23,10 @@ export const AVI_NAME = "אבי מולה";
 export const CLEANTONE_NAME = "DJ CLEANTONE";
 export const NAGASH_NAME = "נגש ביטס";
 
+/** The portal names that belong to LABEL ARTISTS. DJ CLEANTONE's portal is a TEAM portal (the label's DJ, not a label
+ *  artist — Owner decision 2026-09-27): he stays in PORTAL_ARTISTS only for his portal's slug (avatar / stream). */
+export const LABEL_PORTAL_NAMES: readonly string[] = Object.keys(PORTAL_ARTISTS).filter((n) => n !== CLEANTONE_NAME);
+
 /** Shalev Tasama's label_artists.id (stable identity; the name is a display snapshot). Not secret. */
 export const SHALEV_ARTIST_ID = "8806fe5e-1238-4228-8078-b3db3ccc9b46";
 

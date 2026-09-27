@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { ANSWER_OPTIONS } from "../lib/partner/investigation/questions";
-import { PORTAL_ARTISTS } from "../lib/red-artists/portal-registry";
+import { PORTAL_ARTISTS, LABEL_PORTAL_NAMES } from "../lib/red-artists/portal-registry";
 import { buildCompanyIntegrityRegister } from "../lib/partner/integrity/register";
 import { LABEL_ROSTER_DEFINITION, SESSION_STATUS_VOCABULARY, STEVEN_PAYMENT_WRITERS } from "../lib/partner/integrity/definitions";
 import { MAX_INTEGRITY_QUESTIONS } from "../lib/partner/integrity/types";
@@ -30,15 +30,15 @@ import { NOW, TODAY, U, LA_SHALEV, LA_AVI, LA_CLEAN, LA_NAGASH, C_DUP1, C_DUP2, 
 console.log("\n1. label roster (Owner definition)");
 {
   const r = buildCompanyIntegrityRegister(input());
-  check("roster definition = the 4 Owner-named artists", [...LABEL_ROSTER_DEFINITION.rosterNames], ["שליו טסמה", "אבי מולה", "DJ CLEANTONE", "נגש ביטס"]);
+  check("roster definition = the 3 Owner-named artists (DJ CLEANTONE is team since 2026-09-27)", [...LABEL_ROSTER_DEFINITION.rosterNames], ["שליו טסמה", "אבי מולה", "נגש ביטס"]);
   const m = find(r, "LABEL_MEMBERSHIP_SOURCE_DISAGREEMENT")[0];
   ok("membership finding exists (supporting sources disagree)", !!m);
-  check("roster evidence = the 4 label_artists (canonical)", m.evidence[0].value, ["DJ CLEANTONE", "אבי מולה", "נגש ביטס", "שליו טסמה"]);
+  check("roster evidence = the 3 label_artists (canonical)", m.evidence[0].value, ["אבי מולה", "נגש ביטס", "שליו טסמה"]);
   check("roster is not overridden: stance OWNER_DECIDED, LOW", [m.stance, m.severity], ["OWNER_DECIDED", "LOW"]);
   ok("conflicting sources listed as conflicting, never canonical", m.conflictingSources.some((s) => s.includes("clients.status")) && m.conflictingSources.some((s) => s.includes("project_business_type")) && m.canonicalSources.every((s) => s.startsWith("label_artists")));
   ok("client 'אמן זר' with אמן לייבל status is reported, not added to the roster", JSON.stringify(m.evidence).includes("אמן זר") && !(m.evidence[0].value as string[]).includes("אמן זר"));
-  ok("DJ CLEANTONE counted via the app identity link (client רועי איוב is איש צוות) — not flagged", !JSON.stringify(m.evidence.find((e) => e.source.startsWith("clients.status"))?.value).includes("DJ CLEANTONE"));
-  const drift = buildCompanyIntegrityRegister(input({ roster: ["שליו טסמה", "אבי מולה", "נגש ביטס"] }));
+  ok("DJ CLEANTONE (team) is not in any roster evidence", !JSON.stringify(m.evidence).includes("DJ CLEANTONE"));
+  const drift = buildCompanyIntegrityRegister(input({ roster: ["שליו טסמה", "אבי מולה", "DJ CLEANTONE", "נגש ביטס"] }));
   const d = find(drift, "LABEL_MEMBERSHIP_SOURCE_DISAGREEMENT")[0];
   check("label_artists drifting from the Owner roster → HIGH CONFLICT", [d.stance, d.severity], ["CONFLICT", "HIGH"]);
 }
@@ -212,7 +212,8 @@ void (async () => {
   ok("legacy readers really expect the declared statuses", SESSION_STATUS_VOCABULARY.legacyReaders.every((r) => r.expects.every((s) => read(r.file).includes(`"${s}"`))));
   ok("aligned readers really read the declared statuses", SESSION_STATUS_VOCABULARY.alignedReaders.every((r) => r.reads.every((s) => read(r.file).includes(`"${s}"`))));
   ok("the ONE current engineer-payment writer exists in code; the retired writers are gone (their shapes stay only in historical data)", STEVEN_PAYMENT_WRITERS.filter((w) => w.status === "CURRENT").length === 1 && STEVEN_PAYMENT_WRITERS.every((w) => w.status === "CURRENT" ? read(w.file).includes(w.marker) : !new RegExp(`function ${w.marker}\\b`).test(read(w.file))));
-  check("PORTAL_ARTISTS = the roster (supporting source)", Object.keys(PORTAL_ARTISTS).sort(), [...LABEL_ROSTER_DEFINITION.rosterNames].sort());
+  check("label portal names = the roster (supporting source; DJ CLEANTONE's portal is a team portal)", [...LABEL_PORTAL_NAMES].sort(), [...LABEL_ROSTER_DEFINITION.rosterNames].sort());
+  ok("DJ CLEANTONE keeps his portal slug (team portal), outside the label portal names", Object.keys(PORTAL_ARTISTS).includes("DJ CLEANTONE") && !LABEL_PORTAL_NAMES.includes("DJ CLEANTONE"));
   // B2 (Owner canon 2026-09-27): LABEL_SONGS answers are Owner EVIDENCE only — never a second classifier in the readers
   ok("B2: operating / label views do not classify by LABEL_SONGS (evidence field only)", !/labelWork = [^;\n]*ownerLabel/.test(read("lib/partner/sunny/operating.ts")) && !/labelWork = [^;\n]*labelWorkByOwner/.test(read("lib/partner/label/view.ts")) && /ownerLabelSongsAnswer/.test(read("lib/partner/sunny/operating.ts")) && /ownerLabelSongsAnswer/.test(read("lib/partner/label/view.ts")));
   ok("B2: integrity detectors never write a business type", !/setProjectBusinessType|supabase|\.(insert|upsert)\(|fetch\(/.test(read("lib/partner/integrity/detectors.ts")));

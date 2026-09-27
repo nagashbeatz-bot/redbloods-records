@@ -86,7 +86,7 @@ export const LIFECYCLE = [
 ] as const;
 
 export const DJ_MODEL = {
-  identity: "the DJ is a CLIENT record (usually type איש צוות) chosen in the form; CLEANTONE = the app's fixed client id (his label-artist record has a different name)",
+  identity: "the DJ is a CLIENT record (usually type איש צוות) chosen in the form; CLEANTONE = the app's fixed client id; he is TEAM (the label's DJ), not a label artist — his former label-artist row was removed 2026-09-27 (Owner decision), nothing about his DJ shows changed",
   default: "NO default DJ anywhere — never preselected; a show saved without a DJ creates a 'close a DJ' task",
   otherDjs: "any crew client can be the DJ; only CLEANTONE has confirmation, a portal and push",
   confirmation: "becoming CLEANTONE → ממתין לאישור (null if done / cancelled); changing away → null; NOT reset by date / time / place change or cancellation",
@@ -255,7 +255,7 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/dj-confirm-notify.ts": "6f2542f077f0ac2fc4ddf64ba068faac9564cfc10e87838cec51a135d8e6c0e6",
   "lib/show-quote-followup.ts": "4ab61b81333b94c00556e7d188a4adbf5949c4d5ddc7267f62dda697877c3b17",
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",
-  "lib/red-artists/cleantone.ts": "ca64bf791b7d13822a5fc29eb541f276e08dedcf1d7d77270f5a9b9c22edf5cf",
+  "lib/red-artists/cleantone.ts": "24c56172b94900b3184debd5abf64576214a852a93e2fe4ff21354e6110902ad",
   "app/api/shows/route.ts": "6b92b5d6c2884863a2ddaf4922f8d20935c63dd456077ebc50fd59b22e3d2b62",
   "app/api/shows/[id]/route.ts": "99028c8731059a62940ffccb4b54d965efda2e492adbae2d7122ba95585c7be0",
 };
@@ -265,7 +265,7 @@ export const SHOW_ROUTE_GROUPS: ReadonlyArray<{ pattern: string; purpose: string
   { pattern: "^app/api/shows/", purpose: "shows CRUD, close, notify artist / DJ, quote follow-up" },
   { pattern: "^app/api/red-artists/cleantone(-summary|/)", purpose: "DJ portal: summary, confirm / unconfirm, presence ping, push registration, profile image, streaming" },
   { pattern: "^app/api/tasks/route\\.ts$", purpose: "tasks carry an optional show id (no-DJ task, quote follow-up)" },
-  { pattern: "^app/api/label/artists/\\[id\\]/balance/cycles/remind/", purpose: "cycle reminder maps artists (incl. CLEANTONE) to push roles" },
+  { pattern: "^app/api/label/artists/\\[id\\]/balance/cycles/remind/", purpose: "cycle reminder maps LABEL artists (Shalev / Avi) to push roles — DJ CLEANTONE is team and never a recipient" },
   { pattern: "^app/api/(red-artists/shalev-summary|label/artists/\\[id\\]/(summary|shows|recoup|weekly)|red-artists/weekly)/", purpose: "portal / label views that read shows" },
   { pattern: "^app/api/sessions/", purpose: "rehearsals (show id) → rehearsal finance + show re-sync" },
   { pattern: "^app/api/transactions/route\\.ts$", purpose: "the Finance list returns each row's owner (show payment / balance / DJ fee / artist fee / rehearsal rows are owned by their show — the owned-row guard)" },

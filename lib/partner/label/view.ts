@@ -7,7 +7,7 @@
  *   ledger / cycles / media income (artist id)    CANONICAL — three separate money records, never merged
  *   portal / beats (fixed name → slug table)      CANONICAL (app constant) / DERIVED
  *   client record, shows (via client), Red Films, social (name)   TEXT_MATCH
- *   CLEANTONE DJ shows (app's fixed client id)    CANONICAL
+ *   show DJ = the label DJ? (app's fixed client id) CANONICAL — DJ CLEANTONE is TEAM, never a label artist (2026-09-27)
  * Project work (Victor, engineers, sessions, release, delivery) reuses the connected project view and the Owner
  * operating model — no second rule. No score, no cadence target, no activity threshold: evidence + dates only.
  */
@@ -81,12 +81,11 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
 
   // ── identity / roles ──
   const clientRecords = (c.st?.domains.clients.data?.items ?? []).filter((x) => low(x.name) === low(name));
-  const isCleantone = !!src.identities?.cleantone && low(src.identities.cleantone.labelArtistName) === low(name);
   const ownerLabel = (c.integrity?.learned ?? []).filter((l) => l.status === "APPLIES" && l.entityKey === key).map((l) => ({ question: l.decision.questionType, answer: l.decision.answerCode, basis: "OWNER_CONFIRMED" }));
   const identity = { key, name, status: rec?.status ?? eyes?.status ?? null, hasImage: rec?.hasImage ?? null, notes: rec?.notes ?? null, createdAt: rec?.createdAt ?? eyes?.createdAt ?? null, updatedAt: rec?.updatedAt ?? eyes?.updatedAt ?? null,
     portal: slug ? { slug, loginRole: LOGIN_ROLE[slug] ?? "NONE (portal page, no login)", link: portalIdentity?.basis === "ID" ? "CANONICAL (label_artists.id → slug table)" : "AMBIGUOUS (exact name → slug table; no id registered in code)" } : { slug: null, loginRole: "NONE", link: "no portal (name not in the app's slug table)" },
     clientRecords: clientRecords.map((x) => ({ key: `client:${x.id}`, type: x.type, status: x.status, link: "TEXT_MATCH (same name — a separate record of the same person; never merged; client money stays client money)" })),
-    labelDj: isCleantone ? { clientId: src.identities!.cleantone!.clientId, link: "CANONICAL (app identity)" } : null, ownerLabelClassification: ownerLabel };
+    ownerLabelClassification: ownerLabel };
   const labelWorkByOwner = ownerLabel.some((o) => o.answer === "LABEL_SONGS");
 
   // ── projects: releases (canonical) + by name (text) ──
@@ -134,7 +133,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   // ── shows ──
   const clientIds = new Set(clientRecords.map((x) => x.id));
   const showRows = (c.ld?.shows?.rows ?? []);
-  const mapShow = (s: DetailShow, role: "ARTIST" | "DJ") => {
+  const mapShow = (s: DetailShow, role: "ARTIST") => {
     const rehearsals = (c.det?.sessions?.rows ?? []).filter((x) => x.showId === s.id);
     const net = Math.max(0, (s.price ?? 0) - (s.djFee ?? 0));
     // THE app's own read rule (showNotifyStateOf — the same answer as the send button, the notify writers and show_view):
@@ -146,9 +145,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
       dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : null,
       booker: s.bookerClientId ? `client:${s.bookerClientId}` : s.bookerName, rehearsals: rehearsals.map((x) => ({ date: x.date, status: x.status })), hasCalendarEvent: s.hasCalendarEvent,
       sentToArtist: notify("SHOW_SENT_TO_ARTIST"), sentToDj: s.djClientId ? notify("SHOW_SENT_TO_DJ") : "NO_DJ", upcoming: !!s.date && s.date >= c.today, notes: s.notes,
-      link: role === "DJ" ? "CANONICAL (label DJ id)" : "TEXT_MATCH (show artist → client record of the same name)" };
+      link: "TEXT_MATCH (show artist → client record of the same name)" };
   };
-  const shows = [...showRows.filter((s) => s.artistClientId && clientIds.has(s.artistClientId)).map((s) => mapShow(s, "ARTIST")), ...(isCleantone ? showRows.filter((s) => s.djClientId && s.djClientId === c.cleantoneClientId).map((s) => mapShow(s, "DJ")) : [])]
+  const shows = showRows.filter((s) => s.artistClientId && clientIds.has(s.artistClientId)).map((s) => mapShow(s, "ARTIST"))
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
 
   // ── money: ledger / cycles / media / label-work projects — separate, never merged ──
@@ -304,7 +303,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     if (r.active) nextSteps.push({ step: `ריליס "${r.projectName}": ${r.stage}`, evidence: [r.nextAction && `הצעד הבא: ${r.nextAction}`, r.blocker && `חסם: ${r.blocker}`, r.responsible && `אחראי: ${r.responsible}`, r.targetDate && `יעד: ${r.targetDate}`].filter(Boolean).join(" · ") || "אין צעד הבא / חסם / אחראי רשומים", entity: r.key });
     if (r.active && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
   }
-  if (!isCleantone && releaseRows.length === 0) signals.push({ code: "NO_RELEASE_RECORDED", kind: "CANONICAL_FACT", he: "אין שורת ריליס רשומה לאמן." });
+  if (releaseRows.length === 0) signals.push({ code: "NO_RELEASE_RECORDED", kind: "CANONICAL_FACT", he: "אין שורת ריליס רשומה לאמן." });
   const futureSessions = sessions.filter((s) => s.date && s.date >= c.today && s.status !== "בוטל");
   for (const s of futureSessions) signals.push({ code: "UPCOMING_SESSION", kind: "CANONICAL_FACT", he: `${s.type ?? "סשן"} ב-${s.date}${s.start ? ` ${s.start}` : ""}`, entity: s.project ?? s.show ?? undefined });
   for (const s of shows) {
@@ -315,7 +314,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const moving = projects.some((p) => p.open && ((p.victor?.length ?? 0) > 0 || (p.engineers ?? []).some((e) => !["אושר", "בוטל"].includes(e.status ?? "")) || (p.sessions?.upcoming ?? 0) > 0));
   if (!moving && futureSessions.length === 0 && !releaseRows.some((r) => r.active && r.targetDate && r.targetDate >= c.today)) {
     signals.push({ code: "NO_UPCOMING_RECORDED_WORK", kind: "DERIVED_SIGNAL", he: "אין עבודה בתנועה, סשן עתידי או ריליס מתוכנן שרשומים ב-Redbloods — עובדה על הנתונים, לא שיפוט של האמן." });
-    if (!isCleantone) questions.push({ kind: "ARTIST_PLAN", questionHe: `מה התוכנית הבאה עם ${name}? (לא רשום שיר בתנועה, סשן או ריליס מתוכנן)`, why: "no recorded next work — the Owner's plan may live outside Redbloods" });
+    questions.push({ kind: "ARTIST_PLAN", questionHe: `מה התוכנית הבאה עם ${name}? (לא רשום שיר בתנועה, סשן או ריליס מתוכנן)`, why: "no recorded next work — the Owner's plan may live outside Redbloods" });
   }
   if (ledger.length) signals.push({ code: "LEDGER_BALANCE", kind: "DERIVED_SIGNAL", he: `מאזן האמן: ${money.ledger?.allTime.balance} (בלי מטבע שמור)` });
   if (ledger.length && c.settings && !anchor) signals.push({ code: "CYCLE_NOT_SET", kind: "CANONICAL_FACT", he: "יש תנועות במאזן אבל לא הוגדר עוגן למחזורים." });

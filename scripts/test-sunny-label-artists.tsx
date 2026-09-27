@@ -56,8 +56,7 @@ const SHOW_PAST = U(401), SHOW_NEXT = U(402), SHOW_DJ = U(403);
 const show = (id: string, o: Partial<DetailShow>): DetailShow => ({ id, name: "הופעה", artistText: "שליו טסמה", date: "2026-08-06", startTime: "21:00", location: "תל אביב", contactPerson: null, hasPhone: true, status: "בוצע", paymentStatus: "שולם", price: 3000, djFee: 500, artistFee: 1250, advancePayment: null, notes: null,
   artistClientId: C_SHALEV, bookerClientId: null, bookerName: null, djClientId: C_CLEAN, djName: "DJ CLEANTONE", djConfirmationStatus: "אושר", djConfirmedAt: null, hasCalendarEvent: true, incomeTxId: null, djExpenseTxId: null, artistExpenseTxId: null, createdAt: null, updatedAt: null, ...o });
 const LD: LabelDetailRaw = {
-  artists: sec([{ id: LA_SHALEV, name: "שליו טסמה", status: "פעיל", hasImage: false, notes: null, createdAt: "2026-07-11T10:00:00Z", updatedAt: null }, { id: LA_AVI, name: "אבי מולה", status: "פעיל", hasImage: true, notes: null, createdAt: "2026-07-28T10:00:00Z", updatedAt: null },
-    { id: LA_CLEAN, name: "DJ CLEANTONE", status: "פעיל", hasImage: false, notes: null, createdAt: "2026-07-31T10:00:00Z", updatedAt: null }, { id: LA_NAGASH, name: "נגש ביטס", status: "פעיל", hasImage: true, notes: null, createdAt: "2026-09-21T10:00:00Z", updatedAt: null }]),
+  artists: sec([{ id: LA_SHALEV, name: "שליו טסמה", status: "פעיל", hasImage: false, notes: null, createdAt: "2026-07-11T10:00:00Z", updatedAt: null }, { id: LA_AVI, name: "אבי מולה", status: "פעיל", hasImage: true, notes: null, createdAt: "2026-07-28T10:00:00Z", updatedAt: null }, { id: LA_NAGASH, name: "נגש ביטס", status: "פעיל", hasImage: true, notes: null, createdAt: "2026-09-21T10:00:00Z", updatedAt: null }]),
   ledger: sec([
     { id: U(1101), artistId: LA_SHALEV, entryType: "הכנסות", amount: 1250, entryDate: "2026-08-06", description: "הופעה - הופעה", note: null, sourceTxId: null, sourceShowId: SHOW_PAST, createdAt: null, updatedAt: null },
     { id: U(1102), artistId: LA_SHALEV, entryType: "תשלומים", amount: 300, entryDate: "2026-08-20", description: "תשלום", note: null, sourceTxId: null, sourceShowId: null, createdAt: null, updatedAt: null },
@@ -66,7 +65,7 @@ const LD: LabelDetailRaw = {
   cycles: sec([]),
   mediaIncome: sec([{ id: U(1201), artistId: LA_SHALEV, recordType: "income", reversesId: null, grossAmount: 400, source: "Mobile1", reportPeriod: "Q2", receivedDate: "2026-08-15", status: "התקבל", notes: null, labelShare: 200, artistShareGross: 200, recoupBefore: 1000, recouped: 200, artistPayable: 0, recoupAfter: 800, createdAt: "2026-08-15T10:00:00Z", updatedAt: null }]),
   beats: sec([{ id: U(1301), name: "Fire", genre: "dancehall", musicalKey: "A Minor", status: "available", fileName: "fire.wav", path: "/nagashbeatz/beats/fire.wav", durationSeconds: 180, createdAt: null, assignedTo: [{ artistSlug: "shalev-tasama", at: "2026-09-01T10:00:00Z" }] }]),
-  shows: sec([show(SHOW_PAST, {}), show(SHOW_NEXT, { date: "2026-10-15", status: "אושרה", paymentStatus: "צפוי", djClientId: null, djName: null, djConfirmationStatus: null }), show(SHOW_DJ, { artistText: "אמן זר", artistClientId: null, date: "2026-10-20", status: "נסגר", paymentStatus: "צפוי", djConfirmationStatus: "ממתין לאישור" })]),
+  shows: sec([show(SHOW_PAST, {}), show(SHOW_NEXT, { date: "2026-10-15", status: "אושרה", paymentStatus: "צפוי", djClientId: null, djName: null, djConfirmationStatus: null }), show(SHOW_DJ, { date: "2026-10-20", status: "נסגר", paymentStatus: "צפוי", djConfirmationStatus: "ממתין לאישור" })]),
 };
 const SETTINGS: SettingsState = { families: {
   ARTIST_BALANCE_CYCLE_ANCHOR: sec([{ key: `balance_cycle_anchor:${LA_SHALEV}`, updatedAt: null, value: { anchorDate: "2026-08-01" } }]),
@@ -103,7 +102,7 @@ function sources(o: Opt = {}): GatewaySources {
     financeSettings: [{ projectId: P(1), value: { agreedPrice: 2000, currency: "₪" } }, { projectId: P(2), value: { agreedPrice: 1500, currency: "₪" } }] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
-  return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: { clientId: C_CLEAN, labelArtistName: "DJ CLEANTONE" } },
+  return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: { clientId: C_CLEAN, displayName: "DJ CLEANTONE", retiredKeys: [] } },
     cases: { status: "OK", value: [] }, actions: { status: "OK", value: [] }, outcomes: { status: "OK", value: [] }, ownerKnowledge: { status: "OK", value: [] },
     projectDetail: { status: "OK", value: det }, operations: { status: "OK", value: ops },
     ...(o.labelDetail === "NONE" ? {} : { labelDetail: { status: "OK" as const, value: LD } }),
@@ -142,7 +141,7 @@ function main() {
 
   section("SCENARIO A — 'מה קורה עם שליו?'");
   const a = buildArtistView(sources(), LA_SHALEV)!;
-  ok("cross-domain summary: projects, releases, sessions, shows, money, visual content", a.projects.length > 0 && a.releases.length === 1 && a.sessions.length === 2 && a.shows.length === 2 && !!a.money.ledger && a.redFilms.length === 1 && a.social.length === 1);
+  ok("cross-domain summary: projects, releases, sessions, shows, money, visual content", a.projects.length > 0 && a.releases.length === 1 && a.sessions.length === 2 && a.shows.length === 3 && !!a.money.ledger && a.redFilms.length === 1 && a.social.length === 1);
   check("ledger balance = income − payments − expenses (expected not counted)", a.money.ledger!.allTime, { income: 1250, expectedIncome: 500, payments: 300, expenses: 100, expectedExpenses: 0, balance: 850 });
   ok("next release with next action + responsible", a.nextRelease?.stage === "רעיון" && a.nextSteps.some((s) => /להקליט שירה/.test(s.evidence) && /שליו/.test(s.evidence)));
   ok("availability + presence from settings", (a.availability as { state: string }).state === "RECORDED" && (a.presence as { lastPortalEntry?: string }).lastPortalEntry === "2026-09-24T07:00:00Z");
@@ -191,11 +190,10 @@ function main() {
   ok("rehearsal + sent markers + split read", ng.rehearsals.length === 1 && ng.sentToArtist === "NOT_SENT" && g.shows.find((x) => x.key === `show:${SHOW_PAST}`)!.sentToArtist === "SENT");
   const past = g.shows.find((x) => x.key === `show:${SHOW_PAST}`)!;
   ok("sent state = the app's showNotifyStateOf: a DJ push sent for an OLDER version (place changed) → SENT_PREVIOUS_VERSION, never SENT", past.sentToDj === "SENT_PREVIOUS_VERSION");
-  const clv = buildArtistView(sources(), LA_CLEAN)!;
-  ok("a failed DJ push → FAILED (never shown as sent)", clv.shows.find((x) => x.key === `show:${SHOW_DJ}`)!.sentToDj === "FAILED");
+  ok("a failed DJ push → FAILED (never shown as sent)", g.shows.find((x) => x.key === `show:${SHOW_DJ}`)!.sentToDj === "FAILED");
   ok("artist_view reads the sent state with showNotifyStateOf + computeShowNotifyFingerprint (no inline mapping)", /showNotifyStateOf\(/.test(code(read("lib/partner/label/view.ts"))) && /computeShowNotifyFingerprint\(/.test(code(read("lib/partner/label/view.ts"))) && !/v\.status === "failed" \? "FAILED"/.test(read("lib/partner/label/view.ts")));
-  const cl = buildArtistView(sources(), LA_CLEAN)!;
-  ok("CLEANTONE: his DJ shows by the canonical client id (incl. another artist's show)", cl.shows.some((x) => x.role === "DJ" && x.key === `show:${SHOW_DJ}` && /CANONICAL/.test(x.link)) && !!cl.identity.labelDj);
+  ok("DJ CLEANTONE is TEAM (the label's DJ), not a label artist: no artist view for his former label-artist id", buildArtistView(sources(), LA_CLEAN) === null);
+  ok("an artist show keeps its DJ as the label DJ by the canonical client id (never a label-artist link)", g.shows.find((x) => x.key === `show:${SHOW_DJ}`)!.dj?.isLabelDj === true && !JSON.stringify(g.identity).includes("labelDj"));
 
   section("SCENARIO H — artist also has a client record");
   ok("roles kept separate", a.identity.clientRecords.length === 1 && /never merged/.test(a.identity.clientRecords[0].link) && codes(a).includes("IDENTITY_DUAL_ROLE"));
@@ -217,7 +215,7 @@ function main() {
 
   section("2. portfolio + capabilities + system awareness");
   const pf = artistPortfolio(sources());
-  ok("roster of 4, sorted by name, no ranking", pf.length === 4 && !/"(score|rank)"/.test(JSON.stringify(pf)));
+  ok("roster of 3 (DJ CLEANTONE is team), sorted by name, no ranking", pf.length === 3 && !/"(score|rank)"/.test(JSON.stringify(pf)));
   ok("every emitted signal is in the signal model", pf.flatMap((r) => r.signals).every((x) => LM.ARTIST_SIGNAL_MODEL.some((m) => m.code === x)));
   for (const sname of ["identity", "projects", "releases", "next_steps", "beats", "shows", "money", "sessions", "calendar", "tasks", "meetings", "visual_content", "availability", "presence", "portal", "owner_knowledge", "signals", "questions", "history"]) ok(`artist_view ${sname}`, q("artist_view", "view", { artist: `label-artist:${LA_SHALEV}`, section: sname }).status === "OK");
   ok("artist_view / artist_portfolio are Owner-only", q("artist_view", "view", { artist: `label-artist:${LA_SHALEV}` }, sources(), STRANGER).status !== "OK" && q("artist_portfolio", "roster", {}, sources(), STRANGER).status !== "OK");

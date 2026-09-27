@@ -32,8 +32,6 @@ export interface IntegrityInput {
   extras: IntegrityExtras | null;
   /** PORTAL_ARTISTS names (code registry) — a supporting source only. */
   portalArtistNames: readonly string[];
-  /** The app's canonical DJ CLEANTONE client link (code constant) — lets the roster be compared to clients honestly. */
-  cleantoneClientId: string | null;
 }
 
 /** A detector's draft; questions are attached by the register. */
@@ -87,14 +85,13 @@ export function detectLabelMembership(input: IntegrityInput): FindingDraft[] {
   const defined = new Set<string>(LABEL_ROSTER_DEFINITION.rosterNames);
   const clients = s.domains.clients.data?.items ?? [];
   const clientLabel = new Set(clients.filter((c) => c.status === LABEL_STATUS).map((c) => c.name));
-  const cleantoneLinked = !!input.cleantoneClientId && clients.some((c) => c.id === input.cleantoneClientId);
   const idx = s.domains.projects.data?.index ?? {};
   const labelTypedArtists = new Set(Object.values(idx).filter((p) => p.businessType === "לייבל").flatMap((p) => splitArtistNames(p.artistText)));
   const diffs: IntegrityEvidence[] = [];
   const missingFromTable = [...defined].filter((n) => !rosterNames.has(n));
   const extraInTable = [...rosterNames].filter((n) => !defined.has(n));
   if (missingFromTable.length || extraInTable.length) diffs.push({ source: "label_artists vs Owner roster definition", fact: "roster table differs from the Owner-defined roster", value: { missingFromTable, extraInTable } });
-  const rosterNotClientLabel = [...rosterNames].filter((n) => !clientLabel.has(n) && !(n === LABEL_ROSTER_DEFINITION.rosterNames[2] && cleantoneLinked));
+  const rosterNotClientLabel = [...rosterNames].filter((n) => !clientLabel.has(n));
   const clientLabelNotRoster = [...clientLabel].filter((n) => !rosterNames.has(n));
   if (rosterNotClientLabel.length || clientLabelNotRoster.length) diffs.push({ source: "clients.status = אמן לייבל", fact: "client label status differs from the roster", value: { rosterArtistsWithoutLabelClientStatus: rosterNotClientLabel, labelStatusClientsNotInRoster: clientLabelNotRoster } });
   const portal = new Set(input.portalArtistNames);
@@ -379,12 +376,12 @@ export function detectLabelEconomics(input: IntegrityInput): FindingDraft[] {
   const shows = s.domains.shows.data?.items ?? [];
   const out: FindingDraft[] = [];
   for (const a of [...roster].sort((x, y) => x.name.localeCompare(y.name))) {
-    const clientIds = new Set(clients.filter((c) => normalizeName(c.name) === normalizeName(a.name) || (input.cleantoneClientId && a.name === LABEL_ROSTER_DEFINITION.rosterNames[2] && c.id === input.cleantoneClientId)).map((c) => c.id));
+    const clientIds = new Set(clients.filter((c) => normalizeName(c.name) === normalizeName(a.name)).map((c) => c.id));
     const sources = {
       ledger: { entries: a.balanceEntries, currency: a.balanceEntries ? "NONE (no currency column)" : null },
       mediaIncome: media ? { rows: media.filter((m) => m.labelArtistId === a.id).length, currency: "NONE (no currency column)" } : "NOT_READ",
       clips: { productions: clips.filter((c) => splitArtistNames(c.artistName).includes(a.name)).length, link: "TEXT_MATCH (artist_name)", budgets: "NOT_READ" },
-      shows: { count: shows.filter((x) => (x.artistClientId && clientIds.has(x.artistClientId)) || (x.djClientId && clientIds.has(x.djClientId))).length, link: "TEXT_MATCH via same-name client / app DJ link" },
+      shows: { count: shows.filter((x) => (x.artistClientId && clientIds.has(x.artistClientId)) || (x.djClientId && clientIds.has(x.djClientId))).length, link: "TEXT_MATCH via same-name client" },
       recoup: "COMPUTED VIEW — not read by Partner",
     };
     const moneySources = [a.balanceEntries > 0, typeof sources.mediaIncome === "object" && sources.mediaIncome.rows > 0, sources.clips.productions > 0, sources.shows.count > 0].filter(Boolean).length;

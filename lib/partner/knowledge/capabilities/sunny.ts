@@ -80,8 +80,8 @@ export const relations: KnowledgeCapability = {
     const ct = src.identities.cleantone;
     const st = ok(src.state);
     if (ct && st) {
-      const artist = st.domains.labelArtists.data?.items.find((a) => a.name === ct.labelArtistName);
-      const keys = [`client:${ct.clientId}`, `dj:${ct.clientId}`, ...(artist ? [`label-artist:${artist.id}`] : [])];
+      // the label DJ (team): his client + DJ keys, plus the retired label-artist key older Owner knowledge carries
+      const keys = [`client:${ct.clientId}`, `dj:${ct.clientId}`, ...ct.retiredKeys];
       if (keys.includes(key)) for (const other of keys.filter((k) => k !== key)) {
         items.push(item({ id: `canonical:${other}`, entity: other, label: partner("אותה ישות (קישור קנוני באפליקציה)"), epistemic: "FACT", source: "APP_IDENTITY", relationQuality: "ID", fields: { relation: "SAME_IDENTITY", relationQuality: "CANONICAL_RELATION" } }));
       }

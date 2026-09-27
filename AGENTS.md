@@ -106,6 +106,7 @@ It is read through `artist_view` / `artist_portfolio` (`lib/partner/label/view.t
   - **Accounting = the bi-monthly CYCLE** (the app's cycle windows; the ledger's income, expenses, shows, media share and payments meet in the cycle balance). There is NO recoup: media never repays a specific clip (`MEDIA_RECOUP_TARGET` = 0), and no income is matched to a specific expense unless the Owner records an explicit link. Media records stored before 2026-09-27 carry 'recouped' values from a retired rule: history only, never evidence of an active offset.
   - The Red Films actual cost (Finance) and the artist ledger are different dimensions (e.g. Principe: 4,955 cash out vs the 2,480 clip expense the Owner recorded — approved, not a conflict).
 - **Identity:** a portal / release resolves by the stable roster id first (Shalev, Avi); name-keyed links are disclosed on rename. A collaboration show is AMBIGUOUS identity and is never attributed. The released date is the FIRST release and is never cleared.
+- **DJ CLEANTONE is TEAM, not a label artist (Owner decision 2026-09-27):** the roster is שליו טסמה / אבי מולה / נגש ביטס. רועי איוב (DJ CLEANTONE) is the label's DJ, shown on the team page; his only canonical identity is his client id (`lib/red-artists/cleantone.ts`); he is never an artist-cycle-reminder recipient. His portal is unchanged (PORTAL_ARTISTS keeps his slug for it only). Owner knowledge stored on his retired label-artist key is read as an alias of his DJ / client identity (`withIdentityAliases`), never rewritten.
 
 ## Sunny Awareness Check: Shows + DJ
 

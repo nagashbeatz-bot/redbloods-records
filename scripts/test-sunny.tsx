@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { KNOWLEDGE_KINDS, validateKnowledgeKinds, type KnowledgeKind } from "../lib/partner/owner-knowledge/kinds";
-import { createOwnerKnowledgeStore, activeKnowledge, mapOwnerKnowledgeRow, OWNER_KNOWLEDGE_TABLE, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../lib/partner/owner-knowledge/store";
+import { createOwnerKnowledgeStore, activeKnowledge, withIdentityAliases, mapOwnerKnowledgeRow, OWNER_KNOWLEDGE_TABLE, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../lib/partner/owner-knowledge/store";
 import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, TOKEN_TTL_MS, type KnowledgeProposeDeps } from "../lib/partner/owner-knowledge/propose";
 import { proposeActionPreviewCore } from "../lib/partner/sunny/action-proposal";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
@@ -49,7 +49,7 @@ const TOKEN_ID = "00000000-0000-4000-8000-00000000abcd";
 const ACTOR = { userId: OWNER_ID, clientId: CLIENT, tokenId: TOKEN_ID };
 const SECRET = "s".repeat(48);
 const OWNER_EXT: KnowledgeAudience = { channel: "EXTERNAL", ownerAuthorized: true };
-const IDS: GatewaySources["identities"] = { cleantone: { clientId: C_CLEAN, labelArtistName: "DJ CLEANTONE" } };
+const IDS: GatewaySources["identities"] = { cleantone: { clientId: C_CLEAN, displayName: "DJ CLEANTONE", retiredKeys: [] } };
 
 /** Sources over the production-shaped fixture (real engines), with the DJ CLEANTONE canonical app link. */
 function sources(knowledge?: OwnerKnowledgeRecord[]): GatewaySources {
@@ -158,8 +158,8 @@ async function main() {
     const w = world();
     const pv = (await previewKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS)) as AnyRes & { items: Array<{ subjectKey: string; identityKeys: string[]; value: Record<string, unknown>; epistemic: string }>; readBackHe: string; confirmationToken: string };
     check("preview status", pv.status, "PREVIEW");
-    check("'קלינטון' → ONE canonical subject: the label-artist of the DJ CLEANTONE identity (never a silent pick between people)", pv.items.map((i) => i.subjectKey), [`label-artist:${LA_CLEAN}`, `label-artist:${LA_CLEAN}`]);
-    ok("identityKeys carry every key of the same identity (DJ + label-artist)", pv.items[0].identityKeys.includes(`dj:${C_CLEAN}`) && pv.items[0].identityKeys.includes(`label-artist:${LA_CLEAN}`));
+    check("'קלינטון' → ONE canonical subject: the DJ CLEANTONE identity (team — never a label artist; never a silent pick between people)", pv.items.map((i) => i.subjectKey), [`dj:${C_CLEAN}`, `dj:${C_CLEAN}`]);
+    ok("identityKeys carry the DJ identity and no label-artist key", pv.items[0].identityKeys.includes(`dj:${C_CLEAN}`) && !pv.items[0].identityKeys.some((k) => k.startsWith("label-artist:")));
     check("'הלייבל' → company:REDBLOODS; frequency MOST", [pv.items[1].value.object, pv.items[1].value.frequency], ["company:REDBLOODS", "MOST"]);
     ok("read-back: 'הבנתי: … ה-DJ של הלייבל … ברוב … לשמור את זה כידע של סאני?'", pv.readBackHe.startsWith("הבנתי:") && pv.readBackHe.includes("ה-DJ של הלייבל") && pv.readBackHe.includes("ברוב") && pv.readBackHe.endsWith("לשמור את זה כידע של סאני?"));
     check("PREVIEW writes nothing", [w.table.rows.length, w.table.inserts], [0, 0]);
@@ -172,12 +172,17 @@ async function main() {
     const q = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_knowledge" }, src, OWNER_EXT);
     check("fresh read: owner_knowledge returns both, as OWNER_DECISION (not FACT), canonical=false", [q.status, q.items.length, q.items.every((i) => i.epistemic === "OWNER_DECISION" && i.fields.canonical === false)], ["OK", 2, true]);
     const viaDj = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_knowledge", params: { entity: `dj:${C_CLEAN}` } }, src, OWNER_EXT);
-    check("asking by the DJ key finds knowledge stored on the label-artist (same identity)", viaDj.items.length, 2);
+    check("asking by the DJ key finds the knowledge", viaDj.items.length, 2);
+    const retired = `label-artist:${LA_CLEAN}`;
+    const legacy = withIdentityAliases(recs.map((r) => ({ ...r, subjectKey: retired, identityKeys: [retired] })), { [retired]: [`dj:${C_CLEAN}`, `client:${C_CLEAN}`] });
+    ok("knowledge stored before 2026-09-27 on his RETIRED label-artist key is served under his DJ / client identity (read-time alias; stored keys untouched)",
+      legacy.every((r) => r.subjectKey === retired && r.identityKeys[0] === retired && r.identityKeys.includes(`dj:${C_CLEAN}`) && r.identityKeys.includes(`client:${C_CLEAN}`))
+      && queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_knowledge", params: { entity: `dj:${C_CLEAN}` } }, sources(legacy), OWNER_EXT).items.length === 2);
     const enr = entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, { ...src, audience: OWNER_EXT }, `dj:${C_CLEAN}`);
     ok("partner_entity enrichment for the DJ includes 'מה סאני למד ממך' automatically (no MCP change per kind)", enr.some((s) => s.capability === "owner_knowledge" && s.items.length === 2));
-    const rel = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "relations", params: { entity: `label-artist:${LA_CLEAN}` } }, src, OWNER_EXT);
-    ok("relations: CANONICAL_RELATION (app link to the DJ record) + OWNER_CONFIRMED_RELATION edges; no manufactured DB link",
-      rel.items.some((i) => i.fields.relationQuality === "CANONICAL_RELATION" && i.entity === `dj:${C_CLEAN}`) && rel.items.filter((i) => i.fields.relationQuality === "OWNER_CONFIRMED_RELATION").length === 2 && rel.items.every((i) => i.relationQuality !== "TEXT_MATCH"));
+    const rel = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "relations", params: { entity: `dj:${C_CLEAN}` } }, src, OWNER_EXT);
+    ok("relations: CANONICAL_RELATION (app link to his client record) + OWNER_CONFIRMED_RELATION edges; no manufactured DB link",
+      rel.items.some((i) => i.fields.relationQuality === "CANONICAL_RELATION" && i.entity === `client:${C_CLEAN}`) && rel.items.filter((i) => i.fields.relationQuality === "OWNER_CONFIRMED_RELATION").length === 2 && rel.items.every((i) => i.relationQuality !== "TEXT_MATCH"));
     const again = (await previewKnowledgeCore(w.deps, ACTOR, [CLINTON_ITEMS[0]])) as AnyRes;
     check("teaching it again → ALREADY_KNOWN (never re-asks / duplicates)", again.status, "ALREADY_KNOWN");
     const replay = (await commitKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS, pv.confirmationToken, U(7002))) as AnyRes;

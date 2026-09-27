@@ -197,7 +197,7 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
     questions.push({ kind: "MISSING_DETAIL", questionHe: labelDj ? "DJ CLEANTONE מנגן בהופעה, או די-ג׳יי אחר?" : "מי הדי-ג׳יי?", why: labelDj ? "CLEANTONE is the label DJ and plays MOST shows (Owner) — confirm for this one, never assume" : "no DJ knowledge" });
     questions.push({ kind: "MISSING_DETAIL", questionHe: "ההופעה סגורה, או עדיין מחכים לתשובה?", why: "status decides whether the finance rows are created" });
   }
-  if (labelDj) known.push({ item: "label DJ", value: { dj: labelDj.subjectKey, playsMostShows: !!djFreq }, source: "OWNER_KNOWLEDGE" });
+  if (labelDj) known.push({ item: "label DJ", value: { dj: labelDj.identityKeys.find((k) => k.startsWith("dj:")) ?? labelDj.subjectKey, playsMostShows: !!djFreq }, source: "OWNER_KNOWLEDGE" });
   known.push({ item: "DJ fee default", value: 500, source: "SYSTEM_CONTRACT" }, { item: "split", value: "net = price − DJ fee − counted rehearsal costs; artist half, label half", source: "SYSTEM_CONTRACT" });
   const calUsable = !!cal && (cal.status === "CALENDAR_DATA_AVAILABLE" || cal.status === "CALENDAR_PARTIAL");
   const calendarOnDate = date ? (calUsable && date >= cal!.window.start.slice(0, 10) && date <= cal!.window.end.slice(0, 10)

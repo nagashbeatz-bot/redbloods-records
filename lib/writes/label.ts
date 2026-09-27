@@ -16,11 +16,11 @@ import { classifyPushResult } from "@/lib/shalev-weekly-pure";
 import { AVI_NAME, SHALEV_NAME } from "@/lib/red-artists/portal-registry";
 import type { Sketch } from "@/lib/red-artists/sketches-store";
 
-/** The portal artists with a push role (kept in lockstep by name with the portal page constants). */
+/** The LABEL artists with a push role (kept in lockstep by name with the portal page constants). DJ CLEANTONE is team
+ *  (the label's DJ), not a label artist (Owner decision 2026-09-27): he never receives an artist cycle reminder. */
 export function artistPushRole(artistName: string): string | null {
   if (artistName === "שליו טסמה") return "shalev";
   if (artistName === "אבי מולה") return "avi";
-  if (artistName === "DJ CLEANTONE") return "cleantone";
   return null;
 }
 

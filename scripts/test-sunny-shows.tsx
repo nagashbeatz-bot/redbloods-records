@@ -87,7 +87,7 @@ function sources(o: { cal?: "NONE"; settings?: "NONE" } = {}): GatewaySources {
   const ops = { calendarLinks: sec([{ eventId: "evt-show", kind: "SHOW", entityId: NEXT, projectId: null, clientId: null, showId: NEXT, date: "2026-10-15", status: "אושרה" }]), integrations: { googleCalendarConnected: true, dropboxConnected: true } } as unknown as OperationsRaw;
   const det: ProjectDetailRaw = { ...EMPTY, sessions: sec([reh(951, PAST, "בוצע", 200), reh(952, PAST, "התקיים", 150, "2026-08-05"), reh(953, NEXT, "מתוכנן", 0, "2026-10-12")]),
     tasks: sec([{ id: U(961), relatedType: "general", relatedId: null, title: "לסגור דיג׳יי להופעה: הופעה הבאה", notes: null, status: "פתוח", dueDate: "2026-09-26", startTime: null, endTime: null, showId: NEXT, hasGoogleTask: false, createdAt: null, updatedAt: null }]) };
-  return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: { clientId: C_CLEAN, labelArtistName: "DJ CLEANTONE" } },
+  return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: { clientId: C_CLEAN, displayName: "DJ CLEANTONE", retiredKeys: [] } },
     cases: { status: "OK", value: [] }, actions: { status: "OK", value: [] }, outcomes: { status: "OK", value: [] }, ownerKnowledge: { status: "OK", value: [] },
     projectDetail: { status: "OK", value: det }, operations: { status: "OK", value: ops }, labelDetail: { status: "OK", value: LD },
     ...(o.settings === "NONE" ? {} : { settings: { status: "OK" as const, value: SETTINGS } }),

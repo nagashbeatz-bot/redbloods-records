@@ -21,7 +21,7 @@ interface Vendor {
   role: string;
   skills: string;
   status: string;
-  type: "sound-engineer" | "beatmaker";
+  type: "sound-engineer" | "beatmaker" | "dj";
   hasProfile: boolean;
   initial: string;
   color: string;
@@ -49,6 +49,17 @@ const VENDORS: Vendor[] = [
     hasProfile: true,
     initial: "V",
     color: PURPLE,
+  },
+  {
+    id: "cleantone",
+    name: "רועי איוב",
+    role: "DJ הלייבל",
+    skills: "DJ CLEANTONE",
+    status: "פעיל",
+    type: "dj",
+    hasProfile: true,
+    initial: "R",
+    color: BRAND,
   },
 ];
 
@@ -228,7 +239,8 @@ export default function TeamPage() {
       const matchType =
         typeFilter === "הכל" ||
         (typeFilter === "מהנדס סאונד" && v.type === "sound-engineer") ||
-        (typeFilter === "מפיק ביטים"  && v.type === "beatmaker");
+        (typeFilter === "מפיק ביטים"  && v.type === "beatmaker") ||
+        (typeFilter === "DJ"          && v.type === "dj");
       return matchSearch && matchType;
     });
   }, [search, typeFilter]);
@@ -323,6 +335,7 @@ export default function TeamPage() {
             <option value="הכל">כל הסוגים</option>
             <option value="מהנדס סאונד">מהנדס סאונד</option>
             <option value="מפיק ביטים">מפיק ביטים</option>
+            <option value="DJ">DJ</option>
           </select>
           <span style={{ fontSize: 12, color: MUTED }}>
             {filteredVendors.length} ספקים
@@ -351,6 +364,7 @@ export default function TeamPage() {
                 onOpenProfile={() => {
                   if (vendor.id === "victor") router.push("/team/victor");
                   else if (vendor.id === "steven") router.push("/team/steven");
+                  else if (vendor.id === "cleantone") router.push("/dj-cleantone");
                 }}
               />
             ))}

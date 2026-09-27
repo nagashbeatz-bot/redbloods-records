@@ -132,6 +132,18 @@ export function terminalOfSlot(records: readonly OwnerKnowledgeRecord[], slotKey
   return terminals.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
 }
 
+/**
+ * Read-time identity aliases (never a write): a record keyed on a RETIRED entity key also carries the live keys of the
+ * same identity — e.g. DJ CLEANTONE's deleted label-artist row (2026-09-27) → his dj: / client: keys. The stored
+ * subject / identity keys are the history and stay untouched; only the served identityKeys gain the aliases.
+ */
+export function withIdentityAliases(records: readonly OwnerKnowledgeRecord[], aliases: Readonly<Record<string, readonly string[]>>): OwnerKnowledgeRecord[] {
+  return records.map((r) => {
+    const extra = [r.subjectKey, ...r.identityKeys].flatMap((k) => aliases[k] ?? []).filter((k) => !r.identityKeys.includes(k));
+    return extra.length ? { ...r, identityKeys: [...r.identityKeys, ...new Set(extra)] } : r;
+  });
+}
+
 /** ACTIVE knowledge: each slot's terminal row, an ASSERT, not expired. History = everything else. */
 export function activeKnowledge(records: readonly OwnerKnowledgeRecord[], todayIL: string): OwnerKnowledgeRecord[] {
   const slots = [...new Set(records.map((r) => r.slotKey))];

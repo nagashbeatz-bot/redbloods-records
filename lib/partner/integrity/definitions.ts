@@ -13,16 +13,19 @@ export interface OwnerCompanyDefinition {
   statementHe: string;
 }
 
-/** 1. The label roster: label_artists is the authoritative roster source; the Owner named the current roster. */
+/** 1. The label roster: label_artists is the authoritative roster source; the Owner named the current roster.
+ *  2026-09-27 (Owner decision): DJ CLEANTONE (רועי איוב) is TEAM — the label's DJ — not a label artist; his
+ *  label_artists row was removed and his portal is a team portal (PORTAL_ARTISTS keeps his slug for the portal only). */
 export const LABEL_ROSTER_DEFINITION = {
   id: "LABEL_ROSTER",
-  decidedAt: "2026-09-24",
+  decidedAt: "2026-09-27",
   epistemic: "OWNER_DECISION" as const,
   statementHe:
-    "רוסטר הלייבל הקנוני הוא טבלת אמני הלייבל: שליו טסמה, אבי מולה, DJ CLEANTONE, נגש ביטס. " +
+    "רוסטר הלייבל הקנוני הוא טבלת אמני הלייבל: שליו טסמה, אבי מולה, נגש ביטס. " +
+    "DJ CLEANTONE (רועי איוב) הוא איש צוות — ה-DJ של הלייבל — ולא אמן לייבל. " +
     "סוג העסק בפרויקט, סטטוס הלקוח ורישום הפורטלים הם מקורות תומכים בלבד — הם לא קובעים חברות בלייבל.",
   rosterSource: "label_artists",
-  rosterNames: ["שליו טסמה", "אבי מולה", "DJ CLEANTONE", "נגש ביטס"] as const,
+  rosterNames: ["שליו טסמה", "אבי מולה", "נגש ביטס"] as const,
   /** Supporting / possibly conflicting sources — findings, never competing truth. */
   supportingSources: ["clients.status = אמן לייבל", "projects.project_business_type = לייבל", "PORTAL_ARTISTS (code)"] as const,
 };

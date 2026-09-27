@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-43";
+export const SYSTEM_BASELINE_VERSION = "2026.09.27-44";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1029,4 +1029,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-43", date: "2026-09-27", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "בקשה אחת = תוכנית אחת: תוכנית מורכבת עד 20 שלבים (למשל 11 שירים לאלבום) — תצוגה אחת, אישור אחד, ביצוע אחד. שירים שנוספו בשלבים קודמים של אותו ביצוע לא הופכים שלב מאוחר ל-STALE; מספר רצועה שמישהו אחר תפס בינתיים — כן. שני שלבים עם אותו מספר רצועה נדחים מראש." },
   { version: "2026.09.27-43", date: "2026-09-27", domain: "ALBUMS", dimension: "read", from: "FULL", to: "FULL", noteHe: "album_view מציג לכל שיר את המפתח שלו (album-track) ואת ההערות; הוספת שיר מציגה בתצוגה ומאמתת בקריאה טרייה גם סטטוס, מיקס, מאסטר והערות." },
   { version: "2026.09.27-43", date: "2026-09-27", domain: "SUNNY_CONNECTOR", dimension: "domain", from: "DEEP_BRAIN_V1", to: "DEEP_BRAIN_V1", noteHe: "חוזה החיבור מעודכן: כלי הפעולות פעילים; מגבלות אמיתיות (כללי 30 לדקה / 300 לשעה, פעולות 40 לשעה / 150 ליממה); RATE_LIMITED מחזיר איזו מגבלה חסמה ו-retryAfterSec; בקשה שנדחתה לא נספרת ולא שורפת מכסה כללית; AMBIGUOUS_OPEN_PREVIEWS נשאר חסום — לא מכינים כמה תוכניות מראש." },
+  { version: "2026.09.27-44", date: "2026-09-27", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "DJ CLEANTONE (רועי איוב) הוא איש צוות — ה-DJ של הלייבל — ולא אמן לייבל (החלטת הבעלים): הוא לא ברוסטר, לא ב-artist_view / label_roster, ולא מקבל תזכורת מחזור מאזן. הזהות הקנונית היחידה שלו היא כרטיס הלקוח (dj:/client:), עם תפקיד צוות LABEL_DJ; הידע שלימדת עליו קודם נקרא דרך המפתח הישן כ-alias. ההופעות ושכר ה-DJ שלו לא השתנו." },
 ];

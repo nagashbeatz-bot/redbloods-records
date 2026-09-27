@@ -24,7 +24,7 @@ import { loadPartnerMemory } from "../memory/server";
 import { buildLiveCases } from "../actions/live";
 import { getOwnerActionSurface } from "../actions/surface-server";
 import { getRecentOutcomesSurface } from "../actions/outcome-server";
-import { CLEANTONE_ARTIST_NAME, CLEANTONE_CLIENT_ID } from "../../red-artists/cleantone";
+import { CLEANTONE_ARTIST_NAME, CLEANTONE_CLIENT_ID, CLEANTONE_RETIRED_LABEL_ARTIST_KEY } from "../../red-artists/cleantone";
 import type { Avail, GatewayFinance, GatewaySources } from "./core";
 
 const fail = (e: unknown) => ({ status: "UNAVAILABLE" as const, detail: (e instanceof Error ? e.message : String(e)).slice(0, 200) });
@@ -85,5 +85,5 @@ export function createGatewayReadContext(now: Date = new Date()): GatewayReadCon
 
 /** Code-level canonical identities, taken from the modules that own them (never re-declared). */
 export const APP_IDENTITIES: GatewaySources["identities"] = {
-  cleantone: { clientId: CLEANTONE_CLIENT_ID, labelArtistName: CLEANTONE_ARTIST_NAME },
+  cleantone: { clientId: CLEANTONE_CLIENT_ID, displayName: CLEANTONE_ARTIST_NAME, retiredKeys: [CLEANTONE_RETIRED_LABEL_ARTIST_KEY] },
 };

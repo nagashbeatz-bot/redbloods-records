@@ -9,15 +9,13 @@
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeSources } from "../types";
 import { byCount, clientName, idOf, item, ok, partner, partnerRecord, projectName, record, result, sfact, state, textMentions, unavailable } from "./common";
 
-/** How a label artist maps to client records (for show links): exact same-name client (TEXT_MATCH) or the app's canonical link (DERIVED). */
+/** How a label artist maps to client records (for show links): exact same-name client (TEXT_MATCH). DJ CLEANTONE is team, not a label artist. */
 function artistClientIds(src: KnowledgeSources, labelArtistId: string): Map<string, "TEXT_MATCH" | "DERIVED"> {
   const st = state(src);
   const out = new Map<string, "TEXT_MATCH" | "DERIVED">();
   const a = st?.domains.labelArtists.data?.items.find((x) => x.id === labelArtistId);
   if (!st || !a) return out;
   for (const c of st.domains.clients.data?.items ?? []) if (c.name === a.name) out.set(c.id, "TEXT_MATCH");
-  const cl = src.identities.cleantone;
-  if (cl && cl.labelArtistName === a.name) out.set(cl.clientId, "DERIVED");
   return out;
 }
 

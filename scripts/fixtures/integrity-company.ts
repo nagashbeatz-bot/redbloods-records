@@ -1,6 +1,7 @@
 /**
  * Shared test fixture — production-shaped company for the Company Integrity tests (anonymous; test-only; no I/O).
- * Built by the REAL computeCoo() + assemblePartnerCompanyState(). Roster = the 4 Owner-named label artists.
+ * Built by the REAL computeCoo() + assemblePartnerCompanyState(). Roster = the 3 Owner-named label artists
+ * (DJ CLEANTONE is team since 2026-09-27; `roster` can still inject his former row to prove drift is reported).
  */
 import { computeCoo } from "../../lib/coo/pipeline";
 import type { CooRawInput } from "../../lib/coo/types";
@@ -9,7 +10,7 @@ import type { PartnerEyesRaw, PartnerCompanyState } from "../../lib/partner/eyes
 import type { FinanceRaw } from "../../lib/partner/finance/types";
 import type { PartnerMemory } from "../../lib/partner/memory/types";
 import type { PersistedOwnerContext } from "../../lib/partner/investigation/context-row";
-import { PORTAL_ARTISTS } from "../../lib/red-artists/portal-registry";
+import { LABEL_PORTAL_NAMES } from "../../lib/red-artists/portal-registry";
 import type { IntegrityRegisterInput } from "../../lib/partner/integrity/register";
 import type { CompanyIntegrityRegister, IntegrityFinding } from "../../lib/partner/integrity/types";
 import { empty, tx, work } from "./finance-mirror";
@@ -53,8 +54,8 @@ export function cooRaw(o: Opts): CooRawInput {
 export function eyesRaw(o: Opts): PartnerEyesRaw {
   const client = (id: string, name: string, type = "אמן", status = "פעיל") => ({ id, name, type, status, createdAt: "2026-01-01T10:00:00Z" });
   const la = (id: string, name: string) => ({ id, name, status: "פעיל", createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-08-01T10:00:00Z" });
-  const allLa: Record<string, string> = { "שליו טסמה": LA_SHALEV, "אבי מולה": LA_AVI, "DJ CLEANTONE": LA_CLEAN, "נגש ביטס": LA_NAGASH };
-  const roster = o.roster ?? Object.keys(allLa);
+  const allLa: Record<string, string> = { "שליו טסמה": LA_SHALEV, "אבי מולה": LA_AVI, "נגש ביטס": LA_NAGASH, "DJ CLEANTONE": LA_CLEAN };
+  const roster = o.roster ?? ["שליו טסמה", "אבי מולה", "נגש ביטס"];
   const rel = (pid: string, laId: string) => ({ projectId: pid, labelArtistId: laId, stage: "רעיון", targetDate: "2026-10-05", stageEnteredAt: "2026-09-01T10:00:00Z", releasedAt: null, createdAt: "2026-08-01T10:00:00Z", updatedAt: "2026-09-01T10:00:00Z" });
   const releases = [rel(P(1), LA_SHALEV)];
   if (o.releaseForAll) releases.push(rel(P(2), LA_AVI), rel(P(4), LA_NAGASH), rel(P(9), LA_CLEAN));
@@ -105,7 +106,7 @@ export function input(o: Opts & { contexts?: PersistedOwnerContext[] | null } = 
       redFilmsProductions: [{ id: U(1301), title: "הפקה", status: "בוטל", productionType: "��" }, { id: U(1302), title: "קליפ", status: "בעבודה", productionType: "קליפ" }],
       meetings: [{ id: U(1401), date: "2026-06-07", status: "נקבעה" }, { id: U(1402), date: "2026-10-07", status: "נקבעה" }],
     },
-    portalArtistNames: Object.keys(PORTAL_ARTISTS), cleantoneClientId: C_CLEAN,
+    portalArtistNames: [...LABEL_PORTAL_NAMES],
     ownerContexts: o.contexts === undefined ? [] : o.contexts,
   };
 }

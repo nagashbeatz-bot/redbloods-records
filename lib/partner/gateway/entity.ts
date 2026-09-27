@@ -134,18 +134,14 @@ function labelArtistDraft(src: GatewaySources, state: PartnerCompanyState, id: s
   for (const p of d.projects.idLinked) rels.push(rel(key, "LABEL_ARTIST_HAS_PROJECT", `project:${p.projectId}`, `${p.name} · ${p.status}`, "ID", "RELEASES"));
   for (const p of d.projects.textMatched) rels.push(rel(key, "LABEL_ARTIST_HAS_PROJECT", `project:${p.projectId}`, `${p.name} · ${p.status}`, "TEXT_MATCH", "PROJECTS", "התאמת שם אמן בלבד"));
   for (const p of d.projects.ambiguousTextMatched) rels.push(rel(key, "LABEL_ARTIST_HAS_PROJECT", `project:${p.projectId}`, `${p.name} · ${p.status}`, "UNKNOWN", "PROJECTS", "השם מתאים ליותר מאמן לייבל אחד"));
-  // the same person as a client: exact same name (TEXT_MATCH) or the app's canonical link (DERIVED)
-  const cleantone = src.identities.cleantone;
+  // the same person as a client: exact same name only (TEXT_MATCH). DJ CLEANTONE is team, never a label artist.
   const clients = state.domains.clients.data?.items ?? [];
   const personClients = clients.filter((c) => normalizeName(c.name) === normalizeName(d.identity.name));
-  const appClient = cleantone && d.identity.name === cleantone.labelArtistName ? clients.find((c) => c.id === cleantone.clientId) ?? null : null;
   for (const c of personClients) rels.push(rel(key, "LABEL_ARTIST_IS_CLIENT", `client:${c.id}`, c.name, "TEXT_MATCH", "CLIENTS", "אותו שם בדיוק — לא קישור במזהה"));
-  if (appClient) rels.push(rel(key, "DJ_IS_LABEL_ARTIST", `dj:${appClient.id}`, appClient.name, "DERIVED", "APP_IDENTITY", "קישור קבוע בקוד האפליקציה (פורטל ה־DJ)"));
   const shows = state.domains.shows.data?.items ?? [];
   const viaName = new Set(personClients.map((c) => c.id));
   for (const s of shows) {
     if (s.artistClientId && viaName.has(s.artistClientId)) rels.push(rel(`show:${s.id}`, "SHOW_HAS_ARTIST", key, `${s.name} · ${heDate(s.dateYmd) ?? "—"} · ${s.status}`, "TEXT_MATCH", "SHOWS", "דרך לקוח באותו שם"));
-    if (appClient && s.djClientId === appClient.id) rels.push(rel(`show:${s.id}`, "SHOW_HAS_DJ", key, `${s.name} · ${heDate(s.dateYmd) ?? "—"} · ${s.status}`, "DERIVED", "SHOWS", "דרך הקישור הקבוע של ה־DJ"));
   }
   const victor = state.domains.victor.data?.active ?? [];
   const steven = state.domains.steven.data?.open ?? [];
@@ -162,10 +158,10 @@ function labelArtistDraft(src: GatewaySources, state: PartnerCompanyState, id: s
   const missing: EntityDraft["missing"] = [];
   if (d.balanceLedger.hasEntries) missing.push({ fact: "ledger currency", whyNeeded: "the artist ledger has no currency column — totals are one implicit ledger, never assumed ₪" });
   if (!d.releases.rows.length) missing.push({ fact: "release plan", whyNeeded: "no release record exists for this artist — the release decision is UNKNOWN" });
-  if (!personClients.length && !appClient) missing.push({ fact: "shows", whyNeeded: "shows link to clients, and no client record matches this artist" });
+  if (!personClients.length) missing.push({ fact: "shows", whyNeeded: "shows link to clients, and no client record matches this artist" });
   return {
     entity: { key, type: "label-artist", label: record(d.identity.name) }, facts, relationships: rels, missing,
-    drillDown: [...d.projects.idLinked.map((p) => drill(`project:${p.projectId}`, p.name)), ...(appClient ? [drill(`dj:${appClient.id}`, "פתח כ־DJ")] : [])].slice(0, 8),
+    drillDown: [...d.projects.idLinked.map((p) => drill(`project:${p.projectId}`, p.name))].slice(0, 8),
     scopeKeys: [key, ...[...idProjects].map((p) => `project:${p}`)], caseIds: new Set([id]), patternFamily: () => false,
   };
 }
@@ -265,21 +261,21 @@ function djDraft(src: GatewaySources, state: PartnerCompanyState, id: string): E
     .map((s) => rel(`show:${s.id}`, "SHOW_HAS_DJ", key, `${s.name} · ${heDate(s.dateYmd) ?? "—"} · ${s.status} · אישור DJ: ${s.djConfirmationStatus ?? "—"}`, "ID", "SHOWS"));
   const artistIds = [...new Set(shows.map((s) => s.artistClientId).filter((x): x is string => !!x))];
   for (const a of artistIds) rels.push(rel(key, "SHOW_HAS_ARTIST", `client:${a}`, clientName(state, a), "ID", "SHOWS", "אמן בהופעות שה־DJ ניגן בהן"));
+  // DJ CLEANTONE = the app's own label DJ (code identity): a TEAM member, never a label artist (Owner decision 2026-09-27).
   const cleantone = src.identities.cleantone;
-  const artist = cleantone && cleantone.clientId === id ? state.domains.labelArtists.data?.items.find((a) => a.name === cleantone.labelArtistName) ?? null : null;
-  if (artist) rels.push(rel(key, "DJ_IS_LABEL_ARTIST", `label-artist:${artist.id}`, artist.name, "DERIVED", "APP_IDENTITY", "קישור קבוע בקוד האפליקציה (פורטל ה־DJ)"));
+  const isLabelDj = !!cleantone && cleantone.clientId === id;
   return {
-    entity: { key, type: "dj", label: record(artist ? `${artist.name} (${client.name})` : client.name) },
+    entity: { key, type: "dj", label: record(isLabelDj ? `${cleantone!.displayName} (${client.name})` : client.name) },
     facts: [
       fact("DJ_SHOWS", "הופעות כ־DJ", { total: shows.length, upcoming: upcoming.length, cancelled: shows.filter((s) => s.status === "בוטל").length, byConfirmation }, "DERIVED", "SHOWS"),
       fact("CLIENT_PAYMENT_BY_SHOW", "תשלום הלקוח בהופעות (לא תשלום ל־DJ)", shows.map((s) => ({ show: `show:${s.id}`, date: s.dateYmd, paymentStatus: s.paymentStatus })), "FACT", "SHOWS"),
+      ...(isLabelDj ? [fact("TEAM_ROLE", "תפקיד בצוות", { role: "LABEL_DJ", team: true, labelArtist: false, he: "איש צוות — ה־DJ של הלייבל (לא אמן לייבל)" }, "FACT", "APP_IDENTITY")] : []),
     ],
     relationships: rels,
     missing: [
       { fact: "DJ fee / payout status", whyNeeded: "DJ fees and payouts are not exposed to Partner — needed to close a show financially from the DJ side" },
-      ...(artist ? [] : [{ fact: "label-artist link", whyNeeded: "no canonical link between this DJ and a label artist" }]),
     ],
-    drillDown: [...(artist ? [drill(`label-artist:${artist.id}`, `פתח את ${artist.name}`)] : []), drill(`client:${id}`, "פתח את כרטיס הלקוח"), ...upcoming.slice(0, 3).map((s) => drill(`show:${s.id}`, s.name))],
+    drillDown: [drill(`client:${id}`, "פתח את כרטיס הלקוח"), ...upcoming.slice(0, 3).map((s) => drill(`show:${s.id}`, s.name))],
     scopeKeys: [key], caseIds: new Set([id, ...shows.map((s) => s.id)]), patternFamily: () => false,
   };
 }

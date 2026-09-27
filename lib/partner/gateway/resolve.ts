@@ -37,8 +37,9 @@ function containsTokenRun(name: string[], q: string[]): boolean {
  * Display names the application already uses for an entity (never invented business data):
  *   Victor / ויקטור — the team vendor as the app names him in English and Hebrew;
  *   Steven — the team vendor's app name; סטיבן is its Hebrew transliteration (MEDIUM, not in the app);
- *   קלינטון — the app's own greeting for DJ CLEANTONE (components/red-artists portal); Cleantone / Clinton
- *   are his artist name's token and its English transliteration (MEDIUM for the transliteration).
+ *   DJ CLEANTONE / קלינטון — the app's own name and greeting for its label DJ (a team member, not a label artist;
+ *   components/red-artists portal); Cleantone / Clinton are his name's token and its English transliteration
+ *   (MEDIUM for the transliteration). They resolve to his DJ / client identity only.
  * Persisted per-Owner aliases do not exist — reported as a future gap.
  */
 export const KNOWN_DISPLAY_NAMES: ReadonlyArray<{ name: string; target: "VICTOR" | "STEVEN" | "CLEANTONE"; confidence: ResolveConfidence }> = [
@@ -47,6 +48,7 @@ export const KNOWN_DISPLAY_NAMES: ReadonlyArray<{ name: string; target: "VICTOR"
   { name: "steven", target: "STEVEN", confidence: "HIGH" },
   { name: "סטיבן", target: "STEVEN", confidence: "MEDIUM" },
   { name: "קלינטון", target: "CLEANTONE", confidence: "HIGH" },
+  { name: "DJ CLEANTONE", target: "CLEANTONE", confidence: "HIGH" },
   { name: "cleantone", target: "CLEANTONE", confidence: "HIGH" },
   { name: "clinton", target: "CLEANTONE", confidence: "MEDIUM" },
 ];
@@ -85,10 +87,8 @@ export function buildResolveIndex(src: GatewaySources): IndexEntry[] {
     }
   }
   for (const a of artists) {
-    const isCleantone = !!cleantone && a.name === cleantone.labelArtistName;
     const clientSameName = clients.some((c) => normalizeName(c.name) === normalizeName(a.name));
-    const g: ResolveCandidate["identityGroup"] = isCleantone ? { id: "app:cleantone", basis: "APP_CANONICAL_LINK" }
-      : clientSameName ? { id: `name:${normalizeName(a.name)}`, basis: "SAME_EXACT_NAME" } : { id: `label-artist:${a.id}`, basis: "SINGLE" };
+    const g: ResolveCandidate["identityGroup"] = clientSameName ? { id: `name:${normalizeName(a.name)}`, basis: "SAME_EXACT_NAME" } : { id: `label-artist:${a.id}`, basis: "SINGLE" };
     out.push({ key: `label-artist:${a.id}`, type: "label-artist", name: a.name, norm: normalizeName(a.name), group: g, detail: `אמן לייבל · ${a.status}`, detailTrust: "PARTNER_RECORD" });
   }
   for (const [id, p] of Object.entries(state.domains.projects.data?.index ?? {})) {
@@ -121,7 +121,7 @@ function matchName(index: IndexEntry[], q: string): ResolveCandidate[] {
     if (normalizeName(k.name) !== q) continue;
     const targets = k.target === "VICTOR" ? index.filter((e) => e.key === "vendor:VICTOR")
       : k.target === "STEVEN" ? index.filter((e) => e.key === "vendor:STEVEN")
-      : index.filter((e) => e.group.id === "app:cleantone" && (e.type === "dj" || e.type === "label-artist"));
+      : index.filter((e) => e.group.id === "app:cleantone" && e.type === "dj");
     for (const e of targets) put(cand(e, k.confidence, "KNOWN_DISPLAY_NAME"));
   }
   return [...best.values()];
@@ -142,8 +142,8 @@ function matchShowOf(index: IndexEntry[], who: string, src: GatewaySources): Res
     const id = p.key.split(":")[1];
     if (p.type === "client" || p.type === "dj") personClientIds.set(id, p.label.text);
     if (p.type === "label-artist") {
-      // label artist → client only through the exact same name (TEXT_MATCH) or the app's canonical link
-      const via = clients.filter((c) => normalizeName(c.name) === normalizeName(p.label.text) || (p.identityGroup.basis === "APP_CANONICAL_LINK" && src.identities.cleantone?.clientId === c.id));
+      // label artist → client only through the exact same name (TEXT_MATCH)
+      const via = clients.filter((c) => normalizeName(c.name) === normalizeName(p.label.text));
       for (const c of via) personClientIds.set(c.id, p.label.text);
     }
   }

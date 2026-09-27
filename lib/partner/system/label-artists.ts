@@ -134,10 +134,10 @@ export const LABEL_VOCABULARIES = {
 export const MEMBERSHIP_MODEL = {
   whatMakesALabelArtist: "a row in the label roster (canonical). The roster is never derived from project artist text.",
   statusSemantics: "פעיל / בהשהייה / לא פעיל — Owner-set; no screen changes it after creation today (the edit route has no caller).",
-  portal: "an artist has a portal only when the app's fixed name → slug table lists the exact name (4 names today); login exists only for Shalev, Avi and CLEANTONE (by account email); Nagash has a portal page but no login.",
+  portal: "an artist has a portal only when the app's fixed name → slug table lists the exact name (3 label artists + DJ CLEANTONE's TEAM portal, which keeps its slug only for his avatar / stream); login exists for Shalev, Avi (label) and CLEANTONE (team) by account email; Nagash has a portal page but no login.",
   releaseCandidates: "the add-release picker also offers CLIENT records whose status is אמן לייבל and creates the roster row on demand",
   noConcepts: "there is no prospect / former / collaborator concept; collaborators exist only as extra names in a project's artist text",
-  cleantone: "DJ CLEANTONE is a roster artist AND the label DJ; his shows are matched by the app's fixed client id (not by name)",
+  cleantone: "DJ CLEANTONE (רועי איוב) is TEAM — the label's DJ — NOT a label artist (Owner decision 2026-09-27; his roster row, which had no ledger / cycle / media / release rows, was deleted). His only canonical identity is his client record: shows match him by the app's fixed client id (not by name); he never receives an artist cycle reminder; his portal is unchanged. Owner knowledge recorded before on his former label-artist key is read as an alias of his DJ / client identity.",
 } as const;
 
 export type LinkQuality = "CANONICAL_RELATION" | "OWNER_CONFIRMED_RELATION" | "DERIVED_RELATION" | "TEXT_MATCH" | "AMBIGUOUS" | "UNKNOWN";
@@ -147,7 +147,7 @@ export const ARTIST_LINKS: readonly ArtistLink[] = [
   { id: "PROJECT_BY_NAME", to: "project", method: "project artist text token equals the artist name", quality: "TEXT_MATCH", enforcement: "none", note: "every other artist project; collaborations name several artists" },
   { id: "PROJECT_LABEL_CLASSIFICATION", to: "project (label vs client work)", method: "ONE stored business type (לקוח / לייבל) and ONE classifier for every screen and Sunny; the Owner rule at creation: שליו טסמה / אבי מולה credited (solo or collab, by roster id) → לייבל", quality: "OWNER_CONFIRMED_RELATION", enforcement: "Owner rule (create writers) + the Owner's explicit classification", note: "a roster-name match, a release row, a client status or a Red Films source is evidence only; a stored לקוח the Owner rule would call לייבל is MISMATCH_OWNER_RULE (never reclassified automatically); no 'roster artist = label' rule (נגש ביטס / DJ CLEANTONE are not covered)" },
   { id: "LEDGER", to: "ledger entry / balance cycle / media income", method: "artist id", quality: "CANONICAL_RELATION", enforcement: "FK (restrict)", note: "three separate money records — never merged" },
-  { id: "PORTAL", to: "portal / login role", method: "id-first: Shalev / Avi by their stable roster id (code-registered); DJ CLEANTONE / נגש ביטס by exact registered name; + account email per role", quality: "CANONICAL_RELATION", enforcement: "app constants", note: "a rename keeps Shalev's / Avi's portal (another row with the same name never inherits it); a name-only portal is AMBIGUOUS identity quality and a rename would detach it" },
+  { id: "PORTAL", to: "portal / login role", method: "id-first: Shalev / Avi by their stable roster id (code-registered); נגש ביטס by exact registered name; + account email per role (DJ CLEANTONE's portal is a TEAM portal by role + client id, outside the roster)", quality: "CANONICAL_RELATION", enforcement: "app constants", note: "a rename keeps Shalev's / Avi's portal (another row with the same name never inherits it); a name-only portal is AMBIGUOUS identity quality and a rename would detach it" },
   { id: "BEATS", to: "beat assignment", method: "portal slug", quality: "DERIVED_RELATION", enforcement: "unique per beat + slug", note: "via the name → slug table" },
   { id: "CLIENT_RECORD", to: "client record", method: "same name", quality: "TEXT_MATCH", enforcement: "none", note: "same person, separate record; client status אמן לייבל is a label, not a link" },
   { id: "SHOW_ARTIST", to: "show", method: "show artist client id → client record of the same name", quality: "TEXT_MATCH", enforcement: "FK to the client only", note: "show → ledger resolves the artist by the show's artist text (single exact token); a collaboration show is AMBIGUOUS identity and is never attributed (evidence returned, no ledger row)" },
@@ -157,7 +157,7 @@ export const ARTIST_LINKS: readonly ArtistLink[] = [
   { id: "SOCIAL", to: "social campaign / content", method: "campaign artist name text; project id when set", quality: "TEXT_MATCH", enforcement: "none", note: "no artist id" },
   { id: "TASKS_MEETINGS", to: "task / meeting", method: "via the artist's projects (task related to project) or the artist's client record", quality: "DERIVED_RELATION", enforcement: "stored ids, no FK", note: "never fuzzy-attached" },
   { id: "CALENDAR", to: "calendar event", method: "stored event ids of the artist's sessions / shows; title matches", quality: "CANONICAL_RELATION", enforcement: "stored event id", note: "title matches stay TEXT_MATCH; personal events never become artist facts" },
-  { id: "OWNER_KNOWLEDGE", to: "Owner knowledge", method: "subject label-artist:<id>", quality: "OWNER_CONFIRMED_RELATION", enforcement: "typed P2", note: "e.g. CLEANTONE LABEL_DJ, plays MOST shows" },
+  { id: "OWNER_KNOWLEDGE", to: "Owner knowledge", method: "subject label-artist:<id>", quality: "OWNER_CONFIRMED_RELATION", enforcement: "typed P2", note: "a label artist's typed P2 knowledge (DJ CLEANTONE's LABEL_DJ / plays MOST shows is TEAM knowledge: its stored label-artist key is a retired alias of his DJ / client identity)" },
 ];
 
 export const RELEASE_MODEL = {
@@ -185,7 +185,7 @@ export const MONEY_MODEL = {
   mediaIncome: "created / updated / cancelled only through server transactions that compute label share and artist share (the Owner model for שליו / אבי: 50 / 50 of the income) and a snapshot (before / recouped / payable / after). Since 2026-09-27 the server passes NO recoup target (0): media is INCOME and never repays a specific clip — nothing is withheld. Records stored before carry 'recouped' values from a retired rule (history only, never a clip repayment, never evidence of an active offset). A received record is corrected only by an appended reversal. The media record does NOT touch the ledger or cycles — the Owner records the artist's media share in the ledger as income.",
   agreement: "Owner decision 2026-09-27 (the ONE agreement rule layer; ONLY שליו טסמה / אבי מולה, never inferred for another artist): production / mix / master = 100 % label (a real company cost, no artist share, no artist debt); clip = 50 % label / 50 % artist (the artist's half is an artist EXPENSE in the ledger — the amount the Owner recorded is the record, e.g. 'קליפ - פרנציפ' 2,480); show = 50 / 50 of the NET profit (revenue − direct show expenses: DJ + counted rehearsals); media = 50 / 50 of the income; any other category NOT_DEFINED. The Red Films actual cost (Finance cash out, e.g. 4,955) and the artist ledger are DIFFERENT dimensions — never merged. ACCOUNTING = the bi-monthly CYCLE (the app's cycle windows from the anchor; Shalev's current cycle 2026-08-10 → 2026-10-10): income, expenses, shows, media and payments meet in the cycle balance; no income is matched to a specific expense.",
   recoup: "Owner canon 2026-09-27: there is NO clip recoup. For שליו / אבי the clip share is an artist expense in the cycle (agreement above); for every other artist there is no agreement — NOT_DEFINED ('לא נקבע') in every reader (recoup route, clips route, label page, Sunny) — never 50 % of the budget, never the budget, never the client clip price. The artist's income figures (paid show artist fees from the ARTIST_FEE rows + received media artist share; expected shows + expected media) stay visible, and clip money A / B / C + the Red Films ledger are shown per currency as information only. The label P&L counts the LABEL's economic share of the actual paid clip cost (₪; a cost with no agreement rule in full, shown apart), never the whole cash out as label share.",
-  portalMoney: "Shalev sees the full ledger + cycles read-only; Avi, CLEANTONE and Nagash have no balance tab; Shalev's summary endpoint returns no balance; CLEANTONE sees his DJ fee + payment status per show",
+  portalMoney: "Shalev sees the full ledger + cycles read-only; Avi, CLEANTONE (team) and Nagash have no balance tab; Shalev's summary endpoint returns no balance; CLEANTONE sees his DJ fee + payment status per show",
   thirdView: "the artist summary endpoint reads the show ARTIST_FEE rows by their canonical show money role (never category / text) with the artist's exact name; paid = that fee row's own status (never the client payment); totals PER CURRENCY — the older ₪-only paid / expected totals stay ₪-only and are never a mixed sum",
 } as const;
 
@@ -230,7 +230,7 @@ export const ARTIST_PUSHES: ReadonlyArray<{ id: string; trigger: string; recipie
   { id: "BEAT_UPLOADED_OR_UPDATED", trigger: "beat upload / edit", recipients: "Owner", source: "EVENT", dedupe: "per beat", marker: null, deepLink: "beats", guard: "production" },
   { id: "SKETCH_NEW_OR_VERSION", trigger: "Shalev adds a sketch / version", recipients: "Shalev + Owner ack", source: "EVENT", dedupe: "per sketch / version", marker: null, deepLink: "music tab", guard: "production" },
   { id: "SKETCH_NOTIFY", trigger: "Owner presses notify on a sketch", recipients: "Avi or Shalev + Owner", source: "MANUAL", dedupe: "per sketch + version", marker: null, deepLink: "music tab", guard: "production" },
-  { id: "BALANCE_CYCLE_REMINDER", trigger: "Owner presses the cycle reminder", recipients: "Owner and / or the artist", source: "MANUAL", dedupe: "tag only", marker: null, deepLink: "Shalev's balance tab for every artist", guard: "NONE", note: "no environment guard; Avi has no balance tab and CLEANTONE cannot open that page (known bug)" },
+  { id: "BALANCE_CYCLE_REMINDER", trigger: "Owner presses the cycle reminder", recipients: "Owner and / or the label artist (Shalev / Avi push roles only)", source: "MANUAL", dedupe: "tag only", marker: null, deepLink: "Shalev's balance tab for every artist", guard: "NONE", note: "no environment guard; Avi has no balance tab (known bug). DJ CLEANTONE is team, not a label artist (2026-09-27): he is never a cycle-reminder recipient" },
   { id: "PORTAL_PRESENCE", trigger: "artist opens the portal, or returns after a 30-minute absence (ping + 5-minute heartbeat; the server decides)", recipients: "Owner", source: "PAGE_LOAD", dedupe: "one per real visit — 30-minute absence window + atomic claim (INSERT-first / compare-and-swap); recorded sent only after delivery", marker: "portal last-seen + visit-push claim", deepLink: null, guard: "production" },
 ];
 
@@ -310,6 +310,8 @@ export const ARTIST_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL
 ];
 
 export const LABEL_INTEGRITY = {
+  /** 2026-09-27 (Owner decision): DJ CLEANTONE moved from the roster to the team — roster 3 (שליו טסמה, אבי מולה, נגש ביטס). */
+  rosterChange20260927: { roster: 3, removed: "DJ CLEANTONE (team — the label's DJ)", removedRowHadDependents: 0, historyKept: "his 8 DJ shows and 7 DJ_FEE Finance rows (client-id based, unchanged)" },
   productionCounts20260925: {
     roster: 4, rosterStatuses: { "פעיל": 4 }, withPortalSlug: 4, withLoginRole: 3, alsoClientRecord: 3,
     projectsByName: { "שליו טסמה": 5, "אבי מולה": 4, "נגש ביטס": 2, "DJ CLEANTONE": 0 }, labelBusinessTypeProjects: { "אבי מולה": 1, others: 0 },
@@ -348,7 +350,7 @@ export const LABEL_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/label-recoup.ts": "64df6e43a09539b9cf4af0f9bc520c0a2638f0f0ee283116a608165957c97fd0",
   "lib/label-clips.ts": "f69745076431936c8cca1237f4e34557eb7f9a6b443765eebf55de91043ac7c4",
   "lib/beats-store.ts": "eb8b5bf1212f6192339d838cbb3a346e5370298796de2cd47296da3d2ee29bb3",
-  "lib/red-artists/portal-registry.ts": "fc435327bdc446218692bba51e9e340342acb8e1e7b42404bcb9be135c8f5432",
+  "lib/red-artists/portal-registry.ts": "3abda335adba30d4bfaa024376538351e5717b5de55a2797bf9287ea127227dc",
   "lib/red-artists/availability.ts": "54ddcaafe25eee87705989d5550189d63ad54cb73723a43e03e9857a0aae3cf4",
   "lib/shows-types.ts": "7e319042c14e8f40cffdec3de07586e2eccddeb44e3e4e7df9bfb79526a5e16a",
 };
