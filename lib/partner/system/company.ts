@@ -112,6 +112,9 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   MISMATCH_OWNER_RULE: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT", "LABEL_CONTINUITY"),
   // artist accounting / shows
   LEDGER_BALANCE: a("CONTEXT", "NONE", "MONEY_RELEVANT"),
+  // media allocation model (2026-09-29): facts on the records, reported — never fixed automatically
+  MEDIA_FINANCE_LINK_MISSING: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT", "MONEY_RELEVANT"),
+  MEDIA_ENTITLEMENT_MISMATCH: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT", "MONEY_RELEVANT"),
   CYCLE_NOT_SET: a("SYSTEM_GAP", "OWNER", "SYSTEM_GAP"),
   SHOW_DONE_UNPAID: a("NEEDS_ATTENTION", "EXTERNAL", "MONEY_RELEVANT"),
   SHOW_WITHOUT_DJ: a("NEEDS_ATTENTION", "OWNER", "SCHEDULED_EVENT"),
@@ -374,7 +377,7 @@ export const REPO_COVERAGE: ReadonlyArray<{ pattern: string; cls: ModuleClass; d
 /** Every production table → how Sunny reaches it (internal; the test pins the list). */
 export const TABLE_COVERAGE: Readonly<Record<string, string>> = {
   agent_alerts: "project_view (project alerts) + company_view (company-level alerts)", album_tracks: "albums", artist_balance_cycles: "artist_view", artist_balance_entries: "artist_view", beat_artist_assignments: "artist_view", beats: "artist_view",
-  clients: "client_view", clip_items: "video_view", final_files: "mix_view", label_artists: "artist_view", label_media_income: "artist_view", meetings: "client_view / project_view",
+  clients: "client_view", clip_items: "video_view", final_files: "mix_view", label_artists: "artist_view", label_media_income: "artist_view", label_media_income_allocations: "artist_view (media allocation model 2026-09-29)", meetings: "client_view / project_view",
   mix_comment_attachments: "mix_view", mix_comments: "mix_view", mix_target_notes: "mix_view", mix_targets: "mix_view", mix_versions: "mix_view", notifications: "project_view (weekly deleted)",
   partner_action_events: "actions / outcomes", partner_action_plans: "Universal Action Layer plans (allowlisted plan JSON; action_registry / plan status)", partner_action_approvals: "Universal Action Layer one-time approval nonces (no token / no confirmation text)", partner_action_executions: "Universal Action Layer step executions (idempotency + recorded outcome)", partner_action_plan_events: "Universal Action Layer append-only plan audit", partner_feedback: "Sunny feedback store", partner_gateway_audit: "INFRASTRUCTURE (Sunny's own audit)", partner_mcp_auth_codes: "SECRET", partner_mcp_clients: "SECRET", partner_mcp_tokens: "SECRET",
   partner_owner_context: "finance (Owner context)", partner_owner_knowledge: "owner_knowledge", project_actions: "project_view (send log)", project_release_details: "artist_view", projects: "project_view", proposals: "client_view", push_subscriptions: "SECRET (people: roles / counts only)",

@@ -261,7 +261,17 @@ export interface LabelMediaRecord {
   updatedAt: string;          // exact DB string — optimistic-lock token (never new Date())
   isReversed: boolean;        // an active reversal references this income record
   reversalId: string | null;
+  /** the income's owner row (label_artist_id) — the RPCs take THIS artist id (a co-credited artist sees the record too) */
+  primaryArtistId: string;
+  incomeKind: "DISTRIBUTION" | "YOUTUBE" | "ACUM";
+  /** true = the allocation model (2026-09-29): one Finance transaction + allocations; false = a LEGACY record (e.g. Mobile1) */
+  allocationModel: boolean;
+  financeTransactionId: string | null;
+  allocations: MediaAllocation[];
 }
+
+/** One artist entitlement of an allocation-model media income (its ledger row is written by the RPC). */
+export interface MediaAllocation { id: string; artistId: string; pct: number; amount: number; status: "active" | "inactive" }
 
 /** Aggregated media finance for one label artist. Signed by record_type. */
 export interface ArtistMediaSummary {

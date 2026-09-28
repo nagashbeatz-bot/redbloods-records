@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
 import { updateMedia, type MediaWriteResult } from "@/lib/media-income-store";
+import { isRecordsIncomeKind } from "@/lib/records-expense-share";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ recor
     const artist = await getLabelArtist(artistId);
     if (!artist) return NextResponse.json({ error: "האמן לא נמצא" }, { status: 404 });
 
+    if (body.incomeKind !== undefined && !isRecordsIncomeKind(body.incomeKind)) return NextResponse.json({ error: "סוג הכנסה לא חוקי" }, { status: 400 });
+    if (body.creditedArtistIds !== undefined && !(Array.isArray(body.creditedArtistIds) && body.creditedArtistIds.every((x: unknown) => typeof x === "string" && x))) return NextResponse.json({ error: "רשימת אמנים לא תקינה" }, { status: 400 });
+
     const res = await updateMedia(recordId, artistId, artist.name, body.expectedUpdatedAt, {
       grossAmount: body.grossAmount != null ? Number(body.grossAmount) : undefined,
       source: typeof body.source === "string" ? body.source.trim() : undefined,
@@ -35,6 +39,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ recor
       clearReceivedDate: body.clearReceivedDate === true,
       status: body.status ?? undefined,
       notes: typeof body.notes === "string" ? body.notes.trim() : undefined,
+      // allocation model, expected income only (the RPC refuses it on a received / legacy record): kind / credits → re-derived allocations
+      incomeKind: body.incomeKind,
+      creditedArtistIds: body.creditedArtistIds,
     });
     return mapWrite(res);
   } catch (err) {

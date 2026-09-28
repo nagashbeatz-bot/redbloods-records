@@ -241,7 +241,29 @@ export function incomeShareOf(kind: RecordsIncomeKind, artistText: string | null
   if (r.status === "UNDEFINED") return { status: "UNDEFINED", kind, reason: r.reason, reasonHe: r.reasonHe };
   return { status: "DEFINED", kind, recordsPct: r.recordsPct, artists: r.artists, basisHe: r.kind === "NAGASHBEATZ" ? "הכנסת הפצה עם NagashBeatz — 100% Records" : r.kind === "TWO_RECORDS_ARTISTS" ? "הכנסת הפצה — 50% Records / 25% לכל אמן" : "הכנסת הפצה — 50% Records / 50% האמן" };
 }
-/** The Records (label) part of a media income record by the rule — the RPC stores 50 / 50 for every source (history). */
+export const RECORDS_INCOME_KINDS: readonly RecordsIncomeKind[] = ["DISTRIBUTION", "YOUTUBE", "ACUM"];
+export const INCOME_KIND_HE: Readonly<Record<RecordsIncomeKind, string>> = { DISTRIBUTION: "הפצה", YOUTUBE: "YouTube", ACUM: "אקו\"ם" };
+export const isRecordsIncomeKind = (v: unknown): v is RecordsIncomeKind => typeof v === "string" && (RECORDS_INCOME_KINDS as readonly string[]).includes(v);
+
+export type MediaAllocationPlan =
+  | { status: "DEFINED"; kind: RecordsIncomeKind; recordsPct: number; allocations: Array<{ artistId: string; name: string; pct: number }>; basisHe: string }
+  | { status: "UNDEFINED"; kind: RecordsIncomeKind; reasonHe: string };
+/**
+ * The media ALLOCATION model (Owner decision 2026-09-28, DB model applied 2026-09-29): ONE media income = ONE Finance
+ * transaction for the full amount + 0..N artist allocations; each allocation = at most ONE ledger entitlement (the RPC).
+ * The allocations come from THIS rule only (incomeShareOf over the credited label artists): Shalev or Avi alone 50 %,
+ * Shalev + Avi 25 % each, NagashBeatz credited 0 allocations, YouTube / ACUM 0 allocations. Undefined credits (an external
+ * party, no Records artist …) are refused — never a guessed split.
+ */
+export function mediaAllocationsOf(kind: RecordsIncomeKind, creditedNames: readonly string[]): MediaAllocationPlan {
+  const s = incomeShareOf(kind, creditedNames.filter(Boolean).join(", "));
+  if (s.status === "UNDEFINED") return { status: "UNDEFINED", kind, reasonHe: s.reasonHe };
+  return { status: "DEFINED", kind, recordsPct: s.recordsPct, allocations: s.artists.map((a) => ({ artistId: a.artistId, name: a.name, pct: a.pct })), basisHe: s.basisHe };
+}
+/** gross × pct, rounded to agorot — the same rounding as the RPC (round(v_gross * pct / 100, 2)). */
+export const allocationAmountOf = (gross: number, pct: number) => Math.round(((gross * pct) / 100 + Number.EPSILON) * 100) / 100;
+
+/** The Records (label) part of a LEGACY media income record by the rule — the old RPC stored 50 / 50 for every source. */
 export function mediaLabelShareByRule(source: string | null | undefined, artistName: string | null | undefined, gross: number): number | null {
   const s = incomeShareOf(incomeKindOfSource(source), artistName);
   return s.status === "DEFINED" ? Math.round(((gross * s.recordsPct) / 100 + Number.EPSILON) * 100) / 100 : null;

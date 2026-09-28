@@ -178,7 +178,27 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     lateEntries: oc.lateEntryIds.length, reconciliationDifference: oc.reconciliationDifference,
     formula: "closing = opening + artist income − artist expense share − payments to the artist (expected rows not counted); opening = the previous closed cycle's closing balance (first cycle: realized history before it)",
   });
-  const media = (c.ld?.mediaIncome?.rows ?? []).filter((m) => m.artistId === artistId).sort((a, b) => (b.receivedDate ?? b.createdAt ?? "").localeCompare(a.receivedDate ?? a.createdAt ?? ""));
+  // media (2026-09-29): LEGACY records (allocation_model false, e.g. Mobile1) are read as before (the owner's rows);
+  // ALLOCATION-model incomes appear for their owner AND every allocated artist — each artist counts only its allocation
+  const allMedia = c.ld?.mediaIncome?.rows ?? [];
+  const allAllocs = c.ld?.mediaAllocations?.rows ?? [];
+  const myAllocIncomes = new Set(allAllocs.filter((a) => a.artistId === artistId).map((a) => a.mediaIncomeId));
+  const media = allMedia.filter((m) => m.artistId === artistId && !m.allocationModel).sort((a, b) => (b.receivedDate ?? b.createdAt ?? "").localeCompare(a.receivedDate ?? a.createdAt ?? ""));
+  const modelMedia = allMedia.filter((m) => m.allocationModel && m.recordType === "income" && (m.artistId === artistId || myAllocIncomes.has(m.id)));
+  const reversedIds = new Set(allMedia.filter((m) => m.recordType === "reversal" && m.reversesId).map((m) => String(m.reversesId)));
+  const entitlementOf = (allocId: string) => (c.ld?.ledger?.rows ?? []).filter((e) => e.sourceMediaAllocationId === allocId);
+  /** what the ledger entitlement of an allocation must be now: 0 once the allocation / income stopped counting */
+  const expectedEntitlement = (m: (typeof modelMedia)[number], a: (typeof allAllocs)[number]) => (a.status !== "active" || m.status === "בוטל" || reversedIds.has(m.id) ? 0 : Number(a.amount ?? 0));
+  const modelRows = modelMedia.map((m) => {
+    const allocs = allAllocs.filter((a) => a.mediaIncomeId === m.id);
+    return {
+      id: m.id, kind: m.incomeKind ?? "DISTRIBUTION", status: m.status, reversed: reversedIds.has(m.id), gross: m.grossAmount, recordsShare: m.labelShare, owner: m.artistId === artistId,
+      source: m.source, period: m.reportPeriod, received: m.receivedDate, financeTransaction: m.financeTransactionId ? "LINKED (one Finance income, full amount)" : "MISSING",
+      allocations: allocs.map((a) => { const ent = entitlementOf(a.id); return { artistId: a.artistId, pct: a.pct, amount: a.amount, status: a.status, entitlement: ent.length ? { amount: ent[0].amount, type: ent[0].entryType, rows: ent.length } : "MISSING", expectedEntitlement: expectedEntitlement(m, a) }; }),
+      thisArtist: r2(allocs.filter((a) => a.artistId === artistId && a.status === "active").reduce((s, a) => s + Number(a.amount ?? 0), 0)),
+    };
+  });
+  const counting = modelRows.filter((m) => !m.reversed && m.status !== "בוטל");
   const signed = (m: (typeof media)[number], f: "grossAmount" | "labelShare" | "artistShareGross" | "artistPayable") => (m.recordType === "reversal" ? -1 : 1) * (m[f] ?? 0);
   const received = media.filter((m) => m.status === "התקבל");
   const lastRecoupAfter = received.filter((m) => m.recordType === "income").sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0]?.recoupAfter ?? null;
@@ -282,7 +302,16 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
         return { index: y.cycleIndex, start: y.startDate, endExclusive: y.endDate, openingBalance: openingOfSnapshot(snap), income: y.income, payments: y.payments, expenses: y.expenses, closingBalance: y.endingBalance, result: res, resultHe: SETTLEMENT_RESULT_HE[res], closedAt: y.closedAt, snapshot: "IMMUTABLE" }; }),
       current: win && openCycle ? { index: win.index, ...settlementOf(openCycle), rule: "app rule: 2-month windows from the anchor; early close advances the cycle; a close is a settlement picture (no payment, no offset, no reset) — an unpaid balance carries forward" } : null },
     mediaIncome: { records: media.length, receivedGross: r2(received.reduce((s, m) => s + signed(m, "grossAmount"), 0)), receivedArtistShare: r2(received.reduce((s, m) => s + signed(m, "artistShareGross"), 0)), receivedLabelShare: r2(received.reduce((s, m) => s + signed(m, "labelShare"), 0)), artistPayable: r2(received.reduce((s, m) => s + signed(m, "artistPayable"), 0)), expected: media.filter((m) => m.status === "צפוי").length, lastRecoupAfter,
-      rows: media.map((m) => ({ type: m.recordType, status: m.status, gross: m.grossAmount, source: m.source, period: m.reportPeriod, received: m.receivedDate, labelShare: m.labelShare, artistShare: m.artistShareGross, recoupBefore: m.recoupBefore, recouped: m.recouped, payable: m.artistPayable, recoupAfter: m.recoupAfter, notes: m.notes })),
+      rows: media.map((m) => ({ type: m.recordType, status: m.status, gross: m.grossAmount, source: m.source, period: m.reportPeriod, received: m.receivedDate, labelShare: m.labelShare, artistShare: m.artistShareGross, recoupBefore: m.recoupBefore, recouped: m.recouped, payable: m.artistPayable, recoupAfter: m.recoupAfter, notes: m.notes, model: "LEGACY" })),
+      // ALLOCATION model (Owner decision 2026-09-28, DB 2026-09-29): ONE income → ONE Finance income (full amount, Records)
+      // + allocations by the rule; each allocation = one ledger entitlement. The totals above are the LEGACY records only.
+      allocationModel: allAllocs.length || modelMedia.length || c.ld?.mediaAllocations ? {
+        records: modelRows.length, rows: modelRows,
+        thisArtistReceived: r2(counting.filter((m) => m.status === "התקבל").reduce((s, m) => s + m.thisArtist, 0)),
+        thisArtistExpected: r2(counting.filter((m) => m.status === "צפוי").reduce((s, m) => s + m.thisArtist, 0)),
+        recordsShareReceivedOwned: r2(counting.filter((m) => m.owner && m.status === "התקבל").reduce((s, m) => s + Number(m.recordsShare ?? 0), 0)),
+        rule: "distribution: one Records artist 50 %, Shalev + Avi 25 % each, NagashBeatz credited 0 allocations; YouTube / ACUM 100 % Records. The artist's share IS its ledger entitlement (never counted a second time); the gross is in Finance once. Cancel: entitlements kept at 0 with the reason, the Finance income the media created → בוטל; the Owner's own linked Finance row is never changed by media.",
+      } : c.ld ? "NONE_RECORDED" : "NOT_READ",
       note: "media income = a 50 / 50 INCOME split (artist / label). Since 2026-09-27 nothing is withheld (no recoup target). Snapshots stored before carry 'recouped' / 'payable' values from a retired rule — history, NEVER the repayment of a specific clip. The media record itself never touches the ledger (the Owner records the artist's media share there as income)" },
     recoup: clipRecoup,
     agreement,
@@ -365,6 +394,15 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   if (!moving && futureSessions.length === 0 && !releaseRows.some((r) => r.active && r.targetDate && r.targetDate >= c.today)) {
     signals.push({ code: "NO_UPCOMING_RECORDED_WORK", kind: "DERIVED_SIGNAL", he: "אין עבודה בתנועה, סשן עתידי או ריליס מתוכנן שרשומים ב-Redbloods — עובדה על הנתונים, לא שיפוט של האמן." });
     questions.push({ kind: "ARTIST_PLAN", questionHe: `מה התוכנית הבאה עם ${name}? (לא רשום שיר בתנועה, סשן או ריליס מתוכנן)`, why: "no recorded next work — the Owner's plan may live outside Redbloods" });
+  }
+  // media allocation model — reconciliation (facts on the records; never fixed automatically)
+  for (const m of modelRows) {
+    if (m.owner && m.financeTransaction === "MISSING") signals.push({ code: "MEDIA_FINANCE_LINK_MISSING", kind: "CANONICAL_FACT", he: `הכנסת מדיה ${m.source ?? ""} ${m.period ?? ""} (${m.gross}) במודל החלוקה בלי תנועת כספים מקושרת.`, entity: `media-income:${m.id}` });
+    for (const a of m.allocations.filter((x) => x.artistId === artistId)) {
+      const ent = a.entitlement;
+      if (typeof ent === "string") signals.push({ code: "MEDIA_ENTITLEMENT_MISMATCH", kind: "CANONICAL_FACT", he: `להקצאת מדיה (${a.pct}% = ${a.amount}) אין זכאות ביומן האמן.`, entity: `media-income:${m.id}` });
+      else if (Number(ent.amount ?? 0) !== a.expectedEntitlement || ent.rows > 1) signals.push({ code: "MEDIA_ENTITLEMENT_MISMATCH", kind: "CANONICAL_FACT", he: `זכאות המדיה ביומן (${ent.amount}${ent.rows > 1 ? `, ${ent.rows} שורות` : ""}) לא תואמת את ההקצאה (צפוי ${a.expectedEntitlement}).`, entity: `media-income:${m.id}` });
+    }
   }
   if (ledger.length) signals.push({ code: "LEDGER_BALANCE", kind: "DERIVED_SIGNAL", he: `מאזן האמן: ${money.ledger?.allTime.balance} (בלי מטבע שמור)` });
   if (ledger.length && c.settings && !anchor) signals.push({ code: "CYCLE_NOT_SET", kind: "CANONICAL_FACT", he: "יש תנועות במאזן אבל לא הוגדר עוגן למחזורים." });

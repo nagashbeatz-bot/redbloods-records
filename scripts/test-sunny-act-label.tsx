@@ -18,14 +18,14 @@ const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "u
 
 type Ar = { name: string; status: string; notes: string; portalSlug: string | null };
 type Le = { artistId: string; entryType: string; amount: number; entryDate: string; description: string; note: string; sourceShowId: string | null; sourceTxId: string | null };
-type Me = { artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string };
+type Me = { artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string; incomeKind: string; allocationModel: boolean; financeTransactionId: string | null; creditedArtistIds?: string[] };
 type Sk = { id: string; title: string; description: string; notes: string; latestVersion: number; archived: boolean; rating: number | null };
 interface W { artists: Record<string, Ar>; ledger: Record<string, Le>; cycles: Record<string, { anchorDate: string | null; currentIndex: number | null; currentEnd: string | null; daysUntilClose: number | null }>; media: Record<string, Me>; avail: Record<string, string>; beats: Record<string, { name: string; genre: string; musicalKey: string | null; assigned: string[] }>; sketches: Record<string, Sk[]>; pushes: string[]; next: string[] }
 const world = (): W => ({
-  artists: { [U(1)]: { name: "שליו טסמה", status: "פעיל", notes: "", portalSlug: "shalev" }, [U(2)]: { name: "אמן חדש", status: "פעיל", notes: "", portalSlug: null } },
+  artists: { [U(1)]: { name: "שליו טסמה", status: "פעיל", notes: "", portalSlug: "shalev" }, [U(2)]: { name: "אמן חדש", status: "פעיל", notes: "", portalSlug: null }, [U(3)]: { name: "אבי מולה", status: "פעיל", notes: "", portalSlug: "avi" }, [U(4)]: { name: "נגש ביטס", status: "פעיל", notes: "", portalSlug: null } },
   ledger: { [U(10)]: { artistId: U(1), entryType: "הכנסות צפויות", amount: 1500, entryDate: "2026-09-10", description: "הופעה - חיפה", note: "", sourceShowId: null, sourceTxId: "tx-9" } },
   cycles: { [U(1)]: { anchorDate: "2026-08-01", currentIndex: 1, currentEnd: "2026-09-30", daysUntilClose: 3 }, [U(2)]: { anchorDate: null, currentIndex: null, currentEnd: null, daysUntilClose: null } },
-  media: { [U(20)]: { artistId: U(1), grossAmount: 900, source: "Mobile1", reportPeriod: "Q2-2026", receivedDate: "2026-07-15", status: "התקבל", notes: "", updatedAt: "t1" } },
+  media: { [U(20)]: { artistId: U(1), grossAmount: 900, source: "Mobile1", reportPeriod: "Q2-2026", receivedDate: "2026-07-15", status: "התקבל", notes: "", updatedAt: "t1", incomeKind: "DISTRIBUTION", allocationModel: false, financeTransactionId: null } },
   avail: { shalev: "" }, beats: { [U(30)]: { name: "Riddim X", genre: "dancehall", musicalKey: "A Minor", assigned: ["avi"] } },
   sketches: { shalev: [{ id: "sk_aaaa1", title: "קרוב", description: "", notes: "", latestVersion: 2, archived: false, rating: null }, { id: "sk_bbbb2", title: "רחוק", description: "", notes: "", latestVersion: 1, archived: false, rating: 3 }] },
   pushes: [], next: [],
@@ -48,7 +48,7 @@ function mk() {
     async closeCycle(id: string) { calls.push("closeCycle"); w.cycles[id].currentIndex = Number(w.cycles[id].currentIndex) + 1; w.cycles[id].daysUntilClose = 60; },
     async sendCycleReminder(id: string, o: boolean, a: boolean) { calls.push("sendCycleReminder"); w.pushes.push(`cycle:${id}:${o}:${a}`); return { kind: "ok", ownerSent: o, artistSent: a }; },
     async readMediaRecord(id: string) { return w.media[id] ? { ...w.media[id] } : null; },
-    async createMediaRecord(artistId: string, m: Omit<Me, "artistId" | "updatedAt">) { calls.push("createMediaRecord"); const id = U(++n); w.media[id] = { ...m, artistId, updatedAt: "t0" }; return { ok: true, id }; },
+    async createMediaRecord(artistId: string, m: Omit<Me, "artistId" | "updatedAt">) { calls.push("createMediaRecord"); const id = U(++n); w.media[id] = { ...m, artistId, updatedAt: "t0", allocationModel: true, financeTransactionId: `fin-${id}` }; return { ok: true, id }; },
     async updateMediaRecord(id: string, _a: string, exp: string, m: Partial<Me>) { calls.push("updateMediaRecord"); if (w.media[id].updatedAt !== exp) return { ok: false, message: "stale" }; Object.assign(w.media[id], m, { updatedAt: "t2" }); return { ok: true }; },
     async cancelMediaRecord(id: string, _a: string, exp: string) { calls.push("cancelMediaRecord"); if (w.media[id].updatedAt !== exp) return { ok: false, message: "stale" }; w.media[id].status = "בוטל"; return { ok: true }; },
     async readAvailability(slug: string) { return w.avail[slug] ?? ""; },
@@ -116,6 +116,26 @@ const CASES: FamilyCase<W>[] = [
   ok("an artist without a portal has no availability / library", (await q("SUBMIT_ARTIST_AVAILABILITY", { labelArtist: A2, weekStart: "2026-10-04", slots: "x" })).status === "NO_PORTAL");
   const cm = mk(); cm.w.media[U(20)].status = "בוטל";
   ok("a cancelled media record is not edited", (await q("UPDATE_MEDIA_INCOME", { mediaRecord: M20, notes: "x" }, cm)).status === "CANCELLED");
+  // the media allocation model (Owner decision 2026-09-28, DB 2026-09-29) — the ONE rule, previewed before approval
+  const pl = async (args: Record<string, unknown>) => (await q("ADD_MEDIA_INCOME", { reportPeriod: "Q3", ...args })) as { status: string; preview?: { after?: Record<string, unknown> }; messageHe?: string };
+  const shalevOnly = await pl({ labelArtist: A1, grossAmount: 2000 });
+  ok("media: Shalev alone 2,000 → preview 'Records ₪1,000 · שליו טסמה 50% = ₪1,000' (one Finance income)", shalevOnly.status === "PREVIEW" && /כספים: הכנסה אחת ₪2,000 \(Records\) · Records ₪1,000 · שליו טסמה 50% = ₪1,000/.test(JSON.stringify(shalevOnly)), shalevOnly);
+  const duo = await pl({ labelArtist: A1, alsoCredited: `label-artist:${U(3)}`, grossAmount: 2000 });
+  ok("media: Shalev + Avi 2,000 → 25 % each (₪500 + ₪500), Records ₪1,000", duo.status === "PREVIEW" && /Records ₪1,000 · שליו טסמה 25% = ₪500 · אבי מולה 25% = ₪500/.test(JSON.stringify(duo)), duo);
+  const yt = await pl({ labelArtist: A1, grossAmount: 2000, incomeKind: "YOUTUBE" });
+  const acum = await pl({ labelArtist: A1, grossAmount: 2000, source: "ACUM" });
+  ok("media: YouTube / ACUM (by kind or by the source text) → 100 % Records, no allocation", [yt, acum].every((r) => r.status === "PREVIEW" && /Records ₪2,000 · בלי זכאות לאמנים/.test(JSON.stringify(r))), { yt, acum });
+  const nbm = await pl({ labelArtist: A1, alsoCredited: `label-artist:${U(4)}`, grossAmount: 2000 });
+  ok("media: NagashBeatz credited → 100 % Records, 0 allocations", nbm.status === "PREVIEW" && /Records ₪2,000 · בלי זכאות לאמנים/.test(JSON.stringify(nbm)), nbm);
+  const ext = await pl({ labelArtist: `label-artist:${U(2)}`, grossAmount: 2000 });
+  ok("media: credits without a rule (not a Records artist) are refused — never a guessed split", ext.status === "UNDEFINED_SPLIT", ext);
+  ok("media: the same artist twice is refused", (await pl({ labelArtist: A1, alsoCredited: A1, grossAmount: 10 })).status === "BAD_ENTITY");
+  const done = mk(); const flow = await fullFlow(mkDeps(done.writers).d, "ADD_MEDIA_INCOME", { labelArtist: A1, alsoCredited: `label-artist:${U(3)}`, grossAmount: 2000, reportPeriod: "Q3", incomeKind: "DISTRIBUTION" }, "מאשר");
+  const created = Object.values(done.w.media).find((m) => m.reportPeriod === "Q3");
+  ok("media: an approved create passes the kind + the co-credited artist to the ONE writer (the RPC allocates)", flow.e?.status === "APPLIED_AS_EXPECTED" && created?.incomeKind === "DISTRIBUTION" && JSON.stringify(created?.creditedArtistIds) === JSON.stringify([U(3)]), { e: flow.e?.status, created });
+  ok("media: the kind of a LEGACY record (Mobile1) never changes", (await q("UPDATE_MEDIA_INCOME", { mediaRecord: M20, incomeKind: "YOUTUBE" })).status === "LEGACY_RECORD");
+  ok("media primitives declare FINANCE + LEDGER", ["ADD_MEDIA_INCOME", "UPDATE_MEDIA_INCOME", "CANCEL_MEDIA_INCOME"].every((id) => ACTION_REGISTRY.get(id)!.effects.includes("FINANCE" as never) && ACTION_REGISTRY.get(id)!.effects.includes("LEDGER" as never)));
+  ok("the media reader reads the owner column label_artist_id (it read a non-existent artist_id before 2026-09-29)", /artistId: String\(data\.label_artist_id\)/.test(read("lib/writes/label.ts")) && !/data\.artist_id\b/.test(read("lib/writes/label.ts").slice(read("lib/writes/label.ts").indexOf("readMediaRecord"), read("lib/writes/label.ts").indexOf("readMediaRecord") + 900)));
   const nn = mk(); nn.w.artists[U(1)].name = "DJ CLEANTONE";
   const miss = await q("RATE_SKETCH", { labelArtist: A1, sketchId: "sk_zzzz9", rating: 3 });
   ok("a wrong sketch id is answered with the artist's active sketches (addressability)", miss.status === "ENTITY_NOT_FOUND" && String(miss.messageHe).includes("sk_aaaa1 — קרוב") && String(miss.messageHe).includes("sk_bbbb2 — רחוק"), miss.messageHe);

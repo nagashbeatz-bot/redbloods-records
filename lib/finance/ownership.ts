@@ -21,10 +21,13 @@
 
 export type FinanceOwnerCode =
   | "SHOW_PAYMENT" | "SHOW_BALANCE_EXPECTED" | "DJ_FEE" | "ARTIST_FEE" | "REHEARSAL" | "SHOW"
-  | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | "RF_PAYMENT" | "PROMOTION" | "VICTOR_SALARY" | "ARTIST_PAYMENT";
-export const FINANCE_OWNER_CODES: readonly FinanceOwnerCode[] = ["SHOW_PAYMENT", "SHOW_BALANCE_EXPECTED", "DJ_FEE", "ARTIST_FEE", "REHEARSAL", "SHOW", "MIX_WORK", "CLIP_ROW", "RF_BUDGET", "RF_PAYMENT", "PROMOTION", "VICTOR_SALARY", "ARTIST_PAYMENT"];
+  | "MIX_WORK" | "CLIP_ROW" | "RF_BUDGET" | "RF_PAYMENT" | "PROMOTION" | "VICTOR_SALARY" | "ARTIST_PAYMENT" | "MEDIA_INCOME";
+export const FINANCE_OWNER_CODES: readonly FinanceOwnerCode[] = ["SHOW_PAYMENT", "SHOW_BALANCE_EXPECTED", "DJ_FEE", "ARTIST_FEE", "REHEARSAL", "SHOW", "MIX_WORK", "CLIP_ROW", "RF_BUDGET", "RF_PAYMENT", "PROMOTION", "VICTOR_SALARY", "ARTIST_PAYMENT", "MEDIA_INCOME"];
 /** The linked_session_id marker of a real artist payment written by lib/writes/artist-payments (net model 2026-09-28). */
 export const ARTIST_PAYMENT_MARKER_PREFIX = "artist_payment:";
+/** The linked_session_id marker of the Finance income a media income CREATED (the RPC create_label_media_income, 2026-09-29).
+ *  An Owner's own Finance row that a media income only LINKS carries no marker — it stays the Owner's (media never changes it). */
+export const MEDIA_INCOME_MARKER_PREFIX = "media_income:";
 
 /** Who owns it (Hebrew) and where it is changed instead. */
 export const FINANCE_OWNER_HE: Readonly<Record<FinanceOwnerCode, { labelHe: string; whereHe: string }>> = {
@@ -40,6 +43,7 @@ export const FINANCE_OWNER_HE: Readonly<Record<FinanceOwnerCode, { labelHe: stri
   RF_PAYMENT: { labelHe: "תשלום Red Films", whereHe: "בהפקת Red Films → תקציב → התשלום (סכום / תאריך / אמצעי תשלום; מחיקת התשלום מוחקת גם את ההוצאה)" },
   PROMOTION: { labelHe: "הוצאת קידום (סושיאל)", whereHe: "בקמפיין הסושיאל → קידום ותקציב" },
   VICTOR_SALARY: { labelHe: "שכר חודשי של ויקטור", whereHe: "בכרטיס ויקטור → שכר" },
+  MEDIA_INCOME: { labelHe: "הכנסת מדיה", whereHe: "בעמוד הלייבל → מדיה (סכום / סטטוס / תאריך מתעדכנים מהמדיה; ביטול המדיה מסמן את השורה כאן 'בוטל')" },
   ARTIST_PAYMENT: { labelHe: "תשלום לאמן (התחשבנות)", whereHe: "בעמוד האמן → מאזן → התשלום (סכום / תאריך מתעדכנים גם כאן; ביטול התשלום מסמן את השורה כאן 'בוטל')" },
 };
 
@@ -59,6 +63,8 @@ export const OWNED_ALLOWED_FIELDS: Readonly<Record<FinanceOwnerCode, readonly Tx
   SHOW_BALANCE_EXPECTED: ["notes"], SHOW: ["notes"], RF_PAYMENT: ["notes"],
   // a real artist payment (net model): its money follows the ledger payment — only notes / method here
   ARTIST_PAYMENT: ["notes", "paymentMethod"],
+  // the Finance income a media income created: its money / status / date follow the media lifecycle — notes / method only here
+  MEDIA_INCOME: ["notes", "paymentMethod"],
 };
 const FIELD_HE: Readonly<Record<TxPatchField, string>> = {
   date: "תאריך", description: "תיאור", artist: "צד / אמן", amount: "סכום", currency: "מטבע", paymentStatus: "סטטוס", paymentMethod: "אמצעי תשלום",
@@ -120,6 +126,7 @@ export function ownerFromLinks(l: TxOwnerLinks): FinanceOwnerCode | null {
   if (l.legacyShowRole) return l.legacyShowRole;
   if (typeof l.linkedSessionId === "string" && l.linkedSessionId.startsWith("victor_salary_")) return "VICTOR_SALARY";
   if (typeof l.linkedSessionId === "string" && l.linkedSessionId.startsWith(ARTIST_PAYMENT_MARKER_PREFIX)) return "ARTIST_PAYMENT";
+  if (typeof l.linkedSessionId === "string" && l.linkedSessionId.startsWith(MEDIA_INCOME_MARKER_PREFIX)) return "MEDIA_INCOME";
   if (l.mixWork) return "MIX_WORK";
   if (l.clipRow) return "CLIP_ROW";
   if (l.rfPayment) return "RF_PAYMENT";

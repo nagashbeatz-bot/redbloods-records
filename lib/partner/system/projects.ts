@@ -177,7 +177,8 @@ export const PROJECT_INTEGRITY = {
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
-  "lib/types.ts": "65e4fca5a29367962f26fa8861f2751f2d2fba8fdf6e4881f6eba0b0a3f809e6",
+  // 2026-09-29 review: lib/types.ts gained the media allocation-model fields (LabelMediaRecord + MediaAllocation) — no project field / vocabulary change
+  "lib/types.ts": "97ea909e7f2caaa07192ec2c21be965882e6b8ab2f4716fbe1fcaa68e10f2098",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",

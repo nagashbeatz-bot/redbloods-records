@@ -14,9 +14,10 @@ import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./dup
 import { weekDaysFor } from "@/lib/red-artists/week";
 import { LABEL_ARTIST_RENAME_NAME_KEYED_DEPENDENTS_HE } from "@/lib/label-identity";
 import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
+import { allocationAmountOf, incomeKindOfSource, isRecordsIncomeKind, mediaAllocationsOf, RECORDS_INCOME_KINDS } from "@/lib/records-expense-share";
 
 type Ledger = { artistId: string; entryType: string; amount: number; entryDate: string; description: string; note: string; sourceShowId: string | null; sourceTxId: string | null };
-type Media = { artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string };
+type Media = { artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string; incomeKind: string; allocationModel: boolean; financeTransactionId: string | null };
 type Beat = { name: string; genre: string; musicalKey: string | null; assigned: string };
 type SketchV = { title: string; description: string; notes: string; latestVersion: number; archived: boolean; position: number; count: number; rating: number | null };
 export interface LabelFamilyWriters {
@@ -33,7 +34,7 @@ export interface LabelFamilyWriters {
   closeCycle(artistId: string, force: boolean): Promise<void>;
   sendCycleReminder(artistId: string, toOwner: boolean, toArtist: boolean): Promise<{ kind: string; ownerSent?: boolean; artistSent?: boolean }>;
   readMediaRecord(id: string): Promise<Media | null>;
-  createMediaRecord(artistId: string, m: { grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string }): Promise<{ ok: boolean; id?: string; message?: string }>;
+  createMediaRecord(artistId: string, m: { grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; incomeKind: string; creditedArtistIds: string[] }): Promise<{ ok: boolean; id?: string; message?: string }>;
   updateMediaRecord(id: string, artistId: string, expectedUpdatedAt: string, m: Record<string, unknown>): Promise<{ ok: boolean; message?: string }>;
   cancelMediaRecord(id: string, artistId: string, expectedUpdatedAt: string): Promise<{ ok: boolean; message?: string }>;
   readAvailability(slug: string): Promise<string>;
@@ -120,6 +121,15 @@ const ledgerDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
   const k = parseKey(a.labelArtist, ["label-artist"]);
   const q: DupQuery | null = k && typeof a.amount === "number" && LEDGER_TYPES.includes(String(a.entryType)) ? { kind: "LEDGER_ENTRY", artistId: k.id, entryType: String(a.entryType), amount: a.amount } : null;
   return dupContext(d, q, { date: realYmd(a.entryDate) ? String(a.entryDate) : null, text: [str(a.description), str(a.note)].filter(Boolean).join(" "), currency: "₪" });
+};
+/** The allocation preview of a media income (the ONE rule, lib/records-expense-share mediaAllocationsOf) — shown before approval. */
+const mediaSplitHe = (kind: string, names: string[], gross: number): { ok: true; he: string } | { ok: false; he: string } => {
+  if (!isRecordsIncomeKind(kind)) return { ok: false, he: "סוג הכנסה לא חוקי" };
+  const plan = mediaAllocationsOf(kind, names);
+  if (plan.status === "UNDEFINED") return { ok: false, he: `אין חוק חלוקה להכנסה הזו — ${plan.reasonHe}` };
+  const artistsTotal = plan.allocations.reduce((s, x) => s + allocationAmountOf(gross, x.pct), 0);
+  const parts = plan.allocations.map((x) => `${x.name} ${x.pct}% = ${ils(allocationAmountOf(gross, x.pct))}`);
+  return { ok: true, he: `כספים: הכנסה אחת ${ils(gross)} (Records) · Records ${ils(Math.round((gross - artistsTotal) * 100) / 100)}${parts.length ? ` · ${parts.join(" · ")}` : " · בלי זכאות לאמנים"}` };
 };
 const mediaDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
   const k = parseKey(a.labelArtist, ["label-artist"]);
@@ -250,26 +260,35 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── media income ──
   {
     actionId: "ADD_MEDIA_INCOME", kinds: ["media-income"],
-    meta: meta("הכנסת מדיה לאמן (סטרימינג / זכויות)", "Record media income for an artist (the app's RPC splits label / artist share and recoup)", [K("labelArtist"), { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), ...DUP_ARGS], ["grossAmount", "reportPeriod", "status", "source", "notes"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
-    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await mediaDup(d, a)) }; },
-    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "media-income:new", id: "new", label: `מדיה ${r.label}`, fields: { artistName: r.label, ...(await mediaDup(d, a)) } }; },
+    meta: meta("הכנסת מדיה (הפצה / YouTube / ACUM)", "Record ONE media income: ONE Finance income for the full amount (Records) + the artists' allocations by the rule (distribution: one Records artist 50 %, Shalev + Avi 25 % each, NagashBeatz 0; YouTube / ACUM 100 % Records) — each allocation = one ledger entitlement", [K("labelArtist"), K("alsoCredited", false), { name: "incomeKind", kind: "enum", required: false, values: RECORDS_INCOME_KINDS }, { name: "grossAmount", kind: "money", required: true }, T("source"), T("reportPeriod", true), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), ...DUP_ARGS], ["grossAmount", "reportPeriod", "status", "source", "notes", "incomeKind", "split"], "createMedia → create_label_media_income RPC (lib/media-income-store)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "cancel the record (separate approved action)" }),
+    createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; const c = parseKey(a.alsoCredited, ["label-artist"]); const cf = c ? await d.readLabelArtistFull(c.id) : null; return { artistName: f ? f.name : null, coArtistName: cf ? cf.name : null, ...(await mediaDup(d, a)) }; },
+    async resolve(d, a) {
+      const r = await onArtist(d, a); if ("ok" in r) return r;
+      let coArtistName: string | null = null;
+      if (a.alsoCredited !== undefined) { const c = parseKey(a.alsoCredited, ["label-artist"]); const cf = c ? await d.readLabelArtistFull(c.id) : null; if (!cf) return refuse("ENTITY_NOT_FOUND", "האמן הנוסף בקרדיט לא נמצא"); if (c!.id === r.id) return refuse("BAD_ENTITY", "האמן הנוסף זהה לאמן הראשי"); coArtistName = cf.name; }
+      return { key: "media-income:new", id: "new", label: `מדיה ${r.label}`, fields: { artistName: r.label, coArtistName, ...(await mediaDup(d, a)) } };
+    },
     read: mediaFields,
     plan(a, cur) {
       if (typeof a.grossAmount !== "number" || !(a.grossAmount > 0)) return refuse("BAD_MONEY", "סכום ברוטו חיובי");
       const p = text(a.reportPeriod, 60); if (p === null) return refuse("BAD_TEXT", "תקופת דוח חסרה");
       if (a.receivedDate !== undefined && !realYmd(a.receivedDate)) return refuse("BAD_DATE", "תאריך לא תקין");
       const g = dupGate(a, cur, "הכנסת מדיה"); if (g) return g;
-      return { ok: true, after: { grossAmount: a.grossAmount, reportPeriod: p.trim(), status: String(a.status ?? "התקבל"), source: str(a.source)?.trim() || "Mobile1", notes: str(a.notes)?.trim() ?? "" } };
+      const source = str(a.source)?.trim() || "Mobile1";
+      const incomeKind = typeof a.incomeKind === "string" ? a.incomeKind : incomeKindOfSource(source);
+      const split = mediaSplitHe(incomeKind, [cur.artistName, cur.coArtistName].filter((x): x is string => typeof x === "string" && !!x), a.grossAmount);
+      if (!split.ok) return refuse("UNDEFINED_SPLIT", split.he);
+      return { ok: true, after: { grossAmount: a.grossAmount, reportPeriod: p.trim(), status: String(a.status ?? "התקבל"), source, notes: str(a.notes)?.trim() ?? "", incomeKind, split: split.he } };
     },
-    async apply(d, _id, after, a) { const r = await d.createMediaRecord(parseKey(a.labelArtist, ["label-artist"])!.id, { grossAmount: Number(after.grossAmount), source: str(a.source)?.trim() || "Mobile1", reportPeriod: String(after.reportPeriod), receivedDate: str(a.receivedDate) ?? null, status: String(after.status), notes: str(a.notes)?.trim() ?? "" }); if (!r.ok || !r.id) throw new Error(`media not recorded: ${r.message ?? "unknown"}`); return { createdId: r.id }; },
-    async verify(d, id, after) { const m = await d.readMediaRecord(id); return !!m && m.grossAmount === after.grossAmount && m.status === after.status; },
-    requiredValues: (_a, after) => [ils(Number(after.grossAmount)), String(after.reportPeriod)],
+    async apply(d, _id, after, a) { const co = parseKey(a.alsoCredited, ["label-artist"]); const r = await d.createMediaRecord(parseKey(a.labelArtist, ["label-artist"])!.id, { grossAmount: Number(after.grossAmount), source: String(after.source), reportPeriod: String(after.reportPeriod), receivedDate: str(a.receivedDate) ?? null, status: String(after.status), notes: str(a.notes)?.trim() ?? "", incomeKind: String(after.incomeKind), creditedArtistIds: co ? [co.id] : [] }); if (!r.ok || !r.id) throw new Error(`media not recorded: ${r.message ?? "unknown"}`); return { createdId: r.id }; },
+    async verify(d, id, after) { const m = await d.readMediaRecord(id); return !!m && m.grossAmount === after.grossAmount && m.status === after.status && m.allocationModel && m.incomeKind === after.incomeKind && !!m.financeTransactionId; },
+    requiredValues: (_a, after) => [ils(Number(after.grossAmount)), String(after.reportPeriod), String(after.split)],
     warnings: (c, a) => dupWarnings(c, a),
-    disclosuresHe: ["החלוקה בין הלייבל לאמן והקיזוז (recoup) מחושבים בבסיס הנתונים — לא מחדש כאן", "הכנסות מדיה נפרדות מהמאזן ומהכספים", NO_CUR, "לא יישלח Push"],
+    disclosuresHe: ["נרשמת הכנסה אחת בכספים במלוא הסכום (Records, ₪) — פעם אחת; לכל אמן בחלוקה נרשמת זכאות אחת ביומן האמן (התקבל → הכנסות, צפוי → הכנסות צפויות)", "החלוקה לפי החוק בלבד (הפצה: אמן Records יחיד 50%, שליו+אבי 25% כל אחד, NagashBeatz 0; YouTube / ACUM 100% Records) — קרדיט לא מוגדר נדחה", NO_CUR, "לא יישלח Push"],
   },
   {
     actionId: "UPDATE_MEDIA_INCOME", kinds: ["media-income"],
-    meta: meta("עדכון הכנסת מדיה", "Edit a media-income record (claimed by its updated_at — a concurrent edit is refused)", [K("mediaRecord"), { name: "grossAmount", kind: "money", required: false }, T("source"), T("reportPeriod"), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes")], ["grossAmount", "source", "reportPeriod", "status", "receivedDate", "notes"], "updateMedia → update_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL" }),
+    meta: meta("עדכון הכנסת מדיה", "Edit a media-income record (claimed by its updated_at — a concurrent edit is refused). An expected allocation-model income: amount / status / date / kind move its own Finance income + the entitlements (the SAME rows); a received one only source / period / notes; a legacy record keeps its stored split", [K("mediaRecord"), { name: "grossAmount", kind: "money", required: false }, T("source"), T("reportPeriod"), { name: "status", kind: "enum", required: false, values: MEDIA_STATUS_VALUES.filter((s) => s !== "בוטל") }, { name: "receivedDate", kind: "ymd", required: false }, T("notes"), { name: "incomeKind", kind: "enum", required: false, values: RECORDS_INCOME_KINDS }], ["grossAmount", "source", "reportPeriod", "status", "receivedDate", "notes", "incomeKind"], "updateMedia → update_label_media_income RPC (lib/media-income-store)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL" }),
     resolve: onMedia, read: mediaFields,
     plan(a, cur) {
       if (cur.status === "בוטל") return refuse("CANCELLED", "רשומה מבוטלת לא נערכת");
@@ -278,21 +297,26 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
       for (const k of ["source", "reportPeriod", "notes"] as const) if (a[k] !== undefined) { const t = text(a[k], 200); if (t === null) return refuse("BAD_TEXT", `${k} לא תקין`); after[k] = t.trim(); }
       if (a.status !== undefined) after.status = String(a.status);
       if (a.receivedDate !== undefined) { if (!realYmd(a.receivedDate)) return refuse("BAD_DATE", "תאריך לא תקין"); after.receivedDate = String(a.receivedDate); }
+      if (a.incomeKind !== undefined) {
+        if (!cur.allocationModel) return refuse("LEGACY_RECORD", "רשומת מדיה ישנה — אין לה סוג / חלוקה (בטל וצור חדשה במודל החלוקה)");
+        if (cur.status !== "צפוי") return refuse("RECEIVED_CLOSED", "הכנסה שהתקבלה סגורה כספית — סוג ההכנסה לא משתנה (בטל וצור חדשה)");
+        after.incomeKind = String(a.incomeKind);
+      }
       return finishPlan(cur, after);
     },
     async apply(d, id, a) { const m = await d.readMediaRecord(id); if (!m) throw new Error("record not found"); const r = await d.updateMediaRecord(id, m.artistId, m.updatedAt, { ...a }); if (!r.ok) throw new Error(`media not updated: ${r.message ?? "unknown"}`); },
     requiredValues: (_a, after) => [after.grossAmount !== undefined ? ils(Number(after.grossAmount)) : undefined, after.status].filter((x) => x !== undefined).map(String),
-    disclosuresHe: ["החלוקה והקיזוז מחושבים מחדש בבסיס הנתונים", "לא יישלח Push"],
+    disclosuresHe: ["הכנסה צפויה במודל החלוקה: תנועת הכספים שהמדיה יצרה והזכאויות ביומן מתעדכנות (אותן שורות); תנועה שהבעלים קישר לא משתנה — אי-התאמה נחסמת ומתקנים קודם בכספים", "רשומה ישנה (למשל Mobile1) נשארת בחלוקה ההיסטורית", "לא יישלח Push"],
   },
   {
     actionId: "CANCEL_MEDIA_INCOME", kinds: ["media-income"],
-    meta: meta("ביטול הכנסת מדיה", "Cancel a media-income record (a received one is reversed by the app's RPC)", [K("mediaRecord")], ["status"], "cancelMedia → cancel_label_media_income RPC (lib/media-income-store)", { effects: ["LEDGER"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    meta: meta("ביטול הכנסת מדיה", "Cancel a media-income record (a received one is reversed by the app's RPC; the allocation model also keeps the entitlements at 0 with the reason and marks the Finance income it created בוטל — the Owner's linked row is untouched)", [K("mediaRecord")], ["status"], "cancelMedia → cancel_label_media_income RPC (lib/media-income-store)", { effects: ["FINANCE", "LEDGER"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     resolve: onMedia, read: mediaFields,
     plan: (_a, cur) => (cur.status === "בוטל" ? refuse("NO_CHANGE_NEEDED", "כבר מבוטלת") : { ok: true, after: { status: "בוטל" } }),
     async apply(d, id) { const m = await d.readMediaRecord(id); if (!m) throw new Error("record not found"); const r = await d.cancelMediaRecord(id, m.artistId, m.updatedAt); if (!r.ok) throw new Error(`not cancelled: ${r.message ?? "unknown"}`); },
     requiredValues: () => ["ביטול"],
     warnings: (c) => [`${c.source} ${c.reportPeriod}: ${ils(Number(c.grossAmount))} (${c.status})${c.status === "התקבל" ? " — הכנסה שהתקבלה מבוטלת בהיפוך (כמו באפליקציה)" : ""}`],
-    disclosuresHe: ["הרשומה עוברת ל'בוטל' (לא נמחקת)", "לא יישלח Push"],
+    disclosuresHe: ["הרשומה עוברת ל'בוטל' (לא נמחקת); הכנסה שהתקבלה מקבלת רשומת היפוך", "מודל החלוקה: זכאויות האמנים נשמרות ב-0 עם סיבה (לא נמחקות); תנועת הכספים שהמדיה יצרה מסומנת 'בוטל' (נשמרת); תנועה שהבעלים קישר לא משתנה", "לא יישלח Push"],
   },
   // ── availability ──
   {

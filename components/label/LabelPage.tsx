@@ -233,12 +233,21 @@ export default function LabelPage() {
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/media`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistMediaSummary | null)[]) => {
         const t = { ...emptyT }; let rt = 0, rb = 0, ac = 0; const recs: MediaRec[] = [];
+        // an allocation-model income appears on its owner AND on every allocated artist: the list shows it ONCE (by id),
+        // under its owner; the per-artist totals never double count (gross + Records on the owner, each artist its own share)
+        const seen = new Set<string>();
         results.forEach((res, i) => {
           if (!res) return;
           (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
           rt += res.recoupTarget; rb += res.recoupBalance; ac += res.artistCredit;
-          for (const rec of res.records) recs.push({ ...rec, artistId: roster[i].id, artistName: roster[i].name });
+          for (const rec of res.records) {
+            if (seen.has(rec.id)) continue;
+            seen.add(rec.id);
+            const owner = roster.find((a) => a.id === rec.primaryArtistId) ?? roster[i];
+            recs.push({ ...rec, artistId: owner.id, artistName: owner.name });
+          }
         });
+        recs.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
         setMedia({ totals: t, recoupTarget: rt, recoupBalance: rb, artistCredit: ac, records: recs });
       });
   }, [artists]);
@@ -627,6 +636,13 @@ export default function LabelPage() {
                             {r.isReversed && <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, borderRadius: 100, padding: "1px 8px" }}>הופך</span>}
                           </div>
                           <div style={{ fontSize: 11.5, color: MUTED }}>{r.artistName} · {r.reportPeriod || "—"} · {fmtDate(r.receivedDate)} · <span style={{ color: sc, fontWeight: 700 }}>{r.status}</span></div>
+                          {r.allocationModel && r.recordType === "income" && (
+                            <div style={{ fontSize: 11, color: DIM, marginTop: 2 }}>
+                              {r.incomeKind === "YOUTUBE" ? "YouTube" : r.incomeKind === "ACUM" ? "אקו״ם" : "הפצה"} · כספים: {r.financeTransactionId ? "תנועה אחת" : "—"}
+                              {r.allocations.filter((a) => a.status === "active").map((a) => <span key={a.id}> · {d.roster.find((x) => x.id === a.artistId)?.name ?? "אמן"} {a.pct}% = {money(a.amount)}</span>)}
+                              {r.allocations.every((a) => a.status !== "active") && <span> · 100% Records</span>}
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: 14, textAlign: "left", flexWrap: "wrap" }}>
                           <div style={{ minWidth: 70 }}><div style={{ fontSize: 10, color: DIM }}>ברוטו</div><div style={{ fontSize: 13, fontWeight: 800, color: SUB }}>{sgn}{money(r.grossAmount)}</div></div>

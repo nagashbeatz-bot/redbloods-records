@@ -135,7 +135,7 @@ function main() {
   ok("every artist push is mapped with a source and dedupe; Sunny never sends", LM.ARTIST_PUSHES.length >= 14 && LM.ARTIST_PUSHES.every((p) => p.source && p.dedupe));
   ok("18 workflows classified", LM.ARTIST_WORKFLOWS.length === 18 && LM.ARTIST_WORKFLOWS.every((w) => ["SUPPORTED", "PARTIAL", "NOT_SUPPORTED"].includes(w.support)));
   const reader = code(read("lib/partner/label/detail-reader.ts"));
-  ok("label detail reader is SELECT-only, scrubs text, hides image URL / phone", !/\.(insert|update|upsert|delete|rpc)\(/.test(reader) && /scrubSecrets/.test(reader) && /hasImage: has\(x\.image_url\)/.test(reader) && /hasPhone: has\(x\.phone\)/.test(reader) && LABEL_DETAIL_SOURCES.length === 7);
+  ok("label detail reader is SELECT-only, scrubs text, hides image URL / phone", !/\.(insert|update|upsert|delete|rpc)\(/.test(reader) && /scrubSecrets/.test(reader) && /hasImage: has\(x\.image_url\)/.test(reader) && /hasPhone: has\(x\.phone\)/.test(reader) && LABEL_DETAIL_SOURCES.length === 8);
   ok("pure view: no DB / fetch / write / push path", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(code(read("lib/partner/label/view.ts") + read("lib/partner/knowledge/capabilities/label-deep.ts"))));
   check("cycle window rule (anchor + 2 months, current = max(today, closed))", [cycleWindow("2026-08-01", "2026-09-24", 0), cycleWindow("2026-08-01", "2026-09-24", 1).index, cycleWindow("2026-08-01", "2026-10-01", 0).index], [{ index: 0, start: "2026-08-01", endExclusive: "2026-10-01" }, 1, 1]);
 

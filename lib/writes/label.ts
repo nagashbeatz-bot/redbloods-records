@@ -79,11 +79,13 @@ export async function readLedgerEntry(entryId: string): Promise<{ artistId: stri
 }
 
 /** One media-income record (the typed primitives' reader; updated_at is the RPC's concurrency token). */
-export async function readMediaRecord(recordId: string): Promise<{ artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string } | null> {
+export async function readMediaRecord(recordId: string): Promise<{ artistId: string; grossAmount: number; source: string; reportPeriod: string; receivedDate: string | null; status: string; notes: string; updatedAt: string; incomeKind: string; allocationModel: boolean; financeTransactionId: string | null } | null> {
   const { data, error } = await supabase.from("label_media_income").select("*").eq("id", recordId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { artistId: String(data.artist_id), grossAmount: Number(data.gross_amount) || 0, source: String(data.source ?? ""), reportPeriod: String(data.report_period ?? ""), receivedDate: (data.received_date as string | null) ?? null, status: String(data.status ?? ""), notes: String(data.notes ?? ""), updatedAt: String(data.updated_at ?? "") };
+  // the owner column is label_artist_id (fixed 2026-09-29: it read a non-existent artist_id, so every Sunny media
+  // update / cancel was refused by the RPC as "not this artist's record")
+  return { artistId: String(data.label_artist_id), grossAmount: Number(data.gross_amount) || 0, source: String(data.source ?? ""), reportPeriod: String(data.report_period ?? ""), receivedDate: (data.received_date as string | null) ?? null, status: String(data.status ?? ""), notes: String(data.notes ?? ""), updatedAt: String(data.updated_at ?? ""), incomeKind: String(data.income_kind ?? "DISTRIBUTION"), allocationModel: data.allocation_model === true, financeTransactionId: (data.finance_transaction_id as string | null) ?? null };
 }
 
 /** POST /api/beats/[id]/assignments semantics: read BEFORE the write so the artist is notified exactly once, and only

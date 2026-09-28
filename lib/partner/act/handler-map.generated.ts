@@ -931,15 +931,19 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "6e867994cbab6e1672a0c4ff9bb2b8d852a9a7d9a154b849c2a0d70b38d99349",
+  "sha256": "dc81d630aaee31207c019b8dd36cc0e2ee8b5437ff565c9e0b71c3e9afbf754d",
   "effects": [
    "DELETION"
   ],
   "fields": [
+   "creditedArtistIds",
+   "financeTransactionId",
    "grossAmount",
+   "incomeKind",
    "notes",
    "receivedDate",
    "reportPeriod",
+   "requestKey",
    "source",
    "status"
   ]
@@ -1184,15 +1188,17 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "4c519b2d2535920253515fdf3b052800ce7d70150afe3efadf55c0544984ea6e",
+  "sha256": "d39b3fbc4a5a4d22a4891c02f863ffac20e0b38463b4652edad3230485187ff2",
   "effects": [
    "DELETION"
   ],
   "fields": [
    "artistId",
    "clearReceivedDate",
+   "creditedArtistIds",
    "expectedUpdatedAt",
    "grossAmount",
+   "incomeKind",
    "notes",
    "receivedDate",
    "reportPeriod",
