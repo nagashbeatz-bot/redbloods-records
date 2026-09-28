@@ -37,37 +37,32 @@ async function main() {
   const { computeArtistBalanceTotals } = await import("../lib/artist-balance-store");
   const { cycleWindow } = await import("../lib/partner/label/view");
 
-  section("A. the שליו / אבי agreement — cash out ≠ label share ≠ artist share (funded by the label)");
+  section("A. Records / artist split (Owner decision 2026-09-28, lib/records-expense-share) — cash out ≠ Records share ≠ artist share");
+  const R = await import("../lib/records-expense-share");
+  const ex = (id: string, amount: number, o: Record<string, unknown> = {}) => ({ id, type: "expense", amount, currency: "₪", paymentStatus: "שולם", businessUnit: "RECORDS", expenseScope: "קליפ", projectId: "p", ...o });
   for (const [who, id] of [["שליו טסמה", SHALEV], ["אבי מולה", AVI]] as const) {
-    for (const ref of [{ id }, { name: who }]) {
-      const a = A.allocatePaidCost({ artist: ref, category: "CLIP", amount: 3000, currency: "₪", paid: true });
-      ok(`1/2. ${who} clip 3,000₪ (${"id" in ref ? "by id" : "by name"}) → cash 3,000 · label 1,500 · artist 1,500 funded by the label`, a.status === "DEFINED" && a.cashOut === 3000 && a.labelShare === 1500 && a.artistShare === 1500 && a.artistShareFundedByLabel === 1500, a);
-    }
+    const a = R.expenseShareOf(ex(`x-${id}`, 3000), { artistText: who });
+    ok(`1/2. ${who} clip 3,000₪ → Finance 3,000 · Records 1,500 · artist 1,500`, a.status === "DEFINED" && a.amount === 3000 && a.recordsAmount === 1500 && a.artists.length === 1 && a.artists[0].artistId === id && a.artists[0].amount === 1500, a);
   }
-  const prod = A.allocatePaidCost({ artist: { id: SHALEV }, category: "PRODUCTION", amount: 3000, currency: "₪", paid: true });
-  ok("3. Shalev production 3,000₪ → cash 3,000 · label 3,000 · artist 0", prod.status === "DEFINED" && prod.cashOut === 3000 && prod.labelShare === 3000 && prod.artistShare === 0 && prod.artistShareFundedByLabel === 0, prod);
-  const mm = A.allocatePaidCost({ artist: { id: AVI }, category: A.costCategoryOfScope("מיקס / מאסטר"), amount: 1500, currency: "₪", paid: true });
-  ok("4. mix / master (Finance scope 'מיקס / מאסטר') → artist 0, label 1,500 — a real company cost with no artist balance", mm.status === "DEFINED" && mm.category === "MIX_MASTER" && mm.artistShare === 0 && mm.labelShare === 1500 && mm.cashOut === 1500, mm);
+  ok("3. production creates no artist balance (100 % label) — the agreement layer keeps it", A.AGREEMENT_COST_RULES.PRODUCTION.artistPct === 0 && A.AGREEMENT_COST_RULES.PRODUCTION.labelPct === 100);
+  const mm = R.expenseShareOf(ex("mm", 1500, { expenseScope: "מיקס / מאסטר" }), { artistText: "אבי מולה" });
+  ok("4. mix / master → not an artist expense (100 % label, Studio capability)", mm.status === "NOT_APPLICABLE" && mm.reason === "MIX_MASTER" && A.AGREEMENT_COST_RULES.MIX_MASTER.artistPct === 0, mm);
   const show = A.showAgreementSplit({ artist: "שליו טסמה", show_price: 3000, dj_fee: 500 }, 0);
   ok("5. show: revenue 3,000 − direct 500 → net 2,500 · artist 1,250 · label 1,250 (never 50 / 50 of the gross)", show.status === "DEFINED" && show.netAfterDj === 2500 && show.artistFee === 1250 && show.labelProfit === 1250 && show.directExpenses === 500, show);
   const showReh = A.showAgreementSplit({ artist: "אבי מולה", show_price: 3000, dj_fee: 500 }, 300);
   ok("5b. counted rehearsals are direct show expenses too (net 2,200 → 1,100 / 1,100)", showReh.status === "DEFINED" && showReh.netAfterDj === 2200 && showReh.artistFee === 1100 && showReh.directExpenses === 800, showReh);
-  const otherClip = A.allocatePaidCost({ artist: { name: "נגש ביטס" }, category: "CLIP", amount: 3000, currency: "₪", paid: true });
   const otherShow = A.showAgreementSplit({ artist: "DJ CLEANTONE", show_price: 3000, dj_fee: 500 }, 0);
-  const fakeId = A.allocatePaidCost({ artist: { id: "00000000-0000-0000-0000-000000000301", name: "שליו טסמה" }, category: "CLIP", amount: 3000, currency: "₪", paid: true });
-  const collab = A.showAgreementSplit({ artist: "שליו טסמה, אבי מולה", show_price: 3000, dj_fee: 0 }, 0);
-  ok("6. another artist: clip + show NOT_DEFINED (NO_AGREEMENT) — the rules are never applied automatically", otherClip.status === "NOT_DEFINED" && otherClip.reason === "NO_AGREEMENT" && otherClip.cashOut === 3000 && otherShow.status === "NOT_DEFINED" && otherShow.reason === "NO_AGREEMENT", { otherClip, otherShow });
-  ok("6b. id-first: a different roster row that only shares the name gets no agreement; a collaboration is never attributed", fakeId.status === "NOT_DEFINED" && fakeId.reason === "NO_AGREEMENT" && collab.status === "NOT_DEFINED" && collab.reason === "COLLAB_NOT_ATTRIBUTED", { fakeId, collab });
-  const promo = A.allocatePaidCost({ artist: { id: SHALEV }, category: A.costCategoryOfScope("שיווק"), amount: 400, currency: "₪", paid: true });
-  ok("7. an unknown category (promotion / artwork / PR / distribution…) → NOT_DEFINED, no guessed 50 / 50", promo.status === "NOT_DEFINED" && promo.reason === "CATEGORY_NOT_DEFINED" && ["שיווק", "סשן", "נסיעות", "ציוד", "כללי", "אחר", null].every((s) => A.costCategoryOfScope(s) === null), promo);
-  const unpaid = A.allocatePaidCost({ artist: { id: SHALEV }, category: "CLIP", amount: 3000, currency: "₪", paid: false });
-  ok("7b. only an ACTUALLY PAID cost enters the split (never a budget / an expected row)", unpaid.status === "NOT_DEFINED" && unpaid.reason === "NOT_PAID" && unpaid.cashOut === 0, unpaid);
-  const tot = A.allocationTotalsByCurrency([
-    A.allocatePaidCost({ artist: { id: SHALEV }, category: "CLIP", amount: 3000, currency: "₪", paid: true }),
-    A.allocatePaidCost({ artist: { id: SHALEV }, category: "CLIP", amount: 1000, currency: "$", paid: true }),
-    promo,
-  ]);
-  ok("8. currencies are never mixed: ₪ and $ totals apart; NOT_DEFINED cash out kept apart (never in a share)", JSON.stringify(tot.defined["₪"]) === JSON.stringify({ cashOut: 3000, labelShare: 1500, artistShare: 1500, artistShareFundedByLabel: 1500 }) && tot.defined["$"]?.artistShare === 500 && tot.notDefined["₪"]?.cashOut === 400 && !("labelShare" in (tot.notDefined["₪"] ?? {})), tot);
+  const collabShow = A.showAgreementSplit({ artist: "שליו טסמה, אבי מולה", show_price: 3000, dj_fee: 0 }, 0);
+  ok("6. show of another artist / a collaboration → NOT_DEFINED (the show rule is unchanged)", otherShow.status === "NOT_DEFINED" && otherShow.reason === "NO_AGREEMENT" && collabShow.status === "NOT_DEFINED" && collabShow.reason === "COLLAB_NOT_ATTRIBUTED", { otherShow, collabShow });
+  const nagash = R.expenseShareOf(ex("n", 3000), { artistText: "נגש ביטס" });
+  ok("6b. NagashBeatz → 100 % Records, no artist charge", nagash.status === "DEFINED" && nagash.kind === "NAGASHBEATZ" && nagash.recordsAmount === 3000 && nagash.artists.length === 0, nagash);
+  const promo = R.expenseShareOf(ex("pr", 400, { expenseScope: "שיווק", category: "קידום" }), { artistText: "שליו טסמה" });
+  ok("7. ANY expense type follows the rule (Owner 2026-09-28 supersedes 'promotion NOT_DEFINED'): promotion 400 → 200 / 200", promo.status === "DEFINED" && promo.recordsAmount === 200 && promo.artists[0].amount === 200, promo);
+  const unpaid = R.expenseShareOf(ex("u", 3000, { paymentStatus: "צפוי" }), { artistText: "שליו טסמה" });
+  ok("7b. only an ACTUALLY PAID cost is an active share (an expected row is computed but not active)", unpaid.status === "DEFINED" && unpaid.active === false && R.activeArtistAmounts(unpaid).get(SHALEV) === 0, unpaid);
+  const usd = R.expenseShareOf(ex("usd", 1000, { currency: "$" }), { artistText: "שליו טסמה" });
+  ok("8. currencies are never mixed: a non-₪ expense is not charged to the ₪ ledger (UNDEFINED NOT_ILS)", usd.status === "UNDEFINED" && usd.reason === "NOT_ILS", usd);
+  ok("8b. the agreement layer no longer allocates expenses (one rule only)", !/allocatePaidCost|costCategoryOfScope|allocationTotalsByCurrency/.test(read("lib/label-agreements.ts")) && /records-expense-share/.test(read("lib/label-agreements.ts")));
   ok("media = 50 / 50 INCOME and never repays a specific clip: target 0, no clip → income link anywhere", A.MEDIA_RECOUP_TARGET === 0 && A.AGREEMENT_MEDIA_RULE.artistPct === 50 && A.AGREEMENT_MEDIA_RULE.labelPct === 50 && !("fundedBalancePreview" in A) && /MEDIA_RECOUP_TARGET/.test(read("lib/media-income-store.ts")) && !/getRecoupTargetForArtist/.test(read("lib/media-income-store.ts")));
   ok("the cycle is the accounting: the recoup route never builds a clip target (null + the cycle reason); the clip recoup is NOT_DEFINED", /clipRecoupTarget: null,/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /AGREEMENT_CYCLE_ACCOUNTING_HE/.test(read("app/api/label/artists/[id]/recoup/route.ts")) && /recoupStatus: "NOT_DEFINED",/.test(read("app/api/label/artists/[id]/clips/route.ts")));
   ok("the agreement layer reuses the app's own computeShowSplit (one show rule)", /computeShowSplit\(/.test(read("lib/label-agreements.ts")) && !/netAfterDj\s*\/\s*2/.test(read("lib/label-agreements.ts")));
@@ -138,7 +133,7 @@ async function main() {
 
   section("E. Sunny = the same interpretation as the canonical helpers");
   ok("13a. show_view split = the agreement split (showAgreementSplit), with NOT_DEFINED + a signal for any other artist", /showAgreementSplit\(\{ artist: s\.artistText/.test(read("lib/partner/shows/view.ts")) && /SHOW_SPLIT_NOT_DEFINED/.test(read("lib/partner/shows/view.ts")));
-  ok("13b. artist_view money.agreement uses the SAME allocation functions, states the bi-monthly cycle model, and never links a media income to a specific clip", /allocatePaidCost\(/.test(read("lib/partner/label/view.ts")) && /allocationTotalsByCurrency\(/.test(read("lib/partner/label/view.ts")) && /BI_MONTHLY_CYCLE/.test(read("lib/partner/label/view.ts")) && !/doubleOffsetRisk|mediaRecoupedAgainstClips/.test(read("lib/partner/label/view.ts")));
+  ok("13b. artist_view money.agreement uses the SAME split rule (expenseShareOf), states the bi-monthly cycle model, and never links a media income to a specific clip", /expenseShareOf\(/.test(read("lib/partner/label/view.ts")) && !/allocatePaidCost\(/.test(read("lib/partner/label/view.ts")) && /BI_MONTHLY_CYCLE/.test(read("lib/partner/label/view.ts")) && !/doubleOffsetRisk|mediaRecoupedAgainstClips/.test(read("lib/partner/label/view.ts")));
   ok("13c. victor_view + mix_view name the cycle with the SAME helper over the app's own rules", /teamBallCycle\(/.test(read("lib/partner/victor/view.ts")) && /teamBallCycle\(/.test(read("lib/partner/mix/view.ts")) && /computeVictorBall\(/.test(read("lib/partner/victor/view.ts")));
   ok("13d. an outbound pending_feedback waits on the recipient; only a received version is the Owner's feedback due", /OWNER_FEEDBACK_DUE/.test(read("lib/partner/projects/view.ts")) && /WAITING_FEEDBACK: a\("CONTEXT", "EXTERNAL"/.test(read("lib/partner/system/company.ts")) && /OWNER_FEEDBACK_DUE: a\("NEEDS_ATTENTION", "OWNER"/.test(read("lib/partner/system/company.ts")));
 

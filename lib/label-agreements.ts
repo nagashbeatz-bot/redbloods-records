@@ -6,11 +6,13 @@
  * or not, present or future — inherits them: every other artist is NOT_DEFINED (never inferred, never "like Shalev").
  *
  *   Production / Mix / Master  100 % label, 0 % artist   (a real Redbloods cost that creates NO artist balance)
- *   Clip                        50 % label, 50 % artist   (of the ACTUAL PAID cost — never the planned budget / the price)
  *   Show                        50 / 50 of the NET show profit: revenue − direct show expenses (the app's own
  *                               computeShowSplit: DJ fee + counted rehearsals are the recorded direct expenses)
  *   Media income                50 / 50 of the income (artist / label) — INCOME, never a repayment of a specific clip
- *   Anything else               NOT_DEFINED (promotion, artwork, PR photos, distribution, any other category)
+ *   Every other REAL Records expense (clip, promotion, photo, distribution, PR, vendor …) — Owner decision 2026-09-28
+ *   (task 6), superseding the 2026-09-27 "clip only, anything else NOT_DEFINED": the ONE rule lib/records-expense-share
+ *   (by the project's credits: one Records artist 50 / 50, Shalev + Avi 50 / 25 / 25, NagashBeatz 100 % Records, a
+ *   Records artist next to an external party UNDEFINED; Owner exceptions win). This file no longer allocates expenses.
  *
  * ACCOUNTING = the BI-MONTHLY CYCLE (Owner model 2026-09-27): the artist ledger holds the artist's income (show share,
  * media share), expenses (e.g. the clip share the Owner recorded) and payments; at each cycle end the whole picture meets
@@ -32,13 +34,12 @@ import { computeShowSplit } from "./shows-types";
 
 export const AGREEMENT_RULES_VERSION = "2026-09-27";
 
-/** Cost categories the Owner defined. Mix and master are recorded in one Finance scope ("מיקס / מאסטר"). */
-export type AgreementCostCategory = "PRODUCTION" | "MIX_MASTER" | "CLIP";
+/** Cost categories that are 100 % label (no artist share). Every other Records expense: lib/records-expense-share. */
+export type AgreementCostCategory = "PRODUCTION" | "MIX_MASTER";
 export interface CostRule { labelPct: number; artistPct: number; basisHe: string }
 export const AGREEMENT_COST_RULES: Readonly<Record<AgreementCostCategory, CostRule>> = {
   PRODUCTION: { labelPct: 100, artistPct: 0, basisHe: "הפקה מוזיקלית — 100% על חשבון הלייבל" },
   MIX_MASTER: { labelPct: 100, artistPct: 0, basisHe: "מיקס / מאסטר — 100% על חשבון הלייבל" },
-  CLIP: { labelPct: 50, artistPct: 50, basisHe: "קליפ — 50% לייבל / 50% אמן מהעלות ששולמה בפועל" },
 };
 export const AGREEMENT_SHOW_RULE = { artistPct: 50, labelPct: 50, basisHe: "הופעה — 50/50 מהרווח הנקי: הכנסה פחות הוצאות ישירות (DJ + חזרות שנספרות)" } as const;
 export const AGREEMENT_MEDIA_RULE = { artistPct: 50, labelPct: 50, basisHe: "הכנסות מדיה — 50% אמן / 50% לייבל מההכנסה; הכנסה, לא החזר של קליפ מסוים" } as const;
@@ -89,53 +90,7 @@ export function agreementArtistOf(ref: { id?: string | null; name?: string | nul
 }
 export const isCollabText = (name: string | null | undefined) => projectArtistTokens(name).length > 1;
 
-/** Finance expense_scope → agreement category. Only the scopes the Owner's rules name; everything else is null (NOT_DEFINED). */
-export function costCategoryOfScope(expenseScope: string | null | undefined): AgreementCostCategory | null {
-  if (expenseScope === "קליפ") return "CLIP";
-  if (expenseScope === "מיקס / מאסטר") return "MIX_MASTER";
-  return null; // no Finance scope marks music production; שיווק / סשן / נסיעות / ציוד / כללי / אחר have no rule
-}
-
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-export type Allocation =
-  | { status: "DEFINED"; category: AgreementCostCategory; currency: string; cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number; basisHe: string }
-  | { status: "NOT_DEFINED"; reason: NotDefinedReason; reasonHe: string; currency: string; cashOut: number };
-
-/**
- * Allocate ONE actually-paid cost that Redbloods paid. `cashOut` is always the paid amount (Finance truth); the shares are
- * the agreement's split. The label always funds the artist's share when Redbloods paid the whole cost.
- */
-export function allocatePaidCost(input: { artist: { id?: string | null; name?: string | null }; category: AgreementCostCategory | null; amount: number; currency: string; paid: boolean }): Allocation {
-  const amount = r2(Number(input.amount) || 0);
-  const currency = input.currency || "₪";
-  const nd = (reason: NotDefinedReason): Allocation => ({ status: "NOT_DEFINED", reason, reasonHe: NOT_DEFINED_HE[reason], currency, cashOut: input.paid ? amount : 0 });
-  if (!input.paid) return nd("NOT_PAID");
-  if (isCollabText(input.artist.name) && !input.artist.id) return nd("COLLAB_NOT_ATTRIBUTED");
-  if (!agreementArtistOf(input.artist)) return nd("NO_AGREEMENT");
-  if (!input.category) return nd("CATEGORY_NOT_DEFINED");
-  const rule = AGREEMENT_COST_RULES[input.category];
-  const artistShare = r2((amount * rule.artistPct) / 100);
-  const labelShare = r2(amount - artistShare);
-  return { status: "DEFINED", category: input.category, currency, cashOut: amount, labelShare, artistShare, artistShareFundedByLabel: artistShare, basisHe: rule.basisHe };
-}
-
-export interface AllocationTotals { cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number }
-/** Per-currency totals of DEFINED allocations + the NOT_DEFINED cash out kept apart (never added into a share). */
-export function allocationTotalsByCurrency(allocs: readonly Allocation[]): { defined: Record<string, AllocationTotals>; notDefined: Record<string, { cashOut: number; reasons: NotDefinedReason[] }> } {
-  const defined: Record<string, AllocationTotals> = {};
-  const notDefined: Record<string, { cashOut: number; reasons: NotDefinedReason[] }> = {};
-  for (const a of allocs) {
-    if (a.status === "DEFINED") {
-      const t = (defined[a.currency] ??= { cashOut: 0, labelShare: 0, artistShare: 0, artistShareFundedByLabel: 0 });
-      t.cashOut = r2(t.cashOut + a.cashOut); t.labelShare = r2(t.labelShare + a.labelShare); t.artistShare = r2(t.artistShare + a.artistShare); t.artistShareFundedByLabel = r2(t.artistShareFundedByLabel + a.artistShareFundedByLabel);
-    } else if (a.cashOut > 0) {
-      const t = (notDefined[a.currency] ??= { cashOut: 0, reasons: [] });
-      t.cashOut = r2(t.cashOut + a.cashOut); if (!t.reasons.includes(a.reason)) t.reasons.push(a.reason);
-    }
-  }
-  return { defined, notDefined };
-}
 
 export type ShowAgreementSplit =
   | ({ status: "DEFINED"; artist: { id: string; name: string }; directExpenses: number } & ReturnType<typeof computeShowSplit>)

@@ -46,17 +46,19 @@ const R = rosterIdByNameOf(ROSTER);
   section("1. the Owner rule — who is covered");
   ok("the covered ids are exactly Shalev + Avi (existing id constants)", OWNER_LABEL_ARTIST_IDS.size === 2 && OWNER_LABEL_ARTIST_IDS.has(SHALEV_ARTIST_ID) && OWNER_LABEL_ARTIST_IDS.has(AVI_ARTIST_ID) && AVI_ARTIST_ID.startsWith("b3499c72"));
   const cases: Array<[string, "לקוח" | "לייבל"]> = [
-    ["שליו טסמה", "לייבל"], ["שליו טסמה, רוני", "לייבל"], ["רוני ، שליו טסמה", "לייבל"], ["דני; שליו טסמה", "לייבל"],
-    ["אבי מולה", "לייבל"], ["אבי מולה, נגש ביטס", "לייבל"], ["מישהו;אבי מולה", "לייבל"],
-    ["נגש ביטס", "לקוח"], ["DJ CLEANTONE", "לקוח"], ["אמן רוסטר אחר", "לקוח"], ["נגש ביטס, DJ CLEANTONE", "לקוח"],
+    // Owner decision 2026-09-28 (task 6): a Records artist next to an EXTERNAL party (host / guest unknown) → no rule (לקוח);
+    // NagashBeatz credited → לייבל; Shalev / Avi alone or together → לייבל
+    ["שליו טסמה", "לייבל"], ["שליו טסמה, רוני", "לקוח"], ["רוני ، שליו טסמה", "לקוח"], ["דני; שליו טסמה", "לקוח"],
+    ["אבי מולה", "לייבל"], ["אבי מולה, נגש ביטס", "לייבל"], ["מישהו;אבי מולה", "לקוח"], ["שליו טסמה, אבי מולה", "לייבל"],
+    ["נגש ביטס", "לייבל"], ["DJ CLEANTONE", "לקוח"], ["אמן רוסטר אחר", "לקוח"], ["נגש ביטס, DJ CLEANTONE", "לייבל"], ["טל צגאי, אבי מולה", "לקוח"],
     ["לקוח חיצוני", "לקוח"], ["", "לקוח"], ["שליו", "לקוח"], ["שליו טסמה ורוני", "לקוח"],
   ];
   for (const [artist, want] of cases) ok(`create "${artist || "(ריק)"}" → ${want}`, businessTypeForNewProject(artist, R) === want, businessTypeForNewProject(artist, R));
-  ok("no Owner rule → null (not 'לקוח' as a classification)", ownerRuleClassification("נגש ביטס", R) === null && ownerRuleClassification("שליו טסמה", R) === "לייבל");
+  ok("no Owner rule → null (not 'לקוח' as a classification)", ownerRuleClassification("טל צגאי, אבי מולה", R) === null && ownerRuleClassification("לקוח חיצוני", R) === null && ownerRuleClassification("שליו טסמה", R) === "לייבל");
   ok("identity is the ROSTER ID: a roster row named 'שליו טסמה' with another id is NOT covered", businessTypeForNewProject("שליו טסמה", rosterIdByNameOf([{ id: "00000000-0000-4000-8000-000000000999", name: "שליו טסמה" }])) === "לקוח");
   ok("renamed artist: the rule follows the id (new name credited → לייבל; old name no longer in the roster → לקוח)", businessTypeForNewProject("שליו T", rosterIdByNameOf([{ id: SHALEV_ARTIST_ID, name: "שליו T" }])) === "לייבל" && businessTypeForNewProject("שליו טסמה", rosterIdByNameOf([{ id: SHALEV_ARTIST_ID, name: "שליו T" }])) === "לקוח");
   ok("an ambiguous roster name (two rows) is never guessed", rosterIdByNameOf([{ id: SHALEV_ARTIST_ID, name: "X" }, { id: "00000000-0000-4000-8000-000000000998", name: "X" }]).get("X") === null);
-  const fb = await resolveNewProjectBusinessType("אבי מולה, רוני", async () => { throw new Error("db down"); });
+  const fb = await resolveNewProjectBusinessType("אבי מולה", async () => { throw new Error("db down"); });
   ok("a roster read failure falls back to the code-registered ids (rule never silently skipped)", fb.businessType === "לייבל" && fb.roster === "REGISTERED_FALLBACK" && fb.basis === "OWNER_RULE");
   const live = await resolveNewProjectBusinessType("לקוח חיצוני", async () => ROSTER);
   ok("a client project stays לקוח (live roster)", live.businessType === "לקוח" && live.basis === "DEFAULT_CLIENT" && live.roster === "LIVE");
@@ -75,7 +77,7 @@ const R = rosterIdByNameOf(ROSTER);
   ok("isClientProject = stored לקוח only", isClientProject({ businessType: "לקוח" }) && !isClientProject({ businessType: "" }));
   const sig = classificationSignal({ businessType: "לקוח", artistText: "אבי מולה, שליו טסמה" }, R);
   ok("stored לקוח + Owner rule match → MISMATCH_OWNER_RULE (DERIVED, explicit Owner fix)", sig?.code === MISMATCH_OWNER_RULE && sig.kind === "DERIVED_SIGNAL" && sig.fix === "OWNER_ACTION_SET_PROJECT_BUSINESS_TYPE" && sig.artistIds.length === 2);
-  ok("stored לייבל / no rule → no signal", classificationSignal({ businessType: "לייבל", artistText: "שליו טסמה" }, R) === null && classificationSignal({ businessType: "לקוח", artistText: "נגש ביטס" }, R) === null);
+  ok("stored לייבל / no rule → no signal", classificationSignal({ businessType: "לייבל", artistText: "שליו טסמה" }, R) === null && classificationSignal({ businessType: "לקוח", artistText: "טל צגאי, אבי מולה" }, R) === null && classificationSignal({ businessType: "לקוח", artistText: "לקוח חיצוני" }, R) === null);
   ok("MISMATCH_OWNER_RULE is mapped in ATTENTION_MAP", !!ATTENTION_MAP.MISMATCH_OWNER_RULE && ATTENTION_MAP.MISMATCH_OWNER_RULE.side === "OWNER");
   const cls = read("lib/project-classification.ts");
   ok("the classification module is pure (no DB / fetch / write)", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(/.test(cls.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
@@ -94,8 +96,8 @@ const R = rosterIdByNameOf(ROSTER);
   const pids = [P(1), P(2), P(3), P(4), P(7)];
   const sigs = (pid: string) => buildProjectView(src, pid).signals.map((s) => s.code);
   ok("project view: MISMATCH on Avi solo (P2) and the Avi+Shalev collab (P3)", sigs(P(2)).includes(MISMATCH_OWNER_RULE) && sigs(P(3)).includes(MISMATCH_OWNER_RULE), { p2: sigs(P(2)), p3: sigs(P(3)) });
-  ok("project view: no MISMATCH for stored לייבל (P1, P7) or נגש ביטס (P4)", ![P(1), P(7), P(4)].some((p) => sigs(p).includes(MISMATCH_OWNER_RULE)));
-  ok("project view: נגש ביטס (roster, not covered) is only a weak TEXT_MATCH hint, never a mismatch", sigs(P(4)).includes("LABEL_CLASSIFICATION_UNCLEAR") && ATTENTION_MAP.LABEL_CLASSIFICATION_UNCLEAR.nature === "CONTEXT");
+  ok("project view: no MISMATCH for stored לייבל (P1, P7)", ![P(1), P(7)].some((p) => sigs(p).includes(MISMATCH_OWNER_RULE)));
+  ok("project view: נגש ביטס credited + stored לקוח → MISMATCH (Owner decision 2026-09-28: everything under NagashBeatz is Records; the Owner's click fixes it)", sigs(P(4)).includes(MISMATCH_OWNER_RULE) && ATTENTION_MAP.LABEL_CLASSIFICATION_UNCLEAR.nature === "CONTEXT");
   const opLabel = (pid: string) => projectOperating(src, pid)?.label.labelWork;
   ok("operating view: labelWork === stored type for every project (release row / roster are evidence only)", pids.every((pid) => opLabel(pid) === (idx[pid].businessType === "לייבל")), pids.map((pid) => [idx[pid].businessType, opLabel(pid)]));
   ok("operating view: the mismatch is carried as evidence, not as labelWork", projectOperating(src, P(2))?.label.labelEvidence.ownerRuleMismatch === true && projectOperating(src, P(2))?.label.labelWork === false);

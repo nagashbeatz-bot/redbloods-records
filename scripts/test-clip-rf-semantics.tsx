@@ -134,7 +134,8 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
       { id: "c3", title: "מבוטל", production_type: "קליפ", status: "בוטל", project_id: null, artist_name: "שליו טסמה", general_budget: 99999, currency: "₪" },
     ],
     settings: [{ key: "finance_p1", value: { clipAgreedPrice: 3500, currency: "₪" } }],
-    transactions: [{ id: "e1", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 2000, currency: "₪", payment_status: "שולם" }, { id: "e2", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 700, currency: "₪", payment_status: "לא שולם" }],
+    projects: [{ id: "p1", artist: "שליו טסמה" }],
+    transactions: [{ id: "e1", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 2000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS" }, { id: "e2", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 700, currency: "₪", payment_status: "לא שולם", business_unit: "RECORDS" }],
     red_films_budget_payments: [{ id: "y1", production_id: "c1", amount: 1200, currency: "₪" }],
   });
   const clips = await LC.listArtistClips("שליו טסמה");
@@ -142,18 +143,23 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
   // Owner decision 2026-09-27 (lib/label-agreements): שליו / אבי — the artist's clip share = 50 % of the ACTUAL PAID cost (never the budget)
   const k1 = clips.find((c) => c.id === "c1")!, k2 = clips.find((c) => c.id === "c2")!;
   ok("שליו: NO clip recoup (Owner model: the clip share is an artist expense in the bi-monthly cycle) — NOT_DEFINED with that reason; never half the budget (4000 / 500)", clips.length === 2 && [k1, k2].every((k) => k.recoup.status === "NOT_DEFINED" && k.recoup.amount === null && /במחזור של חודשיים/.test(k.recoup.reasonHe)) && !/4000|"500"|:500[,}]/.test(JSON.stringify(clips.map((c) => ({ r: c.recoup, a: c.allocation })))), clips);
-  ok("allocation: cash out 2000 ≠ label share 1000 ≠ artist share 1000 (funded by the label); the unpaid 700 never counts", JSON.stringify(k1.allocation) === JSON.stringify([{ status: "DEFINED", category: "CLIP", currency: "₪", cashOut: 2000, labelShare: 1000, artistShare: 1000, artistShareFundedByLabel: 1000, basisHe: "קליפ — 50% לייבל / 50% אמן מהעלות ששולמה בפועל" }]), k1.allocation);
+  // Owner decision 2026-09-28 (lib/records-expense-share): the split is per Finance transaction, by the project's credits
+  ok("allocation: cash out 2000 ≠ Records share 1000 ≠ artist share 1000 (funded by the label); the unpaid 700 never counts", JSON.stringify(k1.allocation) === JSON.stringify([{ status: "DEFINED", currency: "₪", cashOut: 2000, labelShare: 1000, artistShare: 1000, artistShareFundedByLabel: 1000, basisHe: "חלוקה לפי חוק Records / אמנים" }]) && k1.shareTransactions.length === 1 && k1.shareTransactions[0].txId === "e1", k1.allocation);
   const otherClips = await LC.listArtistClips("נגש ביטס");
-  reset({ red_films_productions: [{ id: "o1", title: "קליפ אחר", production_type: "קליפ", status: "בעריכה", project_id: "p9", artist_name: "נגש ביטס", general_budget: 8000, currency: "₪" }], transactions: [{ id: "e9", project_id: "p9", type: "expense", expense_scope: "קליפ", amount: 3000, currency: "₪", payment_status: "שולם" }] });
+  reset({ red_films_productions: [{ id: "o1", title: "קליפ אחר", production_type: "קליפ", status: "בעריכה", project_id: "p9", artist_name: "נגש ביטס", general_budget: 8000, currency: "₪" }], projects: [{ id: "p9", artist: "נגש ביטס" }], transactions: [{ id: "e9", project_id: "p9", type: "expense", expense_scope: "קליפ", amount: 3000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS" }] });
   const other = await LC.listArtistClips("נגש ביטס");
-  ok("another artist: NOT_DEFINED (no agreement) — the Shalev / Avi rule is never applied automatically", otherClips.length === 0 && other.length === 1 && other[0].recoup.status === "NOT_DEFINED" && other[0].recoup.amount === null && /אין חוק התחשבנות/.test(other[0].recoup.reasonHe ?? "") && other[0].allocation[0].status === "NOT_DEFINED" && other[0].allocation[0].cashOut === 3000, other);
+  ok("NagashBeatz: no recoup; the clip cost is 100 % Records (Owner decision 2026-09-28) — no artist charge", otherClips.length === 0 && other.length === 1 && other[0].recoup.status === "NOT_DEFINED" && other[0].recoup.amount === null && /אין חוק התחשבנות/.test(other[0].recoup.reasonHe ?? "") && other[0].allocation[0].status === "DEFINED" && other[0].allocation[0].cashOut === 3000 && (other[0].allocation[0] as { labelShare: number }).labelShare === 3000 && (other[0].allocation[0] as { artistShare: number }).artistShare === 0, other);
+  reset({ red_films_productions: [{ id: "g1", title: "אורח", production_type: "קליפ", status: "בעריכה", project_id: "pg", artist_name: "טל צגאי, אבי מולה", general_budget: 0, currency: "₪" }], projects: [{ id: "pg", artist: "טל צגאי, אבי מולה" }], transactions: [{ id: "eg", project_id: "pg", type: "expense", expense_scope: "קליפ", amount: 1000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS" }] });
+  const guest = await LC.listArtistClips("אבי מולה");
+  ok("a Records artist as a guest of an external host → the split is NOT_DEFINED (no automatic Avi share)", guest.length === 1 && guest[0].allocation[0].status === "NOT_DEFINED" && guest[0].allocation[0].cashOut === 1000, guest[0]?.allocation);
   reset({
     red_films_productions: [
       { id: "c1", title: "קליפ שליו", production_type: "קליפ", status: "בעריכה", project_id: "p1", artist_name: "שליו טסמה", general_budget: 8000, currency: "₪" },
       { id: "c2", title: "קליפ דולרי", production_type: "קליפ", status: "רעיון", project_id: null, artist_name: "שליו טסמה", general_budget: 1000, currency: "$" },
     ],
     settings: [{ key: "finance_p1", value: { clipAgreedPrice: 3500, currency: "₪" } }],
-    transactions: [{ id: "e1", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 2000, currency: "₪", payment_status: "שולם" }, { id: "e2", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 700, currency: "₪", payment_status: "לא שולם" }],
+    projects: [{ id: "p1", artist: "שליו טסמה" }],
+    transactions: [{ id: "e1", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 2000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS" }, { id: "e2", project_id: "p1", type: "expense", expense_scope: "קליפ", amount: 700, currency: "₪", payment_status: "לא שולם", business_unit: "RECORDS" }],
     red_films_budget_payments: [{ id: "y1", production_id: "c1", amount: 1200, currency: "₪" }],
   });
   ok("media never repays a clip: the media-income RPC target is 0 for every artist (MEDIA_RECOUP_TARGET), no clip-based target function remains", MEDIA_RECOUP_TARGET === 0 && !("getRecoupTargetForArtist" in LC));

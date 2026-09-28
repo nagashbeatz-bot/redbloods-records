@@ -14,6 +14,7 @@ import type { PartnerCompanyState } from "../eyes/types";
 import type { FinanceRaw } from "../finance/types";
 import type { PartnerMemory } from "../memory/types";
 import { splitArtistNames } from "../dossiers/relations";
+import { isNagashBeatzToken } from "../../project-classification";
 import { normalizeName } from "../gateway/resolve";
 import { LABEL_ROSTER_DEFINITION, SCHEDULE_DEFINITION, SESSION_STATUS_VOCABULARY, STEVEN_PAYMENT_WRITERS, VICTOR_STALE_DAYS } from "./definitions";
 import type { IntegrityFinding, IntegrityFindingType, IntegritySeverity, IntegrityStance, IntegrityEpistemic, IntegritySubject, IntegrityEvidence } from "./types";
@@ -122,9 +123,13 @@ export function detectLabelProjectClassification(input: IntegrityInput): Finding
   const idx = s.domains.projects.data?.index ?? {};
   const releaseArtist = new Map((s.domains.releasesFull.data?.items ?? []).map((r) => [r.projectId, r.labelArtistId]));
   const out: FindingDraft[] = [];
+  // Owner decision 2026-09-28 (task 6): a Records artist credited next to an EXTERNAL party (a guest at an external host,
+  // e.g. בלאגן) is not label work by the text alone — only the Owner rule (lib/project-classification) or a release id counts
+  const rosterNames = new Set(roster.map((r) => r.name));
+  const guestOfExternal = (artistText: string) => { const toks = splitArtistNames(artistText); return !toks.some(isNagashBeatzToken) && toks.some((t) => !rosterNames.has(t) && !isNagashBeatzToken(t)); };
   for (const a of [...roster].sort((x, y) => x.name.localeCompare(y.name))) {
     const projects = Object.entries(idx)
-      .filter(([pid, p]) => p.businessType !== "לייבל" && (splitArtistNames(p.artistText).includes(a.name) || releaseArtist.get(pid) === a.id))
+      .filter(([pid, p]) => p.businessType !== "לייבל" && (releaseArtist.get(pid) === a.id || (splitArtistNames(p.artistText).includes(a.name) && !guestOfExternal(p.artistText))))
       .map(([pid, p]) => ({ projectId: pid, name: p.name, status: p.status, businessType: p.businessType, collab: splitArtistNames(p.artistText).length > 1, link: releaseArtist.get(pid) === a.id ? "ID" : "TEXT_MATCH" }))
       .sort((x, y) => x.projectId.localeCompare(y.projectId));
     if (!projects.length) continue;

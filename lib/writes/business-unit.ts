@@ -83,6 +83,8 @@ export async function setTransactionUnit(txId: string, unit: string): Promise<bo
   if (!isBusinessUnit(unit)) throw new NeedsBusinessUnitError("יחידה לא מוכרת");
   const { data, error } = await supabase.from("transactions").update({ business_unit: unit, business_unit_source: "OWNER_DECISION" }).eq("id", txId).select("id");
   if (error) throw new Error(error.message);
+  // the unit decides whether it is a Records expense at all → the artist's share follows (task 6)
+  if ((data ?? []).length === 1) await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(txId);
   return (data ?? []).length === 1;
 }
 

@@ -148,3 +148,55 @@ export const unitBalance: KnowledgeCapability = {
     return result(items, { summary, coverage: [partner("כסף אמיתי לפי יחידה עסקית (כל הזמנים), לפי מטבע — אותו חישוב של מסך הכספים. זכאות עתידית של אמן אינה Cash ואינה התחייבות.")], completeness: "COMPLETE" });
   },
 };
+
+// ── Task 6 (Owner decision 2026-09-28): Records ↔ artist expense share — the ONE rule (lib/records-expense-share) ──
+import { expenseShareOf, projectSettlementRule } from "../../../records-expense-share";
+import { expenseSharesFromFinanceRaw } from "../../finance/unit-view";
+export const expenseShares: KnowledgeCapability = {
+  id: "expense_shares", domain: "FINANCE", titleHe: "חלוקת הוצאות Records מול האמנים",
+  descriptionForModel: `Who carries a real Records expense. Finance keeps the FULL amount Records paid (cash); the artist's part is an expense row in the artist ledger (the settlement). Rule by the project's credits: one Records artist 50/50; Shalev + Avi 50 Records / 25 / 25; NagashBeatz credited 100% Records (no artist charge); a Records artist next to an external host/client/guest (e.g. Balagan) = UNDEFINED, needs an agreement — never guessed. Any expense type. Not artist expenses: show money (inside the show's net split), payments to an artist, mix/master. Owner exceptions: ACUM 400 = 100% Shalev; Principe YouTube 3x100 = 100% Records; Principe clip = the Owner-recorded 2,480 row. Modes: summary (totals, per artist, reconciliation findings), transactions (each Records expense with its split), rule (the split for an artist text).`,
+  examplesHe: ["כמה עלה הקליפ של שליו ומי נושא בו?", "מי משלם על קליפ של שליו?", "שליו ואבי ביחד — איך מתחלקים?", "NagashBeatz ושליו?", "אבי מתארח אצל טל צגאי — מי משלם?"],
+  modes: {
+    summary: { descriptionForModel: "Totals: cash out, Records share, artists' share, undefined cash; per artist; findings (missing / wrong / duplicate share rows)" },
+    transactions: { descriptionForModel: "Each paid Records expense: cash, Records share, each artist's share, basis / reason" },
+    rule: { descriptionForModel: "The split the rule gives for an artist credit text (param artists)" },
+  },
+  defaultMode: "summary", params: { artists: { kind: "text", maxLength: 120, descriptionForModel: "rule mode: the project's artist credits, comma separated" } },
+  paging: { defaultLimit: 20, maxLimit: 50 }, access: ACCESS, needs: ["FINANCE"],
+  read(src, q) {
+    if (q.mode === "rule") {
+      const r = projectSettlementRule(String(q.params?.artists ?? ""));
+      return result([item({ id: "rule", label: partner("חוק החלוקה"), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: r.status === "DEFINED" ? { status: r.status, kind: r.kind, recordsPct: r.recordsPct, artists: r.artists, basisHe: r.basisHe } : { status: r.status, reason: r.reason, reasonHe: r.reasonHe, external: r.external } })], { completeness: "COMPLETE" });
+    }
+    const f = ok(src.finance);
+    if (!f) return unavailable("Finance Brain");
+    const rec = expenseSharesFromFinanceRaw(f.raw);
+    const names = new Map(f.raw.labelArtists.map((a) => [a.id, a.name]));
+    if (q.mode === "transactions") {
+      const artistText = new Map(f.raw.projects.map((p) => [p.id, p.artist]));
+      const items: KnowledgeItem[] = [];
+      for (const t of f.raw.transactions) {
+        const s = expenseShareOf({ id: t.id, type: t.type, amount: t.amount, currency: t.currency, paymentStatus: t.status, businessUnit: t.businessUnit ?? null, category: t.category, expenseScope: t.expenseScope, showId: t.showId ?? null, showMoneyRole: t.showMoneyRole ?? null, projectId: t.projectId }, t.projectId ? { artistText: artistText.get(t.projectId) ?? null } : null);
+        if (s.status === "NOT_APPLICABLE") continue;
+        items.push(item({ id: `tx:${t.id}`, label: partner(`${t.date ?? ""} · ${t.expenseScope ?? ""}`), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: {
+          transactionId: t.id, projectId: t.projectId, date: t.date, paymentStatus: t.status, cashOut: s.amount, currency: s.currency, status: s.status,
+          ...(s.status === "DEFINED" ? { basis: s.basis, kind: s.kind, active: s.active, recordsShare: s.recordsAmount, artists: s.artists.map((a) => ({ name: a.name, pct: a.pct, amount: a.amount })), basisHe: s.basisHe } : { reasonHe: s.reasonHe }),
+        } }));
+      }
+      return result(items, { completeness: "COMPLETE" });
+    }
+    const summary = [
+      sfact("RECORDS_EXPENSE_CASH_OUT", "הוצאות Records של אמנים — כסף שיצא בפועל (₪)", rec.totals.cashOut, "FACT", "FINANCE"),
+      sfact("RECORDS_EXPENSE_RECORDS_SHARE", "החלק ש-Records נושאת (₪)", rec.totals.recordsShare, "DERIVED", "FINANCE"),
+      sfact("RECORDS_EXPENSE_ARTISTS_SHARE", "החלק שנזקף לאמנים (₪)", rec.totals.artistShare, "DERIVED", "FINANCE"),
+      sfact("RECORDS_EXPENSE_RECORDED_LUMP", "קליפ פרנציפ — חלק שליו רשום ברשומה אחת של הבעלים (הכסף שיצא, ₪)", rec.totals.recordedElsewhere, "FACT", "FINANCE"),
+      sfact("RECORDS_EXPENSE_UNDEFINED", "הוצאות בלי חלוקה מוגדרת — דורש החלטת בעלים (₪)", rec.totals.undefinedCashOut, "DERIVED", "FINANCE"),
+      sfact("RECORDS_EXPENSE_SHARE_FINDINGS", "אי-התאמות בין הכספים ליומן האמן", rec.findings.filter((x) => x.code !== "SHARE_UNDEFINED").length, "DERIVED", "FINANCE"),
+    ];
+    const items: KnowledgeItem[] = [
+      ...Object.entries(rec.byArtist).map(([id, amount]) => item({ id: `artist:${id}`, label: partner(names.get(id) ?? id), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: { artistId: id, expenseShareIls: amount } })),
+      ...rec.findings.map((x, i) => item({ id: `finding:${i}`, label: partner(x.he), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: { code: x.code, transactionId: x.transactionId, artist: x.artistId ? names.get(x.artistId) ?? x.artistId : null, expected: x.expected, recorded: x.recorded } })),
+    ];
+    return result(items, { summary, coverage: [partner("Finance = הסכום המלא ש-Records שילמה; חלק האמן = שורת הוצאה ביומן האמן. business_unit וחלוקת האמן הם שני דברים נפרדים.")], completeness: "COMPLETE" });
+  },
+};

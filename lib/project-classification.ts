@@ -4,10 +4,16 @@
  * Canonical: `projects.project_business_type` ("לקוח" | "לייבל", lib/types.ts). `isLabelProject` is the ONLY
  * classifier any reader (UI, Sunny views, company view) may use.
  *
- * Owner rule (the only automatic classification, applied at CREATE time only): a project that credits
- * שליו טסמה or אבי מולה — solo or in a collaboration — is a LABEL project. The artists are identified by their
- * stable label_artists.id (via the roster name → id map), never by a "roster artist = label" rule: נגש ביטס,
- * DJ CLEANTONE and any other roster artist are NOT covered.
+ * Owner rule (the only automatic classification, applied at CREATE time only — Owner decision 2026-09-28, task 6,
+ * supersedes the 2026-09-27 "solo or in a collaboration" wording):
+ *   NagashBeatz (נגש ביטס) credited                                  → LABEL (everything under NagashBeatz is Records)
+ *   שליו טסמה / אבי מולה credited, and nobody else (solo / together)  → LABEL
+ *   a Records artist credited together with an EXTERNAL party         → NO rule (host vs guest is not recorded — e.g.
+ *                                                                       בלאגן: טל צגאי host, אבי מולה guest = Studio).
+ *                                                                       Never guessed as label; the app default לקוח.
+ * The artists are identified by their stable label_artists.id (via the roster name → id map), never by a "roster
+ * artist = label" rule: DJ CLEANTONE and any other name are NOT covered. A client who came because of the NagashBeatz
+ * brand but does not credit NagashBeatz is not covered either.
  *
  * Everything else — a roster-name match, a release row, clients.status "אמן לייבל", Red Films client_source,
  * the Owner's LABEL_SONGS integrity answers — is detection / migration EVIDENCE, never a competing classifier.
@@ -30,7 +36,7 @@ export const OWNER_LABEL_REGISTERED_ROSTER: ReadonlyArray<{ id: string; name: st
   { id: AVI_ARTIST_ID, name: AVI_NAME },
 ];
 
-export const OWNER_LABEL_RULE_HE = "כלל הבעלים: פרויקט שמקרדט את שליו טסמה או אבי מולה (לבד או בשיתוף) הוא פרויקט לייבל. אין כלל כללי של 'אמן רוסטר = לייבל'.";
+export const OWNER_LABEL_RULE_HE = "כלל הבעלים: פרויקט שמקרדט את NagashBeatz (נגש ביטס) הוא פרויקט לייבל; פרויקט של שליו טסמה / אבי מולה (לבד או שניהם יחד, בלי גורם חיצוני) הוא פרויקט לייבל. אמן Records שמתארח אצל גורם חיצוני — אין סיווג אוטומטי (דורש החלטת בעלים). אין כלל כללי של 'אמן רוסטר = לייבל'.";
 
 /** A project's artist credits — the app-wide /[,،;]/ split, trimmed (the shared splitter). */
 export const projectArtistTokens = (artistText: string | null | undefined): string[] => splitArtistNames(artistText ?? "");
@@ -47,6 +53,31 @@ export function rosterIdByNameOf(roster: ReadonlyArray<{ id: string; name: strin
   return m;
 }
 
+/** NagashBeatz as a project credit (exact token; the roster name נגש ביטס or the brand spelling). */
+const NAGASH_TOKENS: ReadonlySet<string> = new Set(["נגש ביטס", "nagashbeatz", "nagash beatz"]);
+export const isNagashBeatzToken = (t: string): boolean => NAGASH_TOKENS.has(t.trim()) || NAGASH_TOKENS.has(t.trim().toLowerCase());
+
+/**
+ * Who is credited, for the Records settlement (Owner decision 2026-09-28): the covered Records artists (Shalev / Avi, by
+ * the registered roster ids), NagashBeatz, and every other credit (EXTERNAL — a host / client / guest outside Records).
+ * Exact tokens of the shared splitter only; no fuzzy matching, no position rule.
+ */
+export interface RecordsParties { tokens: string[]; recordsArtists: Array<{ id: string; name: string }>; nagashBeatz: boolean; external: string[] }
+export function recordsPartiesOf(artistText: string | null | undefined, rosterIdByName?: RosterIdByName): RecordsParties {
+  const tokens = projectArtistTokens(artistText);
+  const map = rosterIdByName ?? rosterIdByNameOf(OWNER_LABEL_REGISTERED_ROSTER);
+  const recordsArtists: Array<{ id: string; name: string }> = [];
+  const external: string[] = [];
+  let nagashBeatz = false;
+  for (const t of tokens) {
+    if (isNagashBeatzToken(t)) { nagashBeatz = true; continue; }
+    const id = map.get(t);
+    if (id && OWNER_LABEL_ARTIST_IDS.has(id)) { if (!recordsArtists.some((a) => a.id === id)) recordsArtists.push({ id, name: t }); continue; }
+    external.push(t);
+  }
+  return { tokens, recordsArtists, nagashBeatz, external };
+}
+
 /** The covered label_artists ids credited on this artist text (exact token → roster id). */
 export function ownerRuleArtistIds(artistText: string | null | undefined, rosterIdByName: RosterIdByName): string[] {
   const ids = new Set<string>();
@@ -57,9 +88,14 @@ export function ownerRuleArtistIds(artistText: string | null | undefined, roster
   return [...ids];
 }
 
-/** "לייבל" when a covered artist (Shalev / Avi) is credited — solo or collab; else null (= no Owner rule; stays לקוח). */
+/**
+ * "לייבל" when NagashBeatz is credited, or when Shalev / Avi are credited with nobody external; null otherwise (= no
+ * Owner rule — a Records artist next to an external party may be a guest at an external host; stays the app default).
+ */
 export function ownerRuleClassification(artistText: string | null | undefined, rosterIdByName: RosterIdByName): ProjectBusinessType | null {
-  return ownerRuleArtistIds(artistText, rosterIdByName).length > 0 ? "לייבל" : null;
+  const p = recordsPartiesOf(artistText, rosterIdByName);
+  if (p.nagashBeatz) return "לייבל";
+  return p.recordsArtists.length > 0 && p.external.length === 0 ? "לייבל" : null;
 }
 
 /** The business type a NEW project gets: the Owner rule, else the app default לקוח. */
@@ -95,7 +131,7 @@ export interface ClassificationSignal {
 export function classificationSignal(project: { businessType?: string | null; artistText?: string | null; artist?: string | null }, rosterIdByName: RosterIdByName): ClassificationSignal | null {
   const artistText = project.artistText ?? project.artist ?? "";
   const ids = ownerRuleArtistIds(artistText, rosterIdByName);
-  if (!ids.length || isLabelProject(project)) return null;
+  if (ownerRuleClassification(artistText, rosterIdByName) !== "לייבל" || isLabelProject(project)) return null;
   return {
     code: MISMATCH_OWNER_RULE, kind: "DERIVED_SIGNAL",
     he: `לפי כלל הבעלים זה פרויקט לייבל (שמור כ'${project.businessType || "לא ידוע"}'). אין שינוי אוטומטי — הסיווג משתנה רק בפעולה מפורשת של הבעלים.`,
@@ -115,6 +151,8 @@ export async function resolveNewProjectBusinessType(
   let roster: ReadonlyArray<{ id: string; name: string }>;
   let src: "LIVE" | "REGISTERED_FALLBACK" = "LIVE";
   try { roster = await loadRoster(); } catch { roster = OWNER_LABEL_REGISTERED_ROSTER; src = "REGISTERED_FALLBACK"; }
-  const ids = ownerRuleArtistIds(artistText, rosterIdByNameOf(roster));
-  return { businessType: ids.length ? "לייבל" : "לקוח", basis: ids.length ? "OWNER_RULE" : "DEFAULT_CLIENT", roster: src, artistIds: ids };
+  const map = rosterIdByNameOf(roster);
+  const ids = ownerRuleArtistIds(artistText, map);
+  const label = ownerRuleClassification(artistText, map) === "לייבל";
+  return { businessType: label ? "לייבל" : "לקוח", basis: label ? "OWNER_RULE" : "DEFAULT_CLIENT", roster: src, artistIds: ids };
 }

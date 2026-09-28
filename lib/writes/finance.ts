@@ -16,6 +16,7 @@ import { isActualMoneyTx, isDeprecatedPaymentStatus } from "@/lib/finance/classi
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
 import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 import { copyUnitToSplitRows, recomputeUnitIfRule, setTransactionUnit, unitColumnsForNewTransaction } from "@/lib/writes/business-unit";
+import { syncExpenseShareSafe } from "@/lib/writes/artist-expense-share";
 import type { UnitWriter } from "@/lib/business-unit";
 import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
 
@@ -27,6 +28,8 @@ export interface TransactionInput {
   businessUnit?: string | null;
   /** who creates the row: a manual writer must end with a unit (NeedsBusinessUnitError), an automatic one may stay unclassified */
   unitWriter?: UnitWriter;
+  /** false = the caller syncs the artist expense share itself once the row is final (e.g. after its own CAS link) */
+  syncShare?: boolean;
 }
 export class FinanceInputError extends Error {}
 /** A deprecated status (lib/finance/classify DEPRECATED_PAYMENT_STATUSES) is never written by a new write. */
@@ -58,6 +61,8 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
   }).select().single();
   if (error) throw new Error(error.message);
   if (txScope === "project" && b.projectId) touchProject(b.projectId).catch(() => {});
+  // the artist's share of a Records expense (task 6): the Finance row is saved first; the ledger share follows
+  if (b.syncShare !== false) await syncExpenseShareSafe(String((data as { id: unknown }).id));
   return data as Record<string, unknown>;
 }
 
@@ -109,6 +114,8 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
   if (patch.payment_status && isActualMoneyTx(data as { type?: string | null; payment_status?: string | null })) {
     supabase.from("clip_items").update({ status: "שולם", updated_at: new Date().toISOString() }).eq("linked_transaction_id", id).then(() => {}, () => {});
   }
+  // amount / status / unit / project changed → the artist's share follows (the SAME ledger row, never a second one)
+  await syncExpenseShareSafe(id);
   return data as Record<string, unknown>;
 }
 
@@ -117,6 +124,8 @@ export async function deleteTransactionRecord(id: string): Promise<void> {
   const { data: tx } = await supabase.from("transactions").select("project_id").eq("id", id).single();
   const { error } = await supabase.from("transactions").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  // a share row of the deleted expense stops counting (kept at 0 with the reason — never deleted)
+  await syncExpenseShareSafe(id);
   const delPid = (tx as { project_id?: string | null } | null)?.project_id;
   if (delPid) touchProject(delPid).catch(() => {});
 }

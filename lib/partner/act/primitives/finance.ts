@@ -153,7 +153,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     async verify(d, id, after) { const t = await d.readTransaction(id); return !!t && t.amount === after.amount && t.currency === after.currency && t.paymentStatus === after.paymentStatus && t.type === after.type && (t.businessUnit === undefined || t.businessUnit === after.businessUnit); },
     requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus), ...(after.type === "income" && after.expenseScope === "קליפ" ? ["קליפ"] : []), ...(isBusinessUnit(after.businessUnit) ? [BUSINESS_UNIT_HE[after.businessUnit]] : [])],
     warnings: (c, a) => [...dupWarnings(c, a), ...(a && a.type === "income" && a.expenseScope === "קליפ" ? ["הכנסה עם שיוך קליפ = כסף של עסקת הקליפ — לא נספרת מול מחיר השיר"] : [])],
-    disclosuresHe: ["נוצרת רשומה כספית אחת; שום רשומה אחרת לא משתנה", "מטבעות לא מחוברים ולא מומרים", "לא יישלח Push או הודעה"],
+    disclosuresHe: ["נוצרת רשומה כספית אחת", "הוצאת Records של אמן Records ששולמה: חלק האמן נרשם / מתעדכן אוטומטית כהוצאה ביומן האמן (50/50, שליו+אבי 50/25/25, NagashBeatz 100% Records; מול גורם חיצוני — לא מוגדר, אין חיוב) — הכספים נשארים בסכום המלא", "מטבעות לא מחוברים ולא מומרים", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "UPDATE_TRANSACTION_DETAILS", kinds: ["transaction"],
@@ -222,7 +222,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     apply: (d, id, a) => d.updateTransaction(id, { ...a }),
     requiredValues: (_a, after) => [String(after.paymentStatus)],
     warnings: (c) => [`הרשומה: ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}, היום '${c.paymentStatus}'`, ...(c.owner === "CLIP_ROW" ? ["סטטוס ששולם מסמן גם את שורת הקליפ המקושרת כ'שולם' (כמו באפליקציה)"] : [])],
-    disclosuresHe: ["רק הסטטוס (ותאריך / אמצעי אם ציינת) משתנה — הסכום והמטבע לא", "התקבל / שולם = כסף שעבר; חלקי, צפוי, לא שולם, בוטל — לא", "לא יישלח Push או הודעה"],
+    disclosuresHe: ["רק הסטטוס (ותאריך / אמצעי אם ציינת) משתנה — הסכום והמטבע לא", "חלק האמן ביומן עוקב אחרי הסטטוס: שולם = פעיל; בוטל / צפוי = השורה נשמרת ב-0 (לא נמחקת)", "התקבל / שולם = כסף שעבר; חלקי, צפוי, לא שולם, בוטל — לא", "לא יישלח Push או הודעה"],
   },
   {
     // task 4 (2026-09-28): the Owner's unit for an existing row — a classification, allowed on rows owned by another writer
@@ -240,7 +240,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
       `היום: ${isBusinessUnit(c.businessUnit) ? BUSINESS_UNIT_HE[c.businessUnit] : "דורש סיווג"}${isBusinessUnitSource(c.businessUnitSource) ? ` (${BUSINESS_UNIT_SOURCE_HE[c.businessUnitSource]})` : ""} — ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}`,
       ...(c.businessUnitSource === "HISTORICAL_APPROVED" ? ["הסיווג הנוכחי הוא חלק מהיישור ההיסטורי שאישרת — השינוי מחליף אותו בהחלטה חדשה שלך"] : []),
     ],
-    disclosuresHe: ["רק היחידה העסקית משתנה (החלטת בעלים) — הסכום, הסטטוס, המטבע, הפרויקט ויומן האמן לא", "לא יישלח Push או הודעה"],
+    disclosuresHe: ["רק היחידה העסקית משתנה (החלטת בעלים) — הסכום, הסטטוס, המטבע והפרויקט לא", "היחידה קובעת אם זו הוצאת Records: חלק האמן ביומן מתעדכן בהתאם (נוצר / מתאפס ל-0, לא נמחק)", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "MOVE_TRANSACTION", kinds: ["transaction"],
@@ -273,7 +273,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     async verify(d, id) { return (await d.readTransaction(id)) === null; },
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [`נמחקת: ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))} (${c.paymentStatus}) מתאריך ${c.date ?? "—"}`, ...(c.linkedSessionId ? ["הרשומה מקושרת לסשן / לשכר — הקישור ייעלם איתה"] : [])],
-    disclosuresHe: ["הרשומה נמחקת לצמיתות", "לא יישלח Push או הודעה"],
+    disclosuresHe: ["הרשומה נמחקת לצמיתות", "אם נרשם ממנה חלק אמן ביומן — השורה נשמרת ב-0 עם הסיבה (לא נמחקת)", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "SPLIT_INCOME", kinds: ["transaction"],

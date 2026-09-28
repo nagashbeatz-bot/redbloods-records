@@ -493,6 +493,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -543,6 +544,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -591,6 +593,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -659,6 +662,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -745,6 +749,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -809,6 +814,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -1635,6 +1641,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -1657,6 +1664,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -1679,6 +1687,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -1714,7 +1723,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "07896b6ff750d23a888f119e04a94b2d1a4cf9929d921e995c501d95ac8b3e74",
+  "sha256": "ba1f7bb05aae7226d9d9dffa8cd2445cc9b8e97aa41e3fd539c2e4cd6bee0f51",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -1722,6 +1731,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -1761,6 +1771,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2115,6 +2126,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -2165,6 +2177,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2212,6 +2225,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -2230,6 +2244,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2278,6 +2293,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2326,6 +2342,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2374,6 +2391,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2422,6 +2440,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2469,6 +2488,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -2486,6 +2506,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": []
@@ -2502,6 +2523,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2549,6 +2571,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -2566,6 +2589,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2614,6 +2638,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2663,6 +2688,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2712,6 +2738,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -2761,6 +2788,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -3163,7 +3191,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": []
  },
@@ -3176,7 +3205,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": []
  },
@@ -3190,7 +3220,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": []
  },
@@ -3203,7 +3234,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": []
  },
@@ -3216,7 +3248,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": []
  },
@@ -3230,7 +3263,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "EXTERNAL_LINK",
    "FILES",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": [
    "secret"
@@ -3245,7 +3279,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "23e11e41d3531a6ac9d388928621d02069ebff0ba2a371b0832e3a56b7120338",
   "effects": [
    "DELETION",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": [
    "actual",
@@ -3266,7 +3301,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "sha256": "9335f1f71e9a2d385f1dd219c6cbeb95ef7e8c9c2c02527e4b910eb0672865ed",
   "effects": [
    "DELETION",
-   "FINANCE"
+   "FINANCE",
+   "LEDGER"
   ],
   "fields": [
    "actual",
@@ -3292,6 +3328,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -3509,6 +3546,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -3544,6 +3582,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "EXTERNAL_LINK",
    "FILES",
    "FINANCE",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],
@@ -3822,6 +3861,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -3851,6 +3891,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receiptRef",
    "receipt_ref",
    "scope",
+   "syncShare",
    "type",
    "unitWriter"
   ]
@@ -3864,6 +3905,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -3895,6 +3937,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receipt_ref",
    "receivedDate",
    "scope",
+   "syncShare",
    "type",
    "unitWriter"
   ]
@@ -3909,6 +3952,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
+   "LEDGER",
    "SETTINGS"
   ],
   "fields": [
@@ -3938,6 +3982,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receiptRef",
    "receipt_ref",
    "scope",
+   "syncShare",
    "type",
    "unitWriter"
   ]
@@ -4121,6 +4166,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FILES",
    "FINANCE",
    "GOOGLE_TASKS",
+   "LEDGER",
    "PUSH",
    "SETTINGS"
   ],

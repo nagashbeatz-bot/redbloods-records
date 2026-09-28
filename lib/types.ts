@@ -214,6 +214,10 @@ export type LabelAgreementAllocationLine =
   | { status: "DEFINED"; currency: string; cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number; basisHe: string }
   | { status: "NOT_DEFINED"; currency: string; cashOut: number; reasonHe: string };
 
+/** One Finance clip transaction with its Records / artist split (lib/records-expense-share) — the id lets a roll-up across
+ *  artists count the cash ONCE. artistShare = THIS artist's part; artistsShareTotal = every artist's part together. */
+export interface LabelClipShareTx { txId: string; currency: string; cashOut: number; status: "DEFINED" | "NOT_DEFINED"; recordsShare: number | null; artistShare: number | null; artistsShareTotal: number | null; basisHe: string }
+
 /** An artist's clip agreement totals PER CURRENCY (never added across currencies). */
 export interface LabelAgreementTotals {
   defined: Record<string, { cashOut: number; labelShare: number; artistShare: number; artistShareFundedByLabel: number }>;
@@ -227,6 +231,8 @@ export interface ArtistClipsSummary {
   recoupReasonHe: string;
   /** Owner decision 2026-09-27: the clip agreement allocation (שליו / אבי only) — cash out / label share / artist share funded. */
   agreement: LabelAgreementTotals;
+  /** The artist's Finance clip transactions, each once, with the split — the label page dedups across artists by txId. */
+  shareTransactions: LabelClipShareTx[];
   clips: LabelClipLine[];
 }
 

@@ -82,7 +82,7 @@ const CASES: FamilyCase<W>[] = [
     const p = await planAction({ intentHe: "x", actionId: "CREATE_PROJECT", args: { name: "קרוב אלייך" } }, OWNER, mkDeps(mk().writers).d);
     ok("creating a project whose name already exists shows a duplicate warning in the preview", p.status === "PREVIEW" && JSON.stringify(p.preview).includes("כבר קיים פרויקט באותו שם"));
     // B2 — the Owner classification rule on create (preview shows the type; the stored type matches; verify checks it)
-    for (const [artist, want] of [["שליו טסמה", "לייבל"], ["רוני, שליו טסמה", "לייבל"], ["אבי מולה", "לייבל"], ["אבי מולה; מישהו", "לייבל"], ["נגש ביטס", "לקוח"], ["לקוח חיצוני", "לקוח"], ["שליו", "לקוח"]] as const) {
+    for (const [artist, want] of [["שליו טסמה", "לייבל"], ["רוני, שליו טסמה", "לקוח"], ["אבי מולה", "לייבל"], ["אבי מולה; מישהו", "לקוח"], ["נגש ביטס", "לייבל"], ["לקוח חיצוני", "לקוח"], ["שליו", "לקוח"]] as const) {
       const pv = await planAction({ intentHe: "x", actionId: "CREATE_PROJECT", args: { name: `B2 ${artist}`, artist } }, OWNER, mkDeps(mk().writers).d);
       ok(`B2 CREATE_PROJECT preview shows businessType ${want} for "${artist}"`, pv.status === "PREVIEW" && JSON.stringify(pv.preview).includes(`"businessType"`) && JSON.stringify(pv.preview).includes(want), pv.status === "PREVIEW" ? pv.preview : pv);
       const hh = mk(); const r2 = await fullFlow(mkDeps(hh.writers).d, "CREATE_PROJECT", { name: `B2 ${artist}`, artist }, "מאושר");

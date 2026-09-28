@@ -85,7 +85,7 @@ export const RF_FIELDS: readonly RfField[] = [
   F(BI, "notes", "CANONICAL", "Notes."), F(BI, "created_at", "CANONICAL", "Created."), F(BI, "updated_at", "CANONICAL", "Updated."),
   // ── budget payment (Red Films' own ledger) ──
   F(BP, "id", "CANONICAL", "A payment made against a budget line — REAL money that left the company (Owner canon). Since DB-1 (live 2026-09-27) each payment has exactly ONE linked Finance expense (linked_transaction_id).", { history: "—" }),
-  F(BP, "linked_transaction_id", "CANONICAL", "DB-1 (Owner-approved, live 2026-09-27; uuid UNIQUE → transactions ON DELETE SET NULL): the payment's ONE Finance expense (type expense, שולם, the payment's amount + currency, its date / method, the production's project, scope קליפ, notes [Red Films payment <id>]). Written ONLY by the one shared link writer (compare-and-swap; UNIQUE is the final guard): a new payment links automatically; historical payments by LINK_RF_PAYMENT_TO_FINANCE / LINK_RF_PAYMENTS_FOR_PRODUCTION. A non-clip production → SCOPE_REQUIRED, a clip production without project → PROJECT_REQUIRED, a similar unlinked expense → POSSIBLE_DUPLICATE — the payment stays unlinked and it is reported. The linked expense is owned by the payment (Finance owner RF_PAYMENT: notes only); an edit propagates amount / date / method; a delete removes it. 0 linked at go-live.", { writers: "the shared Red Films → Finance link writer (via the payment insert + the link primitives)", readers: "finance core (RED_FILMS_OUTSIDE_FINANCE counts only unlinked), video view (per payment LINKED / UNLINKED / SCOPE_REQUIRED / PROJECT_REQUIRED), operations, label clips (rfLedgerPaid = unlinked only), Finance ownership" }),
+  F(BP, "linked_transaction_id", "CANONICAL", "DB-1 (Owner-approved, live 2026-09-27; uuid UNIQUE → transactions ON DELETE SET NULL): the payment's ONE Finance expense (type expense, שולם, the payment's amount + currency, its date / method, the production's project, scope קליפ, notes [Red Films payment <id>]). Written ONLY by the one shared link writer (compare-and-swap; UNIQUE is the final guard): a new payment links automatically; historical payments by LINK_RF_PAYMENT_TO_FINANCE / LINK_RF_PAYMENTS_FOR_PRODUCTION. A non-clip production → SCOPE_REQUIRED, a clip production without project → PROJECT_REQUIRED, a similar unlinked expense → POSSIBLE_DUPLICATE — the payment stays unlinked and it is reported. The linked expense is owned by the payment (Finance owner RF_PAYMENT: notes only); an edit propagates amount / date / method; a delete removes it. 0 linked at go-live. Owner decision 2026-09-28 (task 6): once the link is final, the Records clip cost's ARTIST share follows in the artist ledger (the one expense-share writer: 50 / 50 one Records artist, 50 / 25 / 25 Shalev + Avi, NagashBeatz 100 % Records, external party undefined) — Films producing a Records clip is never internal revenue.", { writers: "the shared Red Films → Finance link writer (via the payment insert + the link primitives)", readers: "finance core (RED_FILMS_OUTSIDE_FINANCE counts only unlinked), video view (per payment LINKED / UNLINKED / SCOPE_REQUIRED / PROJECT_REQUIRED), operations, label clips (rfLedgerPaid = unlinked only), Finance ownership" }),
   F(BP, "production_id", "CANONICAL", "Production."), F(BP, "budget_item_id", "CANONICAL", "The budget line paid."),
   F(BP, "amount", "CANONICAL", "Amount (> 0 enforced), in the payment's currency."), F(BP, "currency", "CANONICAL", "Always its budget line's currency (the writer forces it; another currency is refused — no FX)."), F(BP, "payment_date", "CANONICAL", "Paid on."),
   F(BP, "payment_method", "CANONICAL", "ביט / העברה בנקאית / כרטיס אשראי / מזומן …"), F(BP, "notes", "CANONICAL", "Notes."),
@@ -122,7 +122,7 @@ export const RF_FIELDS: readonly RfField[] = [
   F(CI, "category", "CANONICAL", "צילום קליפ / עריכת קליפ / ציוד צילום / תאורה / לוקיישן / דוגמניות / משתתפים / איפור / סטיילינג / הסעות / אוכל / הפקה / אביזרים / אחר."),
   F(CI, "description", "CANONICAL", "Description."), F(CI, "amount", "CANONICAL", "PLANNED amount (planning — never money spent)."), F(CI, "currency", "CANONICAL", "Currency (₪ default)."),
   F(CI, "status", "CANONICAL", "תכנון בלבד (new rows) / הועבר לכספים (claimed by 'העבר לכספים' and KEPT) / שולם (its expense was paid) / בוטל — validated by the writer (400 otherwise, 2026-09-27). A promoted / linked row is provenance, never planning."),
-  F(CI, "linked_transaction_id", "CANONICAL", "The Finance expense the row was promoted into (plan → actual provenance, since 2026-09-27 the row is kept and linked). The 1 older production row points at a transaction that no longer exists (CLIP_ROW_PROMOTED_MISSING_TX)."),
+  F(CI, "linked_transaction_id", "CANONICAL", "The Finance expense the row was promoted into (plan → actual provenance, since 2026-09-27 the row is kept and linked; the label page counts ONLY the Finance expense, once, when paid — the planning row is never a second cost, task 6). The 1 older production row points at a transaction that no longer exists (CLIP_ROW_PROMOTED_MISSING_TX)."),
   F(CI, "notes", "CANONICAL", "Notes."), F(CI, "created_at", "CANONICAL", "Created."), F(CI, "updated_at", "CANONICAL", "Updated."),
 ];
 
@@ -322,13 +322,13 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts", "lib/writes/rf-finance-link.ts", "app/api/red-films/budget-payments/[paymentId]/route.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/rf-finance-link.ts": "99e21fccf0c24d71c94870b907e0f72ab12853a1fe255bfca43a4a9d3e072472",
+  "lib/writes/rf-finance-link.ts": "2a4336dddbb80b89eb5553395558e6c7432c26bd607d63ce7501dbae0a3d122d",
   "app/api/red-films/budget-payments/[paymentId]/route.ts": "d0986855ef6d1d2e5eaffa7858101c3233d0bb7ad2abcc6c443185fdde5c657b",
-  "lib/writes/redfilms.ts": "a5c6a7523840029624bf88071c5a5636b6a2fd64787aee3640cd1e1343e89c7b",
+  "lib/writes/redfilms.ts": "02d4b9e3ea7e0488401b719018715c950a55c699b765a9c7f66029fa3a81f436",
   "lib/writes/clip.ts": "e37ff6bd9b0fc9b0e1b09bbf0a724c6dea5e5513562ca390998fb39eeab2edbc",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",
-  "lib/label-clips.ts": "f69745076431936c8cca1237f4e34557eb7f9a6b443765eebf55de91043ac7c4",
+  "lib/label-clips.ts": "bc82ac926a2b6d0a0735aa0dbc9a090ad30957dd098b23f5340188e16a2289a4",
   "app/api/projects/[id]/clip/send/route.ts": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
   "app/api/projects/[id]/clip/route.ts": "b97d7b15f72005dd63bde526336aa8dc536f3d5155d4d446a1b79060f28d5f15",
   "app/api/projects/[id]/clip/payments/route.ts": "702daa9ca700179488d3427137dbe4ffc3daaf2e015b8dacc0acff965aaae3d5",

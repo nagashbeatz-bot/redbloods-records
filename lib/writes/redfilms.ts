@@ -267,6 +267,8 @@ export async function promoteClipItem(id: string, date: string): Promise<{ kind:
   const { data: linked, error: linkErr } = await supabase.from("clip_items").update({ linked_transaction_id: txId, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (linkErr) throw new Error(`the expense was created (${txId}) but the planning row was not linked: ${linkErr.message}`);
   touchProject(item.project_id as string).catch(() => {});
+  // created "לא שולם": the artist's share starts only when it is paid (the Finance edit syncs it) — task 6
+  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(txId);
   return { kind: "ok", transaction: tx as Record<string, unknown>, clipItem: linked as Record<string, unknown> };
 }
 

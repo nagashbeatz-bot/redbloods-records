@@ -100,6 +100,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       // NOTE: only adds new artists — never removes clients automatically.
       if (field === "artist") {
         if (value?.trim()) upsertArtistsFromProject(value).catch(() => {});
+        // the credits decide who carries this project's Records expenses (task 6) → the artist shares follow
+        await (await import("@/lib/writes/artist-expense-share")).syncProjectExpenseShares(id).catch(() => 0);
       }
 
       return NextResponse.json({ ok: true });
@@ -171,6 +173,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     // Sync artist changes to clients table (fire-and-forget)
     // NOTE: only adds new artists — never removes clients automatically.
+    if (artist !== undefined && artist !== oldArtistFull) await (await import("@/lib/writes/artist-expense-share")).syncProjectExpenseShares(id).catch(() => 0);
     if (artist !== undefined && artist?.trim()) {
       upsertArtistsFromProject(artist).catch(() => {});
     }

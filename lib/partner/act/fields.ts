@@ -58,6 +58,7 @@ export const ACCEPTED_FIELD_CLASSES: Readonly<Record<string, { kind: AcceptedFie
   addToCalendar: { kind: "CONTROL_FLAG", noteEn: "also create a calendar event (external effect)" },
   completeIfAllowed: { kind: "CONTROL_FLAG", noteEn: "PATCH /api/projects/[id] {field:status,value:הושלם,completeIfAllowed:true} (Victor hand-off 'projectToo', B5): the server rule completeProjectIfAllowed — refused (409) for בוטל / בהשהייה / already הושלם, never a blind status write" },
   removeFromCalendar: { kind: "CONTROL_FLAG", noteEn: "also delete the calendar event (external effect)" },
+  syncShare: { kind: "CONTROL_FLAG", noteEn: "server-internal (never from a request body): false = the caller syncs the artist expense share itself once the Finance row is final (Red Films payment link after its CAS) — task 6" },
   idempotencyKey: { kind: "CONTROL_FLAG", noteEn: "artist payment retry key (net model 2026-09-28): the same key never writes a second Finance row / ledger payment (stored only inside the Finance row's artist_payment: marker)" },
   allowDuplicate: { kind: "CONTROL_FLAG", noteEn: "the Owner confirmed a SEPARATE artist payment although a similar one exists (the duplicate guard answered 409 DUPLICATE first)" },
   closeShow: { kind: "CONTROL_FLAG", noteEn: "close the show in the same save (finance / ledger effects)" },

@@ -17,7 +17,7 @@
  * expected, receivable, committed and ideas never merge; historical months are recorded-only;
  * recording discipline starts 2026-09-23; orphan price settings never count as money.
  */
-import { unitBalanceFromFinanceRaw } from "./unit-view";
+import { expenseSharesFromFinanceRaw, unitBalanceFromFinanceRaw } from "./unit-view";
 import { addDays, diffDays, ilYmd, parseYmd } from "../../coo/dates";
 import { EXPENSE_FULLY_PAID_STATUS, isCancelledStatus, isExpenseFullyPaidStatus, isReceivedStatus } from "../../finance/classify";
 import { normalizeCurrency } from "../../finance/currency";
@@ -430,6 +430,14 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   if (raw.ledger.every((l) => l.id !== undefined)) {
     const rec = unitBalanceFromFinanceRaw(raw).reconciliation;
     sig("ARTIST_PAYMENT_WITHOUT_FINANCE", "FACT", rec.ledgerPaymentsWithoutFinance.length, rec.ledgerPaymentsWithoutFinance.map((p) => ({ sourceType: "label_ledger" as const, sourceId: p.ledgerEntryId, reasonCode: "LEDGER_PAYMENT_WITHOUT_FINANCE_PAYMENT" })), rec.ledgerPaymentsWithoutFinance.reduce((m, p) => add(m, "₪", p.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
+    // task 6 (2026-09-28): a paid Records expense whose artist share is missing / wrong / duplicated in the ledger, and a
+    // paid Records expense whose split is UNDEFINED (external party / no project) — the Owner decides, never guessed
+    if (raw.ledger.every((l) => l.note !== undefined)) {
+      const sh = expenseSharesFromFinanceRaw(raw);
+      const bad = sh.findings.filter((f) => f.code !== "SHARE_UNDEFINED"), und = sh.findings.filter((f) => f.code === "SHARE_UNDEFINED");
+      sig("ARTIST_EXPENSE_SHARE_MISMATCH", "FACT", bad.length, bad.map((f) => ({ sourceType: "transaction" as const, sourceId: f.transactionId ?? "", reasonCode: f.code })), bad.reduce((m, f) => add(m, "₪", f.expected ?? 0), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
+      sig("ARTIST_EXPENSE_SHARE_UNDEFINED", "UNKNOWN", und.length, und.map((f) => ({ sourceType: "transaction" as const, sourceId: f.transactionId ?? "", reasonCode: "SHARE_UNDEFINED" })), {} as CurrencyTotals, "NEEDS_OWNER_REVIEW");
+    }
     sig("FINANCE_ARTIST_PAYMENT_WITHOUT_LEDGER", "FACT", rec.financePaymentsWithoutLedger.length, rec.financePaymentsWithoutLedger.map((p) => ({ sourceType: "transaction" as const, sourceId: p.transactionId, reasonCode: "FINANCE_ARTIST_PAYMENT_WITHOUT_LEDGER_PAYMENT" })), rec.financePaymentsWithoutLedger.reduce((m, p) => add(m, "₪", p.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
   }
   sig("POSSIBLE_OBLIGATION_OVERLAP", "HYPOTHESIS", possibleOverlaps.length, possibleOverlaps.flatMap((e) => e.evidence), possibleOverlaps.reduce((m, e) => add(m, e.currency, e.amount), {} as CurrencyTotals));

@@ -29,7 +29,8 @@ import { isLabelProject } from "../../project-classification";
 import { presenceFactsOf } from "../../push-presence-pure";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 import { clipMoneyByCurrency, clipRecoupContribution } from "../../clip-rf-money-pure";
-import { agreementArtistOf, allocatePaidCost, allocationTotalsByCurrency, costCategoryOfScope, isCollabText, AGREEMENT_COST_RULES, AGREEMENT_SHOW_RULE, AGREEMENT_MEDIA_RULE, AGREEMENT_CYCLE_ACCOUNTING_HE, AGREEMENT_RULES_VERSION, mediaAgreementSplit, type Allocation } from "../../label-agreements";
+import { agreementArtistOf, AGREEMENT_COST_RULES, AGREEMENT_SHOW_RULE, AGREEMENT_MEDIA_RULE, AGREEMENT_CYCLE_ACCOUNTING_HE, AGREEMENT_RULES_VERSION, mediaAgreementSplit } from "../../label-agreements";
+import { expenseShareOf, EXPENSE_SHARE_EXCEPTIONS, RECORDS_EXPENSE_SHARE_VERSION, type ExpenseShare } from "../../records-expense-share";
 import { isExpenseFullyPaidStatus } from "../../finance/classify";
 import { computeOpenCycle, cycleBounds, currentCycleIndex, openingOfSnapshot, settlementResultOf, SETTLEMENT_RESULT_HE, type ComputedCycle } from "../../artist-balance-cycles-pure";
 
@@ -191,19 +192,38 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const clipProds = (c.ops?.redFilms?.rows ?? []).filter((r) => r.productionType === "קליפ" && r.status !== "בוטל" && ((r.projectId && artistProjIds.has(r.projectId)) || tokens(r.artistName).some((t) => low(t) === low(name))));
   const clipProjIds = new Set(clipProds.map((r) => r.projectId).filter((x): x is string => !!x));
   const clipSettings = (fin?.raw.financeSettings ?? []).filter((s) => clipProjIds.has(s.projectId)).map((s) => s.value as Record<string, unknown> | null);
-  // ── the artist agreement (Owner decision 2026-09-27, lib/label-agreements — the ONE rule; שליו / אבי only) ──
+  // ── the Records / artist expense split (Owner decision 2026-09-28, lib/records-expense-share — the ONE rule) ──
+  // Finance cash (the full amount Records paid) ≠ the Records share ≠ THIS artist's share (an artist expense in the ledger).
   const agreementArtist = agreementArtistOf({ id: artistId });
-  const paidExpenses = fin ? fin.raw.transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.status) && !!t.projectId) : [];
-  const clipAllocs: Allocation[] = paidExpenses.filter((t) => t.expenseScope === "קליפ" && clipProjIds.has(t.projectId!)).map((t) => {
-    const prod = clipProds.find((r) => r.projectId === t.projectId) ?? null;
-    return allocatePaidCost({ artist: prod && isCollabText(prod.artistName) ? { name: prod.artistName } : { id: artistId, name }, category: "CLIP", amount: Number(t.amount) || 0, currency: t.currency ?? "₪", paid: true });
-  });
-  const labelProjIds = new Set(projects.filter((p) => p.labelWork).map((p) => p.id));
-  const otherAllocs: Allocation[] = paidExpenses.filter((t) => labelProjIds.has(t.projectId!) && t.expenseScope !== "קליפ")
-    .map((t) => allocatePaidCost({ artist: { id: artistId, name }, category: costCategoryOfScope(t.expenseScope), amount: Number(t.amount) || 0, currency: t.currency ?? "₪", paid: true }));
-  const clipTotals = allocationTotalsByCurrency(clipAllocs);
-  const otherTotals = allocationTotalsByCurrency(otherAllocs);
-  const fundedIls = clipTotals.defined["₪"]?.artistShareFundedByLabel ?? 0;
+  const artistTextOf = new Map((fin?.raw.projects ?? []).map((p) => [p.id, p.artist]));
+  const artistProjSet = new Set(projects.map((p) => p.id));
+  type ShareSum = { cashOut: number; recordsShare: number; artistShare: number };
+  const shareOfTx = (t: NonNullable<typeof fin>["raw"]["transactions"][number]): ExpenseShare => expenseShareOf({ id: t.id, type: t.type, amount: t.amount, currency: t.currency, paymentStatus: t.status, businessUnit: t.businessUnit ?? null, category: t.category, expenseScope: t.expenseScope, showId: t.showId ?? null, showMoneyRole: t.showMoneyRole ?? null, projectId: t.projectId }, t.projectId ? { artistText: artistTextOf.get(t.projectId) ?? null } : null);
+  // the artist's paid Records expenses: on the artist's projects, or an Owner exception naming the artist
+  const paidExpenses = fin ? fin.raw.transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.status) && ((t.projectId && (artistProjSet.has(t.projectId) || clipProjIds.has(t.projectId))) || ((e) => !!e && "artistId" in e && e.artistId === artistId)(EXPENSE_SHARE_EXCEPTIONS[t.id]))) : [];
+  const sumShares = (rows: typeof paidExpenses) => {
+    const defined: Record<string, ShareSum> = {}; const notDefined: Record<string, { cashOut: number; reasons: string[] }> = {};
+    const lines: Array<{ transactionId: string; date: string | null; scope: string | null; cashOut: number; currency: string; status: string; recordsShare: number | null; artistShare: number | null; basisHe: string }> = [];
+    for (const t of rows) {
+      const s = shareOfTx(t); const cur = t.currency || "₪"; const amt = r2(Number(t.amount) || 0);
+      if (s.status === "NOT_APPLICABLE") continue;
+      if (s.status === "DEFINED") {
+        const mine = s.artists.find((a) => a.artistId === artistId)?.amount ?? 0;
+        const d = (defined[cur] ??= { cashOut: 0, recordsShare: 0, artistShare: 0 }); d.cashOut = r2(d.cashOut + amt); d.recordsShare = r2(d.recordsShare + s.recordsAmount); d.artistShare = r2(d.artistShare + mine);
+        lines.push({ transactionId: t.id, date: t.date, scope: t.expenseScope, cashOut: amt, currency: cur, status: `${s.basis}:${s.kind}`, recordsShare: s.recordsAmount, artistShare: mine, basisHe: s.basisHe });
+      } else {
+        const n = (notDefined[cur] ??= { cashOut: 0, reasons: [] }); n.cashOut = r2(n.cashOut + amt); if (!n.reasons.includes(s.reasonHe)) n.reasons.push(s.reasonHe);
+        lines.push({ transactionId: t.id, date: t.date, scope: t.expenseScope, cashOut: amt, currency: cur, status: s.status, recordsShare: null, artistShare: null, basisHe: s.reasonHe });
+      }
+    }
+    return { defined, notDefined, lines: lines.slice(0, 40), linesTotal: lines.length };
+  };
+  const clipTotals = sumShares(paidExpenses.filter((t) => t.expenseScope === "קליפ"));
+  const otherTotals = sumShares(paidExpenses.filter((t) => t.expenseScope !== "קליפ"));
+  const fundedIls = clipTotals.defined["₪"]?.artistShare ?? 0;
+  // what the ledger records as this artist's expense shares (linked rows), next to the rule — the reconciliation is the
+  // Finance Brain signal ARTIST_EXPENSE_SHARE_MISMATCH
+  const ledgerExpenseShares = ledger.filter((e) => e.entryType === "הוצאות").reduce((s, e) => r2(s + (Number(e.amount) || 0)), 0);
   // the ACCOUNTING = the bi-monthly cycle (Owner model 2026-09-27): the ledger's income (shows, media share), expenses (e.g.
   // the clip share the Owner recorded) and payments meet in the cycle balance. Ledger rows are matched to "clip" / "media"
   // only by their description (TEXT_MATCH) — as information, never as a link between a media income and a specific clip.
@@ -213,9 +233,15 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     version: AGREEMENT_RULES_VERSION,
     covered: !!agreementArtist,
     scopeRule: "Owner decision 2026-09-27: these rules apply ONLY to שליו טסמה and אבי מולה — never inferred for any other artist",
-    rules: agreementArtist ? { production: AGREEMENT_COST_RULES.PRODUCTION.basisHe, mixMaster: AGREEMENT_COST_RULES.MIX_MASTER.basisHe, clip: AGREEMENT_COST_RULES.CLIP.basisHe, show: AGREEMENT_SHOW_RULE.basisHe, other: "כל קטגוריה אחרת — NOT_DEFINED (לא מנחשים)" } : "NOT_DEFINED — no agreement recorded for this artist",
-    clips: { byCurrency: clipTotals.defined, notDefined: clipTotals.notDefined, basis: "ACTUAL PAID Finance clip expenses (שולם) on the artist's clip productions' projects — never the budget, never the price" },
-    mixMasterAndOther: { byCurrency: otherTotals.defined, notDefined: otherTotals.notDefined, basis: "paid Finance expenses on the artist's LABEL projects: מיקס / מאסטר = 100 % label (artist 0); a scope with no Owner rule is NOT_DEFINED. No Finance scope marks music PRODUCTION (e.g. Victor's salary is a company cost, not per artist) — the production rule (100 % label) creates no artist balance anyway" },
+    expenseRuleVersion: RECORDS_EXPENSE_SHARE_VERSION,
+    rules: {
+      expenses: "Owner decision 2026-09-28: EVERY real Records expense of a Records artist (clip, promotion, photo, distribution, PR, vendor, other) — one Records artist: 50 % Records / 50 % the artist; Shalev + Avi together: 50 % Records / 25 % each; NagashBeatz credited: 100 % Records (no automatic artist charge); a Records artist next to an EXTERNAL host / client / guest (e.g. בלאגן): NO automatic split — needs a specific agreement / Owner decision. Explicit Owner exceptions win (ACUM 400 = 100 % Shalev; Principe YouTube 3 × 100 = 100 % Records). Finance keeps the FULL amount; the artist's part is an expense row in the artist ledger.",
+      notArtistExpenses: "show money (DJ / rehearsals — inside the show's net split), payments to an artist (שכר אמן), mix / master (100 % label, a Studio capability)",
+      production: AGREEMENT_COST_RULES.PRODUCTION.basisHe, mixMaster: AGREEMENT_COST_RULES.MIX_MASTER.basisHe, show: AGREEMENT_SHOW_RULE.basisHe,
+    },
+    clips: { byCurrency: clipTotals.defined, notDefined: clipTotals.notDefined, lines: clipTotals.lines, basis: "ACTUAL PAID Finance clip expenses (שולם) of the artist's projects, each transaction once — cashOut = what Records paid, recordsShare = Records' economic part, artistShare = THIS artist's part" },
+    otherExpenses: { byCurrency: otherTotals.defined, notDefined: otherTotals.notDefined, lines: otherTotals.lines, basis: "the other paid Records expenses of the artist's projects (+ Owner exceptions naming the artist) — the same rule" },
+    ledgerExpenseSharesRecordedIls: ledgerExpenseShares,
     dimensions: "cashOut (what Redbloods paid — Finance truth) ≠ labelShare (the label's economic share) ≠ artistShare ≠ artistShareFundedByLabel (Redbloods paid the artist's share; an artist expense in the cycle accounting — it is NOT label investment)",
     media: agreementArtist ? { rule: AGREEMENT_MEDIA_RULE.basisHe, meaning: "media income is INCOME split 50 / 50 — a separate component of the cycle, never the repayment of a specific clip",
       receivedSplit: mediaAgreementSplit({ id: artistId }, r2(received.reduce((s, m) => s + (m.recordType === "reversal" ? -1 : 1) * (m.grossAmount ?? 0), 0))),

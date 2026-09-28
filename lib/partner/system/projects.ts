@@ -16,7 +16,7 @@ export const PROJECT_FIELDS: readonly ProjectField[] = [
   { field: "artist", meaning: "Free-text artist name(s), several separated by , ، ;", writtenBy: "Owner, client rename (rewrites it), label conversion", cls: "CANONICAL", lifecycle: "The ONLY link to clients and (outside releases) to label artists — by name", sunnyReads: true },
   { field: "status", meaning: "Work state", writtenBy: "Owner (status menu / drawer; accepting the Steven-completion suggestion), a Victor hand-off 'complete the project too' (server rule: refused for בוטל / בהשהייה / already הושלם), client restore, sending to Steven (במיקס)", cls: "CANONICAL", lifecycle: "a REAL transition into הושלם stamps the end date (a re-save keeps it); any other status clears it; not validated on the server; Steven completion never changes it (suggestion only, Owner decision 2026-09-27)", sunnyReads: true },
   { field: "project_type", meaning: "What kind of work", writtenBy: "Owner, clip seeding (שיר → שיר + קליפ), label creation", cls: "CANONICAL", lifecycle: "Album / EP open the album center; רידים drives riddim mix mode; Steven accepts only שיר / רידים / אלבום / EP", sunnyReads: true },
-  { field: "project_business_type", meaning: "לקוח or לייבל — the ONE classification field (2026-09-27)", writtenBy: "Create (UI, proposal conversion, Sunny) by the Owner rule: שליו טסמה / אבי מולה credited → לייבל, else לקוח; label conversion / label creation; the Owner's explicit classification control", cls: "CANONICAL", lifecycle: "the only classifier for every screen and Sunny; never reclassified automatically — a stored לקוח the Owner rule would call לייבל is the signal MISMATCH_OWNER_RULE (fixed only by the Owner)", sunnyReads: true },
+  { field: "project_business_type", meaning: "לקוח or לייבל — the ONE classification field (2026-09-27)", writtenBy: "Create (UI, proposal conversion, Sunny) by the Owner rule: NagashBeatz credited → לייבל; שליו טסמה / אבי מולה credited with nobody external (solo or both) → לייבל; a Records artist next to an external party (a guest at an external host, e.g. בלאגן) → no rule (לקוח default, the Owner decides) — Owner decision 2026-09-28; else לקוח; label conversion / label creation; the Owner's explicit classification control", cls: "CANONICAL", lifecycle: "the only classifier for every screen and Sunny; never reclassified automatically — a stored לקוח the Owner rule would call לייבל is the signal MISMATCH_OWNER_RULE (fixed only by the Owner)", sunnyReads: true },
   { field: "deadline", meaning: "Target date", writtenBy: "Owner, the Partner deadline action", cls: "CANONICAL", lifecycle: "Overdue has ONE rule (valid date before today in Israel; never for הושלם / בוטל / בהשהייה / hidden); a value that is not a valid date is never overdue and is reported as unparseable", sunnyReads: true },
   { field: "start_date", meaning: "When work started", writtenBy: "Create (today), the session writer on the first session (only when empty), manual", cls: "DERIVED", lifecycle: "Auto-filled; editable; no page-load write (the legacy drawer backfill is retired, 2026-09-27)", sunnyReads: true },
   { field: "end_date", meaning: "Actual completion date", writtenBy: "Server on a status change", cls: "DERIVED", lifecycle: "Stamped (Israel day) only on a real transition into הושלם; kept on a re-save; cleared by any other status", sunnyReads: true },
@@ -137,7 +137,7 @@ export const PROJECT_SIGNAL_MODEL = [
   { code: "WAITING_FEEDBACK / WAITING_VERSION", kind: "CANONICAL_FACT", note: "from the project send / receive log" },
   { code: "CLIP_IN_PRODUCTION / RELEASE_TARGET_PASSED / NO_SESSIONS / COMPLETED_DELIVERY_OPEN", kind: "DERIVED_SIGNAL", note: "no session ≠ problem (some work needs none)" },
   { code: "LABEL_CLASSIFICATION_UNCLEAR", kind: "UNKNOWN", note: "no stored business type — context for the Owner (a roster-name match is evidence only)" },
-  { code: "MISMATCH_OWNER_RULE", kind: "DERIVED_SIGNAL", note: "stored לקוח but the Owner rule (שליו טסמה / אבי מולה credited) says לייבל — never fixed automatically; the Owner's explicit classification fixes it" },
+  { code: "MISMATCH_OWNER_RULE", kind: "DERIVED_SIGNAL", note: "stored לקוח but the Owner rule says לייבל (NagashBeatz credited, or שליו / אבי with nobody external — a guest at an external host never fires it, Owner decision 2026-09-28) — never fixed automatically; the Owner's explicit classification fixes it" },
   { code: "DEADLINE_UNPARSEABLE", kind: "DERIVED_SIGNAL", note: "the stored deadline is not a valid date — overdue cannot be known (never counted overdue)" },
   { code: "WAITING_FOR_CLIENT / WAITING_FOR_ARTIST", kind: "UNKNOWN", note: "not computed anywhere — only the Owner can say (teach as PROJECT_BLOCKER)" },
   { code: "PRIORITY", kind: "OWNER_POLICY", note: "no universal ranking: quality before speed, protect label releases, stale is not urgent" },
@@ -177,11 +177,11 @@ export const PROJECT_INTEGRITY = {
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
-  "lib/types.ts": "056b3e39e3be2aa4024a70c508e759a2716edfcaa24b2e6238bd31df817eb606",
+  "lib/types.ts": "65e4fca5a29367962f26fa8861f2751f2d2fba8fdf6e4881f6eba0b0a3f809e6",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
-  "app/api/projects/[id]/route.ts": "07896b6ff750d23a888f119e04a94b2d1a4cf9929d921e995c501d95ac8b3e74",
+  "app/api/projects/[id]/route.ts": "ba1f7bb05aae7226d9d9dffa8cd2445cc9b8e97aa41e3fd539c2e4cd6bee0f51",
   "lib/payment-status.ts": "99ed0806205a2fbaca511835f1cc1adfa3f78713b00026fa9f2c26d2a29b05e3",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/finance/classify.ts": "737c8f69b79f2b08606b78c26e9a3d4f0312f0b723edd68deea2ab02cd87aefd",

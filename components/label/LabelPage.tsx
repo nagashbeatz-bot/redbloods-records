@@ -170,6 +170,9 @@ export default function LabelPage() {
   // Clips: fetch per roster artist and aggregate PER CURRENCY (B3, Owner canon 2026-09-27): A client clip price,
   // B planned budget, C actual cost (Finance, paid), Red Films ledger — four separate numbers, never added together.
   // The artist recoup of clips is NOT_DEFINED (no artist agreement rule) — never 50 % of the budget.
+  // No double count (task 6, 2026-09-28): a production credited to two artists comes back from BOTH — it is kept once
+  // (by production id); C and its Records / artist split are summed per Finance TRANSACTION (by txId), each once, with
+  // every artist's own share added (lib/records-expense-share is the one rule; this page only adds up).
   useEffect(() => {
     const roster = artists ?? [];
     const empty = (): ArtistClipsSummary["totals"] => ({ count: 0, byCurrency: {} });
@@ -179,26 +182,44 @@ export default function LabelPage() {
       .then((results: (ArtistClipsSummary | null)[]) => {
         if (!alive) return;
         const t = empty();
-        const lines: ClipLine[] = [];
-        // the agreement allocation (lib/label-agreements) summed PER CURRENCY — per-artist results, already allocated
-        const agreement: ArtistClipsSummary["agreement"] = { defined: {}, notDefined: {} };
+        const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+        const byProd = new Map<string, ClipLine>();
+        const byTx = new Map<string, { currency: string; cashOut: number; status: "DEFINED" | "NOT_DEFINED"; recordsShare: number; artistFunded: number; basisHe: string }>();
         results.forEach((res, i) => {
           if (!res) return;
-          for (const [cur, a] of Object.entries(res.agreement?.defined ?? {})) {
-            const x = (agreement.defined[cur] ??= { cashOut: 0, labelShare: 0, artistShare: 0, artistShareFundedByLabel: 0 });
-            x.cashOut += a.cashOut; x.labelShare += a.labelShare; x.artistShare += a.artistShare; x.artistShareFundedByLabel += a.artistShareFundedByLabel;
+          for (const c of res.clips) {
+            const seen = byProd.get(c.id);
+            if (seen) { if (!seen.artistName.includes(roster[i].name)) seen.artistName = `${seen.artistName}, ${roster[i].name}`; }
+            else byProd.set(c.id, { ...c, artistName: roster[i].name });
           }
-          for (const [cur, a] of Object.entries(res.agreement?.notDefined ?? {})) {
-            const x = (agreement.notDefined[cur] ??= { cashOut: 0, reasons: [] });
-            x.cashOut += a.cashOut; for (const r of a.reasons) if (!x.reasons.includes(r)) x.reasons.push(r);
+          for (const x of res.shareTransactions ?? []) {
+            const cur = byTx.get(x.txId);
+            if (cur) { cur.artistFunded = r2(cur.artistFunded + (x.artistShare ?? 0)); continue; }
+            byTx.set(x.txId, { currency: x.currency, cashOut: x.cashOut, status: x.status, recordsShare: x.recordsShare ?? 0, artistFunded: x.artistShare ?? 0, basisHe: x.basisHe });
           }
-          t.count += res.totals.count;
-          for (const [cur, b] of Object.entries(res.totals.byCurrency ?? {})) {
-            const x = (t.byCurrency[cur] ??= { clientClipPrice: 0, plannedBudget: 0, actualCostPaid: 0, rfLedgerPaid: 0 });
-            x.clientClipPrice += b.clientClipPrice; x.plannedBudget += b.plannedBudget; x.actualCostPaid += b.actualCostPaid; x.rfLedgerPaid += b.rfLedgerPaid;
-          }
-          for (const c of res.clips) lines.push({ ...c, artistName: roster[i].name });
         });
+        const lines = [...byProd.values()];
+        t.count = lines.length;
+        for (const c of lines) {
+          const add = (cur: string) => (t.byCurrency[cur] ??= { clientClipPrice: 0, plannedBudget: 0, actualCostPaid: 0, rfLedgerPaid: 0 });
+          if (c.clientClipPrice != null && c.clientClipCurrency) add(c.clientClipCurrency).clientClipPrice = r2(add(c.clientClipCurrency).clientClipPrice + c.clientClipPrice);
+          add(c.currency).plannedBudget = r2(add(c.currency).plannedBudget + c.plannedBudget);
+          for (const [cur, v] of Object.entries(c.rfLedgerPaid ?? {})) add(cur).rfLedgerPaid = r2(add(cur).rfLedgerPaid + v);
+        }
+        // C + the split, each Finance transaction once
+        const agreement: ArtistClipsSummary["agreement"] = { defined: {}, notDefined: {} };
+        for (const x of byTx.values()) {
+          const b = (t.byCurrency[x.currency] ??= { clientClipPrice: 0, plannedBudget: 0, actualCostPaid: 0, rfLedgerPaid: 0 });
+          b.actualCostPaid = r2(b.actualCostPaid + x.cashOut);
+          if (x.status === "DEFINED") {
+            const d = (agreement.defined[x.currency] ??= { cashOut: 0, labelShare: 0, artistShare: 0, artistShareFundedByLabel: 0 });
+            d.cashOut = r2(d.cashOut + x.cashOut); d.labelShare = r2(d.labelShare + x.recordsShare);
+            d.artistShare = r2(d.artistShare + x.artistFunded); d.artistShareFundedByLabel = r2(d.artistShareFundedByLabel + x.artistFunded);
+          } else {
+            const n = (agreement.notDefined[x.currency] ??= { cashOut: 0, reasons: [] });
+            n.cashOut = r2(n.cashOut + x.cashOut); if (!n.reasons.includes(x.basisHe)) n.reasons.push(x.basisHe);
+          }
+        }
         setClips({ totals: t, lines, agreement });
       });
     return () => { alive = false; };
@@ -274,11 +295,12 @@ export default function LabelPage() {
 
   const busy = state === "loading";
 
-  // Top financial KPIs — LABEL P&L only. Owner decision 2026-09-27 (lib/label-agreements): three different numbers, never
-  // merged — the CASH Redbloods paid for clips (Finance truth), the LABEL's economic share of it, and the ARTIST's share the
-  // label funded (it enters the accounting with the artist — it is NOT label investment). For שליו / אבי a clip is 50 / 50
-  // of the actual paid cost. A paid clip cost with NO agreement rule (another artist / a collab) has no allocation: it is
-  // counted in full as a company cost and shown apart, never guessed as 50 / 50. ₪ only (the P&L is ₪-only).
+  // Top financial KPIs — LABEL P&L only. Three different numbers, never merged — the CASH Redbloods paid for clips (Finance
+  // truth), the LABEL's economic share of it, and the ARTIST's share the label funded (it enters the accounting with the
+  // artist — it is NOT label investment). The split is lib/records-expense-share (Owner decision 2026-09-28): one Records
+  // artist 50 / 50, Shalev + Avi 50 / 25 / 25, NagashBeatz 100 % Records, a Records artist next to an external party undefined.
+  // A paid clip cost with NO defined split is counted in full as a company cost and shown apart, never guessed as 50 / 50.
+  // ₪ only (the P&L is ₪-only).
   const finReady = shows != null && clips != null && media != null;
   const clipCashOut = clips?.totals.byCurrency["₪"]?.actualCostPaid ?? 0;
   const clipLabelShare = clips?.agreement.defined["₪"]?.labelShare ?? 0;
@@ -414,7 +436,7 @@ export default function LabelPage() {
           <span>עלות קליפים ששולמה בפועל: <b style={{ color: TEXT }}>{money(clipCashOut)}</b></span>
           <span>חלק הלייבל: <b style={{ color: TEXT }}>{money(clipLabelShare)}</b></span>
           <span>חלק האמן שמומן ע״י הלייבל (בהתחשבנות מול האמן): <b style={{ color: "#F59E0B" }}>{money(clipArtistFunded)}</b></span>
-          {clipNotAllocated > 0 && <span>ללא חוק חלוקה (נספר במלואו כעלות חברה): <b style={{ color: "#F87171" }}>{money(clipNotAllocated)}</b></span>}
+          {clipNotAllocated > 0 && <span>ללא חלוקה מוגדרת — דורש החלטת בעלים (נספר במלואו כעלות חברה): <b style={{ color: "#F87171" }}>{money(clipNotAllocated)}</b></span>}
         </div>
       )}
 
