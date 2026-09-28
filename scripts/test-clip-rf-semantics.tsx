@@ -277,10 +277,13 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
   // ── 9. leftovers ─────────────────────────────────────────────────────────────────────────────────────────────────
   section("9. Leftovers from earlier phases");
   reset({ transactions: [{ id: "t1", project_id: "p1", type: "expense", payment_status: "לא שולם" }, { id: "t2", project_id: "p1", type: "expense", payment_status: "לא שולם" }], clip_items: [{ id: "a", linked_transaction_id: "t1", status: "הועבר לכספים" }, { id: "b", linked_transaction_id: "t2", status: "הועבר לכספים" }] });
-  await FIN.updateTransactionRecord("t1", { paymentStatus: "התקבל" });
+  let expRecv: unknown = null;
+  try { await FIN.updateTransactionRecord("t1", { paymentStatus: "התקבל" }); } catch (e) { expRecv = e; }
   await FIN.updateTransactionRecord("t2", { paymentStatus: "שולם" });
   await tick();
-  ok("the clip row is marked שולם only for ACTUAL money (an expense 'התקבל' is not paid — isActualMoneyTx)", T("clip_items")[0].status === "הועבר לכספים" && T("clip_items")[1].status === "שולם");
+  ok("the clip row is marked שולם only for ACTUAL money; an expense 'התקבל' is refused by the patch validation (A8) — nothing written", expRecv instanceof FIN.FinanceInputError && T("transactions")[0].payment_status === "לא שולם" && T("clip_items")[0].status === "הועבר לכספים" && T("clip_items")[1].status === "שולם");
+  await FIN.updateTransactionRecord("t2", { paymentStatus: "לא שולם" });
+  ok("A9: the expense back to 'לא שולם' → its clip row back to 'הועבר לכספים' (awaited, both directions)", T("clip_items")[1].status === "הועבר לכספים");
   reset({ settings: [{ key: "finance_p1", value: { clipAgreedPrice: 3000, clipProductionId: "rf1", agreedPrice: 5 } }] });
   await FIN.setFinanceSettings("p1", { agreedPrice: 7000, currency: "$" });
   ok("setFinanceSettings merges with compare-and-swap (the clip price / marker survive)", JSON.stringify(T("settings")[0].value) === JSON.stringify({ clipAgreedPrice: 3000, clipProductionId: "rf1", agreedPrice: 7000, currency: "$" }) && log.includes("update:settings(cas)"), T("settings")[0].value);

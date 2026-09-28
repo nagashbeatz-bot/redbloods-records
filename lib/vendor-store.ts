@@ -328,15 +328,16 @@ export async function getVictorSettings(): Promise<VendorSettings> {
   return { ...DEFAULT_SETTINGS, ...(data.value as Partial<VendorSettings>) };
 }
 
+// A3 (Final Hardening 2026-09-29): every Victor settings write goes through the compare-and-swap merge
+// (lib/writes/settings-merge) — a failed read / write THROWS (the route answers with the error, never "saved"), and a
+// failed read can never be mistaken for "empty" and overwrite the other months' Owner statements.
+const mergeVictorKey = async (key: string, patch: Record<string, unknown> | ((cur: Record<string, unknown>) => Record<string, unknown>)) => {
+  const { mergeSettingsKey } = await import("@/lib/writes/settings-merge");
+  return mergeSettingsKey(key, patch, 3, supabase as unknown as import("@/lib/writes/settings-merge").SettingsMergeClient);
+};
+
 export async function updateVictorSettings(fields: Partial<VendorSettings>): Promise<void> {
-  const current = await getVictorSettings();
-  const merged  = { ...current, ...fields };
-  await supabase
-    .from("settings")
-    .upsert(
-      { key: SETTINGS_KEY, value: merged as unknown as Record<string, unknown> },
-      { onConflict: "key" }
-    );
+  await mergeVictorKey(SETTINGS_KEY, (cur) => ({ ...DEFAULT_SETTINGS, ...cur, ...fields }) as unknown as Record<string, unknown>);
 }
 
 // ── Monthly payment ───────────────────────────────────────────────────────────
@@ -356,12 +357,7 @@ export async function getVictorPaymentStatus(month: string): Promise<string> {
 }
 
 export async function setVictorPaymentStatus(month: string, status: string, paidDate?: string): Promise<void> {
-  await supabase
-    .from("settings")
-    .upsert(
-      { key: paymentKey(month), value: { status, paidDate: paidDate ?? null } as unknown as Record<string, unknown> },
-      { onConflict: "key" }
-    );
+  await mergeVictorKey(paymentKey(month), () => ({ status, paidDate: paidDate ?? null }));
 }
 
 /** Remove the legacy monthly mark (settings key vendor_victor_payment_YYYY_MM). Called ONLY by Sunny's
@@ -447,34 +443,12 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
 }
 
 export async function setSalaryAmountOverride(workMonth: string, amount: number): Promise<void> {
-  const { data: existing } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", SALARY_OVERRIDES_KEY)
-    .maybeSingle();
-  const current = (existing?.value ?? {}) as Record<string, number>;
-  await supabase
-    .from("settings")
-    .upsert(
-      { key: SALARY_OVERRIDES_KEY, value: { ...current, [workMonth]: amount } },
-      { onConflict: "key" }
-    );
+  await mergeVictorKey(SALARY_OVERRIDES_KEY, { [workMonth]: amount });
 }
 
 // Internal salary status override — settings only, never touches Finance/transactions.
 export async function setSalaryStatusOverride(workMonth: string, status: string): Promise<void> {
-  const { data: existing } = await supabase
-    .from("settings")
-    .select("value")
-    .eq("key", SALARY_STATUS_OVERRIDES_KEY)
-    .maybeSingle();
-  const current = (existing?.value ?? {}) as Record<string, string>;
-  await supabase
-    .from("settings")
-    .upsert(
-      { key: SALARY_STATUS_OVERRIDES_KEY, value: { ...current, [workMonth]: status } },
-      { onConflict: "key" }
-    );
+  await mergeVictorKey(SALARY_STATUS_OVERRIDES_KEY, { [workMonth]: status });
 }
 
 export { salaryLinkedId, salaryDueDate, salaryMonthLabel, salaryTransactionDescription };

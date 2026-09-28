@@ -38,6 +38,9 @@ function from(table: string) {
     eq(k: string, v: unknown) { filters.push((r) => r[k] === v); return c; },
     neq(k: string, v: unknown) { filters.push((r) => r[k] !== v && r[k] !== null && r[k] !== undefined); return c; },
     is(k: string, v: unknown) { filters.push((r) => (v === null ? r[k] === null || r[k] === undefined : r[k] === v)); return c; },
+    // PostgREST .not(col, "in", '("a","b")') and .or("col.is.null,col.neq.X") with Postgres NULL semantics (Final Hardening 2026-09-29)
+    not(k: string, op: string, val: string) { const list = String(val).replace(/^\(|\)$/g, "").split(",").map((x) => x.trim().replace(/^"|"$/g, "")); if (op !== "in") throw new Error(`fake: not.${op}`); filters.push((r) => r[k] !== null && r[k] !== undefined && !list.includes(String(r[k]))); return c; },
+    or(expr: string) { const parts = expr.split(",").map((p) => { const [col, op, ...rest] = p.split("."); return { col, op, v: rest.join(".") }; }); filters.push((r) => parts.some(({ col, op, v }) => op === "is" && v === "null" ? r[col] === null || r[col] === undefined : op === "eq" ? String(r[col]) === v : op === "neq" ? r[col] !== null && r[col] !== undefined && String(r[col]) !== v : false)); return c; },
     in(k: string, vs: unknown[]) { filters.push((r) => vs.includes(r[k])); return c; },
     order(k: string, o?: { ascending?: boolean }) { orderBy = [k, o?.ascending !== false]; return c; },
     limit(n: number) { lim = n; return c; },

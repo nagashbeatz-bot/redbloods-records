@@ -6,8 +6,28 @@ import { closureFeeStatus, feeRowMayReprice, feeRowPaidConflicts, feeRowStatusAf
 import { markShowEntitlementsInactive, syncShowEntitlement } from "@/lib/artist-entitlement-sync";
 import { showAgreementSplit } from "@/lib/label-agreements";
 import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
+import { EXPLAINED_ARTIST_PAYMENTS } from "@/lib/finance/unit-balance";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
+
+/**
+ * A money write the show operation NEEDS failed (Final Hardening 2026-09-29, A1): the operation fails and says so — it is
+ * never logged-and-continued, and no id is returned for a row that was not really written. The sync is idempotent (keyed
+ * by show_id + role / the stored linked ids), so saving again completes it without a duplicate.
+ */
+export class ShowFinanceSyncError extends Error {
+  constructor(what: string, cause?: string) {
+    super(`ההופעה נשמרה, אבל סנכרון הכספים נכשל (${what})${cause ? `: ${cause}` : ""} — יש לשמור שוב כדי להשלים (הסנכרון לא יוצר כפילות)`);
+    this.name = "ShowFinanceSyncError";
+  }
+}
+/** A2: the counted rehearsal cost could not be read. It is UNKNOWN — never 0 (a 0 would inflate the artist's share). */
+export class RehearsalCountUnknownError extends Error {
+  constructor(cause: string) {
+    super(`עלות החזרות של ההופעה לא ידועה (הקריאה נכשלה: ${cause}) — החישוב הכספי נעצר; לא נרשמה זכאות ולא תשלום`);
+    this.name = "RehearsalCountUnknownError";
+  }
+}
 const REHEARSAL_CATEGORY     = "חזרה";
 
 // Confirmed bookings only — leads (ליד חדש / ממתין לתשובה / צריך פולואפ) are
@@ -28,8 +48,8 @@ export function isConfirmedShowStatus(status: string): boolean {
  *
  * Exactly one income + one expense per show, keyed by the stored linked_* ids
  * on the show row, so re-running can never create duplicates. Never deletes a
- * transaction — only updates its payment_status. All errors are non-fatal so a
- * sync failure never breaks the show save.
+ * transaction — only updates its payment_status. A failed write is REPORTED (ShowFinanceSyncError — Final Hardening
+ * 2026-09-29): the save answers with the error instead of a silent success; re-running converges (idempotent).
  *
  * D5 (Owner decision 2026-09-27, migration 75bf144e…): ACTUAL show money lives in Finance. Every show row carries
  * transactions.show_id + show_money_role (SHOW_PAYMENT / SHOW_BALANCE_EXPECTED / DJ_FEE / ARTIST_FEE / REHEARSAL)
@@ -65,7 +85,7 @@ async function createTransaction(fields: {
   show_money_role?: string;
   currency?: string;
   payment_method?: string;
-}): Promise<string | null> {
+}): Promise<string> {
   // business unit (task 4): a show of a Records roster artist → RECORDS; a collab / other artist stays "דורש סיווג"
   const unit = await unitColumnsOrUnclassified({ writer: "SHOW_SYNC", type: fields.type, category: fields.category, expenseScope: fields.expense_scope ?? "כללי", showId: fields.show_id ?? null });
   const { data, error } = await supabase
@@ -92,10 +112,7 @@ async function createTransaction(fields: {
     })
     .select("id")
     .single();
-  if (error) {
-    console.error("[shows-finance-sync] create transaction failed:", error.message);
-    return null;
-  }
+  if (error || !data) throw new ShowFinanceSyncError("יצירת שורת כספים", error?.message ?? "no row returned");
   return (data as { id: string }).id;
 }
 
@@ -121,28 +138,39 @@ async function patchTransaction(id: string, patch: {
   if (patch.artist         !== undefined) upd.artist         = patch.artist;
   if (patch.payment_status !== undefined) upd.payment_status = patch.payment_status;
   if (Object.keys(upd).length === 0) return;
-  const { error } = await supabase.from("transactions").update(upd).eq("id", id);
-  if (error) console.error("[shows-finance-sync] patch transaction failed:", error.message);
+  // the row must really be updated: an error OR 0 rows (the row is gone) fails the operation — never a silent success
+  const { data, error } = await supabase.from("transactions").update(upd).eq("id", id).select("id");
+  if (error) throw new ShowFinanceSyncError("עדכון שורת כספים", error.message);
+  if (!data || data.length !== 1) throw new ShowFinanceSyncError("עדכון שורת כספים", `השורה ${id} לא נמצאה`);
+}
+
+/** A show-row write the sync needs (a linked_* id / the derived payment mirror): checked, never fire-and-forget. */
+async function updateShowRow(showId: string, patch: Record<string, unknown>, what: string): Promise<void> {
+  const { data, error } = await supabase.from("shows").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", showId).select("id");
+  if (error) throw new ShowFinanceSyncError(what, error.message);
+  if (!data || data.length !== 1) throw new ShowFinanceSyncError(what, "ההופעה לא נמצאה");
 }
 
 /**
  * Fin-2: sum of a show's rehearsal costs that currently count toward the
  * distributable-base deduction (see rehearsalCountedAmount). Reads the show's
- * rehearsal sessions + their linked transactions. Non-fatal on error (returns 0).
+ * rehearsal sessions + their linked transactions. A read failure THROWS RehearsalCountUnknownError (A2, 2026-09-29) —
+ * an unknown cost is never 0: every money step that depends on it stops (no entitlement, no artist payment).
  */
 export async function getRehearsalCountedForShow(showId: string): Promise<number> {
-  try {
-    const { data: rs } = await supabase
+    const { data: rs, error: rsErr } = await supabase
       .from("sessions")
       .select("id, status, cost")
       .eq("show_id", showId)
       .eq("session_type", REHEARSAL_SESSION_TYPE);
+    if (rsErr) throw new RehearsalCountUnknownError(rsErr.message);
     if (!rs || rs.length === 0) return 0;
     const ids = rs.map((r) => (r as { id: string }).id);
-    const { data: txs } = await supabase
+    const { data: txs, error: txErr } = await supabase
       .from("transactions")
       .select("linked_session_id, payment_status")
       .in("linked_session_id", ids);
+    if (txErr) throw new RehearsalCountUnknownError(txErr.message);
     const payBySession = new Map<string, string>();
     (txs ?? []).forEach((t) => {
       const lid = (t as { linked_session_id?: string }).linked_session_id;
@@ -154,10 +182,6 @@ export async function getRehearsalCountedForShow(showId: string): Promise<number
       sum += rehearsalCountedAmount(rr.status, payBySession.get(rr.id) ?? null, rr.cost);
     }
     return sum;
-  } catch (e) {
-    console.error("[shows-finance-sync] getRehearsalCountedForShow error:", e);
-    return 0;
-  }
 }
 
 /**
@@ -175,13 +199,14 @@ export async function syncRehearsalFinance(
 ): Promise<void> {
   // an unpaid collaboration never gets an automatic rehearsal expense (the writer refuses a cost first; last guard)
   if (isUnpaidCollab(show)) return;
-  try {
     const cost = Number(rehearsal.cost) || 0;
-    const { data: existing } = await supabase
+    // a failed read is NOT "no row" — creating one then would duplicate the rehearsal expense (A3, 2026-09-29)
+    const { data: existing, error: exErr } = await supabase
       .from("transactions")
       .select("id")
       .eq("linked_session_id", rehearsal.id)
       .maybeSingle();
+    if (exErr) throw new ShowFinanceSyncError("קריאת הוצאת החזרה", exErr.message);
     if (cost <= 0) return; // no tx for a zero/blank cost; never delete an existing one
     const desc = show.artist ? `חזרה — ${show.name} (${show.artist})` : `חזרה — ${show.name}`;
     if (existing?.id) {
@@ -207,30 +232,29 @@ export async function syncRehearsalFinance(
         currency: show.currency || "₪",
       });
     }
-  } catch (e) {
-    console.error("[shows-finance-sync] syncRehearsalFinance error:", e);
-  }
 }
 
 /**
  * Batched version of getRehearsalCountedForShow for a list of shows — one
- * sessions query + one transactions query. Returns { showId: countedCost }.
+ * sessions query + one transactions query. Returns { showId: countedCost }. A read failure THROWS
+ * RehearsalCountUnknownError (A2) — a list never shows a split computed from a fake 0.
  */
 export async function getRehearsalCountedMap(showIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  try {
     if (!showIds.length) return out;
-    const { data: rs } = await supabase
+    const { data: rs, error: rsErr } = await supabase
       .from("sessions")
       .select("id, show_id, status, cost")
       .in("show_id", showIds)
       .eq("session_type", REHEARSAL_SESSION_TYPE);
+    if (rsErr) throw new RehearsalCountUnknownError(rsErr.message);
     if (!rs || rs.length === 0) return out;
     const ids = rs.map((r) => (r as { id: string }).id);
-    const { data: txs } = await supabase
+    const { data: txs, error: txErr } = await supabase
       .from("transactions")
       .select("linked_session_id, payment_status")
       .in("linked_session_id", ids);
+    if (txErr) throw new RehearsalCountUnknownError(txErr.message);
     const payBy = new Map<string, string>();
     (txs ?? []).forEach((t) => {
       const lid = (t as { linked_session_id?: string }).linked_session_id;
@@ -240,9 +264,6 @@ export async function getRehearsalCountedMap(showIds: string[]): Promise<Record<
       const rr = r as { id: string; show_id: string; status: string | null; cost: number | null };
       out[rr.show_id] = (out[rr.show_id] ?? 0) + rehearsalCountedAmount(rr.status, payBy.get(rr.id) ?? null, rr.cost);
     }
-  } catch (e) {
-    console.error("[shows-finance-sync] getRehearsalCountedMap error:", e);
-  }
   return out;
 }
 
@@ -262,7 +283,8 @@ export interface ShowSyncReport { feeConflicts: string[] }
 /** A DJ / artist fee row as the sync sees it (read by its stored linked id). */
 async function readFeeRow(id: string): Promise<{ id: string; status: string | null; amount: number; party: string; currency: string } | null> {
   const { data, error } = await supabase.from("transactions").select("id, payment_status, amount, artist, currency").eq("id", id).maybeSingle();
-  if (error || !data) return null;
+  if (error) throw new ShowFinanceSyncError("קריאת שורת שכר", error.message);
+  if (!data) return null;
   const r = data as { id: string; payment_status: string | null; amount: number | null; artist: string | null; currency: string | null };
   return { id: r.id, status: r.payment_status, amount: Number(r.amount) || 0, party: r.artist ?? "", currency: r.currency || "₪" };
 }
@@ -286,7 +308,7 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
   // no expected income, payment mirror, DJ / artist row or artist ledger entry. Rows of an earlier PAID phase are
   // removed only by the guarded deal-type switch (lib/writes/shows.ts), never here.
   if (isUnpaidCollab(show)) return report;
-  try {
+  {
     const isCancelled = show.status === "בוטל";
     const isConfirmed = CONFIRMED_STATUSES.has(show.status);
     const date        = show.date || new Date().toISOString().slice(0, 10);
@@ -317,9 +339,7 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
             description: `יתרה לגבייה — ${displayName(show)}`, category: "הופעה", expense_scope: "הופעה", notes: `show_id:${show.id}`,
             show_id: show.id, show_money_role: SHOW_MONEY_ROLES.EXPECTED, currency,
           });
-          if (id && !show.linked_income_transaction_id) {
-            await supabase.from("shows").update({ linked_income_transaction_id: id, updated_at: new Date().toISOString() }).eq("id", show.id);
-          }
+          if (!show.linked_income_transaction_id) await updateShowRow(show.id, { linked_income_transaction_id: id }, "קישור שורת היתרה להופעה");
         }
       } else if (money.expected && (money.expected.status !== "בוטל" || money.expected.amount !== 0)) {
         // nothing left to collect (paid in full, or more — the credit stays visible on the payments)
@@ -333,7 +353,7 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
     const derived = !isConfirmed || isCancelled || !(show.show_price > 0) ? show.payment_status
       : money.derivedPaymentStatus ?? (show.payment_status === "שולם" || show.payment_status === "מקדמה" || show.payment_status === "חלקי" ? "צפוי" : show.payment_status);
     if (derived !== show.payment_status || money.received !== (Number(show.advance_payment) || 0)) {
-      await supabase.from("shows").update({ payment_status: derived, advance_payment: money.received, updated_at: new Date().toISOString() }).eq("id", show.id);
+      await updateShowRow(show.id, { payment_status: derived, advance_payment: money.received }, "עדכון מצב התשלום של ההופעה");
     }
 
     // ── DJ expense ── (its own obligation: never follows the client payment)
@@ -361,18 +381,17 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
         notes:         `show_id:${show.id}`,
         show_id: show.id, show_money_role: SHOW_MONEY_ROLES.DJ, currency,
       });
-      if (id) {
-        await supabase.from("shows")
-          .update({ linked_dj_expense_transaction_id: id, updated_at: new Date().toISOString() })
-          .eq("id", show.id);
-      }
+      await updateShowRow(show.id, { linked_dj_expense_transaction_id: id }, "קישור שורת ה-DJ להופעה");
     }
 
     // ── Artist entitlement (net settlement model, Owner decision 2026-09-28) ──
     // A show share is an ENTITLEMENT in the artist ledger — never a Finance expense. No artist-fee row is created,
     // re-priced or re-opened any more (a real payment to the artist is lib/writes/artist-payments). The share is the ONE
     // rule (lib/label-agreements showAgreementSplit — שליו / אבי; any other artist or a collab is NOT_DEFINED).
-    const rehearsalCounted   = await getRehearsalCountedForShow(show.id);
+    // Pacha / Summer Time (Owner decision 2026-09-28): the artist was paid OUTSIDE the ledger — an approved historical
+    // exception. Their entitlement is frozen: never created, realized, re-priced or zeroed by a sync (the balance stays).
+    if (show.linked_artist_expense_transaction_id && EXPLAINED_ARTIST_PAYMENTS[show.linked_artist_expense_transaction_id]) return report;
+    const rehearsalCounted   = await getRehearsalCountedForShow(show.id); // A2: unknown → throws, nothing is written
     const artistRule         = showAgreementSplit(show, rehearsalCounted);
     // a LEGACY unpaid artist-fee row (written before 2026-09-28): a cancelled show still cancels it — never revived / paid
     if (show.linked_artist_expense_transaction_id && isCancelled) {
@@ -385,9 +404,12 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
     }
     // the ledger stores no currency — only a ₪ show carries an entitlement (a non-₪ show is reported, never converted)
     if (currency === "₪") {
+      // A7 (2026-09-29): a PERFORMED show (בוצע) realizes the entitlement — also on a plain edit, not only through the
+      // close dialog — and a realized entitlement follows a price change (the SAME row) or is kept at 0 on a cancel
       await syncShowEntitlement({
         showId: show.id, showName: show.name, showDate: show.date, artistId: artistRule.artist.id, amount: artistRule.artistFee,
         stands: !isCancelled && isConfirmed && artistRule.artistFee > 0, legacyTxId: show.linked_artist_expense_transaction_id,
+        performed: !isCancelled && show.status === "בוצע",
         inactiveReasonHe: isCancelled ? "ההופעה בוטלה" : "אין שכר אמן בהופעה",
       });
     } else {
@@ -395,8 +417,6 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
       await markShowEntitlementsInactive(show.id, `ההופעה ב-${currency} — היומן בש"ח בלבד`, show.linked_artist_expense_transaction_id);
       report.feeConflicts.push(`אמן: הופעה ב-${currency} — זכאות האמן לא נרשמת ביומן (היומן בש"ח בלבד, המטבע לא מומר)`);
     }
-  } catch (e) {
-    console.error("[shows-finance-sync] syncShowFinance error:", e);
   }
   return report;
 }
@@ -457,8 +477,9 @@ export async function deleteShowFinance(show: Show): Promise<number> {
   // after the transaction row itself is gone (no FK, so it stays a valid key).
   const artistTxId = show.linked_artist_expense_transaction_id;
   let artistRowKept = false;
-  const moved = (r: { show_money_role: string | null; payment_status: string | null }) => r.show_money_role === SHOW_MONEY_ROLES.PAYMENT || r.payment_status === "שולם" || r.payment_status === "התקבל";
-  try {
+  // money that moved (fully OR partly) is never deleted — A4 canon, 2026-09-29: חלקי counts as moved
+  const moved = (r: { show_money_role: string | null; payment_status: string | null }) => r.show_money_role === SHOW_MONEY_ROLES.PAYMENT || r.payment_status === "שולם" || r.payment_status === "התקבל" || r.payment_status === "חלקי";
+  {
     // D5: a SHOW_PAYMENT row is money actually received — it is NEVER deleted here (the writers refuse to delete /
     // revert a show that has payments). A paid DJ / artist fee row is money that went out — NEVER deleted either
     // (HAS_PAID_FEES). Only the still-expected balance / unpaid DJ / unpaid artist rows go; rehearsal rows stay too.
@@ -468,36 +489,34 @@ export async function deleteShowFinance(show: Show): Promise<number> {
       show.linked_artist_expense_transaction_id,
     ].filter(Boolean) as string[];
     type L = { id: string; show_money_role: string | null; payment_status: string | null };
-    const { data: linked } = ids.length ? await supabase.from("transactions").select("id, show_money_role, payment_status").in("id", ids) : { data: [] };
+    const { data: linked, error: lErr } = ids.length ? await supabase.from("transactions").select("id, show_money_role, payment_status").in("id", ids) : { data: [], error: null };
+    if (lErr) throw new ShowFinanceSyncError("קריאת שורות הכספים של ההופעה", lErr.message);
     const { data: byShow, error: linkErr } = await supabase
       .from("transactions").select("id, show_money_role, payment_status").eq("show_id", show.id).in("show_money_role", [SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST]);
-    if (linkErr) console.error("[shows-finance-sync] read by show link failed:", linkErr.message);
+    if (linkErr) throw new ShowFinanceSyncError("קריאת שורות הכספים של ההופעה", linkErr.message);
     const all = [...((linked ?? []) as L[]), ...((byShow ?? []) as L[])];
     artistRowKept = !!artistTxId && all.some((r) => r.id === artistTxId && moved(r));
     const removable = [...new Set(all.filter((r) => !moved(r)).map((r) => r.id))];
     if (removable.length > 0) {
-      const { data, error } = await supabase.from("transactions").delete().in("id", removable).select("id");
-      if (error) console.error("[shows-finance-sync] delete failed:", error.message);
-      else deleted += data?.length ?? 0;
+      // conditional delete: a row that became paid / received between the read and the delete is never removed
+      const { data, error } = await supabase.from("transactions").delete().in("id", removable)
+        .not("payment_status", "in", '("שולם","התקבל","חלקי")').or(`show_money_role.is.null,show_money_role.neq.${SHOW_MONEY_ROLES.PAYMENT}`).select("id");
+      if (error) throw new ShowFinanceSyncError("מחיקת שורות צפויות של ההופעה", error.message);
+      deleted += data?.length ?? 0;
     }
-  } catch (e) {
-    console.error("[shows-finance-sync] deleteShowFinance error:", e);
   }
   // Net model (2026-09-28): the show's still-EXPECTED entitlement is marked not active (never deleted); a realized
   // entitlement and a paid artist row are never touched.
   void artistRowKept;
-  try { await markShowEntitlementsInactive(show.id, "ההופעה נמחקה / חזרה לשלב ליד", artistTxId); } catch (e) { console.error("[shows-finance-sync] entitlement mark failed:", e); }
+  // the explained exception (Pacha / Summer Time) is frozen here too
+  if (!(artistTxId && EXPLAINED_ARTIST_PAYMENTS[artistTxId])) await markShowEntitlementsInactive(show.id, "ההופעה נמחקה / חזרה לשלב ליד", artistTxId);
   return deleted;
 }
 
 /** Mark a show's expected / DJ / artist rows as "בוטל" (used before deleting a show). Never deletes; never a payment. */
 export async function cancelShowFinance(show: Show): Promise<void> {
-  try {
     const rows = await showFinanceRows(show);
     for (const r of rows) if (r.role !== SHOW_MONEY_ROLES.PAYMENT && r.role !== SHOW_MONEY_ROLES.REHEARSAL && r.status !== "בוטל") await patchTransaction(r.id, { payment_status: "בוטל" });
-  } catch (e) {
-    console.error("[shows-finance-sync] cancelShowFinance error:", e);
-  }
 }
 
 /**
@@ -510,7 +529,7 @@ export async function applyShowClosureStatuses(
   show: Show,
   t: { incomeReceived: boolean; djPaid: boolean; artistPaid: boolean },
 ): Promise<void> {
-  try {
+  {
     if (t.incomeReceived) {
       const money = await showMoneyForShow(show);
       if (money.remaining > 0) await recordRemainderReceived(show, money, show.date || new Date().toISOString().slice(0, 10), show.booker_name || show.artist || "לקוח");
@@ -525,10 +544,8 @@ export async function applyShowClosureStatuses(
     }
     if (t.incomeReceived) {
       const fresh = await showMoneyForShow(show);
-      await supabase.from("shows").update({ payment_status: fresh.derivedPaymentStatus ?? show.payment_status, advance_payment: fresh.received, updated_at: new Date().toISOString() }).eq("id", show.id);
+      await updateShowRow(show.id, { payment_status: fresh.derivedPaymentStatus ?? show.payment_status, advance_payment: fresh.received }, "עדכון מצב התשלום בסגירה");
     }
-  } catch (e) {
-    console.error("[shows-finance-sync] applyShowClosureStatuses error:", e);
   }
 }
 
@@ -540,21 +557,17 @@ export async function applyShowClosureStatuses(
  */
 export async function clearShowFinance(show: Show): Promise<number> {
   const deleted = await deleteShowFinance(show);
-  try {
-    // Only links whose row is really gone are cleared — a row that stayed (money that moved) keeps its link.
-    const ids = [show.linked_income_transaction_id, show.linked_dj_expense_transaction_id, show.linked_artist_expense_transaction_id].filter(Boolean) as string[];
-    const { data: left } = ids.length ? await supabase.from("transactions").select("id").in("id", ids) : { data: [] };
-    const stays = new Set(((left ?? []) as Array<{ id: string }>).map((r) => r.id));
-    const keep = (id: string | null | undefined) => (id && stays.has(id) ? id : null);
-    await supabase.from("shows").update({
-      linked_income_transaction_id: keep(show.linked_income_transaction_id),
-      linked_dj_expense_transaction_id: keep(show.linked_dj_expense_transaction_id),
-      linked_artist_expense_transaction_id: keep(show.linked_artist_expense_transaction_id),
-      updated_at: new Date().toISOString(),
-    }).eq("id", show.id);
-  } catch (e) {
-    console.error("[shows-finance-sync] clearShowFinance clear-ids error:", e);
-  }
+  // Only links whose row is really gone are cleared — a row that stayed (money that moved) keeps its link.
+  const ids = [show.linked_income_transaction_id, show.linked_dj_expense_transaction_id, show.linked_artist_expense_transaction_id].filter(Boolean) as string[];
+  const { data: left, error: leftErr } = ids.length ? await supabase.from("transactions").select("id").in("id", ids) : { data: [], error: null };
+  if (leftErr) throw new ShowFinanceSyncError("קריאת הקישורים שנשארו", leftErr.message);
+  const stays = new Set(((left ?? []) as Array<{ id: string }>).map((r) => r.id));
+  const keep = (id: string | null | undefined) => (id && stays.has(id) ? id : null);
+  await updateShowRow(show.id, {
+    linked_income_transaction_id: keep(show.linked_income_transaction_id),
+    linked_dj_expense_transaction_id: keep(show.linked_dj_expense_transaction_id),
+    linked_artist_expense_transaction_id: keep(show.linked_artist_expense_transaction_id),
+  }, "ניקוי קישורי הכספים של ההופעה");
   return deleted;
 }
 
@@ -566,7 +579,8 @@ export async function showFinanceRows(show: Pick<Show, "id" | "linked_income_tra
   const rows = ((data ?? []) as Array<{ id: string; type: string; show_money_role: string | null; payment_status: string | null; amount: number; currency: string | null; date: string | null }>);
   const lid = show.linked_income_transaction_id;
   if (lid && !rows.some((r) => r.id === lid)) {
-    const { data: legacy } = await supabase.from("transactions").select("id, type, show_money_role, payment_status, amount, currency, date").eq("id", lid).maybeSingle();
+    const { data: legacy, error: legErr } = await supabase.from("transactions").select("id, type, show_money_role, payment_status, amount, currency, date").eq("id", lid).maybeSingle();
+    if (legErr) throw new Error(legErr.message);
     const l = legacy as (typeof rows)[number] | null;
     if (l && l.type === "income" && !l.show_money_role) {
       const role = l.payment_status === "שולם" || l.payment_status === "התקבל" ? SHOW_MONEY_ROLES.PAYMENT : SHOW_MONEY_ROLES.EXPECTED;
@@ -602,13 +616,12 @@ export async function insertShowPayment(show: Show, p: { amount: number; date: s
     await patchTransaction(money.expected.id, { amount: p.amount, payment_status: "התקבל", show_money_role: SHOW_MONEY_ROLES.PAYMENT, date: p.date, artist: party, description: `תשלום הופעה — ${displayName(show)}`, currency, payment_method: p.method ?? "" });
     return money.expected.id;
   }
-  const id = await createTransaction({
+  // createTransaction throws when the row is not written — an id is returned only for a payment that really exists
+  return createTransaction({
     type: "income", payment_status: "התקבל", amount: p.amount, date: p.date, artist: party, description: `תשלום הופעה — ${displayName(show)}`,
     category: "הופעה", expense_scope: "הופעה", notes: [`show_id:${show.id}`, p.note?.trim()].filter(Boolean).join(" · "),
     show_id: show.id, show_money_role: SHOW_MONEY_ROLES.PAYMENT, currency, payment_method: p.method ?? "",
   });
-  if (!id) throw new Error("the payment row was not created");
-  return id;
 }
 
 /** The Finance-derived money of many shows in ONE query (the Shows hub list) — the same rule (showMoneyOf). Read-only. */

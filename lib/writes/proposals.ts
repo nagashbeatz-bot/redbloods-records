@@ -119,33 +119,68 @@ export async function deleteProposal(id: string): Promise<void> {
 
 export type ConvertResult = { status: "ok"; project: Awaited<ReturnType<typeof createProject>> } | { status: "not_found" } | { status: "already_converted"; projectId: string } | { status: "busy" };
 
+/** The durable conversion claim (settings key, C internal state): proposal → the ONE project id reserved for it. */
+export const PROPOSAL_CONVERSION_CLAIM_PREFIX = "proposal_conversion:";
+
 /**
  * Convert a proposal into a project (status נסגר, agreed price saved when amount > 0, follow-up task closed).
- * HARDENED: a compare-and-swap claim on updated_at before creating anything, so two concurrent submits can never
- * create two projects (the second one gets "busy" / "already_converted").
+ * A5 (Final Hardening 2026-09-29) — EXACTLY ONE project per proposal, guaranteed by database keys, no schema change:
+ *   1. the project id is reserved first: INSERT settings[`proposal_conversion:<proposal>`] = { projectId } — the settings
+ *      primary key lets exactly ONE request win; a concurrent / later request reads the SAME reserved id;
+ *   2. the project is created WITH that id — the projects primary key refuses a second row (a retry after a failure in
+ *      the middle, a double click or a concurrent request all converge on the same project);
+ *   3. the proposal is linked (checked — a failed link fails the call; the next retry finishes it).
+ * Every step is idempotent, so a retry after ANY partial failure completes the same conversion — never a second project.
  */
 export async function convertProposal(id: string, overrideName?: string): Promise<ConvertResult> {
-  const { data: proposal, error: fetchErr } = await supabase.from("proposals").select("*, clients(name)").eq("id", id).single();
-  if (fetchErr || !proposal) return { status: "not_found" };
+  const { data: proposal, error: fetchErr } = await supabase.from("proposals").select("*, clients(name)").eq("id", id).maybeSingle();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!proposal) return { status: "not_found" };
   if (proposal.linked_project_id) return { status: "already_converted", projectId: proposal.linked_project_id as string };
-  const claimAt = new Date().toISOString();
-  const { data: claimed, error: claimErr } = await supabase.from("proposals").update({ updated_at: claimAt }).eq("id", id).is("linked_project_id", null).eq("updated_at", proposal.updated_at).select("id");
-  if (claimErr) throw new Error(claimErr.message);
-  if (!claimed || claimed.length !== 1) return { status: "busy" };
+  const claimKey = `${PROPOSAL_CONVERSION_CLAIM_PREFIX}${id}`;
+  let projectId: string = (await import("node:crypto")).randomUUID();
+  const reserve = await supabase.from("settings").insert({ key: claimKey, value: { projectId, reservedAt: new Date().toISOString() } });
+  if (reserve.error) {
+    if (reserve.error.code !== "23505") throw new Error(reserve.error.message);
+    const { data: held, error: heldErr } = await supabase.from("settings").select("value").eq("key", claimKey).maybeSingle();
+    if (heldErr) throw new Error(heldErr.message);
+    const reserved = (held?.value as { projectId?: unknown } | null)?.projectId;
+    if (typeof reserved !== "string" || !reserved) throw new Error(`the conversion claim ${claimKey} has no project id`);
+    projectId = reserved;
+  }
 
   const clientName = (proposal.clients as { name: string } | null)?.name ?? "";
   const today = new Date().toISOString().split("T")[0];
   // B2: the Owner classification rule applies to a converted proposal too (the same rule as createClientProject).
   const { newProjectBusinessType } = await import("@/lib/project-classification-server");
   const { businessType } = await newProjectBusinessType(clientName);
-  const project = await createProject({ name: overrideName ?? proposal.title, artist: clientName, status: "לא התחיל", start_date: today, deadline: null, notes: proposal.notes || "", project_type: "", parent_project: "", project_business_type: businessType });
+  // the reserved id: an existing project (an earlier attempt / a concurrent request) is reused, never duplicated
+  const { getProject } = await import("@/lib/projects-store");
+  let project = await getProject(projectId);
+  if (!project) {
+    try {
+      project = await createProject({ id: projectId, name: overrideName ?? proposal.title, artist: clientName, status: "לא התחיל", start_date: today, deadline: null, notes: proposal.notes || "", project_type: "", parent_project: "", project_business_type: businessType });
+    } catch (e) {
+      project = await getProject(projectId); // lost a race on the projects PK → the winner's row is THE project
+      if (!project) throw e;
+    }
+  }
   if (clientName) upsertArtistsFromProject(clientName).catch(() => {});
   if (Number(proposal.amount) > 0) {
     // compare-and-swap merge (lib/writes/settings-merge): never overwrites a concurrent finance-settings write
     const { mergeSettingsKey } = await import("@/lib/writes/settings-merge");
     await mergeSettingsKey(`finance_${project.id}`, (existing) => ({ financialNotes: "", ...existing, agreedPrice: Number(proposal.amount), currency: proposal.currency ?? "₪" }));
   }
-  await supabase.from("proposals").update({ status: "נסגר", linked_project_id: project.id, updated_at: new Date().toISOString() }).eq("id", id);
+  // the link is checked: a failure fails the call (a retry finds the reserved project and finishes — never a second one)
+  const { data: linkedRows, error: linkErr } = await supabase.from("proposals").update({ status: "נסגר", linked_project_id: project.id, updated_at: new Date().toISOString() })
+    .eq("id", id).or(`linked_project_id.is.null,linked_project_id.eq.${project.id}`).select("id");
+  if (linkErr) throw new Error(`the project was created (${project.id}) but the proposal was not linked: ${linkErr.message} — convert again to finish (no second project)`);
+  if (!linkedRows || linkedRows.length !== 1) {
+    const { data: now, error: nowErr } = await supabase.from("proposals").select("linked_project_id").eq("id", id).maybeSingle();
+    if (nowErr) throw new Error(nowErr.message);
+    if (!now) return { status: "not_found" };
+    return { status: "already_converted", projectId: String(now.linked_project_id) };
+  }
   try {
     const clientId = proposal.client_id as string | null;
     if (clientId) {

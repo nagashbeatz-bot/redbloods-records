@@ -50,7 +50,7 @@ export const VICTOR_FIELDS: readonly VictorField[] = [
 export const VICTOR_SETTINGS: ReadonlyArray<{ key: string; classification: FieldClass; meaning: string; sunnyReads: string }> = [
   { key: "vendor_victor_settings", classification: "CANONICAL", meaning: "{monthlyGoal (code default 10; production 12), monthlySalary (default 550; production 550), salaryCurrency ($), salaryPayDay (10 — IGNORED: due date is hardcoded to the 10th), stuckAfterDays (5), paceMetric}", sunnyReads: "victor_view money + system_settings" },
   { key: "vendor_victor_salary_overrides", classification: "CANONICAL", meaning: "per-month amount overrides (e.g. 2026-06: 500)", sunnyReads: "victor_view money" },
-  { key: "vendor_victor_salary_status_overrides", classification: "CONFLICT", meaning: "per-month status overrides — Owner STATEMENTS. Since 2026-09-27 a live Finance row decides the month; an override only fills a month with no live Finance row, and a disagreement is shown as a conflict beside Finance (May–Aug 2026 = שולם while only August has a finance row; Owner decision: May–July were paid $550 each — the Finance reconciliation awaits approval)", sunnyReads: "victor_view money" },
+  { key: "vendor_victor_salary_status_overrides", classification: "CONFLICT", meaning: "per-month status overrides — Owner STATEMENTS. Since 2026-09-27 a live Finance row decides the month; an override only fills a month with no live Finance row, and a disagreement is shown as a conflict beside Finance (2026-09-29: May–August = 550 / שולם and Finance holds January–August $550 שולם — they agree)", sunnyReads: "victor_view money" },
   { key: "vendor_victor_payment_<YYYY_MM>", classification: "LEGACY", meaning: "old per-month {status, paidDate} (May / June 2026 = צפוי) — still read into the portal stats; set by SET_VICTOR_MONTH_PAYMENT_MARK, cleared (key deleted) only by CLEAR_VICTOR_MONTH_PAYMENT_MARK, which is refused unless the month's live Finance salary row is שולם (the evidence is never lost)", sunnyReads: "victor_view money (evidence only)" },
   { key: "goal_monthly_victor", classification: "CONFLICT", meaning: "agent goal target (default 12) — while its 'expected by now' uses the vendor monthlyGoal", sunnyReads: "system_settings" },
   { key: "victor_visit_last", classification: "LEGACY", meaning: "pre-2026-09-27 presence-push cooldown {at} — no longer written and NOT a last-seen; Victor's presence is the shared portal presence model (portal last-seen + one visit push per real visit)", sunnyReads: "victor_view presence (legacy)" },
@@ -206,8 +206,8 @@ export const VICTOR_INTEGRITY = {
     "24 מתוך 31 העבודות של ויקטור לא מקושרות לפרויקט — אין להן הקשר אמן / לקוח / לייבל.",
     "כל 31 העבודות במצב 'נשלח לויקטור' — השדה לא מתעדכן אחרי השליחה; הכדור נגזר מתאריכי העלאה / הערות.",
     "5 עבודות פעילות עם דדליין פנימי שעבר — ציפייה פנימית, לא התחייבות ללקוח.",
-    "מאי–יולי 2026: מסומנים 'שולם' ב-overrides אבל אין שורת כספים; מפתחות ישנים של מאי / יוני אומרים 'צפוי'. אוגוסט: יש שורת כספים ששולמה ($550).",
-    "יוני 2026: override של סכום 500 (במקום 550) — הסיבה לא רשומה.",
+    "ינואר–אוגוסט 2026: לכל חודש שורת כספים $550 ששולמה; ה-overrides של מאי–אוגוסט (550 / שולם) תואמים; אין מפתחות חודשיים ישנים (נבדק 2026-09-29).",
+    "ספטמבר 2026: אין עדיין שורת שכר — אין רשומה חודשית אוטומטית (הבעלים רושם את התשלום).",
     "סטטוס ה-reviews תמיד 'waiting' — אין החלטת אישור במערכת.",
   ],
 } as const;
@@ -221,7 +221,8 @@ export const VICTOR_REVIEWED_FILES = [
   "lib/victor-scope.ts", "app/api/vendor/victor/route.ts", "app/api/vendor/victor/stream/route.ts", "app/api/vendor/victor/download/route.ts", "app/api/vendor/victor/avatar/route.ts",
 ] as const;
 export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/vendor-store.ts": "6f16e4f73e5020dcf7f053b0c414031b750f2064be50ba8a4cd85bd720cbebd0",
+  // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
+  "lib/vendor-store.ts": "c0da8e9bb74422ad495399999de3b86b0ac61bfca537b11b42bf1275045ce0df",
   "lib/vendor-folder.ts": "cbd63b60c770a9a01712464848b32e6d26184bdcfc882750395b0361fd385c0d",
   "lib/victor-files.ts": "4852e479431d23c2403a743b6a22bb06cf61965ec98ce340882c439539f2e272",
   "lib/coo/victor-ball.ts": "ae83deb3f7cd2f06fdff883635d4d954cb9b6f841bcc43803b44348b1130e047",

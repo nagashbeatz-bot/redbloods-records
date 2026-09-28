@@ -73,7 +73,7 @@ async function main() {
   ok("a partial (חלקי) row is money evidence — never auto-deleted", decideEngineerExpense(W({ engineerName: "Steven" }), TX({ paymentStatus: "חלקי" }), { mode: "PAYMENT_ONLY", ...CTX }).kind === "NONE");
   ok("an UNPAID Steven row is removed on un-pay (no expected row for Steven)", decideEngineerExpense(W({ engineerName: "Steven" }), TX(), { mode: "PAYMENT_ONLY", ...CTX }).kind === "REMOVE_UNPAID");
   const wm = code(read("lib/writes/mix.ts"));
-  ok("the writer's delete / update are conditional on payment_status ≠ שולם (race-safe)", /\.delete\(\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)\.neq\("payment_status", "חלקי"\)/.test(wm) && /\.update\(d\.fields\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm));
+  ok("the writer's delete / update are conditional on payment_status ≠ שולם (race-safe)", /\.delete\(\)\.eq\("id", d\.txId\)\.not\("payment_status", "in", \'\("שולם","חלקי","התקבל"\)\'\)/.test(wm) && /\.update\(d\.fields\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm));
 
   section("4. currency — no silent conversion");
   const ils = decideEngineerExpense(W({ currency: "₪", agreedPrice: 500, amountPaid: 500, paymentDate: "2026-09-10" }), null, { mode: "EXPECTED_AND_PAYMENT", ...CTX });

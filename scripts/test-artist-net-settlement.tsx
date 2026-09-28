@@ -82,8 +82,26 @@ const deletes: string[] = [];
   ok("5. cancel → the expected row is marked NOT ACTIVE by its note — never deleted", (await ES.syncShowEntitlement({ showId: S1, showName: "קליק", showDate: "2026-11-01", artistId: SHALEV, amount: 1500, stands: false, inactiveReasonHe: "ההופעה בוטלה" })) === "MARKED_INACTIVE" && ent().id === id1 && ES.isInactiveEntitlementNote(ent().note as string));
   ok("5b. back to confirmed → the same row is active again", (await ES.syncShowEntitlement({ showId: S1, showName: "קליק", showDate: "2026-11-01", artistId: SHALEV, amount: 1500, stands: true })) === "UPDATED" && ent().id === id1 && !ES.isInactiveEntitlementNote(ent().note as string));
   Object.assign(ent(), { entry_type: "הכנסות" }); // the close sync realized it
-  ok("6. a REALIZED entitlement is never touched or cancelled by a sync", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1, stands: false })) === "REALIZED_UNTOUCHED" && ent().amount === 1500 && ent().entry_type === "הכנסות" && !ES.isInactiveEntitlementNote(ent().note as string));
-  ok("6b. markShowEntitlementsInactive never touches a realized row", (await ES.markShowEntitlementsInactive(S1, "בדיקה")) === 0 && ent().entry_type === "הכנסות");
+  // A7 (Final Hardening 2026-09-29): a realized entitlement FOLLOWS the show — same row, never deleted, never a second row
+  ok("6. a realized entitlement of a show still confirmed but not performed is left as it is (never demoted to expected)", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1, stands: true })) === "REALIZED_UNTOUCHED" && ent().amount === 1500 && ent().entry_type === "הכנסות");
+  ok("6a. A7: a price change after realization re-prices the SAME realized row", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1250, stands: true, performed: true })) === "REALIZED_REPRICED" && ent().id === id1 && ent().amount === 1250 && ent().entry_type === "הכנסות");
+  ok("6b. A7: cancelled after realization → the SAME row kept at 0 with the reason + what it was (never deleted)", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1250, stands: false, inactiveReasonHe: "ההופעה בוטלה" })) === "REALIZED_ZEROED" && ent().id === id1 && ent().amount === 0 && ent().entry_type === "הכנסות" && ES.isInactiveEntitlementNote(ent().note as string) && /היה ₪1250/.test(String(ent().note)));
+  ok("6c. …a second cancel sync changes nothing (idempotent)", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1250, stands: false })) === "UNCHANGED" && ent().amount === 0);
+  ok("6d. performed again → the SAME row restored (amount back, note cleared)", (await ES.syncShowEntitlement({ showId: S1, showName: "x", showDate: null, artistId: SHALEV, amount: 1250, stands: true, performed: true })) === "REALIZED_REPRICED" && ent().amount === 1250 && !ES.isInactiveEntitlementNote(ent().note as string));
+  ok("6e. markShowEntitlementsInactive (revert / delete) keeps a realized row at 0 with the reason — never deleted", (await ES.markShowEntitlementsInactive(S1, "בדיקה")) === 1 && ent().entry_type === "הכנסות" && ent().amount === 0 && /היה ₪1250/.test(String(ent().note)));
+  const SH9 = randomUUID();
+  led().push({ id: "hist", artist_id: SHALEV, entry_type: "הכנסות", amount: 750, entry_date: "2026-08-01", description: "הופעה", note: "היסטוריה לפני המחזור הראשון", source_show_id: SH9 });
+  await ES.syncShowEntitlement({ showId: SH9, showName: "x", showDate: null, artistId: SHALEV, amount: 750, stands: false, inactiveReasonHe: "ההופעה בוטלה" });
+  const hist = led().find((r) => r.id === "hist")!;
+  const zeroedNote = String(hist.note);
+  await ES.syncShowEntitlement({ showId: SH9, showName: "x", showDate: null, artistId: SHALEV, amount: 750, stands: true, performed: true });
+  ok("6h. the earlier note is kept while zeroed and restored after (history never lost)", /היה ₪750.* \|\| היסטוריה לפני המחזור הראשון$/.test(zeroedNote) && hist.note === "היסטוריה לפני המחזור הראשון" && hist.amount === 750, { zeroedNote, note: hist.note });
+  const S9 = randomUUID();
+  ok("6f. A7: a plain edit to בוצע (performed, no close dialog) realizes the entitlement — ONE row", (await ES.syncShowEntitlement({ showId: S9, showName: "חדשה", showDate: "2026-10-05", artistId: SHALEV, amount: 900, stands: true, performed: true })) === "REALIZED" && led().filter((r) => r.source_show_id === S9).length === 1 && led().find((r) => r.source_show_id === S9)!.entry_type === "הכנסות");
+  const S10 = randomUUID();
+  await ES.syncShowEntitlement({ showId: S10, showName: "מתוכננת", showDate: "2026-10-06", artistId: SHALEV, amount: 800, stands: true });
+  const exp10 = led().find((r) => r.source_show_id === S10)!;
+  ok("6g. an EXPECTED row becomes realized in place when the show is performed (same id — never expected + realized)", String(exp10.entry_type) === "הכנסות צפויות" && (await ES.syncShowEntitlement({ showId: S10, showName: "מתוכננת", showDate: "2026-10-06", artistId: SHALEV, amount: 800, stands: true, performed: true })) === "REALIZED" && led().filter((r) => r.source_show_id === S10).length === 1 && String(exp10.entry_type) === "הכנסות");
   // a legacy booking-time row (keyed by the old artist-fee transaction) is ADOPTED, not duplicated
   const S2 = randomUUID(), LEG = randomUUID();
   led().push({ id: randomUUID(), artist_id: SHALEV, entry_type: "הכנסות צפויות", amount: 1000, entry_date: "2026-10-01", description: "הופעה", note: "", source_tx_id: LEG, source_show_id: null });
@@ -188,7 +206,8 @@ const deletes: string[] = [];
   const walk = (dir: string) => { for (const e of fs.readdirSync(path.resolve(__dirname, "..", dir), { withFileTypes: true })) { const p = `${dir}/${e.name}`; if (e.isDirectory()) walk(p); else if (/\.(ts|tsx)$/.test(e.name) && /unit-balance/.test(read(p))) users.push(p); } };
   for (const d of ["app", "components", "lib"]) walk(d);
   users.splice(0, users.length, ...users.filter((u) => !u.startsWith("lib/partner/system/"))); // contracts describe it, they do not read it
-  const allowed = ["app/api/transactions/unit-balance/route.ts", "components/finance/FinancePage.tsx", "lib/artist-entitlement-sync.ts", "lib/finance/unit-balance-reader.ts", "lib/partner/finance/core.ts", "lib/partner/finance/unit-view.ts", "lib/partner/knowledge/capabilities/finance.ts"];
+  // lib/shows-finance-sync.ts imports only EXPLAINED_ARTIST_PAYMENTS (the Pacha / Summer Time freeze, A7 2026-09-29)
+  const allowed = ["app/api/transactions/unit-balance/route.ts", "components/finance/FinancePage.tsx", "lib/artist-entitlement-sync.ts", "lib/shows-finance-sync.ts", "lib/finance/unit-balance-reader.ts", "lib/partner/finance/core.ts", "lib/partner/finance/unit-view.ts", "lib/partner/knowledge/capabilities/finance.ts"];
   ok("39. only Finance + Sunny read the unit balance (Dashboard / Insights / Reports / weekly report / targets untouched)", users.every((u) => allowed.includes(u)), users);
 
   console.log(`\n${pass} passed, ${fail} failed`);

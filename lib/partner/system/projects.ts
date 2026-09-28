@@ -176,7 +176,8 @@ export const PROJECT_INTEGRITY = {
 
 /** Files that define project semantics — changing any of them fails scripts/test-sunny-projects.tsx until reviewed. */
 export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/projects-store.ts": "b139621464712e44bda49c13445aa65eacbf1eed700de23655d0c003cfe38158",
+  // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
+  "lib/projects-store.ts": "220bcd91757b3d14249bd0f92972e64b4b7f2d79a138c94972a6e578fcf9b84d",
   // 2026-09-29 review: lib/types.ts gained the media allocation-model fields (LabelMediaRecord + MediaAllocation) — no project field / vocabulary change
   "lib/types.ts": "97ea909e7f2caaa07192ec2c21be965882e6b8ab2f4716fbe1fcaa68e10f2098",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects

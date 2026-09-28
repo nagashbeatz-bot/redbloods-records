@@ -35,10 +35,11 @@ export async function DELETE(
   try {
     const { id } = await context.params;
     const r = await deleteSession(id);
-    return NextResponse.json({ ok: true, calendarDeleted: r.calendarDeleted, calendarError: r.calendarError });
+    return NextResponse.json({ ok: true, calendarDeleted: r.calendarDeleted, calendarError: r.calendarError, cancelledExpenses: r.cancelledExpenses });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[sessions DELETE id]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // A6: a paid session expense refuses the delete (409 — nothing was changed)
+    return NextResponse.json({ error: msg }, { status: err instanceof Error && err.name === "SessionHasPaidExpenseError" ? 409 : 500 });
   }
 }

@@ -81,6 +81,8 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
   }
 
   // Rehearsal → canonical Finance (idempotent) + re-derive the show's split (showId validated against a real show).
+  // A3 (2026-09-29): a failed finance sync is REPORTED after the other steps — never swallowed into a success
+  let financeError: unknown = null;
   if (sessionType === REHEARSAL_SESSION_TYPE && showId) {
     try {
       const { getShow } = await import("@/lib/shows-store");
@@ -92,6 +94,7 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
       }
     } catch (e) {
       console.error("[sessions] rehearsal finance sync error:", e);
+      financeError = e;
     }
   }
   if (projectId) {
@@ -101,6 +104,7 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
   // Owner + Shalev push iff the session belongs to one of his projects (checked inside; production-only; best-effort).
   notifySessionCreatedForShalev({ id: data.id, projectId: data.project_id ?? null, date: data.date, startTime: data.start_time, endTime: data.end_time })
     .catch((e) => console.error("[sessions] shalev push error:", e));
+  if (financeError) throw sessionFinanceError("הסשן נוצר", financeError);
   return { session: data as Record<string, unknown>, calendarError };
 }
 
@@ -142,6 +146,7 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
   const { data, error } = await supabase.from("sessions").update(patch).eq("id", id).select().single();
   if (error) throw new Error(error.message);
   const row = data as { show_id?: string | null; session_type?: string; date: string | null; start_time?: string | null; end_time?: string | null; cost: number | null; calendar_event_id?: string | null; project_id?: string | null };
+  let updateFinanceError: unknown = null;
 
   if (row.session_type === REHEARSAL_SESSION_TYPE && row.show_id) {
     try {
@@ -155,6 +160,7 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
       }
     } catch (e) {
       console.error("[sessions] rehearsal finance sync error:", e);
+      updateFinanceError = e;
     }
   }
 
@@ -183,15 +189,38 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
     }
   }
   if (row.project_id && !fromCalendar) touchProject(row.project_id).catch(() => {});
+  if (updateFinanceError) throw sessionFinanceError("הסשן עודכן", updateFinanceError);
   return { session: data as Record<string, unknown>, calendarSynced };
 }
 
-/** Delete a session, then its Google event (best-effort, outcome reported). Linked expense rows are NOT deleted; a
- *  deleted show rehearsal re-derives the show split (hardened). */
-export async function deleteSession(id: string): Promise<{ calendarDeleted: boolean | null; calendarError: string | null }> {
-  const { data: session } = await supabase.from("sessions").select("calendar_event_id, project_id, show_id, session_type").eq("id", id).single();
+/**
+ * Delete a session, then its Google event (best-effort, outcome reported). A6 (Final Hardening 2026-09-29) — its linked
+ * expense (a show rehearsal's cost, transactions.linked_session_id) never stays an orphan and paid money is never deleted:
+ *   paid / partly paid / received  → the delete is REFUSED (SessionHasPaidExpenseError) — fix it in Finance first
+ *   not paid (צפוי / לא שולם …)    → the row is marked "בוטל" with a note, KEPT as history (never deleted)
+ * A deleted show rehearsal re-derives the show split (hardened); a failed re-sync is reported, never swallowed.
+ */
+export async function deleteSession(id: string): Promise<{ calendarDeleted: boolean | null; calendarError: string | null; cancelledExpenses: number }> {
+  const { data: session, error: sErr } = await supabase.from("sessions").select("calendar_event_id, project_id, show_id, session_type").eq("id", id).maybeSingle();
+  if (sErr) throw new Error(sErr.message);
+  if (!session) throw new Error("הסשן לא נמצא");
+  const { data: linked, error: lErr } = await supabase.from("transactions").select("id, amount, currency, payment_status, notes").eq("linked_session_id", id);
+  if (lErr) throw new Error(lErr.message);
+  const rows = (linked ?? []) as Array<{ id: string; amount: number | null; currency: string | null; payment_status: string | null; notes: string | null }>;
+  const paid = rows.filter((r) => SESSION_MONEY_MOVED.includes(String(r.payment_status)));
+  if (paid.length) throw new SessionHasPaidExpenseError(paid.map((r) => `${r.currency || "₪"}${Number(r.amount).toLocaleString("en-US")} (${r.payment_status})`));
+  const today = new Date().toISOString().slice(0, 10);
+  const open = rows.filter((r) => r.payment_status !== "בוטל");
+  for (const r of open) {
+    // conditional: a row that became paid meanwhile is never cancelled by this delete
+    const { data: c, error: cErr } = await supabase.from("transactions").update({ payment_status: "בוטל", notes: `${r.notes ? `${r.notes} | ` : ""}הסשן נמחק (${today}) — ההוצאה בוטלה ונשמרת כהיסטוריה` })
+      .eq("id", r.id).not("payment_status", "in", '("שולם","חלקי","התקבל")').select("id");
+    if (cErr) throw new Error(`ההוצאה של הסשן לא בוטלה (${cErr.message}) — הסשן לא נמחק`);
+    if (!c || c.length !== 1) throw new Error("ההוצאה של הסשן השתנתה בזמן המחיקה (אולי סומנה כשולמה) — הסשן לא נמחק; רענן ונסה שוב");
+  }
   const { error } = await supabase.from("sessions").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(`${error.message}${open.length ? ` — שים לב: ${open.length} הוצאות של הסשן כבר סומנו בוטל` : ""}`);
+  let deleteFinanceError: unknown = null;
   // HARDENED (2026-09-27): a deleted show rehearsal no longer counts — re-derive the show's split exactly as a
   // rehearsal create / edit does (its expense row is kept, per the no-auto-delete rule).
   const rehShowId = (session as { show_id?: string | null; session_type?: string } | null)?.show_id;
@@ -200,7 +229,7 @@ export async function deleteSession(id: string): Promise<{ calendarDeleted: bool
       const { getShow } = await import("@/lib/shows-store");
       const show = await getShow(rehShowId);
       if (show) { const { syncShowFinance } = await import("@/lib/shows-finance-sync"); await syncShowFinance(show); }
-    } catch (e) { console.error("[sessions] rehearsal delete split re-sync error:", e); }
+    } catch (e) { console.error("[sessions] rehearsal delete split re-sync error:", e); deleteFinanceError = e; }
   }
   const calEventId = session?.calendar_event_id as string | null;
   let calendarDeleted: boolean | null = null;
@@ -216,7 +245,25 @@ export async function deleteSession(id: string): Promise<{ calendarDeleted: bool
   }
   const delProjectId = (session as { project_id?: string } | null)?.project_id;
   if (delProjectId) touchProject(delProjectId).catch(() => {});
-  return { calendarDeleted, calendarError };
+  if (deleteFinanceError) throw sessionFinanceError("הסשן נמחק", deleteFinanceError);
+  return { calendarDeleted, calendarError, cancelledExpenses: open.length };
+}
+
+/** Money that moved (fully or partly) — never cancelled / deleted by a session delete (A6). */
+const SESSION_MONEY_MOVED: readonly string[] = ["שולם", "חלקי", "התקבל"];
+/** A6: the session's expense was already (partly) paid — the delete is refused; money that went out is never deleted. */
+export class SessionHasPaidExpenseError extends Error {
+  constructor(rows: string[]) {
+    super(`לסשן יש הוצאה ששולמה (${rows.join(" · ")}) — לא מוחקים כסף שיצא. מטפלים בהוצאה בכספים קודם (או מסמנים את הסשן 'בוטל')`);
+    this.name = "SessionHasPaidExpenseError";
+  }
+}
+/** A3: the session write happened, the finance sync failed — reported with what was saved (never a silent success). */
+function sessionFinanceError(savedHe: string, e: unknown): Error {
+  const cause = e instanceof Error ? e.message : String(e);
+  const err = new Error(`${savedHe}, אבל סנכרון הכספים של ההופעה נכשל: ${cause} — פתח את הסשן ושמור שוב כדי להשלים (הסנכרון לא יוצר כפילות)`);
+  err.name = "SessionFinanceSyncError";
+  return err;
 }
 
 export interface SessionView { projectId: string | null; showId: string | null; title: string; date: string | null; startTime: string | null; endTime: string | null; status: string; sessionType: string; notes: string; location: string; photographer: string; hasCalendarEvent: boolean }

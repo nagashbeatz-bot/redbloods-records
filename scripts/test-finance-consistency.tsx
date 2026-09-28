@@ -61,6 +61,8 @@ function fakeQuery(table: string) {
     maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
     // the REAL vendor-store writes through upsert — captured here, never persisted anywhere
     upsert: (row: unknown) => { writes.push({ method: "UPSERT", path: `/${table}`, body: JSON.parse(JSON.stringify(row)) }); return Promise.resolve({ data: null, error: null }); },
+    // since A3 (2026-09-29) the Victor settings go through the compare-and-swap merge: a missing row → ONE insert
+    insert: (row: unknown) => { writes.push({ method: "INSERT", path: `/${table}`, body: JSON.parse(JSON.stringify(row)) }); return Promise.resolve({ data: null, error: null }); },
     then: (f: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(f),
   };
   return q;

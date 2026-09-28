@@ -59,6 +59,7 @@ export const SETTINGS_FAMILIES: readonly SettingsFamily[] = [
   F("SUNNY_CHANGE_BASELINE", C, "SUNNY_CORE", "Sunny's last company snapshot used to detect what changed", "Partner change detection", "SYSTEM_SETTINGS", "NONE", "^partner_change_baseline$", { in: ["partner_change_baseline"] }),
   F("AGENT_PUSH_COOLDOWN", C, "AGENT_ALERTS", "When the old agent last pushed a given alert type (cooldown)", "old agent", "SYSTEM_SETTINGS", "NONE", "^push_cooldown_", { like: "push_cooldown_" }),
   F("LEGACY_PUSH_CHECK", C, "PUSH_NOTIFICATIONS", "When the legacy push check last ran", "legacy push check", "SYSTEM_SETTINGS", "NONE", "^push_last_check$", { in: ["push_last_check"] }),
+  F("PROPOSAL_CONVERSION_CLAIM", C, "CLIENTS", "A proposal's conversion claim: the ONE project id reserved for it (A5, 2026-09-29) — the settings key makes the claim exactly-once; a retry / concurrent convert reuses the same project id", "proposal conversion (the convert flow)", "SYSTEM_SETTINGS", "PROJECT", "^proposal_conversion:", { like: "proposal_conversion:" }),
   F("SHOW_SENT_TO_ARTIST", C, "SHOWS", "A show was sent (pushed) to the artist — fingerprint + when (dedupe claim)", "show notify", "SYSTEM_SETTINGS", "SHOW", "^show_notify:", { like: "show_notify:" }),
   F("SHOW_SENT_TO_DJ", C, "LABEL_DJ", "A show was sent (pushed) to the DJ — fingerprint + when (dedupe claim)", "DJ show notify", "SYSTEM_SETTINGS", "SHOW", "^dj_show_notify:", { like: "dj_show_notify:" }),
   F("SHALEV_SESSION_REMINDER_SENT", C, "ARTIST_PORTALS", "A session reminder push was sent to Shalev for a session / time", "session reminder cron", "SYSTEM_SETTINGS", "SESSION", "^shalev_session_reminder:", { like: "shalev_session_reminder:" }),
@@ -140,6 +141,7 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/writes/finance.ts",
   "lib/writes/projects.ts",
   "lib/writes/project-delete.ts",
+  "lib/writes/proposals.ts", // A5 (2026-09-29): the proposal-conversion claim (proposal_conversion:<id>, C)
   "lib/writes/settings-merge.ts", // B1: the compare-and-swap settings merge (finance_<project> blob) used by the clip writers
   "lib/writes/redfilms.ts", // A5: clears finance_<project>.clipProductionId (compare-and-swap) when a cancelled production is deleted
   "lib/writes/system.ts",

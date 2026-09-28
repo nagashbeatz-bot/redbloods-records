@@ -154,7 +154,7 @@ const CASES: FamilyCase<W>[] = [
   ok("meeting routes use the shared writers", /createMeeting\(/.test(read("app/api/meetings/route.ts")) && /updateMeeting\(/.test(read("app/api/meetings/[id]/route.ts")) && /deleteMeeting\(/.test(read("app/api/meetings/[id]/route.ts")));
   ok("task routes + the Google Tasks sync route use the shared writers", /patchTaskRecord\(/.test(read("app/api/tasks/[id]/route.ts")) && /deleteTaskRecord\(/.test(read("app/api/tasks/[id]/route.ts")) && /syncCompletedGoogleTasks\(/.test(read("app/api/calendar/tasks/sync/route.ts")));
   const pw = read("lib/writes/proposals.ts");
-  ok("HARDENED: proposal conversion claims the row (CAS on linked_project_id IS NULL + updated_at) → no double project", /\.is\("linked_project_id", null\)\.eq\("updated_at", proposal\.updated_at\)/.test(pw) && /status: "busy"/.test(pw));
+  ok("HARDENED (A5 2026-09-29): proposal conversion reserves ONE project id (settings PK) and creates the project WITH it (projects PK) → never a second project, even after a partial failure", /from\("settings"\)\.insert\(\{ key: claimKey, value: \{ projectId/.test(pw) && /reserve\.error\.code !== "23505"/.test(pw) && /createProject\(\{ id: projectId,/.test(pw) && /linked_project_id\.is\.null,linked_project_id\.eq\.\$\{project\.id\}/.test(pw));
   const mw = read("lib/writes/meetings.ts");
   ok("HARDENED: a meeting edit moves its Google event; a meeting delete removes it", /updateCalendarEvent\(data\.calendar_event_id/.test(mw) && /deleteCalendarEvent\(m\.calendar_event_id\)/.test(mw));
   ok("HARDENED: a task due-date change moves its Google Task due date", /updateGoogleTaskDue\(gid, patch\.due_date\)/.test(read("lib/writes/tasks.ts")));

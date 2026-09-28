@@ -127,7 +127,7 @@ export const SESSION_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "DELETE_SESSION", kinds: ["session"],
-    meta: meta("מחיקת סשן", "Delete a session (and its Google event); linked finance rows are kept", [K("session")], ["exists"], "deleteSession (lib/writes/sessions)", { effects: ["CALENDAR", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    meta: meta("מחיקת סשן", "Delete a session (and its Google event); a linked UNPAID expense is marked בוטל and kept as history; a paid / partly paid one refuses the delete", [K("session")], ["exists"], "deleteSession (lib/writes/sessions)", { effects: ["FINANCE", "CALENDAR", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) {
       const k = parseKey(a.session, ["session"]); if (!k) return refuse("BAD_ENTITY", "צריך סשן (session:…)");
       const s = await d.readSession(k.id); if (!s) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הסשן");

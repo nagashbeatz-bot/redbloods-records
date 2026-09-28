@@ -121,11 +121,11 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nShared writers + hardening");
   ok("comment / version / work deletes use the shared writer", /deleteMixCommentWithAttachments\(/.test(read("app/api/sound-engineer/comments/[commentId]/route.ts")) && /deleteMixVersionWithFile\(/.test(read("app/api/sound-engineer/versions/[versionId]/route.ts")) && /deleteEngineerWorkClean\(/.test(read("app/api/sound-engineer/[id]/route.ts")));
   const wm = read("lib/writes/mix.ts");
-  ok("HARDENED: deleting a work removes its UNPAID linked expense and keeps a paid one", /exp && exp\.status !== "שולם"/.test(wm));
+  ok("HARDENED (A4 2026-09-29): deleting a work removes its UNPAID linked expense only — a paid OR partly paid (חלקי) one is kept; the delete is conditional", /exp && !ENGINEER_EXPENSE_MONEY_MOVED\.includes\(exp\.status\)/.test(wm) && /ENGINEER_EXPENSE_MONEY_MOVED: readonly string\[\] = \["שולם", "חלקי", "התקבל"\]/.test(wm) && /\.delete\(\)\.eq\("id", exp\.id\)\.not\("payment_status", "in", \'\("שולם","חלקי","התקבל"\)\'\)/.test(wm));
   const store = read("lib/sound-engineer-store.ts");
   ok("payment: ONE call for every engineer (the store update runs THE one writer server-side); no second Steven sync", /await updateSoundEngineerWork\(workId, \{ amountPaid: paid \? w\.agreedPrice : 0, paymentDate: paid \? paymentDate : null \}\)/.test(wm) && !/syncStevenPaymentExpense/.test(wm + store));
   ok("the one writer: reconcileEngineerExpense decides with decideEngineerExpense; every store path uses it (create / update / force sync)", /export async function reconcileEngineerExpense/.test(wm) && /decideEngineerExpense\(/.test(wm) && (store.match(/await reconcile\(/g) ?? []).length >= 3 && !/function syncTransaction/.test(store));
-  ok("paid rows protected on both write paths: the conditional update / delete never touch a שולם row", /\.update\(d\.fields\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm) && /\.delete\(\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm));
+  ok("paid rows protected on both write paths: the conditional update / delete never touch a שולם row", /\.update\(d\.fields\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm) && /\.delete\(\)\.eq\("id", d\.txId\)\.not\("payment_status", "in", \'\("שולם","חלקי","התקבל"\)\'\)/.test(wm));
   ok("no caller supplies a storage path (paths come from the stored records)", !/path:\s*string/.test(read("lib/partner/act/primitives/mix.ts")));
 
   console.log(`\n${pass} passed, ${fail} failed`);

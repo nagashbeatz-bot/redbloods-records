@@ -238,7 +238,7 @@ export const SHOW_INTEGRITY = {
     "זכאות צפויה של הופעה שבוטלה לא נמחקת — היא מסומנת '[זכאות לא פעילה]' בהערה (אין עמודת סטטוס ביומן). מסך המאזן עדיין מציג אותה כשורה (מסומנת בהערה) — פער תצוגה רשום.",
     "הופעה אחת (03.09) מסומנת בוצע עם מחיר 0, בלי שורת הכנסה, עם שורת DJ של 0 ומשימה פתוחה.",
     "שורות 'שכר אמן' צפויות ישנות (לפני 28.9) אינן תשלום ואינן חוב בכספים — היישור המאושר מסמן אותן 'בוטל' עם הערת ביקורת; החוב לאמן = יתרת היומן.",
-    "הופעה של אבי (01.08) בוצעה ושולמה — אין לה שורת מאזן (נסגרה בלי דיאלוג הסגירה או לפני שהמנגנון קיים).",
+    "הופעה של אבי (לונה, 01.08) בוצעה ושולמה — ביומן שלו זכאות ממומשת ₪750 ותשלום ₪750 מקושרים להופעה (היסטוריה לפני המחזור הראשון; נבדק 2026-09-29).",
     "מעולם לא נשלחה הודעה ל-DJ מהמערכת; 5 הופעות ללא סטטוס אישור (לפני מערכת האישורים).",
     "אין הופעות עתידיות רשומות.",
   ],
@@ -253,7 +253,8 @@ export const SHOW_REVIEWED_FILES = [
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "62db5ba2642c0db7d2bff609e13c72feeed3f1dd67748002a2327693b809eae7",
   "lib/shows-types.ts": "4ff774de1368126c2f9ad65dba06e417a341e452cc75c667a4edd162ab993aa3",
-  "lib/shows-finance-sync.ts": "57e5fde8e9fe22f4445d9a18789737bf5f88af9c6368be6be195bf5741b21414",
+  // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
+  "lib/shows-finance-sync.ts": "6c08d69e52675cee18a10c6df7ab4bddf89095c32c6f4f4d749a1ab73cdcb3fe",
   "lib/artist-balance-show-sync.ts": "578ae5accad84c65e945050a5b343398823751e96325f491a6ae9c906821584c",
   "lib/artist-balance-show-sync-pure.ts": "b695fd979b16ebfc38b97a05517fb34505b31db431dc8a3587bf7c11f712eba3",
   "lib/artist-balance-show-close-sync.ts": "bfd356bfcbd24fa65e7cba2c93603ed07d33e5380e966c87af7b6f4e3ebb433c",

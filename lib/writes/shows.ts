@@ -71,8 +71,10 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
     });
 
     // Sync canonical Finance transactions (confirmed shows: expected balance + DJ / artist rows "צפוי").
+    // A1 (2026-09-29): a failed sync fails the call — and says the show EXISTS, so it is opened and saved, never re-created
     const { syncShowFinance } = await import("@/lib/shows-finance-sync");
-    await syncShowFinance(show);
+    try { await syncShowFinance(show); }
+    catch (e) { throw new Error(`ההופעה נוצרה (אל תיצור אותה שוב) — אבל סנכרון הכספים שלה נכשל: ${e instanceof Error ? e.message : String(e)}. פתח את ההופעה ושמור כדי להשלים.`); }
     // D5: an advance typed on creation is money received — it becomes a SHOW_PAYMENT row (never a number on the show)
     let paymentWarning: string | undefined;
     const advance = collab ? 0 : Number(body.advance_payment) || 0;
@@ -219,8 +221,12 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     // A new currency (no payments yet): the show's expected / rehearsal rows and its UNPAID DJ / artist rows carry it
     // too — no conversion. A paid fee row keeps the currency it was paid in (A1: a paid row is never re-currencied).
     if (patch.currency && patch.currency !== (existing.currency || "₪")) {
-      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.REHEARSAL]);
-      await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST]).neq("payment_status", "שולם");
+      // A3 (2026-09-29): checked — a failed propagation fails the save (never a show in one currency, its rows in another)
+      const { ShowFinanceSyncError } = await import("@/lib/shows-finance-sync");
+      const c1 = await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.REHEARSAL]);
+      if (c1.error) throw new ShowFinanceSyncError("העברת המטבע לשורות הכספים", c1.error.message);
+      const c2 = await supabase.from("transactions").update({ currency: patch.currency }).eq("show_id", id).in("show_money_role", [SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST]).not("payment_status", "in", '("שולם","חלקי")');
+      if (c2.error) throw new ShowFinanceSyncError("העברת המטבע לשורות השכר", c2.error.message);
     }
     let financeWarning: string | undefined;
     // Set when unchecking "שולם לאמן" would otherwise silently leave a stale

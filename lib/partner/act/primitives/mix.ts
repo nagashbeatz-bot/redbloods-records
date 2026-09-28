@@ -180,7 +180,7 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "DELETE_ENGINEER_WORK", kinds: ["mix-work"],
-    meta: meta("מחיקת עבודת מיקס", "Delete an engineer work (its UNPAID linked expense goes with it; a paid expense stays as history)", [K("mixWork")], ["exists"], "deleteEngineerWorkClean (lib/writes/mix)", { effects: ["FINANCE", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    meta: meta("מחיקת עבודת מיקס", "Delete an engineer work (its UNPAID linked expense goes with it; a paid or partly paid expense stays as history)", [K("mixWork")], ["exists"], "deleteEngineerWorkClean (lib/writes/mix)", { effects: ["FINANCE", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) { return withExists(await onWork(d, a)); },
     async read(d, id) { const f = await workFields(d, id); return f ? { ...f, exists: true } : null; },
     plan: () => ({ ok: true, after: { exists: false } }),

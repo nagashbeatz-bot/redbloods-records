@@ -111,23 +111,23 @@ export const CONVERSION_FLOW = {
   entryPoints: ["client drawer proposal card '⇒ הפוך לפרויקט' (asks for a project name; shown on every unlinked card, including לא נסגר)", "legacy dashboard grid (no body → project named after the proposal title; /dashboard-old only)"],
   steps: [
     "read the proposal with the client name (404 when missing)",
-    "guard: already linked → 409 (the ONLY duplicate guard; a read-then-write, no lock, no status check)",
-    "insert the project: name (typed or proposal title), artist = client name, status לא התחיל, start date today (UTC), no deadline, notes = proposal notes, empty type / parent, business type by the Owner rule (2026-09-27: לייבל when שליו טסמה / אבי מולה is credited — by roster id — else לקוח; the same create writer as the Projects UI and Sunny)",
+    "guard: already linked → 409 (already_converted)",
+    "A5 (2026-09-29): reserve the ONE project id — INSERT settings proposal_conversion:<proposal> (the settings key lets exactly one request win; a later / concurrent request reads the same id)",
+    "insert the project WITH the reserved id (an existing project with that id is reused — the projects key refuses a second): name (typed or proposal title), artist = client name, status לא התחיל, start date today (UTC), no deadline, notes = proposal notes, empty type / parent, business type by the Owner rule (2026-09-27: לייבל when שליו טסמה / אבי מולה is credited — by roster id — else לקוח; the same create writer as the Projects UI and Sunny)",
     "add missing clients from the artist (not awaited, errors ignored — the client already exists)",
     "only when amount > 0: write the project's agreed price setting {agreedPrice, currency, financialNotes: ''} (whole value; error not checked)",
-    "proposal → status נסגר + linked project (error not checked)",
+    "proposal → status נסגר + linked project (checked: a failure fails the call; a retry finishes the SAME conversion)",
     "follow-up task → בוצע + Google Task completed (best effort)",
   ],
   atomic: false,
   failureModes: [
-    "a failure after the project insert leaves a project with no linked proposal → the next click creates a SECOND project",
-    "two concurrent clicks both pass the guard → two projects",
+    "FIXED 2026-09-29 (A5): a failure after the project insert, a double click or two concurrent clicks → still ONE project (the reserved id + the projects key); a retry completes the link",
     "UI swallows errors silently (including the 409)",
     "deleting the project later reverts the proposal to לא נסגר (not to its previous status)",
   ],
   notSet: ["deadline", "project type", "advance / payment schedule", "calendar event", "push / notification"],
   finance: "agreed price only (no transaction is created; no advance is recorded)",
-  fix: "not fixed here — a separate approved mission (transactional RPC / idempotency key)",
+  fix: "A5 (Final Hardening 2026-09-29): exactly-once by database keys (settings.key reservation + projects.id), no schema change; not one DB transaction — each step is idempotent and a retry converges",
 } as const;
 
 export const FOLLOW_UP_MODEL = {

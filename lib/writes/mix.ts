@@ -123,9 +123,10 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
       return { kind: d.kind, txId: d.txId, conflictHe: d.conflictHe, messageHe: "שורה ששולמה לא נדרסת — ההוצאה בכספים נשארה כפי שהיא" };
     case "REMOVE_UNPAID": {
       // conditional delete: only while the row is still NOT paid (never deletes paid money, even in a race)
-      const { error } = await supabase.from("transactions").delete().eq("id", d.txId).neq("payment_status", "שולם").neq("payment_status", "חלקי");
+      const { error } = await supabase.from("transactions").delete().eq("id", d.txId).not("payment_status", "in", '("שולם","חלקי","התקבל")');
       if (error) throw new Error(error.message);
-      const { data: still } = await supabase.from("transactions").select("id").eq("id", d.txId).maybeSingle();
+      const { data: still, error: stErr } = await supabase.from("transactions").select("id").eq("id", d.txId).maybeSingle();
+      if (stErr) throw new Error(stErr.message);
       if (still) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — נשארה", messageHe: "שורה ששולמה לא נדרסת" };
       await setLink(null);
       return { kind: d.kind, txId: null, conflictHe: null, messageHe: "הוצאה שלא שולמה הוסרה (אין הוצאה עד שמסמנים שולם)" };
@@ -151,22 +152,32 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
 
 /** The linked expense row of a work (id + status), if any. */
 export async function engineerWorkExpense(workId: string): Promise<{ id: string; status: string; amount: number; currency: string } | null> {
-  const { data: w } = await supabase.from("sound_engineer_work").select("linked_transaction_id").eq("id", workId).maybeSingle();
+  // a failed read is never "no expense" (A4, 2026-09-29) — the delete below depends on it
+  const { data: w, error: wErr } = await supabase.from("sound_engineer_work").select("linked_transaction_id").eq("id", workId).maybeSingle();
+  if (wErr) throw new Error(wErr.message);
   const txId = (w as { linked_transaction_id?: string | null } | null)?.linked_transaction_id;
   if (!txId) return null;
-  const { data: t } = await supabase.from("transactions").select("id, payment_status, amount, currency").eq("id", txId).maybeSingle();
+  const { data: t, error: tErr } = await supabase.from("transactions").select("id, payment_status, amount, currency").eq("id", txId).maybeSingle();
+  if (tErr) throw new Error(tErr.message);
   return t ? { id: String(t.id), status: String(t.payment_status ?? ""), amount: Number(t.amount) || 0, currency: String(t.currency ?? "") } : null;
 }
 
-/** HARDENED delete: the work, and its linked expense only when that expense is NOT paid (a paid one is kept as history). */
+/** Money that moved, fully or PARTLY — never deleted with a work (A4, Final Hardening 2026-09-29). */
+export const ENGINEER_EXPENSE_MONEY_MOVED: readonly string[] = ["שולם", "חלקי", "התקבל"];
+
+/**
+ * HARDENED delete (the route, the send-log cascade and Sunny all use it): the work, and its linked expense only while
+ * that expense is NOT paid — fully OR partly (A4: "חלקי" is money that went out). The delete is conditional on the
+ * status (a row paid in the meantime is never deleted); a paid / partly paid expense is kept as history.
+ */
 export async function deleteEngineerWorkClean(workId: string): Promise<{ removedExpense: boolean }> {
   const { deleteSoundEngineerWork } = await import("@/lib/sound-engineer-store");
   const exp = await engineerWorkExpense(workId);
   await deleteSoundEngineerWork(workId);
-  if (exp && exp.status !== "שולם") {
-    const { error } = await supabase.from("transactions").delete().eq("id", exp.id);
+  if (exp && !ENGINEER_EXPENSE_MONEY_MOVED.includes(exp.status)) {
+    const { data, error } = await supabase.from("transactions").delete().eq("id", exp.id).not("payment_status", "in", '("שולם","חלקי","התקבל")').select("id");
     if (error) throw new Error(`the work was deleted but its unpaid expense was not: ${error.message}`);
-    return { removedExpense: true };
+    return { removedExpense: (data ?? []).length === 1 };
   }
   return { removedExpense: false };
 }

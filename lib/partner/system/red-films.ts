@@ -282,7 +282,7 @@ export const RF_INTEGRITY = {
   productionCounts20260925: {
     productions: 14, byStatus: { "בוטל": 12, "רעיון": 2 }, byType: { "קליפ": 12, "unreadable (encoding)": 2 }, withProject: 10, distinctProjects: 7, projectsWithTwoOrMore: 2, projectBusinessType: { "לקוח": 10 }, managedBySendClip: 0,
     activeProductions: 2, activeWithPassedShootDate: 2, activeWithProjectCompleted: 1, clientSourceAllInternalLabel: 14, publishDates: 0, finalLinks: 0, versionLinks: 0, rawLinks: 0,
-    budgetLines: 17, budgetLineStatus: { "מתוכנן": 17 }, plannedTotal: 10655, manualActualTotal: 1800, budgetPayments: 9, paymentsTotal: 4355, paymentsWithReceipt: 9, linesInFinance: 0, currencyRecorded: "per row since 2026-09-27 (all existing rows ₪)",
+    budgetLines: 17, budgetLineStatus: { "מתוכנן": 17 }, plannedTotal: 10655, manualActualTotal: 1800, budgetPayments: 10, paymentsTotal: 4955, paymentsLinkedToFinance: 10, linesInFinance: 0, currencyRecorded: "per row since 2026-09-27 (all existing rows ₪)",
     crewRows: 0, sceneRows: 0, documents: 2, documentTypes: ["תסריט", "אחר"], documentsWithPublicLink: 2, referenceImages: 47, referenceLinks: 2, equipment: 8, productionTasks: 2,
     clipRows: 1, clipRowStatus: { "הועבר לכספים": 1 }, clipRowTransactionMissing: 1, clipDeals: 1, clipDealPrice: 3500, clipIncome: { received: 1500, expected: 2000 }, clipScopedExpenses: 0,
     shootSessions: 2, shootSessionStatus: { "התקיים": 2 }, shootSessionsWithCalendar: 2, shootSessionsWithExpense: 0, shootSessionWithoutProduction: 1, projectTypeSongPlusClip: 1,
@@ -291,7 +291,7 @@ export const RF_INTEGRITY = {
   findingsHe: [
     "14 הפקות Red Films: 12 בוטלו, 2 פעילות — שתיהן עדיין 'רעיון' למרות שתאריך הצילום עבר (ואחת מהן בפרויקט שהושלם).",
     "אף הפקה לא נוצרה דרך 'שלח קליפ' (0 הפקות מנוהלות); 2 פרויקטים עם יותר מהפקה אחת. כל 10 ההפקות המקושרות הן לפרויקטים של לקוחות.",
-    "תקציב Red Films: 17 שורות מתוכננות ₪10,655, 9 תשלומים ₪4,355 עם קבלות; ה'בפועל' הידני (1,800) לא תואם לתשלומים. DB-1 (2026-09-27): כל תשלום → הוצאה אחת מקושרת בכספים; בעלייה לאוויר 0 מקושרים — הבוס מקשר את ההיסטוריים בפעולות הקישור.",
+    "תקציב Red Films: 17 שורות מתוכננות ₪10,655, 10 תשלומים ₪4,955 — כולם מקושרים להוצאה אחת בכספים (שולם, קליפ; נבדק 2026-09-29); ה'בפועל' הידני (1,800) הוא שדה ישן ולא 'שולם'.",
     "אין הוצאה אחת עם היקף 'קליפ' בכספים; היקף 'קליפ' מופיע רק על 2 הכנסות של עסקת קליפ (₪1,500 התקבל, ₪2,000 צפוי מתוך ₪3,500).",
     "שורת תכנון קליפ אחת מסומנת 'הועבר לכספים' — אבל העסקה שהיא מצביעה עליה לא קיימת.",
     "2 ימי צילום (התקיים, מחוברים ליומן, בלי הוצאה); אחד מהם בפרויקט בלי הפקה.",
@@ -327,7 +327,8 @@ export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/writes/rf-finance-link.ts": "5591992307c840b3c116cdfdb70c31bdb6cb2b8c4524eb6a985d3cf4db4b916d",
   "app/api/red-films/budget-payments/[paymentId]/route.ts": "d0986855ef6d1d2e5eaffa7858101c3233d0bb7ad2abcc6c443185fdde5c657b",
   "lib/writes/redfilms.ts": "af1be1f106ba4e102c25de457f9f98c41bb64f2798a55c401d2606cbd8b3c298",
-  "lib/writes/clip.ts": "e37ff6bd9b0fc9b0e1b09bbf0a724c6dea5e5513562ca390998fb39eeab2edbc",
+  // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
+  "lib/writes/clip.ts": "968cdbd635dbbcd36b7692489e1ea1e250d1628031ba3b7bc62d8bfe525fdf35",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",
   "lib/label-clips.ts": "bc82ac926a2b6d0a0735aa0dbc9a090ad30957dd098b23f5340188e16a2289a4",

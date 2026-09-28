@@ -526,14 +526,14 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "DELETE_SHOW_REHEARSAL", kinds: ["session"],
-    meta: meta("מחיקת חזרה להופעה", "Delete a show rehearsal (its event is removed; the show split re-derives; its expense row is kept)", [K("session")], ["exists"], "deleteSession (lib/writes/sessions) — rehearsal path", { effects: ["FINANCE", "CALENDAR", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    meta: meta("מחיקת חזרה להופעה", "Delete a show rehearsal (its event is removed; the show split re-derives; an UNPAID expense is marked בוטל and kept as history; a paid / partly paid expense refuses the delete)", [K("session")], ["exists"], "deleteSession (lib/writes/sessions) — rehearsal path", { effects: ["FINANCE", "CALENDAR", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) { const r = await onRehearsal(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, exists: true, linkedTransactions: await d.countSessionTransactions(r.id) } }; },
     async read(d, id) { const s = await d.readSession(id); return s ? { ...s, exists: true, linkedTransactions: await d.countSessionTransactions(id) } : null; },
     plan: () => ({ ok: true, after: { exists: false } }),
     async apply(d, id) { await d.deleteSession(id); },
     async verify(d, id) { return (await d.readSession(id)) === null; },
     requiredValues: () => ["מחיקה"],
-    warnings: (c) => (Number(c.linkedTransactions) > 0 ? ["הוצאת החזרה נשארת ברשומות הכספים (אין מחיקה אוטומטית) — אם צריך, מוחקים אותה בנפרד"] : []),
+    warnings: (c) => (Number(c.linkedTransactions) > 0 ? ["הוצאת החזרה: אם לא שולמה — מסומנת 'בוטל' ונשמרת כהיסטוריה (לא נמחקת); אם שולמה (גם חלקית) — המחיקה נדחית ומטפלים קודם בכספים"] : []),
     disclosuresHe: ["החזרה נמחקת, והאירוע שלה ביומן", "חלוקת ההופעה מחושבת מחדש בלי החזרה", "לא יישלח Push"],
   },
 ];

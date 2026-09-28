@@ -109,6 +109,8 @@ export async function getProjectByMondayId(mondayId: string): Promise<Project | 
 }
 
 export async function createProject(fields: {
+  /** a caller-reserved id (the proposal-conversion claim, A5 2026-09-29) — the projects PK makes the create exactly-once */
+  id?:            string;
   name:           string;
   artist?:        string;
   status?:        string;
@@ -124,6 +126,7 @@ export async function createProject(fields: {
   const { data, error } = await supabase
     .from("projects")
     .insert({
+      ...(fields.id ? { id: fields.id } : {}),
       name:           fields.name,
       artist:         fields.artist         || "",
       status:         fields.status         || "לא התחיל",

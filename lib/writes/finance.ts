@@ -18,6 +18,7 @@ import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 import { copyUnitToSplitRows, recomputeUnitIfRule, setTransactionUnit, unitColumnsForNewTransaction } from "@/lib/writes/business-unit";
 import { syncExpenseShareOrFail } from "@/lib/writes/artist-expense-share";
 import type { UnitWriter } from "@/lib/business-unit";
+import { validateTxPatch } from "@/lib/finance/tx-patch-validation";
 import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
 
 export interface TransactionInput {
@@ -75,6 +76,21 @@ export interface TransactionPatch {
 /** PATCH /api/transactions/[id] semantics (field-level; actual money — lib/finance/classify isActualMoneyTx — marks a linked clip row שולם). */
 export async function updateTransactionRecord(id: string, body: TransactionPatch): Promise<Record<string, unknown>> {
   if (isDeprecatedPaymentStatus(body.paymentStatus)) throw new FinanceInputError(DEPRECATED_STATUS_MESSAGE);
+  // A8 (Final Hardening 2026-09-29): a change to the row's FINANCIAL MEANING (type / status / scope / project / song vs
+  // clip / currency / amount / owner marker) is validated against the row's final state — never written blind
+  const { data: curRow, error: curErr } = await supabase.from("transactions").select("*").eq("id", id).maybeSingle();
+  if (curErr) throw new Error(curErr.message);
+  if (!curRow) throw new FinanceInputError("transaction not found");
+  const invalid = validateTxPatch({
+    type: String(curRow.type ?? ""), paymentStatus: String(curRow.payment_status ?? ""), scope: String(curRow.scope ?? "project"), projectId: (curRow.project_id as string | null) ?? null,
+    expenseScope: String(curRow.expense_scope ?? ""), currency: String(curRow.currency ?? "₪"), amount: Number(curRow.amount) || 0, linkedSessionId: String(curRow.linked_session_id ?? ""),
+  }, body);
+  if (invalid) throw new FinanceInputError(invalid);
+  if (body.project_id && body.project_id !== curRow.project_id) {
+    const { data: proj, error: pErr } = await supabase.from("projects").select("id").eq("id", body.project_id).maybeSingle();
+    if (pErr) throw new Error(pErr.message);
+    if (!proj) throw new FinanceInputError("הפרויקט לא נמצא");
+  }
   const patch: Record<string, unknown> = {};
   if (body.date !== undefined) patch.date = body.date || null;
   if (body.description !== undefined) patch.description = body.description;
@@ -110,13 +126,20 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
   }
   const pid = (data as { project_id?: string | null }).project_id;
   if (pid) touchProject(pid).catch(() => {});
-  // the clip row is marked שולם only when the row is ACTUAL money (an expense only when שולם — never "התקבל")
-  if (patch.payment_status && isActualMoneyTx(data as { type?: string | null; payment_status?: string | null })) {
-    supabase.from("clip_items").update({ status: "שולם", updated_at: new Date().toISOString() }).eq("linked_transaction_id", id).then(() => {}, () => {});
-  }
+  // A9 (2026-09-29): the linked clip row mirrors the transaction BOTH ways, awaited and checked — actual money (an expense
+  // only when שולם) → "שולם"; back to not paid → "הועבר לכספים" (the promoted state). A cancelled clip row is never revived.
+  if (patch.payment_status) await syncClipItemPaidMirror(id, data as { type?: string | null; payment_status?: string | null });
   // amount / status / unit / project changed → the artist's share follows (the SAME ledger row, never a second one)
   await syncExpenseShareOrFail(id);
   return data as Record<string, unknown>;
+}
+
+/** The clip planning row linked to a transaction follows its paid state (A9). A failure fails the edit (never silent). */
+export async function syncClipItemPaidMirror(txId: string, tx: { type?: string | null; payment_status?: string | null }): Promise<void> {
+  const paid = isActualMoneyTx(tx);
+  const q = supabase.from("clip_items").update({ status: paid ? "שולם" : "הועבר לכספים", updated_at: new Date().toISOString() }).eq("linked_transaction_id", txId);
+  const { error } = paid ? await q.eq("status", "הועבר לכספים") : await q.eq("status", "שולם");
+  if (error) throw new Error(`התנועה עודכנה, אבל שורת תכנון הקליפ לא סונכרנה (${error.message}) — שמור שוב כדי להשלים`);
 }
 
 /** DELETE /api/transactions/[id] semantics. */

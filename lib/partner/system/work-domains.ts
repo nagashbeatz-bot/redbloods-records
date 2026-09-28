@@ -118,7 +118,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     },
     rules: [
       R("MEETING_NO_OUTCOME", "IMPLEMENTATION_BEHAVIOR", "A meeting has no outcome, follow-up or task; a past meeting still נקבעה may or may not have happened."),
-      R("MEETING_EVENT_NOT_SYNCED", "POSSIBLE_BUG", "Editing, cancelling or deleting a meeting never updates or deletes its Google event."),
+      R("MEETING_EVENT_NOT_SYNCED", "IMPLEMENTATION_BEHAVIOR", "Since 2026-09-27 an edit of date / time / duration / location moves the meeting's Google event and a delete removes it; cancelling by status keeps the event (MEETING_CANCELLED_EVENT_KEPT)."),
       R("MEETING_CLIENT_TEXT_ID", "IMPLEMENTATION_BEHAVIOR", "The client id is text without a FK plus a name snapshot."),
     ],
     sideEffects: ["Google event at booking only"], integrations: ["GOOGLE_CALENDAR"], security: ["meeting routes rely on the central proxy only"],

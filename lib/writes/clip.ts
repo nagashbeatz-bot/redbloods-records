@@ -17,7 +17,8 @@ import { rfClientSourceFor } from "@/lib/clip-rf-money-pure";
 import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 
 async function readFinanceSettings(projectId: string): Promise<Record<string, unknown>> {
-  const { data } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
+  const { data, error } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
+  if (error) throw new Error(`קריאת הגדרות הכספים של הפרויקט נכשלה: ${error.message}`); // never a default price / currency
   return (data?.value ?? {}) as Record<string, unknown>;
 }
 
@@ -87,7 +88,8 @@ const VALID_STATUSES = new Set<string>(CLIP_PAYMENT_STATUSES);
 /** POST /api/projects/[id]/clip/payments semantics (seed = open the deal 50 / 50; otherwise one payment). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function addClipPayments(projectId: string, body: Record<string, any>): Promise<{ kind: "not_found" } | { kind: "ok"; payments: unknown[]; created: boolean }> {
-  const { data: project } = await supabase.from("projects").select("id, name, artist, project_type").eq("id", projectId).maybeSingle();
+  const { data: project, error: projErr } = await supabase.from("projects").select("id, name, artist, project_type").eq("id", projectId).maybeSingle();
+  if (projErr) throw new Error(projErr.message);
   if (!project) return { kind: "not_found" };
   const settings = await readFinanceSettings(projectId);
   const currency = (settings.currency as string | undefined) ?? "₪";
@@ -96,9 +98,15 @@ export async function addClipPayments(projectId: string, body: Record<string, an
   if (body.seed) {
     const price = Number(body.clipAgreedPrice ?? settings.clipAgreedPrice ?? 0);
     if (!Number.isFinite(price) || price <= 0) throw new ClipInputError("יש להזין מחיר שסוכם לקליפ");
-    const { data: existing } = await supabase.from("transactions").select("*").eq("project_id", projectId).eq("type", "income").eq("expense_scope", CLIP_SCOPE);
+    // A9 (Final Hardening 2026-09-29): a failed read is NOT "no clip payments" — seeding then would add a second
+    // מקדמה / יתרה pair; the failure is reported and nothing is written
+    const { data: existing, error: exErr } = await supabase.from("transactions").select("*").eq("project_id", projectId).eq("type", "income").eq("expense_scope", CLIP_SCOPE);
+    if (exErr) throw new Error(`קריאת תשלומי הקליפ הקיימים נכשלה (${exErr.message}) — לא נוצרו תשלומים`);
     if ((existing ?? []).length > 0) return { kind: "ok", payments: existing ?? [], created: false };
-    if ((project.project_type as string) === "שיר") await supabase.from("projects").update({ project_type: SONG_WITH_CLIP_TYPE, updated_at: new Date().toISOString() }).eq("id", projectId);
+    if ((project.project_type as string) === "שיר") {
+      const { error: ptErr } = await supabase.from("projects").update({ project_type: SONG_WITH_CLIP_TYPE, updated_at: new Date().toISOString() }).eq("id", projectId);
+      if (ptErr) throw new Error(`סוג הפרויקט לא עודכן לשיר + קליפ (${ptErr.message}) — לא נוצרו תשלומים`);
+    }
     const today = new Date().toISOString().slice(0, 10);
     const [first, second] = splitHalf(price);
     const created = await insertPayments(projectId, artist, currency, [
