@@ -24,6 +24,8 @@ function from(table: string) {
     if (mode === "insert") {
       if (failNext[table]) { const m = failNext[table]; failNext[table] = null; return { data: null, error: { message: m, code: "XX000" }, count: null }; }
       if (table === "artist_balance_entries" && ins!.source_tx_id && t(table).some((r) => r.source_tx_id === ins!.source_tx_id)) return { data: null, error: { message: "duplicate key", code: "23505" }, count: null };
+      // the DB key (2026-09-28): artist_balance_entries_expense_share_uk (source_expense_tx_id, artist_id)
+      if (table === "artist_balance_entries" && ins!.source_expense_tx_id && t(table).some((r) => r.source_expense_tx_id === ins!.source_expense_tx_id && r.artist_id === ins!.artist_id)) return { data: null, error: { message: "duplicate key", code: "23505" }, count: null };
       const r = { id: randomUUID(), ...ins }; t(table).push(r); return { data: one ? { ...r } : [{ ...r }], error: null, count: null };
     }
     let rows = t(table).filter((r) => filters.every((f) => f(r)));
@@ -107,10 +109,10 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
   console.log("\nThe writer (lib/writes/artist-expense-share) — idempotent, never deletes");
   t("projects").push({ id: "p-shalev", artist: "שליו טסמה" }, { id: "p-duo", artist: "שליו טסמה, אבי מולה" }, { id: BALAGAN, artist: "טל צגאי, אבי מולה" }, { id: "p-nb", artist: "נגש ביטס, שליו טסמה" });
   const tx = (id: string, o: Row) => { t("transactions").push({ id, type: "expense", amount: 1000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS", category: "קידום", expense_scope: "שיווק", show_id: null, show_money_role: null, project_id: "p-shalev", date: "2026-10-01", description: "קידום", ...o }); return id; };
-  const shareRows = (txId: string) => t("artist_balance_entries").filter((r) => r.source_tx_id === txId || String(r.note ?? "").includes(`tx:${txId}]`));
+  const shareRows = (txId: string) => t("artist_balance_entries").filter((r) => r.source_expense_tx_id === txId || r.source_tx_id === txId || String(r.note ?? "").includes(`tx:${txId}]`));
   const promo = tx(randomUUID(), {});
   const w1 = await W.syncExpenseShare(promo);
-  ok("12a. a new paid Records promotion 1,000 (Shalev) → ONE ledger expense 500, linked (source_tx_id + marker); Finance untouched", w1.status === "DEFINED" && shareRows(promo).length === 1 && shareRows(promo)[0].amount === 500 && shareRows(promo)[0].entry_type === "הוצאות" && shareRows(promo)[0].source_tx_id === promo && t("transactions").find((r) => r.id === promo)!.amount === 1000, { w1, rows: shareRows(promo) });
+  ok("12a. a new paid Records promotion 1,000 (Shalev) → ONE ledger expense 500, linked by the DB key source_expense_tx_id (no note marker); Finance untouched", w1.status === "DEFINED" && shareRows(promo).length === 1 && shareRows(promo)[0].amount === 500 && shareRows(promo)[0].entry_type === "הוצאות" && shareRows(promo)[0].source_expense_tx_id === promo && !String(shareRows(promo)[0].note).includes("tx:") && t("transactions").find((r) => r.id === promo)!.amount === 1000, { w1, rows: shareRows(promo) });
   await W.syncExpenseShare(promo); await W.syncExpenseShare(promo);
   ok("14. the same transaction processed again (×2) → still ONE ledger row", shareRows(promo).length === 1 && shareRows(promo)[0].amount === 500);
   Object.assign(t("transactions").find((r) => r.id === promo)!, { amount: 800 });
@@ -129,7 +131,7 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
   ok("   a deleted Finance expense → its share row kept at 0 (never deleted)", gone.status === "TX_MISSING" && shareRows(promo).length === 1 && shareRows(promo)[0].amount === 0);
   const duo = tx(randomUUID(), { amount: 4000, project_id: "p-duo", expense_scope: "קליפ" });
   await W.syncExpenseShare(duo); await W.syncExpenseShare(duo);
-  ok("3w. Shalev + Avi clip 4,000 → two rows: Shalev 1,000 (source_tx_id) + Avi 1,000 (marker) — once each after two syncs", shareRows(duo).length === 2 && shareRows(duo).find((r) => r.artist_id === SHALEV)?.amount === 1000 && shareRows(duo).find((r) => r.artist_id === AVI)?.amount === 1000 && shareRows(duo).filter((r) => r.source_tx_id === duo).length === 1);
+  ok("3w. Shalev + Avi clip 4,000 → two rows (Shalev 1,000 + Avi 1,000), BOTH keyed by source_expense_tx_id — once each after two syncs", shareRows(duo).length === 2 && shareRows(duo).find((r) => r.artist_id === SHALEV)?.amount === 1000 && shareRows(duo).find((r) => r.artist_id === AVI)?.amount === 1000 && shareRows(duo).every((r) => r.source_expense_tx_id === duo));
   const bal = tx(randomUUID(), { project_id: BALAGAN });
   await W.syncExpenseShare(bal);
   ok("7. a Records expense on Balagan (external host + Avi) → NO automatic Avi share written", shareRows(bal).length === 0);
@@ -145,7 +147,7 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
   // the Owner's own row linked by source_tx_id (ACUM) is adopted, never duplicated
   const ACUM = "d4f6ca0f-98a6-4d3d-945d-d749fda5c6af";
   tx(ACUM, { amount: 400, project_id: null, expense_scope: "כללי", category: "רישום זכויות", date: "2026-09-27" });
-  t("artist_balance_entries").push({ id: "f157", artist_id: SHALEV, entry_type: "הוצאות", amount: 400, entry_date: "2026-09-27", description: "רישום לאקו\"ם", note: "", source_tx_id: ACUM });
+  t("artist_balance_entries").push({ id: "f157", artist_id: SHALEV, entry_type: "הוצאות", amount: 400, entry_date: "2026-09-27", description: "רישום לאקו\"ם", note: "", source_tx_id: ACUM, source_expense_tx_id: ACUM }); // as backfilled in production
   const wa = await W.syncExpenseShare(ACUM);
   ok("8w. ACUM: the Owner's existing 400 row is adopted (UNCHANGED) — no second row", wa.rows.length === 1 && wa.rows[0].action === "UNCHANGED" && shareRows(ACUM).length === 1);
   // a failed ledger insert never touches Finance; the next sync completes it
@@ -166,7 +168,7 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
   console.log("\nReconciliation (Finance ↔ ledger)");
   const txs = t("transactions").map((r) => ({ id: String(r.id), type: String(r.type), amount: r.amount, currency: String(r.currency), paymentStatus: String(r.payment_status), businessUnit: r.business_unit as string, category: r.category as string, expenseScope: r.expense_scope as string, showId: null, showMoneyRole: null, projectId: (r.project_id as string) ?? null }));
   const artistText = (id: string) => (t("projects").find((p) => p.id === id)?.artist as string) ?? null;
-  const ledger: import("../lib/records-expense-share").ShareLedgerRow[] = t("artist_balance_entries").map((r) => ({ id: String(r.id), artistId: String(r.artist_id), entryType: String(r.entry_type), amount: r.amount, sourceTxId: (r.source_tx_id as string) ?? null, note: (r.note as string) ?? null }));
+  const ledger: import("../lib/records-expense-share").ShareLedgerRow[] = t("artist_balance_entries").map((r) => ({ id: String(r.id), artistId: String(r.artist_id), entryType: String(r.entry_type), amount: r.amount, sourceTxId: (r.source_tx_id as string) ?? null, note: (r.note as string) ?? null, sourceExpenseTxId: (r.source_expense_tx_id as string) ?? null }));
   const rec = R.reconcileExpenseShares({ transactions: txs, projectArtistText: artistText, ledger });
   ok("   in step → no MISSING / MISMATCH / DUPLICATE; the Balagan + no-project expenses are UNDEFINED (for the Owner)", !rec.findings.some((f) => f.code !== "SHARE_UNDEFINED") && rec.findings.filter((f) => f.code === "SHARE_UNDEFINED").length === 2, rec.findings);
   ledger.push({ id: "dup", artistId: SHALEV, entryType: "הוצאות", amount: 1000, sourceTxId: null, note: `[חלק הוצאה tx:${duo}]` });

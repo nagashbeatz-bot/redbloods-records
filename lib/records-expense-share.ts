@@ -155,7 +155,8 @@ export function activeArtistAmounts(s: ExpenseShare): Map<string, number> {
 }
 
 // ── the ledger link (no schema change: the note carries the marker) ──────────────────────────────────────────────
-/** Every automatic share row carries this marker in its note — the link to its Finance transaction (+ source_tx_id when free). */
+/** LEGACY link: share rows written before the DB key (2026-09-28) carry this marker in their note. New rows are linked by
+ *  artist_balance_entries.source_expense_tx_id (unique with the artist) — the marker is read for compatibility only. */
 export const EXPENSE_SHARE_MARKER = "[חלק הוצאה tx:";
 export const expenseShareMarker = (txId: string) => `${EXPENSE_SHARE_MARKER}${txId}]`;
 export const INACTIVE_SHARE_PREFIX = "[חלק הוצאה לא פעיל]";
@@ -168,7 +169,7 @@ export function markerTxIdOf(note: string | null | undefined): string | null {
 }
 
 // ── reconciliation (Finance ↔ ledger) — read by Finance, the label page and Sunny ────────────────────────────────
-export interface ShareLedgerRow { id: string; artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null; note?: string | null }
+export interface ShareLedgerRow { id: string; artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null; note?: string | null; /** the canonical expense-share key (DB, 2026-09-28) */ sourceExpenseTxId?: string | null }
 export type ShareFindingCode = "SHARE_MISSING" | "SHARE_AMOUNT_MISMATCH" | "SHARE_DUPLICATE" | "SHARE_UNDEFINED" | "SHARE_ORPHAN";
 export interface ShareFinding { code: ShareFindingCode; transactionId: string | null; artistId: string | null; expected: number | null; recorded: number | null; he: string }
 export interface ShareReconciliation {
@@ -183,7 +184,7 @@ export function reconcileExpenseShares(input: { transactions: readonly ShareTx[]
   const totals = { cashOut: 0, recordsShare: 0, artistShare: 0, undefinedCashOut: 0, recordedElsewhere: 0 };
   const byArtist: Record<string, number> = {};
   const expenseRows = input.ledger.filter((e) => e.entryType === "הוצאות" || e.entryType === "הוצאות צפויות");
-  const rowsOf = (txId: string) => expenseRows.filter((e) => (e.sourceTxId === txId || markerTxIdOf(e.note) === txId) && !isDuplicateShareNote(e.note));
+  const rowsOf = (txId: string) => expenseRows.filter((e) => (e.sourceExpenseTxId === txId || e.sourceTxId === txId || markerTxIdOf(e.note) === txId) && !isDuplicateShareNote(e.note));
   const txIds = new Set(input.transactions.map((t) => t.id));
   for (const t of input.transactions) {
     const s = expenseShareOf(t, t.projectId ? { artistText: input.projectArtistText(t.projectId) ?? null } : null);
@@ -209,7 +210,7 @@ export function reconcileExpenseShares(input: { transactions: readonly ShareTx[]
     for (const r of rows) if (!want.has(r.artistId) && r.entryType === "הוצאות" && (Number(r.amount) || 0) !== 0) findings.push({ code: "SHARE_ORPHAN", transactionId: t.id, artistId: r.artistId, expected: 0, recorded: Number(r.amount) || 0, he: "רשומת חלק-אמן לאמן שלא חל עליו החוק" });
   }
   // a marker row whose transaction is gone / not an expense any more
-  for (const r of expenseRows) { const id = markerTxIdOf(r.note); if (id && !txIds.has(id) && (Number(r.amount) || 0) !== 0) findings.push({ code: "SHARE_ORPHAN", transactionId: id, artistId: r.artistId, expected: 0, recorded: Number(r.amount) || 0, he: "רשומת חלק-אמן שההוצאה שלה לא קיימת" }); }
+  for (const r of expenseRows) { const id = r.sourceExpenseTxId ?? markerTxIdOf(r.note); if (id && !txIds.has(id) && (Number(r.amount) || 0) !== 0) findings.push({ code: "SHARE_ORPHAN", transactionId: id, artistId: r.artistId, expected: 0, recorded: Number(r.amount) || 0, he: "רשומת חלק-אמן שההוצאה שלה לא קיימת" }); }
   return { findings, totals, byArtist };
 }
 

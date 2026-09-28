@@ -25,6 +25,7 @@ function from(table: string) {
   const run = () => {
     if (mode === "insert") {
       if (table === "artist_balance_entries" && ins!.source_tx_id && t(table).some((r) => r.source_tx_id === ins!.source_tx_id)) return { data: null, error: { message: "duplicate", code: "23505" } };
+      if (table === "artist_balance_entries" && ins!.source_expense_tx_id && t(table).some((r) => r.source_expense_tx_id === ins!.source_expense_tx_id && r.artist_id === ins!.artist_id)) return { data: null, error: { message: "duplicate", code: "23505" } };
       const r = { id: randomUUID(), created_at: stamp(), ...ins }; t(table).push(r); return { data: one ? { ...r } : [{ ...r }], error: null };
     }
     let rows = t(table).filter((r) => filters.every((f) => f(r)));
@@ -165,15 +166,26 @@ const SHALEV = "8806fe5e-1238-4228-8078-b3db3ccc9b46", AVI = "b3499c72-069d-46c9
   const tx = randomUUID();
   t("transactions").push({ id: tx, type: "expense", amount: 4000, currency: "₪", payment_status: "שולם", business_unit: "RECORDS", category: "", expense_scope: "קליפ", show_id: null, show_money_role: null, project_id: "duo", date: "2026-10-02", description: "קליפ" });
   await ES.syncExpenseShare(tx); await ES.syncExpenseShare(tx);
-  const rows = (id: string) => t("artist_balance_entries").filter((r) => r.artist_id === id && String(r.note ?? "").includes(`tx:${tx}]`) || (r.artist_id === id && r.source_tx_id === tx));
+  const rows = (id: string) => t("artist_balance_entries").filter((r) => r.artist_id === id && (r.source_expense_tx_id === tx || r.source_tx_id === tx || String(r.note ?? "").includes(`tx:${tx}]`)));
   ok("29. retry → Shalev 1,000 + Avi 1,000, one row each", rows(SHALEV).length === 1 && rows(AVI).length === 1 && rows(AVI)[0].amount === 1000);
-  const avi2 = { id: randomUUID(), created_at: stamp(), artist_id: AVI, entry_type: "הוצאות", amount: 1000, entry_date: "2026-10-02", description: "", note: `${R.expenseShareMarker(tx)} x`, source_tx_id: null };
+  // a raced second insert for the same expense + artist is refused by the DB key (23505) → the sync uses the existing row
+  const before29 = rows(AVI).length;
+  const shalevRow = rows(SHALEV)[0]; const saved = { ...shalevRow };
+  DB.artist_balance_entries = t("artist_balance_entries").filter((r) => r.id !== shalevRow.id); // hide it from the read …
+  const hidden = { ...saved };
+  const origFilter = t("artist_balance_entries");
+  origFilter.push = origFilter.push; // (plain array)
+  t("artist_balance_entries").push(hidden); // … and put it back: the DB key still sees it on insert
+  const race = await ES.syncExpenseShare(tx);
+  ok("28b. race: the same expense + artist can never get a second row (DB key 23505 → the existing row is used)", race.rows.every((r) => r.action !== "CREATED") && rows(SHALEV).length === 1 && rows(AVI).length === before29, race.rows);
+  // a LEGACY marker-linked duplicate (written before the key) is still converged, never revived
+  const avi2 = { id: randomUUID(), created_at: stamp(), artist_id: AVI, entry_type: "הוצאות", amount: 1000, entry_date: "2026-10-02", description: "", note: `${R.expenseShareMarker(tx)} x`, source_tx_id: null, source_expense_tx_id: null };
   t("artist_balance_entries").push(avi2);
   const w2 = await ES.convergeDuplicateShare(tx, AVI, avi2.id);
-  ok("   race: the later marker row is set to 0 with a note (kept); the earliest wins", w2 === rows(AVI)[0].id && avi2.amount === 0 && /כפילות מקבילה/.test(avi2.note));
+  ok("   legacy duplicate (note marker): set to 0 with a note (kept); the keyed row wins", w2 !== avi2.id && avi2.amount === 0 && /כפילות מקבילה/.test(avi2.note));
   await ES.syncExpenseShare(tx);
   ok("   the next sync never revives the cancelled duplicate (still one active Avi row)", rows(AVI).filter((r) => Number(r.amount) !== 0).length === 1 && avi2.amount === 0);
-  const rec = R.reconcileExpenseShares({ transactions: [{ id: tx, type: "expense", amount: 4000, currency: "₪", paymentStatus: "שולם", businessUnit: "RECORDS", category: "", expenseScope: "קליפ", projectId: "duo" }], projectArtistText: () => "שליו טסמה, אבי מולה", ledger: t("artist_balance_entries").map((r) => ({ id: String(r.id), artistId: String(r.artist_id), entryType: String(r.entry_type), amount: r.amount, sourceTxId: (r.source_tx_id as string) ?? null, note: (r.note as string) ?? null })) });
+  const rec = R.reconcileExpenseShares({ transactions: [{ id: tx, type: "expense", amount: 4000, currency: "₪", paymentStatus: "שולם", businessUnit: "RECORDS", category: "", expenseScope: "קליפ", projectId: "duo" }], projectArtistText: () => "שליו טסמה, אבי מולה", ledger: t("artist_balance_entries").map((r) => ({ id: String(r.id), artistId: String(r.artist_id), entryType: String(r.entry_type), amount: r.amount, sourceTxId: (r.source_tx_id as string) ?? null, note: (r.note as string) ?? null, sourceExpenseTxId: (r.source_expense_tx_id as string) ?? null })) });
   ok("   the reconciliation does not count the cancelled duplicate", rec.findings.length === 0, rec.findings);
 
   console.log("\nU. Historical overrides remain");

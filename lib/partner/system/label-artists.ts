@@ -17,7 +17,7 @@ export const LABEL_SCHEMA_COLUMNS: Readonly<Record<string, readonly string[]>> =
   project_release_details: ["project_id", "release_stage", "release_target_date", "next_action", "blocker", "responsible", "stage_entered_at", "released_at", "created_at", "updated_at", "label_artist_id"],
   beats: ["id", "name", "genre", "file_name", "dropbox_path", "duration_seconds", "status", "created_at", "musical_key"],
   beat_artist_assignments: ["id", "beat_id", "artist_slug", "created_at"],
-  artist_balance_entries: ["id", "artist_id", "entry_type", "amount", "entry_date", "description", "note", "source_tx_id", "created_at", "updated_at", "source_show_id"],
+  artist_balance_entries: ["id", "artist_id", "entry_type", "amount", "entry_date", "description", "note", "source_tx_id", "created_at", "updated_at", "source_show_id", "source_expense_tx_id"],
   artist_balance_cycles: ["id", "artist_id", "cycle_index", "start_date", "end_date", "income", "expected_income", "payments", "expenses", "expected_expenses", "ending_balance", "closed_at", "created_at"],
   label_media_income: ["id", "label_artist_id", "record_type", "reverses_id", "gross_amount", "source", "report_period", "received_date", "status", "notes", "label_share", "artist_share_gross", "recoup_before", "recouped", "artist_payable", "recoup_after", "created_at", "updated_at"],
 };
@@ -81,6 +81,7 @@ export const LABEL_FIELDS: readonly LabelField[] = [
   F("artist ledger entry", "description", "CANONICAL", "Free text (show sync writes 'הופעה - <name>').", "none"),
   F("artist ledger entry", "note", "CANONICAL", "Free text.", "none"),
   F("artist ledger entry", "source_tx_id", "CANONICAL", "A PAYMENT row: the Finance expense (שכר אמן, שולם, RECORDS) it stands for — the net model's link, written by the one artist-payment writer (a retry never duplicates). LEGACY: the artist-fee finance row that created a pre-2026-09-28 show expected row.", "unique when set"),
+  F("artist ledger entry", "source_expense_tx_id", "CANONICAL", "An EXPENSE SHARE row: the Finance expense it is the artist's part of (Owner-approved DB change 2026-09-28; FK → transactions ON DELETE SET NULL; UNIQUE with the artist — the database refuses a second share row for the same expense + artist). Written by the one expense-share writer for every artist of a split; backfilled only for ACUM (f157bc70 → d4f6ca0f) and ISSA (a8c6fa68 → 8da01d3c); the Principe 2,480 row stays NULL (one Owner row for ten expenses). Rows written before it are read through source_tx_id / the legacy note marker.", "unique with artist_id when set"),
   F("artist ledger entry", "source_show_id", "CANONICAL", "The show a close-show income came from (dedupe with the artist for income types).", "FK set null; unique with artist for income types"),
   F("artist ledger entry", "created_at", "CANONICAL", "Written.", "default now", "creation only"),
   F("artist ledger entry", "updated_at", "CANONICAL", "Last change (e.g. expected → received in place).", "default now", "last change only — the expected → received promotion is not recorded"),

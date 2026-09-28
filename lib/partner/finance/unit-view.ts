@@ -20,7 +20,7 @@ export function expenseSharesFromFinanceRaw(raw: FinanceRaw): ShareReconciliatio
   return reconcileExpenseShares({
     transactions: raw.transactions.map((t) => ({ id: t.id, type: t.type, amount: t.amount, currency: t.currency, paymentStatus: t.status, businessUnit: t.businessUnit ?? null, category: t.category, expenseScope: t.expenseScope, showId: t.showId ?? null, showMoneyRole: t.showMoneyRole ?? null, projectId: t.projectId })),
     projectArtistText: (id) => artistText.get(id) ?? null,
-    ledger: raw.ledger.map((l, i) => ({ id: l.id ?? `${l.artistId}#${i}`, artistId: l.artistId, entryType: l.entryType, amount: l.amount, sourceTxId: l.sourceTxId, note: l.note ?? null })),
+    ledger: raw.ledger.map((l, i) => ({ id: l.id ?? `${l.artistId}#${i}`, artistId: l.artistId, entryType: l.entryType, amount: l.amount, sourceTxId: l.sourceTxId, note: l.note ?? null, sourceExpenseTxId: l.sourceExpenseTxId ?? null })),
   });
 }
 export function unitBalanceFromFinanceRaw(raw: FinanceRaw): { balance: UnitBalance; reconciliation: ArtistPaymentReconciliation } {

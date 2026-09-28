@@ -40,7 +40,7 @@ export interface FinanceShowRow { id: string; date: string | null; status: strin
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }
-export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null; /** net model (2026-09-28), optional for older fixtures */ id?: string; sourceShowId?: string | null; note?: string | null }
+export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null; /** net model (2026-09-28), optional for older fixtures */ id?: string; sourceShowId?: string | null; note?: string | null; /** the expense-share key (DB, 2026-09-28) */ sourceExpenseTxId?: string | null }
 export interface MediaIncomeRow { labelArtistId: string | null; status: string | null; grossAmount: unknown }
 /** A Red Films budget payment. `currency` = the budget line currency (migration 2026-09-27); null on legacy / unread rows. */
 /** DB-1 (2026-09-27): linkedTransactionId = the payment's ONE Finance expense (already counted in Finance) — only an UNLINKED payment is outside Finance. */
