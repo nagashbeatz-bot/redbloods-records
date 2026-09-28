@@ -116,3 +116,35 @@ export const victorSalary: KnowledgeCapability = {
     }), { completeness: mem ? "COMPLETE" : "PARTIAL", missing: mem ? [] : [{ fact: "organizational memory", whyNeeded: "Owner answers / history per month could not be read" }] });
   },
 };
+
+// ── Unit balance (task 5, Owner decisions 2026-09-28): the SAME numbers as the Finance screen (lib/finance/unit-balance) ──
+import { unitBalanceFromFinanceRaw } from "../../finance/unit-view";
+const UNIT_NAMES: Record<string, string> = { ALL: "כל Redbloods", STUDIO: "Studio", RECORDS: "Records", FILMS: "Films", CORPORATE: "Corporate" };
+export const unitBalance: KnowledgeCapability = {
+  id: "unit_balance", domain: "FINANCE", titleHe: "מאזן לפי יחידה עסקית",
+  descriptionForModel: `Real money per business unit (STUDIO / RECORDS / FILMS / CORPORATE, and all Redbloods), all time, per currency — the SAME module as the Finance screen. Cash = realized income (שולם/התקבל) − paid expense (שולם); expected is a forecast, never cash; בוטל is never money; ₪ and $ are never added. Records: artist liabilities = positive artist-ledger balances (still owed); available to invest = cash − liabilities − reserve (0); future artist entitlements = active expected show entitlements (NOT cash, NOT a liability); future cash expenses = Records expenses still expected. A real artist payment = a Finance expense + a ledger payment (subtracted once). All Redbloods: cash and, apart, "available after liabilities". Also the artist-payment reconciliation (Finance ↔ ledger); the approved 1,000 + 810 exception is explained.`,
+  examplesHe: ["כמה כסף יש ל-Records?", "כמה זמין להשקעה?", "כמה אנחנו חייבים לאמנים?", "מה ה-Cash של Studio?", "כמה כסף יש בכל Redbloods?"],
+  modes: { position: { descriptionForModel: "Per unit + all Redbloods: cash, expected in / out, Records settlement" } }, defaultMode: "position", params: {},
+  paging: { defaultLimit: 10, maxLimit: 10 }, access: ACCESS, needs: ["FINANCE"],
+  read(src) {
+    const f = ok(src.finance);
+    if (!f) return unavailable("Finance Brain");
+    const { balance: b, reconciliation: rec } = unitBalanceFromFinanceRaw(f.raw);
+    const units = [["ALL", b.all], ...(["STUDIO", "RECORDS", "FILMS", "CORPORATE"] as const).map((u) => [u, b.units[u]] as const)] as const;
+    const items: KnowledgeItem[] = units.map(([u, p]) => item({
+      id: `unit:${u}`, label: partner(UNIT_NAMES[u]), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE",
+      fields: {
+        unit: u, cash: p.cash, realizedIncome: p.realizedIncome, realizedExpense: p.realizedExpense, expectedIncome: p.expectedIncome, expectedExpense: p.expectedExpense, rows: p.rows,
+        ...(u === "ALL" ? { artistLiabilities: b.all.artistLiabilities, availableAfterLiabilities: b.all.availableAfterLiabilities } : {}),
+        ...(u === "RECORDS" ? { artistLiabilities: b.records.artistLiabilities, artistReceivables: b.records.artistReceivables, byArtist: b.records.byArtist, reserve: b.records.reserve, availableToInvest: b.records.availableToInvest, futureArtistEntitlements: b.records.futureArtistEntitlements.total, futureCashExpenses: b.records.futureCashExpenses } : {}),
+      },
+    }));
+    const summary = [
+      sfact("RECORDS_AVAILABLE_TO_INVEST", "Records — זמין להשקעה (₪)", b.records.availableToInvest["₪"] ?? 0, "DERIVED", "FINANCE"),
+      sfact("RECORDS_ARTIST_LIABILITIES", "Records — התחייבויות לאמנים (₪)", b.records.artistLiabilities, "DERIVED", "FINANCE"),
+      sfact("UNCLASSIFIED_ROWS", "תנועות שדורשות סיווג יחידה", b.unclassified.rows, "FACT", "FINANCE"),
+      sfact("ARTIST_PAYMENT_RECONCILIATION", "תשלומי אמנים: כספים ↔ מאזן", { ledgerWithoutFinance: rec.ledgerPaymentsWithoutFinance.length, financeWithoutLedger: rec.financePaymentsWithoutLedger.length, explained: rec.explained.length }, "DERIVED", "FINANCE"),
+    ];
+    return result(items, { summary, coverage: [partner("כסף אמיתי לפי יחידה עסקית (כל הזמנים), לפי מטבע — אותו חישוב של מסך הכספים. זכאות עתידית של אמן אינה Cash ואינה התחייבות.")], completeness: "COMPLETE" });
+  },
+};

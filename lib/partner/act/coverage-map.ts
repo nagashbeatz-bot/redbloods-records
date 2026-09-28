@@ -77,6 +77,7 @@ export const COVERAGE_MAP: Readonly<Record<string, CoverageEntry>> = {
   "PROJECT.SPLIT_INCOME": { by: ["SPLIT_INCOME"], full: true },
   "PROJECT.SET_PRICE": { by: ["SET_AGREED_PRICE", "SET_FINANCIAL_NOTES"], full: true },
   "PROJECT.SET_FINANCE_EXCEPTION": { by: ["SET_FINANCE_EXCEPTION"], full: true },
+  "PROJECT.RECORD_ARTIST_PAYMENT": { by: ["ADD_LEDGER_ENTRY", "UPDATE_LEDGER_ENTRY", "DELETE_LEDGER_ENTRY", "MARK_SHOW_FEE_PAID"], full: true },
   // ── Shows + DJ family ──
   "SHOW.CREATE_SHOW": { by: ["CREATE_SHOW"], full: true },
   "SHOW.EDIT_SHOW": { by: ["UPDATE_SHOW_DETAILS", "SET_SHOW_MONEY", "CONFIRM_SHOW", "MOVE_SHOW_TO_PIPELINE"], full: true },

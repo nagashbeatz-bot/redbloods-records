@@ -44,7 +44,8 @@ export const isBusinessUnitSource = (v: unknown): v is BusinessUnitSource => typ
 /** Who creates the row. MANUAL writers must end with a unit (the person chooses); automatic writers may leave NULL. */
 export type UnitWriter =
   | "FINANCE_MANUAL" | "SUNNY"                                   // a person / the Owner through Sunny
-  | "SHOW_SYNC" | "MIX" | "VICTOR" | "CLIP_PAYMENT" | "CLIP_PROMOTE" | "RF_PAYMENT" | "PROMOTION" | "SPLIT";
+  | "SHOW_SYNC" | "MIX" | "VICTOR" | "CLIP_PAYMENT" | "CLIP_PROMOTE" | "RF_PAYMENT" | "PROMOTION" | "SPLIT"
+  | "ARTIST_PAYMENT";                                             // a real payment to a Records roster artist (net model)
 export const MANUAL_UNIT_WRITERS: readonly UnitWriter[] = ["FINANCE_MANUAL", "SUNNY"];
 
 export const MIX_MASTER_CATEGORY = "מיקס / מאסטר";
@@ -78,6 +79,8 @@ export function inferBusinessUnit(i: UnitInput): UnitDecision {
   }
   // 2. the writer's own nature (audio capability / Victor = Studio, Owner decisions 2–4)
   if (i.writer === "VICTOR") return rule("STUDIO", "משכורת Victor — משאב Studio");
+  // the net settlement model (Owner 2026-09-28): a real payment to a Records roster artist is Records money
+  if (i.writer === "ARTIST_PAYMENT") return rule("RECORDS", "תשלום אמיתי לאמן Records (התחשבנות)");
   if (i.writer === "MIX" || (i.type === "expense" && i.category === MIX_MASTER_CATEGORY)) return rule("STUDIO", "עלות מיקס / מאסטר — יכולת אודיו של Studio");
   // 3. a show row
   if (i.show) return i.show.artistIsRecords ? rule("RECORDS", "הופעה של אמן Records") : none("הופעה של שת״פ או של אמן שאינו ברוסטר Records");

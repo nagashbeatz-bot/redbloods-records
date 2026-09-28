@@ -4,10 +4,11 @@ import { getLabelArtist } from "@/lib/label-artists-store";
 import {
   listArtistBalanceEntries,
   computeArtistBalanceTotals,
-  createArtistBalanceEntry,
   isBalanceEntryType,
   isValidYmd,
 } from "@/lib/artist-balance-store";
+// net model (2026-09-28): a PAYMENT is a real payment — Finance + ledger through ONE writer (lib/writes/artist-payments)
+import { createLedgerEntryRecord } from "@/lib/writes/artist-payments";
 
 export const dynamic = "force-dynamic";
 
@@ -67,15 +68,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
     // artist_id is taken ONLY from the verified URL id — never from the body.
-    const entry = await createArtistBalanceEntry({
-      artistId: id,
-      entryType: body.entryType,
-      amount,
-      entryDate: body.entryDate,
-      description,
-      note,
+    const r = await createLedgerEntryRecord(id, {
+      entryType: body.entryType, amount, entryDate: body.entryDate, description, note,
+      idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : null,
+      allowDuplicate: body.allowDuplicate === true,
+      method: typeof body.method === "string" ? body.method : "",
     });
-    return NextResponse.json({ ok: true, entry });
+    if (r.kind === "refused") return NextResponse.json({ error: r.messageHe, code: r.code }, { status: r.status });
+    if (r.kind === "partial") return NextResponse.json({ error: r.messageHe, code: "PAYMENT_INCOMPLETE", transactionId: r.transactionId }, { status: 409 });
+    return NextResponse.json({ ok: true, entry: r.entry });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[label/artists/[id]/balance POST]", msg);

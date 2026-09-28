@@ -349,6 +349,7 @@ export const REPO_COVERAGE: ReadonlyArray<{ pattern: string; cls: ModuleClass; d
   { pattern: "^lib/(clip-|label-clips)", cls: "DOMAIN_OWNED", domain: "CLIPS / RED_FILMS", note: "" },
   { pattern: "^lib/production-layout", cls: "UI_ONLY", domain: "RED_FILMS", note: "production page section order" },
   { pattern: "^lib/(label-|artist-balance|media-income|beat|release-store|red-artists/)", cls: "DOMAIN_OWNED", domain: "LABEL_ARTISTS / ARTIST_PORTALS", note: "" },
+  { pattern: "^lib/artist-entitlement-sync", cls: "CROSS_DOMAIN", domain: "SHOWS / LABEL_ARTISTS", note: "net settlement model (2026-09-28): a show share is an ENTITLEMENT in the artist ledger (expected → realized at the close; a cancelled show marks it not active by note, never deleted) — never a Finance expense" },
   { pattern: "^lib/(release-candidates|dashboard-releases|release-calendar)", cls: "CROSS_DOMAIN", domain: "RELEASES", note: "the 'add release' candidate rule (label-credited, releasable type, no release row) — reused by the company label review" },
   { pattern: "^lib/(show|shows-|dj-)", cls: "DOMAIN_OWNED", domain: "SHOWS / LABEL_DJ", note: "" },
   { pattern: "^lib/(shalev-|avi-|cleantone-)", cls: "DOMAIN_OWNED", domain: "ARTIST_PORTALS", note: "portal reminders / presence" },

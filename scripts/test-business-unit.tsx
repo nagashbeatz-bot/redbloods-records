@@ -110,9 +110,10 @@ async function main() {
     ["lib/writes/redfilms.ts", /writer: "CLIP_PROMOTE"/],
     ["lib/social-promotions-store.ts", /writer: "PROMOTION"/],
     ["lib/writes/rf-finance-link.ts", /unitWriter: "RF_PAYMENT"/],
+    ["lib/writes/artist-payments.ts", /inferBusinessUnit\(\{ writer: "ARTIST_PAYMENT"/],
   ];
   ok("each insert site names its writer", writers.every(([f, re]) => re.test(read(f))), writers.filter(([f, re]) => !re.test(read(f))).map(([f]) => f));
-  const inserts = ["lib/writes/finance.ts", "lib/shows-finance-sync.ts", "lib/writes/mix.ts", "lib/writes/victor.ts", "lib/writes/clip.ts", "lib/writes/redfilms.ts", "lib/social-promotions-store.ts"];
+  const inserts = ["lib/writes/finance.ts", "lib/shows-finance-sync.ts", "lib/writes/mix.ts", "lib/writes/victor.ts", "lib/writes/clip.ts", "lib/writes/redfilms.ts", "lib/social-promotions-store.ts", "lib/writes/artist-payments.ts"];
   const all = fs.readdirSync(path.resolve(__dirname, "../lib"), { recursive: true } as never) as unknown as string[];
   const insertFiles = all.filter((f) => /\.ts$/.test(f) && !/partner[\\/]/.test(String(f))).map((f) => `lib/${String(f).replace(/\\/g, "/")}`).filter((f) => /from\("transactions"\)[\s\S]{0,80}\.insert\(/.test(read(f)));
   ok("no other module inserts Finance rows (a new writer must set the unit)", insertFiles.every((f) => inserts.includes(f)), insertFiles);

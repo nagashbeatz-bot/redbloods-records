@@ -155,7 +155,7 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── ledger ──
   {
     actionId: "ADD_LEDGER_ENTRY", kinds: ["ledger-entry"],
-    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note"), ...DUP_ARGS], ["entryType", "amount", "entryDate", "description", "note"], "createArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action)" }),
+    meta: meta("רשומה במאזן האמן", "Add a balance-ledger entry (income / expected income / payment / expense / expected expense)", [K("labelArtist"), { name: "entryType", kind: "enum", required: true, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: true }, { name: "entryDate", kind: "ymd", required: true }, T("description"), T("note"), ...DUP_ARGS], ["entryType", "amount", "entryDate", "description", "note"], "createLedgerEntryRecord (lib/writes/artist-payments)", { effects: ["LEDGER", "FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the entry (separate approved action; a payment's Finance row becomes בוטל)" }),
     createContext: async (d, a) => { const k = parseKey(a.labelArtist, ["label-artist"]); const f = k ? await d.readLabelArtistFull(k.id) : null; return { artistName: f ? f.name : null, ...(await ledgerDup(d, a)) }; },
     async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; return { key: "ledger-entry:new", id: "new", label: `מאזן ${r.label}`, fields: { artistName: r.label, ...(await ledgerDup(d, a)) } }; },
     read: ledgerFields,
@@ -169,16 +169,18 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, after, a) { return { createdId: await d.createLedgerEntry({ artistId: parseKey(a.labelArtist, ["label-artist"])!.id, entryType: String(after.entryType), amount: Number(after.amount), entryDate: String(after.entryDate), description: str(a.description)?.trim() ?? "", note: str(a.note)?.trim() ?? "" }) }; },
     async verify(d, id, after) { const e = await d.readLedgerEntry(id); return !!e && e.amount === after.amount && e.entryType === after.entryType; },
     requiredValues: (_a, after) => [String(after.entryType), ils(Number(after.amount))],
-    warnings: (c, a) => dupWarnings(c, a),
-    disclosuresHe: ["רשומה אחת במאזן האמן; הכספים של החברה לא משתנים (מאזן ≠ כספים)", NO_CUR, "לא יישלח Push"],
+    warnings: (c, a) => [...dupWarnings(c, a), ...(a && a.entryType === "תשלומים" ? ["תשלום = כסף אמיתי שיצא לאמן: נרשם גם בכספים כהוצאה ששולמה (Records), מקושר לרשומה במאזן"] : [])],
+    disclosuresHe: ["מודל נטו (2026-09-28): 'תשלומים' = תשלום אמיתי — הוצאה ששולמה בכספים (Records) + רשומת תשלום במאזן, מקושרות; כל סוג אחר (זכאות / הוצאה של האמן) נרשם רק במאזן — הכספים לא משתנים", NO_CUR, "לא יישלח Push"],
   },
   {
     actionId: "UPDATE_LEDGER_ENTRY", kinds: ["ledger-entry"],
-    meta: meta("עדכון רשומה במאזן", "Edit a ledger entry (type / amount / date / description / note)", [K("ledgerEntry"), { name: "entryType", kind: "enum", required: false, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: false }, { name: "entryDate", kind: "ymd", required: false }, T("description"), T("note")], ["entryType", "amount", "entryDate", "description", "note"], "updateArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL" }),
+    meta: meta("עדכון רשומה במאזן", "Edit a ledger entry (type / amount / date / description / note)", [K("ledgerEntry"), { name: "entryType", kind: "enum", required: false, values: LEDGER_TYPES }, { name: "amount", kind: "money", required: false }, { name: "entryDate", kind: "ymd", required: false }, T("description"), T("note")], ["entryType", "amount", "entryDate", "description", "note"], "updateLedgerEntryRecord (lib/writes/artist-payments)", { effects: ["LEDGER", "FINANCE"], riskClass: "FINANCIAL" }),
     resolve: onLedger, read: ledgerFields,
     plan(a, cur) {
       const after: Fields = {};
       if (a.entryType !== undefined) { if (!LEDGER_TYPES.includes(String(a.entryType))) return refuse("BAD_ENUM", "סוג לא מוכר"); after.entryType = String(a.entryType); }
+      // net model: a payment is real money — it never becomes another type and nothing becomes a payment by an edit
+      if (after.entryType !== undefined && (after.entryType === "תשלומים") !== (cur.entryType === "תשלומים")) return refuse("PAYMENT_TYPE_FIXED", "תשלום לאמן הוא כסף אמיתי: אי אפשר להפוך תשלום לסוג אחר או רשומה לתשלום — רושמים תשלום חדש / מבטלים את התשלום");
       if (a.amount !== undefined) { if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום חיובי"); after.amount = a.amount; }
       if (a.entryDate !== undefined) { if (!realYmd(a.entryDate)) return refuse("BAD_DATE", "תאריך לא תקין"); after.entryDate = String(a.entryDate); }
       for (const k of ["description", "note"] as const) if (a[k] !== undefined) { const t = text(a[k], 500); if (t === null) return refuse("BAD_TEXT", `${k} לא תקין`); after[k] = t.trim(); }
@@ -187,7 +189,7 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, id, a) { const e = await d.readLedgerEntry(id); if (!e) throw new Error("entry not found"); const ok = await d.updateLedgerEntry(id, e.artistId, { entryType: String(a.entryType ?? e.entryType), amount: Number(a.amount ?? e.amount), entryDate: String(a.entryDate ?? e.entryDate), description: String(a.description ?? e.description), note: String(a.note ?? e.note) }); if (!ok) throw new Error("entry not found"); },
     requiredValues: (_a, after) => [after.entryType, after.amount !== undefined ? ils(Number(after.amount)) : undefined].filter((x) => x !== undefined).map(String),
     warnings: (c) => (c.sourceTxId && c.entryType === "הכנסות צפויות" ? ["רשומה שמסונכרנת מהופעה: עד שהיא הופכת להכנסה, עריכת ההופעה תחשב אותה מחדש"] : []),
-    disclosuresHe: ["רק הרשומה הזאת משתנה; הכספים של החברה לא", NO_CUR, "לא יישלח Push"],
+    disclosuresHe: ["רק הרשומה הזאת משתנה; בתשלום אמיתי (מקושר לכספים) גם הסכום / התאריך של שורת הכספים שלו מתעדכנים — שום רשומה אחרת לא", NO_CUR, "לא יישלח Push"],
   },
   {
     actionId: "MARK_LEDGER_INCOME_RECEIVED", kinds: ["ledger-entry"],
@@ -201,7 +203,7 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "DELETE_LEDGER_ENTRY", kinds: ["ledger-entry"],
-    meta: meta("מחיקת רשומה מהמאזן", "Delete a ledger entry", [K("ledgerEntry")], ["exists"], "deleteArtistBalanceEntry (lib/artist-balance-store)", { effects: ["LEDGER", "DELETION"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
+    meta: meta("מחיקת רשומה מהמאזן", "Delete a ledger entry", [K("ledgerEntry")], ["exists"], "deleteLedgerEntryRecord (lib/writes/artist-payments)", { effects: ["LEDGER", "DELETION", "FINANCE"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
     async resolve(d, a) { const r = await onLedger(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } }; },
     async read(d, id) { const f = await ledgerFields(d, id); return f ? { ...f, exists: true } : null; },
     plan: () => ({ ok: true, after: { exists: false } }),
@@ -209,7 +211,7 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
     async verify(d, id) { return (await d.readLedgerEntry(id)) === null; },
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [`${c.entryType} ${ils(Number(c.amount))} מ-${c.entryDate}`, ...(c.sourceShowId || c.sourceTxId ? ["זו רשומה שמקורה בהופעה — סנכרון עתידי של ההופעה עשוי ליצור אותה מחדש"] : [])],
-    disclosuresHe: ["הרשומה נמחקת לצמיתות; הכספים של החברה לא משתנים", "לא יישלח Push"],
+    disclosuresHe: ["הרשומה נמחקת לצמיתות מהמאזן; אם זה תשלום אמיתי המקושר לכספים — שורת הכספים שלו מסומנת 'בוטל' עם הערה (לא נמחקת)", "לא יישלח Push"],
   },
   // ── cycles ──
   {

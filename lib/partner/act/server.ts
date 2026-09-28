@@ -214,12 +214,19 @@ async function showFamilyWriters(): Promise<ShowFamilyWriters> {
   const W = await import("@/lib/writes/shows");
   const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
   const kind = (r: Awaited<ReturnType<typeof W.updateShowRecord>>) => ({ kind: r.kind, warning: r.kind === "ok" ? r.calendarWarning ?? null : r.kind === "refused" ? r.messageHe : null });
-  const { showMoneyForShow } = await import("@/lib/shows-finance-sync");
+  const { showMoneyForShow, isConfirmedShowStatus, getRehearsalCountedForShow } = await import("@/lib/shows-finance-sync");
+  const { showAgreementSplit } = await import("@/lib/label-agreements");
+  // net model (2026-09-28): the artist's share of a confirmed show — the ONE split (showAgreementSplit); null = no entitlement
+  const showArtistShare = async (s: NonNullable<Awaited<ReturnType<typeof W.readShow>>>, _legacyAmount: number | null): Promise<number | null> => {
+    if (!isConfirmedShowStatus(s.status) || s.status === "בוטל") return null;
+    const r = showAgreementSplit(s, await getRehearsalCountedForShow(s.id));
+    return r.status === "DEFINED" && r.artistFee > 0 ? r.artistFee : null;
+  };
   return {
     async readShow(id) {
       const s = await W.readShow(id);
       if (!s) return null;
-      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, dealType: s.deal_type === "UNPAID_COLLAB" ? "UNPAID_COLLAB" : "PAID", paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id), ...(await (async () => { const m = await showMoneyForShow(s); return { currency: m.currency, received: m.received, remaining: m.remaining, credit: m.credit, payments: m.payments.map((x) => `${x.amount}@${x.date ?? ""}`).sort().join(";") }; })()), ...(await (async () => { const f = await W.showFeeRows(s); return { djFeeStatus: f.DJ_FEE?.status ?? null, djFeeAmount: f.DJ_FEE ? f.DJ_FEE.amount : null, artistFeeStatus: f.ARTIST_FEE?.status ?? null, artistFeeAmount: f.ARTIST_FEE ? f.ARTIST_FEE.amount : null }; })()) };
+      return { name: s.name ?? "", artist: s.artist ?? "", artistClientId: s.artist_client_id ?? null, bookerName: s.booker_name ?? "", bookerClientId: s.booker_client_id ?? null, date: s.date ?? null, startTime: s.start_time ? String(s.start_time).slice(0, 5) : null, location: s.location ?? "", contactPerson: s.contact_person ?? "", phone: s.phone ?? "", status: s.status, dealType: s.deal_type === "UNPAID_COLLAB" ? "UNPAID_COLLAB" : "PAID", paymentStatus: s.payment_status, showPrice: Number(s.show_price) || 0, djFee: Number(s.dj_fee) || 0, djClientId: s.dj_client_id ?? null, djName: s.dj_name ?? "", djConfirmation: s.dj_confirmation_status ?? null, advancePayment: Number(s.advance_payment) || 0, notes: s.notes ?? "", hasCalendarEvent: !!s.calendar_event_id, financeRows: await W.showFinanceRowCount(s), rehearsals: await countShowRehearsals(id), ...(await (async () => { const m = await showMoneyForShow(s); return { currency: m.currency, received: m.received, remaining: m.remaining, credit: m.credit, payments: m.payments.map((x) => `${x.amount}@${x.date ?? ""}`).sort().join(";") }; })()), ...(await (async () => { const f = await W.showFeeRows(s); return { djFeeStatus: f.DJ_FEE?.status ?? null, djFeeAmount: f.DJ_FEE ? f.DJ_FEE.amount : null, artistFeeStatus: (f.ARTIST_FEE?.status === "שולם" || (await (await import("@/lib/artist-balance-show-close-sync")).findShowPaymentEntry(id))) ? "שולם" : (f.ARTIST_FEE?.status ?? null), artistFeeAmount: await showArtistShare(s, f.ARTIST_FEE ? f.ARTIST_FEE.amount : null) }; })()) };
     },
     async createShow(body) { const r = await W.createShowRecord(body); return { id: r.show.id, calendarWarning: r.calendarWarning ?? null, paymentWarning: r.paymentWarning ?? null }; },
     async recordShowPayment(id, p) { const { recordShowPayment } = await import("@/lib/writes/show-payments"); const r = await recordShowPayment(id, { amount: p.amount, date: p.date, currency: p.currency || undefined, method: p.method, note: p.note }); return r.kind === "ok" ? { kind: "ok", transactionId: r.transactionId } : r.kind === "refused" ? { kind: "refused", messageHe: r.messageHe } : { kind: "not_found" }; },
@@ -353,9 +360,16 @@ async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
     async createLabelArtistRecord(a) { const r = await LA.createLabelArtist({ name: a.name, status: a.status as AStatus, imageUrl: null, notes: a.notes }); if (r.status !== "ok") throw new Error("duplicate"); return r.artist.id; },
     renameLabelArtist: async (id, name) => (await LA.updateLabelArtist(id, { name })).status as "ok" | "duplicate" | "not_found",
     readLedgerEntry: (id) => WL.readLedgerEntry(id),
-    createLedgerEntry: async (e) => (await AB.createArtistBalanceEntry({ ...e, entryType: e.entryType as EType })).id,
-    updateLedgerEntry: async (id, artistId, e) => !!(await AB.updateArtistBalanceEntry(id, artistId, { ...e, entryType: e.entryType as EType })),
-    deleteLedgerEntry: (id, artistId) => AB.deleteArtistBalanceEntry(id, artistId),
+    // net model (2026-09-28): the SAME writer as the balance tab — a payment is Finance + ledger (lib/writes/artist-payments);
+    // Sunny's own duplicate gate ran before the Boss approved, so a planned payment is recorded as the separate payment it is
+    async createLedgerEntry(e) {
+      const AP = await import("@/lib/writes/artist-payments");
+      const r = await AP.createLedgerEntryRecord(e.artistId, { ...e, idempotencyKey: `sunny:${e.artistId}:${e.entryType}:${e.entryDate}:${e.amount}:${e.description}`, allowDuplicate: true });
+      if (r.kind !== "ok") throw new Error(r.messageHe);
+      return String(r.entry.id);
+    },
+    async updateLedgerEntry(id, artistId, e) { const r = await (await import("@/lib/writes/artist-payments")).updateLedgerEntryRecord(id, artistId, e); if (r.kind === "refused" && r.code === "NOT_FOUND") return false; if (r.kind !== "ok") throw new Error(r.messageHe); return true; },
+    deleteLedgerEntry: async (id, artistId) => (await (await import("@/lib/writes/artist-payments")).deleteLedgerEntryRecord(id, artistId)).kind === "ok",
     async readCycleState(id) { const s = await cycle(id); return { anchorDate: s.anchorDate ?? null, currentIndex: s.current?.index ?? null, currentEnd: s.current?.endDate ?? null, daysUntilClose: s.current?.daysUntilClose ?? null, openingBalance: s.current?.openingBalance ?? null, closingBalance: s.current?.closingBalance ?? null, resultHe: s.current ? SETTLEMENT_RESULT_HE[s.current.result] : null }; },
     setCycleAnchor: async (id, date, mode) => { if (mode === "SET") await CY.setBalanceCycleAnchor(id, date); else await CY.updateBalanceCycleAnchor(id, date); },
     closeCycle: async (id, force) => { await CY.closeCurrentBalanceCycle(id, await AB.listArtistBalanceEntries(id), force); },

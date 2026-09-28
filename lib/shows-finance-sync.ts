@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
 import { isUnpaidCollab, rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, type ShowMoney, type ShowMoneyRow } from "@/lib/shows-types";
 import { closureFeeStatus, feeRowMayReprice, feeRowPaidConflicts, feeRowStatusAfterSync, FEE_ROW_INITIAL_STATUS, shouldRecordRemainder, type ShowSyncIntent } from "@/lib/shows-types";
-import { syncArtistBalanceFromShow, removeSyncedArtistBalanceEntry } from "@/lib/artist-balance-show-sync";
+import { markShowEntitlementsInactive, syncShowEntitlement } from "@/lib/artist-entitlement-sync";
 import { showAgreementSplit } from "@/lib/label-agreements";
 import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 
@@ -368,77 +368,32 @@ export async function syncShowFinance(show: Show, intent?: ShowSyncIntent): Prom
       }
     }
 
-    // ── Artist expense ──
-    // Owner decision 2026-09-27 (lib/label-agreements showAgreementSplit — the ONE rule): for שליו טסמה / אבי מולה the
-    // artist takes half of the NET show profit (price − DJ − counted rehearsals, the app's own computeShowSplit). When the
-    // dj fee changes, this re-splits the rest automatically (while the row is not paid). Any other artist or a collab text
-    // has NO agreement: no artist fee row is created or re-priced (an existing one is left untouched and reported).
+    // ── Artist entitlement (net settlement model, Owner decision 2026-09-28) ──
+    // A show share is an ENTITLEMENT in the artist ledger — never a Finance expense. No artist-fee row is created,
+    // re-priced or re-opened any more (a real payment to the artist is lib/writes/artist-payments). The share is the ONE
+    // rule (lib/label-agreements showAgreementSplit — שליו / אבי; any other artist or a collab is NOT_DEFINED).
     const rehearsalCounted   = await getRehearsalCountedForShow(show.id);
     const artistRule         = showAgreementSplit(show, rehearsalCounted);
+    // a LEGACY unpaid artist-fee row (written before 2026-09-28): a cancelled show still cancels it — never revived / paid
+    if (show.linked_artist_expense_transaction_id && isCancelled) {
+      const row = await readFeeRow(show.linked_artist_expense_transaction_id);
+      if (row && row.status !== "שולם" && row.status !== "בוטל") await patchTransaction(row.id, { payment_status: "בוטל" });
+    }
     if (artistRule.status === "NOT_DEFINED") {
-      if (show.linked_artist_expense_transaction_id) report.feeConflicts.push(`אמן: ${artistRule.reasonHe} — שורת שכר האמן הקיימת לא שונתה`);
+      await markShowEntitlementsInactive(show.id, artistRule.reasonHe, show.linked_artist_expense_transaction_id);
       return report;
     }
-    const effectiveArtistFee = artistRule.artistFee;
-    const hasArtistFee     = effectiveArtistFee > 0;
-    // The artist-ledger sync is keyed off "the fee no longer stands" (cancelled / no fee) — exactly as before A1,
-    // independent of whether the Finance fee row was paid.
-    const artistFeeStands  = !isCancelled && hasArtistFee;
-    const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;
-    if (show.linked_artist_expense_transaction_id) {
-      const row = await readFeeRow(show.linked_artist_expense_transaction_id);
-      if (row) {
-        const next = feeRowStatusAfterSync(row.status, { cancelled: isCancelled, feeZero: !hasArtistFee });
-        const patch: Parameters<typeof patchTransaction>[1] = { show_id: show.id, show_money_role: SHOW_MONEY_ROLES.ARTIST };
-        if (feeRowMayReprice(row.status)) Object.assign(patch, { amount: effectiveArtistFee, date, artist: show.artist, description: artistDescription(show), currency });
-        else noteFeeConflict(report, show, "אמן", feeRowPaidConflicts(row, { amount: effectiveArtistFee, party: show.artist, currency, cancelled: isCancelled }));
-        if (next !== null && next !== row.status) patch.payment_status = next;
-        await patchTransaction(row.id, patch);
-      }
-      // Balance-ledger sync (Phase 1, Shalev only — see artist-balance-show-sync.ts).
-      // The fee no longer stands → remove a still-expected synced entry (never touches one already marked הכנסות).
-      // Otherwise keep it in sync as "הכנסות צפויות" — a payment status never promotes it to "הכנסות"
-      // automatically; that's a manual-only action.
-      if (!artistFeeStands) {
-        await removeSyncedArtistBalanceEntry(show.linked_artist_expense_transaction_id);
-      } else {
-        if (currency === "₪") await syncArtistBalanceFromShow({
-          showArtist: show.artist,
-          showId: show.id,
-          showName: show.name,
-          showDate: show.date,
-          transactionId: show.linked_artist_expense_transaction_id,
-          amount: effectiveArtistFee,
-        });
-      }
-    } else if (shouldHaveArtist) {
-      const id = await createTransaction({
-        type:          "expense",
-        payment_status: FEE_ROW_INITIAL_STATUS,
-        amount:        effectiveArtistFee,
-        date,
-        artist:        show.artist,
-        description:   artistDescription(show),
-        category:      "שכר אמן",
-        expense_scope: "הופעה",
-        notes:         `show_id:${show.id}`,
-        show_id: show.id, show_money_role: SHOW_MONEY_ROLES.ARTIST, currency,
+    // the ledger stores no currency — only a ₪ show carries an entitlement (a non-₪ show is reported, never converted)
+    if (currency === "₪") {
+      await syncShowEntitlement({
+        showId: show.id, showName: show.name, showDate: show.date, artistId: artistRule.artist.id, amount: artistRule.artistFee,
+        stands: !isCancelled && isConfirmed && artistRule.artistFee > 0, legacyTxId: show.linked_artist_expense_transaction_id,
+        inactiveReasonHe: isCancelled ? "ההופעה בוטלה" : "אין שכר אמן בהופעה",
       });
-      if (id) {
-        await supabase.from("shows")
-          .update({ linked_artist_expense_transaction_id: id, updated_at: new Date().toISOString() })
-          .eq("id", show.id);
-        // Balance-ledger sync — brand-new artist-fee transaction, always as
-        // "הכנסות צפויות" (never "בוטל" here — shouldHaveArtist already excludes cancelled/no-fee shows).
-        if (currency === "₪") await syncArtistBalanceFromShow({
-          showArtist: show.artist,
-          showId: show.id,
-          showName: show.name,
-          showDate: show.date,
-          transactionId: id,
-          amount: effectiveArtistFee,
-        });
-      }
+    } else {
+      // an entitlement written while the show was ₪ would now state a wrong number — it is marked not active (kept)
+      await markShowEntitlementsInactive(show.id, `ההופעה ב-${currency} — היומן בש"ח בלבד`, show.linked_artist_expense_transaction_id);
+      report.feeConflicts.push(`אמן: הופעה ב-${currency} — זכאות האמן לא נרשמת ביומן (היומן בש"ח בלבד, המטבע לא מומר)`);
     }
   } catch (e) {
     console.error("[shows-finance-sync] syncShowFinance error:", e);
@@ -470,6 +425,14 @@ export async function paidShowFeeRows(show: Pick<Show, "id"> & Partial<Pick<Show
     const { data: l, error: lErr } = await supabase.from("transactions").select("id, show_money_role, payment_status, amount, currency").in("id", ids);
     if (lErr) throw new Error(lErr.message);
     for (const r of (l ?? []) as R[]) if (r.payment_status === "שולם") out.set(r.id, { id: r.id, role: linked.find(([id]) => id === r.id)![1], amount: Number(r.amount) || 0, currency: r.currency || "₪" });
+  }
+  // net model (2026-09-28): a real artist payment for this show is a ledger payment (source_show_id) + its Finance row
+  // (lib/writes/artist-payments — not show-linked in Finance). It is money that went out too.
+  const { data: led, error: ledErr } = await supabase.from("artist_balance_entries").select("id, amount, source_tx_id").eq("source_show_id", show.id).eq("entry_type", "תשלומים");
+  if (ledErr) throw new Error(ledErr.message);
+  for (const e of (led ?? []) as Array<{ id: string; amount: number | null; source_tx_id: string | null }>) {
+    const key = e.source_tx_id ?? e.id;
+    if (!out.has(key)) out.set(key, { id: key, role: "ARTIST_FEE", amount: Number(e.amount) || 0, currency: "₪" });
   }
   return [...out.values()];
 }
@@ -520,9 +483,10 @@ export async function deleteShowFinance(show: Show): Promise<number> {
   } catch (e) {
     console.error("[shows-finance-sync] deleteShowFinance error:", e);
   }
-  // Balance-ledger sync: the show's artist-fee transaction is gone — remove a still-expected synced entry (never one
-  // already הכנסות). A paid artist row that stayed keeps its ledger entry.
-  if (!artistRowKept) await removeSyncedArtistBalanceEntry(artistTxId);
+  // Net model (2026-09-28): the show's still-EXPECTED entitlement is marked not active (never deleted); a realized
+  // entitlement and a paid artist row are never touched.
+  void artistRowKept;
+  try { await markShowEntitlementsInactive(show.id, "ההופעה נמחקה / חזרה לשלב ליד", artistTxId); } catch (e) { console.error("[shows-finance-sync] entitlement mark failed:", e); }
   return deleted;
 }
 
@@ -551,7 +515,9 @@ export async function applyShowClosureStatuses(
       const money = await showMoneyForShow(show);
       if (money.remaining > 0) await recordRemainderReceived(show, money, show.date || new Date().toISOString().slice(0, 10), show.booker_name || show.artist || "לקוח");
     }
-    for (const [id, flag] of [[show.linked_dj_expense_transaction_id, t.djPaid], [show.linked_artist_expense_transaction_id, t.artistPaid]] as const) {
+    // Net model (2026-09-28): "artist paid" is a REAL payment written by lib/writes/artist-payments (Finance + ledger) in
+    // the close flow — never a status change on an artist-fee row. Only the DJ fee row is marked here.
+    for (const [id, flag] of [[show.linked_dj_expense_transaction_id, t.djPaid]] as const) {
       if (!id || !flag) continue;
       const row = await readFeeRow(id);
       const next = closureFeeStatus(row?.status, flag);
@@ -698,9 +664,11 @@ export async function unpaidCollabSwitchBlockers(show: Show): Promise<string[]> 
   const known = [SHOW_MONEY_ROLES.PAYMENT, SHOW_MONEY_ROLES.EXPECTED, SHOW_MONEY_ROLES.DJ, SHOW_MONEY_ROLES.ARTIST, SHOW_MONEY_ROLES.REHEARSAL] as readonly string[];
   const other = rows.filter((r) => !known.includes(String(r.show_money_role)));
   if (other.length) out.push(`רשומות כספיות נוספות של ההופעה (${other.length})`);
-  // the artist ledger: a realized income / payment written by the close flow (keyed by the show) is real accounting
-  const { data: ledger, error } = await supabase.from("artist_balance_entries").select("id, entry_type").eq("source_show_id", show.id);
+  // the artist ledger: a realized income / payment written by the close flow (keyed by the show) is real accounting.
+  // An EXPECTED entitlement (net model, 2026-09-28) is not money: the switch marks it not active (kept, never deleted).
+  const { data: ledgerAll, error } = await supabase.from("artist_balance_entries").select("id, entry_type").eq("source_show_id", show.id);
   if (error) throw new Error(error.message);
-  if ((ledger ?? []).length) out.push(`רשומות במאזן האמן (${(ledger as Array<{ entry_type: string }>).map((x) => x.entry_type).join(" · ")})`);
+  const ledger = ((ledgerAll ?? []) as Array<{ entry_type: string }>).filter((x) => x.entry_type !== "הכנסות צפויות");
+  if (ledger.length) out.push(`רשומות במאזן האמן (${(ledger as Array<{ entry_type: string }>).map((x) => x.entry_type).join(" · ")})`);
   return out;
 }

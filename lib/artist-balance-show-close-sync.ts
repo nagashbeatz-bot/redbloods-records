@@ -103,12 +103,13 @@ export async function syncArtistIncomeFromClosedShow(params: {
   //    whichever state it's currently in. Promote/refresh it.
   const { data: bySho, error: byShoErr } = await supabase
     .from("artist_balance_entries")
-    .select("id")
+    .select("id, note")
     .eq("source_show_id", show.id).eq("artist_id", artistId).in("entry_type", ["הכנסות", "הכנסות צפויות"]).maybeSingle();
   if (byShoErr) throw new Error(`[income] lookup by source_show_id failed: ${byShoErr.message}`);
   if (bySho?.id) {
     const { error } = await supabase.from("artist_balance_entries")
-      .update({ entry_type: "הכנסות", amount, entry_date: entryDate, description, updated_at: new Date().toISOString() })
+      // the show was performed: an entitlement marked not-active earlier (net model note) is real again
+      .update({ entry_type: "הכנסות", amount, entry_date: entryDate, description, ...(String(bySho.note ?? "").startsWith("[זכאות לא פעילה]") ? { note: "" } : {}), updated_at: new Date().toISOString() })
       .eq("id", bySho.id);
     if (error) throw new Error(`[income] update (by source_show_id) failed: ${error.message}`);
     return;

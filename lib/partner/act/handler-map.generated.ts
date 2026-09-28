@@ -832,9 +832,10 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "a1ed5c2d6a5b847125e6668139813b64782e3004665196c76c66f5cbc964c453",
+  "sha256": "7094c71630094adaa0b530ddf0e18a5d390fa0f70524af6404f1117de3717a9f",
   "effects": [
    "DELETION",
+   "FINANCE",
    "LEDGER"
   ],
   "fields": [
@@ -898,16 +899,20 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "759bc4751c60b58117d52a8d685429a03db85477447cb00434ed1c629767f051",
+  "sha256": "3de9832bbb075e11620026f3a9fdd44b9118d7aa390306c66577a7cff151d5be",
   "effects": [
    "DELETION",
+   "FINANCE",
    "LEDGER"
   ],
   "fields": [
+   "allowDuplicate",
    "amount",
    "description",
    "entryDate",
    "entryType",
+   "idempotencyKey",
+   "method",
    "note"
   ]
  },

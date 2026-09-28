@@ -35,6 +35,7 @@ function from(table: string) {
     select(_cols?: string, o?: { count?: string; head?: boolean }) { if (o?.head) countHead = true; if (mode === "select") mode = "select"; return c; },
     eq(k: string, v: unknown) { filters.push((r) => r[k] === v); return c; },
     neq(k: string, v: unknown) { filters.push((r) => r[k] !== v); return c; },
+    is(k: string, v: unknown) { filters.push((r) => (r[k] ?? null) === v); return c; },
     in(k: string, vs: unknown[]) { filters.push((r) => vs.includes(r[k])); return c; },
     ilike(k: string, pat: string) { const re = new RegExp("^" + pat.replace(/%/g, ".*") + "$", "i"); filters.push((r) => re.test(String(r[k] ?? ""))); return c; },
     order(k: string, o?: { ascending?: boolean }) { orderBy = [k, o?.ascending !== false]; return c; },
@@ -50,13 +51,13 @@ function from(table: string) {
     delete() { mode = "delete"; return c; },
   };
 }
-const ledger: string[] = [];
+// net model (2026-09-28): the artist's show share is an entitlement in the (fake) ledger — never a Finance artist-fee row
+const entitlement = (showId: string) => (DB.artist_balance_entries ?? []).find((r) => r.source_show_id === showId && r.entry_type === "הכנסות צפויות");
 const ML = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
 const orig = ML._load;
 ML._load = function (request: string, parent: unknown, isMain: boolean) {
   if (request === "server-only") return {};
   if (/lib\/supabase$/.test(request)) return { supabase: { from } };
-  if (/lib\/artist-balance-show-sync$/.test(request)) return { async syncArtistBalanceFromShow(x: { showId: string }) { ledger.push(`sync:${x.showId}`); }, async removeSyncedArtistBalanceEntry() { /* */ } };
   return orig.call(this, request, parent, isMain);
 };
 
@@ -81,7 +82,7 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   console.log("\nA confirmed show → deposit → partial → full → overpayment");
   const s1 = SHOW(); t("shows").push(s1); const id = String(s1.id);
   await fin.syncShowFinance(getShow(id));
-  ok("2. confirmation: ONE expected-balance row = the price (צפוי), linked by show_id, in the show currency; DJ + artist rows linked", income(id).length === 1 && income(id)[0].show_money_role === "SHOW_BALANCE_EXPECTED" && income(id)[0].amount === 3000 && income(id)[0].payment_status === "צפוי" && income(id)[0].currency === "₪" && txOf(id).some((r) => r.show_money_role === "DJ_FEE") && txOf(id).some((r) => r.show_money_role === "ARTIST_FEE"));
+  ok("2. confirmation: ONE expected-balance row = the price (צפוי), linked by show_id, in the show currency; the DJ row linked; the artist share an expected ledger entitlement (no Finance artist row)", income(id).length === 1 && income(id)[0].show_money_role === "SHOW_BALANCE_EXPECTED" && income(id)[0].amount === 3000 && income(id)[0].payment_status === "צפוי" && income(id)[0].currency === "₪" && txOf(id).some((r) => r.show_money_role === "DJ_FEE") && !txOf(id).some((r) => r.show_money_role === "ARTIST_FEE") && !!entitlement(id));
   const d1 = await recordShowPayment(id, { amount: 1000, date: "2026-09-27", method: "ביט" });
   ok("3. deposit 1,000: one payment row (התקבל) + the expected balance becomes 2,000; the show is מקדמה with received 1,000", d1.kind === "ok" && receivedTotal(id) === 1000 && income(id).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED")?.amount === 2000 && getShow(id).payment_status === "מקדמה" && getShow(id).advance_payment === 1000, { d1, rows: income(id) });
   const dup = await recordShowPayment(id, { amount: 1000, date: "2026-09-27" });
@@ -92,7 +93,7 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   ok("6. partial 500: received 1,500, remaining 1,500", receivedTotal(id) === 1500 && income(id).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED")?.amount === 1500);
   await recordShowPayment(id, { amount: 1500, date: "2026-10-15" });
   const exp = income(id).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED");
-  ok("7. the rest 1,500: the expected row BECOMES that payment → received 3,000, remaining 0, status שולם; A1: the DJ + artist fee rows stay צפוי (client paid ≠ DJ / artist paid)", receivedTotal(id) === 3000 && !exp && getShow(id).payment_status === "שולם" && txOf(id).find((r) => r.show_money_role === "DJ_FEE")?.payment_status === "צפוי" && txOf(id).find((r) => r.show_money_role === "ARTIST_FEE")?.payment_status === "צפוי", income(id));
+  ok("7. the rest 1,500: the expected row BECOMES that payment → received 3,000, remaining 0, status שולם; A1: the DJ row stays צפוי and the artist entitlement stays expected (client paid ≠ DJ / artist paid)", receivedTotal(id) === 3000 && !exp && getShow(id).payment_status === "שולם" && txOf(id).find((r) => r.show_money_role === "DJ_FEE")?.payment_status === "צפוי" && !!entitlement(id), income(id));
   ok("8. NEVER 1,000 + 3,000 = 4,000 fake revenue: Σ received income = the price exactly", income(id).filter((r) => r.payment_status === "התקבל").reduce((s, r) => s + Number(r.amount), 0) === 3000);
   await recordShowPayment(id, { amount: 200, date: "2026-10-16", note: "טיפ" });
   const money = await fin.showMoneyForShow(getShow(id));
@@ -133,11 +134,10 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   const cur = await W.updateShowRecord(id, { currency: "$" });
   ok("19. changing the currency of a show that has payments → refused", cur.kind === "refused" && (cur as { code: string }).code === "CURRENCY_HAS_PAYMENTS" && getShow(id).currency === "₪");
   const usd = SHOW({ currency: "$", show_price: 2000 }); t("shows").push(usd); const idU = String(usd.id);
-  ledger.length = 0;
   await fin.syncShowFinance(getShow(idU));
-  ok("20. a $ show: every Finance row carries $; the currency-less artist ledger is NOT synced (never a silent FX)", txOf(idU).length >= 2 && txOf(idU).every((r) => r.currency === "$") && ledger.length === 0);
+  ok("20. a $ show: every Finance row carries $; the currency-less artist ledger gets NO entitlement (never a silent FX)", txOf(idU).length >= 2 && txOf(idU).every((r) => r.currency === "$") && !entitlement(idU));
   await fin.syncShowFinance(getShow(id3));
-  ok("21. a ₪ show still syncs the ledger (unchanged behaviour)", ledger.includes(`sync:${id3}`));
+  ok("21. a ₪ show still syncs the ledger (its expected entitlement)", !!entitlement(id3));
   const bad = await W.updateShowRecord(idU, { currency: "GBP" });
   ok("22. an unsupported currency → refused", bad.kind === "refused" && (bad as { code: string }).code === "CURRENCY");
 

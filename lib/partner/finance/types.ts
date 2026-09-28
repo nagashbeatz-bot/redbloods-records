@@ -40,7 +40,7 @@ export interface FinanceShowRow { id: string; date: string | null; status: strin
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }
-export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null }
+export interface LedgerEntryRow { artistId: string; entryType: string | null; amount: unknown; sourceTxId: string | null; /** net model (2026-09-28), optional for older fixtures */ id?: string; sourceShowId?: string | null; note?: string | null }
 export interface MediaIncomeRow { labelArtistId: string | null; status: string | null; grossAmount: unknown }
 /** A Red Films budget payment. `currency` = the budget line currency (migration 2026-09-27); null on legacy / unread rows. */
 /** DB-1 (2026-09-27): linkedTransactionId = the payment's ONE Finance expense (already counted in Finance) — only an UNLINKED payment is outside Finance. */
@@ -188,7 +188,8 @@ export type SignalCode =
   | "PRICE_MISSING" | "COMPLETED_WORK_EXPENSE_NO_INCOME" | "DUE_DATE_MISSING" | "TRANSACTION_PROJECT_LINK_MISSING"
   | "CURRENCY_AMBIGUOUS" | "CURRENCY_SETTLEMENT_AMBIGUOUS" | "RECURRING_CLASSIFICATION_UNKNOWN" | "ORPHAN_PRICE_SETTINGS"
   | "SHOW_PRICE_MISSING" | "DUPLICATE_LOOKING_RECORDS" | "MALFORMED_RECORDS" | "LABEL_LEDGER_NO_CURRENCY"
-  | "MEDIA_INCOME_NO_CURRENCY" | "RED_FILMS_OUTSIDE_FINANCE" | "UNDATED_RECORDS" | "POSSIBLE_OBLIGATION_OVERLAP" | "UNCLASSIFIED_BUSINESS_UNIT";
+  | "MEDIA_INCOME_NO_CURRENCY" | "RED_FILMS_OUTSIDE_FINANCE" | "UNDATED_RECORDS" | "POSSIBLE_OBLIGATION_OVERLAP" | "UNCLASSIFIED_BUSINESS_UNIT"
+  | "ARTIST_PAYMENT_WITHOUT_FINANCE" | "FINANCE_ARTIST_PAYMENT_WITHOUT_LEDGER";
 export interface FinanceSignal {
   code: SignalCode;
   epistemic: Epistemic;

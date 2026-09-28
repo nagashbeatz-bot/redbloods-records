@@ -52,13 +52,12 @@ function from(table: string) {
     delete() { mode = "delete"; return c; },
   };
 }
-const ledger: string[] = [], closeLedger: string[] = [], calendar: string[] = [];
+const closeLedger: string[] = [], calendar: string[] = [];
 const ML = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
 const orig = ML._load;
 ML._load = function (request: string, parent: unknown, isMain: boolean) {
   if (request === "server-only") return {};
   if (/(^|\/)supabase$/.test(request)) return { supabase: { from } };
-  if (/artist-balance-show-sync$/.test(request)) return { async syncArtistBalanceFromShow(x: { showId: string; amount: number }) { ledger.push(`sync:${x.showId}:${x.amount}`); }, async removeSyncedArtistBalanceEntry(id: string | null) { ledger.push(`remove:${id}`); } };
   if (/artist-balance-show-close-sync$/.test(request)) return {
     async resolveShowArtistId() { return { status: "ok", artistId: "artist-1" }; }, logArtistResolutionSkip() { /* */ },
     async syncArtistIncomeFromClosedShow(x: { show: { id: string } }) { closeLedger.push(`income:${x.show.id}`); }, async createShowArtistPayment(x: { show: { id: string } }) { closeLedger.push(`payment:${x.show.id}`); }, async findShowPaymentEntry() { return null; },
@@ -74,6 +73,9 @@ ML._load = function (request: string, parent: unknown, isMain: boolean) {
 
 const txOf = (showId: string) => t("transactions").filter((r) => r.show_id === showId || String(r.notes ?? "").includes(showId));
 const show = (id: string) => t("shows").find((r) => r.id === id)!;
+// net model (2026-09-28): the artist's show share is an entitlement in the ledger (never a Finance artist-fee row)
+const earning = (showId: string) => t("artist_balance_entries").find((r) => r.source_show_id === showId && (r.entry_type === "הכנסות צפויות" || r.entry_type === "הכנסות")) as Row | undefined;
+const inactive = (r: Row | undefined) => String(r?.note ?? "").startsWith("[זכאות לא פעילה]");
 const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", booker_name: "מזמין", date: "2099-10-15", start_time: "21:00", location: "תל אביב", contact_person: "", phone: "" };
 
 (async () => {
@@ -88,7 +90,7 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   const c1 = (await W.createShowRecord({ ...BASE, status: "אושרה", deal_type: "UNPAID_COLLAB" })).show;
   ok("A1. created with deal_type UNPAID_COLLAB, price 0 and DJ fee 0 (never the implicit 500)", c1.deal_type === "UNPAID_COLLAB" && c1.show_price === 0 && c1.dj_fee === 0 && c1.artist_fee === 0, c1);
   ok("A2. NO transaction of any kind (expected income / payment / DJ / artist / rehearsal)", txOf(c1.id).length === 0 && t("transactions").length === 0, t("transactions"));
-  ok("A3. no artist ledger activity (no expected row, no removal)", ledger.length === 0 && closeLedger.length === 0, { ledger, closeLedger });
+  ok("A3. no artist ledger activity (no entitlement row, no close sync)", !t("artist_balance_entries").length && closeLedger.length === 0, { closeLedger });
   ok("A4. payment status is never 'שת״פ' (the column keeps its neutral default, not read)", !String(c1.payment_status).includes("שת") && T.isUnpaidCollab(c1) && !T.showHasMoney(c1));
   const w = read("lib/writes/shows.ts"); const calBlock = w.slice(w.indexOf("// Google Calendar — only if explicitly requested"), w.indexOf("return { show: saved, calendarWarning, paymentWarning };"));
   ok("A5. the calendar works as for any show: the create / update calendar path has no deal-type condition (only its description text changes — G15)", calBlock.length > 100 && !/deal_type|isUnpaidCollab|UNPAID_COLLAB/.test(calBlock) && /"dj_fee", "deal_type",\s*\]\);/.test(w));
@@ -144,13 +146,13 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   console.log("\nD. PAID works exactly as before");
   const p1 = (await W.createShowRecord({ ...BASE, name: "הופעה בתשלום", status: "אושרה", show_price: 3000 })).show;
   const roles = () => txOf(p1.id).map((r) => `${r.show_money_role}:${r.amount}:${r.payment_status}`).sort().join(",");
-  ok("D1. a PAID confirmed show (deal_type default) gets its rows: expected 3,000 + DJ 500 (the default) + artist 1,250", p1.deal_type === "PAID" && roles() === "ARTIST_FEE:1250:צפוי,DJ_FEE:500:צפוי,SHOW_BALANCE_EXPECTED:3000:צפוי", roles());
+  ok("D1. a PAID confirmed show (deal_type default) gets its rows: expected 3,000 + DJ 500 (the default); the artist's 1,250 is an expected ledger entitlement (no Finance artist row)", p1.deal_type === "PAID" && roles() === "DJ_FEE:500:צפוי,SHOW_BALANCE_EXPECTED:3000:צפוי" && earning(p1.id)?.entry_type === "הכנסות צפויות" && earning(p1.id)?.amount === 1250, roles());
   const pp = await recordShowPayment(p1.id, { amount: 1000, date: "2099-10-16" });
   ok("D2. a payment on a PAID show records as always (1,000 received, 2,000 expected, מקדמה)", pp.kind === "ok" && show(p1.id).payment_status === "מקדמה");
 
   console.log("\nE. PAID → UNPAID_COLLAB (guarded: real money is never deleted / hidden)");
   const sw1 = await W.updateShowRecord(p1.id, { deal_type: "UNPAID_COLLAB" });
-  ok("E1. a received client payment → the switch is REFUSED (DEAL_SWITCH_BLOCKED) and nothing changed", sw1.kind === "refused" && (sw1 as { code: string }).code === "DEAL_SWITCH_BLOCKED" && /תשלומי לקוח/.test((sw1 as { messageHe: string }).messageHe) && show(p1.id).deal_type === "PAID" && txOf(p1.id).length === 4, sw1);
+  ok("E1. a received client payment → the switch is REFUSED (DEAL_SWITCH_BLOCKED) and nothing changed", sw1.kind === "refused" && (sw1 as { code: string }).code === "DEAL_SWITCH_BLOCKED" && /תשלומי לקוח/.test((sw1 as { messageHe: string }).messageHe) && show(p1.id).deal_type === "PAID" && txOf(p1.id).length === 3 && !inactive(earning(p1.id)), sw1);
   const p2 = (await W.createShowRecord({ ...BASE, name: "DJ שולם", status: "אושרה", show_price: 2000 })).show;
   await W.setShowFeePaid(p2.id, "DJ_FEE", true, {});
   const sw2 = await W.updateShowRecord(p2.id, { deal_type: "UNPAID_COLLAB" });
@@ -164,18 +166,19 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   const sw4 = await W.updateShowRecord(p4.id, { deal_type: "UNPAID_COLLAB" });
   ok("E4. a realized artist ledger entry → refused", sw4.kind === "refused" && /מאזן האמן/.test((sw4 as { messageHe: string }).messageHe) && show(p4.id).deal_type === "PAID");
   const p5 = (await W.createShowRecord({ ...BASE, name: "רק צפי", status: "אושרה", show_price: 2500 })).show;
-  ok("E5a. (a clean PAID show with only still-expected rows)", txOf(p5.id).length === 3);
+  ok("E5a. (a clean PAID show with only still-expected rows + an expected entitlement — an entitlement is not money, it never blocks)", txOf(p5.id).length === 2 && earning(p5.id)?.entry_type === "הכנסות צפויות");
   const sw5 = await W.updateShowRecord(p5.id, { deal_type: "UNPAID_COLLAB" });
   const s5 = show(p5.id);
   ok("E5. only still-expected rows → the switch runs: deal UNPAID_COLLAB, price / DJ / artist 0, the expected rows removed, links cleared", sw5.kind === "ok" && s5.deal_type === "UNPAID_COLLAB" && s5.show_price === 0 && s5.dj_fee === 0 && txOf(p5.id).length === 0 && !s5.linked_income_transaction_id && !s5.linked_dj_expense_transaction_id, { sw5, rows: txOf(p5.id) });
-  ok("E6. …the synced expected artist-ledger row is removed with them (the same safe removal a revert uses)", ledger.some((x) => x.startsWith("remove:")));
+  const ent5 = earning(p5.id)?.id;
+  ok("E6. …the expected entitlement is marked NOT ACTIVE with them (kept — the ledger is never deleted by a switch)", inactive(earning(p5.id)) && !!ent5);
 
   console.log("\nF. UNPAID_COLLAB → PAID (the normal finance flow for the show's state)");
   const back0 = await W.updateShowRecord(p5.id, { deal_type: "PAID" });
   ok("F1. without a price → refused PRICE_REQUIRED, still a collaboration", back0.kind === "refused" && (back0 as { code: string }).code === "PRICE_REQUIRED" && show(p5.id).deal_type === "UNPAID_COLLAB");
   const back = await W.updateShowRecord(p5.id, { deal_type: "PAID", show_price: 1800 });
   const r5 = txOf(p5.id).map((r) => `${r.show_money_role}:${r.amount}`).sort().join(",");
-  ok("F2. with a price → PAID, the normal rows are created for a confirmed show (expected 1,800 + artist 900; DJ 0 → no DJ row, never an implicit 500)", back.kind === "ok" && show(p5.id).deal_type === "PAID" && show(p5.id).dj_fee === 0 && r5 === "ARTIST_FEE:900,SHOW_BALANCE_EXPECTED:1800", r5);
+  ok("F2. with a price → PAID, the normal rows are created for a confirmed show (expected 1,800; DJ 0 → no DJ row, never an implicit 500); the SAME entitlement row is active again at 900", back.kind === "ok" && show(p5.id).deal_type === "PAID" && show(p5.id).dj_fee === 0 && r5 === "SHOW_BALANCE_EXPECTED:1800" && earning(p5.id)?.id === ent5 && earning(p5.id)?.amount === 900 && !inactive(earning(p5.id)), { r5, e: earning(p5.id) });
 
   console.log("\nG. Readers + signals: counted as a show, never as money");
   const { buildFinanceBrain } = await import("../lib/partner/finance/core");

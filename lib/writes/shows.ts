@@ -279,7 +279,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
                 const { isValidYmd } = await import("@/lib/artist-balance-store");
                 const {
                   resolveShowArtistId, logArtistResolutionSkip,
-                  syncArtistIncomeFromClosedShow, createShowArtistPayment, findShowPaymentEntry,
+                  syncArtistIncomeFromClosedShow, findShowPaymentEntry,
                 } = await import("@/lib/artist-balance-show-close-sync");
 
                 const resolution = await resolveShowArtistId(fresh.artist);
@@ -292,20 +292,27 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
                   // NET profit; any other roster artist is NOT_DEFINED → nothing is realized into the ledger.
                   const rule = showAgreementSplit(fresh, rehearsalCounted);
                   const artistFee = rule.status === "DEFINED" ? rule.artistFee : 0;
+                  // the agreement artist is identified by the roster id (never by the name alone)
+                  const payee = rule.status === "DEFINED" ? rule.artist.id : artistId;
                   if (rule.status === "NOT_DEFINED") console.warn(`[shows] close ${fresh.id}: ${rule.reasonHe} — no artist ledger income`);
                   if (artistFee > 0) {
                     // Income: realized the moment the show closes — one row per
                     // show, ever (never a duplicate expected+realized pair).
-                    await syncArtistIncomeFromClosedShow({ artistId, show: fresh, amount: artistFee });
+                    await syncArtistIncomeFromClosedShow({ artistId: payee, show: fresh, amount: artistFee });
 
                     if (body.closeShow.artistPaid) {
-                      // Payment: a separate, unconstrained event — only ever
-                      // CREATED here, never edited/deleted by this flow again.
+                      // Net model (Owner 2026-09-28): "אמן ✓" = a REAL payment to the artist — Finance (שכר אמן, שולם,
+                      // RECORDS) + the ledger payment, ONE writer, idempotent per show (a re-save never pays twice).
                       const paymentDate =
                         typeof body.artistPaidDate === "string" && isValidYmd(body.artistPaidDate)
                           ? body.artistPaidDate
                           : new Date().toISOString().slice(0, 10);
-                      await createShowArtistPayment({ artistId, show: fresh, amount: artistFee, paymentDate });
+                      const already = await findShowPaymentEntry(fresh.id);
+                      if (!already) {
+                        const { recordArtistPayment } = await import("@/lib/writes/artist-payments");
+                        const paid = await recordArtistPayment({ artistId: payee, amount: artistFee, date: paymentDate, showId: fresh.id, idempotencyKey: `show:${fresh.id}`, description: `תשלום — ${fresh.name}`, allowDuplicate: true });
+                        if (paid.kind !== "ok") balanceSyncError = paid.messageHe;
+                      }
                     } else {
                       // Unchecked (or never checked) — if a payment was already
                       // recorded for this show, do NOT touch it silently. Tell
@@ -604,7 +611,7 @@ export async function showFeeRows(show: Pick<Show, "id" | "linked_dj_expense_tra
 
 export type SetShowFeePaidResult =
   | { kind: "not_found" }
-  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB"; messageHe: string }
+  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB" | "NO_AGREEMENT" | "UNPAY_VIA_LEDGER" | "PAYMENT_INCOMPLETE" | "DUPLICATE" | "NOT_ILS"; messageHe: string }
   | { kind: "ok"; transactionId: string; before: string | null; after: string };
 
 /**
@@ -624,6 +631,27 @@ export async function setShowFeePaid(showId: string, role: unknown, paid: unknow
   const show = await getShow(showId);
   if (!show) return { kind: "not_found" };
   if (isUnpaidCollab(show)) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
+  // Net model (Owner 2026-09-28): the ARTIST is paid by a REAL payment (Finance + ledger, lib/writes/artist-payments) —
+  // never by marking an artist-fee row. The show share is the ONE rule (showAgreementSplit); a payment already recorded
+  // for the show (ledger payment of the show, or a legacy paid artist-fee row) is ALREADY_PAID. Un-paying is cancelling
+  // that payment in the artist's balance (its Finance row becomes בוטל) — never here.
+  if (role === SHOW_MONEY_ROLES.ARTIST) {
+    if (!paid) return { kind: "refused", code: "UNPAY_VIA_LEDGER", messageHe: "ביטול תשלום לאמן נעשה בעמוד האמן → מאזן → מחיקת התשלום (שורת הכספים תסומן 'בוטל', לא תימחק)" };
+    const { showAgreementSplit } = await import("@/lib/label-agreements");
+    const { getRehearsalCountedForShow, isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
+    if (show.status === "בוטל") return { kind: "refused", code: "FEE_CANCELLED", messageHe: "ההופעה בוטלה — אין זכאות לאמן; אם שולם בכל זאת, רושמים תשלום במאזן האמן" };
+    if (!isConfirmedShowStatus(show.status)) return { kind: "refused", code: "NO_FEE_ROW", messageHe: "ההופעה עדיין לא מאושרת — אין זכאות לאמן לשלם עליה" };
+    const rule = showAgreementSplit(show, await getRehearsalCountedForShow(show.id));
+    if (rule.status !== "DEFINED" || !(rule.artistFee > 0)) return { kind: "refused", code: "NO_AGREEMENT", messageHe: rule.status === "DEFINED" ? "אין שכר אמן בהופעה" : rule.reasonHe };
+    const legacy = (await showFeeRows(show))[role];
+    const { findShowPaymentEntry } = await import("@/lib/artist-balance-show-close-sync");
+    if ((legacy && legacy.status === "שולם") || (await findShowPaymentEntry(show.id))) return { kind: "refused", code: "ALREADY_PAID", messageHe: "כבר רשום תשלום לאמן על ההופעה הזו" };
+    const { recordArtistPayment } = await import("@/lib/writes/artist-payments");
+    const r = await recordArtistPayment({ artistId: rule.artist.id, amount: rule.artistFee, date: (date as string | null) ?? new Date().toISOString().slice(0, 10), method: method as string, showId: show.id, idempotencyKey: `show:${show.id}`, description: `תשלום — ${show.name}`, currency: show.currency || "₪", allowDuplicate: true });
+    if (r.kind === "partial") return { kind: "refused", code: "PAYMENT_INCOMPLETE", messageHe: r.messageHe };
+    if (r.kind === "refused") return { kind: "refused", code: r.code === "NOT_ILS" ? "NOT_ILS" : r.code === "DUPLICATE" ? "DUPLICATE" : "BAD_ARGS", messageHe: r.messageHe };
+    return { kind: "ok", transactionId: r.transactionId, before: null, after: "שולם" };
+  }
   const row = (await showFeeRows(show))[role];
   const who = role === SHOW_MONEY_ROLES.DJ ? "ה-DJ" : "האמן";
   if (!row) return { kind: "refused", code: "NO_FEE_ROW", messageHe: `להופעה אין שורת שכר ${who} בפיננסים` };

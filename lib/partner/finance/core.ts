@@ -17,6 +17,7 @@
  * expected, receivable, committed and ideas never merge; historical months are recorded-only;
  * recording discipline starts 2026-09-23; orphan price settings never count as money.
  */
+import { unitBalanceFromFinanceRaw } from "./unit-view";
 import { addDays, diffDays, ilYmd, parseYmd } from "../../coo/dates";
 import { EXPENSE_FULLY_PAID_STATUS, isCancelledStatus, isExpenseFullyPaidStatus, isReceivedStatus } from "../../finance/classify";
 import { normalizeCurrency } from "../../finance/currency";
@@ -423,6 +424,14 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   // A row read without the column (undefined — older fixtures) is not counted.
   const unclassified = txs.filter((t) => t.row.businessUnit === null);
   sig("UNCLASSIFIED_BUSINESS_UNIT", "FACT", unclassified.length, unclassified.map((t) => txEv(t, "NO_BUSINESS_UNIT")), unclassified.reduce((m, t) => add(m, t.currency, t.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
+  // net model (2026-09-28): every real artist payment is in BOTH Finance and the artist ledger (lib/finance/unit-balance
+  // reconcileArtistPayments — the Owner-approved historical exception is explained, never a finding). Needs the ledger ids
+  // (older fixtures without them are skipped).
+  if (raw.ledger.every((l) => l.id !== undefined)) {
+    const rec = unitBalanceFromFinanceRaw(raw).reconciliation;
+    sig("ARTIST_PAYMENT_WITHOUT_FINANCE", "FACT", rec.ledgerPaymentsWithoutFinance.length, rec.ledgerPaymentsWithoutFinance.map((p) => ({ sourceType: "label_ledger" as const, sourceId: p.ledgerEntryId, reasonCode: "LEDGER_PAYMENT_WITHOUT_FINANCE_PAYMENT" })), rec.ledgerPaymentsWithoutFinance.reduce((m, p) => add(m, "₪", p.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
+    sig("FINANCE_ARTIST_PAYMENT_WITHOUT_LEDGER", "FACT", rec.financePaymentsWithoutLedger.length, rec.financePaymentsWithoutLedger.map((p) => ({ sourceType: "transaction" as const, sourceId: p.transactionId, reasonCode: "FINANCE_ARTIST_PAYMENT_WITHOUT_LEDGER_PAYMENT" })), rec.financePaymentsWithoutLedger.reduce((m, p) => add(m, "₪", p.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
+  }
   sig("POSSIBLE_OBLIGATION_OVERLAP", "HYPOTHESIS", possibleOverlaps.length, possibleOverlaps.flatMap((e) => e.evidence), possibleOverlaps.reduce((m, e) => add(m, e.currency, e.amount), {} as CurrencyTotals));
 
   // ── coverage (factual categories — no score) ──

@@ -37,6 +37,7 @@ function from(table: string) {
     select(_cols?: string, o?: { count?: string; head?: boolean }) { if (o?.head) countHead = true; return c; },
     eq(k: string, v: unknown) { filters.push((r) => r[k] === v); return c; },
     neq(k: string, v: unknown) { filters.push((r) => r[k] !== v && r[k] !== null && r[k] !== undefined); return c; },
+    is(k: string, v: unknown) { filters.push((r) => (v === null ? r[k] === null || r[k] === undefined : r[k] === v)); return c; },
     in(k: string, vs: unknown[]) { filters.push((r) => vs.includes(r[k])); return c; },
     order(k: string, o?: { ascending?: boolean }) { orderBy = [k, o?.ascending !== false]; return c; },
     limit(n: number) { lim = n; return c; },
@@ -46,23 +47,20 @@ function from(table: string) {
   };
   return {
     select: (cols?: string, o?: { count?: string; head?: boolean }) => (c.select as (a?: string, b?: unknown) => unknown)(cols, o),
-    insert(r: Row) { mode = "insert"; ins = r; return c; },
+    insert(r: Row) { mode = "insert"; ins = { created_at: new Date().toISOString(), ...r }; return c; },
     update(p: Row) { mode = "update"; patch = p; return c; },
     delete() { mode = "delete"; return c; },
   };
 }
-const ledger: string[] = [];
-const closeLedger: string[] = [];
+const SHALEV = "8806fe5e-1238-4228-8078-b3db3ccc9b46";
+t("label_artists").push({ id: SHALEV, name: "שליו טסמה", slug: "shalev" });
 const ML = Module as unknown as { _load(request: string, parent: unknown, isMain: boolean): unknown };
 const orig = ML._load;
 ML._load = function (request: string, parent: unknown, isMain: boolean) {
   if (request === "server-only") return {};
   if (/(^|\/)supabase$/.test(request)) return { supabase: { from } };
-  if (/artist-balance-show-sync$/.test(request)) return { async syncArtistBalanceFromShow(x: { showId: string; amount: number }) { ledger.push(`sync:${x.showId}:${x.amount}`); }, async removeSyncedArtistBalanceEntry(id: string | null) { ledger.push(`remove:${id}`); } };
-  if (/artist-balance-show-close-sync$/.test(request)) return {
-    async resolveShowArtistId() { return { status: "ok", artistId: "artist-1" }; }, logArtistResolutionSkip() { /* */ },
-    async syncArtistIncomeFromClosedShow(x: { show: { id: string } }) { closeLedger.push(`income:${x.show.id}`); }, async createShowArtistPayment(x: { show: { id: string } }) { closeLedger.push(`payment:${x.show.id}`); }, async findShowPaymentEntry() { return null; },
-  };
+  // the REAL close sync (ledger on the fake) — only the name → id resolution is fixed (the store is not faked here)
+  if (/artist-balance-show-close-sync$/.test(request)) { const real = orig.call(this, request, parent, isMain) as Record<string, unknown>; return { ...real, async resolveShowArtistId() { return { status: "resolved", artistId: SHALEV }; } }; }
   if (/show-quote-followup$/.test(request)) return { async closeQuoteFollowupTask() { /* */ }, async ensureQuoteFollowupTask() { return { task: null, created: false }; } };
   if (/show-cancel-tasks$/.test(request)) return { async cancelOpenShowTasks() { /* */ } };
   if (/google-calendar$/.test(request)) return { async isConnected() { throw new Error("calendar must not be touched in this test"); } };
@@ -77,6 +75,12 @@ const income = (showId: string) => txOf(showId).filter((r) => r.type === "income
 const fee = (showId: string, role: "DJ_FEE" | "ARTIST_FEE") => txOf(showId).find((r) => r.show_money_role === role) as Row | undefined;
 const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_money_role === "SHOW_PAYMENT" && (r.payment_status === "התקבל" || r.payment_status === "שולם")).reduce((s, r) => s + Number(r.amount), 0);
 const paymentRows = (showId: string) => income(showId).filter((r) => r.show_money_role === "SHOW_PAYMENT").length;
+// net model (2026-09-28): the entitlement lives in the ledger; a real artist payment = Finance שכר אמן שולם + a ledger payment
+const earning = (showId: string) => t("artist_balance_entries").find((r) => r.source_show_id === showId && (r.entry_type === "הכנסות צפויות" || r.entry_type === "הכנסות")) as Row | undefined;
+const inactive = (r: Row | undefined) => String(r?.note ?? "").startsWith("[זכאות לא פעילה]");
+const ledgerPays = (showId: string) => t("artist_balance_entries").filter((r) => r.source_show_id === showId && r.entry_type === "תשלומים");
+const artistPayTx = (showId: string) => t("transactions").filter((r) => r.category === "שכר אמן" && String(r.notes ?? "").includes(`artist_payment_show:${showId}`));
+const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artistPayTx(showId).length === 1 && artistPayTx(showId)[0].payment_status === "שולם" && ledgerPays(showId)[0].source_tx_id === artistPayTx(showId)[0].id;
 
 (async () => {
   const fin = await import("../lib/shows-finance-sync");
@@ -97,22 +101,22 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
 
   console.log("\nClient pays → DJ / artist unchanged");
   const a = await newShow();
-  ok("1. confirmation: DJ 500 + artist 1,250 fee rows created צפוי", fee(a, "DJ_FEE")?.payment_status === "צפוי" && fee(a, "DJ_FEE")?.amount === 500 && fee(a, "ARTIST_FEE")?.payment_status === "צפוי" && fee(a, "ARTIST_FEE")?.amount === 1250);
+  ok("1. confirmation: DJ 500 fee row צפוי; NO Finance artist-fee row; the artist's 1,250 is an expected ledger entitlement (by show)", fee(a, "DJ_FEE")?.payment_status === "צפוי" && fee(a, "DJ_FEE")?.amount === 500 && !fee(a, "ARTIST_FEE") && earning(a)?.entry_type === "הכנסות צפויות" && earning(a)?.amount === 1250 && earning(a)?.artist_id === SHALEV && !inactive(earning(a)), earning(a));
   await recordShowPayment(a, { amount: 3000, date: "2026-10-16" });
-  ok("2. the client paid in full → received 3,000, show שולם; DJ + artist fee rows STILL צפוי", receivedTotal(a) === 3000 && getShow(a).payment_status === "שולם" && fee(a, "DJ_FEE")?.payment_status === "צפוי" && fee(a, "ARTIST_FEE")?.payment_status === "צפוי");
+  ok("2. the client paid in full → received 3,000, show שולם; the DJ row STILL צפוי, the entitlement still expected, no artist payment", receivedTotal(a) === 3000 && getShow(a).payment_status === "שולם" && fee(a, "DJ_FEE")?.payment_status === "צפוי" && earning(a)?.entry_type === "הכנסות צפויות" && ledgerPays(a).length === 0);
 
   console.log("\nShow edits after the client paid → no fee status change, no new income");
   const before2 = paymentRows(a);
   const e1 = await W.updateShowRecord(a, { name: "הופעה בחיפה (עודכן)", location: "חיפה", payment_status: "שולם" });
-  ok("3. an edit that re-sends the unchanged 'שולם' → no new payment row, fee statuses unchanged", e1.kind === "ok" && paymentRows(a) === before2 && receivedTotal(a) === 3000 && fee(a, "DJ_FEE")?.payment_status === "צפוי" && fee(a, "ARTIST_FEE")?.payment_status === "צפוי");
+  ok("3. an edit that re-sends the unchanged 'שולם' → no new payment row, fee statuses unchanged", e1.kind === "ok" && paymentRows(a) === before2 && receivedTotal(a) === 3000 && fee(a, "DJ_FEE")?.payment_status === "צפוי" && earning(a)?.amount === 1250);
   const f1 = await W.setShowFeePaid(a, "DJ_FEE", true, { date: "2026-10-17", method: "ביט" });
-  ok("4. setShowFeePaid DJ → that row שולם with the payment date + method; the artist row + the client money untouched", f1.kind === "ok" && fee(a, "DJ_FEE")?.payment_status === "שולם" && fee(a, "DJ_FEE")?.date === "2026-10-17" && fee(a, "DJ_FEE")?.payment_method === "ביט" && fee(a, "ARTIST_FEE")?.payment_status === "צפוי" && receivedTotal(a) === 3000);
+  ok("4. setShowFeePaid DJ → that row שולם with the payment date + method; the artist row + the client money untouched", f1.kind === "ok" && fee(a, "DJ_FEE")?.payment_status === "שולם" && fee(a, "DJ_FEE")?.date === "2026-10-17" && fee(a, "DJ_FEE")?.payment_method === "ביט" && ledgerPays(a).length === 0 && artistPayTx(a).length === 0 && receivedTotal(a) === 3000);
   const up = await W.updateShowRecord(a, { show_price: 4000, payment_status: "שולם" });
   const expA = income(a).find((r) => r.show_money_role === "SHOW_BALANCE_EXPECTED");
   ok("5. price increase after 'paid' → NO invented income: received stays 3,000, a 1,000 expected balance, the show becomes מקדמה", up.kind === "ok" && receivedTotal(a) === 3000 && paymentRows(a) === before2 && expA?.amount === 1000 && expA?.payment_status === "צפוי" && getShow(a).payment_status === "מקדמה", { rows: income(a), ps: getShow(a).payment_status });
-  ok("6. …the paid DJ row keeps 500 / שולם; the unpaid artist row re-prices to 1,750 and stays צפוי", fee(a, "DJ_FEE")?.amount === 500 && fee(a, "DJ_FEE")?.payment_status === "שולם" && fee(a, "ARTIST_FEE")?.amount === 1750 && fee(a, "ARTIST_FEE")?.payment_status === "צפוי");
+  ok("6. …the paid DJ row keeps 500 / שולם; the expected entitlement re-prices to 1,750 (the app's split) — still no Finance artist row", fee(a, "DJ_FEE")?.amount === 500 && fee(a, "DJ_FEE")?.payment_status === "שולם" && earning(a)?.amount === 1750 && earning(a)?.entry_type === "הכנסות צפויות" && !fee(a, "ARTIST_FEE"));
   const down = await W.updateShowRecord(a, { show_price: 2000 });
-  ok("7. price decrease → remaining 0, the credit (1,000) stays visible; payments never change; artist re-prices to 750", down.kind === "ok" && receivedTotal(a) === 3000 && (await fin.showMoneyForShow(getShow(a))).credit === 1000 && fee(a, "ARTIST_FEE")?.amount === 750 && fee(a, "DJ_FEE")?.payment_status === "שולם");
+  ok("7. price decrease → remaining 0, the credit (1,000) stays visible; payments never change; artist re-prices to 750", down.kind === "ok" && receivedTotal(a) === 3000 && (await fin.showMoneyForShow(getShow(a))).credit === 1000 && earning(a)?.amount === 750 && fee(a, "DJ_FEE")?.payment_status === "שולם");
   const djChange = await W.updateShowRecord(a, { dj_fee: 700 });
   ok("8. DJ fee change on a PAID DJ row → the row is not overwritten (500 / שולם) and a finance warning surfaces the mismatch", djChange.kind === "ok" && fee(a, "DJ_FEE")?.amount === 500 && fee(a, "DJ_FEE")?.payment_status === "שולם" && /500/.test(String((djChange as { financeWarning?: string }).financeWarning)) && /700/.test(String((djChange as { financeWarning?: string }).financeWarning)), djChange);
   const djName = await W.updateShowRecord(a, { dj_name: "DJ אחר" });
@@ -122,11 +126,17 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
 
   console.log("\nRehearsal create / edit / delete → no fee status change");
   const b = await newShow({ show_price: 5000, dj_fee: 1000 });
-  await W.setShowFeePaid(b, "ARTIST_FEE", true, {});
-  const statusesB = () => `${fee(b, "DJ_FEE")?.payment_status}/${fee(b, "ARTIST_FEE")?.payment_status}`;
+  const pb = await W.setShowFeePaid(b, "ARTIST_FEE", true, { date: "2026-10-16", method: "ביט" });
+  const payTx = artistPayTx(b)[0];
+  ok("10b. setShowFeePaid ARTIST = a REAL payment: Finance שכר אמן 2,000 שולם RECORDS (not show-linked) + ONE ledger payment linked by source_tx_id", pb.kind === "ok" && artistPaid(b) && payTx.amount === 2000 && payTx.business_unit === "RECORDS" && payTx.business_unit_source === "RULE" && payTx.type === "expense" && payTx.show_id === null && payTx.currency === "₪" && payTx.date === "2026-10-16" && payTx.payment_method === "ביט" && ledgerPays(b)[0].amount === 2000 && ledgerPays(b)[0].artist_id === SHALEV && earning(b)?.entry_type === "הכנסות צפויות", { pb, payTx, led: ledgerPays(b) });
+  const again = await W.setShowFeePaid(b, "ARTIST_FEE", true, {});
+  ok("10c. paying the artist again for the same show → ALREADY_PAID, still ONE Finance row + ONE ledger payment", again.kind === "refused" && again.code === "ALREADY_PAID" && artistPaid(b), again);
+  const unpayA = await W.setShowFeePaid(b, "ARTIST_FEE", false, {});
+  ok("10d. un-paying the artist here → refused UNPAY_VIA_LEDGER (the payment is cancelled in the artist's balance), nothing changes", unpayA.kind === "refused" && unpayA.code === "UNPAY_VIA_LEDGER" && artistPaid(b));
+  const statusesB = () => `${fee(b, "DJ_FEE")?.payment_status}/${artistPaid(b) ? "שולם" : "—"}`;
   t("sessions").push({ id: "r1", show_id: b, session_type: "חזרה להופעה", status: "בוצע", cost: 400 });
   await fin.syncShowFinance(getShow(b)); // what lib/writes/sessions does after a rehearsal create / edit / delete
-  ok("11. a counted rehearsal (create) → the unpaid DJ row untouched, the PAID artist row keeps 2,000 / שולם", statusesB() === "צפוי/שולם" && fee(b, "ARTIST_FEE")?.amount === 2000);
+  ok("11. a counted rehearsal (create) → the unpaid DJ row untouched; the entitlement re-prices to 1,800 (the split), the REAL payment keeps 2,000 / שולם", statusesB() === "צפוי/שולם" && artistPayTx(b)[0].amount === 2000 && ledgerPays(b)[0].amount === 2000 && earning(b)?.amount === 1800, earning(b));
   Object.assign(t("sessions").find((r) => r.id === "r1")!, { status: "בוטל" });
   await fin.syncShowFinance(getShow(b));
   ok("12. rehearsal edit (→ בוטל) → statuses unchanged", statusesB() === "צפוי/שולם");
@@ -136,11 +146,11 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   ok("14. lib/writes/sessions re-syncs a show WITHOUT an intent (never records received money)", !/syncShowFinance\(show,/.test(read("lib/writes/sessions.ts")));
 
   console.log("\nStatus changes");
-  ledger.length = 0;
+  const entB = earning(b)!.id;
   const cancel = await W.updateShowRecord(b, { status: "בוטל" });
-  ok("15. cancel → the unpaid DJ row → בוטל; the PAID artist row stays שולם (the money went out) + a warning; the expected ledger row is removed", cancel.kind === "ok" && fee(b, "DJ_FEE")?.payment_status === "בוטל" && fee(b, "ARTIST_FEE")?.payment_status === "שולם" && /בוטלה/.test(String((cancel as { financeWarning?: string }).financeWarning)) && ledger.some((x) => x.startsWith("remove:")), { cancel, ledger });
+  ok("15. cancel → the unpaid DJ row → בוטל; the REAL artist payment stays (Finance שולם + ledger); the expected entitlement is marked NOT ACTIVE, never deleted", cancel.kind === "ok" && fee(b, "DJ_FEE")?.payment_status === "בוטל" && artistPaid(b) && earning(b)?.id === entB && inactive(earning(b)) && earning(b)?.entry_type === "הכנסות צפויות", { cancel, e: earning(b) });
   await W.updateShowRecord(b, { status: "אושרה" });
-  ok("16. back to אושרה → the cancelled DJ row → צפוי; the artist row still שולם", fee(b, "DJ_FEE")?.payment_status === "צפוי" && fee(b, "ARTIST_FEE")?.payment_status === "שולם");
+  ok("16. back to אושרה → the cancelled DJ row → צפוי; the SAME entitlement row is active again; the payment unchanged", fee(b, "DJ_FEE")?.payment_status === "צפוי" && earning(b)?.id === entB && !inactive(earning(b)) && artistPaid(b));
   await W.updateShowRecord(b, { dj_fee: 0 });
   ok("17. DJ fee → 0 → the unpaid DJ row → בוטל", fee(b, "DJ_FEE")?.payment_status === "בוטל");
 
@@ -148,12 +158,14 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   const c = await newShow();
   await W.setShowFeePaid(c, "DJ_FEE", true, {});
   const cl = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: false });
-  ok("18. close with djPaid = false keeps an already-paid DJ שולם; artist stays צפוי; income = the remainder once", cl.kind === "ok" && getShow(c).status === "בוצע" && fee(c, "DJ_FEE")?.payment_status === "שולם" && fee(c, "ARTIST_FEE")?.payment_status === "צפוי" && receivedTotal(c) === 3000 && paymentRows(c) === 1);
+  ok("18. close with djPaid = false keeps an already-paid DJ שולם; the entitlement becomes REAL (הכנסות 1,250, the same row) with no payment; income = the remainder once", cl.kind === "ok" && getShow(c).status === "בוצע" && fee(c, "DJ_FEE")?.payment_status === "שולם" && earning(c)?.entry_type === "הכנסות" && earning(c)?.amount === 1250 && ledgerPays(c).length === 0 && artistPayTx(c).length === 0 && receivedTotal(c) === 3000 && paymentRows(c) === 1, { cl, e: earning(c) });
   const cl2 = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: true });
-  ok("19. close again with artistPaid → the artist row שולם; no second income", cl2.kind === "ok" && fee(c, "ARTIST_FEE")?.payment_status === "שולם" && receivedTotal(c) === 3000 && paymentRows(c) === 1);
+  ok("19. close again with 'אמן ✓' → ONE real payment (Finance שכר אמן 1,250 שולם + the ledger payment); no second income; the entitlement stays realized", cl2.kind === "ok" && artistPaid(c) && artistPayTx(c)[0].amount === 1250 && earning(c)?.entry_type === "הכנסות" && receivedTotal(c) === 3000 && paymentRows(c) === 1, { cl2, tx: artistPayTx(c), led: ledgerPays(c) });
+  const cl3 = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: true });
+  ok("19b. re-saving the close with 'אמן ✓' again → no duplicate payment (Finance + ledger each ONE)", cl3.kind === "ok" && artistPaid(c));
   const d = await newShow();
   await W.closeShowRecord(d, { markDone: true, incomeReceived: false, djPaid: true, artistPaid: false });
-  ok("20. close 'not received' + DJ paid → the DJ row שולם, no income recorded, the artist row צפוי", fee(d, "DJ_FEE")?.payment_status === "שולם" && receivedTotal(d) === 0 && fee(d, "ARTIST_FEE")?.payment_status === "צפוי");
+  ok("20. close 'not received' + DJ paid → the DJ row שולם, no income recorded, no artist payment (the entitlement realized, owed)", fee(d, "DJ_FEE")?.payment_status === "שולם" && receivedTotal(d) === 0 && ledgerPays(d).length === 0 && earning(d)?.entry_type === "הכנסות");
 
   console.log("\nExplicit fee writer (setShowFeePaid)");
   ok("21. already paid → refused", (await W.setShowFeePaid(d, "DJ_FEE", true, {})).kind === "refused");
@@ -161,7 +173,7 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   ok("22. the explicit undo → צפוי, dated the show date again", un.kind === "ok" && fee(d, "DJ_FEE")?.payment_status === "צפוי" && fee(d, "DJ_FEE")?.date === getShow(d).date);
   const lead = SHOW({ status: "ליד חדש" }); t("shows").push(lead);
   const nr = await W.setShowFeePaid(String(lead.id), "ARTIST_FEE", true, {});
-  ok("23. no fee row (a lead) → refused NO_FEE_ROW, nothing created", nr.kind === "refused" && nr.code === "NO_FEE_ROW" && txOf(String(lead.id)).length === 0);
+  ok("23. a lead (not confirmed) → the artist cannot be paid for it: refused NO_FEE_ROW, nothing created", nr.kind === "refused" && nr.code === "NO_FEE_ROW" && txOf(String(lead.id)).length === 0 && artistPayTx(String(lead.id)).length === 0 && ledgerPays(String(lead.id)).length === 0);
   ok("24. a bad role / date / method → refused", (await W.setShowFeePaid(d, "HOST", true, {})).kind === "refused" && (await W.setShowFeePaid(d, "DJ_FEE", true, { date: "27/09" })).kind === "refused" && (await W.setShowFeePaid(d, "DJ_FEE", true, { method: "קריפטו" })).kind === "refused");
   ok("25. an unknown show → not_found", (await W.setShowFeePaid(randomUUID(), "DJ_FEE", true, {})).kind === "not_found");
 
@@ -169,15 +181,15 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   const e = await newShow();
   await W.setShowFeePaid(e, "DJ_FEE", true, {});
   const cur = await W.updateShowRecord(e, { currency: "$" });
-  ok("26. → $: the expected + unpaid artist rows carry $; the PAID DJ row stays ₪ (+ a warning)", cur.kind === "ok" && fee(e, "DJ_FEE")?.currency === "₪" && fee(e, "ARTIST_FEE")?.currency === "$" && income(e).every((r) => r.currency === "$") && /מטבע/.test(String((cur as { financeWarning?: string }).financeWarning)), cur);
+  ok("26. → $: the expected rows carry $; the PAID DJ row stays ₪ (+ a warning); the ₪ entitlement is marked NOT ACTIVE (the ledger is ₪ only, never converted)", cur.kind === "ok" && fee(e, "DJ_FEE")?.currency === "₪" && !fee(e, "ARTIST_FEE") && income(e).every((r) => r.currency === "$") && /מטבע/.test(String((cur as { financeWarning?: string }).financeWarning)) && inactive(earning(e)), cur);
 
   console.log("\nCreate");
   const created = await W.createShowRecord({ name: "חדשה", artist: "שליו טסמה", status: "אושרה", show_price: 3000, dj_fee: 500, payment_status: "שולם", advance_payment: 1000, advance_date: "2026-09-27" });
   const cid = created.show.id;
-  ok("27. created as 'שולם' with a 1,000 advance → received exactly 3,000 (advance + the remainder), two payment rows, fee rows צפוי", receivedTotal(cid) === 3000 && paymentRows(cid) === 2 && fee(cid, "DJ_FEE")?.payment_status === "צפוי" && fee(cid, "ARTIST_FEE")?.payment_status === "צפוי" && getShow(cid).payment_status === "שולם", income(cid));
+  ok("27. created as 'שולם' with a 1,000 advance → received exactly 3,000 (advance + the remainder), two payment rows, the DJ row צפוי, the artist's 1,250 an expected entitlement", receivedTotal(cid) === 3000 && paymentRows(cid) === 2 && fee(cid, "DJ_FEE")?.payment_status === "צפוי" && !fee(cid, "ARTIST_FEE") && earning(cid)?.amount === 1250 && earning(cid)?.entry_type === "הכנסות צפויות" && getShow(cid).payment_status === "שולם", income(cid));
   // Owner decision 2026-09-27 (lib/label-agreements): the 50 / 50-of-net split is ONLY for שליו / אבי — another artist gets no artist fee row
   const other = await W.createShowRecord({ name: "אחר", artist: "אמן אחר", status: "אושרה", show_price: 3000, dj_fee: 500, payment_status: "צפוי" });
-  ok("27b. a show of an artist WITHOUT an agreement → the DJ row only, no artist fee row (never the Shalev / Avi split)", !!fee(other.show.id, "DJ_FEE") && !fee(other.show.id, "ARTIST_FEE"), fee(other.show.id, "ARTIST_FEE"));
+  ok("27b. a show of an artist WITHOUT an agreement → the DJ row only, no artist fee row and no entitlement (never the Shalev / Avi split)", !!fee(other.show.id, "DJ_FEE") && !fee(other.show.id, "ARTIST_FEE") && !earning(other.show.id), fee(other.show.id, "ARTIST_FEE"));
   const cLead = await W.createShowRecord({ name: "ליד", status: "ליד חדש", show_price: 3000, payment_status: "שולם" });
   ok("28. a lead created as 'שולם' → no money recorded and the mirror is not a lie (לא שולם)", receivedTotal(cLead.show.id) === 0 && getShow(cLead.show.id).payment_status === "לא שולם");
 
@@ -246,13 +258,13 @@ const paymentRows = (showId: string) => income(showId).filter((r) => r.show_mone
   const rvL = await W.updateShowRecord(gL, { status: "ליד חדש" });
   ok("42. a legacy paid fee row linked only by linked_dj_expense_transaction_id → refused too, ZERO writes", rvL.kind === "refused" && (rvL as { code: string }).code === "HAS_PAID_FEES" && snap() === sL, rvL);
   const dfL = await fin.deleteShowFinance(getShow(gL));
-  ok("43. last guard: deleteShowFinance itself never deletes a שולם row (the paid DJ row stays; the unpaid rows go)", t("transactions").some((r) => r.id === djRow.id) && txOf(gL).length === 0 && dfL === 2, { dfL, rows: txOf(gL) });
+  ok("43. last guard: deleteShowFinance itself never deletes a שולם row (the paid DJ row stays; the unpaid expected balance goes — no artist-fee row exists any more)", t("transactions").some((r) => r.id === djRow.id) && txOf(gL).length === 0 && dfL === 1, { dfL, rows: txOf(gL) });
   const u = await newShow();
   const ru = await W.updateShowRecord(u, { status: "ממתין לתשובה" });
-  ok("44. unpaid fees → revert allowed as before: the expected balance + unpaid DJ / artist rows are removed, the links cleared", ru.kind === "ok" && getShow(u).status === "ממתין לתשובה" && txOf(u).length === 0 && !getShow(u).linked_dj_expense_transaction_id && !getShow(u).linked_artist_expense_transaction_id);
+  ok("44. unpaid fees → revert allowed as before: the expected balance + unpaid DJ row are removed, the links cleared; the entitlement is marked NOT ACTIVE (kept)", ru.kind === "ok" && getShow(u).status === "ממתין לתשובה" && txOf(u).length === 0 && !getShow(u).linked_dj_expense_transaction_id && !getShow(u).linked_artist_expense_transaction_id && inactive(earning(u)), earning(u));
   const u2 = await newShow();
   const du = await W.deleteShowRecord(u2);
-  ok("45. unpaid fees → delete allowed as before: the show and its expected rows are gone", du.kind === "ok" && (du as { deletedTransactions: number }).deletedTransactions === 3 && !t("shows").some((r) => r.id === u2) && txOf(u2).length === 0, du);
+  ok("45. unpaid fees → delete allowed as before: the show and its expected rows (balance + DJ) are gone; the entitlement is kept NOT ACTIVE (no ledger delete)", du.kind === "ok" && (du as { deletedTransactions: number }).deletedTransactions === 2 && !t("shows").some((r) => r.id === u2) && txOf(u2).length === 0 && inactive(earning(u2)), du);
   const route = read("app/api/shows/[id]/route.ts");
   ok("46. the DELETE route answers has_paid_fees with 409 + the writer's Hebrew message; PATCH refusals are 409", /has_paid_fees[\s\S]{0,120}status: 409/.test(route) && /r\.kind === "refused"[^\n]*409/.test(route));
   const mkUnpaidClient = (djFeeStatus: string, artistFeeStatus: string) => {

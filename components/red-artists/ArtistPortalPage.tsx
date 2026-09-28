@@ -2675,6 +2675,9 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved, defaultType }: {
   const [note, setNote] = useState(entry?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Net model (2026-09-28): a PAYMENT is a real payment (Finance + ledger). One key per open modal — a retry after a
+  // network error or a partial write completes the SAME payment and never creates a second one.
+  const [idempotencyKey] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`));
 
   const amountNum = Number(amount);
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(entryDate);
@@ -2688,11 +2691,19 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved, defaultType }: {
       const url = isEdit
         ? `/api/label/artists/${artistId}/balance/${entry!.id}`
         : `/api/label/artists/${artistId}/balance`;
-      const res = await fetch(url, {
+      const send = (allowDuplicate: boolean) => fetch(url, {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entryType, amount: amountNum, entryDate, description, note }),
+        body: JSON.stringify({ entryType, amount: amountNum, entryDate, description, note, ...(isEdit ? {} : { idempotencyKey, allowDuplicate }) }),
       });
+      let res = await send(false);
+      if (!isEdit && res.status === 409) {
+        const info = await res.clone().json().catch(() => null) as { code?: string; error?: string } | null;
+        // a similar real payment already exists: only the Owner's explicit "separate payment" records another one
+        if (info?.code === "DUPLICATE" && window.confirm(`${info.error ?? "כבר רשום תשלום דומה"}
+
+לרשום בכל זאת כתשלום נפרד?`)) res = await send(true);
+      }
       if (!res.ok) { setErr(await readErr(res, "שמירת הרשומה נכשלה")); setBusy(false); return; }
       await onSaved();                          // reloads + closes; modal unmounts
     } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
@@ -2711,6 +2722,11 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved, defaultType }: {
           style={{ ...skField, color: TEXT, cursor: "pointer", appearance: "auto", opacity: busy ? 0.6 : 1 }}>
           {BALANCE_TYPES.map(t => <option key={t} value={t} style={{ background: "#161617", color: TEXT }}>{t}</option>)}
         </select>
+        {entryType === "תשלומים" && (
+          <div style={{ fontSize: 11.5, color: AMBER, marginTop: 6, lineHeight: 1.5 }}>
+            {isEdit ? "תשלום אמיתי: שינוי סכום / תאריך מתעדכן גם בשורת הכספים שלו." : "תשלום אמיתי לאמן: נרשם גם בכספים כהוצאה ששולמה (Records). זכאות שעוד לא שולמה — לא כאן."}
+          </div>
+        )}
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>סכום (₪)</label>
@@ -2759,6 +2775,9 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
       <div style={{ fontSize: 14, color: TEXT2, lineHeight: 1.7, marginBottom: 18 }}>
         למחוק את הרשומה <b style={{ color: TEXT }}>{entry.description || entry.entryType}</b> על סך{" "}
         <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(entry.amount, "₪")}</b>? פעולה זו אינה ניתנת לביטול.
+        {entry.entryType === "תשלומים" && entry.sourceTxId && (
+          <div style={{ fontSize: 12, color: AMBER, marginTop: 8 }}>זה תשלום אמיתי: שורת הכספים שלו תסומן "בוטל" (לא תימחק) — כך הכסף בכספים וביומן נשארים מתואמים.</div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button onClick={del} disabled={busy} style={{

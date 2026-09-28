@@ -11,6 +11,7 @@ import {
   isCancelledStatus, type CurrencyTotals,
 } from "@/lib/finance";
 import { askBusinessUnit, postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
+import type { UnitBalance } from "@/lib/finance/unit-balance";
 import { BUSINESS_UNITS, BUSINESS_UNIT_HE, BUSINESS_UNIT_SOURCE_HE, isBusinessUnit, isBusinessUnitSource, isUnclassifiedUnit, UNCLASSIFIED_HE } from "@/lib/business-unit";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
@@ -873,6 +874,15 @@ export default function FinancePage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // ── Unit balance (task 5): the ONE money position per business unit (lib/finance/unit-balance, server-computed) ──
+  const [unitBalance, setUnitBalance] = useState<UnitBalance | null>(null);
+  const [balanceUnit, setBalanceUnit] = useState<"ALL" | "STUDIO" | "RECORDS" | "FILMS" | "CORPORATE">("ALL");
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/transactions/unit-balance", { cache: "no-store" }).then((r) => r.json()).then((d) => { if (alive && d?.ok) setUnitBalance(d.balance as UnitBalance); }).catch(() => {});
+    return () => { alive = false; };
+  }, [transactions]);
+
   // ── Period computations ────────────────────────────────────────────────────
   const range       = getRange(period, monthOffset, customFrom, customTo);
   const compRange   = getCompRange(period, monthOffset);
@@ -1721,6 +1731,41 @@ export default function FinancePage() {
           </div>
         )}
       </div>
+
+      {/* ── Unit balance — real money per business unit, all time (lib/finance/unit-balance) ── */}
+      {unitBalance && (() => {
+        const ub = unitBalance;
+        const ILS = "₪";
+        const head = (t: Record<string, number> | undefined) => fmtAmount(t?.[ILS] ?? 0);
+        const extras = (t: Record<string, number> | undefined): ExtraLine[] => Object.entries(t ?? {}).filter(([c, v]) => c !== ILS && Math.round(v * 100) !== 0).map(([c, v]) => ({ text: formatOtherAmount(v, c) }));
+        const pos = balanceUnit === "ALL" ? ub.all : ub.units[balanceUnit];
+        const cashColor = (pos.cash[ILS] ?? 0) >= 0 ? GREEN : RED;
+        const unclassified = ub.unclassified.rows;
+        const tabs: Array<[typeof balanceUnit, string]> = [["ALL", "כל Redbloods"], ["STUDIO", "Studio"], ["RECORDS", "Records"], ["FILMS", "Films"], ["CORPORATE", "Corporate"]];
+        return (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginInlineEnd: 6 }}>מאזן לפי יחידה <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>(כסף אמיתי, כל הזמנים)</span></div>
+              {tabs.map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setBalanceUnit(k)} aria-pressed={balanceUnit === k}
+                  style={{ fontSize: 12, fontWeight: 800, borderRadius: 8, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit",
+                    color: balanceUnit === k ? "#fff" : TEXT2, background: balanceUnit === k ? BRAND : "rgba(255,255,255,0.04)", border: `1px solid ${balanceUnit === k ? "transparent" : BDR}` }}>{label}</button>
+              ))}
+            </div>
+            <div className="rb-fin-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+              <SummaryCard icon="💰" label="Cash" value={head(pos.cash)} color={cashColor} extra={extras(pos.cash)} sub="נכנס בפועל פחות יצא בפועל" />
+              {balanceUnit === "ALL" && <SummaryCard icon="🎤" label="התחייבויות לאמנים" value={fmtAmount(ub.all.artistLiabilities)} color={AMBER} sub="לפי מאזני האמנים — עדיין חייבים" />}
+              {balanceUnit === "ALL" && <SummaryCard icon="🟢" label="פנוי לאחר התחייבויות" value={head(ub.all.availableAfterLiabilities)} color={(ub.all.availableAfterLiabilities[ILS] ?? 0) >= 0 ? GREEN : RED} extra={extras(ub.all.availableAfterLiabilities)} sub="Cash פחות התחייבויות לאמנים" />}
+              {balanceUnit === "RECORDS" && <SummaryCard icon="🎤" label="התחייבויות לאמנים" value={fmtAmount(ub.records.artistLiabilities)} color={AMBER} sub={ub.records.byArtist.filter((a) => a.balance !== 0).map((a) => `${a.name} ${fmtAmount(a.balance)}`).join(" · ") || "אין יתרה פתוחה"} />}
+              {balanceUnit === "RECORDS" && <SummaryCard icon="🚀" label="זמין להשקעה" value={head(ub.records.availableToInvest)} color={(ub.records.availableToInvest[ILS] ?? 0) >= 0 ? GREEN : RED} extra={extras(ub.records.availableToInvest)} sub={`Cash פחות התחייבויות · רזרבה ${fmtAmount(ub.records.reserve)}`} />}
+              <SummaryCard icon="⏳" label="צפוי להיכנס" value={head(pos.expectedIncome)} color={BLUE} extra={extras(pos.expectedIncome)} sub="לא נספר ב-Cash" />
+              <SummaryCard icon="📤" label={balanceUnit === "RECORDS" ? "הוצאות Cash צפויות" : "צפוי לצאת"} value={head(pos.expectedExpense)} color={RED} extra={extras(pos.expectedExpense)} sub="לא נספר ב-Cash" />
+              {balanceUnit === "RECORDS" && <SummaryCard icon="🗓️" label="זכאויות אמן עתידיות" value={fmtAmount(ub.records.futureArtistEntitlements.total)} color={PURPLE} sub="הופעות שעוד לא בוצעו — לא Cash ולא התחייבות" />}
+              {unclassified > 0 && (balanceUnit === "ALL" || balanceUnit === "RECORDS") && <SummaryCard icon="⚠️" label="דורש סיווג" value={String(unclassified)} color={RED} sub="תנועות בלי יחידה עסקית — לא נספרות ביחידה" />}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── KPI cards (4 in a row) ───────────────────────────────────────── */}
       {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → נטו בפועל → הכנסות צפויות */}

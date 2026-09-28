@@ -136,13 +136,18 @@ const CASES: FamilyCase<W>[] = [
     ok("A1. MARK_SHOW_FEE_PAID on an already-paid fee → ALREADY_PAID", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "ALREADY_PAID");
     const r = await fullFlow(mkDeps(h.writers).d, "MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: false }, "מאשר");
     ok("A1. MARK_SHOW_FEE_PAID paid=false = the explicit undo (שולם → צפוי); nothing else changes", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.shows[U(1)].djFeeStatus === "צפוי" && h.calls.join() === "setShowFeePaid", r.e?.status); }
+  { const h = mk(); h.w.shows[U(1)].djFeeStatus = null;
+    ok("A1. MARK_SHOW_FEE_PAID DJ with no fee row → NO_FEE_ROW (never creates one)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "NO_FEE_ROW"); }
+  { const h = mk(); h.w.shows[U(1)].artistFeeStatus = null; h.w.shows[U(1)].artistFeeAmount = null;
+    ok("A1. MARK_SHOW_FEE_PAID artist with no entitlement (no agreement / not confirmed / share 0) → NO_FEE_ROW, nothing written", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "NO_FEE_ROW" && h.calls.length === 0); }
   { const h = mk(); h.w.shows[U(1)].artistFeeStatus = null;
-    ok("A1. MARK_SHOW_FEE_PAID with no fee row → NO_FEE_ROW (never creates one)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "NO_FEE_ROW"); }
+    ok("A1. net model: MARK_SHOW_FEE_PAID artist with an entitlement and NO legacy fee row → previewed (a real payment is recorded)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "PREVIEW");
+    ok("A1. net model: un-paying the artist → UNPAY_VIA_LEDGER (cancelled in the artist's balance)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: false }, h)).status === "UNPAY_VIA_LEDGER"); }
   { const h = mk(); h.w.shows[U(1)].djFeeStatus = "בוטל";
     ok("A1. MARK_SHOW_FEE_PAID on a cancelled fee row → FEE_CANCELLED", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "FEE_CANCELLED"); }
   { const h = mk(); const p = await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h);
     const pj = JSON.stringify(p);
-    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE only, and the preview shows the fee row before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)"), pj.slice(0, 400)); }
+    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE + LEDGER (net model: an artist payment is Finance + the ledger), and the preview shows before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE", "LEDGER"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)") && pj.includes("מודל נטו"), pj.slice(0, 400)); }
   const past = mk(); past.w.shows[U(1)].date = "2020-01-01";
   ok("notify only an upcoming show", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, past)).status === "NOT_UPCOMING");
   const other = mk(); other.w.shows[U(1)].artist = "אבי"; other.w.shows[U(1)].djClientId = U(61);
@@ -215,7 +220,7 @@ const CASES: FamilyCase<W>[] = [
   ok("show routes use the shared writer (create / update / delete / quote)", /createShowRecord\(/.test(read("app/api/shows/route.ts")) && /updateShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /deleteShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /markQuoteSent\(/.test(read("app/api/shows/[id]/quote-sent/route.ts")));
   const ws = read("lib/writes/shows.ts");
   ok("show money reuses the app's own split (the agreement split = computeShowSplit + counted rehearsals, שליו / אבי only)", /showAgreementSplit\(show, await getRehearsalCountedForShow\(id\)\)/.test(ws) && /syncShowFinance/.test(ws) && /computeShowSplit\(/.test(read("lib/label-agreements.ts")));
-  ok("HARDENED: the booking ledger sync never adds an expected row next to a close-realized one", /if \(realized\) return;/.test(read("lib/artist-balance-show-sync.ts")) && (read("lib/shows-finance-sync.ts").match(/showId: show\.id,/g) ?? []).length === 2);
+  ok("HARDENED: the booking entitlement sync never adds an expected row next to a close-realized one (net model: lib/artist-entitlement-sync)", /if \(row && row\.entry_type === REALIZED\) return "REALIZED_UNTOUCHED";/.test(read("lib/artist-entitlement-sync.ts")) && /syncShowEntitlement\(/.test(read("lib/shows-finance-sync.ts")) && !/artist-balance-show-sync"/.test(read("lib/shows-finance-sync.ts")));
   ok("HARDENED: deleting a show rehearsal re-derives the show split", /rehearsal delete split re-sync/.test(read("lib/writes/sessions.ts")));
   ok("HARDENED: Sunny's show delete = the hub (calendar, tasks, finance, show) server-side", /removeFromCalendar: true/.test(ws) && /deleteTaskRecord\(t\)/.test(ws));
 

@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
-import {
-  updateArtistBalanceEntry,
-  deleteArtistBalanceEntry,
-  isBalanceEntryType,
-  isValidYmd,
-} from "@/lib/artist-balance-store";
+import { isBalanceEntryType, isValidYmd } from "@/lib/artist-balance-store";
+// net model (2026-09-28): a PAYMENT is real money — its Finance row stays in step (lib/writes/artist-payments)
+import { deleteLedgerEntryRecord, updateLedgerEntryRecord } from "@/lib/writes/artist-payments";
 
 export const dynamic = "force-dynamic";
 
@@ -44,15 +41,10 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const description = typeof body.description === "string" ? body.description.trim() : "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
-    const updated = await updateArtistBalanceEntry(entryId, id, {
-      entryType: body.entryType,
-      amount,
-      entryDate: body.entryDate,
-      description,
-      note,
-    });
-    if (!updated) return NextResponse.json({ error: "הרשומה לא נמצאה" }, { status: 404 });
-    return NextResponse.json({ ok: true, entry: updated });
+    const r = await updateLedgerEntryRecord(entryId, id, { entryType: body.entryType, amount, entryDate: body.entryDate, description, note });
+    if (r.kind === "refused") return NextResponse.json({ error: r.messageHe, code: r.code }, { status: r.status });
+    if (r.kind === "partial") return NextResponse.json({ error: r.messageHe, code: "PAYMENT_INCOMPLETE" }, { status: 409 });
+    return NextResponse.json({ ok: true, entry: r.entry });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[label/artists/[id]/balance/[entryId] PATCH]", msg);
@@ -69,9 +61,9 @@ export async function DELETE(_req: NextRequest, context: { params: Promise<{ id:
     const artist = await getLabelArtist(id);
     if (!artist) return NextResponse.json({ error: "האמן לא נמצא" }, { status: 404 });
 
-    const ok = await deleteArtistBalanceEntry(entryId, id);
-    if (!ok) return NextResponse.json({ error: "הרשומה לא נמצאה" }, { status: 404 });
-    return NextResponse.json({ ok: true });
+    const r = await deleteLedgerEntryRecord(entryId, id);
+    if (r.kind === "not_found") return NextResponse.json({ error: "הרשומה לא נמצאה" }, { status: 404 });
+    return NextResponse.json({ ok: true, financeCancelled: r.financeCancelled });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[label/artists/[id]/balance/[entryId] DELETE]", msg);
