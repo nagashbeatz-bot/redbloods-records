@@ -181,7 +181,9 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
-  "app/api/projects/[id]/route.ts": "ba1f7bb05aae7226d9d9dffa8cd2445cc9b8e97aa41e3fd539c2e4cd6bee0f51",
+  // 2026-09-28 review: a credit change re-syncs the artist expense shares and a failure is now REPORTED (ShareSyncError →
+  // 500 with the Hebrew message), never swallowed by .catch(() => 0). No field, vocabulary or link semantics changed.
+  "app/api/projects/[id]/route.ts": "515506e0e771a3d5bdb7e40df1bfd0e6efbe080d7aca5028964aaba1d3a7ddaa",
   "lib/payment-status.ts": "99ed0806205a2fbaca511835f1cc1adfa3f78713b00026fa9f2c26d2a29b05e3",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/finance/classify.ts": "737c8f69b79f2b08606b78c26e9a3d4f0312f0b723edd68deea2ab02cd87aefd",

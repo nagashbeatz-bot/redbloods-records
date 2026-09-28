@@ -322,9 +322,11 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts", "lib/writes/rf-finance-link.ts", "app/api/red-films/budget-payments/[paymentId]/route.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/rf-finance-link.ts": "2a4336dddbb80b89eb5553395558e6c7432c26bd607d63ce7501dbae0a3d122d",
+  // 2026-09-28 review: the artist expense share after a link is synced by syncExpenseShareOrFail — a failure is reported
+  // (a new payment answers financeLink LINKED + shareSyncErrorHe; never "not linked"), never swallowed. Money semantics unchanged.
+  "lib/writes/rf-finance-link.ts": "5591992307c840b3c116cdfdb70c31bdb6cb2b8c4524eb6a985d3cf4db4b916d",
   "app/api/red-films/budget-payments/[paymentId]/route.ts": "d0986855ef6d1d2e5eaffa7858101c3233d0bb7ad2abcc6c443185fdde5c657b",
-  "lib/writes/redfilms.ts": "02d4b9e3ea7e0488401b719018715c950a55c699b765a9c7f66029fa3a81f436",
+  "lib/writes/redfilms.ts": "af1be1f106ba4e102c25de457f9f98c41bb64f2798a55c401d2606cbd8b3c298",
   "lib/writes/clip.ts": "e37ff6bd9b0fc9b0e1b09bbf0a724c6dea5e5513562ca390998fb39eeab2edbc",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",

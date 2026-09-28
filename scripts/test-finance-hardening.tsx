@@ -24,12 +24,17 @@ function from(table: string) {
   let mode: "select" | "update" | "insert" = "select", patch: Row | null = null, ins: Row | null = null, one = false, lim: number | null = null;
   const run = () => {
     if (mode === "insert") {
+      // the production CHECK (2026-09-28): artist_balance_entries_amount_check amount >= 0 — a fake never allows what the DB refuses
+      if (table === "artist_balance_entries" && !(Number(ins!.amount) >= 0)) return { data: null, error: { message: "violates check constraint \"artist_balance_entries_amount_check\"", code: "23514" } };
       if (table === "artist_balance_entries" && ins!.source_tx_id && t(table).some((r) => r.source_tx_id === ins!.source_tx_id)) return { data: null, error: { message: "duplicate", code: "23505" } };
       if (table === "artist_balance_entries" && ins!.source_expense_tx_id && t(table).some((r) => r.source_expense_tx_id === ins!.source_expense_tx_id && r.artist_id === ins!.artist_id)) return { data: null, error: { message: "duplicate", code: "23505" } };
       const r = { id: randomUUID(), created_at: stamp(), ...ins }; t(table).push(r); return { data: one ? { ...r } : [{ ...r }], error: null };
     }
     let rows = t(table).filter((r) => filters.every((f) => f(r)));
-    if (mode === "update") for (const r of rows) Object.assign(r, patch);
+    if (mode === "update") {
+      if (table === "artist_balance_entries" && patch && "amount" in patch && !(Number(patch.amount) >= 0)) return { data: null, error: { message: "violates check constraint \"artist_balance_entries_amount_check\"", code: "23514" } };
+      for (const r of rows) Object.assign(r, patch);
+    }
     if (lim !== null) rows = rows.slice(0, lim);
     const data = rows.map((r) => ({ ...r }));
     return { data: one ? data[0] ?? null : data, error: null };

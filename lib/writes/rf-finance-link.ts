@@ -131,7 +131,7 @@ export async function linkRfPaymentToFinance(paymentId: string, opts: { allowDup
     throw new Error(`the Finance link was not set${error ? `: ${error.message}` : ""} — the new expense was removed`);
   }
   // the link is final → the artist's share of this Records clip cost follows (task 6; never for a removed duplicate)
-  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(txId);
+  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareOrFail(txId);
   return { kind: "LINKED", transactionId: txId, expense: e };
 }
 

@@ -16,7 +16,7 @@ import { isActualMoneyTx, isDeprecatedPaymentStatus } from "@/lib/finance/classi
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
 import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
 import { copyUnitToSplitRows, recomputeUnitIfRule, setTransactionUnit, unitColumnsForNewTransaction } from "@/lib/writes/business-unit";
-import { syncExpenseShareSafe } from "@/lib/writes/artist-expense-share";
+import { syncExpenseShareOrFail } from "@/lib/writes/artist-expense-share";
 import type { UnitWriter } from "@/lib/business-unit";
 import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
 
@@ -62,7 +62,7 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
   if (error) throw new Error(error.message);
   if (txScope === "project" && b.projectId) touchProject(b.projectId).catch(() => {});
   // the artist's share of a Records expense (task 6): the Finance row is saved first; the ledger share follows
-  if (b.syncShare !== false) await syncExpenseShareSafe(String((data as { id: unknown }).id));
+  if (b.syncShare !== false) await syncExpenseShareOrFail(String((data as { id: unknown }).id));
   return data as Record<string, unknown>;
 }
 
@@ -115,7 +115,7 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
     supabase.from("clip_items").update({ status: "שולם", updated_at: new Date().toISOString() }).eq("linked_transaction_id", id).then(() => {}, () => {});
   }
   // amount / status / unit / project changed → the artist's share follows (the SAME ledger row, never a second one)
-  await syncExpenseShareSafe(id);
+  await syncExpenseShareOrFail(id);
   return data as Record<string, unknown>;
 }
 
@@ -125,7 +125,7 @@ export async function deleteTransactionRecord(id: string): Promise<void> {
   const { error } = await supabase.from("transactions").delete().eq("id", id);
   if (error) throw new Error(error.message);
   // a share row of the deleted expense stops counting (kept at 0 with the reason — never deleted)
-  await syncExpenseShareSafe(id);
+  await syncExpenseShareOrFail(id);
   const delPid = (tx as { project_id?: string | null } | null)?.project_id;
   if (delPid) touchProject(delPid).catch(() => {});
 }

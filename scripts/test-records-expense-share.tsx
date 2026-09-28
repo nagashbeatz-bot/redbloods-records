@@ -23,13 +23,18 @@ function from(table: string) {
   const run = () => {
     if (mode === "insert") {
       if (failNext[table]) { const m = failNext[table]; failNext[table] = null; return { data: null, error: { message: m, code: "XX000" }, count: null }; }
+      // the production CHECK (2026-09-28): artist_balance_entries_amount_check amount >= 0 — a fake never allows what the DB refuses
+      if (table === "artist_balance_entries" && !(Number(ins!.amount) >= 0)) return { data: null, error: { message: "violates check constraint \"artist_balance_entries_amount_check\"", code: "23514" }, count: null };
       if (table === "artist_balance_entries" && ins!.source_tx_id && t(table).some((r) => r.source_tx_id === ins!.source_tx_id)) return { data: null, error: { message: "duplicate key", code: "23505" }, count: null };
       // the DB key (2026-09-28): artist_balance_entries_expense_share_uk (source_expense_tx_id, artist_id)
       if (table === "artist_balance_entries" && ins!.source_expense_tx_id && t(table).some((r) => r.source_expense_tx_id === ins!.source_expense_tx_id && r.artist_id === ins!.artist_id)) return { data: null, error: { message: "duplicate key", code: "23505" }, count: null };
       const r = { id: randomUUID(), ...ins }; t(table).push(r); return { data: one ? { ...r } : [{ ...r }], error: null, count: null };
     }
     let rows = t(table).filter((r) => filters.every((f) => f(r)));
-    if (mode === "update") { for (const r of rows) Object.assign(r, patch); }
+    if (mode === "update") {
+      if (table === "artist_balance_entries" && patch && "amount" in patch && !(Number(patch.amount) >= 0)) return { data: null, error: { message: "violates check constraint \"artist_balance_entries_amount_check\"", code: "23514" }, count: null };
+      for (const r of rows) Object.assign(r, patch);
+    }
     if (mode === "delete") { DB[table] = t(table).filter((r) => !rows.includes(r)); }
     if (lim !== null) rows = rows.slice(0, lim);
     const data = rows.map((r) => ({ ...r }));
@@ -153,9 +158,10 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
   // a failed ledger insert never touches Finance; the next sync completes it
   const flaky = tx(randomUUID(), {});
   failNext.artist_balance_entries = "network down";
-  const bad = await W.syncExpenseShareSafe(flaky);
-  ok("   ledger write fails → the Finance row stays, the safe sync returns null (logged; the reconciliation reports it)", bad === null && t("transactions").some((r) => r.id === flaky) && shareRows(flaky).length === 0);
-  await W.syncExpenseShareSafe(flaky);
+  let bad: unknown = null;
+  try { await W.syncExpenseShareOrFail(flaky); } catch (e) { bad = e; }
+  ok("   ledger write fails → the Finance row stays and the failure is REPORTED (ShareSyncError), never swallowed", bad instanceof W.ShareSyncError && t("transactions").some((r) => r.id === flaky) && shareRows(flaky).length === 0);
+  await W.syncExpenseShareOrFail(flaky);
   ok("   the next sync completes it (one row)", shareRows(flaky).length === 1 && shareRows(flaky)[0].amount === 500);
   // the project credits change → the shares follow (Shalev → Shalev + Avi)
   const moved = tx(randomUUID(), { project_id: "p-move", amount: 2000 });
@@ -183,7 +189,7 @@ const BALAGAN = "92d7c2cf-c521-4cf4-90ac-9cb9afd86f9a";
 
   console.log("\nWiring — every Records expense writer syncs the share");
   const fin = read("lib/writes/finance.ts");
-  ok("   Finance create / edit / delete, the unit choice, Red Films payments, promotions, clip promote, a project credit change", (fin.match(/syncExpenseShareSafe\(/g) ?? []).length >= 3 && /syncExpenseShareSafe/.test(read("lib/writes/business-unit.ts")) && /syncShare: false/.test(read("lib/writes/rf-finance-link.ts")) && /syncExpenseShareSafe/.test(read("lib/writes/rf-finance-link.ts")) && (read("lib/social-promotions-store.ts").match(/syncExpenseShareSafe/g) ?? []).length >= 3 && /syncExpenseShareSafe/.test(read("lib/writes/redfilms.ts")) && /syncProjectExpenseShares/.test(read("lib/writes/projects.ts")) && (read("app/api/projects/[id]/route.ts").match(/syncProjectExpenseShares/g) ?? []).length === 2);
+  ok("   Finance create / edit / delete, the unit choice, Red Films payments, promotions, clip promote, a project credit change", (fin.match(/syncExpenseShareOrFail\(/g) ?? []).length >= 3 && /syncExpenseShareOrFail/.test(read("lib/writes/business-unit.ts")) && /syncShare: false/.test(read("lib/writes/rf-finance-link.ts")) && /syncExpenseShareOrFail/.test(read("lib/writes/rf-finance-link.ts")) && (read("lib/social-promotions-store.ts").match(/syncExpenseShareOrFail/g) ?? []).length >= 3 && /syncExpenseShareOrFail/.test(read("lib/writes/redfilms.ts")) && /syncProjectExpenseShares/.test(read("lib/writes/projects.ts")) && (read("app/api/projects/[id]/route.ts").match(/syncProjectExpenseShares/g) ?? []).length === 2);
   ok("   the writer never deletes a ledger row and never writes Finance", !/\.delete\(\)/.test(read("lib/writes/artist-expense-share.ts")) && !/from\("transactions"\)\.(update|insert|delete)/.test(read("lib/writes/artist-expense-share.ts")));
   ok("19. no Push anywhere in the share rule / writer", !/sendPush|lib\/push|web-push/.test(read("lib/records-expense-share.ts") + read("lib/writes/artist-expense-share.ts")));
   ok("20. cycles untouched (the writer never reads / writes artist_balance_cycles)", !/artist_balance_cycles/.test(read("lib/writes/artist-expense-share.ts") + read("lib/records-expense-share.ts")));

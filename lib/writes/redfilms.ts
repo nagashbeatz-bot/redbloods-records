@@ -137,7 +137,7 @@ export async function deleteBudgetLine(itemId: string): Promise<void> {
 
 /** The payment-row insert of POST /budget-items/[itemId]/payments (a receipt, when uploaded by the route, is passed in). */
 /** The Finance-link outcome reported with a new payment (DB-1): LINKED, or why it stayed unlinked. */
-export type RfNewPaymentLink = { state: "LINKED"; transactionId: string } | { state: "SCOPE_REQUIRED" | "PROJECT_REQUIRED" | "POSSIBLE_DUPLICATE" | "LINK_FAILED"; he: string };
+export type RfNewPaymentLink = { state: "LINKED"; transactionId: string; shareSyncErrorHe?: string } | { state: "SCOPE_REQUIRED" | "PROJECT_REQUIRED" | "POSSIBLE_DUPLICATE" | "LINK_FAILED"; he: string };
 export async function insertBudgetPayment(itemId: string, p: { amount: number; paymentDate: string; paymentMethod: string; notes: string; currency?: string; receipt?: { fileName: string; mimeType: string; dropboxPath: string; dropboxUrl: string } }): Promise<{ kind: "not_found" } | { kind: "ok"; payment: Record<string, unknown>; financeLink: RfNewPaymentLink }> {
   if (!(p.amount > 0)) throw new RfInputError("סכום חייב להיות גדול מ-0");
   const { data: item, error: itemErr } = await supabase.from("red_films_budget_items").select("id, production_id, title, currency").eq("id", itemId).maybeSingle();
@@ -165,7 +165,10 @@ export async function insertBudgetPayment(itemId: string, p: { amount: number; p
       : r.kind === "POSSIBLE_DUPLICATE" ? { state: "POSSIBLE_DUPLICATE", he: `בכספים כבר קיימת הוצאה דומה (${r.candidates.map((c) => `${c.date ?? "—"} · ${c.currency ?? ""}${c.amount}`).join(", ")}) — התשלום נשמר ולא קושר; הבוס מחליט (LINK_RF_PAYMENT_TO_FINANCE)` }
       : { state: "LINK_FAILED", he: "התשלום לא נמצא לקישור" };
   } catch (e) {
-    financeLink = { state: "LINK_FAILED", he: `התשלום נשמר, הקישור לכספים נכשל: ${e instanceof Error ? e.message : "שגיאה"}` };
+    const { ShareSyncError } = await import("@/lib/writes/artist-expense-share");
+    // the link WAS made; only the artist's ledger share failed — reported as such, never as "not linked"
+    financeLink = e instanceof ShareSyncError ? { state: "LINKED", transactionId: e.txIds[0], shareSyncErrorHe: e.message }
+      : { state: "LINK_FAILED", he: `התשלום נשמר, הקישור לכספים נכשל: ${e instanceof Error ? e.message : "שגיאה"}` };
   }
   const { data: fresh } = await supabase.from("red_films_budget_payments").select("*").eq("id", paymentId).maybeSingle();
   return { kind: "ok", payment: (fresh ?? data) as Record<string, unknown>, financeLink };
@@ -268,7 +271,7 @@ export async function promoteClipItem(id: string, date: string): Promise<{ kind:
   if (linkErr) throw new Error(`the expense was created (${txId}) but the planning row was not linked: ${linkErr.message}`);
   touchProject(item.project_id as string).catch(() => {});
   // created "לא שולם": the artist's share starts only when it is paid (the Finance edit syncs it) — task 6
-  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(txId);
+  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareOrFail(txId);
   return { kind: "ok", transaction: tx as Record<string, unknown>, clipItem: linked as Record<string, unknown> };
 }
 

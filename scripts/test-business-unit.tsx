@@ -26,6 +26,7 @@ function table(name: string) {
     eq(k: string, v: unknown) { filters.push((r) => r[k] === v); return q; },
     in(k: string, vs: unknown[]) { filters.push((r) => vs.includes(r[k])); return q; },
     is(k: string, v: unknown) { filters.push((r) => (r[k] ?? null) === v); return q; },
+    like(k: string, pat: string) { const re = new RegExp("^" + pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", "s"); filters.push((r) => re.test(String(r[k] ?? ""))); return q; },
     async maybeSingle() { return { data: run()[0] ?? null, error: null }; },
     async single() { const d = run()[0]; return d ? { data: d, error: null } : { data: null, error: { message: "not found" } }; },
     then(res: (v: { data: Row[]; error: null }) => unknown) { return Promise.resolve({ data: run(), error: null }).then(res); },

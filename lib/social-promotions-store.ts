@@ -207,7 +207,7 @@ export async function syncActualExpense(promotionId: string, actualAmount: numbe
     if (error) throw error;
     // 0 rows = the linked transaction is gone — never report a sync that did not happen
     if (!upd || upd.length !== 1) throw new Error("ההוצאה המקושרת בכספים לא נמצאה — הסכום לא עודכן");
-    await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(promo.linked_transaction_id);
+    await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareOrFail(promo.linked_transaction_id);
     return;
   }
 
@@ -274,10 +274,10 @@ export async function syncActualExpense(promotionId: string, actualAmount: numbe
         .select("id");
       if (wErr) throw wErr;
       if (!w || w.length !== 1) throw new Error("ההוצאה המקושרת בכספים לא נמצאה — הסכום לא עודכן");
-      await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(winnerTx);
+      await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareOrFail(winnerTx);
     }
     return;
   }
   // linked (the CAS won) → the artist's share of this Records promotion follows (task 6)
-  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareSafe(String(tx.id));
+  await (await import("@/lib/writes/artist-expense-share")).syncExpenseShareOrFail(String(tx.id));
 }

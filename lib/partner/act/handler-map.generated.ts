@@ -1727,7 +1727,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "ba1f7bb05aae7226d9d9dffa8cd2445cc9b8e97aa41e3fd539c2e4cd6bee0f51",
+  "sha256": "515506e0e771a3d5bdb7e40df1bfd0e6efbe080d7aca5028964aaba1d3a7ddaa",
   "effects": [
    "CALENDAR",
    "DELETION",

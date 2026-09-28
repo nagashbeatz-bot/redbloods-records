@@ -136,20 +136,51 @@ export async function convergeDuplicateShare(txId: string, artistId: string, min
 }
 
 /**
- * The same, never throwing — for the Finance writers: the Finance row is the truth and is already saved; a failed share
- * sync is logged and shows up in the reconciliation (SHARE_MISSING / SHARE_AMOUNT_MISMATCH) until the next sync.
+ * A share sync that FAILED after the main write (the Finance row / project change) was already saved. It is never
+ * swallowed (Owner decision 2026-09-28): the operation reports it — the route answers with this Hebrew message instead
+ * of a success, Sunny's execution records the step as failed — and it stays visible in the reconciliation
+ * (SHARE_MISSING / SHARE_AMOUNT_MISMATCH) until a retry. The sync is idempotent: saving again converges.
  */
-export async function syncExpenseShareSafe(txId: string | null | undefined): Promise<ShareSyncResult | null> {
-  if (!txId) return null;
-  try { return await syncExpenseShare(txId); }
-  catch (e) { console.error(`[artist-expense-share] sync ${txId} failed:`, e instanceof Error ? e.message : e); return null; }
+export class ShareSyncError extends Error {
+  readonly txIds: string[];
+  readonly causes: string[];
+  constructor(txIds: string[], causes: string[]) {
+    super(`השינוי נשמר, אבל עדכון חלק האמן ביומן האמן נכשל (${txIds.length === 1 ? `תנועה ${txIds[0]}` : `${txIds.length} תנועות`}) — יש לשמור שוב כדי להשלים (העדכון לא יוצר כפילות). פירוט: ${causes.join(" | ")}`);
+    this.name = "ShareSyncError";
+    this.txIds = txIds;
+    this.causes = causes;
+  }
 }
 
-/** Re-sync every expense of a project (its credits changed → the artists who carry its expenses may change). */
+/**
+ * For every writer of a Records expense: the main row is saved first; the ledger share follows. A failure is logged AND
+ * thrown as ShareSyncError — never reported as success (the pre-2026-09-28 "Safe" variant swallowed it: a DB refusal left
+ * the artist charged in full with no error on the screen).
+ */
+export async function syncExpenseShareOrFail(txId: string | null | undefined): Promise<ShareSyncResult | null> {
+  if (!txId) return null;
+  try { return await syncExpenseShare(txId); }
+  catch (e) {
+    if (e instanceof ShareSyncError) throw e;
+    const cause = e instanceof Error ? e.message : String(e);
+    console.error(`[artist-expense-share] sync ${txId} failed:`, cause);
+    throw new ShareSyncError([txId], [cause]);
+  }
+}
+
+/**
+ * Re-sync every expense of a project (its credits changed → the artists who carry its expenses may change). Every
+ * expense is attempted; the failures are then reported together as ONE ShareSyncError (never swallowed).
+ */
 export async function syncProjectExpenseShares(projectId: string): Promise<number> {
   const { data, error } = await supabase.from("transactions").select("id").eq("project_id", projectId).eq("type", "expense");
   if (error) throw new Error(error.message);
   let n = 0;
-  for (const t of (data ?? []) as Array<{ id: string }>) { const r = await syncExpenseShareSafe(t.id); n += r?.written ?? 0; }
+  const failed: string[] = [], causes: string[] = [];
+  for (const t of (data ?? []) as Array<{ id: string }>) {
+    try { const r = await syncExpenseShareOrFail(t.id); n += r?.written ?? 0; }
+    catch (e) { failed.push(t.id); causes.push(...(e instanceof ShareSyncError ? e.causes : [e instanceof Error ? e.message : String(e)])); }
+  }
+  if (failed.length) throw new ShareSyncError(failed, causes);
   return n;
 }

@@ -74,7 +74,7 @@ export async function changeProjectArtist(id: string, artist: string): Promise<v
   await updateProject(id, { artist: artist.trim() });
   if (artist.trim()) await upsertArtistsFromProject(artist).catch(() => {});
   // the credits decide who carries this project's Records expenses (task 6) → the shares follow
-  await (await import("@/lib/writes/artist-expense-share")).syncProjectExpenseShares(id).catch(() => 0);
+  await (await import("@/lib/writes/artist-expense-share")).syncProjectExpenseShares(id);
 }
 
 /**

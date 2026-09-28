@@ -76,7 +76,7 @@ export const LABEL_FIELDS: readonly LabelField[] = [
   F("artist ledger entry", "id", "CANONICAL", "Entry identity.", "generated"),
   F("artist ledger entry", "artist_id", "CANONICAL", "The label artist (scope is always by id).", "FK, restrict"),
   F("artist ledger entry", "entry_type", "CANONICAL", "הכנסות / הכנסות צפויות / תשלומים / הוצאות / הוצאות צפויות.", "DB check"),
-  F("artist ledger entry", "amount", "CANONICAL", "Positive amount — NO currency is stored (the screens show ₪).", "> 0"),
+  F("artist ledger entry", "amount", "CANONICAL", "NO currency is stored (the screens show ₪). > 0 = an active charge / entitlement; 0 = ONLY a kept history row (a share / entitlement that was zeroed, cancelled or removed — its note says why and what it was; never deleted); < 0 is refused. The ledger amount CHECK is amount >= 0 since the Owner-approved change of 2026-09-28 (was amount > 0, which made every zeroing fail).", ">= 0 (0 = history only)"),
   F("artist ledger entry", "entry_date", "CANONICAL", "Economic date (decides the cycle window).", "strict YYYY-MM-DD"),
   F("artist ledger entry", "description", "CANONICAL", "Free text (show sync writes 'הופעה - <name>').", "none"),
   F("artist ledger entry", "note", "CANONICAL", "Free text.", "none"),
