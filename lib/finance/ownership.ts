@@ -84,10 +84,19 @@ export function changedTxFields(current: TxCurrent, patch: Readonly<Record<strin
 }
 
 export type TxEditVerdict = { ok: true } | { ok: false; code: "OWNED_ROW_DELETE" | "OWNED_ROW_FIELD"; owner: FinanceOwnerCode; forbidden: TxPatchField[]; messageHe: string };
-/** THE rule. `op` = "delete" or the list of fields that really change. A free-standing row (owner null) is always ok. */
-export function transactionEditVerdict(owner: FinanceOwnerCode | null, op: "delete" | readonly TxPatchField[]): TxEditVerdict {
+/** Net settlement model (task 5) + final hardening (2026-09-28): a legacy show ARTIST_FEE row is an entitlement record, never a
+ *  payment — it can never be marked paid in Finance. "Artist ✓" means money really went to the artist: that is ONE event
+ *  through the artist-payment writer (the close dialog / MARK_SHOW_FEE_PAID / the artist balance), Finance + the ledger. */
+export const ARTIST_FEE_PAID_REFUSAL_HE = "חלק האמן בהופעה הוא זכאות, לא תשלום — אי אפשר לסמן אותו 'שולם' בכספים. תשלום אמיתי לאמן נרשם ב'אמן ✓' בסגירת ההופעה / בסימון שכר אמן / במאזן האמן (כספים + יומן האמן, פעם אחת)";
+
+/** THE rule. `op` = "delete" or the list of fields that really change. A free-standing row (owner null) is always ok.
+ *  `nextStatus` = the payment status the change writes (when it changes) — a legacy ARTIST_FEE row never becomes paid. */
+export function transactionEditVerdict(owner: FinanceOwnerCode | null, op: "delete" | readonly TxPatchField[], nextStatus?: string | null): TxEditVerdict {
   if (!owner) return { ok: true };
   const o = FINANCE_OWNER_HE[owner];
+  if (owner === "ARTIST_FEE" && op !== "delete" && op.includes("paymentStatus") && (nextStatus === "שולם" || nextStatus === "התקבל")) {
+    return { ok: false, code: "OWNED_ROW_FIELD", owner, forbidden: ["paymentStatus"], messageHe: ARTIST_FEE_PAID_REFUSAL_HE };
+  }
   if (op === "delete") return { ok: false, code: "OWNED_ROW_DELETE", owner, forbidden: [], messageHe: `הרשומה הזאת שייכת ל${o.labelHe} — לא מוחקים אותה מהכספים (הסנכרון יחזיר אותה או ישבור את החישוב). מוחקים / משנים ${o.whereHe}` };
   const allowed = OWNED_ALLOWED_FIELDS[owner];
   const forbidden = op.filter((f) => !allowed.includes(f));

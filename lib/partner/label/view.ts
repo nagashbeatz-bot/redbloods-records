@@ -30,7 +30,7 @@ import { presenceFactsOf } from "../../push-presence-pure";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
 import { clipMoneyByCurrency, clipRecoupContribution } from "../../clip-rf-money-pure";
 import { agreementArtistOf, AGREEMENT_COST_RULES, AGREEMENT_SHOW_RULE, AGREEMENT_MEDIA_RULE, AGREEMENT_CYCLE_ACCOUNTING_HE, AGREEMENT_RULES_VERSION, mediaAgreementSplit } from "../../label-agreements";
-import { expenseShareOf, EXPENSE_SHARE_EXCEPTIONS, RECORDS_EXPENSE_SHARE_VERSION, type ExpenseShare } from "../../records-expense-share";
+import { expenseShareOf, EXPENSE_SHARE_EXCEPTIONS, RECORDS_EXPENSE_SHARE_VERSION, incomeKindOfSource, mediaLabelShareByRule, type ExpenseShare } from "../../records-expense-share";
 import { isExpenseFullyPaidStatus } from "../../finance/classify";
 import { computeOpenCycle, cycleBounds, currentCycleIndex, openingOfSnapshot, settlementResultOf, SETTLEMENT_RESULT_HE, type ComputedCycle } from "../../artist-balance-cycles-pure";
 
@@ -245,6 +245,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     dimensions: "cashOut (what Redbloods paid — Finance truth) ≠ labelShare (the label's economic share) ≠ artistShare ≠ artistShareFundedByLabel (Redbloods paid the artist's share; an artist expense in the cycle accounting — it is NOT label investment)",
     media: agreementArtist ? { rule: AGREEMENT_MEDIA_RULE.basisHe, meaning: "media income is INCOME split 50 / 50 — a separate component of the cycle, never the repayment of a specific clip",
       receivedSplit: mediaAgreementSplit({ id: artistId }, r2(received.reduce((s, m) => s + (m.recordType === "reversal" ? -1 : 1) * (m.grossAmount ?? 0), 0))),
+      // Owner decision 2026-09-28: the split follows the income KIND (distribution 50 / 50; YouTube / ACUM / NagashBeatz 100 %
+      // Records) — the stored RPC split is 50 / 50 for every source (history); byRule is the canonical reading
+      byRule: received.map((m) => ({ source: m.source, kind: incomeKindOfSource(m.source), gross: m.grossAmount, storedLabelShare: m.labelShare, labelShareByRule: mediaLabelShareByRule(m.source, name, Number(m.grossAmount) || 0) })),
       historicalWithheld: r2(received.reduce((s, m) => s + (m.recordType === "reversal" ? -1 : 1) * (m.recouped ?? 0), 0)),
       historicalWithheldMeaning: "a value stored on media records written before 2026-09-27 by a RETIRED rule — history only; not an active policy, not a clip repayment, never evidence that media offsets a clip" } : "NOT_DEFINED — no agreement recorded for this artist",
     accounting: agreementArtist ? {

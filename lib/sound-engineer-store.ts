@@ -538,6 +538,14 @@ export async function updateSoundEngineerWork(
     } catch (e) {
       console.error("[sound-engineer] steven completion flow failed (non-fatal):", e);
     }
+    // Owner decision 2026-09-28: a completed work gets its expected Finance expense at the price set in advance (Steven:
+    // EXPECTED_ON_COMPLETION; idempotent through linked_transaction_id — a repeated "הושלם" never adds a second row)
+    try {
+      const r = await reconcile(id, { reason: "work completed" });
+      row.linked_transaction_id = r.txId;
+    } catch (e) {
+      console.error("[sound-engineer] completion expense failed (non-fatal, the next sync completes it):", e);
+    }
   }
 
   // ── A Steven work is OPEN again (closed → open): the project's current final-files

@@ -84,7 +84,7 @@ export interface EngineerExpenseOutcome {
 export async function reconcileEngineerExpense(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean }): Promise<EngineerExpenseOutcome> {
   const { data: w, error: wErr } = await supabase
     .from("sound_engineer_work")
-    .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id")
+    .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id, status")
     .eq("id", workId)
     .maybeSingle();
   if (wErr) throw new Error(wErr.message);
@@ -93,6 +93,7 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
     id: String(w.id), projectId: (w.project_id as string | null) ?? null, engineerName: String(w.engineer_name ?? ""), workType: String(w.work_type ?? "מיקס"),
     workTitle: (w.work_title as string | null) ?? null, currency: String(w.currency ?? "$"),
     agreedPrice: Number(w.agreed_price ?? 0), amountPaid: Number(w.amount_paid ?? 0), paymentDate: (w.payment_date as string | null) ?? null,
+    status: (w.status as string | null) ?? null,
   };
   const linkedId = (w.linked_transaction_id as string | null) ?? null;
   let linked: ReconcileTx | null = null;
@@ -101,10 +102,10 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
     if (tErr) throw new Error(tErr.message); // fail closed: never decide on an unreadable paid row
     if (t) linked = { id: String(t.id), paymentStatus: (t.payment_status as string | null) ?? null, amount: t.amount == null ? null : Number(t.amount), currency: (t.currency as string | null) ?? null, date: (t.date as string | null) ?? null };
   }
-  let artist = "", projectName = "";
+  let artist = "", projectName = "", businessType: string | null = null;
   if (work.projectId) {
-    const { data: p } = await supabase.from("projects").select("name, artist").eq("id", work.projectId).maybeSingle();
-    projectName = String(p?.name ?? ""); artist = String(p?.artist ?? "");
+    const { data: p } = await supabase.from("projects").select("name, artist, project_business_type").eq("id", work.projectId).maybeSingle();
+    projectName = String(p?.name ?? ""); artist = String(p?.artist ?? ""); businessType = (p?.project_business_type as string | null) ?? null;
   }
   const d = decideEngineerExpense(work, linked, { mode: engineerExpenseMode(work.engineerName, opts.skipPriceSync), artist, projectName, force: opts.force });
   const setLink = async (id: string | null) => {
@@ -137,8 +138,9 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
       return { kind: d.kind, txId: d.txId, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)" };
     }
     case "INSERT": {
-      // business unit (task 4): an engineer's mix / master cost is Studio's audio capability — always STUDIO (RULE)
-      const { data: ins, error } = await supabase.from("transactions").insert({ ...d.fields, ...unitColumns(inferBusinessUnit({ writer: "MIX", type: "expense" })) }).select("id").single();
+      // business unit (Owner decision 2026-09-28): the unit of the PROJECT the work belongs to — a Records (לייבל) project
+      // → RECORDS (100 % Records, 0 % artist), a client project → STUDIO; no project → "דורש סיווג"
+      const { data: ins, error } = await supabase.from("transactions").insert({ ...d.fields, ...unitColumns(inferBusinessUnit({ writer: "MIX", type: "expense", project: work.projectId ? { businessType } : null })) }).select("id").single();
       if (error) throw new Error(error.message);
       const newId = String(ins?.id ?? "");
       await setLink(newId);

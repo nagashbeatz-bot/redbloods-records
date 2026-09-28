@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { LabelArtist, LabelMediaRecord } from "@/lib/types";
+import { mediaLabelShareByRule } from "@/lib/records-expense-share";
 import {
   BRAND, CARD2, BORDER, TEXT, SUB, MUTED,
   ModalShell, PrimaryBtn, GhostBtn, fieldStyle, labelStyle, fmtMoney, ArtistAvatar,
@@ -99,7 +100,12 @@ export function MediaModal({ artists, mode, record, onClose, onSaved }: {
       <div style={{ marginBottom: 16 }}>
         <label style={labelStyle}>סכום נטו לחלוקה</label>
         <input type="number" step="0.01" value={gross} onChange={(e) => setGross(e.target.value)} disabled={closed} placeholder="0.00" style={{ ...fieldStyle, opacity: closed ? 0.5 : 1 }} />
-        {!closed && Number(gross) > 0 && <div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>חלק לייבל {fmtMoney(Math.round((Number(gross) / 2) * 100) / 100)} · חלק אמן ברוטו {fmtMoney(Number(gross) - Math.round((Number(gross) / 2) * 100) / 100)}</div>}
+        {!closed && Number(gross) > 0 && (() => {
+          // the split by the income kind (lib/records-expense-share): distribution 50 / 50, YouTube / ACUM / NagashBeatz 100 % Records
+          const who = isEdit ? record!.artistName : (artists.find((a) => a.id === artistId)?.name ?? "");
+          const label = mediaLabelShareByRule(source, who, Number(gross)) ?? Math.round((Number(gross) / 2) * 100) / 100;
+          return <div style={{ fontSize: 11, color: MUTED, marginTop: 5 }}>חלק לייבל {fmtMoney(label)} · חלק אמן ברוטו {fmtMoney(Math.round((Number(gross) - label) * 100) / 100)}</div>;
+        })()}
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>

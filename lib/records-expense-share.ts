@@ -159,6 +159,9 @@ export function activeArtistAmounts(s: ExpenseShare): Map<string, number> {
 export const EXPENSE_SHARE_MARKER = "[חלק הוצאה tx:";
 export const expenseShareMarker = (txId: string) => `${EXPENSE_SHARE_MARKER}${txId}]`;
 export const INACTIVE_SHARE_PREFIX = "[חלק הוצאה לא פעיל]";
+/** A duplicate share row a concurrent sync cancelled (kept at 0) — never the share row, never counted, never revived. */
+export const DUPLICATE_SHARE_TAG = "כפילות מקבילה";
+export const isDuplicateShareNote = (note: string | null | undefined) => (note ?? "").includes(DUPLICATE_SHARE_TAG);
 export function markerTxIdOf(note: string | null | undefined): string | null {
   const m = /\[חלק הוצאה tx:([0-9a-f-]{36})\]/.exec(note ?? "");
   return m ? m[1] : null;
@@ -180,7 +183,7 @@ export function reconcileExpenseShares(input: { transactions: readonly ShareTx[]
   const totals = { cashOut: 0, recordsShare: 0, artistShare: 0, undefinedCashOut: 0, recordedElsewhere: 0 };
   const byArtist: Record<string, number> = {};
   const expenseRows = input.ledger.filter((e) => e.entryType === "הוצאות" || e.entryType === "הוצאות צפויות");
-  const rowsOf = (txId: string) => expenseRows.filter((e) => e.sourceTxId === txId || markerTxIdOf(e.note) === txId);
+  const rowsOf = (txId: string) => expenseRows.filter((e) => (e.sourceTxId === txId || markerTxIdOf(e.note) === txId) && !isDuplicateShareNote(e.note));
   const txIds = new Set(input.transactions.map((t) => t.id));
   for (const t of input.transactions) {
     const s = expenseShareOf(t, t.projectId ? { artistText: input.projectArtistText(t.projectId) ?? null } : null);
@@ -208,4 +211,37 @@ export function reconcileExpenseShares(input: { transactions: readonly ShareTx[]
   // a marker row whose transaction is gone / not an expense any more
   for (const r of expenseRows) { const id = markerTxIdOf(r.note); if (id && !txIds.has(id) && (Number(r.amount) || 0) !== 0) findings.push({ code: "SHARE_ORPHAN", transactionId: id, artistId: r.artistId, expected: 0, recorded: Number(r.amount) || 0, he: "רשומת חלק-אמן שההוצאה שלה לא קיימת" }); }
   return { findings, totals, byArtist };
+}
+
+// ── INCOME (Owner decision 2026-09-28, final hardening) ──────────────────────────────────────────────────────────
+// Finance records the FULL income Records received (RECORDS). The artist's part is an ENTITLEMENT in the ledger:
+//   distribution / streaming (through a distributor): by the credits — one Records artist 50 / 50, Shalev + Avi
+//     50 / 25 / 25, NagashBeatz credited (or NagashBeatz's own income) 100 % Records, a Records artist next to an
+//     external party UNDEFINED;
+//   YouTube income: 100 % Records — no artist entitlement (also for a Shalev / Avi clip);
+//   ACUM income: 100 % Records — no artist entitlement;
+//   show income: never here — the show's own net split (computeShowSplit).
+export type RecordsIncomeKind = "DISTRIBUTION" | "YOUTUBE" | "ACUM";
+/** The income kind of a media / Finance income source text (exact words; anything else = distribution / streaming). */
+export function incomeKindOfSource(source: string | null | undefined): RecordsIncomeKind {
+  const s = String(source ?? "");
+  if (/youtube|יוטיוב|יו טיוב/i.test(s)) return "YOUTUBE";
+  if (/acum|אקו"?ם|אקום/i.test(s)) return "ACUM";
+  return "DISTRIBUTION";
+}
+export type IncomeShare =
+  | { status: "DEFINED"; kind: RecordsIncomeKind; recordsPct: number; artists: Array<{ artistId: string; name: string; pct: number }>; basisHe: string }
+  | { status: "UNDEFINED"; kind: RecordsIncomeKind; reason: UndefinedReason; reasonHe: string };
+/** Who is entitled to a Records income, by its kind and the credits (a project's artist text or the artist's own name). */
+export function incomeShareOf(kind: RecordsIncomeKind, artistText: string | null | undefined): IncomeShare {
+  if (kind === "YOUTUBE") return { status: "DEFINED", kind, recordsPct: 100, artists: [], basisHe: "הכנסת YouTube — 100% Records, בלי זכאות לאמן" };
+  if (kind === "ACUM") return { status: "DEFINED", kind, recordsPct: 100, artists: [], basisHe: "הכנסת אקו\"ם — 100% Records, בלי זכאות לאמן" };
+  const r = projectSettlementRule(artistText);
+  if (r.status === "UNDEFINED") return { status: "UNDEFINED", kind, reason: r.reason, reasonHe: r.reasonHe };
+  return { status: "DEFINED", kind, recordsPct: r.recordsPct, artists: r.artists, basisHe: r.kind === "NAGASHBEATZ" ? "הכנסת הפצה עם NagashBeatz — 100% Records" : r.kind === "TWO_RECORDS_ARTISTS" ? "הכנסת הפצה — 50% Records / 25% לכל אמן" : "הכנסת הפצה — 50% Records / 50% האמן" };
+}
+/** The Records (label) part of a media income record by the rule — the RPC stores 50 / 50 for every source (history). */
+export function mediaLabelShareByRule(source: string | null | undefined, artistName: string | null | undefined, gross: number): number | null {
+  const s = incomeShareOf(incomeKindOfSource(source), artistName);
+  return s.status === "DEFINED" ? Math.round(((gross * s.recordsPct) / 100 + Number.EPSILON) * 100) / 100 : null;
 }

@@ -241,7 +241,7 @@ export async function assertTransactionEditable(id: string, op: "delete" | Reado
     const cur: TxCurrent = { date: data.date ?? null, description: data.description ?? "", artist: data.artist ?? "", amount: Number(data.amount) || 0, currency: data.currency ?? "₪", paymentStatus: data.payment_status ?? "", paymentMethod: data.payment_method ?? "", receiptRef: data.receipt_ref ?? "", notes: data.notes ?? "", category: data.category ?? "", type: data.type ?? "", scope: data.scope ?? "project", project_id: data.project_id ?? null, linkedSessionId: data.linked_session_id ?? "", expenseScope: data.expense_scope ?? "" };
     fields = changedTxFields(cur, op);
   }
-  const v = transactionEditVerdict(owner, fields);
+  const v = transactionEditVerdict(owner, fields, op !== "delete" && typeof op.paymentStatus === "string" ? op.paymentStatus : null);
   if (!v.ok) throw new TransactionOwnedError(v);
 }
 

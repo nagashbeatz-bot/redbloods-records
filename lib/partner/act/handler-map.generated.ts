@@ -846,9 +846,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": [
    "amount",
+   "created_at",
    "description",
    "entryDate",
    "entryType",
+   "id",
    "note"
   ]
  },
@@ -914,9 +916,11 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "fields": [
    "allowDuplicate",
    "amount",
+   "created_at",
    "description",
    "entryDate",
    "entryType",
+   "id",
    "idempotencyKey",
    "method",
    "note"

@@ -150,20 +150,24 @@ export const unitBalance: KnowledgeCapability = {
 };
 
 // ── Task 6 (Owner decision 2026-09-28): Records ↔ artist expense share — the ONE rule (lib/records-expense-share) ──
-import { expenseShareOf, projectSettlementRule } from "../../../records-expense-share";
+import { expenseShareOf, projectSettlementRule, incomeShareOf, type RecordsIncomeKind } from "../../../records-expense-share";
 import { expenseSharesFromFinanceRaw } from "../../finance/unit-view";
 export const expenseShares: KnowledgeCapability = {
   id: "expense_shares", domain: "FINANCE", titleHe: "חלוקת הוצאות Records מול האמנים",
-  descriptionForModel: `Who carries a real Records expense. Finance keeps the FULL amount Records paid (cash); the artist's part is an expense row in the artist ledger (the settlement). Rule by the project's credits: one Records artist 50/50; Shalev + Avi 50 Records / 25 / 25; NagashBeatz credited 100% Records (no artist charge); a Records artist next to an external host/client/guest (e.g. Balagan) = UNDEFINED, needs an agreement — never guessed. Any expense type. Not artist expenses: show money (inside the show's net split), payments to an artist, mix/master. Owner exceptions: ACUM 400 = 100% Shalev; Principe YouTube 3x100 = 100% Records; Principe clip = the Owner-recorded 2,480 row. Modes: summary (totals, per artist, reconciliation findings), transactions (each Records expense with its split), rule (the split for an artist text).`,
+  descriptionForModel: `Who carries a real Records expense. Finance keeps the FULL amount Records paid (cash); the artist's part is an expense row in the artist ledger (the settlement). Rule by the project's credits: one Records artist 50/50; Shalev + Avi 50 Records / 25 / 25; NagashBeatz credited 100% Records (no artist charge); a Records artist next to an external host/client/guest (e.g. Balagan) = UNDEFINED, needs an agreement — never guessed. Any expense type. Not artist expenses: show money, artist payments, mix/master (100% the project's business, 0% artist). Income: distribution 50/50 by credits; YouTube, ACUM 100% Records. Exceptions: ACUM 400 = 100% Shalev; Principe YouTube 3x100 = 100% Records; Principe clip = the Owner's 2,480 row. Modes: summary, transactions, rule (artists / income).`,
   examplesHe: ["כמה עלה הקליפ של שליו ומי נושא בו?", "מי משלם על קליפ של שליו?", "שליו ואבי ביחד — איך מתחלקים?", "NagashBeatz ושליו?", "אבי מתארח אצל טל צגאי — מי משלם?"],
   modes: {
     summary: { descriptionForModel: "Totals: cash out, Records share, artists' share, undefined cash; per artist; findings (missing / wrong / duplicate share rows)" },
     transactions: { descriptionForModel: "Each paid Records expense: cash, Records share, each artist's share, basis / reason" },
-    rule: { descriptionForModel: "The split the rule gives for an artist credit text (param artists)" },
+    rule: { descriptionForModel: "The split for an artist credit text (param artists); with param income = DISTRIBUTION / YOUTUBE / ACUM the income entitlement split instead" },
   },
-  defaultMode: "summary", params: { artists: { kind: "text", maxLength: 120, descriptionForModel: "rule mode: the project's artist credits, comma separated" } },
+  defaultMode: "summary", params: { artists: { kind: "text", maxLength: 120, descriptionForModel: "rule mode: the project's artist credits, comma separated" }, income: { kind: "enum", values: ["DISTRIBUTION", "YOUTUBE", "ACUM"], descriptionForModel: "rule mode: an income kind (distribution 50/50 by credits; YouTube and ACUM 100% Records)" } },
   paging: { defaultLimit: 20, maxLimit: 50 }, access: ACCESS, needs: ["FINANCE"],
   read(src, q) {
+    if (q.mode === "rule" && q.params?.income) {
+      const r = incomeShareOf(String(q.params.income) as RecordsIncomeKind, String(q.params?.artists ?? ""));
+      return result([item({ id: "income-rule", label: partner("חוק ההכנסה"), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: r.status === "DEFINED" ? { status: r.status, kind: r.kind, recordsPct: r.recordsPct, artists: r.artists, basisHe: r.basisHe } : { status: r.status, kind: r.kind, reason: r.reason, reasonHe: r.reasonHe } })], { completeness: "COMPLETE" });
+    }
     if (q.mode === "rule") {
       const r = projectSettlementRule(String(q.params?.artists ?? ""));
       return result([item({ id: "rule", label: partner("חוק החלוקה"), epistemic: "DERIVED", source: "FINANCE", freshness: "LIVE", fields: r.status === "DEFINED" ? { status: r.status, kind: r.kind, recordsPct: r.recordsPct, artists: r.artists, basisHe: r.basisHe } : { status: r.status, reason: r.reason, reasonHe: r.reasonHe, external: r.external } })], { completeness: "COMPLETE" });

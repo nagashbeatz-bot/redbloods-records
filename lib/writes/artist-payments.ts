@@ -65,9 +65,12 @@ export async function recordArtistPayment(p: ArtistPaymentInput): Promise<Artist
   const marker = `${ARTIST_PAYMENT_MARKER_PREFIX}${key}`.slice(0, 200);
 
   // 1. the Finance row — found by its marker (a retry), otherwise the duplicate guard, then created
-  const { data: found, error: fErr } = await supabase.from("transactions").select("id, amount, payment_status").eq("linked_session_id", marker).limit(1);
+  // a retry finds the key's LIVE row (a cancelled payment — its ledger payment was deleted — never absorbs a new one)
+  const { data: found, error: fErr } = await supabase.from("transactions").select("id, amount, payment_status, created_at").eq("linked_session_id", marker);
   if (fErr) throw new Error(fErr.message);
-  let txId: string | null = found && found.length ? String(found[0].id) : null;
+  const live = ((found ?? []) as Array<{ id: string; payment_status: string | null; created_at: string | null }>).filter((r) => r.payment_status !== "בוטל")
+    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) || a.id.localeCompare(b.id));
+  let txId: string | null = live.length ? String(live[0].id) : null;
   const reused = !!txId;
   if (!txId) {
     if (!p.allowDuplicate) {
@@ -84,6 +87,11 @@ export async function recordArtistPayment(p: ArtistPaymentInput): Promise<Artist
     }).select("id").single();
     if (iErr || !ins) throw new Error(iErr?.message ?? "the Finance payment was not created");
     txId = String(ins.id);
+    // concurrency convergence (no DB-unique marker without a schema change): two SIMULTANEOUS first attempts with the
+    // same key may both insert. Every attempt re-reads the key's rows and the EARLIEST row (created_at, id) wins; a later
+    // duplicate cancels ITSELF (בוטל + an audit note — never deleted) and the attempt continues with the winner, so the
+    // ledger (source_tx_id UNIQUE) gets ONE payment. Both attempts reach the same decision.
+    txId = await convergeDuplicatePayment(marker, txId);
   }
 
   // 2. the ledger payment — linked by source_tx_id (UNIQUE: a retry finds it, never a second row)
@@ -103,6 +111,25 @@ export async function recordArtistPayment(p: ArtistPaymentInput): Promise<Artist
     return { kind: "partial", transactionId: txId, messageHe: `התשלום נרשם בכספים אבל לא במאזן האמן (${leErr?.message ?? "שגיאה"}) — נסה שוב (אותה פעולה משלימה את היומן, לא ייווצר כפל)` };
   }
   return { kind: "ok", transactionId: txId, ledgerEntryId: String(le.id), reused };
+}
+
+/** The earliest row of a payment key wins; this attempt's later duplicate is cancelled (kept as history). Returns the winner. */
+export async function convergeDuplicatePayment(marker: string, mine: string): Promise<string> {
+  const { data, error } = await supabase.from("transactions").select("id, created_at, payment_status, notes").eq("linked_session_id", marker);
+  if (error) throw new Error(error.message);
+  // only LIVE rows compete (an earlier cancelled payment of the same key is history, not a winner)
+  const rows = ((data ?? []) as Array<{ id: string; created_at: string | null; payment_status: string | null; notes: string | null }>)
+    .filter((r) => r.payment_status !== "בוטל" || r.id === mine)
+    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) || a.id.localeCompare(b.id));
+  if (rows.length <= 1) return mine;
+  const winner = rows[0].id;
+  for (const r of rows.slice(1)) {
+    if (r.id !== mine) continue; // each attempt cancels only its OWN duplicate
+    const note = `${r.notes ? `${r.notes} | ` : ""}כפילות מקבילה של אותו אירוע תשלום (${winner}) — השורה בוטלה אוטומטית ונשמרת כהיסטוריה`;
+    const { error: cErr } = await supabase.from("transactions").update({ payment_status: "בוטל", notes: note }).eq("id", r.id);
+    if (cErr) throw new Error(cErr.message);
+  }
+  return winner;
 }
 
 /** A similar REAL payment already recorded (Finance שכר אמן שולם for the artist, or a ledger payment), near the date. */

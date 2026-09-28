@@ -16,7 +16,7 @@
  * of a two-artist split is linked by the note marker only (no DB-unique key) — the reconciliation reports a duplicate.
  */
 import { supabase } from "@/lib/supabase";
-import { expenseShareOf, expenseShareMarker, markerTxIdOf, INACTIVE_SHARE_PREFIX, type ExpenseShare } from "@/lib/records-expense-share";
+import { expenseShareOf, expenseShareMarker, markerTxIdOf, isDuplicateShareNote, INACTIVE_SHARE_PREFIX, type ExpenseShare } from "@/lib/records-expense-share";
 
 const EXPENSE = "הוצאות";
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -74,7 +74,7 @@ export async function syncExpenseShare(txId: string): Promise<ShareSyncResult> {
   const description = `חלק אמן בהוצאה — ${String(tx.description ?? "").slice(0, 120)}`;
   const firstArtist = share.artists[0]?.artistId ?? null;
   for (const a of share.artists) {
-    const mine = existing.filter((r) => r.artist_id === a.artistId);
+    const mine = existing.filter((r) => r.artist_id === a.artistId && !isDuplicateShareNote(r.note)); // a cancelled duplicate is never revived
     const row = mine.find((r) => r.source_tx_id === txId) ?? mine[0];
     if (row) {
       const wasInactive = (row.note ?? "").startsWith(INACTIVE_SHARE_PREFIX);
@@ -98,7 +98,10 @@ export async function syncExpenseShare(txId: string): Promise<ShareSyncResult> {
       }
       throw new Error(iErr.message);
     }
-    rows.push({ artistId: a.artistId, ledgerEntryId: String(ins!.id), amount: a.amount, action: "CREATED" });
+    // concurrency convergence for the marker-linked row (no DB-unique key for the second artist): the EARLIEST row of this
+    // transaction + artist wins; a later duplicate is kept at 0 with a note (never deleted). Every attempt decides the same.
+    const winner = await convergeDuplicateShare(txId, a.artistId, String(ins!.id));
+    rows.push({ artistId: a.artistId, ledgerEntryId: winner, amount: a.amount, action: winner === String(ins!.id) ? "CREATED" : "UNCHANGED" });
   }
   // a marker row of an artist the rule no longer names (e.g. the project credits changed) → zeroed, kept
   for (const r of existing) if (!share.artists.some((a) => a.artistId === r.artist_id) && markerTxIdOf(r.note) === txId && Number(r.amount) !== 0) {
@@ -108,6 +111,24 @@ export async function syncExpenseShare(txId: string): Promise<ShareSyncResult> {
     rows.push({ artistId: r.artist_id, ledgerEntryId: r.id, amount: 0, action: "DEACTIVATED" });
   }
   return { status: "DEFINED", written: rows.filter((x) => x.action !== "UNCHANGED").length, rows };
+}
+
+/** The earliest share row of (transaction, artist) wins; this attempt's later duplicate is set to 0 with a note. */
+export async function convergeDuplicateShare(txId: string, artistId: string, mine: string): Promise<string> {
+  const rows = (await shareRowsOf(txId)).filter((r) => r.artist_id === artistId) as Array<LedgerRow & { created_at?: string | null }>;
+  if (rows.length <= 1) return mine;
+  const { data, error } = await supabase.from("artist_balance_entries").select("id, created_at").in("id", rows.map((r) => r.id));
+  if (error) throw new Error(error.message);
+  const at = new Map(((data ?? []) as Array<{ id: string; created_at: string | null }>).map((r) => [r.id, String(r.created_at ?? "")]));
+  const sorted = [...rows].sort((a, b) => (at.get(a.id) ?? "").localeCompare(at.get(b.id) ?? "") || a.id.localeCompare(b.id));
+  const winner = sorted[0].id;
+  if (mine !== winner) {
+    const cur = rows.find((r) => r.id === mine);
+    const note = `${INACTIVE_SHARE_PREFIX} כפילות מקבילה של אותו חלק אמן (${winner}) — נשמרת ב-0 | ${cleanNote(cur?.note ?? null)}`;
+    const { error: uErr } = await supabase.from("artist_balance_entries").update({ amount: 0, note, updated_at: new Date().toISOString() }).eq("id", mine);
+    if (uErr) throw new Error(uErr.message);
+  }
+  return winner;
 }
 
 /**

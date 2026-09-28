@@ -78,7 +78,7 @@ const AFTER_TO_TX: Readonly<Record<string, TxPatchField>> = { projectId: "projec
 function ownedRefusal(cur: Fields, op: "delete" | Fields): PlanRefusal | null {
   const owner = cur.owner ? (String(cur.owner) as FinanceOwnerCode) : null;
   if (!owner || !FINANCE_OWNER_HE[owner]) return null;
-  const v = transactionEditVerdict(owner, op === "delete" ? "delete" : Object.keys(op).filter((k) => op[k] !== cur[k]).map((k) => AFTER_TO_TX[k] ?? (k as TxPatchField)));
+  const v = transactionEditVerdict(owner, op === "delete" ? "delete" : Object.keys(op).filter((k) => op[k] !== cur[k]).map((k) => AFTER_TO_TX[k] ?? (k as TxPatchField)), op !== "delete" && typeof op.paymentStatus === "string" ? op.paymentStatus : null);
   return v.ok ? null : refuse("USE_OWNER_ACTION", v.messageHe);
 }
 /** Income scope (B3): the song ↔ clip split before / after moving THIS row — preview context, read the same way at plan and at the stale check. */

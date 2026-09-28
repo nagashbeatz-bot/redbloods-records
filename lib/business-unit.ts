@@ -14,7 +14,9 @@
  *
  * Precedence (the first match decides):
  *   1. an explicit Owner choice
- *   2. the writer's own nature: Victor's salary, a mix / master / engineer cost → STUDIO
+ *   2. the writer's own nature: Victor's salary (the monthly retainer) → STUDIO; a mix / master / engineer cost → the unit
+ *      of its PROJECT (Owner decision 2026-09-28: a Records / label project → RECORDS, a client project → STUDIO, no project
+ *      → NULL) — the engineer being a Studio resource never decides it
  *   3. a show row: a show of a Records roster artist → RECORDS; any other show (collab / not on the roster) → NULL
  *   4. the approved transaction + project rules:
  *        label project → RECORDS (song / clip / promotion / show money of Records; mix was already STUDIO in step 2)
@@ -81,7 +83,12 @@ export function inferBusinessUnit(i: UnitInput): UnitDecision {
   if (i.writer === "VICTOR") return rule("STUDIO", "משכורת Victor — משאב Studio");
   // the net settlement model (Owner 2026-09-28): a real payment to a Records roster artist is Records money
   if (i.writer === "ARTIST_PAYMENT") return rule("RECORDS", "תשלום אמיתי לאמן Records (התחשבנות)");
-  if (i.writer === "MIX" || (i.type === "expense" && i.category === MIX_MASTER_CATEGORY)) return rule("STUDIO", "עלות מיקס / מאסטר — יכולת אודיו של Studio");
+  if (i.writer === "MIX" || (i.type === "expense" && i.category === MIX_MASTER_CATEGORY)) {
+    const bt = i.project?.businessType ?? null;
+    if (bt === "לייבל") return rule("RECORDS", "מיקס / מאסטר של פרויקט Records — 100% Records, 0% אמן");
+    if (bt === "לקוח") return rule("STUDIO", "מיקס / מאסטר של פרויקט לקוח Studio");
+    return none("עלות מיקס / מאסטר בלי פרויקט עם סוג עסקי — לא יודעים של איזה עסק");
+  }
   // 3. a show row
   if (i.show) return i.show.artistIsRecords ? rule("RECORDS", "הופעה של אמן Records") : none("הופעה של שת״פ או של אמן שאינו ברוסטר Records");
   // 4. the approved transaction + project rules

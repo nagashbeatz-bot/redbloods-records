@@ -42,18 +42,24 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
   for (const r of rows) if (r.record_type === "reversal" && r.reverses_id) reversalByOrig.set(r.reverses_id, r.id);
   const records = rows.map((r) => mapMedia(r, reversalByOrig));
 
+  // Owner decision 2026-09-28 (lib/records-expense-share): the Records / artist split of a media income follows its KIND —
+  // distribution 50 / 50 (NagashBeatz 100 % Records), YouTube and ACUM 100 % Records. The RPC stores 50 / 50 for every
+  // source (history, unchanged); the totals use the rule, falling back to the stored split only when the rule is undefined.
+  const { mediaLabelShareByRule } = await import("@/lib/records-expense-share");
+  const labelOf = (r: DbMedia) => mediaLabelShareByRule(r.source, artistName, Number(r.gross_amount)) ?? Number(r.label_share);
+  const artistOf = (r: DbMedia) => { const l = mediaLabelShareByRule(r.source, artistName, Number(r.gross_amount)); return l === null ? Number(r.artist_share_gross) : round2(Number(r.gross_amount) - l); };
   let mediaGross = 0, labelShareReceived = 0, artistShareGross = 0, recoupedTotal = 0, artistPayableTotal = 0, labelShareExpected = 0, artistShareExpected = 0;
   for (const r of rows) {
     if (r.status === "התקבל") {
       const s = r.record_type === "reversal" ? -1 : 1;   // signed by record_type
       mediaGross         += s * Number(r.gross_amount);
-      labelShareReceived += s * Number(r.label_share);
-      artistShareGross   += s * Number(r.artist_share_gross);
+      labelShareReceived += s * labelOf(r);
+      artistShareGross   += s * artistOf(r);
       recoupedTotal      += s * Number(r.recouped);
       artistPayableTotal += s * Number(r.artist_payable);
     } else if (r.status === "צפוי") {
-      labelShareExpected  += Number(r.label_share);         // expected income (never reversal)
-      artistShareExpected += Number(r.artist_share_gross);  // feeds projected recoup (never reversal)
+      labelShareExpected  += labelOf(r);                    // expected income (never reversal)
+      artistShareExpected += artistOf(r);
     }
   }
 

@@ -66,13 +66,26 @@ export const isMoneyEvidenceExpense = (status: string | null | undefined) => isP
  *  • EXPECTED_AND_PAYMENT — every other engineer on a project: an expected (לא שולם / חלקי) row follows the price, and
  *    becomes שולם with the payment date once paid.
  */
-export type EngineerExpenseMode = "PAYMENT_ONLY" | "EXPECTED_AND_PAYMENT";
+/**
+ * PAYMENT_ONLY          no row until the work is paid (a send flow that asked for no expected row, e.g. a pre-filled price)
+ * EXPECTED_AND_PAYMENT  an expected row that follows the price (other engineers on a project)
+ * EXPECTED_ON_COMPLETION Steven (Owner decision 2026-09-28): paid per COMPLETED project at the price set in advance —
+ *                       nothing while the work is open; once completed ("אושר") an expected "לא שולם" row at the work's
+ *                       own agreed price (never a guessed / default price; no price → no row, reported); paying turns the
+ *                       SAME row "שולם". An expected row is never deleted when a work is re-opened.
+ */
+export type EngineerExpenseMode = "PAYMENT_ONLY" | "EXPECTED_AND_PAYMENT" | "EXPECTED_ON_COMPLETION";
+/** The engineer work's completed status (DB "אושר", shown as "הושלם"). */
+export const ENGINEER_COMPLETED_STATUS = "אושר";
 export function engineerExpenseMode(engineerName: string | null | undefined, skipPriceSync?: boolean): EngineerExpenseMode {
-  return engineerName === STEVEN_ENGINEER_NAME || skipPriceSync ? "PAYMENT_ONLY" : "EXPECTED_AND_PAYMENT";
+  if (engineerName === STEVEN_ENGINEER_NAME) return "EXPECTED_ON_COMPLETION"; // Steven's page flag never switches this off
+  return skipPriceSync ? "PAYMENT_ONLY" : "EXPECTED_AND_PAYMENT";
 }
 
 export interface ReconcileWork extends EngineerPayInput {
   id: string; projectId: string | null; engineerName: string; workType: string; workTitle?: string | null; currency: string;
+  /** the work's status (EXPECTED_ON_COMPLETION needs it) */
+  status?: string | null;
 }
 export interface ReconcileTx { id: string; paymentStatus: string | null; amount: number | null; currency: string | null; date: string | null }
 export interface ExpenseFields {
@@ -140,6 +153,14 @@ export function decideEngineerExpense(w: ReconcileWork, linked: ReconcileTx | nu
   }
 
   // 3. not paid
+  if (opts.mode === "EXPECTED_ON_COMPLETION") {
+    if (w.status !== ENGINEER_COMPLETED_STATUS) return { kind: "NONE", reasonHe: linked ? "העבודה נפתחה מחדש — ההוצאה הצפויה נשארת (לא נמחקת אוטומטית)" : "אין הוצאה עד שהעבודה מסומנת הושלם" };
+    if (!w.projectId) return { kind: "NONE", reasonHe: "עבודה עצמאית (בלי פרויקט) — ההוצאה נרשמת כשמסמנים שולם" };
+    if (n(w.agreedPrice) <= 0) return { kind: "NONE", reasonHe: "הושלם, אבל אין מחיר מוגדר לעבודה — לא מנחשים מחיר (צריך להגדיר מחיר)" };
+    if (!linked) return { kind: "INSERT", fields: { ...want, date: null } };
+    const { date: _d, ...rest2 } = want;
+    return { kind: "UPDATE", txId: linked.id, fields: rest2 as ExpenseFields };
+  }
   if (opts.mode === "PAYMENT_ONLY") {
     if (!linked) return { kind: "NONE", reasonHe: "אין הוצאה עד שמסמנים שולם" };
     if (isMoneyEvidenceExpense(linked.paymentStatus)) return { kind: "NONE", reasonHe: "שורה חלקית נשמרת (ראיה לכסף) — לא נמחקת אוטומטית" };
