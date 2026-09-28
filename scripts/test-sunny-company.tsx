@@ -64,7 +64,7 @@ const SETTINGS: SettingsState = { families: {
   VICTOR_SALARY_OVERRIDES: sec([{ key: "vendor_victor_salary_overrides", updatedAt: null, value: { "2026-05": 550, "2026-06": 500 } }, { key: "vendor_victor_salary_status_overrides", updatedAt: null, value: { "2026-05": "שולם", "2026-06": "שולם" } }]),
 } } as unknown as SettingsState;
 
-interface Opt { noFinance?: boolean; calendar?: "ok" | "fail" | "none"; noState?: boolean; knowledge?: Array<{ subjectKey: string; operation?: string }> }
+interface Opt { extraTx?: ReturnType<typeof tx>[]; noFinance?: boolean; calendar?: "ok" | "fail" | "none"; noState?: boolean; knowledge?: Array<{ subjectKey: string; operation?: string }> }
 function sources(o: Opt = {}): GatewaySources {
   const st = input({ contexts: [] }).state!;
   const ops = { integrations: { googleCalendarConnected: true, dropboxConnected: true }, redFilms: sec([prod(PR_MAIN, { title: "קליפ אבי", projectId: P(2), shootDate: "2026-09-10", status: "בתכנון" })]),
@@ -89,6 +89,7 @@ function sources(o: Opt = {}): GatewaySources {
     tx({ id: "in-1", projectId: P(2), type: "income", amount: 3000, currency: "₪", status: "התקבל", category: "מקדמה", scope: "project", date: "2026-09-02" }),
     tx({ id: "in-usd", projectId: P(4), type: "income", amount: 400, currency: "$", status: "התקבל", category: "תשלום", scope: "project", date: "2026-09-03" }),
     tx({ id: "exp-1", type: "expense", amount: 500, currency: "₪", status: "שולם", category: "אחר", scope: "general", date: "2026-09-04" }),
+    ...(o.extraTx ?? []),
   ], financeSettings: [{ projectId: P(2), value: { agreedPrice: 8000 } }] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
@@ -190,6 +191,12 @@ function main() {
   ok("Victor June $500: still observed (override 500 vs global 550)", dec("known:victor-june-500")?.liveState === "STILL_OBSERVED");
   ok("Red Films ledger vs Finance: still observed", dec("known:redfilms-ledger-vs-finance")?.liveState === "STILL_OBSERVED");
   ok("mix orphan expenses: no longer observed in this company (kept, marked)", dec("known:mix-orphan-expenses")?.liveState === "NO_LONGER_OBSERVED");
+  const mixTx = (status: string) => tx({ id: `mix-orphan-${status}`, projectId: P(2), type: "expense", amount: 300, currency: "$", status, category: "מיקס / מאסטר", scope: "project", date: null });
+  const vCancelled = buildCompanyView(sources({ extraTx: [mixTx("בוטל")] }));
+  const vOpen = buildCompanyView(sources({ extraTx: [mixTx("לא שולם")] }));
+  const orphanDec = (cv: typeof v) => cv.decisions.find((d) => d.id === "known:mix-orphan-expenses")?.liveState;
+  ok("gap 13: a cancelled unlinked mix expense does not reopen the company orphan question / vendor count", orphanDec(vCancelled) === "NO_LONGER_OBSERVED" && !JSON.stringify(vCancelled).includes("ORPHAN_MIX_EXPENSE"));
+  ok("gap 13: a non-cancelled unlinked mix expense still does", orphanDec(vOpen) === "STILL_OBSERVED" && JSON.stringify(vOpen).includes("ORPHAN_MIX_EXPENSE"));
   ok("policy questions stay POLICY_OPEN (cadence, work hours); the recoup basis + artist accounting were ANSWERED by the Owner (2026-09-27) and are never asked again", ["known:release-cadence", "known:working-hours"].every((id) => dec(id)?.liveState === "POLICY_OPEN") && !dec("known:recoup-basis") && !dec("known:artist-accounting-canonical"));
   ok("every decision is Owner-only (Sunny never answers)", v.decisions.every((d) => d.answerable === "OWNER_ONLY"));
   section("SCENARIO O — decision QA: an Owner decision recorded in knowledge removes the question");

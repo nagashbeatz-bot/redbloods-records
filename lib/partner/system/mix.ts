@@ -345,7 +345,7 @@ export const MIX_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL_FA
   { code: "MIX_STAGE_NO_ENGINEER", kind: "CANONICAL_FACT", note: "project in מחכה למיקס / במיקס with no engineer work" },
   { code: "PRODUCTION_DONE_NO_MIX", kind: "DERIVED_SIGNAL", note: "a completed Victor work on a project without engineer work — handoff not recorded" },
   { code: "RELEASE_CONTEXT", kind: "CANONICAL_FACT", note: "the project has a release — context only, no readiness verdict" },
-  { code: "ORPHAN_MIX_EXPENSE", kind: "CANONICAL_FACT", note: "a mix / master expense linked to no engineer work" },
+  { code: "ORPHAN_MIX_EXPENSE", kind: "CANONICAL_FACT", note: "a mix / master expense linked to no engineer work; a cancelled (בוטל) expense is history, never an orphan (Owner decision 2026-09-28, gap 13) — every other status is still checked" },
 ];
 
 export const MIX_INTEGRITY = {
@@ -367,7 +367,7 @@ export const MIX_INTEGRITY = {
     "4 עבודות שהושלמו בלי קבצים סופיים לפרויקט; 3 מהן בלי אף גרסת מיקס.",
     "3 עבודות שהושלמו לא סומנו כשולמו ($550 עצמאית, $200, $150).",
     "9 תשלומים לסטיבן נרשמו בכספים בשקלים ביחס קבוע ($200 → ₪650), עם היקף הוצאה 'כללי' ולא 'מיקס / מאסטר' — צורה היסטורית של הכותב שהוחלף; מאז 2026-09-27 תשלום חדש נרשם במטבע העבודה ($200) וה-₪ הוא הערכה בהערות בלבד.",
-    "5 הוצאות מיקס בדולרים לא-משולמות (5 / 50 / 3 / 30 / 300) מ-2026-06-29 לא מקושרות לשום עבודה — שאריות של סנכרון מחיר ישן; ועוד הוצאה אחת ₪590 ששולמה בלי עבודה מקושרת.",
+    "5 הוצאות מיקס בדולרים לא-משולמות (5 / 50 / 3 / 30 / 300) מ-2026-06-29 לא מקושרות לשום עבודה — שאריות של סנכרון מחיר ישן; ועוד הוצאה אחת ₪590 ששולמה בלי עבודה מקושרת. ב-2026-09-28 הבעלים אישר שחמש הראשונות אינן חוב וסימן אותן 'בוטל' (עם הערת audit); הוצאה שבוטלה נשארת בהיסטוריה ואינה נחשבת יתומה.",
     "בנתוני 2026-09-25 סטטוס הגרסה לא נקבע אף פעם (כל 126 'בבדיקה'; היום אפשר לקבוע אותו) ומי שהעלה נרשם תמיד 'Steven' — גם כשהבעלים העלה.",
     "4 פרויקטים במצב 'מחכה למיקס' בלי עבודת מיקס; עבודת ויקטור אחת שהושלמה בפרויקט בלי עבודת מיקס.",
     "אין סוג Agent Alert למיקס; ביקור אחרון של סטיבן בפורטל שנרשם: 2026-09-23 (כניסה אחרונה: 2026-08-25). שתי העבודות הפתוחות מחכות לבעלים לפי הראיות (0 מחכות לסטיבן).",

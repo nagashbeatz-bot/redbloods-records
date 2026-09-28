@@ -248,7 +248,7 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   const { NEW_SHOW } = await (async () => { const m = await import("../lib/partner/system/owner-model"); return { NEW_SHOW: m.WORKFLOW_MODELS.find((w) => w.event === "NEW_SHOW")! }; })();
   ok("H10. the Owner model: the deal type is asked; the price only for a paid show (never for שת״פ)", NEW_SHOW.required.some((r) => r.item.startsWith("deal type")) && NEW_SHOW.required.some((r) => r.item === "price + currency" && /never asked for שת״פ/.test(r.note ?? "")));
   const { CAPABILITY_CHANGES, SYSTEM_BASELINE_VERSION } = await import("../lib/partner/system");
-  ok("H11. baseline bumped with SHOWS read + execute change entries", SYSTEM_BASELINE_VERSION === "2026.09.27-45" && CAPABILITY_CHANGES.filter((c) => c.version === "2026.09.27-45" && c.domain === "SHOWS").length === 2);
+  ok("H11. baseline bumped with SHOWS read + execute change entries", ((v) => v.date > "2026.09.27" || (v.date === "2026.09.27" && v.n >= 45))({ date: SYSTEM_BASELINE_VERSION.split("-")[0], n: Number(SYSTEM_BASELINE_VERSION.split("-")[1]) }) && CAPABILITY_CHANGES.filter((c) => c.version === "2026.09.27-45" && c.domain === "SHOWS").length === 2);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

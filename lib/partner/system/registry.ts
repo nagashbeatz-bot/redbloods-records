@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.27-45";
+export const SYSTEM_BASELINE_VERSION = "2026.09.28-46";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1032,4 +1032,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-44", date: "2026-09-27", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "DJ CLEANTONE (רועי איוב) הוא איש צוות — ה-DJ של הלייבל — ולא אמן לייבל (החלטת הבעלים): הוא לא ברוסטר, לא ב-artist_view / label_roster, ולא מקבל תזכורת מחזור מאזן. הזהות הקנונית היחידה שלו היא כרטיס הלקוח (dj:/client:), עם תפקיד צוות LABEL_DJ; הידע שלימדת עליו קודם נקרא דרך המפתח הישן כ-alias. ההופעות ושכר ה-DJ שלו לא השתנו." },
   { version: "2026.09.27-45", date: "2026-09-27", domain: "SHOWS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סוג עסקה של הופעה (לא סטטוס תשלום): בתשלום / שת״פ ללא תשלום. שת״פ = הופעה רגילה לכל דבר (אמן, פורטל, יומן, התראות, סגירה) עם 0 פעילות כספית אוטומטית — אין מחיר, יתרה לגבייה, תשלום, שכר DJ / אמן, הוצאת חזרה, מאזן או חלוקה. show_view מציג dealType ו-moneyApplies; אותות כסף (PRICE_MISSING / UPCOMING_UNPAID / DONE_UNPAID / DONE_WITHOUT_LEDGER ועוד) לא חלים עליה, ואין אות על עצם היותה שת״פ. נספרת בכמה הופעות — לא בכמה כסף צפוי." },
   { version: "2026.09.27-45", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "CREATE_SHOW מקבל dealType (בשת״פ לא שואלים מחיר); SET_SHOW_DEAL_TYPE מחליף סוג עסקה — לשת״פ רק כשאין כסף אמיתי (תשלום, שכר ששולם, מאזן ממומש, הוצאת חזרה → נדחה, לא נמחק כלום), לבתשלום עם מחיר ואז תהליך הכספים הרגיל. פעולות כסף על שת״פ (תשלום, שכר ששולם, מחיר, סגירה עם כסף, עלות חזרה) נדחות בבירור." },
+  { version: "2026.09.28-46", date: "2026-09-28", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "פער 13 (החלטת בעלים 2026-09-28): הוצאת מיקס שבוטלה ('בוטל') נשארת בהיסטוריה אבל אינה 'הוצאת מיקס לא מקושרת' — לא אות ORPHAN_MIX_EXPENSE, לא השאלה 'לשייך או שהן שאריות?' ולא ספירה בתמונת החברה. כל סטטוס אחר נבדק כמו קודם. גם במסך הכספים תנועה שבוטלה לא נספרת בכרטיס 'תנועות ללא תאריך' ובעיגול 'דורש טיפול' (הרשימה עצמה לא השתנתה)." },
 ];

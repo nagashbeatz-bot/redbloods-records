@@ -105,13 +105,15 @@ const SETTINGS: SettingsState = { families: {
   PUSH_SENT_ONCE_MARKERS: sec([{ key: `steven_mix_ready_pushed_${U(W_FB)}`, updatedAt: null, value: {} }]),
   STEVEN_DEADLINE_DIGEST_SENT: sec([{ key: "steven_deadline_digest:2026-09-24", updatedAt: null, value: {} }]),
 } };
-function sources(): GatewaySources {
+function sources(o: { noActiveOrphan?: boolean } = {}): GatewaySources {
   const st = input({ contexts: [], status: { [P(6)]: "מחכה למיקס" } }).state!;
   const raw: FinanceRaw = empty({ transactions: [
     tx({ id: "tx-paid", type: "expense", amount: 650, currency: "₪", status: "שולם", category: "מיקס / מאסטר", scope: "project", expenseScope: "כללי", date: "2026-09-10" }),
     tx({ id: "tx-unpaid", type: "expense", amount: 200, currency: "$", status: "לא שולם", category: "מיקס / מאסטר", date: null }),
     tx({ id: "tx-received", type: "expense", amount: 650, currency: "₪", status: "התקבל", category: "מיקס / מאסטר", date: "2026-09-12" }),
-    tx({ id: "tx-orphan", type: "expense", amount: 50, currency: "$", status: "לא שולם", category: "מיקס / מאסטר", date: null }),
+    ...(o.noActiveOrphan ? [] : [tx({ id: "tx-orphan", type: "expense", amount: 50, currency: "$", status: "לא שולם", category: "מיקס / מאסטר", date: null })]),
+    // gap 13 (Owner decision 2026-09-28): a cancelled unlinked mix expense is history, never an orphan
+    tx({ id: "tx-cancelled-orphan", type: "expense", amount: 300, currency: "$", status: "בוטל", category: "מיקס / מאסטר", date: null }),
   ] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
@@ -251,6 +253,10 @@ function main() {
   const paid = W(W_DONE).money;
   ok("paid work: ₪ expense at the app's fixed ratio, scope כללי flagged, $ and ₪ never added", paid.paid && paid.expense?.currency === "₪" && paid.conflicts.length === 0 && paid.expenseScopeGeneral && JSON.stringify(v.money.paidByCurrency) === JSON.stringify({ $: 200 + 200 + 200 }));
   ok("orphan mix expense listed, never linked", v.money.orphanExpenses.some((x) => x.id === "tx-orphan") && v.signals.some((s) => s.code === "ORPHAN_MIX_EXPENSE"));
+  ok("gap 13: a cancelled (בוטל) unlinked mix expense is not an orphan; a non-cancelled one still is", !v.money.orphanExpenses.some((x) => x.id === "tx-cancelled-orphan") && v.money.orphanExpenses.some((x) => x.id === "tx-orphan" && x.status === "לא שולם"));
+  ok("gap 13: orphan signals / question count only non-cancelled rows", v.signals.filter((s) => s.code === "ORPHAN_MIX_EXPENSE").length === v.money.orphanExpenses.length && !v.signals.some((s) => s.code === "ORPHAN_MIX_EXPENSE" && /בוטל/.test(s.he)) && v.questions.some((x) => x.questionHe.startsWith(`${v.money.orphanExpenses.length} הוצאות מיקס לא מקושרות`)));
+  const vCancelledOnly = buildMixView(sources({ noActiveOrphan: true }));
+  ok("gap 13: only a cancelled orphan → no orphan, no ORPHAN signal, no 'לשייך או שאריות' question", vCancelledOnly.money.orphanExpenses.length === 0 && !vCancelledOnly.signals.some((s) => s.code === "ORPHAN_MIX_EXPENSE") && !vCancelledOnly.questions.some((x) => /לא מקושרות לשום עבודה/.test(x.questionHe)));
   ok("mix-stage project without an engineer", v.mixStageNoEngineer.some((x) => x.key === `project:${P(6)}`) && q("mix_portfolio", "list", { filter: "open" }).items.some((i) => i.id === `noengineer:project:${P(6)}`));
   for (const fl of ["all", "steven", "other_engineer", "unknown", "conflicting", "deadline_passed", "open_comments", "completed", "completed_open_comments", "completed_no_final_files", "unpaid", "release", "label", "client"]) ok(`mix_portfolio filter ${fl}`, q("mix_portfolio", "list", { filter: fl }).status === "OK");
   ok("Owner-only", q("mix_view", "overview", {}, STRANGER).status !== "OK" && q("mix_portfolio", "list", {}, STRANGER).status !== "OK");

@@ -8,7 +8,7 @@ import { isClipScoped } from "@/lib/clip-finance";
 import {
   calcPeriodStats, groupByCurrency, sumByCurrency, totalOf, orderCurrencies, otherAmountsFrom,
   otherCurrencyAmounts, formatCurrencyAmounts, formatOtherAmount, DEFAULT_CURRENCY, isReceivedStatus,
-  type CurrencyTotals,
+  isCancelledStatus, type CurrencyTotals,
 } from "@/lib/finance";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
@@ -875,6 +875,8 @@ export default function FinancePage() {
   const periodTx = transactions.filter((t) => inRange(t.date, range));
   const compTx   = transactions.filter((t) => inRange(t.date, compRange));
   const noDateTx = transactions.filter((t) => !t.date);
+  // A cancelled (בוטל) undated row stays in history and in the undated list, but is never an action item.
+  const noDateActiveTx = noDateTx.filter((t) => !isCancelledStatus(t.payment_status));
 
   const stats     = calcStats(periodTx);
   const compStats = compRange.from ? calcStats(compTx) : null;
@@ -884,7 +886,7 @@ export default function FinancePage() {
   // unpaid/partial rows need attention, per the canonical meaning of the data.
   const attentionUnpaidIncome  = transactions.filter((t) => t.type === "income"  && ["לא שולם", "חלקי"].includes(t.payment_status));
   const attentionOpenExpenses  = transactions.filter((t) => t.type === "expense" && ["לא שולם", "חלקי"].includes(t.payment_status));
-  const hasAttention = noDateTx.length > 0 || attentionUnpaidIncome.length > 0 || attentionOpenExpenses.length > 0;
+  const hasAttention = noDateActiveTx.length > 0 || attentionUnpaidIncome.length > 0 || attentionOpenExpenses.length > 0;
 
   // ── Table filtered rows ────────────────────────────────────────────────────
   // Rows that "need attention": unpaid/partial on either side (same meaning as
@@ -1720,7 +1722,7 @@ export default function FinancePage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
             <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>דורש טיפול היום</span>
             <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: RED, borderRadius: 100, minWidth: 20, padding: "2px 8px", textAlign: "center" }}>
-              {noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}
+              {noDateActiveTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}
             </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 12 }}>
@@ -1752,12 +1754,12 @@ export default function FinancePage() {
                 </div>
               </button>
             )}
-            {noDateTx.length > 0 && (
+            {noDateActiveTx.length > 0 && (
               <button onClick={() => setShowUndated((v) => !v)} style={attnCard(BLUE)}>
                 <span style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0, background: `${BLUE}20`, border: `1px solid ${BLUE}38`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⚠</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
-                    <strong style={{ color: BLUE }}>{noDateTx.length}</strong> תנועות ללא תאריך
+                    <strong style={{ color: BLUE }}>{noDateActiveTx.length}</strong> תנועות ללא תאריך
                   </div>
                   <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{showUndated ? "מוצגות בטבלה — לחץ להסתרה" : "לחץ להצגה בטבלה"}</div>
                 </div>

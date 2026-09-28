@@ -15,6 +15,7 @@ import type { ProjectDetailRaw, DetailEngineerWork, DetailMixVersion, DetailMixC
 import type { SettingsState } from "../settings/types";
 import type { FinanceTxRow } from "../finance/types";
 import { validateTx } from "../finance/core";
+import { isCancelledStatus } from "../../finance/classify";
 import { projectOperating } from "../sunny/operating";
 import { computeFinalFilesFlags } from "../../steven-completed-pure";
 import { isClosedStatus, COMPLETED_STATUS } from "../../steven-mix-reminder-pure";
@@ -190,7 +191,8 @@ export function buildMixView(src: GatewaySources) {
   const mixStageNoEngineer = Object.entries(idx).filter(([id, p]) => MIX_STAGE.has(p.status) && !workProjects.has(id)).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status }));
   const victorDoneNoMix = (c.det?.victor?.rows ?? []).filter((v) => v.status === "הושלם" && v.projectId && !workProjects.has(v.projectId)).map((v) => ({ key: `project:${v.projectId}`, name: idx[v.projectId!]?.name ?? null, projectStatus: idx[v.projectId!]?.status ?? null }));
   const linkedTx = new Set(worksRaw.map((w) => w.linkedTransactionId).filter(Boolean));
-  const orphanExpenses = (c.txs ?? []).filter((t) => t.type === "expense" && t.category === INTENDED_SCOPE && !linkedTx.has(t.id)).map((t) => ({ id: t.id, status: t.status, amount: validateTx(t)?.amount ?? null, currency: t.currency, date: t.date, project: t.projectId ? `project:${t.projectId}` : null }));
+  // A cancelled (בוטל) expense stays in history but is never an orphan to act on (Owner decision 2026-09-28, gap 13).
+  const orphanExpenses = (c.txs ?? []).filter((t) => t.type === "expense" && t.category === INTENDED_SCOPE && !linkedTx.has(t.id) && !isCancelledStatus(t.status)).map((t) => ({ id: t.id, status: t.status, amount: validateTx(t)?.amount ?? null, currency: t.currency, date: t.date, project: t.projectId ? `project:${t.projectId}` : null }));
   const signals: MixSignal[] = [];
   const questions: MixQuestion[] = [];
   for (const w of works) {
