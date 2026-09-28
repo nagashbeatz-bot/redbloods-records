@@ -147,6 +147,19 @@ const SHALEV = "8806fe5e-1238-4228-8078-b3db3ccc9b46", AVI = "b3499c72-069d-46c9
   const re = await AP.recordArtistPayment({ artistId: SHALEV, amount: 1000, date: "2026-10-01", idempotencyKey: "pay-1", allowDuplicate: true });
   ok("   after the payment was cancelled, the same key records a NEW live payment (not the cancelled row)", re.kind === "ok" && !re.reused && payRows().filter((r) => r.payment_status === "שולם").length === 1);
 
+  // the key = ONE payment event
+  const before = t("transactions").filter((r) => r.category === "שכר אמן").length;
+  const s1 = await AP.recordArtistPayment({ artistId: SHALEV, amount: 300, date: "2026-10-05", allowDuplicate: true });
+  const s2 = await AP.recordArtistPayment({ artistId: SHALEV, amount: 300, date: "2026-10-05", allowDuplicate: true });
+  ok("26b. two CONFIRMED separate partial payments (same amount + day, no key) → two real payments, never absorbed as a retry", s1.kind === "ok" && s2.kind === "ok" && s1.transactionId !== s2.transactionId && t("transactions").filter((r) => r.category === "שכר אמן").length === before + 2);
+  ok("   every payment writer uses the ONE marker writer (balance tab / close 'אמן ✓' / MARK_SHOW_FEE_PAID / Sunny); Sunny's key is unique per approved execution", /idempotencyKey: `sunny:\$\{\(await import\("node:crypto"\)\)\.randomUUID\(\)\}`/.test(read("lib/partner/act/server.ts")) && (read("lib/writes/shows.ts").match(/recordArtistPayment\(/g) ?? []).length >= 2 && /createLedgerEntryRecord/.test(read("app/api/label/artists/[id]/balance/route.ts")) && !/createShowArtistPayment\(\{/.test(read("lib/writes/shows.ts")));
+  // the DB unique key (once approved): a simultaneous attempt that hits 23505 continues with the winner's row
+  const key = "race-23505";
+  t("transactions").push({ id: "winner-row", created_at: stamp(), linked_session_id: `artist_payment:${key}`, payment_status: "שולם", type: "expense", category: "שכר אמן", amount: 100, artist: "שליו טסמה", notes: "" });
+  const winnerOnly = await AP.recordArtistPayment({ artistId: SHALEV, amount: 100, date: "2026-10-06", idempotencyKey: key });
+  ok("   a retry / a raced attempt with the same key uses the live winner row (one Finance row, one ledger payment)", winnerOnly.kind === "ok" && winnerOnly.transactionId === "winner-row" && t("transactions").filter((r) => r.linked_session_id === `artist_payment:${key}`).length === 1 && t("artist_balance_entries").filter((r) => r.source_tx_id === "winner-row").length === 1);
+  ok("   the insert path handles the DB unique violation (23505) by continuing with the live winner", /iErr\?\.code === "23505"/.test(read("lib/writes/artist-payments.ts")) && /transactions_artist_payment_live_uk/.test(read("lib/writes/artist-payments.ts")));
+
   console.log("\nS. Two-artist expense share — retry / race never doubles a share");
   t("projects").push({ id: "duo", artist: "שליו טסמה, אבי מולה" });
   const tx = randomUUID();

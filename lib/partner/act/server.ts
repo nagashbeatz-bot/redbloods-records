@@ -364,7 +364,9 @@ async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
     // Sunny's own duplicate gate ran before the Boss approved, so a planned payment is recorded as the separate payment it is
     async createLedgerEntry(e) {
       const AP = await import("@/lib/writes/artist-payments");
-      const r = await AP.createLedgerEntryRecord(e.artistId, { ...e, idempotencyKey: `sunny:${e.artistId}:${e.entryType}:${e.entryDate}:${e.amount}:${e.description}`, allowDuplicate: true });
+      // one approved plan = one payment event: the engine executes a plan at most once, so the key is unique per execution
+      // (two separately approved payments with the same values are two real payments, never absorbed as a retry)
+      const r = await AP.createLedgerEntryRecord(e.artistId, { ...e, idempotencyKey: `sunny:${(await import("node:crypto")).randomUUID()}`, allowDuplicate: true });
       if (r.kind !== "ok") throw new Error(r.messageHe);
       return String(r.entry.id);
     },

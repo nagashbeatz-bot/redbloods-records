@@ -15,6 +15,7 @@
  * Limitation (no schema change approved): the marker has no DB unique index, so two SIMULTANEOUS first attempts
  * could both pass the lookup — the UI locks the button while saving and the duplicate guard below runs first.
  */
+import { randomUUID } from "node:crypto";
 import { supabase } from "@/lib/supabase";
 import { inferBusinessUnit, unitColumns } from "@/lib/business-unit";
 import { ARTIST_PAYMENT_MARKER_PREFIX } from "@/lib/finance/ownership";
@@ -61,7 +62,10 @@ export async function recordArtistPayment(p: ArtistPaymentInput): Promise<Artist
   const { data: artist, error: aErr } = await supabase.from("label_artists").select("id, name").eq("id", p.artistId).maybeSingle();
   if (aErr) throw new Error(aErr.message);
   if (!artist) return { kind: "refused", code: "NOT_FOUND", messageHe: "האמן לא נמצא" };
-  const key = (p.idempotencyKey && String(p.idempotencyKey).trim()) || `${p.artistId}:${p.date}:${amount}:${p.showId ?? ""}`;
+  // the key = ONE payment event. A caller's explicit key wins (show:<id>, the modal's uuid); a confirmed SEPARATE payment
+  // without a key gets its own fresh key (a second partial payment of the same amount / day is never absorbed as a retry);
+  // otherwise the default key makes a plain retry idempotent.
+  const key = (p.idempotencyKey && String(p.idempotencyKey).trim()) || (p.allowDuplicate ? `sep:${randomUUID()}` : `${p.artistId}:${p.date}:${amount}:${p.showId ?? ""}`);
   const marker = `${ARTIST_PAYMENT_MARKER_PREFIX}${key}`.slice(0, 200);
 
   // 1. the Finance row — found by its marker (a retry), otherwise the duplicate guard, then created
@@ -85,8 +89,15 @@ export async function recordArtistPayment(p: ArtistPaymentInput): Promise<Artist
       linked_session_id: marker, expense_scope: p.showId ? "הופעה" : "כללי", show_id: null, show_money_role: null,
       ...unitColumns(inferBusinessUnit({ writer: "ARTIST_PAYMENT", type: "expense" })),
     }).select("id").single();
-    if (iErr || !ins) throw new Error(iErr?.message ?? "the Finance payment was not created");
-    txId = String(ins.id);
+    if (iErr?.code === "23505") {
+      // the DB unique key on the LIVE marker (transactions_artist_payment_live_uk) — a simultaneous attempt won: use its row
+      const { data: w, error: wErr } = await supabase.from("transactions").select("id, payment_status, created_at").eq("linked_session_id", marker);
+      if (wErr) throw new Error(wErr.message);
+      const win = ((w ?? []) as Array<{ id: string; payment_status: string | null }>).find((r) => r.payment_status !== "בוטל");
+      if (!win) throw new Error(iErr.message);
+      txId = String(win.id);
+    } else if (iErr || !ins) throw new Error(iErr?.message ?? "the Finance payment was not created");
+    else txId = String(ins.id);
     // concurrency convergence (no DB-unique marker without a schema change): two SIMULTANEOUS first attempts with the
     // same key may both insert. Every attempt re-reads the key's rows and the EARLIEST row (created_at, id) wins; a later
     // duplicate cancels ITSELF (בוטל + an audit note — never deleted) and the attempt continues with the winner, so the
