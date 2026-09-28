@@ -13,6 +13,7 @@ import type { Maybe } from "../../operations/readers";
 import { isEngineerWorkPaid } from "../../../mix-payment-pure";
 import { budgetLinePaidState, budgetLineStatusConflict, isClipItemPlanned, rfPaymentFinanceScope, rfPaymentLinkage } from "../../../clip-rf-money-pure";
 import { normalizeCurrency, type CurrencyTotals } from "../../../finance/currency";
+import { openingOfSnapshot, settlementResultOf, SETTLEMENT_RESULT_HE } from "../../../artist-balance-cycles-pure";
 
 const ops = (src: KnowledgeSources) => ok(src.operations);
 const today = (src: KnowledgeSources) => state(src)?.todayIL ?? src.now.toISOString().slice(0, 10);
@@ -214,7 +215,7 @@ export const social: KnowledgeCapability = {
 // ── ARTIST BALANCE CYCLES (closed 2-month snapshots) ──
 export const balanceCycles: KnowledgeCapability = {
   id: "balance_cycles", domain: "LABEL", titleHe: "מחזורי מאזן אמנים",
-  descriptionForModel: "Closed artist balance cycles (fixed 2-month windows from an anchor date): income, payments, expenses and the cycle's own ending balance (NO carry-over — each cycle's net only). The live ledger total can differ (entries back-dated into a closed window are not in any cycle). There are three different 'artist balance' calculations in Redbloods — see system_awareness ARTIST_BALANCES.",
+  descriptionForModel: "Closed artist balance cycles (fixed 2-month windows from an anchor date): the settlement picture of each closed cycle — opening balance (the previous closing balance) + income − the artist's expense share − payments = the CUMULATIVE closing balance, and who owes whom (Owner decision 2026-09-28: a close never pays, offsets or resets; an unpaid balance carries forward). A closed cycle is an immutable snapshot; an entry recorded later but dated in a closed period counts in the open cycle. There are three different 'artist balance' calculations in Redbloods — see system_awareness ARTIST_BALANCES.",
   examplesHe: ["מתי נסגר המחזור האחרון של שליו?", "מה היה המאזן במחזור הקודם?"],
   modes: { closed: { descriptionForModel: "Closed cycles, newest first" } }, defaultMode: "closed",
   params: { artist: { kind: "entityKey", types: ["label-artist"], descriptionForModel: "Only this label artist" } },
@@ -226,8 +227,8 @@ export const balanceCycles: KnowledgeCapability = {
     const aid = q.params.artist ? idOf(q.params.artist) : null;
     const rows = o.balanceCycles.rows.filter((c) => !aid || c.artistId === aid).sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "") || b.cycleIndex - a.cycleIndex);
     return result(rows.map((c) => item({ id: `${c.artistId}:${c.cycleIndex}`, entity: `label-artist:${c.artistId}`, label: partner(`מחזור ${c.cycleIndex + 1}: ${c.startDate ?? "?"} – ${c.endDate ?? "?"}`), epistemic: "FACT", source: "LABEL_ARTISTS", relationQuality: "ID",
-      fields: { artist: labelArtistName(src, c.artistId) ? record(labelArtistName(src, c.artistId)!) : null, cycleIndex: c.cycleIndex, startDate: c.startDate, endDateExclusive: c.endDate, income: c.income, payments: c.payments, expenses: c.expenses, endingBalanceOfCycle: c.endingBalance, closedAt: c.closedAt } })),
-      { coverage: [partner("יתרת מחזור היא נטו של המחזור בלבד — ללא יתרת פתיחה.")] });
+      fields: { artist: labelArtistName(src, c.artistId) ? record(labelArtistName(src, c.artistId)!) : null, cycleIndex: c.cycleIndex, startDate: c.startDate, endDateExclusive: c.endDate, openingBalance: openingOfSnapshot({ endingBalance: c.endingBalance ?? 0, income: c.income ?? 0, payments: c.payments ?? 0, expenses: c.expenses ?? 0 }), income: c.income, payments: c.payments, expenses: c.expenses, closingBalance: c.endingBalance, result: SETTLEMENT_RESULT_HE[settlementResultOf(c.endingBalance ?? 0)], closedAt: c.closedAt } })),
+      { coverage: [partner("יתרת הסגירה של מחזור מצטברת: יתרת פתיחה (יתרת הסגירה הקודמת) + פעילות המחזור. הסגירה היא תמונת התחשבנות בלבד — לא תשלום, לא קיזוז ולא איפוס.")] });
   },
 };
 

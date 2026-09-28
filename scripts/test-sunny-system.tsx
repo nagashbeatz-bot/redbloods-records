@@ -167,7 +167,7 @@ async function main() {
   const so = q("social");
   check("social: content by status, overdue (draft past due), promotions planned", [so.items[0]?.fields.contentOverdue, so.items[0]?.fields.promotionsPlanned, so.items[0]?.fields.contentByStatus], [1, 500, { draft: 1, published: 1 }]);
   const bc = q("balance_cycles", { params: { artist: `label-artist:${LA_SHALEV}` } });
-  check("balance_cycles: closed cycle, own ending balance, no carry-over note", [bc.items.length, bc.items[0]?.fields.endingBalanceOfCycle, bc.coverage.some((c) => c.text.includes("ללא יתרת פתיחה"))], [1, 1000, true]);
+  check("balance_cycles: closed cycle, cumulative closing balance + derived opening, carry-forward note", [bc.items.length, bc.items[0]?.fields.closingBalance, typeof bc.items[0]?.fields.openingBalance, bc.coverage.some((c) => c.text.includes("יתרת פתיחה") && c.text.includes("לא איפוס"))], [1, 1000, "number", true]);
   const al = q("albums", { params: { project: `project:${P(2)}` } });
   check("albums: mix / master progress", [al.summary.map((s) => s.value)], [[1, 0]]);
   const mp = q("mix_pipeline", { mode: "all" });

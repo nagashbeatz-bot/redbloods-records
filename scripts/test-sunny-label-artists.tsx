@@ -147,7 +147,10 @@ function main() {
   ok("availability + presence from settings", (a.availability as { state: string }).state === "RECORDED" && (a.presence as { lastPortalEntry?: string }).lastPortalEntry === "2026-09-24T07:00:00Z");
   ok("beats by portal slug (DERIVED)", a.beats.length === 1 && /DERIVED/.test(a.beats[0].link));
   ok("media income with stored recoup snapshot, never touching the ledger", a.money.mediaIncome.receivedArtistShare === 200 && a.money.mediaIncome.lastRecoupAfter === 800 && /never touches the ledger/.test(a.money.mediaIncome.note));
-  ok("current cycle from the anchor", a.money.cycles.current?.start === "2026-08-01" && a.money.cycles.current?.totals.balance === 850);
+  ok("current cycle from the anchor", a.money.cycles.current?.start === "2026-08-01" && a.money.cycles.current?.activity.net === 850);
+  // Owner decision 2026-09-28: the cycle is a settlement picture — opening + activity = closing, with a result (never a reset)
+  const cur = a.money.cycles.current!;
+  ok("cycle settlement picture: opening + activity = closing, result named", cur.closingBalance === Math.round((cur.openingBalance + cur.activity.net) * 100) / 100 && cur.result === (cur.closingBalance > 0 ? "RECORDS_OWES_ARTIST" : cur.closingBalance < 0 ? "ARTIST_OWES_RECORDS" : "BALANCED"));
   // B3 (Owner canon 2026-09-27): the clip recoup is NOT_DEFINED (null + reason) — the 8000 budget is planning (B), never 50 % recouped
   // the agreement is id-first (lib/label-agreements): this fixture's roster row is NOT the registered Shalev id → never inferred from the name
   ok("agreement id-first: a roster row that only shares the name gets NO agreement (NOT_DEFINED), never the Shalev / Avi rule", a.money.agreement.covered === false && a.money.agreement.rules === "NOT_DEFINED — no agreement recorded for this artist" && a.money.agreement.accounting === null);

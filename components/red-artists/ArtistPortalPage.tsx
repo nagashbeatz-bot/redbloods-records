@@ -353,11 +353,16 @@ export type BalanceLedger = { entries: BalanceEntry[]; totals: BalanceTotals };
 export type ClosedBalanceCycle = {
   id: string; artistId: string; cycleIndex: number; startDate: string; endDate: string;
   income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number;
-  endingBalance: number; closedAt: string; createdAt: string;
+  endingBalance: number; openingBalance: number; result: SettlementResult; closedAt: string; createdAt: string;
 };
+// Owner decision 2026-09-28: a cycle close is a settlement PICTURE, never a reset — the open cycle starts from the
+// previous closing balance (see lib/artist-balance-cycles-pure.ts, the one computation shared with Sunny).
+export type SettlementResult = "RECORDS_OWES_ARTIST" | "ARTIST_OWES_RECORDS" | "BALANCED";
 export type CurrentBalanceCycle = {
   index: number; startDate: string; endDate: string; calcStartDate: string;
   daysUntilClose: number; totals: BalanceTotals;
+  openingBalance: number; closingBalance: number; result: SettlementResult;
+  lateEntryIds: string[]; ledgerBalanceToEnd: number; reconciliationDifference: number;
 };
 export type BalanceCycleState = { anchorDate: string | null; current: CurrentBalanceCycle | null; closed: ClosedBalanceCycle[] };
 
@@ -590,7 +595,8 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // rights while previewing.
   const isAviPortal = isAvi || artistName === AVI_PORTAL_NAME;
   const visibleTabs: readonly Tab[] =
-    isAviPortal ? (["בית", "ההופעות שלי", "המוזיקה שלי", "ביטים פנויים"] as const)
+    // Owner previewing Avi also sees "מאזן" (his cycle, Owner decision Q9 2026-09-28); Avi's own session never does.
+    isAviPortal ? (isAvi ? (["בית", "ההופעות שלי", "המוזיקה שלי", "ביטים פנויים"] as const) : (["בית", "ההופעות שלי", "המוזיקה שלי", "מאזן", "ביטים פנויים"] as const))
     : isCleantonePortal ? (["בית", "ההופעות שלי"] as const)
     : isNagashPortal ? (["בית", "המוזיקה שלי"] as const)
     : TABS;
@@ -2159,7 +2165,8 @@ function BalancePage({
   // hit once with "הכנסות צפויות" before calcStartDate existed) — every entries
   // list that must sum to a card's total uses this same inCycle, so they can
   // never drift apart again.
-  const inCycle = (e: BalanceEntry) => !cycle || (e.entryDate >= cycle.calcStartDate && e.entryDate < cycle.endDate);
+  // Late entries (dated in an already-closed period, recorded after it closed) are counted in the OPEN cycle.
+  const inCycle = (e: BalanceEntry) => !cycle || (e.entryDate >= cycle.calcStartDate && e.entryDate < cycle.endDate) || (cycle.lateEntryIds ?? []).includes(e.id);
   // The main "היסטוריית תנועות" shows only REALIZED movements. Both expected categories
   // are managed via their own modals and EXCLUDED from that list (display-only — never
   // hidden/removed from the DB/API; their totals still feed the cards/strip).
@@ -2222,6 +2229,7 @@ function BalancePage({
           <BalanceCycleSetup artistId={artistId} onDone={onReloadCycles} />
         ) : null)
       )}
+      {cycleLoadState === "ready" && cycle && <BalanceCycleSettlementStrip cycle={cycle} />}
 
       {/* 4 primary summary cards — ALL clickable now, for both owner and readOnly.
           "הכנסות צפויות" opens its existing management modal (owner: full
@@ -2777,6 +2785,49 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
 // hard requirement that the artist can never even see a management action exists.
 // Every action callback is optional and supplied ONLY by the owner call site;
 // readOnly doesn't just hide them, BalancePage never passes them in that case.
+// Settlement picture labels — mirror SETTLEMENT_RESULT_HE in lib/artist-balance-cycles-pure.ts.
+const SETTLEMENT_RESULT_LABEL: Record<SettlementResult, string> = {
+  RECORDS_OWES_ARTIST: "Records חייבת לאמן",
+  ARTIST_OWES_RECORDS: "האמן בחובה ל-Records",
+  BALANCED: "החשבון מאוזן",
+};
+const settlementColor = (n: number) => (n > 0 ? GREEN : n < 0 ? BAL_EXP_RED : "#E5E5EA");
+
+// Opening → activity → closing (+ who owes whom). Shared by the open-cycle strip, the close dialog and the history.
+function CycleSettlementRows({ opening, income, expenses, payments, closing, result, lateCount }: {
+  opening: number; income: number; expenses: number; payments: number; closing: number; result: SettlementResult; lateCount?: number;
+}) {
+  const row = (label: string, value: string, color: string, bold = false) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: bold ? 13.5 : 12.5, fontWeight: bold ? 900 : 600, color: MUTED }}>
+      <span>{label}</span><b style={{ color, direction: "ltr" }}>{value}</b>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      {row("יתרת פתיחה", fmtMoney(opening, "₪"), settlementColor(opening))}
+      {row("+ הכנסות האמן במחזור", fmtMoney(income, "₪"), GREEN)}
+      {row("− חלק האמן בהוצאות", fmtMoney(expenses, "₪"), BAL_EXP_RED)}
+      {row("− תשלומים לאמן", fmtMoney(payments, "₪"), "#6BA3E8")}
+      <div style={{ borderTop: `1px solid ${BDR2}`, margin: "3px 0" }} />
+      {row("יתרת סגירה", fmtMoney(closing, "₪"), settlementColor(closing), true)}
+      <div style={{ fontSize: 12, fontWeight: 800, color: settlementColor(closing) }}>{SETTLEMENT_RESULT_LABEL[result]}</div>
+      {!!lateCount && <div style={{ fontSize: 11, color: AMBER }}>כולל {lateCount} תנועות מתקופה שכבר נסגרה (נרשמו אחרי הסגירה)</div>}
+    </div>
+  );
+}
+
+// The open cycle's settlement picture — the cycle starts from the previous closing balance (never from zero).
+function BalanceCycleSettlementStrip({ cycle }: { cycle: CurrentBalanceCycle }) {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ ...panel, padding: isMobile ? "14px 16px" : "16px 22px" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT2, marginBottom: 10 }}>תמונת התחשבנות — המחזור הנוכחי</div>
+      <CycleSettlementRows opening={cycle.openingBalance} income={cycle.totals.income} expenses={cycle.totals.expenses}
+        payments={cycle.totals.payments} closing={cycle.closingBalance} result={cycle.result} lateCount={cycle.lateEntryIds?.length ?? 0} />
+    </div>
+  );
+}
+
 function BalanceCycleCard({ cycle, readOnly, onOpenHistory, onCloseCycle, onEditAnchor, onSendReminder, editLocked }: {
   cycle: CurrentBalanceCycle; readOnly: boolean;
   onOpenHistory?: () => void; onCloseCycle?: () => void; onEditAnchor?: () => void; onSendReminder?: () => void;
@@ -2974,7 +3025,7 @@ function BalanceCycleHistoryModal({ closed, onClose }: { closed: ClosedBalanceCy
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {closed.map(c => {
-            const balColor = c.endingBalance > 0 ? GREEN : c.endingBalance < 0 ? BAL_EXP_RED : "#E5E5EA";
+            const balColor = settlementColor(c.endingBalance);
             return (
               <div key={c.id} style={{ padding: "13px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -2983,11 +3034,9 @@ function BalanceCycleHistoryModal({ closed, onClose }: { closed: ClosedBalanceCy
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 900, color: balColor, direction: "ltr" }}>{fmtMoney(c.endingBalance, "₪")}</div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, marginTop: 10 }}>
-                  <div style={{ fontSize: 11.5, color: MUTED }}>הכנסות: <b style={{ color: GREEN }}>{fmtMoney(c.income, "₪")}</b></div>
-                  <div style={{ fontSize: 11.5, color: MUTED }}>תשלומים: <b style={{ color: "#6BA3E8" }}>{fmtMoney(c.payments, "₪")}</b></div>
-                  <div style={{ fontSize: 11.5, color: MUTED }}>הוצאות: <b style={{ color: BAL_EXP_RED }}>{fmtMoney(c.expenses, "₪")}</b></div>
-                  <div style={{ fontSize: 11.5, color: MUTED }}>הכנסות צפויות: <b style={{ color: AMBER }}>{fmtMoney(c.expectedIncome, "₪")}</b></div>
+                <div style={{ marginTop: 10 }}>
+                  <CycleSettlementRows opening={c.openingBalance} income={c.income} expenses={c.expenses} payments={c.payments}
+                    closing={c.endingBalance} result={c.result} />
                 </div>
                 <div style={{ fontSize: 10.5, color: MUTED, marginTop: 8, direction: "ltr", textAlign: "start" }}>נסגר ב-{fmtShowDate(c.closedAt.slice(0, 10))}</div>
               </div>
@@ -3005,8 +3054,9 @@ function BalanceCycleHistoryModal({ closed, onClose }: { closed: ClosedBalanceCy
   );
 }
 
-// "סגור מחזור" confirmation — freezes the current cycle's live totals into history
-// and (implicitly, via the next GET) advances "current" to the next cycle.
+// "סגור מחזור" confirmation — freezes the current cycle's settlement picture into history
+// and (implicitly, via the next GET) advances "current" to the next cycle, whose opening balance
+// is this cycle's closing balance. No payment / offset / reset happens here.
 function BalanceCycleCloseModal({ artistId, cycle, onClose, onClosed }: {
   artistId: string; cycle: CurrentBalanceCycle; onClose: () => void; onClosed: () => Promise<void>;
 }) {
@@ -3038,8 +3088,17 @@ function BalanceCycleCloseModal({ artistId, cycle, onClose, onClosed }: {
           ⚠️ המחזור הזה עדיין לא הסתיים — נותרו {cycle.daysUntilClose} ימים עד לתאריך הסיום הרגיל ({fmtShowDate(cycle.endDate)}). סגירה עכשיו תקפיא את הנתונים הנוכחיים בלבד ותתחיל את המחזור הבא מיידית.
         </div>
       )}
+      <div style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)", marginBottom: 12 }}>
+        <CycleSettlementRows opening={cycle.openingBalance} income={cycle.totals.income} expenses={cycle.totals.expenses}
+          payments={cycle.totals.payments} closing={cycle.closingBalance} result={cycle.result} lateCount={cycle.lateEntryIds?.length ?? 0} />
+      </div>
+      {cycle.reconciliationDifference !== 0 && (
+        <div style={{ fontSize: 12, fontWeight: 700, color: AMBER, background: "rgba(245,158,11,0.10)", border: `1px solid ${AMBER}55`, borderRadius: 9, padding: "10px 12px", marginBottom: 12, lineHeight: 1.5 }}>
+          ⚠️ פער של {fmtMoney(cycle.reconciliationDifference, "₪")} בין יתרת הסגירה ליתרת הספר עד סוף המחזור — תנועה מתקופה סגורה שונתה או נמחקה אחרי הסגירה. המחזור הסגור לא משתנה.
+        </div>
+      )}
       <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.6, marginBottom: early ? 14 : 18 }}>
-        הנתונים של המחזור (הכנסות, הוצאות, תשלומים ויתרת הסיום) יישמרו כרשומה קבועה בהיסטוריית המחזורים, והמחזור הבא יתחיל אוטומטית. פעולה זו אינה ניתנת לביטול; תנועות היסטוריות לא נמחקות ולא משתנות.
+        הסגירה שומרת את תמונת ההתחשבנות כרשומה קבועה בהיסטוריית המחזורים. היא לא מבצעת תשלום, לא מקזזת ולא מאפסת: יתרה שלא שולמה עוברת כיתרת פתיחה למחזור הבא. תשלום אמיתי נרשם כרגיל כתנועת "תשלומים". פעולה זו אינה ניתנת לביטול; תנועות לא נמחקות ולא משתנות.
       </div>
       {early && (
         <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 18, cursor: "pointer" }}>

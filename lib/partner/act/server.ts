@@ -33,6 +33,7 @@ import { knownSecretValues } from "./persist";
 import { approvalKeyFrom, ACT_SECRET_ENV } from "./internal-handler";
 import { ACTION_REGISTRY, ACTION_REGISTRY_VERSION } from "./registry";
 import { supabaseActStores } from "./store-supabase";
+import { SETTLEMENT_RESULT_HE } from "@/lib/artist-balance-cycles-pure";
 
 const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
@@ -352,7 +353,7 @@ async function labelFamilyWriters(): Promise<LabelFamilyWriters> {
     createLedgerEntry: async (e) => (await AB.createArtistBalanceEntry({ ...e, entryType: e.entryType as EType })).id,
     updateLedgerEntry: async (id, artistId, e) => !!(await AB.updateArtistBalanceEntry(id, artistId, { ...e, entryType: e.entryType as EType })),
     deleteLedgerEntry: (id, artistId) => AB.deleteArtistBalanceEntry(id, artistId),
-    async readCycleState(id) { const s = await cycle(id); return { anchorDate: s.anchorDate ?? null, currentIndex: s.current?.index ?? null, currentEnd: s.current?.endDate ?? null, daysUntilClose: s.current?.daysUntilClose ?? null }; },
+    async readCycleState(id) { const s = await cycle(id); return { anchorDate: s.anchorDate ?? null, currentIndex: s.current?.index ?? null, currentEnd: s.current?.endDate ?? null, daysUntilClose: s.current?.daysUntilClose ?? null, openingBalance: s.current?.openingBalance ?? null, closingBalance: s.current?.closingBalance ?? null, resultHe: s.current ? SETTLEMENT_RESULT_HE[s.current.result] : null }; },
     setCycleAnchor: async (id, date, mode) => { if (mode === "SET") await CY.setBalanceCycleAnchor(id, date); else await CY.updateBalanceCycleAnchor(id, date); },
     closeCycle: async (id, force) => { await CY.closeCurrentBalanceCycle(id, await AB.listArtistBalanceEntries(id), force); },
     async sendCycleReminder(id, o, a) { const r = await WL.sendCycleReminder(id, o, a); return r.kind === "ok" ? { kind: "ok", ownerSent: r.ownerSent, artistSent: r.artistSent } : { kind: r.kind }; },

@@ -28,7 +28,7 @@ export interface LabelFamilyWriters {
   createLedgerEntry(e: { artistId: string; entryType: string; amount: number; entryDate: string; description: string; note: string }): Promise<string>;
   updateLedgerEntry(id: string, artistId: string, e: { entryType: string; amount: number; entryDate: string; description: string; note: string }): Promise<boolean>;
   deleteLedgerEntry(id: string, artistId: string): Promise<boolean>;
-  readCycleState(artistId: string): Promise<{ anchorDate: string | null; currentIndex: number | null; currentEnd: string | null; daysUntilClose: number | null }>;
+  readCycleState(artistId: string): Promise<{ anchorDate: string | null; currentIndex: number | null; currentEnd: string | null; daysUntilClose: number | null; openingBalance?: number | null; closingBalance?: number | null; resultHe?: string | null }>;
   setCycleAnchor(artistId: string, date: string, mode: "SET" | "UPDATE"): Promise<void>;
   closeCycle(artistId: string, force: boolean): Promise<void>;
   sendCycleReminder(artistId: string, toOwner: boolean, toArtist: boolean): Promise<{ kind: string; ownerSent?: boolean; artistSent?: boolean }>;
@@ -225,13 +225,14 @@ export const LABEL_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "CLOSE_BALANCE_CYCLE", kinds: ["label-artist"],
     meta: meta("סגירת מחזור המאזן הנוכחי", "Close the artist's current balance cycle (an early close needs force — the app's rule)", [K("labelArtist"), { name: "force", kind: "boolean", required: false }], ["currentIndex"], "closeCurrentBalanceCycle (lib/artist-balance-cycles-store)", { effects: ["LEDGER"], riskClass: "FINANCIAL", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; const c = await d.readCycleState(r.id); return { ...r, fields: { currentIndex: c.currentIndex, daysUntilClose: c.daysUntilClose, currentEnd: c.currentEnd } }; },
-    async read(d, id) { if (!(await d.readLabelArtistFull(id))) return null; const c = await d.readCycleState(id); return { currentIndex: c.currentIndex, daysUntilClose: c.daysUntilClose, currentEnd: c.currentEnd }; },
+    // the settlement picture (the app's own computation) is part of the fingerprint: a changed picture before execution = STALE
+    async resolve(d, a) { const r = await onArtist(d, a); if ("ok" in r) return r; const c = await d.readCycleState(r.id); return { ...r, fields: { currentIndex: c.currentIndex, daysUntilClose: c.daysUntilClose, currentEnd: c.currentEnd, openingBalance: c.openingBalance ?? null, closingBalance: c.closingBalance ?? null, resultHe: c.resultHe ?? null } }; },
+    async read(d, id) { if (!(await d.readLabelArtistFull(id))) return null; const c = await d.readCycleState(id); return { currentIndex: c.currentIndex, daysUntilClose: c.daysUntilClose, currentEnd: c.currentEnd, openingBalance: c.openingBalance ?? null, closingBalance: c.closingBalance ?? null, resultHe: c.resultHe ?? null }; },
     plan(a, cur) { if (cur.currentIndex === null) return refuse("NO_CYCLE", "לא הוגדר מחזור לאמן הזה"); if (Number(cur.daysUntilClose) > 0 && a.force !== true) return refuse("EARLY_CLOSE", `המחזור נסגר רק ב-${cur.currentEnd} — סגירה מוקדמת צריכה force`); return { ok: true, after: { currentIndex: Number(cur.currentIndex) + 1 } }; },
     async apply(d, id, _a, args) { await d.closeCycle(id, args.force === true); },
     requiredValues: (_a, _after) => ["סגירת מחזור"],
-    warnings: (c) => [`מחזור ${c.currentIndex} (עד ${c.currentEnd})${Number(c.daysUntilClose) > 0 ? " — סגירה מוקדמת" : ""}`],
-    disclosuresHe: ["המחזור נסגר עם היתרה שלו לפי חישוב האפליקציה; רשומות המאזן לא משתנות", "לא יישלח Push (תזכורת היא פעולה נפרדת)"],
+    warnings: (c) => [`מחזור ${c.currentIndex} (עד ${c.currentEnd})${Number(c.daysUntilClose) > 0 ? " — סגירה מוקדמת" : ""}`, ...(c.closingBalance !== null && c.closingBalance !== undefined ? [`יתרת פתיחה ₪${c.openingBalance} → יתרת סגירה ₪${c.closingBalance} — ${c.resultHe ?? ""}`] : [])],
+    disclosuresHe: ["הסגירה שומרת את תמונת ההתחשבנות (פתיחה → פעילות → סגירה) לפי חישוב האפליקציה; היא לא רושמת תשלום, לא מקזזת ולא מאפסת — יתרה שלא שולמה עוברת כיתרת פתיחה למחזור הבא; רשומות המאזן לא משתנות", "לא יישלח Push (תזכורת היא פעולה נפרדת)"],
   },
   {
     actionId: "SEND_CYCLE_REMINDER", kinds: ["label-artist"],

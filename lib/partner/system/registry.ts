@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.28-46";
+export const SYSTEM_BASELINE_VERSION = "2026.09.28-47";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -389,7 +389,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("CYCLE_REMINDER_NO_GUARD", "POSSIBLE_BUG", "The balance-cycle reminder push has no production guard and deep-links every artist to Shalev's balance tab."),
       R("LEDGER_BALANCE", "CANONICAL_BUSINESS_RULE", "Current balance = income − payments − expenses (expected rows excluded)."),
       R("THREE_BALANCES_CONFLICT", "CONFLICT", "Three different 'artist balance' calculations exist: (1) the ledger (balance tab, cycles), (2) summing artist-fee transactions by artist name, (3) show split totals keyed on the CLIENT payment (and including leads). They can disagree; Sunny must say which one it uses."),
-      R("CYCLE_NO_CARRYOVER", "IMPLEMENTATION_BEHAVIOR", "A closed cycle stores only its own net (no opening balance); entries back-dated into a closed window fall out of every cycle."),
+      R("CYCLE_CARRY_FORWARD", "CANONICAL_BUSINESS_RULE", "Owner decision 2026-09-28: a cycle close is a settlement picture — opening (previous closing) + income − artist expense share − payments = the cumulative closing balance; no payment, offset or reset on close; an unpaid balance carries forward; entries recorded late for a closed period count in the open cycle; a closed snapshot never changes."),
       R("LEDGER_SYNC_CONFLICT", "CONFLICT", "The ledger is documented as independent / never synced, but show booking (Shalev only) and show close (any artist) write to it."),
       R("MEDIA_NOT_IN_LEDGER", "IMPLEMENTATION_BEHAVIOR", "Media income never reaches the balance ledger.", ["MEDIA_INCOME"]),
       R("CYCLE_REMIND_WRONG_LINK", "POSSIBLE_BUG", "The cycle reminder sends Avi and DJ CLEANTONE a link to Shalev's balance page, which they cannot open."),
@@ -1033,4 +1033,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-45", date: "2026-09-27", domain: "SHOWS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סוג עסקה של הופעה (לא סטטוס תשלום): בתשלום / שת״פ ללא תשלום. שת״פ = הופעה רגילה לכל דבר (אמן, פורטל, יומן, התראות, סגירה) עם 0 פעילות כספית אוטומטית — אין מחיר, יתרה לגבייה, תשלום, שכר DJ / אמן, הוצאת חזרה, מאזן או חלוקה. show_view מציג dealType ו-moneyApplies; אותות כסף (PRICE_MISSING / UPCOMING_UNPAID / DONE_UNPAID / DONE_WITHOUT_LEDGER ועוד) לא חלים עליה, ואין אות על עצם היותה שת״פ. נספרת בכמה הופעות — לא בכמה כסף צפוי." },
   { version: "2026.09.27-45", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "CREATE_SHOW מקבל dealType (בשת״פ לא שואלים מחיר); SET_SHOW_DEAL_TYPE מחליף סוג עסקה — לשת״פ רק כשאין כסף אמיתי (תשלום, שכר ששולם, מאזן ממומש, הוצאת חזרה → נדחה, לא נמחק כלום), לבתשלום עם מחיר ואז תהליך הכספים הרגיל. פעולות כסף על שת״פ (תשלום, שכר ששולם, מחיר, סגירה עם כסף, עלות חזרה) נדחות בבירור." },
   { version: "2026.09.28-46", date: "2026-09-28", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "פער 13 (החלטת בעלים 2026-09-28): הוצאת מיקס שבוטלה ('בוטל') נשארת בהיסטוריה אבל אינה 'הוצאת מיקס לא מקושרת' — לא אות ORPHAN_MIX_EXPENSE, לא השאלה 'לשייך או שהן שאריות?' ולא ספירה בתמונת החברה. כל סטטוס אחר נבדק כמו קודם. גם במסך הכספים תנועה שבוטלה לא נספרת בכרטיס 'תנועות ללא תאריך' ובעיגול 'דורש טיפול' (הרשימה עצמה לא השתנתה)." },
+  { version: "2026.09.28-47", date: "2026-09-28", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "מחזור מאזן = תמונת התחשבנות (החלטת בעלים 2026-09-28): יתרת פתיחה (יתרת הסגירה הקודמת) + הכנסות האמן − חלק האמן בהוצאות − תשלומים = יתרת סגירה מצטברת, ומי חייב למי. סגירה לא משלמת, לא מקזזת ולא מאפסת; יתרה פתוחה עוברת הלאה; תנועה מאוחרת לתקופה סגורה נספרת במחזור הפתוח; מחזור סגור לא משתנה. artist_view ו-balance_cycles משתמשים באותו חישוב של המסך." },
 ];

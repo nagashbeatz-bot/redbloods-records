@@ -6,6 +6,7 @@ import {
   computeArtistBalanceTotals,
   isValidYmd,
 } from "./artist-balance-store";
+import { computeOpenCycle, openingOfSnapshot, settlementResultOf, type SettlementResult } from "./artist-balance-cycles-pure";
 
 /**
  * Financial-cycle layer on top of the artist balance ledger (public.artist_balance_cycles
@@ -17,45 +18,11 @@ import {
  * date: [anchor, anchor+2mo), [anchor+2mo, anchor+4mo), … "cycle_index" is 0-based.
  * Only CLOSED cycles are persisted (a frozen snapshot); the current (open) cycle's
  * totals are always computed live from the ledger so they stay accurate until closed.
+ *
+ * Owner decision 2026-09-28: a close is a SETTLEMENT PICTURE, never a reset. The open cycle starts from the previous
+ * cycle's closing balance (an unpaid balance carries forward); `ending_balance` stores the CUMULATIVE closing balance.
+ * The math lives in lib/artist-balance-cycles-pure.ts (shared with Sunny).
  */
-
-// ── date math (plain YYYY-MM-DD strings, UTC-based — no local-timezone drift) ────
-
-function parseYmd(s: string): { y: number; m: number; d: number } {
-  const [y, m, d] = s.split("-").map(Number);
-  return { y, m, d };
-}
-
-function toYmd(y: number, m0: number, d: number): string {
-  // m0 is 0-based; Date.UTC normalizes month/day overflow for us.
-  return new Date(Date.UTC(y, m0, d)).toISOString().slice(0, 10);
-}
-
-function addMonthsYmd(s: string, months: number): string {
-  const { y, m, d } = parseYmd(s);
-  const total = y * 12 + (m - 1) + months;
-  const ny = Math.floor(total / 12);
-  const nm0 = total - ny * 12;
-  return toYmd(ny, nm0, d);
-}
-
-function daysBetweenYmd(from: string, to: string): number {
-  const a = parseYmd(from), b = parseYmd(to);
-  const ms = Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d);
-  return Math.round(ms / 86400000);
-}
-
-/** Which 2-month window (by pure calendar math) `today` falls into, relative to anchor. */
-function cycleIndexForDate(anchor: string, today: string): number {
-  const a = parseYmd(anchor), t = parseYmd(today);
-  let monthsSince = (t.y * 12 + (t.m - 1)) - (a.y * 12 + (a.m - 1));
-  if (t.d < a.d) monthsSince -= 1;
-  return Math.max(Math.floor(monthsSince / 2), 0);
-}
-
-function cycleBounds(anchor: string, index: number): { start: string; end: string } {
-  return { start: addMonthsYmd(anchor, index * 2), end: addMonthsYmd(anchor, (index + 1) * 2) };
-}
 
 // ── anchor date (stored in the generic settings key/value table — one row per artist) ──
 
@@ -168,7 +135,9 @@ export interface ClosedBalanceCycle {
   payments: number;
   expenses: number;
   expectedExpenses: number;
-  endingBalance: number;
+  endingBalance: number;     // the cumulative closing balance (settlement result of this cycle)
+  openingBalance: number;    // derived: endingBalance − (income − payments − expenses)
+  result: SettlementResult;
   closedAt: string;
   createdAt: string;
 }
@@ -190,6 +159,8 @@ interface DbCycleRow {
 }
 
 function mapCycleRow(db: DbCycleRow): ClosedBalanceCycle {
+  const income = Number(db.income) || 0, payments = Number(db.payments) || 0, expenses = Number(db.expenses) || 0;
+  const endingBalance = Number(db.ending_balance) || 0;
   return {
     id: db.id,
     artistId: db.artist_id,
@@ -201,7 +172,9 @@ function mapCycleRow(db: DbCycleRow): ClosedBalanceCycle {
     payments: Number(db.payments) || 0,
     expenses: Number(db.expenses) || 0,
     expectedExpenses: Number(db.expected_expenses) || 0,
-    endingBalance: Number(db.ending_balance) || 0,
+    endingBalance,
+    openingBalance: openingOfSnapshot({ endingBalance, income, payments, expenses }),
+    result: settlementResultOf(endingBalance),
     closedAt: db.closed_at,
     createdAt: db.created_at,
   };
@@ -232,7 +205,14 @@ export interface CurrentBalanceCycle {
   // one from startDate and silently disagreeing with the card's own total.
   calcStartDate: string;
   daysUntilClose: number;   // negative when the natural end date has already passed
+  /** this cycle's activity (window + late entries dated in an already-closed period) */
   totals: ArtistBalanceTotals;
+  openingBalance: number;   // previous cycle's closing balance (first cycle: realized history before it, usually 0)
+  closingBalance: number;   // openingBalance + totals.currentBalance — the balance to settle
+  result: SettlementResult;
+  lateEntryIds: string[];   // entries dated in a closed period but recorded after it closed (counted here)
+  ledgerBalanceToEnd: number;
+  reconciliationDifference: number; // ≠ 0 only when a closed-period entry changed after its cycle closed
 }
 
 export interface BalanceCycleState {
@@ -252,42 +232,31 @@ export async function getBalanceCycleState(
 
   const closed = await listClosedBalanceCycles(artistId);
   const today = new Date().toISOString().slice(0, 10);
-
-  // The grid keeps advancing by calendar date regardless of whether anyone closes a
-  // cycle on time — but closing (possibly early) always advances the "current" one
-  // immediately, so it never regresses. In the ordinary flow (closing at/after the
-  // natural end date) these coincide.
-  const index = Math.max(cycleIndexForDate(anchorDate, today), closed.length);
-  const { start, end } = cycleBounds(anchorDate, index);
-
-  // One-time first-cycle bootstrap: widens ONLY the calculation's lower bound
-  // for cycle_index 0, so pre-existing activity (from before this artist had a
-  // configured cycle) is folded into their very first report. `start` itself —
-  // what's DISPLAYED as the cycle's range everywhere (card/history/push) — is
-  // never touched; only `calcStart`, used solely to filter which entries feed
-  // this cycle's totals, is affected. From cycle_index 1 onward this is never
-  // consulted, so there is no carry-over beyond the first cycle.
-  let calcStart = start;
-  if (index === 0) {
-    const bootstrap = await getFirstCycleBootstrapStart(artistId);
-    if (bootstrap && bootstrap < start) calcStart = bootstrap;
-  }
-
-  const cycleEntries = entries.filter(e => e.entryDate >= calcStart && e.entryDate < end);
-  const totals = computeArtistBalanceTotals(cycleEntries);
-
+  const bootstrap = await getFirstCycleBootstrapStart(artistId);
+  // The grid keeps advancing by calendar date regardless of whether anyone closes a cycle on time — but closing
+  // (possibly early) always advances the "current" one immediately, so it never regresses. The one-time first-cycle
+  // bootstrap only widens cycle 0's calculation window (never its displayed range).
+  const c = computeOpenCycle({
+    anchor: anchorDate, bootstrap, today,
+    closed: closed.map((y) => ({ cycleIndex: y.cycleIndex, startDate: y.startDate, endDate: y.endDate, income: y.income, payments: y.payments, expenses: y.expenses, endingBalance: y.endingBalance, closedAt: y.closedAt })),
+    entries: entries.map((e) => ({ id: e.id, entryType: e.entryType, amount: e.amount, entryDate: e.entryDate, createdAt: e.createdAt })),
+  });
   return {
     anchorDate,
     current: {
-      index, startDate: start, endDate: end, calcStartDate: calcStart,
-      daysUntilClose: daysBetweenYmd(today, end),
-      totals,
+      index: c.index, startDate: c.startDate, endDate: c.endDate, calcStartDate: c.calcStartDate,
+      daysUntilClose: c.daysUntilClose,
+      totals: c.totals,
+      openingBalance: c.openingBalance, closingBalance: c.closingBalance, result: c.result,
+      lateEntryIds: c.lateEntryIds, ledgerBalanceToEnd: c.ledgerBalanceToEnd, reconciliationDifference: c.reconciliationDifference,
     },
     closed,
   };
 }
 
-/** Closes the current open cycle: freezes its live totals into a permanent row.
+/** Closes the current open cycle: freezes its settlement picture into a permanent row (the activity totals + the
+ *  CUMULATIVE closing balance). Never pays, offsets or zeroes anything — an unpaid balance simply becomes the next
+ *  cycle's opening balance.
  *  Guarded by the unique(artist_id, cycle_index) constraint, so a double-click (or
  *  a race) can never close the same cycle twice. Returns the fresh state.
  *
@@ -316,7 +285,7 @@ export async function closeCurrentBalanceCycle(
     payments: c.totals.payments,
     expenses: c.totals.expenses,
     expected_expenses: c.totals.expectedExpenses,
-    ending_balance: c.totals.currentBalance,
+    ending_balance: c.closingBalance,
   });
   if (error) {
     if (error.code === "23505") throw new Error("המחזור כבר נסגר");

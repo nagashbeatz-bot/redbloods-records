@@ -31,6 +31,7 @@ import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimVa
 import { clipMoneyByCurrency, clipRecoupContribution } from "../../clip-rf-money-pure";
 import { agreementArtistOf, allocatePaidCost, allocationTotalsByCurrency, costCategoryOfScope, isCollabText, AGREEMENT_COST_RULES, AGREEMENT_SHOW_RULE, AGREEMENT_MEDIA_RULE, AGREEMENT_CYCLE_ACCOUNTING_HE, AGREEMENT_RULES_VERSION, mediaAgreementSplit, type Allocation } from "../../label-agreements";
 import { isExpenseFullyPaidStatus } from "../../finance/classify";
+import { computeOpenCycle, cycleBounds, currentCycleIndex, openingOfSnapshot, settlementResultOf, SETTLEMENT_RESULT_HE, type ComputedCycle } from "../../artist-balance-cycles-pure";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -53,13 +54,12 @@ function ctxOf(src: GatewaySources): Ctx {
 }
 const settingRows = (c: Ctx, family: string) => c.settings?.families[family]?.rows ?? null;
 
-/** The balance-cycle window rule of the app (anchor + 2-month windows, end exclusive; current = max(today's index, closed count)). */
-function addMonths(ymd: string, m: number) { const [y, mo, d] = ymd.split("-").map(Number); const t = new Date(Date.UTC(y, mo - 1 + m, d)); return t.toISOString().slice(0, 10); }
+/** The balance-cycle window rule of the app (anchor + 2-month windows, end exclusive; current = max(today's index, closed count)) —
+ *  the app's own pure module (lib/artist-balance-cycles-pure.ts), never a second rule. */
 export function cycleWindow(anchor: string, today: string, closedCount: number) {
-  let idx = 0;
-  while (addMonths(anchor, 2 * (idx + 1)) <= today && idx < 600) idx++;
-  const index = Math.max(today < anchor ? 0 : idx, closedCount);
-  return { index, start: addMonths(anchor, 2 * index), endExclusive: addMonths(anchor, 2 * (index + 1)) };
+  const index = currentCycleIndex(anchor, today, closedCount);
+  const { start, end } = cycleBounds(anchor, index);
+  return { index, start, endExclusive: end };
 }
 
 export function buildArtistView(src: GatewaySources, artistId: string) {
@@ -160,6 +160,23 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const anchorRow = settingRows(c, "ARTIST_BALANCE_CYCLE_ANCHOR")?.find((r) => r.key === `balance_cycle_anchor:${artistId}`) ?? null;
   const anchor = anchorRow && typeof (anchorRow.value as Record<string, unknown>)?.anchorDate === "string" ? String((anchorRow.value as Record<string, unknown>).anchorDate) : null;
   const win = anchor ? cycleWindow(anchor, c.today, cycles.length) : null;
+  const bootstrapRow = settingRows(c, "ARTIST_BALANCE_FIRST_CYCLE")?.find((r) => r.key === `balance_cycle_first_cycle_bootstrap:${artistId}`) ?? null;
+  const bootstrap = bootstrapRow && typeof (bootstrapRow.value as Record<string, unknown>)?.effectiveStart === "string" ? String((bootstrapRow.value as Record<string, unknown>).effectiveStart) : null;
+  // The open cycle's settlement picture — the SAME computation as the artist's balance page (Owner decision 2026-09-28:
+  // a close is a settlement picture, never a reset; the unpaid balance carries forward as the next opening balance).
+  const openCycle: ComputedCycle | null = anchor ? computeOpenCycle({
+    anchor, bootstrap, today: c.today,
+    closed: cycles.map((y) => ({ cycleIndex: y.cycleIndex ?? 0, startDate: y.startDate ?? "", endDate: y.endDate ?? "", income: y.income ?? 0, payments: y.payments ?? 0, expenses: y.expenses ?? 0, endingBalance: y.endingBalance ?? 0, closedAt: y.closedAt ?? "" })),
+    entries: ledger.map((e) => ({ id: e.id, entryType: e.entryType, amount: e.amount, entryDate: e.entryDate, createdAt: e.createdAt })),
+  }) : null;
+  const settlementOf = (oc: ComputedCycle) => ({
+    start: oc.startDate, endExclusive: oc.endDate, calcStart: oc.calcStartDate, daysUntilClose: oc.daysUntilClose,
+    openingBalance: oc.openingBalance,
+    activity: { income: oc.totals.income, expenses: oc.totals.expenses, payments: oc.totals.payments, expectedIncome: oc.totals.expectedIncome, expectedExpenses: oc.totals.expectedExpenses, net: oc.totals.currentBalance },
+    closingBalance: oc.closingBalance, result: oc.result, resultHe: SETTLEMENT_RESULT_HE[oc.result],
+    lateEntries: oc.lateEntryIds.length, reconciliationDifference: oc.reconciliationDifference,
+    formula: "closing = opening + artist income − artist expense share − payments to the artist (expected rows not counted); opening = the previous closed cycle's closing balance (first cycle: realized history before it)",
+  });
   const media = (c.ld?.mediaIncome?.rows ?? []).filter((m) => m.artistId === artistId).sort((a, b) => (b.receivedDate ?? b.createdAt ?? "").localeCompare(a.receivedDate ?? a.createdAt ?? ""));
   const signed = (m: (typeof media)[number], f: "grossAmount" | "labelShare" | "artistShareGross" | "artistPayable") => (m.recordType === "reversal" ? -1 : 1) * (m[f] ?? 0);
   const received = media.filter((m) => m.status === "התקבל");
@@ -207,7 +224,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     accounting: agreementArtist ? {
       model: "BI_MONTHLY_CYCLE",
       modelHe: AGREEMENT_CYCLE_ACCOUNTING_HE,
-      currentCycle: win ? { start: win.start, endExclusive: win.endExclusive, totals: totals(ledger.filter((e) => !!e.entryDate && e.entryDate >= win.start && e.entryDate < win.endExclusive)), note: "the cycle closes on endExclusive (the app's own cycle window, as on the artist's page)" } : null,
+      currentCycle: openCycle ? { ...settlementOf(openCycle), note: "the cycle closes on endExclusive (the app's own cycle computation, as on the artist's page)" } : null,
       components: {
         artistExpensesRecorded: { clipExpenses: ledgerClipExpenses, note: "the amounts the Owner recorded in the ledger ARE the accounting record (a small difference from the derived share is not a conflict)" },
         derivedArtistClipShareIls: fundedIls,
@@ -231,8 +248,10 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const money = {
     currencyRule: "the artist ledger, cycles and media income store NO currency (screens show ₪); shows carry one currency each and project / show finance rows carry their own currency — nothing is added across these",
     ledger: ledger.length || c.ld ? { entries: ledger.length, allTime: totals(), formula: "balance = income − payments − expenses (expected rows shown, not counted)", fromShows: ledger.filter((e) => e.sourceShowId || e.sourceTxId).length, rows: ledger.slice(0, 40).map((e) => ({ type: e.entryType, amount: e.amount, date: e.entryDate, description: e.description, note: e.note, source: e.sourceShowId ? `show:${e.sourceShowId}` : e.sourceTxId ? "show artist-fee finance row" : "manual" })) } : null,
-    cycles: { anchor, anchorSource: anchorRow ? "settings" : c.settings ? "NOT_SET" : "UNKNOWN", closed: cycles.map((y) => ({ index: y.cycleIndex, start: y.startDate, endExclusive: y.endDate, income: y.income, payments: y.payments, expenses: y.expenses, endingBalance: y.endingBalance, closedAt: y.closedAt })),
-      current: win ? { ...win, totals: totals(ledger.filter((e) => !!e.entryDate && e.entryDate >= win.start && e.entryDate < win.endExclusive)), rule: "app rule: 2-month windows from the anchor; early close advances the cycle" } : null },
+    cycles: { anchor, anchorSource: anchorRow ? "settings" : c.settings ? "NOT_SET" : "UNKNOWN", firstCycleBootstrap: bootstrap,
+      closed: cycles.map((y) => { const snap = { endingBalance: y.endingBalance ?? 0, income: y.income ?? 0, payments: y.payments ?? 0, expenses: y.expenses ?? 0 }; const res = settlementResultOf(snap.endingBalance);
+        return { index: y.cycleIndex, start: y.startDate, endExclusive: y.endDate, openingBalance: openingOfSnapshot(snap), income: y.income, payments: y.payments, expenses: y.expenses, closingBalance: y.endingBalance, result: res, resultHe: SETTLEMENT_RESULT_HE[res], closedAt: y.closedAt, snapshot: "IMMUTABLE" }; }),
+      current: win && openCycle ? { index: win.index, ...settlementOf(openCycle), rule: "app rule: 2-month windows from the anchor; early close advances the cycle; a close is a settlement picture (no payment, no offset, no reset) — an unpaid balance carries forward" } : null },
     mediaIncome: { records: media.length, receivedGross: r2(received.reduce((s, m) => s + signed(m, "grossAmount"), 0)), receivedArtistShare: r2(received.reduce((s, m) => s + signed(m, "artistShareGross"), 0)), receivedLabelShare: r2(received.reduce((s, m) => s + signed(m, "labelShare"), 0)), artistPayable: r2(received.reduce((s, m) => s + signed(m, "artistPayable"), 0)), expected: media.filter((m) => m.status === "צפוי").length, lastRecoupAfter,
       rows: media.map((m) => ({ type: m.recordType, status: m.status, gross: m.grossAmount, source: m.source, period: m.reportPeriod, received: m.receivedDate, labelShare: m.labelShare, artistShare: m.artistShareGross, recoupBefore: m.recoupBefore, recouped: m.recouped, payable: m.artistPayable, recoupAfter: m.recoupAfter, notes: m.notes })),
       note: "media income = a 50 / 50 INCOME split (artist / label). Since 2026-09-27 nothing is withheld (no recoup target). Snapshots stored before carry 'recouped' / 'payable' values from a retired rule — history, NEVER the repayment of a specific clip. The media record itself never touches the ledger (the Owner records the artist's media share there as income)" },
