@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
 
@@ -92,7 +93,7 @@ export default function QuickTxModal({ projectId, projectName, artist, initialTy
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/transactions", {
+      const res = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export default function QuickTxModal({ projectId, projectName, artist, initialTy
           notes:         draft.notes,
           category:      draft.category,
         }),
-      });
+      }, u)));
       if (!res.ok) throw new Error("שגיאה בשמירה");
       // Notify ProjectsTable to refresh finance badges
       document.dispatchEvent(new CustomEvent("rb-finance-updated"));

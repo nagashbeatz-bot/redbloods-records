@@ -10,6 +10,8 @@ import {
   otherCurrencyAmounts, formatCurrencyAmounts, formatOtherAmount, DEFAULT_CURRENCY, isReceivedStatus,
   isCancelledStatus, type CurrencyTotals,
 } from "@/lib/finance";
+import { askBusinessUnit, postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
+import { BUSINESS_UNITS, BUSINESS_UNIT_HE, BUSINESS_UNIT_SOURCE_HE, isBusinessUnit, isBusinessUnitSource, isUnclassifiedUnit, UNCLASSIFIED_HE } from "@/lib/business-unit";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const BRAND  = "#DC2626";
@@ -57,6 +59,9 @@ interface Transaction {
   created_at: string;
   /** Server-computed (GET /api/transactions, lib/finance/ownership): the writer that owns this row, or null. */
   owner?: TxOwnerUi | null;
+  /** Task 4 (2026-09-28): the Redbloods unit that owns the money; null = "דורש סיווג" (lib/business-unit). */
+  business_unit?: string | null;
+  business_unit_source?: string | null;
 }
 /** An owned row (show / mix / clip / Red Films / promotion / Victor salary): never deleted here; only `allowed` fields edit. */
 interface TxOwnerUi { owner: string; labelHe: string; whereHe: string; allowed: string[]; canDelete: false }
@@ -839,6 +844,8 @@ export default function FinancePage() {
   // Client-side-only enrichment filters over already-loaded data (no API/DB):
   const [searchQuery,    setSearchQuery]    = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  // business unit filter (task 4): "" = all, a unit, or "NONE" = דורש סיווג
+  const [unitFilter, setUnitFilter] = useState<string>("");
   const [contactFilter,  setContactFilter]  = useState("");
 
   // Modal
@@ -905,6 +912,8 @@ export default function FinancePage() {
     if (projectFilter          && t.project_id !== projectFilter) return false;
     if (sourceFilter !== "all" && (t.scope ?? "project") !== sourceFilter) return false;
     if (categoryFilter         && (t.category || "") !== categoryFilter) return false;
+    if (unitFilter === "NONE"  && !isUnclassifiedUnit(t)) return false;
+    if (unitFilter && unitFilter !== "NONE" && t.business_unit !== unitFilter) return false;
     if (contactFilter          && (t.artist   || "") !== contactFilter)  return false;
     if (searchQuery.trim()) {
       const q   = searchQuery.trim().toLowerCase();
@@ -985,6 +994,8 @@ export default function FinancePage() {
   const allStatuses    = [...new Set(transactions.map((t) => t.payment_status === "התקבל" ? "שולם" : t.payment_status))];
   // Filter option lists derived from loaded data only (no invented values).
   const allCategories  = [...new Set(transactions.map((t) => (t.category || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
+  // task 4: rows without a business unit ("דורש סיווג") — shown in the unit filter, never hidden
+  const unclassifiedCount = transactions.filter((t) => isUnclassifiedUnit(t)).length;
   const allContacts    = [...new Set(transactions.map((t) => (t.artist   || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -1055,9 +1066,9 @@ export default function FinancePage() {
         // keep the server-computed owner (the PATCH response is the bare row)
         if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? { ...data.transaction, owner: t.owner } : t));
       } else {
-        const res  = await fetch("/api/transactions", {
+        const res  = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-        });
+        }, u)));
         const data = await res.json();
         if (data.transaction) setTransactions((prev) => [data.transaction, ...prev]);
       }
@@ -1143,6 +1154,29 @@ export default function FinancePage() {
 
   // Single transaction row — extracted so it can render inside any group or the
   // flat month-grouped table. Behaviour (quick status, expand, edit) unchanged.
+  // ── business unit (task 4): the unit pill; "דורש סיווג" asks the Owner; a click changes the unit (OWNER_DECISION) ──
+  async function changeUnit(tx: Transaction) {
+    const current = isBusinessUnit(tx.business_unit) ? `היום: ${BUSINESS_UNIT_HE[tx.business_unit]}${isBusinessUnitSource(tx.business_unit_source) ? ` (${BUSINESS_UNIT_SOURCE_HE[tx.business_unit_source]})` : ""}. ` : "";
+    const unit = await askBusinessUnit(`${current}הבחירה נשמרת כהחלטת בעלים. הסכום, הסטטוס והפרויקט לא משתנים.`, isBusinessUnit(tx.business_unit) ? "שינוי יחידה עסקית" : "סיווג יחידה עסקית");
+    if (!unit || unit === tx.business_unit) return;
+    const res = await fetch(`/api/transactions/${tx.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessUnit: unit }) });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.transaction) setTransactions((prev) => prev.map((t) => t.id === tx.id ? { ...data.transaction, owner: t.owner } : t));
+  }
+  function unitPill(tx: Transaction) {
+    const none = isUnclassifiedUnit(tx);
+    const label = none ? UNCLASSIFIED_HE : BUSINESS_UNIT_HE[tx.business_unit as keyof typeof BUSINESS_UNIT_HE];
+    const col = none ? RED : TEXT2;
+    return (
+      <button type="button" title={none ? "אין יחידה עסקית — לחץ לסיווג" : `יחידה עסקית${isBusinessUnitSource(tx.business_unit_source) ? ` · ${BUSINESS_UNIT_SOURCE_HE[tx.business_unit_source]}` : ""} — לחץ לשינוי`}
+        onClick={(e) => { e.stopPropagation(); void changeUnit(tx); }}
+        style={{ fontSize: 10.5, fontWeight: 800, borderRadius: 6, padding: "1px 7px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+          color: col, background: none ? `${RED}14` : "rgba(255,255,255,0.045)", border: `1px solid ${none ? `${RED}40` : BDR}` }}>
+        {label}
+      </button>
+    );
+  }
+
   function renderTxRow(tx: Transaction, i: number, affiliation?: { label: string; icon: string; col: string }) {
     const proj     = projects.find((p) => p.id === tx.project_id);
     const isIncome = tx.type === "income";
@@ -1189,8 +1223,9 @@ export default function FinancePage() {
             <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {getTransactionLabel(tx)}
             </div>
-            <div style={{ fontSize: 10.5, color: undated ? AMBER : MUTED, marginTop: 2 }}>
-              {undated ? "ללא תאריך" : fmtDate(tx.date)}
+            <div style={{ fontSize: 10.5, color: undated ? AMBER : MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>{undated ? "ללא תאריך" : fmtDate(tx.date)}</span>
+              {unitPill(tx)}
             </div>
           </div>
           {/* שיוך — business source (project name / show / כללי) */}
@@ -1296,6 +1331,7 @@ export default function FinancePage() {
             <span style={chipText}>{aff.label}</span>
           </span>
           {contact && <span style={chip}><span style={chipText}>{contact}</span></span>}
+          {unitPill(tx)}
         </div>
       </div>
     );
@@ -1853,6 +1889,14 @@ export default function FinancePage() {
         }}>
           <option value="">כל הסטטוסים</option>
           {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <select className="rb-fin-f-unit" value={unitFilter} onChange={(e) => setUnitFilter(e.target.value)} style={{
+          ...selectStyle, color: unitFilter ? BRAND : unclassifiedCount ? RED : TEXT2, borderColor: unitFilter ? `${BRAND}40` : unclassifiedCount ? `${RED}55` : BDR,
+        }}>
+          <option value="">כל היחידות</option>
+          {BUSINESS_UNITS.map((u) => <option key={u} value={u}>{BUSINESS_UNIT_HE[u]}</option>)}
+          <option value="NONE">{`${UNCLASSIFIED_HE} (${unclassifiedCount})`}</option>
         </select>
 
         <select className="rb-fin-f-category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{

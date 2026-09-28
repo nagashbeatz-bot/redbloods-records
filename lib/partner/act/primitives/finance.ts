@@ -17,15 +17,20 @@ import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./dup
 import { FINANCE_OWNER_HE, transactionEditVerdict, type FinanceOwnerCode, type TxPatchField } from "@/lib/finance/ownership";
 import { ACTIVE_INCOME_STATUSES } from "@/lib/finance/classify";
 import { INCOME_SCOPES, songClipSplitBeforeAfter, songClipSplitText, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
+import { BUSINESS_UNITS, BUSINESS_UNIT_HE, BUSINESS_UNIT_SOURCE_HE, isBusinessUnit, isBusinessUnitSource } from "@/lib/business-unit";
 
-type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string };
+type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string; businessUnit?: string | null; businessUnitSource?: string | null };
 type FinSettings = { agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string };
 /** lib/finance/ownership FinanceOwnerCode — the SAME rule the Finance route enforces (assertTransactionEditable). */
 export type FinanceOwner = FinanceOwnerCode | null;
 export interface FinanceFamilyWriters {
   readTransaction(id: string): Promise<Tx | null>;
   financeOwnerOf(id: string): Promise<FinanceOwner>;
-  createTransaction(t: { projectId: string | null; scope: string; type: string; date: string; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string }): Promise<string>;
+  createTransaction(t: { projectId: string | null; scope: string; type: string; date: string; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string; businessUnit?: string | null }): Promise<string>;
+  /** lib/business-unit (task 4): the unit the rule gives a NEW row (null = no certain unit — the Boss must choose). Read-only. */
+  suggestBusinessUnit(f: { type: string; category: string | null; expenseScope: string | null; projectId: string | null }): Promise<{ unit: string | null; reasonHe: string }>;
+  /** lib/writes/business-unit setTransactionUnit — the Owner's explicit unit (OWNER_DECISION). */
+  setTransactionUnit(id: string, unit: string): Promise<boolean>;
   updateTransaction(id: string, patch: Record<string, unknown>): Promise<void>;
   deleteTransaction(id: string): Promise<void>;
   splitIncome(id: string, paid: number, receivedDate: string, method: string): Promise<"ok" | "not_found" | "conflict" | "invalid">;
@@ -101,13 +106,17 @@ async function addContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): 
   const p = k ? await d.readProjectMeta(k.id) : null;
   // duplicate awareness (POLISH FIX #1): the same project / general scope + type + currency + amount, near the date
   const q: DupQuery | null = typeof a.amount === "number" && typeof a.currency === "string" && (a.type === "income" || a.type === "expense") ? { kind: "TRANSACTION", projectId: k?.id ?? null, type: String(a.type), amount: a.amount, currency: a.currency } : null;
-  return { projectName: p ? p.name : null, ...(await dupContext(d, q, { date: realYmd(a.date) ? String(a.date) : null, text: [str(a.description), str(a.notes)].filter(Boolean).join(" "), currency: String(a.currency ?? "") })) };
+  // task 4: the business unit the rule gives this new row (null = no certain unit — the Boss chooses)
+  const unit = a.type === "income" || a.type === "expense"
+    ? await d.suggestBusinessUnit({ type: String(a.type), category: str(a.category) ?? null, expenseScope: str(a.expenseScope) ?? (a.type === "expense" ? "כללי" : null), projectId: p && k ? k.id : null })
+    : { unit: null, reasonHe: "" };
+  return { projectName: p ? p.name : null, unitSuggestion: unit.unit, unitReason: unit.reasonHe, ...(await dupContext(d, q, { date: realYmd(a.date) ? String(a.date) : null, text: [str(a.description), str(a.notes)].filter(Boolean).join(" "), currency: String(a.currency ?? "") })) };
 }
 
 export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "ADD_TRANSACTION", kinds: ["transaction"],
-    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false), ...DUP_ARGS], ["type", "amount", "currency", "paymentStatus", "date", "description", "expenseScope"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
+    meta: meta("רישום הכנסה / הוצאה", "Record an income or expense (project or general); amount, currency and status are explicit", [K("project", false), E("type", ["income", "expense"], true), { name: "amount", kind: "money", required: true }, E("currency", TX_CURRENCIES, true), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: true }, T("description"), T("artist"), E("paymentMethod", PAYMENT_METHODS), T("category"), T("notes"), E("expenseScope", EXPENSE_SCOPES), T("receiptRef"), K("session", false), E("businessUnit", BUSINESS_UNITS), ...DUP_ARGS], ["type", "amount", "currency", "paymentStatus", "date", "description", "expenseScope"], "createTransactionRecord (lib/writes/finance)", { reversible: "PARTIAL", compensation: "delete the new row (separate approved action)" }),
     createContext: addContext,
     async resolve(d, a) {
       if (a.project !== undefined && !parseKey(a.project, ["project"])) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
@@ -130,15 +139,19 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
       }
       for (const k of ["description", "artist", "category", "notes", "receiptRef"]) if (a[k] !== undefined && text(a[k], 500) === null) return refuse("BAD_TEXT", `${k} לא תקין`);
       if (a.session !== undefined && !parseKey(a.session, ["session"])) return refuse("BAD_ENTITY", "סשן לא תקין");
+      // task 4: the business unit — the rule's unit, or the Boss's explicit choice; never a guess, never a CORPORATE fallback
+      if (a.businessUnit !== undefined && !isBusinessUnit(a.businessUnit)) return refuse("BAD_ENUM", `יחידה עסקית: ${BUSINESS_UNITS.join(" / ")}`);
+      const unit = a.businessUnit !== undefined ? String(a.businessUnit) : isBusinessUnit(cur.unitSuggestion) ? String(cur.unitSuggestion) : null;
+      if (!unit) return refuse("NEEDS_BUSINESS_UNIT", `אין סיווג יחידה ודאי לרשומה הזו (${String(cur.unitReason ?? "")}) — בוס, לאיזו יחידה היא שייכת: Studio / Records / Films / Corporate? (businessUnit)`);
       const g = dupGate(a, cur, typeHe(type)); if (g) return g;
-      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date), description: str(a.description)?.trim() ?? "", ...(a.expenseScope !== undefined ? { expenseScope: String(a.expenseScope) } : {}) } };
+      return { ok: true, after: { type, amount: a.amount, currency: String(a.currency), paymentStatus: String(a.paymentStatus), date: String(a.date), description: str(a.description)?.trim() ?? "", businessUnit: unit, ...(a.expenseScope !== undefined ? { expenseScope: String(a.expenseScope) } : {}) } };
     },
     async apply(d, _id, after, a) {
       const k = parseKey(a.project, ["project"]);
-      return { createdId: await d.createTransaction({ projectId: k?.id ?? null, scope: k ? "project" : "general", type: String(after.type), date: String(after.date), description: str(a.description) ?? "", artist: str(a.artist) ?? "", amount: Number(after.amount), currency: String(after.currency), paymentStatus: String(after.paymentStatus), paymentMethod: str(a.paymentMethod) ?? "", receiptRef: str(a.receiptRef) ?? "", notes: str(a.notes) ?? "", category: str(a.category) ?? "", expenseScope: str(a.expenseScope) ?? "כללי", linkedSessionId: parseKey(a.session, ["session"])?.id ?? "" }) };
+      return { createdId: await d.createTransaction({ projectId: k?.id ?? null, scope: k ? "project" : "general", type: String(after.type), date: String(after.date), description: str(a.description) ?? "", artist: str(a.artist) ?? "", amount: Number(after.amount), currency: String(after.currency), paymentStatus: String(after.paymentStatus), paymentMethod: str(a.paymentMethod) ?? "", receiptRef: str(a.receiptRef) ?? "", notes: str(a.notes) ?? "", category: str(a.category) ?? "", expenseScope: str(a.expenseScope) ?? "כללי", linkedSessionId: parseKey(a.session, ["session"])?.id ?? "", businessUnit: String(after.businessUnit) }) };
     },
-    async verify(d, id, after) { const t = await d.readTransaction(id); return !!t && t.amount === after.amount && t.currency === after.currency && t.paymentStatus === after.paymentStatus && t.type === after.type; },
-    requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus), ...(after.type === "income" && after.expenseScope === "קליפ" ? ["קליפ"] : [])],
+    async verify(d, id, after) { const t = await d.readTransaction(id); return !!t && t.amount === after.amount && t.currency === after.currency && t.paymentStatus === after.paymentStatus && t.type === after.type && (t.businessUnit === undefined || t.businessUnit === after.businessUnit); },
+    requiredValues: (_a, after) => [money(Number(after.amount), String(after.currency)), String(after.paymentStatus), ...(after.type === "income" && after.expenseScope === "קליפ" ? ["קליפ"] : []), ...(isBusinessUnit(after.businessUnit) ? [BUSINESS_UNIT_HE[after.businessUnit]] : [])],
     warnings: (c, a) => [...dupWarnings(c, a), ...(a && a.type === "income" && a.expenseScope === "קליפ" ? ["הכנסה עם שיוך קליפ = כסף של עסקת הקליפ — לא נספרת מול מחיר השיר"] : [])],
     disclosuresHe: ["נוצרת רשומה כספית אחת; שום רשומה אחרת לא משתנה", "מטבעות לא מחוברים ולא מומרים", "לא יישלח Push או הודעה"],
   },
@@ -210,6 +223,24 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     requiredValues: (_a, after) => [String(after.paymentStatus)],
     warnings: (c) => [`הרשומה: ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}, היום '${c.paymentStatus}'`, ...(c.owner === "CLIP_ROW" ? ["סטטוס ששולם מסמן גם את שורת הקליפ המקושרת כ'שולם' (כמו באפליקציה)"] : [])],
     disclosuresHe: ["רק הסטטוס (ותאריך / אמצעי אם ציינת) משתנה — הסכום והמטבע לא", "התקבל / שולם = כסף שעבר; חלקי, צפוי, לא שולם, בוטל — לא", "לא יישלח Push או הודעה"],
+  },
+  {
+    // task 4 (2026-09-28): the Owner's unit for an existing row — a classification, allowed on rows owned by another writer
+    // too (it never touches money, status, currency, project or the artist ledger)
+    actionId: "SET_TRANSACTION_UNIT", kinds: ["transaction"],
+    meta: meta("סיווג יחידה עסקית של רשומה כספית (Studio / Records / Films / Corporate)", "Set a transaction's business unit (STUDIO / RECORDS / FILMS / CORPORATE) as the Owner's decision — the money, status, currency, project and artist ledger never change", [K("transaction"), E("businessUnit", BUSINESS_UNITS, true)], ["businessUnit", "businessUnitSource"], "setTransactionUnit (lib/writes/business-unit)", {}),
+    resolve: onTx, read: txFields,
+    plan(a, cur) {
+      if (!isBusinessUnit(a.businessUnit)) return refuse("BAD_ENUM", `יחידה עסקית: ${BUSINESS_UNITS.join(" / ")}`);
+      return finishPlan(cur, { businessUnit: String(a.businessUnit), businessUnitSource: "OWNER_DECISION" });
+    },
+    apply: async (d, id, a) => { if (!(await d.setTransactionUnit(id, String(a.businessUnit)))) throw new Error("transaction not found"); },
+    requiredValues: (_a, after) => [isBusinessUnit(after.businessUnit) ? BUSINESS_UNIT_HE[after.businessUnit] : String(after.businessUnit)],
+    warnings: (c) => [
+      `היום: ${isBusinessUnit(c.businessUnit) ? BUSINESS_UNIT_HE[c.businessUnit] : "דורש סיווג"}${isBusinessUnitSource(c.businessUnitSource) ? ` (${BUSINESS_UNIT_SOURCE_HE[c.businessUnitSource]})` : ""} — ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}`,
+      ...(c.businessUnitSource === "HISTORICAL_APPROVED" ? ["הסיווג הנוכחי הוא חלק מהיישור ההיסטורי שאישרת — השינוי מחליף אותו בהחלטה חדשה שלך"] : []),
+    ],
+    disclosuresHe: ["רק היחידה העסקית משתנה (החלטת בעלים) — הסכום, הסטטוס, המטבע, הפרויקט ויומן האמן לא", "לא יישלח Push או הודעה"],
   },
   {
     actionId: "MOVE_TRANSACTION", kinds: ["transaction"],

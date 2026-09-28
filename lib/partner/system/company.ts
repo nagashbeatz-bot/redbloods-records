@@ -359,6 +359,7 @@ export const REPO_COVERAGE: ReadonlyArray<{ pattern: string; cls: ModuleClass; d
   { pattern: "^lib/(social-)", cls: "DOMAIN_OWNED", domain: "SOCIAL", note: "incl. the social readiness checker / recommendations (display rules)" },
   { pattern: "^lib/(google-calendar|calendar-utils)", cls: "DOMAIN_OWNED", domain: "GOOGLE_CALENDAR", note: "" },
   { pattern: "^lib/finance/", cls: "DOMAIN_OWNED", domain: "FINANCE", note: "" },
+  { pattern: "^lib/business-unit", cls: "DOMAIN_OWNED", domain: "FINANCE", note: "task 4 (2026-09-28): the ONE rule for transactions.business_unit (STUDIO / RECORDS / FILMS / CORPORATE; NULL = דורש סיווג, never a CORPORATE fallback) + the read-only facts it needs" },
   { pattern: "^lib/coo/", cls: "CROSS_DOMAIN", domain: "COMPANY_OVERVIEW", note: "the older COO brief / cases / signals with P0–P3 tiers — an implementation attention engine, not Owner priority" },
   { pattern: "^lib/proposal-followups", cls: "DOMAIN_OWNED", domain: "CLIENTS", note: "pure proposal follow-up checks used by the client drawer" },
   { pattern: "^lib/(agent/|reports/)", cls: "LEGACY", domain: "AGENT_ALERTS / REPORTS", note: "the old rule-based agent-alert engine (its rule pipeline switched off; holiday + week-strength run) and the morning / evening / weekly report emails (deterministic recommendations). The in-app AI assistant was removed on 2026-09-25." },

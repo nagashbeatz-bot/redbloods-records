@@ -195,7 +195,10 @@ async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
   return {
     readTransaction: (id) => F.readTransaction(id),
     financeOwnerOf: (id) => F.financeOwnerOf(id),
-    createTransaction: async (t) => String((await F.createTransactionRecord(t)).id),
+    // task 4: Sunny is a MANUAL writer — the rule's unit or the Boss's explicit choice (never a guess)
+    createTransaction: async (t) => String((await F.createTransactionRecord({ ...t, unitWriter: "SUNNY" })).id),
+    async suggestBusinessUnit(f) { const U = await import("@/lib/writes/business-unit"); const d = await U.decideBusinessUnit({ writer: "SUNNY", ...f }); return { unit: d.unit, reasonHe: d.reasonHe }; },
+    setTransactionUnit: async (id, unit) => (await import("@/lib/writes/business-unit")).setTransactionUnit(id, unit),
     // the SAME ownership guard as the Finance route (lib/finance/ownership via assertTransactionEditable) — at execution too
     updateTransaction: async (id, patch) => { await F.assertTransactionEditable(id, patch); await F.updateTransactionRecord(id, patch as Parameters<typeof F.updateTransactionRecord>[1]); },
     deleteTransaction: async (id) => { await F.assertTransactionEditable(id, "delete"); await F.deleteTransactionRecord(id); },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { createTransactionRecord, FinanceInputError, financeOwnersFor, setFinanceSettings } from "@/lib/writes/finance";
+import { NeedsBusinessUnitError } from "@/lib/writes/business-unit";
 import { ownerUi } from "@/lib/finance/ownership";
 
 /** Adds `owner` (null or { owner, labelHe, whereHe, allowed, canDelete:false }) to each row — computed server-side in ONE batch. */
@@ -78,12 +79,14 @@ export async function POST(req: NextRequest) {
   const {
     projectId, scope, type, date, description, artist, amount,
     currency, paymentStatus, paymentMethod, receiptRef, notes, category,
-    linkedSessionId, expenseScope,
+    linkedSessionId, expenseScope, businessUnit,
   } = body;
   try {
-    const data = await createTransactionRecord({ projectId, scope, type, date, description, artist, amount, currency, paymentStatus, paymentMethod, receiptRef, notes, category, linkedSessionId, expenseScope });
+    // business unit (task 4): the rule decides; without a certain unit the person must choose (422 → the screen asks)
+    const data = await createTransactionRecord({ projectId, scope, type, date, description, artist, amount, currency, paymentStatus, paymentMethod, receiptRef, notes, category, linkedSessionId, expenseScope, businessUnit, unitWriter: "FINANCE_MANUAL" });
     return NextResponse.json({ transaction: data });
   } catch (err) {
+    if (err instanceof NeedsBusinessUnitError) return NextResponse.json({ error: err.message, code: err.code, reasonHe: err.reasonHe, options: err.options }, { status: 422 });
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: err instanceof FinanceInputError ? 400 : 500 });
   }

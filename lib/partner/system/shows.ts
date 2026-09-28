@@ -117,7 +117,7 @@ export const MONEY_MODEL = {
     { row: "ARTIST_FEE", category: "שכר אמן", scope: "הופעה", when: "confirmed + artist fee > 0", status: "created צפוי; שולם only explicitly (close flag / MARK_SHOW_FEE_PAID / Finance edit) — never from the client payment; → בוטל when cancelled / fee 0 unless שולם; בוטל → צפוי when the fee stands again", amount: "split artist fee (re-priced only while not שולם)", party: "artist text (full, incl. collaborations)" },
     { row: "REHEARSAL", category: "חזרה", scope: "הופעה", when: "a rehearsal session with cost > 0", status: "session payment (שולם / לא שולם)", amount: "cost", party: "artist" },
   ],
-  rowRules: "every row carries transactions.show_id + show_money_role (the canonical link; the 'show_id:<id>' note is kept for older readers); one expected-balance row per show (DB unique index); re-syncs patch, never duplicate; a payment row is never deleted / re-priced by a sync; A1: the DJ / artist rows are independent obligations — their status never follows the client payment, and a שולם fee row is never re-priced / re-dated / re-currencied (a mismatch is reported as a finance warning + logged, never overwritten)",
+  rowRules: "task 4 (2026-09-28): every NEW show row gets transactions.business_unit by the ONE unit rule — RECORDS for a show of a Records roster artist (exact single name on label_artists), NULL (דורש סיווג) for a collab / other artist, never a guess; the sync never re-derives a unit. Every row carries transactions.show_id + show_money_role (the canonical link; the 'show_id:<id>' note is kept for older readers); one expected-balance row per show (DB unique index); re-syncs patch, never duplicate; a payment row is never deleted / re-priced by a sync; A1: the DJ / artist rows are independent obligations — their status never follows the client payment, and a שולם fee row is never re-priced / re-dated / re-currencied (a mismatch is reported as a finance warning + logged, never overwritten)",
   ledger: "see LEDGER_SYNC — the artist ledger is separate money (no currency)",
 } as const;
 
@@ -251,7 +251,7 @@ export const SHOW_REVIEWED_FILES = [
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-store.ts": "62db5ba2642c0db7d2bff609e13c72feeed3f1dd67748002a2327693b809eae7",
   "lib/shows-types.ts": "4ff774de1368126c2f9ad65dba06e417a341e452cc75c667a4edd162ab993aa3",
-  "lib/shows-finance-sync.ts": "d7abe648a28ea15c9ffb10ff92ea208f5b5f16902e549665a90c4cff018b369c",
+  "lib/shows-finance-sync.ts": "731484cbcf5b57e7cec7e1779ee9118624dc1401e45930a766958cd39a0f3dd7",
   "lib/artist-balance-show-sync.ts": "578ae5accad84c65e945050a5b343398823751e96325f491a6ae9c906821584c",
   "lib/artist-balance-show-sync-pure.ts": "b695fd979b16ebfc38b97a05517fb34505b31db431dc8a3587bf7c11f712eba3",
   "lib/artist-balance-show-close-sync.ts": "f5dc1d4a95233d8db0a2eece60db8616e9f8ed7432ea9fa4ce1021dfe0ad6e46",

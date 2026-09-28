@@ -120,7 +120,7 @@ export async function linkRfPaymentToFinance(paymentId: string, opts: { allowDup
   if (plan.kind === "SCOPE_REQUIRED" || plan.kind === "PROJECT_REQUIRED") return { kind: plan.kind, he: plan.he };
   if (!opts.allowDuplicate && plan.candidates.some((c) => c.level === "LIKELY_SAME")) return { kind: "POSSIBLE_DUPLICATE", candidates: plan.candidates };
   const e = plan.expense;
-  const tx = await createTransactionRecord({ projectId: e.projectId, scope: "project", type: "expense", date: e.date, description: e.description, amount: e.amount, currency: e.currency, paymentStatus: e.paymentStatus, paymentMethod: e.paymentMethod, notes: e.notes, category: e.category, expenseScope: e.expenseScope });
+  const tx = await createTransactionRecord({ unitWriter: "RF_PAYMENT", projectId: e.projectId, scope: "project", type: "expense", date: e.date, description: e.description, amount: e.amount, currency: e.currency, paymentStatus: e.paymentStatus, paymentMethod: e.paymentMethod, notes: e.notes, category: e.category, expenseScope: e.expenseScope });
   const txId = String(tx.id);
   const { data: claimed, error } = await supabase.from("red_films_budget_payments").update({ linked_transaction_id: txId, updated_at: new Date().toISOString() }).eq("id", paymentId).is("linked_transaction_id", null).select("id");
   if (error || !claimed || claimed.length === 0) {

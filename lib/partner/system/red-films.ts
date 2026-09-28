@@ -164,6 +164,7 @@ export const MONEY_MODEL = {
     "ACTUAL_EXPENSE: Finance expenses with expense scope קליפ (from 'העבר לכספים', a shoot-day expense, or a manual Finance entry) — canonical once they exist",
     "PAID_EXPENSE: an expense with status שולם (חלקי = partial; התקבל = invalid for an expense)",
     "CLIP_DEAL_INCOME: the artist's clip payments (INCOME with scope קליפ) vs the clip price — revenue, never an expense",
+    "BUSINESS_UNIT (task 4, Owner decision 2026-09-28): a REAL clip cost of a Records (label) project is RECORDS — Red Films may execute it, but there is no internal revenue, transfer or theoretical cost for Films. Clip money of a client project is FILMS only when the project has a Red Films production for an external client; otherwise it is NULL (דורש סיווג) and the Owner decides (e.g. בלאגן is a Studio deal). RF payment rows, 'העבר לכספים' rows and clip deal payments get their unit from the ONE unit rule on creation.",
   ],
   promote: "'העבר לכספים' on a clip planning row: the row is CLAIMED first (status → הועבר לכספים only while it has no linked expense — a double click could create two expenses before 2026-09-27; now the second click finds the claim), then an expense (project scope, status לא שולם, expense scope קליפ, amount + currency of the row, the date chosen) is created and the row is KEPT and linked to it (plan → actual provenance); a failed insert releases the claim. The expense is canonical; a plan ≠ expense difference is CLIP_PLAN_VS_EXPENSE. The expense is owned by the row in Finance (not deletable there; amount / currency / description / category stay editable). No Owner check in the route (proxy only).",
   shootExpense: "adding a shoot day can optionally create an expense (status לא שולם, category צילום קליפ, expense scope קליפ, linked to the session).",
@@ -321,10 +322,10 @@ export const RF_REVIEWED_FILES = [
   "lib/writes/redfilms.ts", "lib/writes/clip.ts", "lib/writes/rf-finance-link.ts", "app/api/red-films/budget-payments/[paymentId]/route.ts",
 ] as const;
 export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
-  "lib/writes/rf-finance-link.ts": "f52f1ca69977e0e0ca1f97ee75e37f259e8fb897e1e818a5ea3b52e294c44b0f",
+  "lib/writes/rf-finance-link.ts": "99e21fccf0c24d71c94870b907e0f72ab12853a1fe255bfca43a4a9d3e072472",
   "app/api/red-films/budget-payments/[paymentId]/route.ts": "d0986855ef6d1d2e5eaffa7858101c3233d0bb7ad2abcc6c443185fdde5c657b",
-  "lib/writes/redfilms.ts": "3759b8d1d0aee614b61f8ec10407b712643de60f4c17cd8e6b6612af816dbbc3",
-  "lib/writes/clip.ts": "854faa39dfa6295ac21fad9e3ccf7810e3f6e29ff294c6721c5aef6d68ea1587",
+  "lib/writes/redfilms.ts": "a5c6a7523840029624bf88071c5a5636b6a2fd64787aee3640cd1e1343e89c7b",
+  "lib/writes/clip.ts": "e37ff6bd9b0fc9b0e1b09bbf0a724c6dea5e5513562ca390998fb39eeab2edbc",
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",
   "lib/label-clips.ts": "f69745076431936c8cca1237f4e34557eb7f9a6b443765eebf55de91043ac7c4",

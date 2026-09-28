@@ -109,6 +109,7 @@ export const PROJECT_MONEY_MODEL = {
     "A cancelled project's remaining balance is not collectible.",
     "No agreed price (0 / missing) is PRICE_UNKNOWN: never 'paid', never 'free' — fully paid needs agreed > 0 (one shared project summary for the UI badges and Sunny).",
     "Other currencies are listed separately and never converted; every total is a per-currency map.",
+    "Task 4 (2026-09-28): the business unit is a property of each TRANSACTION (transactions.business_unit), not of the project — a project can hold money of more than one unit; the project type only feeds the ONE unit rule. Nothing is inherited from other rows of the project. Every screen that creates a project transaction asks for a unit when no rule is certain (422 NEEDS_BUSINESS_UNIT).",
   ],
   sunnyImplementation: "project_view mirrors the Finance Brain's per-project loop with the same shared primitives and explains its verdict.",
   conflictsHe: [
@@ -185,6 +186,6 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
   "lib/finance/classify.ts": "737c8f69b79f2b08606b78c26e9a3d4f0312f0b723edd68deea2ab02cd87aefd",
   "lib/project-paths.ts": "69c88d46ab47affddbe1b1d94dcfc118026e94a2bc0e41c85b5e4a5ae7e46b07",
-  "components/ui/ProjectDrawer.tsx": "d0afb601d99b1f88fd9cf55a2d3abb7f561a7407cbb0c3201372f1a4878a815e",
+  "components/ui/ProjectDrawer.tsx": "e4397a2e3f454e60da710ff29f3d618d7d517b1aeb85551e381d8dc787477e11",
   "components/AppShell.tsx": "9e6cab9ae8c07d28f32c07f37a078b05312627a751fa738fa67825eee5f9e800",
 };

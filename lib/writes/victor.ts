@@ -13,6 +13,7 @@
  *     JSON column blindly.
  */
 import { supabase } from "@/lib/supabase";
+import { inferBusinessUnit, unitColumns } from "@/lib/business-unit";
 import type { BriefSegment, BriefSegmentType, FileLink, VersionReview } from "@/lib/types";
 type VendorWork = NonNullable<Awaited<ReturnType<typeof import("@/lib/vendor-store").getScopedVictorWork>>>;
 
@@ -147,6 +148,7 @@ export async function recordVictorSalaryMonth(p: { workMonth: string; amount: nu
     scope: "general", type: "expense", project_id: null, artist: "Victor", description: salaryTransactionDescription(workMonth), amount, currency,
     payment_status: historicPaid ? "שולם" : "לא שולם", category: "צוות", date: paidDate ?? dueDate, linked_session_id: linkedId,
     notes: historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "", payment_method: "", receipt_ref: "", expense_scope: "כללי",
+    ...unitColumns(inferBusinessUnit({ writer: "VICTOR", type: "expense" })), // Victor = Studio (task 4, RULE)
   }).select().single();
   if (error) {
     const conflict = error.code === "23505" && /\btransactions_victor_salary_period_uk\b/.test(`${error.message ?? ""} ${error.details ?? ""}`);

@@ -13,6 +13,7 @@ import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOt
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import { PROJECT_TYPES } from "@/lib/types";
 import { isPastUnconfirmed, localNowString, PAST_UNCONFIRMED_LABEL } from "@/lib/session-duration";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -705,7 +706,7 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
 
         // Optional linked payment — project-scoped, so only when a project is set.
         if (sessProjectId && showPayment && paymentAmount && Number(paymentAmount) > 0) {
-          await fetch("/api/transactions", {
+          await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -718,7 +719,7 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
               paymentStatus: "צפוי",
               linkedSessionId: d.session.id,
             }),
-          }).catch(() => {});
+          }, u))).catch(() => {});
         }
 
         onSaved({ type: "session", data: d.session });

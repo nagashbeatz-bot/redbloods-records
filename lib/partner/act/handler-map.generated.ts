@@ -3039,6 +3039,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "contact_person",
    "currency",
    "date",
+   "deal_type",
    "dj_client_id",
    "dj_fee",
    "dj_name",
@@ -3085,6 +3086,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "contact_person",
    "currency",
    "date",
+   "deal_type",
    "dj_client_id",
    "dj_fee",
    "dj_name",
@@ -3130,6 +3132,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "contact_person",
    "currency",
    "date",
+   "deal_type",
    "dj_client_id",
    "dj_fee",
    "dj_name",
@@ -3810,7 +3813,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "75524787973d6b855a1d6d2ca52a327ebd8908d82b271b19463e3c1ebc8ad662",
+  "sha256": "37dab80a8972a939ba49ff45b0083dfbe03989ef738112a2201dce898c4318b6",
   "effects": [
    "DELETION",
    "FINANCE",
@@ -3820,6 +3823,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "agreedPrice",
    "amount",
    "artist",
+   "businessUnit",
    "category",
    "currency",
    "date",
@@ -3842,7 +3846,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receiptRef",
    "receipt_ref",
    "scope",
-   "type"
+   "type",
+   "unitWriter"
   ]
  },
  "app/api/transactions/[id]/split/route.ts": {
@@ -3860,6 +3865,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "agreedPrice",
    "amount",
    "artist",
+   "businessUnit",
    "category",
    "currency",
    "date",
@@ -3884,7 +3890,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receipt_ref",
    "receivedDate",
    "scope",
-   "type"
+   "type",
+   "unitWriter"
   ]
  },
  "app/api/transactions/route.ts": {
@@ -3893,7 +3900,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "1e31b96daf8943ff787b0d425e20465675043ac8464c42f14ff448306590e6db",
+  "sha256": "13fc08cb7a391ddeae2840d577e9270ad521bcf8c1d387282cae77227aa2e84f",
   "effects": [
    "DELETION",
    "FINANCE",
@@ -3903,6 +3910,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "agreedPrice",
    "amount",
    "artist",
+   "businessUnit",
    "category",
    "currency",
    "date",
@@ -3925,7 +3933,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "receiptRef",
    "receipt_ref",
    "scope",
-   "type"
+   "type",
+   "unitWriter"
   ]
  },
  "app/api/vendor/victor/avatar/route.ts": {

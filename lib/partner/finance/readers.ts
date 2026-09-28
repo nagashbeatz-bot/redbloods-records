@@ -40,7 +40,7 @@ const FINANCE_KEY = /^finance_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 
 export async function readFinanceRaw(client: FinanceReadClient, readSalary: () => Promise<SalaryMonthRow[]>): Promise<FinanceRaw> {
   const [tx, projects, settings, works, shows, proposals, clients, labelArtists, ledger, media, rfPay, legacyVictor, victorConfig, victorDescribed] = await Promise.all([
-    readAll(client, "transactions", "id,project_id,type,date,amount,currency,payment_status,category,scope,expense_scope,linked_session_id,show_id,show_money_role,created_at"),
+    readAll(client, "transactions", "id,project_id,type,date,amount,currency,payment_status,category,scope,expense_scope,linked_session_id,show_id,show_money_role,created_at,business_unit,business_unit_source"),
     readAll(client, "projects", "id,name,status,is_hidden,project_business_type,artist,updated_at"),
     readAll(client, "settings", "key,value", ["key", "finance_%"]),
     readAll(client, "sound_engineer_work", "id,project_id,engineer_name,status,agreed_price,amount_paid,currency,linked_transaction_id,payment_date"),
@@ -61,7 +61,7 @@ export async function readFinanceRaw(client: FinanceReadClient, readSalary: () =
   let victorSalary: SalaryMonthRow[] | null = null;
   try { victorSalary = await readSalary(); } catch { victorSalary = null; }
   return {
-    transactions: tx.map((r) => ({ id: String(r.id), projectId: s(r.project_id), type: s(r.type), date: s(r.date), amount: r.amount, currency: s(r.currency), status: s(r.payment_status), category: s(r.category), scope: s(r.scope), expenseScope: s(r.expense_scope), linkedSessionId: s(r.linked_session_id), showId: s(r.show_id), showMoneyRole: s(r.show_money_role), createdAt: s(r.created_at), description: victorText.get(String(r.id)) ?? null })),
+    transactions: tx.map((r) => ({ id: String(r.id), projectId: s(r.project_id), type: s(r.type), date: s(r.date), amount: r.amount, currency: s(r.currency), status: s(r.payment_status), category: s(r.category), scope: s(r.scope), expenseScope: s(r.expense_scope), linkedSessionId: s(r.linked_session_id), showId: s(r.show_id), showMoneyRole: s(r.show_money_role), createdAt: s(r.created_at), description: victorText.get(String(r.id)) ?? null, businessUnit: s(r.business_unit), businessUnitSource: s(r.business_unit_source) })),
     projects: projects.map((r) => ({ id: String(r.id), name: String(r.name ?? ""), status: String(r.status ?? ""), isHidden: r.is_hidden === true, businessType: s(r.project_business_type), artist: s(r.artist), updatedAt: s(r.updated_at) })),
     financeSettings: settings.flatMap((r) => { const m = FINANCE_KEY.exec(String(r.key)); return m ? [{ projectId: m[1], value: r.value }] : []; }),
     engineerWorks: works.map((r) => ({ id: String(r.id), projectId: s(r.project_id), engineerName: s(r.engineer_name), status: s(r.status), agreedPrice: r.agreed_price, amountPaid: r.amount_paid, currency: s(r.currency), linkedTransactionId: s(r.linked_transaction_id), paymentDate: s(r.payment_date) })),

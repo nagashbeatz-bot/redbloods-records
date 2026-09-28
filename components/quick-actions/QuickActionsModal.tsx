@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
 import ScheduleModal from "@/components/project/ScheduleModal";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 // ─── Categories shown in the central "quick actions" grid ──────────────────────
 // Only "session" is wired up; the rest are placeholders for the next phase.
@@ -239,7 +240,7 @@ export default function QuickActionsModal({ initialProjectId, initialClientName,
     // "קיבלתי עכשיו" must always be dated today, even if a stale state lingered.
     const finalDate = moneyMode === "received" ? todayIsrael : (moneyDate || null);
     try {
-      const res = await fetch("/api/transactions", {
+      const res = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -255,7 +256,7 @@ export default function QuickActionsModal({ initialProjectId, initialClientName,
           description:   reason.trim() || category || fallbackDesc,
           artist:        artistName,
         }),
-      });
+      }, u)));
       if (!res.ok) throw new Error("שגיאה בשמירה");
       // Same refresh signal QuickTxModal uses.
       document.dispatchEvent(new CustomEvent("rb-finance-updated"));

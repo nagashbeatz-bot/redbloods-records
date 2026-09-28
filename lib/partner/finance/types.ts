@@ -26,6 +26,10 @@ export interface FinanceTxRow {
   createdAt: string | null;
   /** F2.31 (optional): the row description — used ONLY to detect an unkeyed row carrying the canonical Victor salary text. */
   description?: string | null;
+  /** Task 4 (2026-09-28): the unit that owns the money (STUDIO / RECORDS / FILMS / CORPORATE); null = דורש סיווג; undefined = not read (older fixtures). */
+  businessUnit?: string | null;
+  /** RULE / OWNER_DECISION / HISTORICAL_APPROVED (business provenance) */
+  businessUnitSource?: string | null;
 }
 export interface FinanceProjectRow { id: string; name: string; status: string; isHidden: boolean; businessType: string | null; artist: string | null; updatedAt: string | null }
 /** settings key `finance_<projectId>` (any projectId — orphans included). */
@@ -184,7 +188,7 @@ export type SignalCode =
   | "PRICE_MISSING" | "COMPLETED_WORK_EXPENSE_NO_INCOME" | "DUE_DATE_MISSING" | "TRANSACTION_PROJECT_LINK_MISSING"
   | "CURRENCY_AMBIGUOUS" | "CURRENCY_SETTLEMENT_AMBIGUOUS" | "RECURRING_CLASSIFICATION_UNKNOWN" | "ORPHAN_PRICE_SETTINGS"
   | "SHOW_PRICE_MISSING" | "DUPLICATE_LOOKING_RECORDS" | "MALFORMED_RECORDS" | "LABEL_LEDGER_NO_CURRENCY"
-  | "MEDIA_INCOME_NO_CURRENCY" | "RED_FILMS_OUTSIDE_FINANCE" | "UNDATED_RECORDS" | "POSSIBLE_OBLIGATION_OVERLAP";
+  | "MEDIA_INCOME_NO_CURRENCY" | "RED_FILMS_OUTSIDE_FINANCE" | "UNDATED_RECORDS" | "POSSIBLE_OBLIGATION_OVERLAP" | "UNCLASSIFIED_BUSINESS_UNIT";
 export interface FinanceSignal {
   code: SignalCode;
   epistemic: Epistemic;

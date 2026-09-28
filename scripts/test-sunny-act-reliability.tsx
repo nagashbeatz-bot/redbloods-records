@@ -36,6 +36,8 @@ function mk() {
     async readProjectMeta(id: string) { return w.projects[id] ? { name: w.projects[id].name, artist: "", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },
     async readTransaction(id: string) { return w.tx[id] ? { ...w.tx[id] } : null; },
     async financeOwnerOf() { return null; },
+    // task 4: the rule gives these rows a certain unit (the reliability checks are about execution, not classification)
+    async suggestBusinessUnit() { return { unit: "RECORDS", reasonHe: "כלל" }; },
     // like lib/writes/duplicates.ts: the focused reader, WITH the row id
     async similarRecords(q: { kind: string; projectId?: string | null; type?: string; amount?: number; currency?: string }) {
       calls.push("similarRecords");

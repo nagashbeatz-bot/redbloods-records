@@ -15,6 +15,7 @@
  * project's classification (lib/clip-rf-money-pure rfClientSourceFor).
  */
 import { supabase } from "@/lib/supabase";
+import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 import { touchProject } from "@/lib/projects-store";
 import { CLIP_ITEM_PROMOTED_STATUS, CLIP_ITEM_STATUSES, isClipItemStatus, rfClientSourceFor, RF_CLIENT_SOURCES } from "@/lib/clip-rf-money-pure";
 
@@ -248,7 +249,11 @@ export async function promoteClipItem(id: string, date: string): Promise<{ kind:
     .eq("id", id).is("linked_transaction_id", null).eq("status", prevStatus).select("id");
   if (claimErr) throw new Error(claimErr.message);
   if (!claimed || claimed.length === 0) return { kind: "not_found" };
+  // business unit (task 4): a real clip cost of a Records project → RECORDS; of a client project → FILMS only with an
+  // external-client Red Films production; otherwise "דורש סיווג"
+  const unit = await unitColumnsOrUnclassified({ writer: "CLIP_PROMOTE", type: "expense", expenseScope: "קליפ", projectId: item.project_id as string | null });
   const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+    ...unit,
     project_id: item.project_id, scope: "project", type: "expense", date: date || null, description: item.description || item.category || "הוצאת קליפ", artist: "",
     amount: item.amount, currency: item.currency, payment_status: "לא שולם", payment_method: "", receipt_ref: "", notes: item.notes || "", category: item.category || "קליפ",
     linked_session_id: "", expense_scope: "קליפ",

@@ -419,6 +419,10 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   const rfNoCurrency = rfPaid.filter((p) => !p.currency);
   const undated = txs.filter((t) => !t.date && !t.cancelled);
   sig("UNDATED_RECORDS", "FACT", undated.length, undated.map((t) => txEv(t, "NO_DATE")), undated.reduce((m, t) => add(m, t.currency, t.amount), {} as CurrencyTotals));
+  // task 4: a row whose business unit is explicitly NULL = "דורש סיווג" (the Owner decides; never a CORPORATE fallback).
+  // A row read without the column (undefined — older fixtures) is not counted.
+  const unclassified = txs.filter((t) => t.row.businessUnit === null);
+  sig("UNCLASSIFIED_BUSINESS_UNIT", "FACT", unclassified.length, unclassified.map((t) => txEv(t, "NO_BUSINESS_UNIT")), unclassified.reduce((m, t) => add(m, t.currency, t.amount), {} as CurrencyTotals), "NEEDS_OWNER_REVIEW");
   sig("POSSIBLE_OBLIGATION_OVERLAP", "HYPOTHESIS", possibleOverlaps.length, possibleOverlaps.flatMap((e) => e.evidence), possibleOverlaps.reduce((m, e) => add(m, e.currency, e.amount), {} as CurrencyTotals));
 
   // ── coverage (factual categories — no score) ──

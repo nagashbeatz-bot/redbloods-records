@@ -230,9 +230,10 @@ const tick = () => new Promise((r) => setTimeout(r, 5));
     ok("an income without a project is refused (NO_PROJECT)", r.status === "NO_PROJECT", r.status); }
   ok("the split preview is pure and per currency", (() => { const s = PURE.songClipSplitBeforeAfter([{ id: "a", amount: 100, currency: "$", paymentStatus: "צפוי", expenseScope: "כללי" }, { id: "b", amount: 50, currency: "₪", paymentStatus: "בוטל", expenseScope: "כללי" }], "a", "קליפ"); return s.before["$"].song.open === 100 && s.after["$"].clip.open === 100 && !s.before["₪"]; })());
   reset({ transactions: [] });
-  await FIN.createTransactionRecord({ projectId: "p1", scope: "project", type: "income", amount: 3500, currency: "₪", paymentStatus: "התקבל", expenseScope: "קליפ" });
-  await FIN.createTransactionRecord({ scope: "general", type: "income", amount: 10, currency: "₪", expenseScope: "קליפ" });
-  await FIN.createTransactionRecord({ projectId: "p1", scope: "project", type: "income", amount: 10, currency: "₪", expenseScope: "שיווק" });
+  // (an explicit unit: these rows test the scope rule; a manual create without a certain unit is refused — task 4)
+  await FIN.createTransactionRecord({ projectId: "p1", scope: "project", type: "income", amount: 3500, currency: "₪", paymentStatus: "התקבל", expenseScope: "קליפ", businessUnit: "FILMS" });
+  await FIN.createTransactionRecord({ scope: "general", type: "income", amount: 10, currency: "₪", expenseScope: "קליפ", businessUnit: "STUDIO" });
+  await FIN.createTransactionRecord({ projectId: "p1", scope: "project", type: "income", amount: 10, currency: "₪", expenseScope: "שיווק", businessUnit: "STUDIO" });
   ok("the writer: project income may be קליפ; general income / any other income scope stays כללי", JSON.stringify(T("transactions").map((t) => t.expense_scope)) === JSON.stringify(["קליפ", "כללי", "כללי"]), T("transactions").map((t) => t.expense_scope));
 
   // ── 6. legacy drawer never resets an income's scope ─────────────────────────────────────────────────────────────

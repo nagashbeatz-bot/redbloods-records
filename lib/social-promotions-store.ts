@@ -1,5 +1,6 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
+import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 
 /**
  * Social "קידום ותקציב" (promotion/budget) store.
@@ -217,10 +218,13 @@ export async function syncActualExpense(promotionId: string, actualAmount: numbe
     .from("social_campaigns").select("project_id").eq("id", promo.campaign_id).maybeSingle();
   const projectId = ((camp?.project_id as string | null) ?? null) || null;
 
+  // business unit (task 4): a promotion of a Records (label) project → RECORDS; anything else stays "דורש סיווג"
+  const unit = await unitColumnsOrUnclassified({ writer: "PROMOTION", type: "expense", category: promo.channel || "", expenseScope: "שיווק", projectId });
   // Create the transaction (source of truth for the spend).
   const { data: tx, error: txErr } = await supabase
     .from("transactions")
     .insert({
+      ...unit,
       project_id:        projectId,
       scope:             projectId ? "project" : "general",
       type:              "expense",

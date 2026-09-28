@@ -15,12 +15,18 @@ import { touchProject } from "@/lib/projects-store";
 import { isActualMoneyTx, isDeprecatedPaymentStatus } from "@/lib/finance/classify";
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
 import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
+import { copyUnitToSplitRows, recomputeUnitIfRule, setTransactionUnit, unitColumnsForNewTransaction } from "@/lib/writes/business-unit";
+import type { UnitWriter } from "@/lib/business-unit";
 import { changedTxFields, ownerFromLinks, transactionEditVerdict, type FinanceOwnerCode, type TxCurrent, type TxEditVerdict, type TxOwnerLinks, type TxPatchField } from "@/lib/finance/ownership";
 
 export interface TransactionInput {
   projectId?: string | null; scope?: string | null; type: string; date?: string | null; description?: string | null; artist?: string | null;
   amount?: number | string | null; currency?: string | null; paymentStatus?: string | null; paymentMethod?: string | null; receiptRef?: string | null;
   notes?: string | null; category?: string | null; linkedSessionId?: string | null; expenseScope?: string | null;
+  /** the Owner's explicit unit (STUDIO / RECORDS / FILMS / CORPORATE); omitted = the rule decides (lib/business-unit) */
+  businessUnit?: string | null;
+  /** who creates the row: a manual writer must end with a unit (NeedsBusinessUnitError), an automatic one may stay unclassified */
+  unitWriter?: UnitWriter;
 }
 export class FinanceInputError extends Error {}
 /** A deprecated status (lib/finance/classify DEPRECATED_PAYMENT_STATUSES) is never written by a new write. */
@@ -41,11 +47,14 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
   if (!b.type) throw new FinanceInputError("type required");
   if (txScope === "project" && !b.projectId) throw new FinanceInputError("projectId required for project-scoped transactions");
   if (isDeprecatedPaymentStatus(b.paymentStatus)) throw new FinanceInputError(DEPRECATED_STATUS_MESSAGE);
+  const expenseScope = txScopeForCreate(b.type, b.expenseScope, txScope === "project" && !!b.projectId);
+  // business unit (task 4): the rule, or the Owner's choice; a manual create without a certain unit is refused (422)
+  const unit = await unitColumnsForNewTransaction({ writer: b.unitWriter ?? "FINANCE_MANUAL", type: b.type, category: b.category, expenseScope, projectId: txScope === "general" ? null : (b.projectId || null), ownerChoice: b.businessUnit ?? null });
   const { data, error } = await supabase.from("transactions").insert({
     project_id: txScope === "general" ? null : (b.projectId || null), scope: txScope, type: b.type, date: b.date || null,
     description: b.description || "", artist: b.artist || "", amount: Number(b.amount) || 0, currency: b.currency || "₪",
     payment_status: b.paymentStatus || "צפוי", payment_method: b.paymentMethod || "", receipt_ref: b.receiptRef || "", notes: b.notes || "",
-    category: b.category || "", linked_session_id: b.linkedSessionId || "", expense_scope: txScopeForCreate(b.type, b.expenseScope, txScope === "project" && !!b.projectId),
+    category: b.category || "", linked_session_id: b.linkedSessionId || "", expense_scope: expenseScope, ...unit,
   }).select().single();
   if (error) throw new Error(error.message);
   if (txScope === "project" && b.projectId) touchProject(b.projectId).catch(() => {});
@@ -55,6 +64,8 @@ export async function createTransactionRecord(b: TransactionInput): Promise<Reco
 export interface TransactionPatch {
   date?: string | null; description?: string; artist?: string; amount?: number | string; currency?: string; paymentStatus?: string; paymentMethod?: string;
   receiptRef?: string; notes?: string; category?: string; type?: string; scope?: string; project_id?: string | null; linkedSessionId?: string; expenseScope?: string;
+  /** the Owner's explicit unit for this row (OWNER_DECISION) — a classification, allowed on owned rows too */
+  businessUnit?: string;
 }
 /** PATCH /api/transactions/[id] semantics (field-level; actual money — lib/finance/classify isActualMoneyTx — marks a linked clip row שולם). */
 export async function updateTransactionRecord(id: string, body: TransactionPatch): Promise<Record<string, unknown>> {
@@ -75,8 +86,23 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
   if (body.project_id !== undefined) patch.project_id = body.project_id;
   if (body.linkedSessionId !== undefined) patch.linked_session_id = body.linkedSessionId;
   if (body.expenseScope !== undefined) patch.expense_scope = body.expenseScope;
-  const { data, error } = await supabase.from("transactions").update(patch).eq("id", id).select().single();
-  if (error) throw new Error(error.message);
+  const unitRelevant = ["type", "scope", "project_id", "expense_scope", "category"].some((k) => k in patch);
+  let data: Record<string, unknown> | null = null;
+  if (Object.keys(patch).length) {
+    const r = await supabase.from("transactions").update(patch).eq("id", id).select().single();
+    if (r.error) throw new Error(r.error.message);
+    data = r.data as Record<string, unknown>;
+  }
+  // business unit (task 4): an explicit choice is the Owner's decision; otherwise only a RULE / unclassified unit is
+  // re-derived after a relevant field change — OWNER_DECISION / HISTORICAL_APPROVED are never overwritten
+  if (body.businessUnit !== undefined) {
+    if (!(await setTransactionUnit(id, body.businessUnit))) throw new FinanceInputError("transaction not found");
+  } else if (unitRelevant) await recomputeUnitIfRule(id);
+  if (body.businessUnit !== undefined || unitRelevant || !data) {
+    const r = await supabase.from("transactions").select().eq("id", id).single();
+    if (r.error) throw new Error(r.error.message);
+    data = r.data as Record<string, unknown>;
+  }
   const pid = (data as { project_id?: string | null }).project_id;
   if (pid) touchProject(pid).catch(() => {});
   // the clip row is marked שולם only when the row is ACTUAL money (an expense only when שולם — never "התקבל")
@@ -99,6 +125,8 @@ export async function deleteTransactionRecord(id: string): Promise<void> {
 export async function splitIncome(id: string, paid: number, receivedDate: string | null, paymentMethod: string): Promise<{ status: "ok"; result: Record<string, unknown> } | { status: "error"; code: string | undefined; message: string }> {
   const { data, error } = await supabase.rpc("split_income_transaction", { p_id: id, p_paid: paid, p_received_date: receivedDate, p_payment_method: paymentMethod });
   if (error) return { status: "error", code: error.code, message: error.message };
+  // the RPC inserts the remainder without a unit — it inherits the original row's unit + source (never a guess)
+  await copyUnitToSplitRows(id, data).catch((e) => console.warn("[finance] split: unit not copied —", e instanceof Error ? e.message : e));
   const { data: tx } = await supabase.from("transactions").select("project_id").eq("id", id).maybeSingle();
   const pid = (tx as { project_id?: string | null } | null)?.project_id;
   if (pid) touchProject(pid).catch(() => {});
@@ -142,12 +170,12 @@ export async function readFinanceSettings(projectId: string): Promise<{ agreedPr
   return { agreedPrice: Number(v.agreedPrice ?? 0), currency: String(v.currency ?? "₪"), financialNotes: String(v.financialNotes ?? ""), financeException: v.financeException === true, financeExceptionReason: String(v.financeExceptionReason ?? ""), financeExceptionDate: String(v.financeExceptionDate ?? "") };
 }
 
-export interface TransactionView { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string }
+export interface TransactionView { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string; businessUnit: string | null; businessUnitSource: string | null }
 export async function readTransaction(id: string): Promise<TransactionView | null> {
   const { data, error } = await supabase.from("transactions").select("*").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { projectId: data.project_id ?? null, scope: data.scope ?? "project", type: data.type ?? "", date: data.date ?? null, description: data.description ?? "", artist: data.artist ?? "", amount: Number(data.amount) || 0, currency: data.currency ?? "₪", paymentStatus: data.payment_status ?? "", paymentMethod: data.payment_method ?? "", receiptRef: data.receipt_ref ?? "", notes: data.notes ?? "", category: data.category ?? "", expenseScope: data.expense_scope ?? "", linkedSessionId: data.linked_session_id ?? "" };
+  return { projectId: data.project_id ?? null, scope: data.scope ?? "project", type: data.type ?? "", date: data.date ?? null, description: data.description ?? "", artist: data.artist ?? "", amount: Number(data.amount) || 0, currency: data.currency ?? "₪", paymentStatus: data.payment_status ?? "", paymentMethod: data.payment_method ?? "", receiptRef: data.receipt_ref ?? "", notes: data.notes ?? "", category: data.category ?? "", expenseScope: data.expense_scope ?? "", linkedSessionId: data.linked_session_id ?? "", businessUnit: data.business_unit ?? null, businessUnitSource: data.business_unit_source ?? null };
 }
 
 /** Link facts for many transactions at once (batch — never one query per row). `ids` null = every transaction. */

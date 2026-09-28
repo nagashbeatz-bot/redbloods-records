@@ -37,6 +37,8 @@ export const ACCEPTED_FIELD_CLASSES: Readonly<Record<string, { kind: AcceptedFie
   acquired_date: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "Red Films equipment column (equipment is outside the video column registry)" },
   added_by: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "Red Films equipment column" },
   purchase_price: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "Red Films equipment column (money, in the row's currency — D5 / currency migration 2026-09-27)" },
+  businessUnit: { kind: "DERIVED_INPUT", noteEn: "transaction create / edit (task 4, 2026-09-28): the Owner's explicit unit STUDIO / RECORDS / FILMS / CORPORATE, stored as transactions.business_unit with business_unit_source (RULE when it equals lib/business-unit's result, else OWNER_DECISION); omitted = the rule decides; a manual create without a certain unit is refused (422)" },
+  unitWriter: { kind: "CONTROL_FLAG", noteEn: "set by the server (the Finance route passes FINANCE_MANUAL; automatic writers pass their own) — never read from a request body; decides whether a missing unit is refused (manual) or left unclassified (automatic)" },
   method: { kind: "DERIVED_INPUT", noteEn: "show payment (POST /api/shows/[id]/payments): the payment method, stored as transactions.payment_method (lib/writes/show-payments PAYMENT_METHODS)" },
   advance_date: { kind: "DERIVED_INPUT", noteEn: "show create: the date of a deposit received on creation — recorded as a SHOW_PAYMENT row's date (D5)" },
   purchased_from: { kind: "BUSINESS_COLUMN_NOT_IN_CONTRACT", noteEn: "Red Films equipment column" },

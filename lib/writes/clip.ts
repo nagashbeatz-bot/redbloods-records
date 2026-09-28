@@ -14,6 +14,7 @@ import { SONG_WITH_CLIP_TYPE } from "@/lib/types";
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
 import { normalizeCurrency } from "@/lib/finance/currency";
 import { rfClientSourceFor } from "@/lib/clip-rf-money-pure";
+import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 
 async function readFinanceSettings(projectId: string): Promise<Record<string, unknown>> {
   const { data } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
@@ -70,7 +71,10 @@ function splitHalf(total: number): [number, number] { const first = Math.round(t
 function addDays(iso: string, days: number): string { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
 interface ClipPaymentInput { amount: number; date: string | null; category: string; payment_status: string; description: string; notes: string }
 async function insertPayments(projectId: string, artist: string, currency: string, rows: ClipPaymentInput[]) {
-  const { data, error } = await supabase.from("transactions").insert(rows.map((r) => ({
+  // business unit (task 4): clip money of a label project → RECORDS; of a client project → FILMS only with a Red Films
+  // production for an external client — otherwise "דורש סיווג" (never a guess)
+  const unit = await unitColumnsOrUnclassified({ writer: "CLIP_PAYMENT", type: "income", expenseScope: CLIP_SCOPE, projectId });
+  const { data, error } = await supabase.from("transactions").insert(rows.map((r) => ({ ...unit,
     project_id: projectId, scope: "project", type: "income", date: r.date || null, description: r.description, artist: artist || "", amount: r.amount, currency,
     payment_status: r.payment_status, payment_method: "", receipt_ref: "", notes: r.notes, category: r.category, linked_session_id: "", expense_scope: CLIP_SCOPE,
   }))).select();

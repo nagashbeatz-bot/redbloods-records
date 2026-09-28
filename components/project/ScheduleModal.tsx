@@ -11,6 +11,7 @@ import {
   validStartTimes, fmtHM, fmtDayDate, confirmLabel,
   WORK_START_H, WORK_END_H, isWorkingDay,
 } from "@/lib/schedule-rules";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -501,7 +502,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         // ── Save pending payment if one was staged (project-scoped only) ──
         if (projectId && pendingPayment) {
-          await fetch("/api/transactions", {
+          await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -517,7 +518,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               notes:           pendingPayment.notes,
               linkedSessionId: savedSessionId ?? "",
             }),
-          });
+          }, u)));
         }
       } catch {
         // session save failure is non-fatal — calendar event was created

@@ -25,6 +25,7 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
 import { saveFileAs } from "@/lib/download-file";
 import { isPastUnconfirmed, localNowString, PAST_UNCONFIRMED_LABEL } from "@/lib/session-duration";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
@@ -1374,7 +1375,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         const desc = filmingDraft.photographer
           ? `${filmingDraft.photographer} — צילום קליפ`
           : "צילום קליפ";
-        const txRes = await fetch("/api/transactions", {
+        const txRes = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1389,7 +1390,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             expenseScope:    "קליפ",
             linkedSessionId: data.session.id,
           }),
-        });
+        }, u)));
         const txData = await txRes.json();
         if (txData.transaction) {
           setTransactions((prev) => [txData.transaction, ...prev]);
@@ -1423,7 +1424,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     }
     setTxSaving(true);
     try {
-      const res = await fetch("/api/transactions", {
+      const res = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1441,7 +1442,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           linkedSessionId: txDraft.linkedSessionId || "",
           expenseScope:    txDraft.type === "expense" ? (txDraft.expenseScope || "כללי") : "כללי",
         }),
-      });
+      }, u)));
       const data = await res.json();
       if (data.transaction) {
         setTransactions((prev) => [data.transaction, ...prev]);

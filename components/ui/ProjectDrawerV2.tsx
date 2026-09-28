@@ -27,6 +27,7 @@ import { classificationSignal, rosterIdByNameOf, OWNER_LABEL_RULE_HE } from "@/l
 import ScheduleModal from "@/components/project/ScheduleModal";
 import StevenIntakeModal from "@/components/project/StevenIntakeModal";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
+import { postTransactionWithUnit, withBusinessUnit } from "@/components/finance/business-unit-picker";
 
 interface Props {
   projectId: string;
@@ -1555,7 +1556,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           balance={collectionRemaining}
           currency={currency}
           onSetDate={async (date) => {
-            const res = await fetch("/api/transactions", {
+            const res = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1566,7 +1567,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 date: date || null,
                 description: "יתרת תשלום לפרויקט",
               }),
-            });
+            }, u)));
             if (!res.ok) return false;
             const d = await fetch(`/api/transactions?projectId=${projectId}`).then(r => r.json()).catch(() => null);
             if (d) { setTransactions(d.transactions ?? []); setAgreedPrice(d.agreedPrice ?? 0); }
@@ -2254,7 +2255,7 @@ function QuickTransactionForm({
     setSaving(true);
     setSaveErr("");
     try {
-      const res = await fetch("/api/transactions", {
+      const res = await postTransactionWithUnit((u) => fetch("/api/transactions", withBusinessUnit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2268,7 +2269,7 @@ function QuickTransactionForm({
           description: fNote,
           receiptRef: fReceiptRef.trim(),
         }),
-      });
+      }, u)));
       if (!res.ok) { setSaveErr("שגיאה בשמירה"); return; }
       setFAmount(""); setFDate(new Date().toISOString().slice(0, 10)); setFMethod(""); setFNote(""); setFCat(""); setFReceiptRef("");
       setFStatus(formType === "expense" ? "שולם" : "התקבל");

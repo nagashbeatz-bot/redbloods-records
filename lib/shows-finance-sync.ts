@@ -5,6 +5,7 @@ import { isUnpaidCollab, rehearsalCountedAmount, showMoneyOf, SHOW_MONEY_ROLES, 
 import { closureFeeStatus, feeRowMayReprice, feeRowPaidConflicts, feeRowStatusAfterSync, FEE_ROW_INITIAL_STATUS, shouldRecordRemainder, type ShowSyncIntent } from "@/lib/shows-types";
 import { syncArtistBalanceFromShow, removeSyncedArtistBalanceEntry } from "@/lib/artist-balance-show-sync";
 import { showAgreementSplit } from "@/lib/label-agreements";
+import { unitColumnsOrUnclassified } from "@/lib/writes/business-unit";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 const REHEARSAL_CATEGORY     = "חזרה";
@@ -65,9 +66,12 @@ async function createTransaction(fields: {
   currency?: string;
   payment_method?: string;
 }): Promise<string | null> {
+  // business unit (task 4): a show of a Records roster artist → RECORDS; a collab / other artist stays "דורש סיווג"
+  const unit = await unitColumnsOrUnclassified({ writer: "SHOW_SYNC", type: fields.type, category: fields.category, expenseScope: fields.expense_scope ?? "כללי", showId: fields.show_id ?? null });
   const { data, error } = await supabase
     .from("transactions")
     .insert({
+      ...unit,
       project_id:        null,
       scope:             "general",
       type:              fields.type,

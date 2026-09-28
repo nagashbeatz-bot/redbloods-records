@@ -13,6 +13,7 @@
  * Stored Dropbox paths are read from the records themselves; no caller ever supplies a path.
  */
 import { supabase } from "@/lib/supabase";
+import { inferBusinessUnit, unitColumns } from "@/lib/business-unit";
 import { decideEngineerExpense, engineerExpenseMode, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
 
 async function deleteDropboxPaths(paths: string[]): Promise<void> {
@@ -136,7 +137,8 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
       return { kind: d.kind, txId: d.txId, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)" };
     }
     case "INSERT": {
-      const { data: ins, error } = await supabase.from("transactions").insert(d.fields).select("id").single();
+      // business unit (task 4): an engineer's mix / master cost is Studio's audio capability — always STUDIO (RULE)
+      const { data: ins, error } = await supabase.from("transactions").insert({ ...d.fields, ...unitColumns(inferBusinessUnit({ writer: "MIX", type: "expense" })) }).select("id").single();
       if (error) throw new Error(error.message);
       const newId = String(ins?.id ?? "");
       await setLink(newId);
