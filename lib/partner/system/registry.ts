@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.28-47";
+export const SYSTEM_BASELINE_VERSION = "2026.09.28-48";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1034,4 +1034,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.27-45", date: "2026-09-27", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "CREATE_SHOW מקבל dealType (בשת״פ לא שואלים מחיר); SET_SHOW_DEAL_TYPE מחליף סוג עסקה — לשת״פ רק כשאין כסף אמיתי (תשלום, שכר ששולם, מאזן ממומש, הוצאת חזרה → נדחה, לא נמחק כלום), לבתשלום עם מחיר ואז תהליך הכספים הרגיל. פעולות כסף על שת״פ (תשלום, שכר ששולם, מחיר, סגירה עם כסף, עלות חזרה) נדחות בבירור." },
   { version: "2026.09.28-46", date: "2026-09-28", domain: "MIX_PIPELINE", dimension: "read", from: "FULL", to: "FULL", noteHe: "פער 13 (החלטת בעלים 2026-09-28): הוצאת מיקס שבוטלה ('בוטל') נשארת בהיסטוריה אבל אינה 'הוצאת מיקס לא מקושרת' — לא אות ORPHAN_MIX_EXPENSE, לא השאלה 'לשייך או שהן שאריות?' ולא ספירה בתמונת החברה. כל סטטוס אחר נבדק כמו קודם. גם במסך הכספים תנועה שבוטלה לא נספרת בכרטיס 'תנועות ללא תאריך' ובעיגול 'דורש טיפול' (הרשימה עצמה לא השתנתה)." },
   { version: "2026.09.28-47", date: "2026-09-28", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "מחזור מאזן = תמונת התחשבנות (החלטת בעלים 2026-09-28): יתרת פתיחה (יתרת הסגירה הקודמת) + הכנסות האמן − חלק האמן בהוצאות − תשלומים = יתרת סגירה מצטברת, ומי חייב למי. סגירה לא משלמת, לא מקזזת ולא מאפסת; יתרה פתוחה עוברת הלאה; תנועה מאוחרת לתקופה סגורה נספרת במחזור הפתוח; מחזור סגור לא משתנה. artist_view ו-balance_cycles משתמשים באותו חישוב של המסך." },
+  { version: "2026.09.28-48", date: "2026-09-28", domain: "LABEL_ARTISTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "יישור היסטוריית הכספים (משימה 3, החלטת בעלים 2026-09-28): 4 הופעות אפריל–מאי של שליו (הכנסה + DJ), תשלומיו 3,620 + 455, מדיה Mobile1 765.5, אק\"ום 400 ו-ISSA 500 נרשמו בכספים; ביומן קושרו התשלומים, חלק המדיה ושתי ההוצאות לשורות הכספים. חריג היסטורי: 1,000 (פאצ'ה) + 810 (סאמר טיים) שולמו באמת ונשארים הוצאת Records, אבל לא ביומן ולא במחזור — יתרת שליו לא משתנה בגללם ושליו לא מוצג כחייב. ההופעות של אפריל–מאי קיימות רק בכספים וביומן, לא ברשימת ההופעות." },
 ];
