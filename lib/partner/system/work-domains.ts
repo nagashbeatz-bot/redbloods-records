@@ -123,7 +123,7 @@ export const WORK_DOMAINS: readonly WorkDomainContract[] = [
     ],
     sideEffects: ["Google event at booking only"], integrations: ["GOOGLE_CALENDAR"], security: ["meeting routes rely on the central proxy only"],
     production20260925: { total: 2, "נקבעה": 2, pastStillScheduled: 2, withCalendarEvent: 1, withProject: 0 },
-    anomalies: ["both meetings are past and still נקבעה"], gaps: ["WK_MEETING_OUTCOME_NOT_RECORDED"], sunnyReads: ["meeting_view", "meetings", "client_view"],
+    anomalies: ["2026-09-25: both meetings past and still נקבעה — RESOLVED 2026-09-29: they were one meeting recorded twice; the duplicate was removed and the one meeting (07.06, אבי מולה) is התקיימה with its Google event"], gaps: ["WK_MEETING_OUTCOME_NOT_RECORDED"], sunnyReads: ["meeting_view", "meetings", "client_view"],
   },
   {
     id: "ALBUMS", meaningHe: "פרויקט מסוג אלבום / EP עם רשימת שירים; לכל שיר סטטוס, סטטוס מיקס וסטטוס מאסטר ידניים. אין ישות אלבום נפרדת — האלבום הוא הפרויקט.",
