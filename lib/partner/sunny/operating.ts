@@ -10,7 +10,7 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
-import { validateTx } from "../finance/core";
+import { financeExceptionOf, validateTx } from "../finance/core";
 import { buildProjectView } from "../projects/view";
 import { isLabelProject } from "../../project-classification";
 import { engineerHandoff } from "../mix/handoff";
@@ -99,7 +99,11 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   const received = incomeRows ? incomeRows.filter((t) => t.received).length : null;
   const expected = incomeRows ? incomeRows.filter((t) => !t.received).length : null;
   const progressed = PROGRESSED.has(id.status ?? "") || (v.work.engineers?.length ?? 0) > 0 || (v.work.sessions?.held ?? 0) > 0;
+  // The Owner's finance exception on this project (canonical setting, reason + date) already explains its money —
+  // never "was an advance received?" (the same rule the Finance Brain and the app use: lib/finance/project-summary).
+  const financeException = fin ? financeExceptionOf(fin.raw.financeSettings.find((s) => s.projectId === projectId)?.value) : null;
   const advance = labelWork ? { state: "NOT_APPLICABLE_LABEL_WORK" as const, evidence: "label work (no client advance pattern)" }
+    : financeException ? { state: "NOT_APPLICABLE_FINANCE_EXCEPTION" as const, evidence: `the Owner's finance exception${financeException.date ? ` (${financeException.date})` : ""}${financeException.reason ? `: ${financeException.reason}` : ""}` }
     : received === null ? { state: "UNKNOWN" as const, evidence: "finance not read" }
     : received > 0 ? { state: "ADVANCE_OR_PAYMENT_RECORDED" as const, evidence: `${received} received income row(s)` }
     : progressed ? { state: "ADVANCE_EVIDENCE_MISSING" as const, evidence: `project progressed (${id.status}${v.work.engineers?.length ? ", engineer work" : ""}${v.work.sessions?.held ? `, ${v.work.sessions.held} sessions held` : ""}) and no received income is recorded${expected ? ` (${expected} expected row(s))` : ""}` }

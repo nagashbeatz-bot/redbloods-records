@@ -65,7 +65,7 @@ const CAL: CalendarWindowResult = { status: "CALENDAR_DATA_AVAILABLE", window: {
 const K = (kind: string, subjectKey: string, value: Record<string, unknown>, meaningHe: string): OwnerKnowledgeRecord => ({ id: `k-${kind}`, createdAt: "2026-09-24T10:00:00Z", kind, subjectKey, identityKeys: [subjectKey], slotKey: kind, value: value as OwnerKnowledgeRecord["value"], epistemic: "OWNER_REPORTED" as OwnerKnowledgeRecord["epistemic"], meaningHe, operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, provenance: {} as OwnerKnowledgeRecord["provenance"], confirmationId: "c", itemIndex: 0 });
 const P2 = [K("ORGANIZATIONAL_ROLE", `label-artist:${LA_CLEAN}`, { role: "LABEL_DJ" }, "DJ CLEANTONE הוא הדי-ג׳יי של הלייבל"), K("ENTITY_RELATIONSHIP", `label-artist:${LA_CLEAN}`, { relation: "PARTICIPATES_IN_SHOWS", frequency: "MOST", object: "company:REDBLOODS" }, "מנגן ברוב ההופעות")];
 
-interface Opt { today?: string; deadlines?: Record<string, string>; victorInternal?: string; cal?: CalendarWindowResult | "NONE"; integrity?: CompanyIntegrityRegister; knowledge?: OwnerKnowledgeRecord[]; incomeFor?: string[]; settings?: SettingsState; labelDetail?: LabelDetailRaw }
+interface Opt { today?: string; deadlines?: Record<string, string>; victorInternal?: string; cal?: CalendarWindowResult | "NONE"; integrity?: CompanyIntegrityRegister; knowledge?: OwnerKnowledgeRecord[]; incomeFor?: string[]; exceptionFor?: string[]; settings?: SettingsState; labelDetail?: LabelDetailRaw }
 function sources(o: Opt = {}): GatewaySources {
   const st = input({ contexts: [] }).state!;
   if (o.today) (st as { todayIL: string }).todayIL = o.today;
@@ -74,7 +74,7 @@ function sources(o: Opt = {}): GatewaySources {
     if (d) (p as { deadline: { ymd: string | null; daysTo: number | null } }).deadline = { ...p.deadline, ymd: d, daysTo: null };
   }
   if (o.victorInternal) for (const w of st.domains.victor.data?.active ?? []) (w as { internalDeadline: string | null }).internalDeadline = o.victorInternal;
-  const raw = empty({ transactions: (o.incomeFor ?? [P(2)]).map((pid) => tx({ projectId: pid, type: "income", amount: 600, status: "שולם" })), financeSettings: [{ projectId: P(2), value: { agreedPrice: 1000, currency: "₪" } }] });
+  const raw = empty({ transactions: (o.incomeFor ?? [P(2)]).map((pid) => tx({ projectId: pid, type: "income", amount: 600, status: "שולם" })), financeSettings: [{ projectId: P(2), value: { agreedPrice: 1000, currency: "₪" } }, ...(o.exceptionFor ?? []).map((pid) => ({ projectId: pid, value: { financeException: true, financeExceptionReason: "הכסף התקבל מחוץ למערכת", financeExceptionDate: "2026-09-20" } }))] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
   return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: null },
@@ -184,6 +184,11 @@ function main() {
   ok("no amount / percentage invented anywhere in the assessment", !/\d+\s?%|expected advance|advanceAmount/.test(JSON.stringify(e4)));
   check("payment recorded → ADVANCE_OR_PAYMENT_RECORDED", projectOperating(sources(), P(2))!.advance.state, "ADVANCE_OR_PAYMENT_RECORDED");
   check("label work → NOT_APPLICABLE_LABEL_WORK", projectOperating(sources(), P(1))!.advance.state, "NOT_APPLICABLE_LABEL_WORK");
+  // Stage 1 (2026-09-29): the Owner's finance exception explains the money — never "was an advance received?"
+  const e4x = projectOperating(sources({ incomeFor: [P(2)], exceptionFor: [P(4)] }), P(4))!;
+  check("finance exception → NOT_APPLICABLE_FINANCE_EXCEPTION (the same project, same evidence)", e4x.advance.state, "NOT_APPLICABLE_FINANCE_EXCEPTION");
+  ok("finance exception → no PAYMENT_EVIDENCE question, no 'no advance' risk", !e4x.questions.some((x) => x.kind === "PAYMENT_EVIDENCE") && !e4x.clientDeadline.risks.includes("no advance / payment evidence"));
+  ok("the exception evidence carries the Owner's reason + date", /2026-09-20/.test(e4x.advance.evidence) && /מחוץ למערכת/.test(e4x.advance.evidence));
 
   section("SCENARIO F — outside communication / who holds the ball");
   const f = projectOperating(sources(), P(2))!;

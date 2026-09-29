@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.29-61";
+export const SYSTEM_BASELINE_VERSION = "2026.09.29-62";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1055,4 +1055,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.29-59", date: "2026-09-29", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "כמה שלבים על אותה רשומה בתוכנית אחת (שרשור): מחיר מיקס + דדליין, מחיר → סימון תשלום במחיר החדש, מחיר קליפ + חריגה כספית — אישור אחד. כל שלב מאוחר מוצג לפי המצב שיהיה אחרי השלבים הקודמים, רץ רק אם הם בוצעו בדיוק, ונבדק מחדש ברגע הביצוע (שינוי חיצוני → STALE, בלי כתיבה). מה שאי אפשר להוכיח כמדויק נחסם (SAME_ENTITY_TWICE / SAME_ENTITY_CONFLICT). אין ביטול אוטומטי." },
   { version: "2026.09.29-60", date: "2026-09-29", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "רשומה שנוצרת באותה תוכנית: \"$step<k>.created\" — למשל יצירת פרויקט והעברת תנועות אליו, ומחיר הקליפ / הגדרות הכספים של הפרויקט החדש, באישור אחד. התצוגה מציגה את הפרויקט העתידי במילים; המזהה האמיתי מגיע רק מהיצירה שבוצעה בפועל (אף פעם לא ניחוש); אם היצירה לא בוצעה — השלב התלוי לא רץ. הפניה לא תקינה נחסמת לפני שמירה (INVALID_PLAN). אין ביטול אוטומטי." },
   { version: "2026.09.29-61", date: "2026-09-29", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "קשר קנוני שיר ↔ קליפ (P1, החלטת בעלים 29.9): projects.song_project_id על פרויקט הקליפ מצביע לשיר; השיר מוצא את הקליפים שלו לפי אותו שדה. סאני קוראת את הקשר (project_view: songProject / clipProjects, CANONICAL) ולעולם לא מסיקה אותו משם — parent_project נשאר טקסט legacy. עדיין אין כותב לקשר, אין שינוי בכספים / Red Films, ומחיקת שיר מציגה את הקליפים שיאבדו את הקישור." },
+  { version: "2026.09.29-62", date: "2026-09-29", domain: "FINANCE", dimension: "read", from: "FULL", to: "FULL", noteHe: "חריגה כספית (financeException + סיבה + תאריך, החלטת בעלים קנונית) נצרכת בכל מקום: הבדיקות \"הושלם, יש הוצאה, אין הכנסה\" (COMPLETED_WORK_NO_INCOME / COMPLETED_WORK_EXPENSE_NO_INCOME) ושאלת \"התקבלה מקדמה?\" לא עולות על פרויקט חריג; partner_entity מציג FINANCE_EXCEPTION (סיבה, תאריך, OWNER_DECISION) במקום \"מחיר לא ידוע\". הנתונים הכספיים עצמם לא משתנים; שורות הכנסה פתוחות מפורשות על פרויקט חריג עדיין מדווחות (שאלה פתוחה לבעלים)." },
 ];

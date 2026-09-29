@@ -15,6 +15,7 @@ import { salaryLinkedId, salaryMonthLabel } from "../../victor-salary-format";
 import { envelope, ok, partner, record, heDate, type GatewaySources } from "./core";
 import { drill, fact, finishEntity, type EntityDraft } from "./entity-common";
 import { transactionDraft } from "./entity-transaction";
+import { financeExceptionOf, parseSetting } from "../finance/core";
 import { normalizeName } from "./resolve";
 import { parseEntityKey } from "./keys";
 import { type EntityResponse, type GatewayEntityType, type GatewayFact, type GatewayRelationship } from "./types";
@@ -57,11 +58,25 @@ function projectDraft(src: GatewaySources, state: PartnerCompanyState, id: strin
   const rec = f?.state.receivables.find((x) => x.projectId === id && x.source === "PROJECT_BALANCE") ?? null;
   const profile = f?.integrity.projects.find((p) => p.projectId === id) ?? null;
   if (rec) facts.push(fact("RECEIVABLE", "יתרה לגבייה (לפי Finance Brain)", { amount: rec.amount, currency: rec.currency, collectionState: rec.collection.state, dueDate: rec.dueDate, ownerClosure: rec.ownerClosure ? { answerCode: rec.ownerClosure.answerCode, reconciliation: rec.ownerClosure.reconciliation } : null }, rec.ownerClosure ? "OWNER_DECISION" : "DERIVED", "FINANCE"));
-  if (profile) facts.push(fact("FINANCE_COVERAGE", "כיסוי נתוני כספים לפרויקט", { price: profile.price, income: profile.income, expenses: profile.expenses, receivable: profile.receivable, dueDate: profile.dueDate }, "DERIVED", "FINANCE"));
-  facts.push(fact("PROJECT_PRICE", "מחיר מוסכם", d.finance.agreedPrice === null ? null : { amount: d.finance.agreedPrice, currency: d.finance.currency }, d.finance.agreedPrice === null ? "UNKNOWN" : "FACT", "FINANCE"));
+  // The Owner's finance exception (canonical `finance_<id>` setting, reason + date): an OWNER_DECISION that explains
+  // why price / debt / income checks do not apply — shown as a decision, never left as "price unknown".
+  const setting = f?.raw.financeSettings.find((s) => s.projectId === id);
+  const exception = setting ? financeExceptionOf(setting.value) : null;
+  const exceptionKnown = !!exception || (!f && d.finance.configStatus === "EXCEPTION");
+  if (exceptionKnown) {
+    facts.push(fact("FINANCE_EXCEPTION", "חריגה כספית — החלטת בעלים", {
+      active: true, reason: exception?.reason ? record(exception.reason) : null, date: exception?.date ?? null,
+      meaning: partner("הבעלים סימן את הפרויקט כחריגה כספית: בדיקות המחיר, החוב וההכנסה החסרה הרגילות לא חלות עליו. הנתונים הכספיים עצמם לא השתנו."),
+    }, "OWNER_DECISION", "FINANCE"));
+    if (!exception?.reason) missing.push({ fact: "finance exception reason", whyNeeded: f ? "the exception was recorded without a reason" : "finance could not be read; the exception's reason is unknown" });
+  }
+  if (profile) facts.push(fact("FINANCE_COVERAGE", "כיסוי נתוני כספים לפרויקט", { price: profile.price, income: profile.income, expenses: profile.expenses, receivable: profile.receivable, dueDate: profile.dueDate, ...(exceptionKnown ? { basis: "FINANCE_EXCEPTION" } : {}) }, "DERIVED", "FINANCE"));
+  const storedPrice = exceptionKnown && setting ? parseSetting(setting.value) : null;
+  if (exceptionKnown) facts.push(fact("PROJECT_PRICE", "מחיר מוסכם (לא בשימוש — חריגה כספית)", { amount: storedPrice?.price ?? null, currency: storedPrice?.price ? storedPrice.currency : null, notUsedBecause: "FINANCE_EXCEPTION" }, "OWNER_DECISION", "FINANCE"));
+  else facts.push(fact("PROJECT_PRICE", "מחיר מוסכם", d.finance.agreedPrice === null ? null : { amount: d.finance.agreedPrice, currency: d.finance.currency }, d.finance.agreedPrice === null ? "UNKNOWN" : "FACT", "FINANCE"));
   if (d.finance.receivedIncome !== null) facts.push(fact("RECEIVED_INCOME", "הכנסה שהתקבלה", { amount: d.finance.receivedIncome, currency: d.finance.currency }, "DERIVED", "FINANCE"));
   if (!f) missing.push({ fact: "Finance Brain view", whyNeeded: "finance could not be read; receivable / Owner closure unknown" });
-  if (d.finance.agreedPrice === null) missing.push({ fact: "agreed price", whyNeeded: "needed to know what the client owes" });
+  if (d.finance.agreedPrice === null && !exceptionKnown) missing.push({ fact: "agreed price", whyNeeded: "needed to know what the client owes" });
 
   // sessions / release / label artist / client / team / tasks / clips / proposals
   facts.push(fact("SESSIONS", "סשנים", { count: d.sessions.count, first: d.sessions.firstSessionDate, latest: d.sessions.latestSessionDate, next: d.sessions.nextSessionDate }, "DERIVED", "SESSIONS"));

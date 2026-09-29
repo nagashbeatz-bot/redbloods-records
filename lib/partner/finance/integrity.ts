@@ -17,7 +17,7 @@
  */
 import { addDays, diffDays } from "../../coo/dates";
 import { fmtMoney } from "./brief";
-import { RECORDING_POLICY_START, validateTx, type ValidatedTx } from "./core";
+import { RECORDING_POLICY_START, financeExceptionOf, validateTx, type ValidatedTx } from "./core";
 import { FINANCE_ANSWER_OPTIONS, FINANCE_EXACT_DATE_ANSWERS, isFinanceQuestionType, type FinanceQuestionType } from "../investigation/finance-questions";
 import { financeAnswerLabelHe, financeCaseId, financeQuestionFingerprint, financeQuestionId, type FinanceOwnerAnswer } from "./owner-answers";
 import type { CurrencyTotals, Evidence, FinanceRaw, PartnerFinanceState, Receivable } from "./types";
@@ -181,7 +181,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   const live = raw.projects.filter((p) => !p.isHidden);
   const settings = new Map(raw.financeSettings.map((s) => [s.projectId, s.value as Record<string, unknown> | null]));
   const priceOf = (id: string) => { const v = settings.get(id); const n = v && typeof v === "object" ? Number(v.agreedPrice) : NaN; return Number.isFinite(n) && n > 0 ? n : null; };
-  const exceptionOf = (id: string) => { const v = settings.get(id); return !!(v && typeof v === "object" && v.financeException); };
+  const exceptionOf = (id: string) => financeExceptionOf(settings.get(id)) !== null;
   const engineerByProject = new Map<string, typeof raw.engineerWorks>();
   for (const w of raw.engineerWorks) if (w.projectId) engineerByProject.set(w.projectId, [...(engineerByProject.get(w.projectId) ?? []), w]);
   const txById = new Map(txs.map((t) => [t.row.id, t]));
@@ -218,7 +218,9 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   }
 
   // ── COMPLETED_WORK_NO_INCOME (client / unknown; never "unpaid" without receivable evidence) ──
-  for (const pr of projects.filter((x) => x.status === COMPLETED && x.business !== "LABEL" && x.income === "INCOME_NOT_VISIBLE")) {
+  // A finance exception is the Owner's recorded decision on this project's money (canonical, with reason + date):
+  // the missing income is already explained, so it is never an issue or an Owner question.
+  for (const pr of projects.filter((x) => x.status === COMPLETED && x.business !== "LABEL" && x.income === "INCOME_NOT_VISIBLE" && !exceptionOf(x.projectId))) {
     const p = projectById.get(pr.projectId)!;
     const mine = txs.filter((t) => t.row.projectId === pr.projectId && !t.cancelled);
     const paidExpense = mine.filter((t) => t.type === "expense" && t.received);

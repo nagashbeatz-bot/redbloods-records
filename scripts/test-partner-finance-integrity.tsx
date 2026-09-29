@@ -257,7 +257,7 @@ async function main() {
     ok("55. no RPC", src.every((s) => !/\.rpc\(|partner_execute_update_project_deadline/.test(s)));
     ok("56-58. no Push / Cron / Agent Alerts", src.every((s) => !/web-push|lib\/push|node-cron|cron|agent_alerts|alerts-store|lib\/agent\//i.test(s)));
     ok("the integrity core is pure (no supabase / server-only / clock)", !/lib\/supabase|server-only|new Date\(\)|Date\.now\(/.test(strip(rd("lib/partner/finance/integrity.ts"))));
-    ok("the integrity layer reuses the Finance Brain validation (no second copy of the status rules)", /import \{ RECORDING_POLICY_START, validateTx, type ValidatedTx \} from "\.\/core";/.test(rd("lib/partner/finance/integrity.ts")) && !/isReceivedStatus|"שולם", "התקבל"/.test(strip(rd("lib/partner/finance/integrity.ts"))));
+    ok("the integrity layer reuses the Finance Brain validation (no second copy of the status rules)", /import \{ RECORDING_POLICY_START, (financeExceptionOf, )?validateTx, type ValidatedTx \} from "\.\/core";/.test(rd("lib/partner/finance/integrity.ts")) && !/isReceivedStatus|"שולם", "התקבל"/.test(strip(rd("lib/partner/finance/integrity.ts"))));
     // F2.8–F2.10: buttons exist only for answerable questions and only call the injected answerControls (no hooks / fetch here).
     ok("the UI rehab section has no hooks / fetch (answers go through the section's controls)", !/useState|useEffect|useRef|fetch\(/.test(strip(rd("components/partner/PartnerFinanceBrief.tsx"))));
   }

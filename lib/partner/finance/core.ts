@@ -100,6 +100,20 @@ export function parseSetting(value: unknown): PriceSetting {
   return { price: price !== null && price > 0 ? price : null, currency: normalizeCurrency(typeof value.currency === "string" ? value.currency : null), exception: !!value.financeException, clipPrice: clip !== null && clip > 0 ? clip : null, malformed };
 }
 
+/**
+ * The Owner's finance exception on a project setting (`finance_<projectId>`) — the SAME truth rule as parseSetting
+ * (`!!financeException`), plus the reason / date the Owner recorded with it. An OWNER_DECISION: it takes the project
+ * out of the normal debt / price / missing-income checks (lib/finance/project-summary.ts). null = no exception.
+ */
+export interface FinanceExceptionDecision { reason: string | null; date: string | null }
+export function financeExceptionOf(value: unknown): FinanceExceptionDecision | null {
+  if (!parseSetting(value).exception) return null;
+  const v = value as Record<string, unknown>;
+  const reason = typeof v.financeExceptionReason === "string" && v.financeExceptionReason.trim() ? v.financeExceptionReason.trim() : null;
+  const date = typeof v.financeExceptionDate === "string" && YMD.test(v.financeExceptionDate.slice(0, 10)) ? v.financeExceptionDate.slice(0, 10) : null;
+  return { reason, date };
+}
+
 export function legacyOf(i: { dueDate: string | null; createdAt: string | null; amount: number; policyStart: string }): LegacyClass {
   if (i.amount === 0) return "LIKELY_HISTORICAL";
   if (i.dueDate) {
@@ -386,7 +400,8 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   const unpricedEv = projects.filter((p) => !settingByProject.get(p.id)?.price && !settingByProject.get(p.id)?.exception && p.status !== CANCELLED_PROJECT).map((p) => ({ sourceType: "project" as const, sourceId: p.id, projectId: p.id, status: p.status, reasonCode: "PRICE_UNKNOWN" }));
   sig("PRICE_MISSING", "FACT", unpricedEv.length, unpricedEv);
   const completedNoIncome = projects.filter((p) => {
-    if (p.status !== COMPLETED || settingByProject.get(p.id)?.price) return false;
+    // A finance exception is the Owner's decision on this project's money — never "check the income record".
+    if (p.status !== COMPLETED || settingByProject.get(p.id)?.price || settingByProject.get(p.id)?.exception) return false;
     const mine = txs.filter((t) => t.row.projectId === p.id && !t.cancelled);
     return mine.some((t) => t.type === "expense" && t.received) && !mine.some((t) => t.type === "income");
   });
