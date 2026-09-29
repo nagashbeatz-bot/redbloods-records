@@ -15,7 +15,7 @@ import { ACT_TOOL_DEFINITIONS, ACT_TOOL_NAMES, HISTORY_OUTCOMES, validateActInpu
 import { sha256Hex } from "./crypto";
 import { insufficientScopeResponse, type BearerResult, type HttpOut, type Principal } from "./oauth";
 import { gate, type GateResult, type SlidingWindowLimiter } from "./rate-limit";
-import type { AuditRow } from "./store";
+import { AUDIT_ENTITY_KEY_RE, type AuditRow } from "./store";
 import { ANSWER_TOOL, buildToolDefinitions, guardOutput, KNOWLEDGE_TOOL, validateToolCall, type CapabilityIndexEntry, type KnowledgeItemArgs, type QueryArgs, type ToolArgs } from "./tools";
 
 /**
@@ -256,7 +256,7 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     : a.tool === "partner_entity" && payload.status === "OK" ? a.key : null;
   const freshness = typeof payload.freshness === "string" ? payload.freshness : null;
   return finish(rpcResult(id, { content: [{ type: "text", text: g.text }], structuredContent: g.payload, isError: false }), {
-    ...inputPatch, resolved_entity_key: resolved && /^(project|client|label-artist|dj|show|session|release|vendor|recurring):[A-Za-z0-9:_-]{1,100}$/.test(resolved) ? resolved : null,
+    ...inputPatch, resolved_entity_key: resolved && AUDIT_ENTITY_KEY_RE.test(resolved) ? resolved : null,
     freshness, error_category: g.guarded ? "BUDGET_GUARD_APPLIED" : null,
   });
 }

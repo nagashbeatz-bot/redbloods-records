@@ -7,6 +7,21 @@
 import { randomUUID } from "node:crypto";
 import type { AccessCheck, AuditRow, GrantResult, McpClientRow, McpStore } from "../../lib/integrations/partner-mcp/store";
 
+/**
+ * The LIVE partner_gateway_audit key CHECKs, copied verbatim from production (pg_get_constraintdef, 2026-09-29):
+ * partner_gateway_audit_input_key_check and _resolved_entity_key_check. The fake rejects any audit row the database
+ * would reject, so a new entity key kind can never be green here and refused in production ("audit unavailable").
+ * Change it ONLY together with an approved DB change to those CHECKs.
+ */
+export const LIVE_AUDIT_KEY_CHECK = "^(project|client|label-artist|dj|show|session|release|vendor|recurring|transaction):[A-Za-z0-9:_-]{1,100}$";
+const LIVE_KEY = new RegExp(LIVE_AUDIT_KEY_CHECK);
+function assertLiveAuditChecks(row: AuditRow): void {
+  for (const col of ["input_key", "resolved_entity_key"] as const) {
+    const v = row[col];
+    if (v !== null && v !== undefined && !LIVE_KEY.test(v)) throw new Error(`new row for relation "partner_gateway_audit" violates check constraint "partner_gateway_audit_${col === "input_key" ? "input_key" : "resolved_entity_key"}_check"`);
+  }
+}
+
 interface Tok { id: string; hash: string; kind: "access" | "refresh"; family: string; clientId: string; userId: string; scope: string; resource: string; codeHash: string | null; exp: number; famExp: number; usedAt: number | null; revokedAt: number | null; reason: string | null }
 interface Code { hash: string; clientId: string; userId: string; redirectUri: string; challenge: string; scope: string; resource: string; exp: number; consumedAt: number | null; result: string | null }
 
@@ -84,7 +99,7 @@ export function memoryMcpStore(nowMs: () => number): MemoryMcpStore {
       return { result: r, tokenId: t.id, clientId: t.clientId, userId: t.userId, scope: t.scope, resource: t.resource };
     },
     async revokeToken(hash, clientId) { const t = tokens.get(hash); if (t && t.clientId === clientId) revokeFamily(t.family, "REVOKED_BY_CLIENT"); },
-    async writeAudit(row) { if (store.failAudit) throw new Error("audit unavailable"); store.audit.push(row); },
+    async writeAudit(row) { if (store.failAudit) throw new Error("audit unavailable"); assertLiveAuditChecks(row); store.audit.push(row); },
     hooks: {
       ageUnusedClients() { for (const k of createdAt.keys()) createdAt.set(k, nowMs() - 3_600_000); },
       expireAccess() { for (const t of tokens.values()) if (t.kind === "access") t.exp = nowMs() - 1000; },

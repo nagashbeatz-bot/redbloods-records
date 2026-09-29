@@ -18,10 +18,12 @@ import { SlidingWindowLimiter } from "../lib/integrations/partner-mcp/rate-limit
 import { guardOutput, TOOL_DEFINITIONS } from "../lib/integrations/partner-mcp/tools";
 import { authorizationServerMetadata, protectedResourceMetadata } from "../lib/integrations/partner-mcp/metadata";
 import { installMcpOnlyFetchGuard, isAllowedInMcpOnlyMode, isAllowedMcpOnlyFetch, isMcpPublicPath } from "../lib/integrations/partner-mcp/mcp-only";
-import { getPartnerEntityCore } from "../lib/partner/gateway/entity";
+import { getPartnerEntityCore, parseEntityKey } from "../lib/partner/gateway/entity";
+import type { GatewayEntityType } from "../lib/partner/gateway/types";
+import { AUDIT_ENTITY_KEY_RE } from "../lib/integrations/partner-mcp/store";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
 import { queryKnowledgeCore } from "../lib/partner/knowledge/query";
-import { memoryMcpStore } from "./fixtures/mcp-memory-store";
+import { LIVE_AUDIT_KEY_CHECK, memoryMcpStore } from "./fixtures/mcp-memory-store";
 import { BASE_ENV, CALLBACK, OWNER, OWNER_BINDING, runOAuthScenarios, testConfig, VERIFIER } from "./fixtures/mcp-oauth-scenarios";
 
 let pass = 0, fail = 0;
@@ -206,6 +208,19 @@ async function main() {
     const fc = await call("tools/call", { name: "partner_brief", arguments: {} });
     store.failAudit = false;
     check("40. audit cannot be written → the request is REFUSED and no Partner data leaves (fail closed)", [fc.json.error?.code, JSON.stringify(fc.json).includes("נטו")], [-32001, false]);
+
+    // 2026-09-29: the fake audit store enforces the LIVE key CHECKs — a new entity kind is never green here and refused in production
+    check("AK. the code's audit key mirror === the live DB CHECK (verbatim)", AUDIT_ENTITY_KEY_RE.source, LIVE_AUDIT_KEY_CHECK);
+    const U0 = "00000000-0000-4000-8000-000000000001";
+    const SAMPLE_KEY: Record<GatewayEntityType, string> = { project: `project:${U0}`, client: `client:${U0}`, "label-artist": `label-artist:${U0}`, vendor: "vendor:VICTOR", dj: `dj:${U0}`, show: `show:${U0}`, session: `session:${U0}`, release: `release:${U0}`, recurring: "recurring:VICTOR_SALARY:2026-08", transaction: `transaction:${U0}` };
+    check("AK. every partner_entity key kind parses AND fits the live audit CHECK", Object.entries(SAMPLE_KEY).filter(([t, k]) => parseEntityKey(k)?.type !== t || !new RegExp(LIVE_AUDIT_KEY_CHECK).test(k)).map(([t]) => t), []);
+    const beforeTx = store.audit.length;
+    const txCall = await call("tools/call", { name: "partner_entity", arguments: { key: SAMPLE_KEY.transaction } });
+    const txRow = store.audit.slice(beforeTx)[0];
+    check("AK. partner_entity(transaction:<id>) through the connector: served (no -32001) and audited with the exact key", [txCall.json.error?.code ?? null, txRow?.tool, txRow?.input_key, txRow?.resolved_entity_key, txRow?.status], [null, "partner_entity", SAMPLE_KEY.transaction, SAMPLE_KEY.transaction, "OK"]);
+    let refused = "";
+    try { await store.writeAudit({ ...txRow, input_key: "invoice:1", resolved_entity_key: null }); } catch (err) { refused = (err as Error).message; }
+    ok("AK. a key kind the live DB refuses is refused by the fake too (no green-here / blocked-in-prod)", /partner_gateway_audit_input_key_check/.test(refused));
   }
 
   console.log("Rate limit (O), budget guard (6), untrusted text (Q)");

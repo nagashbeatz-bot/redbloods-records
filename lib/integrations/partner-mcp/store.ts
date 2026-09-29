@@ -15,6 +15,14 @@ export type AccessCheck =
   | { result: "VALID" | "REVOKED" | "EXPIRED" | "CLIENT_DISABLED"; tokenId: string; clientId: string; userId: string; scope: string; resource: string }
   | { result: "NOT_FOUND" };
 
+/**
+ * The entity-key shape the live DB accepts in partner_gateway_audit.input_key / resolved_entity_key — a mirror of the
+ * CHECKs partner_gateway_audit_input_key_check / partner_gateway_audit_resolved_entity_key_check (production, extended
+ * with `transaction` 2026-09-29, Owner-approved). A new partner_entity key kind needs BOTH CHECKs extended (DB change)
+ * and this mirror; the audit is written after the read and fails closed, so a kind the DB refuses is never served.
+ */
+export const AUDIT_ENTITY_KEY_RE = /^(project|client|label-artist|dj|show|session|release|vendor|recurring|transaction):[A-Za-z0-9:_-]{1,100}$/;
+
 export interface AuditRow {
   /** Only for the P1 answer ATTEMPT row: generated app-side so the Owner Context provenance can reference it (the service role has INSERT-only, no SELECT). */
   id?: string;
