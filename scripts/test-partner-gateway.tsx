@@ -300,6 +300,11 @@ async function main() {
     check("43. מראות: Owner decision PROJECT_CANCELLED_NO_FURTHER_PAYMENT, receivable NOT_COLLECTIBLE (OWNER_DECISION)", [m.ownerDecisions.map((d) => [d.answerCode, d.status]), (recv.value as { collectionState: string }).collectionState, recv.epistemic, m.resolutions.map((r) => r.code)], [[["PROJECT_CANCELLED_NO_FURTHER_PAYMENT", "ACTIVE"]], "NOT_COLLECTIBLE", "OWNER_DECISION", ["CLOSED_BY_OWNER_DECISION"]]);
     check("43. no reopened ₪1,600 question; a balance case is SUPERSEDED_BY_OWNER_DECISION, never OPEN", [m.openQuestions.filter((q) => q.questionType === "FINANCE_RECEIVABLE_TIMING").length, m.openIssues.filter((i) => i.code === "PROJECT_PAYMENT_OUTSTANDING").map((i) => i.status)], [0, ["SUPERSEDED_BY_OWNER_DECISION"]]);
     ok("a closed project says honestly what it does not know (deadline detail)", m.missing.some((x) => x.fact.startsWith("deadline")));
+    check("2026-09-29: each project transaction is a drill-down target transaction:<id> (ID), label keeps amount + currency + status",
+      m.relationships.filter((r) => r.relation === "PROJECT_HAS_TRANSACTION").map((r) => [r.to, r.quality, r.toLabel?.text]), [[`transaction:${U(801)}`, "ID", "income · ₪1600 · התקבל · 02.07.2026"]]);
+    check("2026-09-29: the salary period points at its Finance row", getPartnerEntityCore("recurring:VICTOR_SALARY:2026-08", src).relationships.filter((r) => r.relation === "SALARY_PERIOD_HAS_TRANSACTION").map((r) => r.to), [`transaction:${AUG_TX}`]);
+    const t = getPartnerEntityCore(`transaction:${AUG_TX}`, src);
+    check("2026-09-29: the salary row as an entity — $550 as stored, שולם, Victor salary marker + period drill-down", [t.status, factOf(t, "TX_AMOUNT")?.value, (factOf(t, "TX_STATUS")?.value as { status: string }).status, (factOf(t, "TX_LINK_MARKER")?.value as { kind: string }).kind, t.drillDown.map((d) => d.args.key)], ["OK", { amount: 550, currency: "$" }, "שולם", "VICTOR_SALARY", ["recurring:VICTOR_SALARY:2026-08"]]);
   }
 
   console.log("Label artist / client / DJ / Steven / show / session / release (Parts 13–21, 44, 54)");
@@ -380,7 +385,7 @@ async function main() {
   {
     const dir = path.join(ROOT, "lib/partner/gateway");
     const files = fs.readdirSync(dir).map((f) => `lib/partner/gateway/${f}`);
-    check("gateway module files", files.sort(), ["brief.ts", "core.ts", "entity-common.ts", "entity.ts", "keys.ts", "read-context.ts", "resolve.ts", "server.ts", "types.ts"].map((f) => `lib/partner/gateway/${f}`));
+    check("gateway module files", files.sort(), ["brief.ts", "core.ts", "entity-common.ts", "entity-transaction.ts", "entity.ts", "keys.ts", "read-context.ts", "resolve.ts", "server.ts", "types.ts"].map((f) => `lib/partner/gateway/${f}`));
     const code = files.map((f) => [f, strip(rd(f))] as const);
     const FORBIDDEN = /action-service|decideSuggested|executeApproved|decideFinanceActionCore|executeFinanceActionCore|appendOwnerContext|answer-service|answerFinanceQuestion|appendFinanceDecision|callFinanceExecuteRpc|event-persistence|\/push|sendPush|web-push|instrumentation|cron|alerts-store|createAlert|updateAlertStatus|lib\/supabase|\.insert\(|\.update\(|\.upsert\(|\.delete\(|\.rpc\(|fetch\(|openai|ai-router|anthropic/i;
     check("50. no write / decide / execute / answer / push / cron / alert / DB / LLM capability anywhere in the Gateway", code.filter(([, s]) => FORBIDDEN.test(s.replace(/createHash\("sha1"\)\.update\(/g, ""))).map(([f]) => f), []);

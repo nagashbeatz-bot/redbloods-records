@@ -79,7 +79,7 @@ const BASE_TOOL_DEFINITIONS = [
   {
     name: "partner_entity",
     title: "Redbloods Sunny — what Partner knows about an entity",
-    description: `Everything Partner knows about ONE entity, by its stable key from partner_resolve or a drillDown (e.g. vendor:VICTOR, recurring:VICTOR_SALARY:2026-08, project:<id>). ` +
+    description: `Everything Partner knows about ONE entity, by its stable key from partner_resolve or a drillDown (e.g. vendor:VICTOR, recurring:VICTOR_SALARY:2026-08, project:<id>, transaction:<id> — one Finance row: amount + currency as stored, status, date, links, ownership, expense share; read-only). ` +
       `Live canonical data wins over history; the missing[] list says what Partner does not know. ${COMMON}`,
     inputSchema: { type: "object", properties: { key: { type: "string", minLength: 3, maxLength: 120, description: "A Partner entity key" } }, required: ["key"], additionalProperties: false },
     annotations: annotations("Redbloods Sunny — what Partner knows about an entity"),

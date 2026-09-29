@@ -5,7 +5,7 @@
 import type { GatewayEntityType } from "./types";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const KEY_RE = new RegExp(`^(project|client|label-artist|dj|show|session|release):(${UUID})$`);
+const KEY_RE = new RegExp(`^(project|client|label-artist|dj|show|session|release|transaction):(${UUID})$`);
 const PERIOD_RE = /^recurring:VICTOR_SALARY:(\d{4}-(?:0[1-9]|1[0-2]))$/;
 
 export function parseEntityKey(key: string): { type: GatewayEntityType; id: string } | null {

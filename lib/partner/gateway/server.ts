@@ -72,8 +72,9 @@ export async function resolvePartnerEntity(query: string, ctx: AnyCtx = createCo
 export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE, registry: KnowledgeRegistry = PARTNER_KNOWLEDGE_REGISTRY): Promise<EntityResponse> {
   const k = String(key ?? "").slice(0, 120);
   if (!parseEntityKey(k)) return getPartnerEntityCore(k, { now: ctx.now, identities: APP_IDENTITIES });
-  // project entities also load the project's human context + material metadata (Owner-only capability, bounded)
-  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(k.startsWith("show:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
+  // project entities also load the project's human context + material metadata (Owner-only capability, bounded);
+  // a transaction loads the same detail sources for its text and its clip / Red Films ownership links (no new reader)
+  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") || k.startsWith("transaction:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(k.startsWith("show:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
   const src = await loadSources(ctx, needs, audience);
   return getPartnerEntityCore(k, { ...src, entityKnowledge: (entityKey) => entityKnowledge(registry, src, entityKey) });
 }

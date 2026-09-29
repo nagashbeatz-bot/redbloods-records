@@ -25,7 +25,7 @@ export interface OpsBeat { id: string; name: string; genre: string | null; music
 export interface OpsBeatAssignment { beatId: string; artistSlug: string }
 export interface OpsCampaign { id: string; projectId: string | null; title: string; artistName: string | null; releaseDate: string | null; status: string | null; promotionBudget: number | null }
 export interface OpsContentItem { campaignId: string | null; status: string | null; contentType: string | null; platform: string | null; dueDate: string | null; publishDate: string | null }
-export interface OpsPromotion { id?: string | null; name?: string | null; campaignId: string | null; channel: string | null; plannedAmount: number | null; status: string | null; promoDate: string | null; hasTransaction: boolean }
+export interface OpsPromotion { id?: string | null; name?: string | null; campaignId: string | null; channel: string | null; plannedAmount: number | null; status: string | null; promoDate: string | null; hasTransaction: boolean; /** the promotion's Finance expense id (ownership lookup only; optional for older fixtures) */ linkedTransactionId?: string | null }
 export interface OpsBalanceCycle { artistId: string; cycleIndex: number; startDate: string | null; endDate: string | null; income: number | null; payments: number | null; expenses: number | null; endingBalance: number | null; closedAt: string | null }
 /** id = the track id (its action target album-track:<id>). Free text (notes) is never selected here — PROJECT_DETAIL carries it. */
 export interface OpsAlbumTrack { id: string | null; projectId: string | null; trackNumber: number | null; title: string; status: string | null; mixStatus: string | null; masterStatus: string | null }

@@ -3,7 +3,7 @@
  *
  * Project / Client / Label Artist reuse the existing Eyes dossiers (lib/partner/dossiers) verbatim and add
  * Finance Brain, Cases, Organizational Memory and the Action surface. Victor, Steven, Victor salary periods,
- * DJs, shows, sessions and releases are new READ-ONLY compositions of the same shared state — no new reads,
+ * DJs, shows, sessions, releases and single transactions (entity-transaction.ts) are new READ-ONLY compositions of the same shared state — no new reads,
  * no finance rules, no memory of their own. Every relation keeps its quality (ID / TEXT_MATCH / DERIVED /
  * UNKNOWN); a TEXT_MATCH is never presented as a link.
  */
@@ -14,6 +14,7 @@ import type { PartnerCompanyState, SessionSummary, ShowSummary } from "../eyes/t
 import { salaryLinkedId, salaryMonthLabel } from "../../victor-salary-format";
 import { envelope, ok, partner, record, heDate, type GatewaySources } from "./core";
 import { drill, fact, finishEntity, type EntityDraft } from "./entity-common";
+import { transactionDraft } from "./entity-transaction";
 import { normalizeName } from "./resolve";
 import { parseEntityKey } from "./keys";
 import { type EntityResponse, type GatewayEntityType, type GatewayFact, type GatewayRelationship } from "./types";
@@ -81,7 +82,7 @@ function projectDraft(src: GatewaySources, state: PartnerCompanyState, id: strin
   for (const c of d.clips.unlinkedCandidates) rels.push(rel(key, "PROJECT_HAS_CLIP", null, `${c.title} · ${c.status}`, "TEXT_MATCH", "CLIPS", "קליפ ללא קישור לפרויקט — התאמת שם אמן בלבד"));
   if (d.tasks.count) facts.push(fact("OPEN_TASKS", "משימות פתוחות", d.tasks.items.slice(0, 5).map((t) => ({ title: record(t.title), due: t.dueYmd })), "FACT", "TASKS"));
   const txs = d.finance.transactionDetail;
-  if (txs !== "NOT_AVAILABLE_IN_EYES") for (const t of [...txs.incomeTransactions, ...txs.expenseTransactions]) rels.push(rel(key, "PROJECT_HAS_TRANSACTION", null, `${t.type} · ${t.currency}${t.amount} · ${t.status} · ${heDate(t.dateYmd) ?? "—"}`, "ID", "FINANCE"));
+  if (txs !== "NOT_AVAILABLE_IN_EYES") for (const t of [...txs.incomeTransactions, ...txs.expenseTransactions]) rels.push(rel(key, "PROJECT_HAS_TRANSACTION", `transaction:${t.id}`, `${t.type} · ${t.currency}${t.amount} · ${t.status} · ${heDate(t.dateYmd) ?? "—"}`, "ID", "FINANCE"));
   missing.push({ fact: "show relation", whyNeeded: "shows are not linked to projects in the data" });
   for (const c of d.dataQuality.conflicts) facts.push(fact(`DATA_CONFLICT:${c.code}`, "סתירה בנתונים", partner(c.description), "UNKNOWN", "PROJECTS"));
   return {
@@ -214,7 +215,7 @@ function periodDraft(src: GatewaySources, period: string): EntityDraft | null {
   if (f) {
     const txs = f.raw.transactions.filter((t) => t.linkedSessionId === salaryLinkedId(period));
     facts.push(fact("FINANCE_RECORD", "רישום בכספים", { present: txs.length > 0, records: txs.map((t) => ({ amount: t.amount, currency: t.currency, date: t.date, status: t.status, type: t.type })) }, "FACT", "FINANCE"));
-    for (const t of txs) rels.push(rel(key, "SALARY_PERIOD_HAS_TRANSACTION", null, `${t.currency}${t.amount} · ${t.status} · ${heDate(t.date) ?? "—"}`, "ID", "FINANCE"));
+    for (const t of txs) rels.push(rel(key, "SALARY_PERIOD_HAS_TRANSACTION", `transaction:${t.id}`, `${t.currency}${t.amount} · ${t.status} · ${heDate(t.date) ?? "—"}`, "ID", "FINANCE"));
     const known = f.state.recurring.known.find((k) => k.workMonth === period);
     if (known) facts.push(fact("FINANCE_STATE", "מצב לפי Finance Brain", known.state, "DERIVED", "FINANCE"));
   } else missing.push({ fact: "finance record", whyNeeded: "finance could not be read — whether the salary is recorded is UNKNOWN" });
@@ -368,6 +369,10 @@ export function getPartnerEntityCore(key: string, src: GatewaySources): EntityRe
   let draft: EntityDraft | null = null;
   if (parsed.type === "vendor") draft = parsed.id === "VICTOR" ? victorDraft(src, state) : stevenDraft(src, state);
   else if (parsed.type === "recurring") draft = periodDraft(src, parsed.id);
+  else if (parsed.type === "transaction") {
+    if (!ok(src.finance)) return empty("NOT_FOUND", "finance could not be read — the transaction is UNKNOWN, not absent");
+    draft = transactionDraft(src, parsed.id);
+  }
   else if (!state) return empty("NOT_FOUND", "company state could not be read — the entity is UNKNOWN, not absent");
   else if (parsed.type === "project") draft = projectDraft(src, state, parsed.id);
   else if (parsed.type === "client") draft = clientDraft(state, parsed.id);

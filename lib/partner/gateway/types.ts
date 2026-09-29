@@ -51,7 +51,7 @@ export const GATEWAY_TEXT_POLICY =
 
 /** Public entity kinds. Keys never expose table structure: <type>:<id>. */
 export type GatewayEntityType =
-  | "project" | "client" | "label-artist" | "vendor" | "dj" | "show" | "session" | "release" | "recurring";
+  | "project" | "client" | "label-artist" | "vendor" | "dj" | "show" | "session" | "release" | "recurring" | "transaction";
 
 export interface GatewayEntityRef { key: string; type: GatewayEntityType; label: GText }
 
@@ -78,12 +78,12 @@ export type GatewayRelationType =
   | "PROJECT_HAS_PROPOSAL" | "PROJECT_HAS_CLIP" | "PROJECT_HAS_TASK" | "PROJECT_ARTIST_IS_CLIENT" | "RELEASE_OF_LABEL_ARTIST"
   | "CLIENT_HAS_PROPOSAL" | "CLIENT_HAS_PROJECT" | "LABEL_ARTIST_HAS_PROJECT" | "LABEL_ARTIST_IS_CLIENT" | "SHOW_HAS_DJ" | "SHOW_HAS_ARTIST"
   | "SHOW_HAS_BOOKER" | "SHOW_HAS_SESSION" | "VENDOR_HAS_SALARY_PERIOD" | "SALARY_PERIOD_HAS_TRANSACTION"
-  | "SESSION_OF_PROJECT" | "SESSION_OF_SHOW";
+  | "SESSION_OF_PROJECT" | "SESSION_OF_SHOW" | "SHOW_HAS_TRANSACTION" | "SESSION_HAS_TRANSACTION";
 
 export interface GatewayRelationship {
   from: string;
   relation: GatewayRelationType;
-  /** An entity key, or null when the other side is not a Gateway entity (e.g. a transaction). */
+  /** An entity key (a transaction is `transaction:<id>` since 2026-09-29), or null when the other side is not a Gateway entity. */
   to: string | null;
   toLabel: GText | null;
   quality: GatewayRelationQuality;
