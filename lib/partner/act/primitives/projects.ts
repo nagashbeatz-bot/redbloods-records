@@ -14,6 +14,8 @@ export type ProjectDeleteImpactView = {
   sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; settingsKeys: number; coverCustomImage: number; proposalFollowUpTasks: number;
   engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number; openAlerts: number;
   transactionsUnlinked: number; sessionLinkedTransactions: number; proposalsReset: number; socialCampaignsUnlinked: number; finalFilesUnlinked: number;
+  /** clip projects linked to this song (song_project_id) — kept; the database sets their link to NULL (2026-09-29) */
+  clipProjectsUnlinked?: number;
   tasksKept: number; meetingsKept: number; productionsKept: number; storageFolderKept: number;
 };
 export interface ProjectFamilyWriters {
@@ -88,7 +90,7 @@ export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
     warnings: (c) => [
       `נמחקים: ${c.sessions} סשנים (${c.calendarEvents} אירועי יומן), ${c.sendLog} רשומות שליחה, ${c.clipRows} שורות קליפ, ${c.victorWorks} עבודות ויקטור (+ המשימות שלהן), ${c.settingsKeys} הגדרות פרויקט${Number(c.coverCustomImage) > 0 ? ", קובץ תמונת הנושא" : ""}, ${c.proposalFollowUpTasks} משימות מעקב של הצעות`,
       `נמחקים עם הפרויקט (מסד הנתונים): ${c.engineerWorks} עבודות מיקס (${c.mixVersions} גרסאות, ${c.mixComments} הערות, ${c.mixAttachments} צרופות — הקבצים עצמם נשארים באחסון), ${c.albumTracks} שירי אלבום, ${c.releaseDetails} רשומות ריליס; ${c.openAlerts} התראות פתוחות נסגרות`,
-      `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.sessionLinkedTransactions} רשומות כספים מקושרות לסשנים שנמחקים (הקישור לסשן לא יצביע על כלום); ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'; ${c.socialCampaignsUnlinked} קמפייני סושיאל; ${c.finalFilesUnlinked} קבצים סופיים שמקושרים רק לפרויקט`,
+      `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.sessionLinkedTransactions} רשומות כספים מקושרות לסשנים שנמחקים (הקישור לסשן לא יצביע על כלום); ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'; ${c.socialCampaignsUnlinked} קמפייני סושיאל; ${c.finalFilesUnlinked} קבצים סופיים שמקושרים רק לפרויקט${Number(c.clipProjectsUnlinked ?? 0) > 0 ? `; ${c.clipProjectsUnlinked} פרויקטי קליפ שמקושרים לשיר הזה — הם נשארים, אבל הקישור שלהם לשיר נמחק` : ""}`,
       `נשארים כמו שהם: ${c.tasksKept} משימות, ${c.meetingsKept} פגישות, ${c.productionsKept} הפקות Red Films${Number(c.storageFolderKept) > 0 ? ", תיקיית הפרויקט באחסון" : ""}`,
     ],
     disclosuresHe: ["בדיקה מקדימה לפני כל כתיבה: קבצים סופיים על עבודות המיקס חוסמים את המחיקה (בלי שום שינוי)", "כל שלב נבדק; כשל עוצר לפני מחיקת הפרויקט עצמו (אפשר לנסות שוב); בדיקת חסימה נוספת רגע לפני מחיקת השורה", "אירועי יומן, Google Tasks וקובץ תמונת הנושא נמחקים רק אחרי שהמחיקה במסד הנתונים הצליחה — וכשל שם מדווח", "לא טרנזקציה אחת במסד הנתונים (דורש פונקציית SQL מאושרת)", "לקוחות לא נמחקים לעולם", "לא נשלח Push / מייל"],

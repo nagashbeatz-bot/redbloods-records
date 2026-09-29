@@ -18,6 +18,7 @@ interface DbProject {
   notes:          string;
   project_type:   string;
   parent_project: string;
+  song_project_id?: string | null; // clip → song (canonical id link, 2026-09-29); absent on rows read before the column
   is_hidden:      boolean;
   project_business_type: string; // לקוח / לייבל
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[];
@@ -57,6 +58,7 @@ function dbToProject(db: DbProject): Project {
     isDueSoon:     isDueSoon(db.deadline),
     projectType:   db.project_type as ProjectType,
     parentProject: db.parent_project,
+    songProjectId: db.song_project_id ?? null,
     isHidden:      db.is_hidden ?? false,
     businessType:  (db.project_business_type as ProjectBusinessType) ?? "לקוח",
     updatedAt:     db.updated_at ?? db.created_at ?? "",
@@ -95,6 +97,13 @@ export async function getProject(id: string): Promise<Project | null> {
 
   if (error) return null;
   return dbToProject(data as DbProject);
+}
+
+/** The clip projects canonically linked to a song (projects.song_project_id = songId). Read-only. */
+export async function listClipsOfSong(songId: string): Promise<Project[]> {
+  const { data, error } = await supabase.from("projects").select("*").eq("song_project_id", songId).order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as DbProject[]).map(dbToProject);
 }
 
 export async function getProjectByMondayId(mondayId: string): Promise<Project | null> {

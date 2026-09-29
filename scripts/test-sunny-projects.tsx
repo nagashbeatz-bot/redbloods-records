@@ -200,7 +200,7 @@ function main() {
     ok(`${f}: no write / network / db access`, !/\.(insert|update|upsert|delete|rpc)\s*\(|fetch\s*\(|supabase|createClient/i.test(code(read(f))));
   }
   const reader = code(read("lib/partner/operations/readers.ts"));
-  ok("project meta read selects no notes / files / folders / links", /"id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, is_hidden, planned_hours, planned_days, updated_at"/.test(reader) && !/dropbox_folder|notes|files/.test((reader.match(/projectsMeta[\s\S]{0,400}/)?.[0]) ?? ""));
+  ok("project meta read selects no notes / files / folders / links", /"id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, song_project_id, is_hidden, planned_hours, planned_days, updated_at"/.test(reader) && !/dropbox_folder|notes|files/.test((reader.match(/projectsMeta[\s\S]{0,400}/)?.[0]) ?? ""));
   for (const [f, want] of Object.entries(PROJECT_REVIEWED_FINGERPRINTS)) {
     const got = createHash("sha256").update(fs.readFileSync(path.join(ROOT, f)).toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
     check(`${f} unchanged since the last Sunny project review (update lib/partner/system/projects.ts + fingerprint together)`, got, want);

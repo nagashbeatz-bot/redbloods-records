@@ -42,6 +42,8 @@ export interface OpsEquipment { category: string | null; status: string | null }
 export interface OpsProjectMeta {
   id: string; name: string; status: string | null; projectType: string | null; businessType: string | null; artistText: string | null;
   deadline: string | null; startDate: string | null; endDate: string | null; parentProject: string | null; isHidden: boolean;
+  /** clip → song (projects.song_project_id, canonical id link, 2026-09-29). Optional for older fixtures. */
+  songProjectId?: string | null;
   plannedHours: number | null; plannedDays: number | null; updatedAt: string | null;
 }
 

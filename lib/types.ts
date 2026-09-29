@@ -579,7 +579,10 @@ export interface Project {
   isOverdue: boolean;
   isDueSoon: boolean;
   projectType: ProjectType;    // סוג פרויקט
-  parentProject: string;       // שייך ל
+  parentProject: string;       // שייך ל — legacy / display (a NAME, never the canonical song ↔ clip link)
+  /** Clip project → its song project (projects.song_project_id, canonical id link, 2026-09-29). Only on a 'קליפ'
+   *  project (application-enforced: lib/project-song-link.ts). null / absent = not linked. */
+  songProjectId?: string | null;
   isHidden: boolean;           // הסתרה — לא מופיע בתצוגה הפעילה
   businessType: ProjectBusinessType; // לקוח / לייבל (projects.project_business_type)
   updatedAt: string;           // ISO timestamp of last meaningful change

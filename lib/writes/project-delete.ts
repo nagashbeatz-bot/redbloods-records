@@ -45,6 +45,8 @@ export interface ProjectDeleteImpact {
   engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number; openAlerts: number;
   // unlinked (kept)
   transactionsUnlinked: number; sessionLinkedTransactions: number; proposalsReset: number; socialCampaignsUnlinked: number; finalFilesUnlinked: number;
+  /** clip projects whose song_project_id points here — kept, but the database sets their song link to NULL (ON DELETE SET NULL) */
+  clipProjectsUnlinked: number;
   // kept as they are
   tasksKept: number; meetingsKept: number; productionsKept: number; storageFolderKept: number;
 }
@@ -114,6 +116,7 @@ export async function projectDeletePreflight(projectId: string): Promise<Project
     sessionLinkedTransactions: (await ids("transactions", "linked_session_id", sessionIds)).length,
     proposalsReset: (props ?? []).length, socialCampaignsUnlinked: await count("social_campaigns", "project_id", projectId),
     finalFilesUnlinked: projectFinal.filter((id) => !onWorks.has(id)).length,
+    clipProjectsUnlinked: await count("projects", "song_project_id", projectId),
     tasksKept: await count("tasks", "related_id", projectId, (q) => q.eq("related_type", "project")), meetingsKept: await count("meetings", "project_id", projectId),
     productionsKept: await count("red_films_productions", "project_id", projectId), storageFolderKept: prj?.dropbox_folder ? 1 : 0,
   };

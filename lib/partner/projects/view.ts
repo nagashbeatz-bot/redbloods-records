@@ -20,6 +20,7 @@ import { AUTO_MARK_RETIRED_AT } from "../../session-duration";
 import { isEngineerWorkPaid } from "../../mix-payment-pure";
 import { normalizeCurrency } from "../../finance/currency";
 import { isClipItemPlanned } from "../../clip-rf-money-pure";
+import { songClipRelations } from "../../project-song-link";
 import { NOT_OVERDUE_STATUSES, isProjectOverdue, deadlineParseIssue } from "../../project-deadline";
 import { sendEntryCurrent, evidenceFor, isOpenSendState } from "../work/send-log";
 
@@ -38,7 +39,12 @@ export interface ProjectView {
   key: string;
   found: boolean;
   identity: { id: string; name: string; status: string | null; projectType: string | null; businessType: string | null; artistText: string | null; deadline: string | null; daysToDeadline: number | null;
-    startDate: string | null; endDate: string | null; parentProject: Link<string> | null; hidden: boolean | null; daysSinceUpdate: number | null; plannedHours: number | null; plannedDays: number | null } | null;
+    startDate: string | null; endDate: string | null; parentProject: Link<string> | null;
+    /** clip → its song (projects.song_project_id): CANONICAL_RELATION by id; never inferred from a name. */
+    songProject: Link<{ key: string; name: string | null }> | null;
+    /** song → its clip projects (the reverse of song_project_id): CANONICAL_RELATION by id. */
+    clipProjects: Array<Link<{ key: string; name: string; status: string | null }>>;
+    hidden: boolean | null; daysSinceUpdate: number | null; plannedHours: number | null; plannedDays: number | null } | null;
   people: { clients: Array<Link<{ key: string; name: string }>>; labelArtists: Array<Link<{ key: string; name: string }>>; victor: Link<{ works: number; ball: string[] }> | null;
     engineers: Array<Link<{ name: string; workType: string | null; status: string | null }>>; redFilms: Array<Link<{ productionTitle: string; crewKnown: false }>>; owner: Link<string> };
   money: ProjectMoney | null;
@@ -82,6 +88,7 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
   const idx = st?.domains.projects.data?.index[projectId] ?? null;
   const open = st?.domains.projects.data?.open.find((p) => p.id === projectId) ?? null;
   const meta = ops?.projectsMeta?.rows.find((p) => p.id === projectId) ?? null;
+  const songLink = songClipRelations(projectId, ops?.projectsMeta?.rows ?? []);
   const found = !!(idx || meta);
   if (!st) missing.push("מצב החברה לא נקרא — אין זהות פרויקט חיה.");
   if (!ops) missing.push("מקור התפעול לא נקרא (תאריכים, מהנדסים, Red Films, מסירה, פגישות…).");
@@ -91,7 +98,11 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
     id: projectId, name: idx?.name ?? meta?.name ?? "", status, projectType: open?.projectType ?? meta?.projectType ?? null, businessType: idx?.businessType ?? meta?.businessType ?? null,
     artistText: idx?.artistText ?? meta?.artistText ?? null, deadline: open?.deadline.ymd ?? meta?.deadline ?? null, daysToDeadline: open?.deadline.daysTo ?? null,
     startDate: meta?.startDate ?? null, endDate: meta?.endDate ?? null,
-    parentProject: meta?.parentProject && meta.parentProject !== "ללא שיוך" ? { quality: "TEXT_MATCH" as Q, basis: "parent is stored as a project NAME", value: meta.parentProject } : null,
+    parentProject: meta?.parentProject && meta.parentProject !== "ללא שיוך" ? { quality: "TEXT_MATCH" as Q, basis: "parent is stored as a project NAME (legacy / display — not the song ↔ clip link)", value: meta.parentProject } : null,
+    songProject: songLink.song
+      ? { quality: "CANONICAL_RELATION" as Q, basis: "this clip project's song_project_id", value: { key: `project:${songLink.song.id}`, name: songLink.song.name } }
+      : meta?.songProjectId ? { quality: "UNKNOWN" as Q, basis: "song_project_id points to a project that was not read", value: { key: `project:${meta.songProjectId}`, name: null } } : null,
+    clipProjects: songLink.clips.map((c) => ({ quality: "CANONICAL_RELATION" as Q, basis: "that clip project's song_project_id is this project", value: { key: `project:${c.id}`, name: c.name, status: c.status } })),
     hidden: meta ? meta.isHidden : null, daysSinceUpdate: open?.daysSinceUpdate ?? null, plannedHours: meta?.plannedHours ?? null, plannedDays: meta?.plannedDays ?? null,
   } : null;
 

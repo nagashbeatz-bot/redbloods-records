@@ -19,6 +19,7 @@ import type { PartnerCompanyState } from "../eyes/types";
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { ProjectDetailRaw, DetailFile } from "./detail-types";
 import { KNOWLEDGE_GAPS } from "../system/gaps";
+import { songClipRelations } from "../../project-song-link";
 import { buildProjectView, type ProjectView } from "./view";
 import type { CalendarWindowResult } from "../calendar/types";
 import { buildCalendarLinkIndex, eventsForEntity, linkCalendarEvent } from "../calendar/links";
@@ -291,6 +292,11 @@ function graphOf(c: Ctx): SectionRow[] {
   if (tx) E("TRANSACTIONS", `transactions:${tx}`, "CANONICAL_RELATION", "transaction project id (no FK)", { readVia: "finance_transactions", count: tx });
   const meta = rows(c.ops?.projectsMeta);
   const self = meta.find((x) => x.id === id);
+  // song ↔ clip: the canonical id link (projects.song_project_id, 2026-09-29) — never inferred from a name
+  const link = songClipRelations(id, meta);
+  if (link.song) E("SONG_OF_CLIP", `project:${link.song.id}`, "CANONICAL_RELATION", "clip project's song_project_id", { songName: link.song.name });
+  else if (self?.songProjectId) E("SONG_OF_CLIP", `project:${self.songProjectId}`, "UNKNOWN", "song_project_id points to a project that was not read");
+  for (const cl of link.clips) E("CLIP_PROJECT", `project:${cl.id}`, "CANONICAL_RELATION", "that clip project's song_project_id is this project", { clipName: cl.name, status: cl.status });
   const parentText = self?.parentProject && self.parentProject !== "ללא שיוך" ? self.parentProject : null;
   if (parentText) {
     const bare = parentText.replace(/^(אלבום|EP|Riddim):\s*/, "").trim();

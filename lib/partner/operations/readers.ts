@@ -76,7 +76,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     // integration credentials: the KEY only — the value (a secret) is never selected
     readSection(client, "settings", "key", (q) => q.in("key", ["google_calendar_token", "dropbox_tokens"])),
     // project metadata the company-state reader drops (hidden projects included) — never notes / files / folders / links
-    readSection(client, "projects", "id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, is_hidden, planned_hours, planned_days, updated_at"),
+    readSection(client, "projects", "id, name, status, project_type, project_business_type, artist, deadline, start_date, end_date, parent_project, song_project_id, is_hidden, planned_hours, planned_days, updated_at"),
     // stored Google Calendar event ids → canonical calendar relationships (ids only)
     readSection(client, "sessions", "id, project_id, show_id, date, status, calendar_event_id"),
     readSection(client, "meetings", "id, project_id, client_id, date, status, calendar_event_id"),
@@ -124,7 +124,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     }),
     projectsMeta: mapSection(pmeta, (r) => (s(r.id) ? {
       id: String(r.id), name: s(r.name) ?? "", status: s(r.status), projectType: s(r.project_type), businessType: s(r.project_business_type), artistText: s(r.artist),
-      deadline: s(r.deadline), startDate: s(r.start_date), endDate: s(r.end_date), parentProject: s(r.parent_project), isHidden: r.is_hidden === true,
+      deadline: s(r.deadline), startDate: s(r.start_date), endDate: s(r.end_date), parentProject: s(r.parent_project), songProjectId: s(r.song_project_id), isHidden: r.is_hidden === true,
       plannedHours: n(r.planned_hours), plannedDays: n(r.planned_days), updatedAt: s(r.updated_at),
     } : null)),
     integrations: { googleCalendarConnected: has("google_calendar_token"), dropboxConnected: has("dropbox_tokens") },
