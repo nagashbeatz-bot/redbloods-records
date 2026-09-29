@@ -306,6 +306,8 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_AGREED_PRICE", kinds: ["project"],
+    // chainable: one compare-and-swap merge into the project's finance settings (setFinanceSettings) — nothing else changes
+    chain: { derived: () => [] },
     meta: meta("קביעת מחיר מוסכם לפרויקט", "Set a project's agreed price + currency (drives debt / credit with received income)", [K("project"), { name: "agreedPrice", kind: "money", required: true }, E("currency", TX_CURRENCIES, true)], ["agreedPrice", "currency"], "setFinanceSettings (lib/writes/finance)", { effects: ["FINANCE", "SETTINGS"] }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {
@@ -320,6 +322,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_FINANCIAL_NOTES", kinds: ["project"],
+    chain: { derived: () => [] },
     meta: meta("הערות כספיות לפרויקט", "Set a project's financial notes", [K("project"), T("financialNotes", true), E("mode", ["REPLACE", "APPEND"])], ["financialNotes"], "setFinanceSettings (lib/writes/finance)", { effects: ["SETTINGS"], riskClass: "SAFE_REVERSIBLE", reversible: "YES" }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {
@@ -332,6 +335,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_FINANCE_EXCEPTION", kinds: ["project"],
+    chain: { derived: () => [] },
     meta: meta("חריגה כספית לפרויקט (הפעלה / ביטול)", "Turn a project's finance exception on (with reason + date) or off", [K("project"), { name: "on", kind: "boolean", required: true }, T("reason"), { name: "date", kind: "ymd", required: false }], ["financeException", "financeExceptionReason", "financeExceptionDate"], "setFinanceSettings (lib/writes/finance)", { effects: ["FINANCE", "SETTINGS"], reversible: "YES" }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {

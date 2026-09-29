@@ -100,9 +100,44 @@ export interface PrimitiveSpec {
   apply(d: WriterDeps, id: string, after: Fields, args: Readonly<Record<string, unknown>>): Promise<ApplyOutput | void>;
   /** What the preview must say will NOT happen / derived same-record effects. */
   disclosuresHe: readonly string[];
+  /**
+   * Opt-in to CHAINED steps (several steps of one plan on the same record, 2026-09-29). Absent = the primitive can never
+   * share a record with another step of the same plan (SAME_ENTITY_TWICE, as before). Present = it declares:
+   *   derived   — fields of its OWN read view that its shared writer may change BESIDES the planned after-values
+   *               (e.g. the linked expense status a mix-price reconcile can touch). Undeclared = assumed none.
+   *   tolerates — fields of its read view whose change by an EARLIER step's writer (a declared derived field) does not
+   *               change what this step plans / shows. They are left out of this step's fingerprint; at its turn the
+   *               engine still re-plans on the fresh state and requires the SAME after-values + warnings (else STALE).
+   */
+  chain?: { derived(current: Fields, args: Readonly<Record<string, unknown>>): readonly string[]; tolerates?: readonly string[] };
 }
 
 export interface ApplyOutput { createdId?: string; receipt?: Scalar }
+
+// ── chained steps (projected state) ─────────────────────────────────────────────────────────────────────────────────
+/** What a chained step is planned / checked against: the approved after-values of EARLIER steps on the same record
+ *  (applied only to fields this step's own view reads) and their declared derived fields. */
+export interface ChainContext { overlay: Fields; priorDerived: readonly string[]; /** set at execution: canonical {after, warnings} approved for this step */ expect?: string }
+/** The projected view: the live fields with the earlier steps' planned values on the SAME field names of this view. */
+export function chainView(cur: Fields, overlay: Fields | undefined): Fields {
+  if (!overlay) return cur;
+  const out: Fields = { ...cur };
+  for (const k of Object.keys(overlay)) if (k in cur) out[k] = overlay[k];
+  return out;
+}
+/** The fields a chained step leaves out of its fingerprint (declared-derived by earlier steps AND tolerated), or null when
+ *  an earlier step may change a field this step reads and does NOT tolerate (then it can never be proven safe). */
+export function chainOmit(spec: PrimitiveSpec, cur: Fields, priorDerived: readonly string[]): string[] | null {
+  const hit = priorDerived.filter((f) => f in cur);
+  const tol = spec.chain?.tolerates ?? [];
+  return hit.every((f) => tol.includes(f)) ? [...new Set(hit)].sort() : null;
+}
+const omitFields = (f: Fields, omit: readonly string[]): Fields => (omit.length ? Object.fromEntries(Object.entries(f).filter(([k]) => !omit.includes(k))) : f);
+/** The fingerprint of a chained step: the projected view minus the tolerated derived fields ("chain" marks it apart). */
+export const chainFingerprint = (actionId: string, id: string, view: Fields, omit: readonly string[]) =>
+  createHash("sha256").update(canonicalJson({ a: actionId, id, chain: true, omit, f: omitFields(view, omit) })).digest("hex");
+/** What the Boss saw for a chained step, in a form the engine can compare exactly at its turn. */
+export const chainExpect = (after: Fields, warnings: readonly string[]) => canonicalJson({ after, warnings });
 
 // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** A stored link as a READ value: a short fingerprint, never the link itself (old links are not read back to Sunny).
@@ -258,12 +293,36 @@ export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
 
 export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecutor {
   return {
-    fingerprint: async (s, ctx) => fieldsFingerprint(spec.actionId, stepTargetId(s), await currentOf(spec, withExcluded(d, ctx), s)),
+    async fingerprint(s, ctx) {
+      const cur = await currentOf(spec, withExcluded(d, ctx), s);
+      if (!ctx?.chain) return fieldsFingerprint(spec.actionId, stepTargetId(s), cur);
+      // a chained step: the projected view (earlier steps' approved values on this view's fields), minus tolerated derived
+      if (!cur || !spec.chain) return "CHAIN_UNAVAILABLE";
+      const view = chainView(cur, ctx.chain.overlay);
+      const omit = chainOmit(spec, cur, ctx.chain.priorDerived);
+      if (!omit) return "CHAIN_CONFLICT";
+      if (ctx.chain.expect !== undefined) {
+        // at its turn: the fresh state must still yield EXACTLY the approved change and warnings (else it is STALE)
+        const p = spec.plan(s.args, view);
+        if (!p.ok || chainExpect(p.after, spec.warnings?.(view, s.args) ?? []) !== ctx.chain.expect) return "CHAIN_EXPECT_MISMATCH";
+      }
+      return chainFingerprint(spec.actionId, stepTargetId(s), view, omit);
+    },
+    async project(s, ctx) {
+      const cur = await currentOf(spec, withExcluded(d, ctx), s);
+      if (!cur) return null;
+      const view = chainView(cur, ctx?.chain?.overlay);
+      const p = spec.plan(s.args, view);
+      if (!p.ok) return null;
+      return { after: p.after, derived: [...(spec.chain?.derived(view, s.args) ?? [])], expect: chainExpect(p.after, spec.warnings?.(view, s.args) ?? []) };
+    },
     async execute(s, _prior, ctx) {
       const id = stepTargetId(s);
       const cur = await currentOf(spec, withExcluded(d, ctx), s);
       if (!cur) throw new Error("target not found");
       const p = spec.plan(s.args, cur);
+      // a chained step never writes anything other than the change the Boss approved (defence in depth after the check)
+      if (ctx?.chain?.expect !== undefined && (!p.ok || chainExpect(p.after, spec.warnings?.(cur, s.args) ?? []) !== ctx.chain.expect)) throw new Error("chained step: the fresh state no longer yields the approved change — nothing written");
       if (!p.ok) {
         if (p.code === "NO_CHANGE_NEEDED") return { changed: false, output: { after: {} } };
         throw new Error(`invalid at execution: ${p.code}`);

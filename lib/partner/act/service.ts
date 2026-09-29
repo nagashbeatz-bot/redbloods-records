@@ -42,7 +42,8 @@ import { executePlan, type AuditStore, type IdempotencyStore, type PrimitiveExec
 import type { NonceStore } from "./approval";
 import type { PlanStore } from "./store-supabase";
 import { isSafeUrl, planSafeValue, toPersistablePlan, safeDetail } from "./persist";
-import { currentOf, executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, stepTargetId, type Fields, type WriterDeps } from "./primitives";
+import { chainFingerprint, chainOmit, chainView, currentOf, executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, stepTargetId, type Fields, type WriterDeps } from "./primitives";
+import { chainContexts, isChainedStep } from "./engine";
 import { HISTORY_OUTCOMES, MAX_WORKFLOW_STEPS, validateActInput } from "./mcp-tools";
 import { nextStepsFor } from "./next-step";
 
@@ -91,21 +92,29 @@ const executableContract = (id: string, d: ActServiceDeps) => {
   return c && c.availability === "SUNNY_EXECUTABLE" && c.availabilityDetail === "EXECUTABLE" && PRIMITIVES_BY_ID.has(id) ? c : null;
 };
 
-/** The live before / after of a step, for the Boss (fresh read — never taken from storage). */
-async function liveView(step: PlanStep, d: ActServiceDeps) {
+/** The live before / after of a step, for the Boss (fresh read — never taken from storage). A chained step is shown on
+ *  the projected state (the earlier steps' planned values), exactly as the engine will check it. */
+async function liveView(step: PlanStep, d: ActServiceDeps, chain?: Awaited<ReturnType<typeof chainContexts>>) {
   const spec = PRIMITIVES_BY_ID.get(step.actionId)!;
   const id = step.entities[0].slice(step.entities[0].indexOf(":") + 1);
-  const cur = await currentOf(spec, d.writers, step);
+  const raw = await currentOf(spec, d.writers, step);
+  const c = chain?.ctx.get(step.index);
+  const cur = raw && c ? chainView(raw, c.overlay) : raw;
   const planned = cur ? spec.plan(step.args, cur) : null;
-  const fp = fieldsFingerprint(step.actionId, id, cur);
+  let fp: string;
+  if (!c) fp = fieldsFingerprint(step.actionId, id, raw);
+  else { const omit = raw && !chain!.broken.has(step.index) ? chainOmit(spec, raw, c.priorDerived) : null; fp = raw && omit ? chainFingerprint(step.actionId, id, cur!, omit) : "CHAIN_BROKEN"; }
   return {
-    exists: !!cur, stale: fp !== step.expectedFingerprint,
+    exists: !!raw, stale: fp !== step.expectedFingerprint,
     changes: planned && planned.ok ? Object.keys(planned.after).map((k) => ({ field: k, before: cur?.[k] ?? null, after: planned.after[k] })) : [],
   };
 }
 
 // ── plan ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-interface BuiltStep { step: PlanStep; contract: ActionContract; key: string; label: string; fields: Fields; after: Fields; requiredValues: string[]; warnings: string[]; disclosuresHe: readonly string[] }
+interface BuiltStep { step: PlanStep; contract: ActionContract; key: string; label: string; fields: Fields; after: Fields; requiredValues: string[]; warnings: string[]; disclosuresHe: readonly string[]; /** declared derived fields of this step's writer (chained steps only) */ derived: readonly string[] }
+/** How a step shares a record with EARLIER steps of the same plan (chained): their planned values + derived fields. */
+interface ChainPlan { overlay: Fields; priorDerived: string[]; dependsOn: number[] }
+type ChainFor = (key: string, spec: NonNullable<ReturnType<typeof PRIMITIVES_BY_ID.get>>, live: Fields, index: number) => ChainPlan | ActResult | undefined;
 /** The in-plan duplicate context of one step: LIKELY_SAME / SIMILAR create steps earlier in the same plan. */
 interface InPlan { likely: InPlanDup[]; similar: InPlanDup[] }
 const NO_IN_PLAN: InPlan = { likely: [], similar: [] };
@@ -115,7 +124,7 @@ const NO_IN_PLAN: InPlan = { likely: [], similar: [] };
  */
 const dupSubject = (fingerprint: string, inPlan: InPlan) => `${fingerprint}|plan:${inPlan.likely.map((x) => x.summary).join(" | ")}`;
 /** One registered action → one server-built step (resolve → live read → exact change). Shared by single plans and workflows. */
-async function buildStep(actionId: string, args: Record<string, unknown>, index: number, d: ActServiceDeps, c: Caller, inPlan: InPlan = NO_IN_PLAN): Promise<BuiltStep | ActResult> {
+async function buildStep(actionId: string, args: Record<string, unknown>, index: number, d: ActServiceDeps, c: Caller, inPlan: InPlan = NO_IN_PLAN, chainFor?: ChainFor): Promise<BuiltStep | ActResult> {
   const contract = executableContract(actionId, d);
   if (!contract) {
     const known = d.registry.get(actionId);
@@ -127,10 +136,20 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
   const target = await spec.resolve(d.writers, args);
   if ("ok" in target && target.ok === false) return refused(target.code, target.messageHe);
   const t = target as Exclude<typeof target, { ok: false }>;
-  const fingerprint = fieldsFingerprint(actionId, t.id, t.fields);
+  // a step on a record that EARLIER steps of this plan change: planned on the PROJECTED state (never an estimate)
+  const ch = chainFor ? chainFor(t.key, spec, t.fields, index) : undefined;
+  if (ch && "status" in ch) return ch;
+  let fields: Fields = t.fields;
+  let fingerprint: string;
+  if (ch) {
+    fields = chainView(t.fields, ch.overlay);
+    const omit = chainOmit(spec, t.fields, ch.priorDerived);
+    if (!omit) return refused("SAME_ENTITY_CONFLICT", "בוס, שלב קודם בתוכנית עלול לשנות שדה שהשלב הזה נשען עליו (תופעת לוואי של הכותב) — אי אפשר להוכיח שהתצוגה תהיה מדויקת. נבצע אותם בשתי תוכניות נפרדות", { entity: t.key, step: index, fields: ch.priorDerived.filter((f) => f in t.fields) });
+    fingerprint = chainFingerprint(actionId, t.id, fields, omit);
+  } else fingerprint = fieldsFingerprint(actionId, t.id, t.fields);
   const subject = { ownerId: c.ownerId, clientId: c.clientId, actionId, args, similar: dupSubject(fingerprint, inPlan) };
   const ackFor = () => { const a = issueDuplicateAck(d.approvalSecret, subject, d.nowMs()); return { duplicateAck: a.duplicateAck, duplicateAckExpiresAt: a.expiresAt, replanWith: { separateFromSimilar: true, duplicateAck: a.duplicateAck }, ruleHe: "רק אם הבוס אמר במפורש שזו רשומה נוספת — לתכנן שוב עם אותם ערכים + separateFromSimilar: true + duplicateAck. אם זו אותה רשומה — לא לרשום" }; };
-  const p = spec.plan(args, t.fields);
+  const p = spec.plan(args, fields);
   if (!p.ok) return p.code === "POSSIBLE_DUPLICATE" ? refused(p.code, p.messageHe, ackFor()) : refused(p.code, p.messageHe);
   if (args.separateFromSimilar === true) {
     // never usable blindly: only with the ack the server issued for THIS Owner / client / action / args / similar records
@@ -143,14 +162,15 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
   const step: PlanStep = {
     index, actionId, actionVersion: contract.version, args, entities: [t.key], phase: contract.phase,
     expectedFingerprint: fingerprint,
-    changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(t.fields[k]), after: contract.args.some((a) => a.name === k && a.kind === "url") && isSafeUrl(p.after[k]) ? String(p.after[k]) : planSafeValue(p.after[k]) })),
-    dependsOn: [],
+    changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(fields[k]), after: contract.args.some((a) => a.name === k && a.kind === "url") && isSafeUrl(p.after[k]) ? String(p.after[k]) : planSafeValue(p.after[k]) })),
+    dependsOn: ch ? ch.dependsOn : [],
   };
   const inPlanWarnings = [
     ...inPlan.similar.map((x) => `שני שלבים דומים בתוכנית: שלב ${index + 1} ו${x.summary} — ייבדקו כרשומות נפרדות`),
     ...(args.separateFromSimilar === true && inPlan.likely.length ? [`לפי ההחלטה שלך — שלב ${index + 1} נרשם בנפרד מ${inPlan.likely.map((x) => x.summary).join(", ")}`] : []),
   ];
-  return { step, contract, key: t.key, label: t.label, fields: t.fields, after: p.after, requiredValues: spec.requiredValues?.(args, p.after) ?? [], warnings: [...(spec.warnings?.(t.fields, args) ?? []), ...inPlanWarnings], disclosuresHe: spec.disclosuresHe };
+  const chainNote = ch ? [`שלב ${index + 1} משנה את אותה רשומה אחרי שלב ${ch.dependsOn.map((i) => i + 1).join(", ")} — מה שמוצג כאן הוא המצב שיהיה אחרי השלבים הקודמים; הוא רץ רק אם הם בוצעו בדיוק כמתוכנן`] : [];
+  return { step, contract, key: t.key, label: t.label, fields, after: p.after, requiredValues: spec.requiredValues?.(args, p.after) ?? [], warnings: [...(spec.warnings?.(fields, args) ?? []), ...inPlanWarnings, ...chainNote], disclosuresHe: spec.disclosuresHe, derived: spec.chain ? [...spec.chain.derived(fields, args)] : [] };
 }
 const isBuilt = (x: BuiltStep | ActResult): x is BuiltStep => "step" in x && !!(x as BuiltStep).step;
 
@@ -213,19 +233,38 @@ async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: C
   const built: BuiltStep[] = [];
   // duplicates INSIDE the plan (same context + amount, near date; LIKELY_SAME → held for the Boss, SIMILAR → a warning)
   const dups = inPlanDuplicates(steps.map((s) => { const x = s as { actionId: unknown; args: unknown }; return { actionId: String(x.actionId), args: (x.args ?? {}) as Record<string, unknown> }; }));
+  // Several steps on ONE record (2026-09-29): allowed only when BOTH primitives opted in (spec.chain) and it is provably
+  // exact — the same read view (the later step is planned on the earlier steps' planned values), or different views with
+  // no overlapping field; an earlier writer's declared side effect on a field this step reads must be tolerated by it.
+  // Anything else stays refused: SAME_ENTITY_TWICE (not chainable) / SAME_ENTITY_CONFLICT (not provably exact).
+  const chainFor: ChainFor = (key, spec, live, index) => {
+    if (key.endsWith(":new")) return undefined;
+    const prior = built.filter((b) => b.key === key);
+    if (!prior.length) return undefined;
+    if (!spec.chain || prior.some((b) => !PRIMITIVES_BY_ID.get(b.step.actionId)?.chain)) return refused("SAME_ENTITY_TWICE", "שני שלבים באותו תהליך משנים את אותה רשומה, ואחת הפעולות לא מוגדרת לשרשור בטוח — כל שלב חייב לראות את המצב שהוצג לך. נבצע ברצף בשתי תוכניות", { entity: key });
+    let overlay: Fields = {};
+    const priorDerived: string[] = [];
+    for (const b of prior) {
+      const bs = PRIMITIVES_BY_ID.get(b.step.actionId)!;
+      if (bs.read !== spec.read) {
+        const clash = Object.keys(b.after).filter((k) => k in live);
+        if (clash.length) return refused("SAME_ENTITY_CONFLICT", "בוס, שני השלבים קוראים את הרשומה דרך תצוגות שונות ששתיהן כוללות את אותו שדה — אי אפשר להוכיח שהתצוגה של השלב השני מדויקת. נבצע אותם בשתי תוכניות נפרדות", { entity: key, steps: [b.step.index, index], fields: clash });
+      }
+      overlay = { ...overlay, ...b.after };
+      priorDerived.push(...b.derived);
+    }
+    return { overlay, priorDerived, dependsOn: prior.map((b) => b.step.index) };
+  };
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i] as { actionId: unknown; args: unknown };
     const mine = dups.filter((x) => x.step === i);
-    const b = await buildStep(String(s.actionId), s.args as Record<string, unknown>, i, d, c, { likely: mine.filter((x) => x.level === "LIKELY_SAME"), similar: mine.filter((x) => x.level === "SIMILAR") });
+    const b = await buildStep(String(s.actionId), s.args as Record<string, unknown>, i, d, c, { likely: mine.filter((x) => x.level === "LIKELY_SAME"), similar: mine.filter((x) => x.level === "SIMILAR") }, chainFor);
     if (!isBuilt(b)) return { ...b, step: i, actionId: String(s.actionId) };
     built.push(b);
   }
   // album rules inside ONE plan: a track number twice / adding + moving tracks of the same album → refused before storage
   const album = albumPlanConflict(built.map((b) => ({ actionId: b.step.actionId, args: b.step.args, fields: b.fields })));
   if (album) return refused(album.code, album.messageHe);
-  const keys = built.map((b) => b.key).filter((k) => !k.endsWith(":new"));
-  const dup = keys.find((k, i) => keys.indexOf(k) !== i);
-  if (dup) return refused("SAME_ENTITY_TWICE", "שני שלבים באותו תהליך משנים את אותה רשומה — כל שלב חייב לראות את המצב שהוצג לך. נאחד לשלב אחד או נבצע ברצף", { entity: dup });
   return persistAndPreview(String(input.intentHe), built, c, d);
 }
 
@@ -233,7 +272,8 @@ async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: C
 export async function previewAction(input: { planId: unknown }, c: Caller, d: ActServiceDeps): Promise<ActResult> {
   const g = await guardCaller(c, d); if (g) return g;
   const plan = await loadOwnPlan(input.planId, c, d); if (isResult(plan)) return plan;
-  const lives = await Promise.all(plan.steps.map((s) => liveView(s, d)));
+  const chain = await chainContexts(plan, new Map(plan.steps.filter((s) => PRIMITIVES_BY_ID.has(s.actionId)).map((s) => [s.actionId, executorFor(PRIMITIVES_BY_ID.get(s.actionId)!, d.writers)])));
+  const lives = await Promise.all(plan.steps.map((s) => liveView(s, d, chain)));
   const stale = lives.some((x) => x.stale);
   const hash = planHash(plan);
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PREVIEWED", step: null, detail: stale ? "preview re-read: live state changed" : "preview re-read", ownerId: c.ownerId, clientId: c.clientId });
@@ -407,7 +447,7 @@ const PLACEHOLDER = /^\[טקסט · \d+ תווים\]$/;
  * second execution. Live = preview state → not applied; live = planned result (the step's own verify) → applied;
  * otherwise / a create (no id to read) / a command → FAILED "outcome unknown", treated as not applied.
  */
-async function verifyInterrupted(s: PlanStep, d: ActServiceDeps): Promise<StepOutcome> {
+async function verifyInterrupted(plan: Plan, s: PlanStep, d: ActServiceDeps): Promise<StepOutcome> {
   const at = new Date(d.nowMs()).toISOString();
   const out = (status: StepOutcome["status"], detail: string): StepOutcome => ({ index: s.index, actionId: s.actionId, status, detail, replayed: false, at });
   const spec = PRIMITIVES_BY_ID.get(s.actionId);
@@ -415,7 +455,8 @@ async function verifyInterrupted(s: PlanStep, d: ActServiceDeps): Promise<StepOu
   if (stepTargetId(s) === "new") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; a created record cannot be verified without its id — check the live records before planning it again (never re-executed)");
   try {
     const ex = executorFor(spec, d.writers);
-    if (s.expectedFingerprint !== null && (await ex.fingerprint(s)) === s.expectedFingerprint) return out("FAILED", "the execution was interrupted; the live state is still exactly the previewed state → not applied (never re-executed)");
+    // a chained step's previewed state is a PROJECTION (earlier steps applied) — only its own planned result is compared
+    if (!isChainedStep(plan, s) && s.expectedFingerprint !== null && (await ex.fingerprint(s)) === s.expectedFingerprint) return out("FAILED", "the execution was interrupted; the live state is still exactly the previewed state → not applied (never re-executed)");
     const after = Object.fromEntries(s.changes.filter((c) => !(typeof c.after === "string" && PLACEHOLDER.test(c.after))).map((c) => [c.field, c.after]));
     if (!Object.keys(after).length) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the planned result cannot be compared — treated as not applied (never re-executed)");
     return (await ex.verify(s, { after }))
@@ -436,7 +477,7 @@ async function reconciledRows(plan: Plan, d: ActServiceDeps): Promise<ExRow[]> {
   for (const r of stuck) {
     const s = plan.steps[r.stepIndex];
     if (!s) continue;
-    const o = await verifyInterrupted(s, d);
+    const o = await verifyInterrupted(plan, s, d);
     try {
       await d.stores.idem.record(executionKey(hash, s), o); // CLAIMED → terminal, the claimed row only
       changed = true;

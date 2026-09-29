@@ -127,6 +127,9 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "UPDATE_ENGINEER_WORK", kinds: ["mix-work"],
+    // chainable: an engineer / type change re-runs the linked-expense reconcile (the expense status may change); dates /
+    // notes never touch Finance. Its own plan never reads the expense status.
+    chain: { derived: (_c, a) => (a.engineerName !== undefined || a.workType !== undefined ? ["expenseStatus"] : []), tolerates: ["expenseStatus"] },
     meta: meta("עדכון עבודת מיקס (מהנדס / סוג / תאריך שליחה / דדליין / הערות)", "Update an engineer work's details (non-Steven: the linked expense re-syncs on an engineer / type change)", [K("mixWork"), T("engineerName"), { name: "workType", kind: "enum", required: false, values: ENGINEER_WORK_TYPES }, { name: "sentDate", kind: "ymd", required: false }, { name: "internalDeadline", kind: "ymd", required: false }, T("notes")], ["engineerName", "workType", "sentDate", "internalDeadline", "notes"], "updateSoundEngineerWork (lib/sound-engineer-store)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "YES" }),
     resolve: onWork, read: workFields,
     plan(a, cur) {
@@ -154,6 +157,8 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_ENGINEER_WORK_PRICE", kinds: ["mix-work"],
+    // chainable: a price / currency change always re-runs the linked-expense reconcile (the expense status may change)
+    chain: { derived: () => ["expenseStatus"], tolerates: ["expenseStatus"] },
     meta: meta("מחיר / מטבע של עבודת מיקס", "Set an engineer work's agreed price / currency (non-Steven: the linked expense re-syncs)", [K("mixWork"), { name: "agreedPrice", kind: "money", required: true }, { name: "currency", kind: "enum", required: true, values: MIX_CURRENCIES }], ["agreedPrice", "currency"], "updateSoundEngineerWork (lib/sound-engineer-store)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "YES" }),
     resolve: onWork, read: workFields,
     plan(a, cur) { if (typeof a.agreedPrice !== "number" || a.agreedPrice < 0) return refuse("BAD_MONEY", "מחיר לא תקין"); return finishPlan(cur, { agreedPrice: a.agreedPrice, currency: String(a.currency) }); },
@@ -164,6 +169,10 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "RECORD_ENGINEER_PAYMENT", kinds: ["mix-work"],
+    // chainable (e.g. set the price → mark paid at that price): marking paid records the linked expense. Its plan /
+    // warnings DO read the expense status — tolerated only because the engine re-plans at its turn and requires the
+    // exact approved after-values AND warnings (an expense that became "שולם" meanwhile → STALE, nothing written).
+    chain: { derived: () => ["expenseStatus"], tolerates: ["expenseStatus"] },
     meta: meta("סימון עבודת מיקס כשולמה / לא שולמה", "Mark an engineer work paid (+ payment date) or unpaid — exactly the app's flow (Steven: payment push + the id-linked expense)", [K("mixWork"), { name: "paid", kind: "boolean", required: true }, { name: "paymentDate", kind: "ymd", required: false }], ["amountPaid", "paymentDate"], "recordEngineerPayment (lib/writes/mix)", { effects: ["FINANCE", "PUSH"], riskClass: "FINANCIAL", reversible: "PARTIAL" }),
     resolve: onWork, read: workFields,
     plan(a, cur) {

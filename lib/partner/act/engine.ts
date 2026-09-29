@@ -15,6 +15,11 @@
  *   - Self-stale fix: each step's re-check / execution reads its creation context with the ids created by EARLIER steps
  *     of THIS run left out (StepContext.excludeCreated) — the plan's own creations never make it STALE, any external
  *     change still does. The expected fingerprint is never recomputed.
+ *   - Chained steps (2026-09-29): a step on the SAME record as earlier steps (dependsOn) was approved on the PROJECTED
+ *     state. Before anything runs it is checked on the live state seen through the earlier steps' planned values (any
+ *     external change to the base → STALE, nothing runs); it runs only if every step it depends on is
+ *     APPLIED_AS_EXPECTED; at its turn the fresh state must still yield exactly the approved after-values + warnings
+ *     (else STALE, no write). Plans without chained steps read and behave exactly as before.
  */
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
@@ -32,14 +37,19 @@ export interface IdempotencyStore {
   /** A terminal row for a step that never ran (STALE / NOT_RUN) — inserted without a claim. false = the step already has a row. */
   settle(key: string, meta: ClaimMeta, outcome: StepOutcome): Promise<boolean>;
 }
-/** What a step may know about its own run: the ids earlier steps of THIS plan created (left out of duplicate context). */
-export interface StepContext { excludeCreated: readonly string[] }
+/** What a step may know about its own run: the ids earlier steps of THIS plan created (left out of duplicate context),
+ *  and — for a CHAINED step (same record as earlier steps, dependsOn) — the projected state it was approved against. */
+export interface StepContext { excludeCreated: readonly string[]; chain?: { overlay: Record<string, string | number | boolean | null>; priorDerived: readonly string[]; expect?: string } }
+/** A step's planned result on a (projected) live state — used only to chain steps on the same record. null = the plan no longer holds. */
+export interface StepProjection { after: Record<string, string | number | boolean | null>; derived: readonly string[]; expect: string }
 export interface AuditEvent { planId: string; planHash: string; type: PlanEventType; step: number | null; detail: string; ownerId: string; clientId: string }
 export interface AuditStore { append(e: AuditEvent): Promise<void> }
 /** A registered primitive's server side (MAIN). There is no fallback / generic executor. */
 export interface PrimitiveExecutor {
   /** Fresh read → the fingerprint of exactly the state the step was previewed against (ctx: this run's own creations left out). */
   fingerprint(step: PlanStep, ctx?: StepContext): Promise<string>;
+  /** The step's planned after-values on the live state seen through ctx.chain (optional; required to chain steps). */
+  project?(step: PlanStep, ctx?: StepContext): Promise<StepProjection | null>;
   execute(step: PlanStep, priorOutputs: ReadonlyMap<number, unknown>, ctx?: StepContext): Promise<{ changed: boolean; output?: unknown }>;
   /** Fresh read after execution: did the canonical state become what the preview said? */
   verify(step: PlanStep, output: unknown): Promise<boolean>;
@@ -95,11 +105,15 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
   const meta = (s: PlanStep): ClaimMeta => ({ planId: plan.planId, stepIndex: s.index, actionId: s.actionId, actionVersion: s.actionVersion, atMs: d.nowMs });
   /** a terminal row for a step that did not run; a store failure never turns "did not run" into anything else */
   const settle = async (s: PlanStep, o: StepOutcome) => { try { await d.idem.settle(executionKey(hash, s), meta(s), o); } catch { /* the response still says exactly what happened */ } };
-  // 3. fresh reread + stale check for every independent step BEFORE anything executes
+  // 3. fresh reread + stale check for every independent step BEFORE anything executes. A CHAINED step (same record as
+  //    earlier steps) is checked on the projected live state (earlier steps' planned values on its view) — so any
+  //    external change to the approved BASE state still makes the whole plan STALE before anything runs.
   const executors = d.executors;
+  const chain = await chainContexts(plan, executors);
   for (const s of plan.steps) {
     if (s.expectedFingerprint === null) continue;
-    const now = await executors.get(s.actionId)!.fingerprint(s);
+    const c = chain.ctx.get(s.index);
+    const now = chain.broken.has(s.index) ? "CHAIN_BROKEN" : await executors.get(s.actionId)!.fingerprint(s, c ? { excludeCreated: [], chain: { overlay: c.overlay, priorDerived: c.priorDerived } } : undefined);
     if (now !== s.expectedFingerprint) {
       await log("STALE", s.index, "live state changed since the preview");
       const steps = plan.steps.map((x): StepOutcome => ({ index: x.index, actionId: x.actionId, status: x.index === s.index ? "STALE" : "NOT_RUN", detail: x.index === s.index ? "live state changed — a new preview is required" : "not run (plan stale)", replayed: false, at }));
@@ -115,9 +129,11 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
   for (const s of plan.steps) {
     const key = executionKey(hash, s);
     if (failed) { const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: s.phase === "COMMUNICATION" ? "communication never runs after a failed step" : "not run after an earlier failure", replayed: false, at }; results.push(o); await settle(s, o); continue; }
-    if (s.dependsOn.some((i) => results[i]?.status !== "APPLIED_AS_EXPECTED" && results[i]?.status !== "NO_CHANGE")) { failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: "a prerequisite step did not apply", replayed: false, at }; results.push(o); await settle(s, o); continue; }
+    // a step that depends on earlier steps runs only when EVERY one of them applied exactly as approved
+    if (s.dependsOn.some((i) => results[i]?.status !== "APPLIED_AS_EXPECTED")) { failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: "a prerequisite step did not apply", replayed: false, at }; results.push(o); await settle(s, o); continue; }
     const ex = executors.get(s.actionId)!;
-    const ctx: StepContext = { excludeCreated: [...created] };
+    const cc = chain.ctx.get(s.index);
+    const ctx: StepContext = { excludeCreated: [...created], ...(cc ? { chain: cc } : {}) };
     if (s.expectedFingerprint !== null && (await ex.fingerprint(s, ctx)) !== s.expectedFingerprint) {
       failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "live state changed immediately before execution", replayed: false, at };
       results.push(o); await log("STALE", s.index, o.detail); await settle(s, o); continue;
@@ -149,6 +165,38 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
   }
   return summarize(plan, hash, results);
 }
+/** A step shares the record of the earlier steps it depends on (the only way a plan gets dependsOn today). */
+export const isChainedStep = (plan: Plan, s: PlanStep) => s.dependsOn.length > 0 && s.dependsOn.every((i) => plan.steps[i]?.entities[0] === s.entities[0]);
+/**
+ * The projected state of every chained step, walked in plan order on the CURRENT live state: each involved step's
+ * planned after-values (and declared derived fields) accumulate per record; a chained step gets them as its context
+ * plus the exact {after, warnings} it yields on that projection (checked again at its turn). broken = a step whose plan
+ * no longer holds on the live state (or whose executor cannot project) — never executable. Plans without chained steps
+ * read nothing here.
+ */
+export async function chainContexts(plan: Plan, executors: ReadonlyMap<string, PrimitiveExecutor>): Promise<{ ctx: Map<number, NonNullable<StepContext["chain"]>>; broken: Set<number> }> {
+  const ctx = new Map<number, NonNullable<StepContext["chain"]>>();
+  const broken = new Set<number>();
+  const needed = new Set<number>();
+  for (const s of plan.steps) if (isChainedStep(plan, s)) { needed.add(s.index); s.dependsOn.forEach((i) => needed.add(i)); }
+  if (!needed.size) return { ctx, broken };
+  const overlay = new Map<string, StepProjection["after"]>();
+  const derived = new Map<string, string[]>();
+  for (const s of plan.steps) {
+    if (!needed.has(s.index)) continue;
+    const key = s.entities[0];
+    const c = isChainedStep(plan, s) ? { overlay: { ...(overlay.get(key) ?? {}) }, priorDerived: [...(derived.get(key) ?? [])] } : undefined;
+    const ex = executors.get(s.actionId);
+    let pr: StepProjection | null = null;
+    try { pr = ex?.project ? await ex.project(s, { excludeCreated: [], ...(c ? { chain: c } : {}) }) : null; } catch { pr = null; }
+    if (!pr) { broken.add(s.index); if (c) ctx.set(s.index, c); continue; }
+    if (c) ctx.set(s.index, { ...c, expect: pr.expect });
+    overlay.set(key, { ...(overlay.get(key) ?? {}), ...pr.after });
+    derived.set(key, [...(derived.get(key) ?? []), ...pr.derived]);
+  }
+  return { ctx, broken };
+}
+
 /** The canonical key of the record a CREATE step made ("kind:<created id>") — only for a step planned on "kind:new". */
 export function createdKeyOf(s: PlanStep, createdId: unknown): string | undefined {
   const k = s.entities[0] ?? "";

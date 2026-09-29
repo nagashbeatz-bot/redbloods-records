@@ -493,6 +493,8 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
   // ── the project's clip deal ──
   {
     actionId: "SET_CLIP_PRICE", kinds: ["project"],
+    // chainable: one compare-and-swap merge of clipAgreedPrice into the project's finance settings — nothing else changes
+    chain: { derived: () => [] },
     meta: meta("מחיר הקליפ בפרויקט (העסקה עם האמן)", "Set the project's CLIENT clip price (kept apart from the song price; B3: it never changes a Red Films production's planned budget)", [K("project"), M("clipAgreedPrice", true)], ["clipAgreedPrice"], "setClipPrice (lib/writes/clip)", { effects: ["FINANCE", "SETTINGS"], riskClass: "FINANCIAL" }),
     resolve: onDeal, read: dealFields,
     plan: (a, cur) => (typeof a.clipAgreedPrice !== "number" || a.clipAgreedPrice < 0 ? refuse("BAD_MONEY", "מחיר לא תקין") : finishPlan(cur, { clipAgreedPrice: a.clipAgreedPrice })),
