@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import type { ActionContract, ConfirmationClass, EffectKey, Phase, Plan, PlanStep, Preview, RiskClass } from "./types";
 import { RISK_ORDER } from "./types";
+import { refProblems } from "./refs";
 
 /** Deterministic JSON: object keys sorted recursively; undefined dropped. */
 export function canonicalJson(v: unknown): string {
@@ -52,6 +53,8 @@ export function validatePlan(p: Plan, registry: ReadonlyMap<string, ActionContra
     for (const a of c.args) if (a.kind === "enum" && a.name in s.args && !(a.values ?? []).includes(String(s.args[a.name]))) out.push({ code: "ENUM_VIOLATION", step: i, detail: `${a.name}=${String(s.args[a.name])}` });
     for (const k of Object.keys(s.args)) if (!c.args.some((a) => a.name === k)) out.push({ code: "UNKNOWN_ARGUMENT", step: i, detail: k });
   });
+  // `$stepK.created` references: the exact form, an earlier CREATE step, declared in dependsOn (lib/partner/act/refs)
+  for (const r of refProblems(p)) out.push({ code: r.code, step: r.step, detail: r.detail });
   const risk = highestRisk(p.steps.map((s) => registry.get(s.actionId)?.riskClass ?? "SECURITY_SENSITIVE"));
   if (p.riskClass !== risk) out.push({ code: "RISK_UNDERSTATED", detail: `plan says ${p.riskClass}, steps require ${risk}` });
   if (p.confirmation !== confirmationFor(risk)) out.push({ code: "CONFIRMATION_UNDERSTATED", detail: `requires ${confirmationFor(risk)}` });

@@ -12,7 +12,7 @@
  * (unowned) row with a project; the preview shows song money vs clip money before / after (the clip price may be unknown).
  */
 import type { ArgSpec } from "../types";
-import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { finishPlan, newProjectMeta, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./duplicates";
 import { FINANCE_OWNER_HE, transactionEditVerdict, type FinanceOwnerCode, type TxPatchField } from "@/lib/finance/ownership";
 import { ACTIVE_INCOME_STATUSES } from "@/lib/finance/classify";
@@ -100,6 +100,13 @@ async function onProjectFinance(d: WriterDeps, a: Readonly<Record<string, unknow
   return { key: `project:${k.id}`, id: k.id, label: p.name, fields: { ...(await d.readFinanceSettings(k.id)) } };
 }
 const settingsRead = async (d: WriterDeps, id: string): Promise<Fields | null> => ((await d.readProjectMeta(id)) ? { ...(await d.readFinanceSettings(id)) } : null);
+/** `$stepK.created` as the step's own project: a project the plan creates has NO finance settings row (creation writes
+ *  none), so its view is exactly the reader's defaults (lib/writes/finance readFinanceSettings) — checked again on the
+ *  real record at the step's turn. */
+const NEW_PROJECT_SETTINGS_TARGET: NonNullable<PrimitiveSpec["refTarget"]> = {
+  arg: "project", kinds: ["project"],
+  view: (cb) => (newProjectMeta(cb) ? { agreedPrice: 0, currency: "₪", financialNotes: "", financeException: false, financeExceptionReason: "", financeExceptionDate: "" } : null),
+};
 
 async function addContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> {
   const k = parseKey(a.project, ["project"]);
@@ -244,6 +251,8 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "MOVE_TRANSACTION", kinds: ["transaction"],
+    // toProject may be `$stepK.created` — a project an earlier step of the same plan creates (the row itself stays live-checked)
+    refArgs: { toProject: ["project"] },
     meta: meta("העברת רשומה כספית לפרויקט אחר / לכללי", "Move a transaction to another project or to general (the target project must exist)", [K("transaction"), K("toProject", false), { name: "toGeneral", kind: "boolean", required: false }], ["projectId", "scope"], "updateTransactionRecord (lib/writes/finance)", {}),
     async resolve(d, a) {
       const k = parseKey(a.toProject, ["project"]);
@@ -308,6 +317,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     actionId: "SET_AGREED_PRICE", kinds: ["project"],
     // chainable: one compare-and-swap merge into the project's finance settings (setFinanceSettings) — nothing else changes
     chain: { derived: () => [] },
+    refTarget: NEW_PROJECT_SETTINGS_TARGET,
     meta: meta("קביעת מחיר מוסכם לפרויקט", "Set a project's agreed price + currency (drives debt / credit with received income)", [K("project"), { name: "agreedPrice", kind: "money", required: true }, E("currency", TX_CURRENCIES, true)], ["agreedPrice", "currency"], "setFinanceSettings (lib/writes/finance)", { effects: ["FINANCE", "SETTINGS"] }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {
@@ -323,6 +333,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "SET_FINANCIAL_NOTES", kinds: ["project"],
     chain: { derived: () => [] },
+    refTarget: NEW_PROJECT_SETTINGS_TARGET,
     meta: meta("הערות כספיות לפרויקט", "Set a project's financial notes", [K("project"), T("financialNotes", true), E("mode", ["REPLACE", "APPEND"])], ["financialNotes"], "setFinanceSettings (lib/writes/finance)", { effects: ["SETTINGS"], riskClass: "SAFE_REVERSIBLE", reversible: "YES" }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {
@@ -336,6 +347,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "SET_FINANCE_EXCEPTION", kinds: ["project"],
     chain: { derived: () => [] },
+    refTarget: NEW_PROJECT_SETTINGS_TARGET,
     meta: meta("חריגה כספית לפרויקט (הפעלה / ביטול)", "Turn a project's finance exception on (with reason + date) or off", [K("project"), { name: "on", kind: "boolean", required: true }, T("reason"), { name: "date", kind: "ymd", required: false }], ["financeException", "financeExceptionReason", "financeExceptionDate"], "setFinanceSettings (lib/writes/finance)", { effects: ["FINANCE", "SETTINGS"], reversible: "YES" }),
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {

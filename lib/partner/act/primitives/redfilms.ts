@@ -16,7 +16,7 @@
  * clip without a project → PROJECT_REQUIRED, a similar unlinked Finance expense → POSSIBLE_DUPLICATE: the Boss decides).
  */
 import type { ArgSpec } from "../types";
-import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { finishPlan, newProjectMeta, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { dupContext, dupField, dupGate, dupWarnings, DUP_ARGS, type DupCandidate } from "./duplicates";
 import { isClipItemPromoted, rfPaymentFinanceScope, RF_CLIENT_SOURCES } from "@/lib/clip-rf-money-pure";
 
@@ -495,6 +495,8 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
     actionId: "SET_CLIP_PRICE", kinds: ["project"],
     // chainable: one compare-and-swap merge of clipAgreedPrice into the project's finance settings — nothing else changes
     chain: { derived: () => [] },
+    // `$stepK.created` as its own project: a new project has no settings row and no clip payments / production
+    refTarget: { arg: "project", kinds: ["project"], view: (cb) => (newProjectMeta(cb) ? { clipAgreedPrice: 0, currency: "₪", paymentCount: 0, managed: false } : null) },
     meta: meta("מחיר הקליפ בפרויקט (העסקה עם האמן)", "Set the project's CLIENT clip price (kept apart from the song price; B3: it never changes a Red Films production's planned budget)", [K("project"), M("clipAgreedPrice", true)], ["clipAgreedPrice"], "setClipPrice (lib/writes/clip)", { effects: ["FINANCE", "SETTINGS"], riskClass: "FINANCIAL" }),
     resolve: onDeal, read: dealFields,
     plan: (a, cur) => (typeof a.clipAgreedPrice !== "number" || a.clipAgreedPrice < 0 ? refuse("BAD_MONEY", "מחיר לא תקין") : finishPlan(cur, { clipAgreedPrice: a.clipAgreedPrice })),

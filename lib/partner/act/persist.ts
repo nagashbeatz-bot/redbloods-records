@@ -22,6 +22,7 @@
 import type { ActionContract, ArgSpec, Plan, PlanStep } from "./types";
 import { EFFECT_KEYS, RISK_ORDER } from "./types";
 import { DUPLICATE_ACK_RE } from "./approval";
+import { STEP_REF_RE } from "./refs";
 
 export const MAX_TEXT_CHARS = 2000;
 export const MAX_INTENT_CHARS = 300;
@@ -122,7 +123,8 @@ export const isDuplicateAckValue = (v: unknown): v is string => typeof v === "st
 function checkArg(spec: ArgSpec, v: unknown, where: string, known: readonly string[]): PersistProblem[] {
   if (spec.name === DUP_ACK_ARG_NAME) return spec.kind === "text" && isDuplicateAckValue(v) ? [] : [{ code: "BAD_DUPLICATE_ACK", where }];
   switch (spec.kind) {
-    case "entityKey": return typeof v === "string" && ENTITY_KEY_RE.test(v) ? inspectText(v, where, known) : [{ code: "BAD_ENTITY_KEY", where }];
+    // an entity key, or EXACTLY a `$stepK.created` reference (the plan's own created record; lib/partner/act/refs)
+    case "entityKey": return typeof v === "string" && STEP_REF_RE.test(v) ? [] : typeof v === "string" && ENTITY_KEY_RE.test(v) ? inspectText(v, where, known) : [{ code: "BAD_ENTITY_KEY", where }];
     case "ymd": return typeof v === "string" && YMD_RE.test(v) ? [] : [{ code: "BAD_DATE", where }];
     case "time": return typeof v === "string" && TIME_RE.test(v) ? [] : [{ code: "BAD_TIME", where }];
     case "number": return typeof v === "number" && Number.isFinite(v) ? [] : [{ code: "BAD_NUMBER", where }];

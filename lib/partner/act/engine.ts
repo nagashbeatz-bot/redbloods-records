@@ -20,11 +20,15 @@
  *     external change to the base → STALE, nothing runs); it runs only if every step it depends on is
  *     APPLIED_AS_EXPECTED; at its turn the fresh state must still yield exactly the approved after-values + warnings
  *     (else STALE, no write). Plans without chained steps read and behave exactly as before.
+ *   - `$stepK.created` references (lib/partner/act/refs): resolved at the step's turn ONLY from the createdKey step K
+ *     recorded in THIS run (K must be APPLIED_AS_EXPECTED — dependsOn); unresolved → NOT_RUN, never guessed. The
+ *     resolved step is what is fingerprinted / checked against its exact preview / executed / verified.
  */
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
 import { verifyApproval, type NonceStore } from "./approval";
 import { ENTITY_KEY_RE, safeDetail, toPersistablePlan } from "./persist";
+import { resolveStepRefs } from "./refs";
 
 export interface ClaimMeta { planId: string; stepIndex: number; actionId: string; actionVersion: number; /** engine clock (ms) — stored so a stuck claim can be aged */ atMs?: number }
 export interface IdempotencyStore {
@@ -48,6 +52,9 @@ export interface AuditStore { append(e: AuditEvent): Promise<void> }
 export interface PrimitiveExecutor {
   /** Fresh read → the fingerprint of exactly the state the step was previewed against (ctx: this run's own creations left out). */
   fingerprint(step: PlanStep, ctx?: StepContext): Promise<string>;
+  /** A step with a `$stepK.created` reference (resolved): the fresh state shows exactly the previewed before-values and
+   *  yields exactly the previewed after-values (map: created id → the reference as approved). Required for such steps. */
+  matchesPreview?(step: PlanStep, map: Readonly<Record<string, string>>, ctx?: StepContext): Promise<boolean>;
   /** The step's planned after-values on the live state seen through ctx.chain (optional; required to chain steps). */
   project?(step: PlanStep, ctx?: StepContext): Promise<StepProjection | null>;
   execute(step: PlanStep, priorOutputs: ReadonlyMap<number, unknown>, ctx?: StepContext): Promise<{ changed: boolean; output?: unknown }>;
@@ -134,8 +141,17 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     const ex = executors.get(s.actionId)!;
     const cc = chain.ctx.get(s.index);
     const ctx: StepContext = { excludeCreated: [...created], ...(cc ? { chain: cc } : {}) };
-    if (s.expectedFingerprint !== null && (await ex.fingerprint(s, ctx)) !== s.expectedFingerprint) {
+    // `$stepK.created`: the real key comes ONLY from the createdKey step K recorded in THIS run (never from the caller)
+    const resolved = resolveStepRefs(s, (k) => (results[k]?.status === "APPLIED_AS_EXPECTED" ? results[k]?.createdKey : undefined));
+    if (!resolved) { failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "NOT_RUN", detail: "the record an earlier step should have created is not known — not run (never guessed)", replayed: false, at }; results.push(o); await settle(s, o); continue; }
+    const rs = resolved.step;
+    const hasRefs = rs !== s;
+    if (s.expectedFingerprint !== null && (await ex.fingerprint(rs, ctx)) !== s.expectedFingerprint) {
       failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "live state changed immediately before execution", replayed: false, at };
+      results.push(o); await log("STALE", s.index, o.detail); await settle(s, o); continue;
+    }
+    if (hasRefs && !(ex.matchesPreview && (await ex.matchesPreview(rs, resolved.map, ctx)))) {
+      failed = true; const o: StepOutcome = { index: s.index, actionId: s.actionId, status: "STALE", detail: "the state no longer matches the previewed change for the created record — not written", replayed: false, at };
       results.push(o); await log("STALE", s.index, o.detail); await settle(s, o); continue;
     }
     if (!(await d.idem.claim(key, meta(s)))) {
@@ -146,11 +162,11 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     }
     let o: StepOutcome;
     try {
-      const r = await ex.execute(s, outputs, ctx);
+      const r = await ex.execute(rs, outputs, ctx);
       outputs.set(s.index, r.output);
       const cid = (r.output as { createdId?: unknown } | undefined)?.createdId;
       if (typeof cid === "string" && cid) created.push(cid);
-      const ok = await ex.verify(s, r.output);
+      const ok = await ex.verify(rs, r.output);
       const createdKey = createdKeyOf(s, cid);
       o = { index: s.index, actionId: s.actionId, status: !ok ? "FAILED" : r.changed ? "APPLIED_AS_EXPECTED" : "NO_CHANGE", detail: ok ? "verified by a fresh read" : "executed but the fresh read does not match the preview", replayed: false, at, ...(createdKey ? { createdKey } : {}) };
       await log(ok ? "VERIFIED" : "STEP_FAILED", s.index, o.detail);

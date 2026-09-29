@@ -13,7 +13,8 @@
  */
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../plan";
-import { ENTITY_KEY_RE, MAX_TEXT_CHARS } from "../persist";
+import { ENTITY_KEY_RE, MAX_TEXT_CHARS, planSafeValue } from "../persist";
+import { asApproved } from "../refs";
 import type { ArgSpec, EffectKey, PlanStep, RiskClass } from "../types";
 import type { DuplicateWriters } from "./duplicates";
 import type { PrimitiveExecutor, StepContext } from "../engine";
@@ -110,6 +111,18 @@ export interface PrimitiveSpec {
    *               engine still re-plans on the fresh state and requires the SAME after-values + warnings (else STALE).
    */
   chain?: { derived(current: Fields, args: Readonly<Record<string, unknown>>): readonly string[]; tolerates?: readonly string[] };
+  /**
+   * `$step<k>.created` references (2026-09-29): the SECONDARY entityKey arguments that may point at a record an earlier
+   * CREATE step of the same plan makes, with the created kinds each accepts (e.g. MOVE_TRANSACTION.toProject: project).
+   * The primitive is planned with a stand-in key whose record exists only in the plan's projection; absent = no reference.
+   */
+  refArgs?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * The step's OWN target may be a record created earlier in the plan: `arg` carries the reference; `view` is exactly
+   * what this primitive's read view shows for a freshly created record of that kind (from the create step's planned
+   * values) — the preview's "before" — or null when it cannot be stated. Absent = the target must already exist.
+   */
+  refTarget?: { arg: string; kinds: readonly string[]; view(createdBy: { actionId: string; after: Fields }): Fields | null };
 }
 
 export interface ApplyOutput { createdId?: string; receipt?: Scalar }
@@ -136,6 +149,31 @@ const omitFields = (f: Fields, omit: readonly string[]): Fields => (omit.length 
 /** The fingerprint of a chained step: the projected view minus the tolerated derived fields ("chain" marks it apart). */
 export const chainFingerprint = (actionId: string, id: string, view: Fields, omit: readonly string[]) =>
   createHash("sha256").update(canonicalJson({ a: actionId, id, chain: true, omit, f: omitFields(view, omit) })).digest("hex");
+// ── references to a record created earlier in the plan ──────────────────────────────────────────────────────────────
+/** Created kinds a plan-time projection exists for (the reader a primitive uses to check that such a record exists). */
+export const REF_CREATED_KINDS = ["project"] as const;
+/** The project meta a freshly created project will have, from the CREATE step's planned values (plan-time only). */
+export function newProjectMeta(createdBy: { actionId: string; after: Fields }): Awaited<ReturnType<WriterDeps["readProjectMeta"]>> {
+  const a = createdBy.after;
+  if (createdBy.actionId !== "CREATE_PROJECT" && createdBy.actionId !== "CREATE_LABEL_SONG") return null;
+  return { name: String(a.name ?? ""), artist: String(a.artist ?? ""), status: String(a.status ?? "לא התחיל"), isHidden: false, businessType: createdBy.actionId === "CREATE_LABEL_SONG" ? "לייבל" : String(a.businessType ?? "לקוח"), projectType: String(a.projectType ?? ""), hasRelease: createdBy.actionId === "CREATE_LABEL_SONG" };
+}
+/**
+ * The writer view used ONLY while planning a step that references a record created earlier in the plan: the
+ * existence reader answers for the stand-in id with the projected record; every other read / write is the real one
+ * (a write while planning never happens — planning only resolves / reads).
+ */
+export function withPlannedRecords(d: WriterDeps, projects: ReadonlyMap<string, NonNullable<Awaited<ReturnType<WriterDeps["readProjectMeta"]>>>>): WriterDeps {
+  if (!projects.size) return d;
+  return new Proxy(d, {
+    get(t, k) {
+      if (k === "readProjectMeta") return async (id: string) => projects.get(String(id).toLowerCase()) ?? t.readProjectMeta(id);
+      const v = Reflect.get(t, k);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+}
+
 /** What the Boss saw for a chained step, in a form the engine can compare exactly at its turn. */
 export const chainExpect = (after: Fields, warnings: readonly string[]) => canonicalJson({ after, warnings });
 
@@ -307,6 +345,21 @@ export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecut
         if (!p.ok || chainExpect(p.after, spec.warnings?.(view, s.args) ?? []) !== ctx.chain.expect) return "CHAIN_EXPECT_MISMATCH";
       }
       return chainFingerprint(spec.actionId, stepTargetId(s), view, omit);
+    },
+    async matchesPreview(s, map, ctx) {
+      // a step with a reference (its record / argument did not exist when it was previewed): the fresh state must show
+      // EXACTLY the previewed before-values and yield EXACTLY the previewed after-values (the created id shown as the ref)
+      const cur = await currentOf(spec, withExcluded(d, ctx), s);
+      if (!cur) return false;
+      const p = spec.plan(s.args, cur);
+      if (!p.ok) return false;
+      const keys = Object.keys(p.after).sort();
+      if (keys.join("|") !== s.changes.map((c) => c.field).sort().join("|")) return false;
+      return s.changes.every((c) => {
+        const before = planSafeValue(cur[c.field]);
+        const after = asApproved(p.after[c.field], map);
+        return before === c.before && (after === c.after || planSafeValue(after) === c.after);
+      });
     },
     async project(s, ctx) {
       const cur = await currentOf(spec, withExcluded(d, ctx), s);

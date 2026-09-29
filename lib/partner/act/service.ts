@@ -44,6 +44,8 @@ import type { PlanStore } from "./store-supabase";
 import { isSafeUrl, planSafeValue, toPersistablePlan, safeDetail } from "./persist";
 import { chainFingerprint, chainOmit, chainView, currentOf, executorFor, fieldsFingerprint, PRIMITIVES_BY_ID, stepTargetId, type Fields, type WriterDeps } from "./primitives";
 import { chainContexts, isChainedStep } from "./engine";
+import { asApproved, malformedRefArgs, REF_TARGET_KEY_RE, refSentinelId, refString, refTargetKey, refsOf, resolveStepRefs, sentinelArgs } from "./refs";
+import { newProjectMeta, REF_CREATED_KINDS, withPlannedRecords, type ResolvedTarget } from "./primitives";
 import { HISTORY_OUTCOMES, MAX_WORKFLOW_STEPS, validateActInput } from "./mcp-tools";
 import { nextStepsFor } from "./next-step";
 
@@ -97,6 +99,13 @@ const executableContract = (id: string, d: ActServiceDeps) => {
 async function liveView(step: PlanStep, d: ActServiceDeps, chain?: Awaited<ReturnType<typeof chainContexts>>) {
   const spec = PRIMITIVES_BY_ID.get(step.actionId)!;
   const id = step.entities[0].slice(step.entities[0].indexOf(":") + 1);
+  if (refsOf(step.args).length || REF_TARGET_KEY_RE.test(step.entities[0])) {
+    // a step with a `$stepK.created` reference: the created record does not exist yet — its change is the approved
+    // preview (checked against the fresh state at its turn); a secondary reference keeps the live check of its own record
+    const own = REF_TARGET_KEY_RE.test(step.entities[0]);
+    const cur = own ? null : await currentOf(spec, d.writers, step);
+    return { exists: own ? true : !!cur, stale: own ? false : fieldsFingerprint(step.actionId, id, cur) !== step.expectedFingerprint, changes: step.changes.map((c) => ({ field: c.field, before: c.before, after: c.after })) };
+  }
   const raw = await currentOf(spec, d.writers, step);
   const c = chain?.ctx.get(step.index);
   const cur = raw && c ? chainView(raw, c.overlay) : raw;
@@ -111,7 +120,7 @@ async function liveView(step: PlanStep, d: ActServiceDeps, chain?: Awaited<Retur
 }
 
 // ── plan ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-interface BuiltStep { step: PlanStep; contract: ActionContract; key: string; label: string; fields: Fields; after: Fields; requiredValues: string[]; warnings: string[]; disclosuresHe: readonly string[]; /** declared derived fields of this step's writer (chained steps only) */ derived: readonly string[] }
+interface BuiltStep { step: PlanStep; contract: ActionContract; key: string; label: string; fields: Fields; after: Fields; requiredValues: string[]; warnings: string[]; disclosuresHe: readonly string[]; /** declared derived fields of this step's writer (chained steps only) */ derived: readonly string[]; /** plan-time stand-in id → the `$stepK.created` reference it means (shown to the Boss instead of the stand-in) */ refMap?: Readonly<Record<string, string>> }
 /** How a step shares a record with EARLIER steps of the same plan (chained): their planned values + derived fields. */
 interface ChainPlan { overlay: Fields; priorDerived: string[]; dependsOn: number[] }
 type ChainFor = (key: string, spec: NonNullable<ReturnType<typeof PRIMITIVES_BY_ID.get>>, live: Fields, index: number) => ChainPlan | ActResult | undefined;
@@ -124,7 +133,7 @@ const NO_IN_PLAN: InPlan = { likely: [], similar: [] };
  */
 const dupSubject = (fingerprint: string, inPlan: InPlan) => `${fingerprint}|plan:${inPlan.likely.map((x) => x.summary).join(" | ")}`;
 /** One registered action → one server-built step (resolve → live read → exact change). Shared by single plans and workflows. */
-async function buildStep(actionId: string, args: Record<string, unknown>, index: number, d: ActServiceDeps, c: Caller, inPlan: InPlan = NO_IN_PLAN, chainFor?: ChainFor): Promise<BuiltStep | ActResult> {
+async function buildStep(actionId: string, args: Record<string, unknown>, index: number, d: ActServiceDeps, c: Caller, inPlan: InPlan = NO_IN_PLAN, chainFor?: ChainFor, created?: ReadonlyMap<number, CreatedBy>): Promise<BuiltStep | ActResult> {
   const contract = executableContract(actionId, d);
   if (!contract) {
     const known = d.registry.get(actionId);
@@ -133,9 +142,43 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
     return refused("NOT_AVAILABLE", "סאני עוד לא יכולה לבצע את הפעולה הזאת", known ? { availability: known.availability, reasonEn: known.reason } : {});
   }
   const spec = PRIMITIVES_BY_ID.get(actionId)!;
-  const target = await spec.resolve(d.writers, args);
-  if ("ok" in target && target.ok === false) return refused(target.code, target.messageHe);
-  const t = target as Exclude<typeof target, { ok: false }>;
+  // `$stepK.created` (validated by refCheck): planned with a stand-in key whose record exists only in the plan's projection
+  const refs = refsOf(args);
+  const refMap: Record<string, string> = {};
+  let planArgs: Record<string, unknown> = args;
+  let writers = d.writers;
+  let t: ResolvedTarget;
+  if (refs.length) {
+    const by = (k: number) => created!.get(k)!;
+    planArgs = sentinelArgs(args, (k) => by(k).kind);
+    const planned = new Map<string, NonNullable<ReturnType<typeof newProjectMeta>>>();
+    for (const r of refs) {
+      const cb = by(r.k);
+      refMap[refSentinelId(r.k)] = refString(r.k);
+      refMap[`${cb.kind}:${refSentinelId(r.k)}`] = refString(r.k);
+      const m = cb.kind === "project" ? newProjectMeta(cb) : null;
+      if (!m) return refused("INVALID_PLAN", "בוס, אני לא יכולה להציג במדויק את הרשומה שתיווצר — נבצע בשתי תוכניות", { codes: ["REF_KIND_NOT_SUPPORTED"], step: index });
+      planned.set(refSentinelId(r.k), m);
+    }
+    writers = withPlannedRecords(d.writers, planned);
+    const own = spec.refTarget ? refs.find((r) => r.arg === spec.refTarget!.arg) : undefined;
+    if (own) {
+      // the step's OWN record is created earlier in the plan: its "before" is what a fresh record of that kind shows
+      const cb = by(own.k);
+      const view = spec.refTarget!.view(cb);
+      if (!view) return refused("INVALID_PLAN", "בוס, אני לא יכולה להציג במדויק את המצב של הרשומה החדשה — נבצע בשתי תוכניות", { codes: ["REF_TARGET_VIEW_UNKNOWN"], step: index });
+      t = { key: refTargetKey(cb.kind, own.k), id: refSentinelId(own.k), label: createdLabel(cb, own.k), fields: view };
+    } else {
+      const r = await spec.resolve(writers, planArgs);
+      if ("ok" in r && r.ok === false) return refused(r.code, r.messageHe);
+      t = r as ResolvedTarget;
+    }
+  } else {
+    const target = await spec.resolve(d.writers, args);
+    if ("ok" in target && target.ok === false) return refused(target.code, target.messageHe);
+    t = target as ResolvedTarget;
+  }
+  const ownRef = REF_TARGET_KEY_RE.test(t.key);
   // a step on a record that EARLIER steps of this plan change: planned on the PROJECTED state (never an estimate)
   const ch = chainFor ? chainFor(t.key, spec, t.fields, index) : undefined;
   if (ch && "status" in ch) return ch;
@@ -149,7 +192,7 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
   } else fingerprint = fieldsFingerprint(actionId, t.id, t.fields);
   const subject = { ownerId: c.ownerId, clientId: c.clientId, actionId, args, similar: dupSubject(fingerprint, inPlan) };
   const ackFor = () => { const a = issueDuplicateAck(d.approvalSecret, subject, d.nowMs()); return { duplicateAck: a.duplicateAck, duplicateAckExpiresAt: a.expiresAt, replanWith: { separateFromSimilar: true, duplicateAck: a.duplicateAck }, ruleHe: "רק אם הבוס אמר במפורש שזו רשומה נוספת — לתכנן שוב עם אותם ערכים + separateFromSimilar: true + duplicateAck. אם זו אותה רשומה — לא לרשום" }; };
-  const p = spec.plan(args, fields);
+  const p = spec.plan(planArgs, fields);
   if (!p.ok) return p.code === "POSSIBLE_DUPLICATE" ? refused(p.code, p.messageHe, ackFor()) : refused(p.code, p.messageHe);
   if (args.separateFromSimilar === true) {
     // never usable blindly: only with the ack the server issued for THIS Owner / client / action / args / similar records
@@ -161,16 +204,46 @@ async function buildStep(actionId: string, args: Record<string, unknown>, index:
   }
   const step: PlanStep = {
     index, actionId, actionVersion: contract.version, args, entities: [t.key], phase: contract.phase,
-    expectedFingerprint: fingerprint,
-    changes: Object.keys(p.after).map((k) => ({ field: k, before: planSafeValue(fields[k]), after: contract.args.some((a) => a.name === k && a.kind === "url") && isSafeUrl(p.after[k]) ? String(p.after[k]) : planSafeValue(p.after[k]) })),
-    dependsOn: ch ? ch.dependsOn : [],
+    // a record created earlier in the plan does not exist yet: its step is checked at its turn against the preview itself
+    expectedFingerprint: ownRef ? null : fingerprint,
+    changes: Object.keys(p.after).map((k) => { const a = asApproved(p.after[k], refMap); return { field: k, before: planSafeValue(fields[k]), after: contract.args.some((x) => x.name === k && x.kind === "url") && isSafeUrl(a) ? String(a) : planSafeValue(a) }; }),
+    dependsOn: [...new Set([...(ch ? ch.dependsOn : []), ...refs.map((r) => r.k)])].sort((a, b) => a - b),
   };
   const inPlanWarnings = [
     ...inPlan.similar.map((x) => `שני שלבים דומים בתוכנית: שלב ${index + 1} ו${x.summary} — ייבדקו כרשומות נפרדות`),
     ...(args.separateFromSimilar === true && inPlan.likely.length ? [`לפי ההחלטה שלך — שלב ${index + 1} נרשם בנפרד מ${inPlan.likely.map((x) => x.summary).join(", ")}`] : []),
   ];
   const chainNote = ch ? [`שלב ${index + 1} משנה את אותה רשומה אחרי שלב ${ch.dependsOn.map((i) => i + 1).join(", ")} — מה שמוצג כאן הוא המצב שיהיה אחרי השלבים הקודמים; הוא רץ רק אם הם בוצעו בדיוק כמתוכנן`] : [];
-  return { step, contract, key: t.key, label: t.label, fields, after: p.after, requiredValues: spec.requiredValues?.(args, p.after) ?? [], warnings: [...(spec.warnings?.(fields, args) ?? []), ...inPlanWarnings, ...chainNote], disclosuresHe: spec.disclosuresHe, derived: spec.chain ? [...spec.chain.derived(fields, args)] : [] };
+  // the Boss sees WHICH future record a reference means — never a bare placeholder
+  const human = (v: string) => { let out = v; for (const r of refs) { const cb = created!.get(r.k)!; for (const s of [`${cb.kind}:${refSentinelId(r.k)}`, refSentinelId(r.k), refString(r.k)]) out = out.split(s).join(createdLabel(cb, r.k)); } return out; };
+  const refNote = refs.map((r) => `${r.arg}: ${createdLabel(created!.get(r.k)!, r.k)} — המזהה ייקבע רק ביצירה; השלב הזה רץ רק אם שלב ${r.k + 1} יצר אותו בדיוק כמתוכנן (אחרת לא ירוץ, בלי ניחוש)`);
+  return { step, contract, key: t.key, label: t.label, fields, after: p.after, requiredValues: (spec.requiredValues?.(planArgs, p.after) ?? []).map(human), warnings: [...(spec.warnings?.(fields, planArgs) ?? []).map(human), ...inPlanWarnings, ...chainNote, ...refNote], disclosuresHe: spec.disclosuresHe, derived: spec.chain ? [...spec.chain.derived(fields, planArgs)] : [], refMap };
+}
+/** The CREATE step a `$stepK.created` points at: its kind and planned values (from the built plan). */
+interface CreatedBy { actionId: string; after: Fields; kind: string; name: string }
+const KIND_HE: Record<string, string> = { project: "הפרויקט" };
+const createdLabel = (cb: CreatedBy, k: number) => `${KIND_HE[cb.kind] ?? cb.kind} שייווצר בשלב ${k + 1}${cb.name ? `: "${cb.name}"` : ""}`;
+/** Every `$stepK.created` rule a step's arguments must meet (planning) — any break is INVALID_PLAN, nothing is stored. */
+function refCheck(actionId: string, args: Readonly<Record<string, unknown>>, index: number, built: readonly BuiltStep[], d: ActServiceDeps): ActResult | null {
+  const bad = (code: string, arg: string) => refused("INVALID_PLAN", "בוס, ההפניה לרשומה שנוצרת בתוכנית לא תקינה — לא שמרתי כלום", { codes: [code], step: index, arg });
+  const m = malformedRefArgs(args);
+  if (m.length) return bad("REF_SYNTAX", m[0]);
+  const refs = refsOf(args);
+  if (!refs.length) return null;
+  const spec = PRIMITIVES_BY_ID.get(actionId);
+  const contract = d.registry.get(actionId);
+  for (const r of refs) {
+    if (r.k === index) return bad("REF_SELF", r.arg);
+    if (r.k > index || !built[r.k]) return bad("REF_FORWARD", r.arg);
+    if (!built[r.k].key.endsWith(":new")) return bad("REF_NOT_A_CREATE", r.arg);
+    if (contract?.args.find((a) => a.name === r.arg)?.kind !== "entityKey") return bad("REF_NOT_ENTITY_KEY", r.arg);
+    const accepted = spec?.refArgs?.[r.arg] ?? (spec?.refTarget?.arg === r.arg ? spec.refTarget.kinds : undefined);
+    if (!accepted) return bad("REF_ARG_NOT_SUPPORTED", r.arg);
+    const kind = built[r.k].key.slice(0, built[r.k].key.indexOf(":"));
+    if (!accepted.includes(kind)) return bad("REF_KIND_MISMATCH", r.arg);
+    if (!(REF_CREATED_KINDS as readonly string[]).includes(kind)) return bad("REF_KIND_NOT_SUPPORTED", r.arg);
+  }
+  return null;
 }
 const isBuilt = (x: BuiltStep | ActResult): x is BuiltStep => "step" in x && !!(x as BuiltStep).step;
 
@@ -191,7 +264,7 @@ async function persistAndPreview(intentHe: string, built: readonly BuiltStep[], 
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PLAN_CREATED", step: null, detail: built.length === 1 ? `${built[0].step.actionId}@${built[0].contract.version}` : `WORKFLOW:${built.map((b) => b.step.actionId).join("+")}`.slice(0, 200), ownerId: c.ownerId, clientId: c.clientId });
   const preview = buildPreview(persistable.json, d.registry, { requiredConfirmationValues: built.flatMap((b) => b.requiredValues), duplicateWarningsHe: built.flatMap((b) => b.warnings) });
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PREVIEWED", step: null, detail: "server-side preview returned", ownerId: c.ownerId, clientId: c.clientId });
-  const changesOf = (b: BuiltStep) => Object.keys(b.after).map((k) => ({ field: k, before: { value: b.fields[k] ?? null, trust: "RECORD" }, after: { value: b.after[k], trust: "RECORD" } }));
+  const changesOf = (b: BuiltStep) => Object.keys(b.after).map((k) => ({ field: k, before: { value: b.fields[k] ?? null, trust: "RECORD" }, after: { value: asApproved(b.after[k], b.refMap ?? {}), trust: "RECORD" } }));
   if (built.length === 1) {
     const b = built[0];
     return {
@@ -215,6 +288,9 @@ export async function planAction(input: { intentHe: unknown; actionId?: unknown;
   const v = validateActInput("partner_plan_action", input as Record<string, unknown>);
   if (!v.ok) return refused("INVALID_INPUT", "הבקשה לא תקינה", { code: v.code });
   if (Array.isArray(input.steps)) return planWorkflow({ intentHe: input.intentHe, steps: input.steps }, c, d);
+  // a single action has no earlier step to reference
+  const single = (input.args ?? {}) as Record<string, unknown>;
+  if (refsOf(single).length || malformedRefArgs(single).length) return refused("INVALID_PLAN", "בוס, הפניה לרשומה שנוצרת קיימת רק בתוכנית של כמה שלבים — לא שמרתי כלום", { codes: [refsOf(single).length ? "REF_WITHOUT_WORKFLOW" : "REF_SYNTAX"] });
   const b = await buildStep(String(input.actionId), input.args as Record<string, unknown>, 0, d, c);
   if (!isBuilt(b)) return b;
   return persistAndPreview(String(input.intentHe), [b], c, d);
@@ -224,8 +300,9 @@ export async function planAction(input: { intentHe: unknown; actionId?: unknown;
  * A compound workflow: several registered actions in ONE plan → one server-side preview → ONE approval of the whole
  * plan (every step's exact values) → the engine runs them in order (stale check on every step first; a failure stops
  * every later step; communication never runs after a failure; the outcome says exactly which steps applied).
- * Every step targets an entity that already exists (or is a create). A step that needs an entity another step of the
- * same plan creates cannot be previewed exactly — it is planned right after, with the created entity.
+ * Every step targets an entity that already exists, is a create, or is a record an EARLIER create step makes via exactly
+ * `$step<k>.created` (refCheck + lib/partner/act/refs: planned on the projected record, resolved at execution only from
+ * that step's recorded createdKey).
  */
 async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: Caller, d: ActServiceDeps): Promise<ActResult> {
   const steps = input.steps;
@@ -241,6 +318,8 @@ async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: C
     if (key.endsWith(":new")) return undefined;
     const prior = built.filter((b) => b.key === key);
     if (!prior.length) return undefined;
+    // two steps on a record the plan itself creates: not chained yet (its state is only a projection) — separate plans
+    if (REF_TARGET_KEY_RE.test(key)) return refused("SAME_ENTITY_TWICE", "בוס, שני שלבים משנים את הרשומה שנוצרת בתוכנית עצמה — כרגע רק שלב אחד יכול לעדכן אותה באותה תוכנית. את השאר נעשה בתוכנית נוספת אחרי היצירה", { entity: key });
     if (!spec.chain || prior.some((b) => !PRIMITIVES_BY_ID.get(b.step.actionId)?.chain)) return refused("SAME_ENTITY_TWICE", "שני שלבים באותו תהליך משנים את אותה רשומה, ואחת הפעולות לא מוגדרת לשרשור בטוח — כל שלב חייב לראות את המצב שהוצג לך. נבצע ברצף בשתי תוכניות", { entity: key });
     let overlay: Fields = {};
     const priorDerived: string[] = [];
@@ -255,12 +334,17 @@ async function planWorkflow(input: { intentHe: unknown; steps: unknown[] }, c: C
     }
     return { overlay, priorDerived, dependsOn: prior.map((b) => b.step.index) };
   };
+  // records created by earlier steps (a `$stepK.created` target): their kind + planned values, for the projection
+  const created = new Map<number, CreatedBy>();
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i] as { actionId: unknown; args: unknown };
+    const rc = refCheck(String(s.actionId), s.args as Record<string, unknown>, i, built, d);
+    if (rc) return { ...rc, step: i, actionId: String(s.actionId) };
     const mine = dups.filter((x) => x.step === i);
-    const b = await buildStep(String(s.actionId), s.args as Record<string, unknown>, i, d, c, { likely: mine.filter((x) => x.level === "LIKELY_SAME"), similar: mine.filter((x) => x.level === "SIMILAR") }, chainFor);
+    const b = await buildStep(String(s.actionId), s.args as Record<string, unknown>, i, d, c, { likely: mine.filter((x) => x.level === "LIKELY_SAME"), similar: mine.filter((x) => x.level === "SIMILAR") }, chainFor, created);
     if (!isBuilt(b)) return { ...b, step: i, actionId: String(s.actionId) };
     built.push(b);
+    if (b.key.endsWith(":new")) created.set(i, { actionId: b.step.actionId, after: b.after, kind: b.key.slice(0, b.key.indexOf(":")), name: String(b.after.name ?? b.label ?? "") });
   }
   // album rules inside ONE plan: a track number twice / adding + moving tracks of the same album → refused before storage
   const album = albumPlanConflict(built.map((b) => ({ actionId: b.step.actionId, args: b.step.args, fields: b.fields })));
@@ -350,9 +434,10 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
   // fresh read + the derived next step (a PROPOSAL only — never executed); a created record is read by its new key
   const fresh = await Promise.all(plan.steps.map(async (s, i) => {
     const sp = PRIMITIVES_BY_ID.get(s.actionId)!;
-    const key = out.steps[i]?.createdKey ?? s.entities[0];
+    // a step whose target was created earlier in the run is read by the key that step recorded
+    const key = out.steps[i]?.createdKey ?? resolveStepRefs(s, (k) => out.steps[k]?.createdKey)?.step.entities[0] ?? s.entities[0];
     const id = key.slice(key.indexOf(":") + 1);
-    try { return { entity: key, now: id === "new" ? null : await sp.read(d.writers, id), readFailed: false }; } catch { return { entity: key, now: null, readFailed: true }; }
+    try { return { entity: key, now: id === "new" || REF_TARGET_KEY_RE.test(key) ? null : await sp.read(d.writers, id), readFailed: false }; } catch { return { entity: key, now: null, readFailed: true }; }
   }));
   const s0 = plan.steps[0];
   const now: Fields | null = fresh[0].now;
@@ -447,14 +532,26 @@ const PLACEHOLDER = /^\[טקסט · \d+ תווים\]$/;
  * second execution. Live = preview state → not applied; live = planned result (the step's own verify) → applied;
  * otherwise / a create (no id to read) / a command → FAILED "outcome unknown", treated as not applied.
  */
-async function verifyInterrupted(plan: Plan, s: PlanStep, d: ActServiceDeps): Promise<StepOutcome> {
+async function verifyInterrupted(plan: Plan, s0: PlanStep, d: ActServiceDeps, createdOf: (k: number) => string | undefined = () => undefined): Promise<StepOutcome> {
   const at = new Date(d.nowMs()).toISOString();
-  const out = (status: StepOutcome["status"], detail: string): StepOutcome => ({ index: s.index, actionId: s.actionId, status, detail, replayed: false, at });
-  const spec = PRIMITIVES_BY_ID.get(s.actionId);
+  const out = (status: StepOutcome["status"], detail: string): StepOutcome => ({ index: s0.index, actionId: s0.actionId, status, detail, replayed: false, at });
+  const spec = PRIMITIVES_BY_ID.get(s0.actionId);
   if (!spec) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the action is no longer registered — treated as not applied (never re-executed)");
+  // `$stepK.created`: resolved ONLY from the createdKey step K recorded in this plan's execution
+  const res = resolveStepRefs(s0, createdOf);
+  if (!res) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the record an earlier step created is not known — treated as not applied (never re-executed)");
+  const s = res.step;
   if (stepTargetId(s) === "new") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; a created record cannot be verified without its id — check the live records before planning it again (never re-executed)");
   try {
     const ex = executorFor(spec, d.writers);
+    if (s !== s0) {
+      // the approved change is compared on the record as it is now (the created id shown as the reference)
+      const now = await spec.read(d.writers, stepTargetId(s), s.args);
+      const cmp = s0.changes.filter((c) => !(typeof c.after === "string" && PLACEHOLDER.test(c.after)));
+      if (!cmp.length) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the planned result cannot be compared — treated as not applied (never re-executed)");
+      const applied = !!now && cmp.every((c) => { const v = asApproved(now[c.field], res.map); return v === c.after || planSafeValue(v) === c.after; });
+      return applied ? out("APPLIED_AS_EXPECTED", "verified by a fresh read after an interrupted execution (never re-executed)") : out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; the approved change is not in place → treated as not applied (never re-executed)");
+    }
     // a chained step's previewed state is a PROJECTION (earlier steps applied) — only its own planned result is compared
     if (!isChainedStep(plan, s) && s.expectedFingerprint !== null && (await ex.fingerprint(s)) === s.expectedFingerprint) return out("FAILED", "the execution was interrupted; the live state is still exactly the previewed state → not applied (never re-executed)");
     const after = Object.fromEntries(s.changes.filter((c) => !(typeof c.after === "string" && PLACEHOLDER.test(c.after))).map((c) => [c.field, c.after]));
@@ -477,7 +574,7 @@ async function reconciledRows(plan: Plan, d: ActServiceDeps): Promise<ExRow[]> {
   for (const r of stuck) {
     const s = plan.steps[r.stepIndex];
     if (!s) continue;
-    const o = await verifyInterrupted(plan, s, d);
+    const o = await verifyInterrupted(plan, s, d, (k) => { const x = rows.find((y) => y.stepIndex === k); return x?.status === "APPLIED_AS_EXPECTED" ? x.outcome?.createdKey : undefined; });
     try {
       await d.stores.idem.record(executionKey(hash, s), o); // CLAIMED → terminal, the claimed row only
       changed = true;
