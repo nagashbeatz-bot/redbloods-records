@@ -127,7 +127,7 @@ const CASES: FamilyCase<W>[] = [
     ok("several housekeeping steps in ONE plan are standing-eligible", standingEligible({ steps: [{ actionId: "MARK_OWNER_INBOX_ITEM" }, { actionId: "MARK_OWNER_INBOX_ITEM" }] }) && ok2.status === "PREVIEW");
     ok("a MIXED plan (housekeeping + any other action) is never standing-eligible", !standingEligible({ steps: [{ actionId: "MARK_OWNER_INBOX_ITEM" }, { actionId: "UPDATE_PROJECT_DEADLINE" }] }) && !standingEligible({ steps: [] }));
   }
-  ok("the standing list is LOCKED to exactly one primitive", STANDING_AUTHORIZATIONS.length === 1 && STANDING_AUTHORIZATIONS[0] === "MARK_OWNER_INBOX_ITEM");
+  ok("the standing list is LOCKED to exactly the five Owner-memory primitives (Owner decision 2026-10-01)", JSON.stringify([...STANDING_AUTHORIZATIONS].sort()) === JSON.stringify(["LINK_INBOX_ENTITY", "MARK_OWNER_INBOX_ITEM", "RECORD_INBOX_INTERPRETATION", "RETRACT_INBOX_INTERPRETATION", "RETRACT_INBOX_LINK"]));
   {
     // the standing phrase on a business action → NOT_AN_APPROVAL (server-enforced), nothing approved
     const sysW = { async readBusinessGoals() { return { monthlyRevenue: { target: 20000, currency: "₪" } }; }, async setBusinessGoal() { throw new Error("must not write"); } };

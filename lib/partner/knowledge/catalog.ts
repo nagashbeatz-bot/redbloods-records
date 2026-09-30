@@ -17,6 +17,7 @@ import { improvementSignals, ownerInbox, ownerKnowledge, relations } from "./cap
 import { OPERATIONS_CAPABILITIES } from "./capabilities/operations";
 import { systemAwareness } from "./capabilities/system";
 import { projectPortfolioCap, projectView } from "./capabilities/projects-deep";
+import { projectMemory } from "./capabilities/project-memory";
 import { systemSettings } from "./capabilities/settings";
 import { calendarCap } from "./capabilities/calendar";
 import { operatingModel } from "./capabilities/operating";
@@ -55,7 +56,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   ownerKnowledge, ownerInbox, relations, improvementSignals,
   ...OPERATIONS_CAPABILITIES,
   systemAwareness,
-  projectView, projectPortfolioCap,
+  projectView, projectPortfolioCap, projectMemory,
   systemSettings,
   calendarCap,
   operatingModel,

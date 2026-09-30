@@ -45,7 +45,7 @@ export function defaultCalendarWindow(now: Date): { start: string; end: string }
 
 async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience, calendarWindow?: { start: string; end: string }): Promise<GatewaySources> {
   const want = new Set(needs);
-  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox] = await Promise.all([
+  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory] = await Promise.all([
     want.has("STATE") ? ctx.state() : undefined, want.has("FINANCE") ? ctx.finance() : undefined, want.has("MEMORY") ? ctx.memory() : undefined,
     want.has("CASES") ? ctx.cases() : undefined, want.has("ACTIONS") ? ctx.actions() : undefined, want.has("OUTCOMES") ? ctx.outcomes() : undefined,
     want.has("INTEGRITY") ? integrityOf(ctx) : undefined,
@@ -57,8 +57,15 @@ async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], a
     want.has("SETTINGS") && "settings" in ctx ? ctx.settings() : undefined,
     want.has("CALENDAR") && "calendar" in ctx ? (() => { const w = calendarWindow ?? defaultCalendarWindow(ctx.now); return ctx.calendar(w.start, w.end); })() : undefined,
     want.has("OWNER_INBOX") && "ownerInbox" in ctx ? ctx.ownerInbox() : undefined,
+    want.has("OWNER_INBOX") && "inboxMemory" in ctx ? ctx.inboxMemory() : undefined,
   ]);
-  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, identities: APP_IDENTITIES, audience };
+  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory, identities: APP_IDENTITIES, audience };
+}
+
+/** The Gateway sources for server-side writers that must reason over the SAME live state Sunny reads (e.g. the Owner
+ *  Inbox memory resolver + project basis). Read-only; restrictive audience. */
+export async function loadGatewaySources(needs: readonly KnowledgeSourceNeed[], ctx: AnyCtx = createCompanyReadContext()): Promise<GatewaySources> {
+  return loadSources(ctx, needs, RESTRICTIVE_AUDIENCE);
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {

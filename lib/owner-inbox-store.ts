@@ -26,7 +26,7 @@ function writeError(e: { message: string; code?: string }): InboxWriteResult {
   const m = e.message ?? "";
   if (m.includes("REQUEST_KEY_REUSED")) return { status: "REQUEST_KEY_REUSED", detail: m.slice(0, 200) };
   if (m.includes("NOT_NEW_OR_MISSING")) return { status: "NOT_NEW_OR_MISSING", detail: m.slice(0, 200) };
-  if (m.includes("INVALID_PROCESSED_VIA") || m.includes("INVALID_OUTCOME") || e.code === "23514") return { status: "INVALID", detail: m.slice(0, 200) };
+  if (m.includes("INVALID_PROCESSED_VIA") || m.includes("INVALID_OUTCOME") || m.includes("INVALID_REF") || m.includes("REF_NOT_ALLOWED") || m.includes("NO_MEMORY") || m.includes("UNINTERPRETED_PROJECT_LINK") || e.code === "23514") return { status: "INVALID", detail: m.slice(0, 200) };
   return { status: "WRITE_FAILED", detail: m.slice(0, 200) };
 }
 

@@ -7,6 +7,7 @@
  * never read as "nothing".
  */
 import type { OwnerInboxItem } from "../../owner-inbox";
+import type { InboxMemory } from "../../inbox-memory";
 import type { PartnerCase } from "../cases/types";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { FinanceActionCandidate } from "../finance/actions";
@@ -68,6 +69,8 @@ export interface GatewaySources {
   ownerKnowledge?: Avail<OwnerKnowledgeRecord[]>;
   /** "עדכון לסאני" — the Owner's free-text updates (sunny_owner_inbox): OWNER_REPORTED evidence, never facts. */
   ownerInbox?: Avail<OwnerInboxItem[]>;
+  /** Sunny's memory of those updates (links + interpretations, 2026-10-01) — loaded with OWNER_INBOX; HYPOTHESIS, never canonical. */
+  inboxMemory?: Avail<InboxMemory>;
   /** Operations domains (Red Films, meetings, project actions, beats, social, balance cycles, albums, mix pipeline, deliveries, integrations). */
   operations?: Avail<OperationsRaw>;
   /** Project human context + material metadata (Owner-only; secrets reduced to booleans at the read edge). */

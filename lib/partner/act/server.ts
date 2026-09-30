@@ -25,6 +25,7 @@ import type { BackfillFamilyWriters } from "./primitives/backfills";
 import type { UploadFamilyWriters } from "./primitives/uploads";
 import type { LinkFamilyWriters } from "./primitives/links";
 import type { OwnerInboxFamilyWriters } from "./primitives/owner-inbox";
+import type { InboxMemoryFamilyWriters } from "./primitives/inbox-memory";
 import { PRODUCTION_LINK_FIELDS, SOCIAL_LINK_FIELDS, segmentsText } from "./primitives/links";
 /** Social link arg → the content column (the wiring owns storage column names; primitives only know the typed args). */
 export const SOCIAL_LINK_COLUMNS: Readonly<Record<string, string>> = { assetLink: "asset_link", storageLink: "dropbox_link", postedLink: "posted_url" };
@@ -40,7 +41,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { similarRecords: async (q) => (await import("@/lib/writes/duplicates")).similarRecords(q), ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()), ...(await ownerInboxFamilyWriters()) };
+  return { similarRecords: async (q) => (await import("@/lib/writes/duplicates")).similarRecords(q), ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()), ...(await ownerInboxFamilyWriters()), ...(await inboxMemoryFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -544,6 +545,51 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
       if (r.status !== "OK") throw new Error(`owner knowledge read failed: ${r.status}`);
       return r.records.some((k) => k.id === id);
     },
+  };
+}
+
+/**
+ * Owner Inbox MEMORY (2026-10-01) — the ONE writer lib/writes/inbox-memory over the approved RPCs. The resolver and the
+ * project basis read the SAME live Gateway state Sunny reads (STATE + OPERATIONS), memoized briefly per process so one
+ * plan's preview / pre-run check / step turn read one consistent picture without reloading the company each time.
+ */
+async function inboxMemoryFamilyWriters(): Promise<InboxMemoryFamilyWriters> {
+  const [{ supabase }, { createInboxMemoryStore }, { createOwnerInboxStore }, W, { loadGatewaySources }, { buildMentionIndex }, { projectBasisOf }] = await Promise.all([
+    import("@/lib/supabase"), import("@/lib/inbox-memory-store"), import("@/lib/owner-inbox-store"), import("@/lib/writes/inbox-memory"),
+    import("@/lib/partner/gateway/server"), import("@/lib/partner/knowledge/inbox-mentions"), import("@/lib/partner/projects/memory"),
+  ]);
+  const store = createInboxMemoryStore(supabase as unknown as import("@/lib/inbox-memory-store").InboxMemoryClient);
+  const inbox = createOwnerInboxStore(supabase as unknown as import("@/lib/owner-inbox-store").OwnerInboxClient);
+  let memo: { at: number; src: Promise<import("@/lib/partner/gateway/core").GatewaySources> } | null = null;
+  const sources = () => {
+    if (!memo || Date.now() - memo.at > 20_000) memo = { at: Date.now(), src: loadGatewaySources(["STATE", "OPERATIONS"]) };
+    return memo.src;
+  };
+  const deps: import("@/lib/writes/inbox-memory").InboxMemoryDeps = {
+    store,
+    async readItem(id) { const r = await inbox.get(id); if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`); return r.item ? { body: r.item.body, status: r.item.status } : null; },
+    async readMemory() { const r = await store.readAll(); if (r.status !== "OK") throw new Error(`inbox memory read failed: ${r.detail}`); return r.value; },
+    async resolverContext() {
+      const src = await sources();
+      if (src.state?.status !== "OK") throw new Error("company state unavailable — the resolver cannot run");
+      const st = src.state.value;
+      const meta = new Map((src.operations?.status === "OK" ? src.operations.value.projectsMeta?.rows ?? [] : []).map((m) => [m.id, m]));
+      const projects = Object.entries(st.domains.projects.data?.index ?? {}).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status ?? null, artistText: p.artistText ?? null, hidden: meta.get(id)?.isHidden ?? null }));
+      return { index: buildMentionIndex(src), projects };
+    },
+    async projectBasis(projectId) { memo = null; return projectBasisOf(await sources(), projectId); },
+  };
+  const must = (r: import("@/lib/writes/inbox-memory").MemoryWriteResult, what: string) => {
+    if (r.status !== "OK") throw new Error(`${what} refused: ${r.status === "REFUSED" ? `${r.code} ${r.messageHe}` : r.messageHe}`);
+    return r.id;
+  };
+  return {
+    readInboxMemory: () => deps.readMemory(),
+    async checkInboxLink(a) { const v = await W.checkLink(deps, a); return v.ok ? { ok: true, method: v.method, candidates: v.candidates } : { ok: false, code: v.code, messageHe: v.messageHe }; },
+    async createInboxLink(a) { return must(await W.linkInboxEntity(deps, a), "inbox link"); },
+    async createInboxInterpretation(a) { return must(await W.recordInboxInterpretation(deps, a), "inbox interpretation"); },
+    async retractInboxLinkRow(id, reason) { must(await W.retractInboxLink(deps, { linkId: id, reason }), "retract link"); },
+    async retractInboxInterpretationRow(id, reason) { must(await W.retractInboxInterpretation(deps, { interpretationId: id, reason }), "retract interpretation"); },
   };
 }
 

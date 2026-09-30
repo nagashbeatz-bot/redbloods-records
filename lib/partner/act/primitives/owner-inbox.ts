@@ -51,7 +51,7 @@ export const OWNER_INBOX_PRIMITIVES: readonly PrimitiveSpec[] = [
       domain: "SUNNY", he: "סימון עדכון שכתבת לסאני כטופל", en: "Mark one of the Owner's 'עדכון לסאני' items handled (NEW → PROCESSED, final) with a typed outcome and its real reference — records the outcome only; creates no knowledge and no action",
       args: [
         { name: "item", kind: "entityKey", required: true, noteHe: "owner-inbox:<id> מתוך owner_inbox (mode new)" },
-        { name: "outcome", kind: "enum", required: true, values: INBOX_OUTCOMES, noteHe: "LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED / DISMISSED" },
+        { name: "outcome", kind: "enum", required: true, values: INBOX_OUTCOMES, noteHe: "LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED / DISMISSED / MEMORY_RECORDED (אחרי קישור + הבנה לכל פרויקט מקושר; ה-DB בודק)" },
         { name: "outcomeRef", kind: "text", required: false, noteHe: "ACTION_PLANNED → מזהה ה-plan (pl_…); LEARNED_KNOWLEDGE → מזהה רשומת הידע (uuid); אחרת ריק. לא שדה הערה." },
       ],
       fields: ["status", "outcome", "outcomeRef", "processedVia"], effects: [], riskClass: "NORMAL_BUSINESS", reversible: "NO",
@@ -60,7 +60,7 @@ export const OWNER_INBOX_PRIMITIVES: readonly PrimitiveSpec[] = [
     resolve: onItem,
     read: async (d, id) => { const it = await d.readOwnerInboxItem(id); return it ? fieldsOf(it) : null; },
     plan(a, cur) {
-      if (!isInboxOutcome(a.outcome)) return refuse("BAD_ARGS", "תוצאה לא מוכרת (LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED / DISMISSED)");
+      if (!isInboxOutcome(a.outcome)) return refuse("BAD_ARGS", "תוצאה לא מוכרת (LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED / DISMISSED / MEMORY_RECORDED)");
       const ref = checkOutcomeRef(a.outcome, a.outcomeRef);
       if (!ref.ok) return refuse(ref.code, ref.messageHe);
       if (cur.status === "PROCESSED") return refuse("ALREADY_PROCESSED", `העדכון כבר טופל (${INBOX_OUTCOME_HE[cur.outcome as keyof typeof INBOX_OUTCOME_HE] ?? cur.outcome}) — PROCESSED סופי, אין פתיחה מחדש`);
