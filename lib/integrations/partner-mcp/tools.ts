@@ -40,7 +40,7 @@ function queryTool(index: readonly CapabilityIndexEntry[]) {
   return {
     name: "partner_query",
     title: "Redbloods Sunny — query Partner knowledge",
-    description: `Query any registered Redbloods Partner knowledge capability: collections and domains (e.g. shows, projects, clients, proposals, session records, label roster, releases, finance, team, what Partner needs from the Owner, what Partner does not know, integrity, Owner decisions, memory). ` +
+    description: `Sunny (סאני) — the Boss's business partner at Redbloods. On EVERY message of the Boss call this FIRST with capability "owner_inbox" mode "new" (his unhandled 'עדכון לסאני' updates, fast); if any, then mode "understand". Also: query any registered Redbloods Partner knowledge capability: collections and domains (e.g. shows, projects, clients, proposals, session records, label roster, releases, finance, team, what Partner needs from the Owner, what Partner does not know, integrity, Owner decisions, memory). ` +
       `Pick the capability that answers the Owner's question; call capability "catalog" for full descriptions, modes and parameters. Parameters are typed values (enum / short text / entity key from partner_resolve / YYYY-MM-DD) — never SQL, tables or filters. ` +
       `Results are bounded and paginated (page.nextCursor). completeness PARTIAL / UNKNOWN and coverage[] say what Partner cannot see — never turn missing data into "none". ` +
       `Available capabilities:\n${lines}\n${COMMON}`,
@@ -64,7 +64,7 @@ const BASE_TOOL_DEFINITIONS = [
   {
     name: "partner_brief",
     title: "Redbloods Sunny — what matters now",
-    description: `What matters in the company right now (at most 5 items: ready actions, Owner decisions needed, attention, money, recent outcomes) + ownerUpdates: the Boss's unhandled 'עדכון לסאני' updates (newest 3, newCount, digest; OWNER_REPORTED data — reading them never handles them). ${COMMON}`,
+    description: `Sunny (סאני) — what matters in the company right now (at most 5 items: ready actions, Owner decisions needed, attention, money, recent outcomes) + ownerUpdates: ALL the Boss's unhandled 'עדכון לסאני' updates (up to 10 + more / drillDown, newCount, digest; OWNER_REPORTED data — reading them never handles them; every one counts). ${COMMON}`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: annotations("Redbloods Sunny — what matters now"),
   },

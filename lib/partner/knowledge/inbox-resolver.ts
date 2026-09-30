@@ -20,6 +20,10 @@ export type SurfaceResolution =
       ambiguous: string[] }
   | { status: "NOT_IN_TEXT" | "NO_ENTITY" | "SEVERAL_NAMES" | "TOO_MANY_CANDIDATES"; messageHe: string };
 const INACTIVE = new Set<string>(NOT_OVERDUE_STATUSES);
+/** The OPEN, visible projects whose artist credit is exactly this (normalized) name — the ONE rule (resolver + understand). */
+export function openCreditedProjects(normName: string, projects: readonly ResolverProject[]): string[] {
+  return projects.filter((p) => p.status !== null && !INACTIVE.has(p.status) && p.hidden !== true && credits(p.artistText).includes(normName)).map((p) => p.key);
+}
 const credits = (artistText: string | null) => (artistText ?? "").split(/[,،;]/).map((x) => normalizeName(x)).filter(Boolean);
 
 /**
@@ -35,7 +39,7 @@ export function resolveSurface(body: string, surfaceRaw: string, index: readonly
   if (new Set(ms.map((m) => normalizeName(m.name))).size > 1) return { status: "SEVERAL_NAMES", messageHe: `"${surface}" מכיל כמה שמות — צריך surface עם שם אחד` };
   const m = ms[0];
   const nm = normalizeName(m.name);
-  const openCredited = () => projects.filter((p) => p.status !== null && !INACTIVE.has(p.status) && p.hidden !== true && credits(p.artistText).includes(nm)).map((p) => p.key);
+  const openCredited = () => openCreditedProjects(nm, projects);
   if (m.quality === "AMBIGUOUS") {
     // a short / generic / several-entity name is never linked by itself: the Owner chooses among the entities it names
     // AND the open projects credited to that name ("אצל טל" → the client טל or the song of טל) — a list of 2–8, else no question

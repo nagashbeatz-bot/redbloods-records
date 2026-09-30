@@ -116,8 +116,8 @@ export function inboxDigest(ids: readonly string[]): string {
 }
 
 /**
- * The Owner's unhandled updates for the brief: newest 3 (text ≤200 chars, RECORD), the count, a stable digest and a
- * drill-down to the full list. Its own status — an unreadable inbox is UNAVAILABLE (never "no updates") and never
+ * The Owner's unhandled updates for the brief: newest 10 (text ≤300 chars, RECORD — Owner decision 2026-10-01: never
+ * "one more update" without its content), the count, `more` beyond the cap, a stable digest and a drill-down to the full list. Its own status — an unreadable inbox is UNAVAILABLE (never "no updates") and never
  * changes the rest of the brief. Read only: nothing is marked handled.
  */
 export function ownerUpdatesOf(src: GatewaySources): BriefResponse["ownerUpdates"] {

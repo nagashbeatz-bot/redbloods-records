@@ -14,7 +14,7 @@ import { linkVerdict, resolveSurface, type ResolverProject } from "../lib/partne
 import { normalizeName } from "../lib/partner/gateway/resolve";
 import type { MentionEntry } from "../lib/partner/knowledge/inbox-mentions";
 import { checkLink, linkInboxEntity, recordInboxInterpretation, retractInboxInterpretation, retractInboxLink, type InboxMemoryDeps } from "../lib/writes/inbox-memory";
-import { checkOutcomeRef } from "../lib/owner-inbox";
+import { INBOX_OUTCOMES, RETIRED_DB_OUTCOMES } from "../lib/owner-inbox";
 import { markOwnerInboxItemProcessed } from "../lib/writes/owner-inbox";
 
 let pass = 0, fail = 0;
@@ -174,14 +174,15 @@ function world() {
     ok("checkLink is the SAME rule for the preview and the write", /export async function checkLink/.test(writer) && /W\.checkLink\(deps, a\)/.test(read("lib/partner/act/server.ts")));
   }
 
-  console.log("\nMEMORY_RECORDED (item level)");
-  ok("MEMORY_RECORDED takes no reference", checkOutcomeRef("MEMORY_RECORDED", null).ok && !checkOutcomeRef("MEMORY_RECORDED", "pl_AbCdEfGhIjKlMnOpQrStUvWx").ok);
-  {
+  console.log("\nMEMORY_RECORDED is RETIRED in code (Owner decision 2026-10-01: only the four existing outcomes)");
+  ok("the outcome vocabulary is exactly the four existing outcomes", JSON.stringify([...INBOX_OUTCOMES]) === JSON.stringify(["LEARNED_KNOWLEDGE", "ACTION_PLANNED", "NO_ACTION_NEEDED", "DISMISSED"]) && RETIRED_DB_OUTCOMES.includes("MEMORY_RECORDED"));
+  for (const via of ["DASHBOARD", "SUNNY"] as const) {
     const calls: string[] = [];
     const fakeStore = { async markProcessed() { calls.push("mark"); return { status: "OK" as const, item: {} as never }; } } as never;
-    const r = await markOwnerInboxItemProcessed(fakeStore, "DASHBOARD", { id: ITEM, outcome: "MEMORY_RECORDED" });
-    ok("the dashboard can never set MEMORY_RECORDED (Sunny only), nothing written", r.status === "INVALID_INPUT" && calls.length === 0);
+    const r = await markOwnerInboxItemProcessed(fakeStore, via, { id: ITEM, outcome: "MEMORY_RECORDED" });
+    ok(`the shared writer refuses MEMORY_RECORDED via ${via} (unknown outcome), nothing written`, r.status === "INVALID_INPUT" && calls.length === 0);
   }
+  ok("no code path offers it (primitives / instructions / capabilities / writer)", !/MEMORY_RECORDED/.test(read("lib/partner/act/primitives/owner-inbox.ts") + read("lib/integrations/partner-mcp/mcp.ts") + read("lib/partner/knowledge/capabilities/sunny.ts") + read("lib/writes/owner-inbox.ts")));
 
   console.log("\nThe applied SQL (scripts/sql/2026-10-01-inbox-memory.sql)");
   {

@@ -7,7 +7,7 @@
  *                   knowledge / actions come only from their own preview + Owner-approval flows.
  * No push, no calendar, no finance, no deletion.
  */
-import { UUID_RE, checkInboxBody, checkOutcomeRef, INBOX_REF_MAX_CHARS, isInboxOutcome, SUNNY_ONLY_OUTCOMES, type InboxVia, type OwnerInboxItem } from "../owner-inbox";
+import { UUID_RE, checkInboxBody, checkOutcomeRef, INBOX_REF_MAX_CHARS, isInboxOutcome, type InboxVia, type OwnerInboxItem } from "../owner-inbox";
 import type { InboxWriteResult, OwnerInboxStore } from "../owner-inbox-store";
 import { STANDING_AUTHORIZATIONS } from "../partner/act/standing";
 
@@ -34,7 +34,6 @@ export type OwnerInboxProcessResult =
 export async function markOwnerInboxItemProcessed(store: OwnerInboxStore, via: InboxVia, input: { id: unknown; outcome: unknown; outcomeRef?: unknown }): Promise<OwnerInboxProcessResult> {
   if (typeof input.id !== "string" || !UUID_RE.test(input.id)) return { status: "INVALID_INPUT", code: "ID", messageHe: "מזהה פריט לא תקין." };
   if (!isInboxOutcome(input.outcome)) return { status: "INVALID_INPUT", code: "OUTCOME", messageHe: "תוצאה לא מוכרת." };
-  if (via !== "SUNNY" && SUNNY_ONLY_OUTCOMES.includes(input.outcome)) return { status: "INVALID_INPUT", code: "OUTCOME", messageHe: "התוצאה הזו נקבעת רק ע״י סאני (אחרי קישור והבנה)." };
   // outcomeRef is a REAL reference (a plan id / a knowledge id) or null — never a free-text note (Owner decision 2026-09-30)
   const ref = checkOutcomeRef(input.outcome, input.outcomeRef);
   if (!ref.ok) return { status: "INVALID_INPUT", code: ref.code, messageHe: ref.messageHe };

@@ -19,7 +19,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const PID = U(10), KEY = `project:${PID}`, OTHER = U(11);
 
-const item = (id: string, body: string, createdAt: string, status: "NEW" | "PROCESSED" = "PROCESSED"): OwnerInboxItem => ({ id, createdAt, body, author: "OWNER", epistemic: "OWNER_REPORTED", source: "DASHBOARD_V2", status, processedAt: status === "PROCESSED" ? createdAt : null, processedVia: status === "PROCESSED" ? "SUNNY" : null, outcome: status === "PROCESSED" ? "MEMORY_RECORDED" : null, outcomeRef: null });
+const item = (id: string, body: string, createdAt: string, status: "NEW" | "PROCESSED" = "PROCESSED"): OwnerInboxItem => ({ id, createdAt, body, author: "OWNER", epistemic: "OWNER_REPORTED", source: "DASHBOARD_V2", status, processedAt: status === "PROCESSED" ? createdAt : null, processedVia: status === "PROCESSED" ? "SUNNY" : null, outcome: status === "PROCESSED" ? "NO_ACTION_NEEDED" : null, outcomeRef: null });
 const link = (id: string, itemId: string, entityKey: string, o: Partial<InboxLink> = {}): InboxLink => ({ id, itemId, entityKey, quality: "EXACT_UNIQUE", method: "RESOLVER_UNIQUE", surface: "Closer", candidates: null, createdAt: "2026-10-01T08:01:00Z", retractedAt: null, retractedReason: null, ...o });
 const interp = (id: string, seq: number, o: Partial<InboxInterpretation> = {}): InboxInterpretation => ({
   id, seq, itemId: U(1), linkId: U(50), entityKey: KEY, whatHappened: "הגרסה האחרונה השתפרה משמעותית", completed: [], openGaps: ["תיקוני BGV"], blockers: ["תיקוני הבאקים לפני מסירה"],

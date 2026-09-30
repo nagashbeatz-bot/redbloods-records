@@ -16,16 +16,17 @@ export const INBOX_MAX_CHARS = 1000;
 export const INBOX_REF_MAX_CHARS = 120;
 export const INBOX_STATUSES = ["NEW", "PROCESSED"] as const;
 export const INBOX_VIA = ["DASHBOARD", "SUNNY"] as const;
-export const INBOX_OUTCOMES = ["LEARNED_KNOWLEDGE", "ACTION_PLANNED", "NO_ACTION_NEEDED", "DISMISSED", "MEMORY_RECORDED"] as const;
-/** MEMORY_RECORDED (2026-10-01): Sunny linked the item and saved her understanding for every linked project. Sunny only
- *  (never the dashboard); the DB requires ≥ 1 active link and an interpretation for every active project link. */
-export const SUNNY_ONLY_OUTCOMES: readonly string[] = ["MEMORY_RECORDED"];
+/** The outcome vocabulary in use — exactly four (Owner decision 2026-10-01: no new outcome; a new one is a separate
+ *  schema decision). The DB CHECK also allows 'MEMORY_RECORDED' (the approved 2026-10-01 SQL); it is RETIRED in code: no
+ *  writer, primitive or screen offers it, and the shared writer refuses it as an unknown outcome. */
+export const INBOX_OUTCOMES = ["LEARNED_KNOWLEDGE", "ACTION_PLANNED", "NO_ACTION_NEEDED", "DISMISSED"] as const;
+export const RETIRED_DB_OUTCOMES: readonly string[] = ["MEMORY_RECORDED"];
 export type InboxStatus = (typeof INBOX_STATUSES)[number];
 export type InboxVia = (typeof INBOX_VIA)[number];
 export type InboxOutcome = (typeof INBOX_OUTCOMES)[number];
 
 export const INBOX_OUTCOME_HE: Record<InboxOutcome, string> = {
-  LEARNED_KNOWLEDGE: "נלמד כידע (דרך אישור)", ACTION_PLANNED: "הפך לפעולה (דרך אישור)", NO_ACTION_NEEDED: "לא נדרש כלום", DISMISSED: "נדחה", MEMORY_RECORDED: "נרשם בזיכרון הפרויקט (קישור + הבנה)",
+  LEARNED_KNOWLEDGE: "נלמד כידע (דרך אישור)", ACTION_PLANNED: "הפך לפעולה (דרך אישור)", NO_ACTION_NEEDED: "לא נדרש כלום", DISMISSED: "נדחה",
 };
 
 export interface OwnerInboxItem {
@@ -81,14 +82,14 @@ export function mapInboxRow(r: unknown): OwnerInboxItem | null {
 /** The Action Layer plan id shape (the partner_action_plans.plan_id CHECK). */
 export const PLAN_ID_RE = /^pl_[A-Za-z0-9_-]{16,64}$/;
 /** What each outcome links to: ACTION_PLANNED → a plan, LEARNED_KNOWLEDGE → an Owner-knowledge record id, else nothing. */
-export const OUTCOME_LINK: Record<InboxOutcome, "PLAN" | "KNOWLEDGE" | null> = { ACTION_PLANNED: "PLAN", LEARNED_KNOWLEDGE: "KNOWLEDGE", NO_ACTION_NEEDED: null, DISMISSED: null, MEMORY_RECORDED: null };
+export const OUTCOME_LINK: Record<InboxOutcome, "PLAN" | "KNOWLEDGE" | null> = { ACTION_PLANNED: "PLAN", LEARNED_KNOWLEDGE: "KNOWLEDGE", NO_ACTION_NEEDED: null, DISMISSED: null };
 export const OUTCOME_LINK_HE: Record<InboxOutcome, string> = {
-  ACTION_PLANNED: "מקושר ל-plan", LEARNED_KNOWLEDGE: "מקושר לידע שנלמד", NO_ACTION_NEEDED: "ללא אובייקט מקושר", DISMISSED: "ללא אובייקט מקושר", MEMORY_RECORDED: "הקישורים וההבנה בזיכרון הפרויקט",
+  ACTION_PLANNED: "מקושר ל-plan", LEARNED_KNOWLEDGE: "מקושר לידע שנלמד", NO_ACTION_NEEDED: "ללא אובייקט מקושר", DISMISSED: "ללא אובייקט מקושר",
 };
 
 export type RefCheck = { ok: true; ref: string | null } | { ok: false; code: "REF_REQUIRED" | "BAD_PLAN_REF" | "BAD_KNOWLEDGE_REF" | "REF_NOT_ALLOWED"; messageHe: string };
 
-/** ACTION_PLANNED needs a plan id (pl_…); LEARNED_KNOWLEDGE needs a knowledge record id (uuid); NO_ACTION_NEEDED / DISMISSED / MEMORY_RECORDED take none (null). */
+/** ACTION_PLANNED needs a plan id (pl_…); LEARNED_KNOWLEDGE needs a knowledge record id (uuid); NO_ACTION_NEEDED / DISMISSED take none (null). */
 export function checkOutcomeRef(outcome: InboxOutcome, raw: unknown): RefCheck {
   const ref = raw === undefined || raw === null ? null : typeof raw === "string" ? (raw.trim() || null) : undefined;
   if (ref === undefined) return { ok: false, code: "REF_NOT_ALLOWED", messageHe: "הפניה חייבת להיות טקסט." };

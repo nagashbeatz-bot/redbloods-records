@@ -36,6 +36,7 @@ export function validateCapability(c: KnowledgeCapability): string[] {
   if (c.recordTextLimit !== undefined && (!Number.isInteger(c.recordTextLimit) || c.recordTextLimit < 300 || c.recordTextLimit > 4000)) e.push(`${c.id}: recordTextLimit must be 300–4000`);
   if (Object.keys(c.params).length > 6) e.push(`${c.id}: at most 6 params`);
   if (c.paging.defaultLimit < 1 || c.paging.maxLimit > KNOWLEDGE_MAX_LIMIT || c.paging.defaultLimit > c.paging.maxLimit) e.push(`${c.id}: paging must be 1 ≤ default ≤ max ≤ ${KNOWLEDGE_MAX_LIMIT}`);
+  for (const m of Object.keys(c.modeNeeds ?? {})) if (!(m in c.modes)) e.push(`${c.id}: modeNeeds.${m} is not one of its modes`);
   if (c.entityScope) {
     const p = c.params[c.entityScope.param];
     if (!p || p.kind !== "entityKey") e.push(`${c.id}: entityScope.param must be an entityKey param`);

@@ -263,8 +263,8 @@ export interface BriefOwnerUpdate { id: string; writtenAt: string; text: GText; 
 export const GATEWAY_LIMITS = {
   briefItems: 5,
   /** Newest NEW Owner updates shown in the brief (the rest via owner_inbox), and their text length. */
-  briefOwnerUpdates: 3,
-  ownerUpdateChars: 200,
+  briefOwnerUpdates: 10,
+  ownerUpdateChars: 300,
   resolveCandidates: 8,
   facts: 40,
   relationships: 40,

@@ -112,6 +112,8 @@ export interface KnowledgeCapability {
   needs: readonly KnowledgeSourceNeed[];
   /** Loaded too, reported in sources[], but their failure never lowers completeness (e.g. live calendar context for a project). */
   optionalNeeds?: readonly KnowledgeSourceNeed[];
+  /** Extra sources loaded ONLY for these modes (e.g. owner_inbox understand needs the company state; mode new stays fast). */
+  modeNeeds?: Readonly<Record<string, readonly KnowledgeSourceNeed[]>>;
   /** PURE: reads the given sources only; returns every matching item in a deterministic order (the Gateway pages). */
   read(src: KnowledgeSources, q: KnowledgeQuery): KnowledgeReadResult;
 }

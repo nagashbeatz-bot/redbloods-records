@@ -3,7 +3,7 @@
  * RETRACT_INBOX_LINK, RETRACT_INBOX_INTERPRETATION through the REAL service, the REAL writer (lib/writes/inbox-memory)
  * and the REAL store, on a fake that does exactly what the applied SQL does. Standard checks (happy / invalid / missing /
  * wrong kind / stale / no approval / exact verify) + the Owner's own example end to end under the standing authorization
- * (ONE plan per update: links → interpretations → MEMORY_RECORDED), the ask-don't-guess rule, the locked 5-primitive
+ * (ONE plan per update after the Boss's confirmation: links → interpretations → NO_ACTION_NEEDED), the ask-don't-guess rule, the locked 5-primitive
  * standing list (memory only), and the mixed-plan refusal.
  * Run with:   npx tsx scripts/test-sunny-act-inbox-memory.tsx      Pure; never touches production.
  */
@@ -61,11 +61,6 @@ function mk(seed?: (db: FakeInboxMemoryDb) => void) {
       calls.push("markOwnerInboxItem");
       const r = checkOutcomeRef(outcome as never, ref); if (!r.ok) throw new Error(r.code);
       if (id !== ITEM || w.item.status !== "NEW") throw new Error("NOT_NEW_OR_MISSING");
-      if (outcome === "MEMORY_RECORDED") { // exactly the SQL's rule
-        const act = db.links.filter((l) => l.item_id === id && !l.retracted_at);
-        if (!act.length) throw new Error("NO_MEMORY");
-        if (act.some((l) => String(l.entity_key).startsWith("project:") && !db.interps.some((i) => i.link_id === l.id && !i.retracted_at))) throw new Error("UNINTERPRETED_PROJECT_LINK");
-      }
       Object.assign(w.item, { status: "PROCESSED", outcome, outcomeRef: r.ref, processedVia: "SUNNY" });
     },
     async readProjectMeta(id: string) { const p = projects.find((x) => x.key === `project:${id}`); return p ? { name: p.name, artist: p.artistText ?? "", status: p.status ?? "", isHidden: false, businessType: "לקוח", projectType: "", hasRelease: false } : null; },
@@ -137,7 +132,7 @@ const SEEDS: Record<string, (db: FakeInboxMemoryDb) => void> = {
       { actionId: "LINK_INBOX_ENTITY", args: { item: I1, entity: P_TAL, surface: "אצל טל", linkMethod: "OWNER_ANSWER", candidates: `${C_TAL} ${P_TAL}` } },
       { actionId: "RECORD_INBOX_INTERPRETATION", args: { item: I1, project: P_CLOSER, whatHappened: "הגרסה האחרונה השתפרה משמעותית", openGaps: "תיקוני BGV", blockers: "תיקוני הבאקים לפני מסירה", inferredNextStep: "לסיים את תיקוני הבאקים ואז לשלוח לאמן", confidence: "MEDIUM" } },
       { actionId: "RECORD_INBOX_INTERPRETATION", args: { item: I1, project: P_TAL, whatHappened: "בוצעה עבודה על הפזמון בסשן האחרון", completed: "הפזמון (דווח ע״י הבעלים)", openGaps: "בית שני", inferredNextStep: "להשלים את הבית השני", confidence: "HIGH" } },
-      { actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "MEMORY_RECORDED" } },
+      { actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "NO_ACTION_NEEDED" } },
     ];
     const p = await planAction({ intentHe: "זיכרון מעדכון לסאני", steps }, OWNER, d.d);
     ok("5 steps → ONE plan (links, interpretations, mark)", p.status === "PREVIEW" && (p.preview as { steps?: unknown[] })?.steps?.length === 5, { s: p.status, m: p.messageHe ?? p.codes });
@@ -151,7 +146,7 @@ const SEEDS: Record<string, (db: FakeInboxMemoryDb) => void> = {
     ok("2 links: Closer EXACT_UNIQUE, the Tal song OWNER_CONFIRMED (from the server's candidates)", L.length === 2 && L.find((l) => l.entity_key === P_CLOSER)?.quality === "EXACT_UNIQUE" && L.find((l) => l.entity_key === P_TAL)?.quality === "OWNER_CONFIRMED");
     const tal = h.w.db.interps.find((i) => i.entity_key === P_TAL);
     ok("2 interpretations, one per project, each from the full text for THAT project (Tal: chorus reported done, second verse open)", h.w.db.interps.length === 2 && JSON.stringify(tal?.completed) === JSON.stringify(["הפזמון (דווח ע״י הבעלים)"]) && JSON.stringify(tal?.open_gaps) === JSON.stringify(["בית שני"]));
-    ok("the item is PROCESSED as MEMORY_RECORDED via SUNNY", h.w.item.status === "PROCESSED" && h.w.item.outcome === "MEMORY_RECORDED" && h.w.item.processedVia === "SUNNY");
+    ok("the item is closed with an EXISTING outcome (NO_ACTION_NEEDED: understanding confirmed, follow-ups captured in the project memory) via SUNNY", h.w.item.status === "PROCESSED" && h.w.item.outcome === "NO_ACTION_NEEDED" && h.w.item.processedVia === "SUNNY");
     ok("no business writer was called", h.w.business.length === 0 && h.calls.every((c) => ["createInboxLink", "createInboxInterpretation", "markOwnerInboxItem"].includes(c)), h.calls);
     const hist = await planStatus({ history: true }, OWNER, d.d);
     ok("history records STANDING_AUTHORIZATION", ((hist.items as Array<{ planId: string; approvedBy: string | null }>) ?? []).find((x) => x.planId === p.planId)?.approvedBy === "STANDING_AUTHORIZATION");
@@ -168,13 +163,11 @@ const SEEDS: Record<string, (db: FakeInboxMemoryDb) => void> = {
     ok("candidates that are not EXACTLY the server's list → refused", m.status === "CANDIDATES_MISMATCH", m.status);
   }
 
-  console.log("\nMEMORY_RECORDED only when every linked project has an understanding");
+  console.log("\nMEMORY_RECORDED is retired — only the four existing outcomes");
   {
-    const h = mk((db) => seedLink(db)); const d = mkDeps(h.writers);
+    const h = mk(); const d = mkDeps(h.writers);
     const p = await planAction({ intentHe: "x", actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "MEMORY_RECORDED" } }, OWNER, d.d);
-    const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: STANDING_PHRASE }, OWNER, d.d);
-    const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: STANDING_PHRASE }, OWNER, d.d);
-    ok("a linked project without an interpretation → the mark fails (DB rule), the item stays NEW", e.status !== "APPLIED_AS_EXPECTED" && e.status !== "EXECUTED" && h.w.item.status === "NEW", e.status);
+    ok("MARK with MEMORY_RECORDED → refused at planning, nothing written", p.status !== "PREVIEW" && h.w.item.status === "NEW" && !d.db.rows(ACT_TABLES.plans).length, p.status);
   }
 
   console.log("\nStanding authorization — OWNER_MEMORY only");
@@ -194,7 +187,7 @@ const SEEDS: Record<string, (db: FakeInboxMemoryDb) => void> = {
 
   console.log("\nAddressability + registry");
   ok("inbox-link / inbox-interpretation targets are documented (NON_KEY_TARGETS)", !!NON_KEY_TARGETS["inbox-link"] && !!NON_KEY_TARGETS["inbox-interpretation"]);
-  ok("MARK_OWNER_INBOX_ITEM offers MEMORY_RECORDED", (OWNER_INBOX_PRIMITIVES[0].meta.args.find((x) => x.name === "outcome")?.values ?? []).includes("MEMORY_RECORDED"));
+  ok("MARK_OWNER_INBOX_ITEM offers exactly the four existing outcomes", JSON.stringify(OWNER_INBOX_PRIMITIVES[0].meta.args.find((x) => x.name === "outcome")?.values) === JSON.stringify(["LEARNED_KNOWLEDGE", "ACTION_PLANNED", "NO_ACTION_NEEDED", "DISMISSED"]));
   ok("no primitive argument is named method / proof / basis (typed business fields only)", INBOX_MEMORY_PRIMITIVES.every((p) => p.meta.args.every((x) => !/^(method|proof|basis.*|requestKey|payloadHash)$/.test(x.name))));
 
   console.log(`\n${pass} passed, ${fail} failed`);

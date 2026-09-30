@@ -558,6 +558,7 @@ async function inboxMemoryFamilyWriters(): Promise<InboxMemoryFamilyWriters> {
     import("@/lib/supabase"), import("@/lib/inbox-memory-store"), import("@/lib/owner-inbox-store"), import("@/lib/writes/inbox-memory"),
     import("@/lib/partner/gateway/server"), import("@/lib/partner/knowledge/inbox-mentions"), import("@/lib/partner/projects/memory"),
   ]);
+  const { resolverProjectsOf } = await import("@/lib/partner/knowledge/inbox-understand");
   const store = createInboxMemoryStore(supabase as unknown as import("@/lib/inbox-memory-store").InboxMemoryClient);
   const inbox = createOwnerInboxStore(supabase as unknown as import("@/lib/owner-inbox-store").OwnerInboxClient);
   let memo: { at: number; src: Promise<import("@/lib/partner/gateway/core").GatewaySources> } | null = null;
@@ -572,10 +573,7 @@ async function inboxMemoryFamilyWriters(): Promise<InboxMemoryFamilyWriters> {
     async resolverContext() {
       const src = await sources();
       if (src.state?.status !== "OK") throw new Error("company state unavailable — the resolver cannot run");
-      const st = src.state.value;
-      const meta = new Map((src.operations?.status === "OK" ? src.operations.value.projectsMeta?.rows ?? [] : []).map((m) => [m.id, m]));
-      const projects = Object.entries(st.domains.projects.data?.index ?? {}).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status ?? null, artistText: p.artistText ?? null, hidden: meta.get(id)?.isHidden ?? null }));
-      return { index: buildMentionIndex(src), projects };
+      return { index: buildMentionIndex(src), projects: resolverProjectsOf(src) };
     },
     async projectBasis(projectId) { memo = null; return projectBasisOf(await sources(), projectId); },
   };

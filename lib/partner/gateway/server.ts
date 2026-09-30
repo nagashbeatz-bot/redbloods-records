@@ -92,7 +92,7 @@ export async function queryPartnerKnowledge(req: KnowledgeRequest, audience: Kno
   const v = validateKnowledgeRequest(registry, req, audience);
   const p = v.ok ? v.value.params : {};
   const calendarWindow = p.from && p.to ? { start: p.from, end: p.to } : p.from ? { start: p.from, end: p.from } : undefined;
-  const src = v.ok ? await loadSources(ctx, [...v.value.cap.needs, ...(v.value.cap.optionalNeeds ?? [])], audience, calendarWindow) : { now: ctx.now, identities: APP_IDENTITIES, audience };
+  const src = v.ok ? await loadSources(ctx, [...v.value.cap.needs, ...(v.value.cap.optionalNeeds ?? []), ...(v.value.cap.modeNeeds?.[v.value.mode] ?? [])], audience, calendarWindow) : { now: ctx.now, identities: APP_IDENTITIES, audience };
   return queryKnowledgeCore(registry, req, src, audience);
 }
 

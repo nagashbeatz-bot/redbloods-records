@@ -103,8 +103,8 @@ function capItem(i: KnowledgeItem, max = MAX_RECORD_TEXT): KnowledgeItem {
   return { ...i, label: capText(i.label), fields };
 }
 
-function sourceStatuses(cap: KnowledgeCapability, src: KnowledgeSources) {
-  return [...cap.needs, ...(cap.optionalNeeds ?? [])].map((n) => {
+function sourceStatuses(cap: KnowledgeCapability, src: KnowledgeSources, mode?: string) {
+  return [...cap.needs, ...(cap.optionalNeeds ?? []), ...((mode && cap.modeNeeds?.[mode]) || [])].map((n) => {
     const a = SOURCE_OF[n](src) as { status?: string } | undefined;
     const up = !!a && a.status === "OK";
     return { source: SOURCE_NAME[n], status: up ? ("OK" as const) : ("UNAVAILABLE" as const), freshness: up ? ("LIVE" as const) : ("UNKNOWN" as const) };
@@ -128,7 +128,7 @@ export function queryKnowledgeCore(registry: KnowledgeRegistry, req: KnowledgeRe
       drillDown: [{ tool: "partner_query", args: { capability: "catalog" }, label: partner("מה Partner יודע") }], error: { code: v.code, message: v.message } };
   }
   const { cap, mode, params, limit, offset } = v.value;
-  const sources = sourceStatuses(cap, src);
+  const sources = sourceStatuses(cap, src, mode);
   // readers never decide access; the catalog uses the audience only to list what THIS caller may read
   const r = runReader(cap, { ...src, audience }, mode, params);
   const page = r.items.slice(offset, offset + limit).map((i) => capItem(i, textLimitOf(cap)));
