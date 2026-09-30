@@ -115,6 +115,7 @@ export const SUNNY_CORE_MODEL = {
   stores: [
     { id: "OWNER_CONTEXT", meaning: "the Owner's answers to Sunny's questions (finance / integrity / deadline change) — append-only, with provenance (manual or via Claude)", conversationText: "never — the note is null for answers via Claude; the question text is Sunny's own wording", readVia: "owner_decisions / integrity learned / memory / sunny_self" },
     { id: "OWNER_KNOWLEDGE", meaning: "typed facts the Owner taught through Claude (aliases, roles, relationships, blockers, follow-ups, vendor commitments, release priorities, reported payments, friction, working-policy candidates) — append-only, ASSERT / WITHDRAW", conversationText: "never — a normalised Hebrew read-back", readVia: "owner_knowledge / sunny_self" },
+    { id: "OWNER_INBOX", meaning: "'עדכון לסאני' — short free-text updates the Owner writes from Dashboard V2 (2026-09-30): OWNER_REPORTED evidence, never a fact; NEW → PROCESSED only with a typed outcome (LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED / DISMISSED); the text is never edited or deleted; writes only through two approved database functions", conversationText: "the Owner's own typed text (never a Claude conversation)", readVia: "owner_inbox" },
     { id: "ACTION_EVENTS", meaning: "approve / not now / reject / executed / stale events of the two executable primitives", conversationText: "no", readVia: "outcomes / owner_needs / sunny_self" },
     { id: "FEEDBACK", meaning: "a designed feedback store with NO writer yet (0 rows)", conversationText: "no", readVia: "sunny_self (count)" },
     { id: "CONNECTOR_AUDIT", meaning: "one row per connector call: time, method / capability, entity key, input HASHES, status, sizes — never payloads", conversationText: "no — and parameters are hashed", readVia: "NOT READABLE (the service role has insert-only rights by design)" },
@@ -127,6 +128,7 @@ export const SUNNY_CORE_MODEL = {
     "why it believes something (epistemic status + source on every item)",
     "what you answered before (Owner context history, with provenance)",
     "what you taught it (Owner knowledge history, incl. withdrawals)",
+    "what you wrote to it from the dashboard (עדכון לסאני) and whether it was handled",
     "what it executed and what happened (action events + derived outcomes)",
     "what it does not know (known unknowns + gap registry)",
   ],

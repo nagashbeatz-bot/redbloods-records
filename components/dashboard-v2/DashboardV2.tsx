@@ -1,11 +1,12 @@
 "use client";
 
 // Dashboard V2 (/dashboard-v2) — the simpler Owner dashboard, built BESIDE the current /dashboard (which is untouched).
-// Read-only: it only reads existing endpoints and opens existing drawers / modals / pages. Its only writes are the
+// It reads existing endpoints and opens existing drawers / modals / pages. Its own single write is "עדכון לסאני"
+// (POST /api/sunny/inbox → sunny_owner_inbox, OWNER_REPORTED evidence). Other writes are the
 // ones the reused components already make (TasksAttentionModal, the Partner sections, EditReleaseModal).
 // All derivations live in lib/dashboard-v2.ts (pure). No page-load write, no push, no calendar write.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -220,12 +221,39 @@ export default function DashboardV2() {
   const onTaskDone = (id: string) => setTasks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
   const onTaskDefer = (id: string, d: string) => setTasks((prev) => (prev ? prev.map((t) => (t.id === id ? { ...t, due_date: d } : t)) : prev));
 
-  // ── Sunny update (UI only: the write path waits for the Owner-approved DB change) ──
+  // ── Sunny update: POST /api/sunny/inbox (sunny_owner_inbox, OWNER_REPORTED evidence; idempotent by requestKey) ──
   const [sunnyText, setSunnyText] = useState("");
-  const [sunnyNotice, setSunnyNotice] = useState<string | null>(null);
-  const onSunnySend = () => {
-    if (!sunnyText.trim()) return;
-    setSunnyNotice("עוד לא נשמר: השמירה לסאני תופעל אחרי אישור ה-DB. הטקסט נשאר בתיבה.");
+  const [sunnyNotice, setSunnyNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [sunnySending, setSunnySending] = useState(false);
+  // One request key per text: a retry / double click of the SAME text reuses it (the DB returns the same row).
+  const sunnyKey = useRef<{ text: string; key: string } | null>(null);
+  const sunnyInFlight = useRef(false);
+  const onSunnySend = async () => {
+    const text = sunnyText.trim();
+    if (!text || sunnyInFlight.current) return;
+    sunnyInFlight.current = true;
+    if (!sunnyKey.current || sunnyKey.current.text !== text) sunnyKey.current = { text, key: crypto.randomUUID() };
+    setSunnySending(true);
+    setSunnyNotice(null);
+    try {
+      const res = await fetch("/api/sunny/inbox", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", cache: "no-store",
+        body: JSON.stringify({ body: text, requestKey: sunnyKey.current.key }),
+      });
+      const out = await res.json().catch(() => ({})) as { status?: string; messageHe?: string };
+      if (res.ok && out.status === "SAVED") {
+        setSunnyText("");
+        sunnyKey.current = null;
+        setSunnyNotice({ kind: "ok", text: "נשמר לסאני ✓ — נשמר כעדכון שלך (לא כעובדה). ידע או פעולה ייווצרו רק דרך אישור שלך." });
+      } else {
+        setSunnyNotice({ kind: "error", text: out.messageHe ?? "השמירה נכשלה — הטקסט נשאר בתיבה." });
+      }
+    } catch {
+      setSunnyNotice({ kind: "error", text: "אין חיבור — לא נשמר. הטקסט נשאר בתיבה." });
+    } finally {
+      sunnyInFlight.current = false;
+      setSunnySending(false);
+    }
   };
 
   const hour = new Date().getHours();
@@ -303,18 +331,18 @@ export default function DashboardV2() {
         <input
           value={sunnyText}
           onChange={(e) => { setSunnyText(e.target.value); if (sunnyNotice) setSunnyNotice(null); }}
-          onKeyDown={(e) => { if (e.key === "Enter") onSunnySend(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") void onSunnySend(); }}
           maxLength={1000}
           placeholder="כתוב לסאני משהו שקרה היום..."
           aria-label="עדכון לסאני"
           style={{ flex: 1, minWidth: 0, height: 40, borderRadius: 11, border: `1px solid ${BORDER}`, background: "#121212", color: TEXT, padding: "0 14px", fontSize: 13.5, fontFamily: "inherit", outline: "none" }}
         />
-        <button type="button" onClick={onSunnySend} disabled={!sunnyText.trim()} style={{
+        <button type="button" onClick={() => void onSunnySend()} disabled={!sunnyText.trim() || sunnySending} style={{
           height: 40, padding: "0 30px", borderRadius: 11, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 800,
-          color: "#fff", background: BRAND, cursor: sunnyText.trim() ? "pointer" : "default", opacity: sunnyText.trim() ? 1 : 0.55, flexShrink: 0,
-        }}>שלח</button>
+          color: "#fff", background: BRAND, cursor: sunnyText.trim() && !sunnySending ? "pointer" : "default", opacity: sunnyText.trim() && !sunnySending ? 1 : 0.55, flexShrink: 0,
+        }}>{sunnySending ? "שולח…" : "שלח"}</button>
       </div>
-      {sunnyNotice && <div role="status" style={{ fontSize: 12, color: AMBER, margin: "0 6px 14px" }}>{sunnyNotice}</div>}
+      {sunnyNotice && <div role="status" style={{ fontSize: 12, color: sunnyNotice.kind === "ok" ? GREEN : AMBER, margin: "0 6px 14px" }}>{sunnyNotice.text}</div>}
 
       <div className="rb-dv2-main">
         {/* Right column (RTL first): timeline + releases */}

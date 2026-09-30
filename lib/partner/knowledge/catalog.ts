@@ -13,7 +13,7 @@ import { cases, catalogCapability, integrity, knownUnknowns, memory, outcomes, o
 import { financeFlows, financeIntegrity, financePosition, financeReceivables, unitBalance, expenseShares, victorSalary } from "./capabilities/finance";
 import { clients, projects, proposals, sessions, teamSteven, teamVictor } from "./capabilities/work";
 import { labelRoster, releases, shows } from "./capabilities/label";
-import { improvementSignals, ownerKnowledge, relations } from "./capabilities/sunny";
+import { improvementSignals, ownerInbox, ownerKnowledge, relations } from "./capabilities/sunny";
 import { OPERATIONS_CAPABILITIES } from "./capabilities/operations";
 import { systemAwareness } from "./capabilities/system";
 import { projectPortfolioCap, projectView } from "./capabilities/projects-deep";
@@ -52,7 +52,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   labelRoster, releases, shows,
   sessions,
   teamVictor, teamSteven, victorSalary,
-  ownerKnowledge, relations, improvementSignals,
+  ownerKnowledge, ownerInbox, relations, improvementSignals,
   ...OPERATIONS_CAPABILITIES,
   systemAwareness,
   projectView, projectPortfolioCap,

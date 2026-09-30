@@ -3690,6 +3690,36 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   ],
   "fields": []
  },
+ "app/api/sunny/inbox/[id]/route.ts": {
+  "methods": [
+   "PATCH"
+  ],
+  "getWrites": false,
+  "sha256": "bef2d0f080ea9667079b05565733cd31b08c0d437cb905bc99cf052fc9bb2fcb",
+  "effects": [],
+  "fields": [
+   "body",
+   "id",
+   "outcome",
+   "outcomeRef",
+   "requestKey"
+  ]
+ },
+ "app/api/sunny/inbox/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "b39499bd239907dcb858427f519def77ffe585ffc6e73ae521b6c4b6323dcfd2",
+  "effects": [],
+  "fields": [
+   "body",
+   "id",
+   "outcome",
+   "outcomeRef",
+   "requestKey"
+  ]
+ },
  "app/api/supplier/steven/comments/[commentId]/route.ts": {
   "methods": [
    "DELETE",

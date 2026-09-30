@@ -39,6 +39,8 @@ import { readSettingsState } from "../settings/reader";
 import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
 
+import { createOwnerInboxStore, type OwnerInboxClient } from "../../owner-inbox-store";
+import type { OwnerInboxItem } from "../../owner-inbox";
 export const ownerKnowledgeEnabled = () => process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED === "true";
 
 function once<T>(fn: () => Promise<T>): () => Promise<T> {
@@ -60,6 +62,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   labelDetail(): Promise<Avail<LabelDetailRaw>>;
   /** Registered non-secret settings families (bounded; never credentials). */
   settings(): Promise<Avail<SettingsState>>;
+  /** "עדכון לסאני" (sunny_owner_inbox, SELECT only, bounded): the Owner's free-text updates — OWNER_REPORTED evidence. */
+  ownerInbox(): Promise<Avail<OwnerInboxItem[]>>;
   /** Live Google Calendar window (Israel dates). MAIN: the trusted integration directly; connector: MAIN's internal endpoint. */
   calendar(startYmd: string, endYmd: string): Promise<Avail<CalendarWindowResult>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
@@ -103,6 +107,13 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
       return r.status === "OK" ? { status: "OK", value: withIdentityAliases(r.records, aliases) } : { status: "UNAVAILABLE", detail: r.status === "READ_FAILED" ? r.detail : `invalid stored knowledge rows (${r.count})` };
     } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
+  const ownerInbox = once(async (): Promise<Avail<OwnerInboxItem[]>> => {
+    try {
+      const r = await createOwnerInboxStore(supabase as unknown as OwnerInboxClient).list(200);
+      if (r.status !== "OK") return { status: "UNAVAILABLE", detail: r.detail };
+      return r.invalidRows ? { status: "UNAVAILABLE", detail: `invalid stored inbox rows (${r.invalidRows})` } : { status: "OK", value: r.items };
+    } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
   const operations = once(async (): Promise<Avail<OperationsRaw>> => {
     try { return { status: "OK", value: await readOperationsRaw(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
@@ -138,5 +149,5 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     })());
     return calendarMemo.get(key)!;
   };
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar };
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, ownerInbox, operations, projectDetail, clientDetail, labelDetail, settings, calendar };
 }

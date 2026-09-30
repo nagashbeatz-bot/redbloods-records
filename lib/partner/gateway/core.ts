@@ -6,6 +6,7 @@
  * whole request (see read-context.ts). Each source fails closed on its own: UNAVAILABLE is reported,
  * never read as "nothing".
  */
+import type { OwnerInboxItem } from "../../owner-inbox";
 import type { PartnerCase } from "../cases/types";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { FinanceActionCandidate } from "../finance/actions";
@@ -65,6 +66,8 @@ export interface GatewaySources {
   integrity?: Avail<CompanyIntegrityRegister>;
   /** Sunny organizational memory (partner_owner_knowledge). Absent while the store is not enabled. */
   ownerKnowledge?: Avail<OwnerKnowledgeRecord[]>;
+  /** "עדכון לסאני" — the Owner's free-text updates (sunny_owner_inbox): OWNER_REPORTED evidence, never facts. */
+  ownerInbox?: Avail<OwnerInboxItem[]>;
   /** Operations domains (Red Films, meetings, project actions, beats, social, balance cycles, albums, mix pipeline, deliveries, integrations). */
   operations?: Avail<OperationsRaw>;
   /** Project human context + material metadata (Owner-only; secrets reduced to booleans at the read edge). */

@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.29-62";
+export const SYSTEM_BASELINE_VERSION = "2026.09.30-63";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -729,11 +729,12 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["owner_decision", "case", "action", "outcome", "owner_knowledge"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps", "action_targets"],
+    readCapabilities: ["owner_needs", "owner_decisions", "memory", "cases", "outcomes", "integrity", "known_unknowns", "owner_knowledge", "owner_inbox", "improvement_signals", "system_awareness", "operating_model", "catalog", "sunny_self", "action_registry", "next_steps", "action_targets"],
     learnKinds: ["WORKING_POLICY_CANDIDATE", "PROCESS_FRICTION"], proposableActions: ["UPDATE_PROJECT_DEADLINE"],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("OWNER_CONTEXT_APPEND_ONLY", "CANONICAL_BUSINESS_RULE", "Owner answers are append-only; a revision supersedes, history is never rewritten."),
+      R("OWNER_INBOX_IS_EVIDENCE", "OWNER_POLICY", "'עדכון לסאני' (Dashboard V2, 2026-09-30): the Owner's free text is stored as OWNER_REPORTED evidence (owner_inbox), never a fact; it becomes typed knowledge or an action only through their own preview + the Owner's approval; NEW → PROCESSED records the outcome; the text is never edited or deleted."),
       R("LIVE_BEATS_MEMORY", "CANONICAL_BUSINESS_RULE", "Live canonical state wins over remembered knowledge; memory is context, never a fact."),
       R("PATTERN_LADDER", "OWNER_POLICY", "Single evidence = OBSERVATION; repeated = PATTERN_CANDIDATE; only with Owner confirmation does it become operating knowledge — never an automatic rule or Charter change."),
       R("OWNER_OPERATING_MODEL", "OWNER_POLICY", "The Owner-confirmed operating model (2026-09-25: client deadlines are commitments, internal deadlines are expectations, old overdue work is historical operational debt, continuous project ownership, investigate then ask, outside communication exists, cashflow is a top priority but money and label are connected, advance-then-later payments without invented terms, label artists are a protected growth track, no fixed work hours, personal calendar context stays personal, aliases learned progressively, events start workflows, Sunny suggests product improvements and the Owner decides) is served by operating_model and applied in its project / show / company modes.", ["PROJECTS", "FINANCE", "LABEL_ARTISTS", "SHOWS", "GOOGLE_CALENDAR"]),
@@ -742,8 +743,8 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("ACTION_TRUTHFUL_STATUS", "CANONICAL_BUSINESS_RULE", "A plan is EXECUTED only when EVERY step applied or needed no change; otherwise it is PARTIALLY_APPLIED / STALE / FAILED / IN_PROGRESS / OUTCOME_UNKNOWN, and each step says exactly what happened. 'Done' is never claimed for a partial run."),
       R("ACTION_DUPLICATE_ACK", "CANONICAL_BUSINESS_RULE", "A money create that looks like an existing live record (or two alike create steps in one plan) is refused as a possible duplicate with a server-issued acknowledgement; creating it anyway needs the Owner's explicit 'separate record' confirmation with that acknowledgement for the same arguments and the same similar records."),
     ],
-    sideEffects: [], limitationsHe: ["זיכרון ארגוני (P2) פעיל אבל נכתב רק דרך ההצעה והאישור שלך; אין סוג ידע לאירוע אישי ביומן, ולכן הוא לא נשמר.", "מודל העבודה של הבעלים הוא חוזה מערכת עם גרסה — סאני לא משנה אותו בעצמו.", "תנאי עסקה (סכום מקדמה, אבן דרך לתשלום) לא נרשמים ב-Redbloods — סאני לא ממציא אותם.", "תקשורת מחוץ ל-Redbloods (וואטסאפ / טלפון) לא נראית לסאני."],
-    surfaces: S([], ["partner/actions", "partner/finance", "partner/integrity", "partner/internal", "partner/knowledge", "partner/outcomes"]),
+    sideEffects: [], limitationsHe: ["עדכון לסאני (דשבורד V2) נשמר כעדכון שלך — ראיה בלבד, לא עובדה; ידע או פעולה ממנו רק דרך preview ואישור. סימון \"טופל\" נעשה היום רק מהדשבורד; מסאני עצמו זה עוד לא אפשרי (דורש אישור DB נפרד).", "זיכרון ארגוני (P2) פעיל אבל נכתב רק דרך ההצעה והאישור שלך; אין סוג ידע לאירוע אישי ביומן, ולכן הוא לא נשמר.", "מודל העבודה של הבעלים הוא חוזה מערכת עם גרסה — סאני לא משנה אותו בעצמו.", "תנאי עסקה (סכום מקדמה, אבן דרך לתשלום) לא נרשמים ב-Redbloods — סאני לא ממציא אותם.", "תקשורת מחוץ ל-Redbloods (וואטסאפ / טלפון) לא נראית לסאני."],
+    surfaces: S([], ["partner/actions", "partner/finance", "partner/integrity", "partner/internal", "partner/knowledge", "partner/outcomes", "sunny"]),
   },
   {
     id: "SUNNY_CONNECTOR", group: "SUNNY", titleHe: "החיבור ל-Claude",
@@ -1056,4 +1057,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.29-60", date: "2026-09-29", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "רשומה שנוצרת באותה תוכנית: \"$step<k>.created\" — למשל יצירת פרויקט והעברת תנועות אליו, ומחיר הקליפ / הגדרות הכספים של הפרויקט החדש, באישור אחד. התצוגה מציגה את הפרויקט העתידי במילים; המזהה האמיתי מגיע רק מהיצירה שבוצעה בפועל (אף פעם לא ניחוש); אם היצירה לא בוצעה — השלב התלוי לא רץ. הפניה לא תקינה נחסמת לפני שמירה (INVALID_PLAN). אין ביטול אוטומטי." },
   { version: "2026.09.29-61", date: "2026-09-29", domain: "PROJECTS", dimension: "read", from: "FULL", to: "FULL", noteHe: "קשר קנוני שיר ↔ קליפ (P1, החלטת בעלים 29.9): projects.song_project_id על פרויקט הקליפ מצביע לשיר; השיר מוצא את הקליפים שלו לפי אותו שדה. סאני קוראת את הקשר (project_view: songProject / clipProjects, CANONICAL) ולעולם לא מסיקה אותו משם — parent_project נשאר טקסט legacy. עדיין אין כותב לקשר, אין שינוי בכספים / Red Films, ומחיקת שיר מציגה את הקליפים שיאבדו את הקישור." },
   { version: "2026.09.29-62", date: "2026-09-29", domain: "FINANCE", dimension: "read", from: "FULL", to: "FULL", noteHe: "חריגה כספית (financeException + סיבה + תאריך, החלטת בעלים קנונית) נצרכת בכל מקום: הבדיקות \"הושלם, יש הוצאה, אין הכנסה\" (COMPLETED_WORK_NO_INCOME / COMPLETED_WORK_EXPENSE_NO_INCOME) ושאלת \"התקבלה מקדמה?\" לא עולות על פרויקט חריג; partner_entity מציג FINANCE_EXCEPTION (סיבה, תאריך, OWNER_DECISION) במקום \"מחיר לא ידוע\". הנתונים הכספיים עצמם לא משתנים; שורות הכנסה פתוחות מפורשות על פרויקט חריג עדיין מדווחות (שאלה פתוחה לבעלים)." },
+  { version: "2026.09.30-63", date: "2026-09-30", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "עדכון לסאני (דשבורד V2): מה שכתבת לסאני מהדשבורד נשמר (טבלה חדשה, SQL שאושר) וסאני קורא אותו דרך owner_inbox — כעדכון שלך (OWNER_REPORTED), לעולם לא כעובדה. ידע או פעולה ממנו רק דרך preview ואישור. סימון \"טופל\" (NEW → PROCESSED עם תוצאה) היום מהדשבורד בלבד." },
 ];
