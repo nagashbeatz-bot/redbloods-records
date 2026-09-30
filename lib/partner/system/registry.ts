@@ -704,7 +704,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
     ],
     sideEffects: [], limitationsHe: ["'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
-    surfaces: S(["/", "/dashboard", "/dashboard-old", "/dashboard-preview"], ["coo"]),
+    surfaces: S(["/", "/dashboard", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo"]),
   },
   {
     id: "PLATFORM_ACCESS", group: "OPERATIONS", titleHe: "משתמשים, הרשאות ותחזוקה",
