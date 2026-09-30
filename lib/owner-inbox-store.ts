@@ -9,6 +9,7 @@ export interface OwnerInboxClient {
   from(table: string): {
     select(cols: string): {
       order(col: string, o: { ascending: boolean }): { limit(n: number): PromiseLike<RpcResult> };
+      eq(col: string, v: string): { maybeSingle(): PromiseLike<RpcResult> };
     };
   };
 }
@@ -44,6 +45,14 @@ export function createOwnerInboxStore(client: OwnerInboxClient) {
       if (error) return writeError(error);
       const item = one(data);
       return item ? { status: "OK", item } : { status: "WRITE_FAILED", detail: "the RPC returned no valid row" };
+    },
+    /** One item by id (null = no such item); a row breaking the contract is an error, never served. */
+    async get(id: string): Promise<{ status: "OK"; item: OwnerInboxItem | null } | { status: "READ_FAILED"; detail: string }> {
+      const { data, error } = await client.from(OWNER_INBOX_TABLE).select(OWNER_INBOX_COLUMNS).eq("id", id).maybeSingle();
+      if (error) return { status: "READ_FAILED", detail: error.message.slice(0, 200) };
+      if (!data) return { status: "OK", item: null };
+      const item = mapInboxRow(data);
+      return item ? { status: "OK", item } : { status: "READ_FAILED", detail: "the stored row breaks the inbox contract" };
     },
     /** Newest first, bounded. A row that breaks the contract is counted, never served. */
     async list(limit = 200): Promise<InboxListResult> {

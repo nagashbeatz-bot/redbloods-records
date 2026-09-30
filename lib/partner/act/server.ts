@@ -24,6 +24,7 @@ import type { FilesFamilyWriters } from "./primitives/files";
 import type { BackfillFamilyWriters } from "./primitives/backfills";
 import type { UploadFamilyWriters } from "./primitives/uploads";
 import type { LinkFamilyWriters } from "./primitives/links";
+import type { OwnerInboxFamilyWriters } from "./primitives/owner-inbox";
 import { PRODUCTION_LINK_FIELDS, SOCIAL_LINK_FIELDS, segmentsText } from "./primitives/links";
 /** Social link arg → the content column (the wiring owns storage column names; primitives only know the typed args). */
 export const SOCIAL_LINK_COLUMNS: Readonly<Record<string, string>> = { assetLink: "asset_link", storageLink: "dropbox_link", postedLink: "posted_url" };
@@ -39,7 +40,7 @@ const OWNER_CACHE_MS = 5 * 60_000;
 const ownerCache = new Map<string, { ok: boolean; at: number }>();
 
 export async function realWriterDeps(): Promise<WriterDeps> {
-  return { similarRecords: async (q) => (await import("@/lib/writes/duplicates")).similarRecords(q), ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()) };
+  return { similarRecords: async (q) => (await import("@/lib/writes/duplicates")).similarRecords(q), ...(await coreWriters()), ...(await projectFamilyWriters()), ...(await crmFamilyWriters()), ...(await sessionFamilyWriters()), ...(await financeFamilyWriters()), ...(await showFamilyWriters()), ...(await mixFamilyWriters()), ...(await victorFamilyWriters()), ...(await labelFamilyWriters()), ...(await redFilmsFamilyWriters()), ...(await worklogFamilyWriters()), ...(await deliveryFamilyWriters()), ...(await socialFamilyWriters()), ...(await systemFamilyWriters()), ...(await filesFamilyWriters()), ...(await backfillFamilyWriters()), ...(await uploadFamilyWriters()), ...(await linkFamilyWriters()), ...(await ownerInboxFamilyWriters()) };
 }
 
 async function coreWriters(): Promise<CoreWriters> {
@@ -510,6 +511,28 @@ async function socialFamilyWriters(): Promise<SocialFamilyWriters> {
     updatePromotionFields: (id, p) => W.updatePromotionFields(id, p),
     syncActualExpense: (id, n) => W.syncActualExpense(id, n),
     deletePromotion: (id) => W.deletePromotion(id),
+  };
+}
+
+/** "עדכון לסאני" — the SAME store + shared writer the dashboard route uses; Sunny marks with via = SUNNY. */
+async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
+  const [{ supabase }, { createOwnerInboxStore }, { markOwnerInboxItemProcessed }] = await Promise.all([import("@/lib/supabase"), import("@/lib/owner-inbox-store"), import("@/lib/writes/owner-inbox")]);
+  const store = createOwnerInboxStore(supabase as unknown as import("@/lib/owner-inbox-store").OwnerInboxClient);
+  return {
+    async readOwnerInboxItem(id) {
+      const r = await store.get(id);
+      if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`);
+      return r.item ? { body: r.item.body, status: r.item.status, outcome: r.item.outcome, outcomeRef: r.item.outcomeRef, processedVia: r.item.processedVia } : null;
+    },
+    async listOwnerInboxNew() {
+      const r = await store.list(200);
+      if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`);
+      return r.items.filter((i) => i.status === "NEW").map((i) => ({ id: i.id, body: i.body }));
+    },
+    async markOwnerInboxItem(id, outcome, outcomeRef) {
+      const r = await markOwnerInboxItemProcessed(store, "SUNNY", { id, outcome, outcomeRef });
+      if (r.status !== "PROCESSED") throw new Error(`owner inbox mark refused: ${r.status} ${r.messageHe}`);
+    },
   };
 }
 

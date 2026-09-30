@@ -1,12 +1,13 @@
 /**
- * Sunny Owner Inbox — the shared writer ("עדכון לסאני"). Every write to sunny_owner_inbox goes through here (the
- * dashboard routes today; a future Sunny primitive MARK_OWNER_INBOX_ITEM must call the SAME functions).
+ * Sunny Owner Inbox — the shared writer ("עדכון לסאני"). Every write to sunny_owner_inbox goes through here: the
+ * dashboard routes (via DASHBOARD) and Sunny's typed primitive MARK_OWNER_INBOX_ITEM (via SUNNY) call the SAME functions.
  *   submit        — the Owner's text, validated (lib/owner-inbox checkInboxBody), idempotent by requestKey.
- *   markProcessed — NEW → PROCESSED with a typed outcome. It records what happened; it never turns the text into a
- *                   fact: knowledge / actions come only from the existing preview + Owner-approval flows.
+ *   markProcessed — NEW → PROCESSED (final, no reopen) with a typed outcome + its REAL reference (a plan id / a knowledge
+ *                   id / none — never a free-text note). It records what happened; it never turns the text into a fact:
+ *                   knowledge / actions come only from their own preview + Owner-approval flows.
  * No push, no calendar, no finance, no deletion.
  */
-import { UUID_RE, checkInboxBody, INBOX_REF_MAX_CHARS, isInboxOutcome, type InboxVia, type OwnerInboxItem } from "../owner-inbox";
+import { UUID_RE, checkInboxBody, checkOutcomeRef, INBOX_REF_MAX_CHARS, isInboxOutcome, type InboxVia, type OwnerInboxItem } from "../owner-inbox";
 import type { InboxWriteResult, OwnerInboxStore } from "../owner-inbox-store";
 
 export type OwnerInboxSubmitResult =
@@ -32,9 +33,11 @@ export type OwnerInboxProcessResult =
 export async function markOwnerInboxItemProcessed(store: OwnerInboxStore, via: InboxVia, input: { id: unknown; outcome: unknown; outcomeRef?: unknown }): Promise<OwnerInboxProcessResult> {
   if (typeof input.id !== "string" || !UUID_RE.test(input.id)) return { status: "INVALID_INPUT", code: "ID", messageHe: "מזהה פריט לא תקין." };
   if (!isInboxOutcome(input.outcome)) return { status: "INVALID_INPUT", code: "OUTCOME", messageHe: "תוצאה לא מוכרת." };
-  const ref = input.outcomeRef === undefined || input.outcomeRef === null ? null : typeof input.outcomeRef === "string" ? input.outcomeRef.trim() : undefined;
-  if (ref === undefined || (ref !== null && (ref.length > INBOX_REF_MAX_CHARS || /[\u0000-\u001f\u007f]/.test(ref)))) return { status: "INVALID_INPUT", code: "OUTCOME_REF", messageHe: `הפניה לא תקינה (עד ${INBOX_REF_MAX_CHARS} תווים).` };
-  const r = await store.markProcessed(input.id.toLowerCase(), via, input.outcome, ref || null);
+  // outcomeRef is a REAL reference (a plan id / a knowledge id) or null — never a free-text note (Owner decision 2026-09-30)
+  const ref = checkOutcomeRef(input.outcome, input.outcomeRef);
+  if (!ref.ok) return { status: "INVALID_INPUT", code: ref.code, messageHe: ref.messageHe };
+  if (ref.ref !== null && ref.ref.length > INBOX_REF_MAX_CHARS) return { status: "INVALID_INPUT", code: "OUTCOME_REF", messageHe: `הפניה ארוכה מדי (עד ${INBOX_REF_MAX_CHARS} תווים).` };
+  const r = await store.markProcessed(input.id.toLowerCase(), via, input.outcome, ref.ref);
   return fromWrite(r, "PROCESSED");
 }
 

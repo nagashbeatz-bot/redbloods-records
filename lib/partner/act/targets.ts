@@ -27,6 +27,7 @@ export const NON_KEY_TARGETS: Readonly<Record<string, string>> = {
   "victor-reference": "victorWork + referenceId — a wrong / missing id is refused WITH the work's references (referenceId — title)",
   upload: "a file-channel placement key (target + inboxItem) — the inboxItem handle comes from the refusal that lists the Sunny Inbox (inboxItem — name — size)",
   notification: "MARK_NOTIFICATIONS_READ with a wrong / missing key is refused WITH your unread notifications (notification:<id> — title)",
+  "owner-inbox": "the item id from owner_inbox (mode new); MARK_OWNER_INBOX_ITEM with a wrong / missing key is refused WITH the unhandled items (owner-inbox:<id> — text)",
 };
 /** Parent kind → the child kinds listed under it (the capability's contract; the test pins it against the primitives). */
 export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {

@@ -47,7 +47,10 @@ function fakeDb() {
       return Promise.resolve(err(`unknown function ${fn}`, "42883"));
     },
     from(table) {
-      return { select: () => ({ order: () => ({ limit: (n: number) => Promise.resolve(table === "sunny_owner_inbox" ? { data: [...rows].reverse().slice(0, n), error: null } : { data: null, error: { message: "no table" } }) }) }) };
+      return { select: () => ({
+        order: () => ({ limit: (n: number) => Promise.resolve(table === "sunny_owner_inbox" ? { data: [...rows].reverse().slice(0, n), error: null } : { data: null, error: { message: "no table" } }) }),
+        eq: (_c: string, v: string) => ({ maybeSingle: () => Promise.resolve({ data: rows.find((r) => r.id === v) ?? null, error: null }) }),
+      }) };
     },
   };
   return { client, rows, failOnce: (m: string) => { failNext = m; } };
@@ -85,10 +88,12 @@ const main = async () => {
   ok("unknown outcome refused before the DB", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "MADE_IT_A_FACT" })).status === "INVALID_INPUT" && db.rows[0].status === "NEW");
   ok("bad id refused", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id: "nope", outcome: "NO_ACTION_NEEDED" })).status === "INVALID_INPUT");
   ok("the RPC itself refuses an unknown via", (await store.markProcessed(id, "ROBOT" as never, "NO_ACTION_NEEDED", null)).status === "INVALID" && db.rows[0].status === "NEW");
-  const p = await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "NO_ACTION_NEEDED", outcomeRef: "QA test" });
-  ok("processed with via DASHBOARD + outcome + ref + processed_at", p.status === "PROCESSED" && p.item.processedVia === "DASHBOARD" && p.item.outcome === "NO_ACTION_NEEDED" && p.item.outcomeRef === "QA test" && !!p.item.processedAt, p);
+  ok("outcomeRef is a REAL reference, never a note: a free-text ref on NO_ACTION_NEEDED is refused", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "NO_ACTION_NEEDED", outcomeRef: "QA test" })).status === "INVALID_INPUT" && db.rows[0].status === "NEW");
+  ok("ACTION_PLANNED needs a plan id, LEARNED_KNOWLEDGE a uuid", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "ACTION_PLANNED" })).status === "INVALID_INPUT" && (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "LEARNED_KNOWLEDGE", outcomeRef: "pl_AbCdEfGhIjKlMnOpQrStUvWx" })).status === "INVALID_INPUT" && db.rows[0].status === "NEW");
+  const p = await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "ACTION_PLANNED", outcomeRef: "pl_AbCdEfGhIjKlMnOpQrStUvWx" });
+  ok("processed with via DASHBOARD + outcome + the plan ref + processed_at", p.status === "PROCESSED" && p.item.processedVia === "DASHBOARD" && p.item.outcome === "ACTION_PLANNED" && p.item.outcomeRef === "pl_AbCdEfGhIjKlMnOpQrStUvWx" && !!p.item.processedAt, p);
   ok("the text is unchanged by processing", db.rows[0].body === "בדיקה: נפגשתי היום עם אמן חדש");
-  ok("a second transition is refused (CONFLICT)", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "DISMISSED" })).status === "CONFLICT" && db.rows[0].outcome === "NO_ACTION_NEEDED");
+  ok("a second transition is refused (CONFLICT) — PROCESSED is final", (await markOwnerInboxItemProcessed(store, "DASHBOARD", { id, outcome: "DISMISSED" })).status === "CONFLICT" && db.rows[0].outcome === "ACTION_PLANNED");
 
   console.log("Sunny reads it — owner_inbox capability");
   const list = await store.list();
@@ -99,7 +104,7 @@ const main = async () => {
   const q = (mode: string) => ownerInbox.read(src as never, { mode, params: {}, limit: 20, offset: 0 } as never);
   const neu = q("new"), all = q("all");
   ok("mode new = only unhandled", neu.items.length === 1 && (neu.items[0].fields as Record<string, unknown>).status === "NEW", neu.items);
-  ok("mode all = with the handled one and its outcome", all.items.length === 2 && all.items.some((i) => (i.fields as Record<string, unknown>).outcome === "NO_ACTION_NEEDED"));
+  ok("mode all = with the handled one and its outcome", all.items.length === 2 && all.items.some((i) => (i.fields as Record<string, unknown>).outcome === "ACTION_PLANNED"));
   ok("every item is OWNER_REPORTED, canonical false, no entity", all.items.every((i) => i.epistemic === "OWNER_REPORTED" && (i.fields as Record<string, unknown>).canonical === false && i.entity === null));
   ok("the Owner's text is served as data (RECORD trust), never as an instruction", all.items.every((i) => i.label.trust === "RECORD"));
   ok("an unreadable store is 'unavailable', never 'no updates'", ownerInbox.read({ now: new Date(), identities: {} as never, ownerInbox: { status: "UNAVAILABLE", detail: "x" } } as never, { mode: "new", params: {}, limit: 20, offset: 0 } as never).completeness !== "COMPLETE");
@@ -113,7 +118,7 @@ const main = async () => {
     ok(`${n}: same-origin JSON + key whitelist`, r.includes("checkSameOriginJson(req.headers)") && r.includes("ALLOWED_KEYS"));
     ok(`${n}: goes through the shared writer only`, r.includes("@/lib/writes/owner-inbox") && !r.includes(".from("));
   }
-  ok("PATCH marks via DASHBOARD only (Sunny's path is a future typed primitive)", patch.includes('"DASHBOARD"') && !patch.includes('"SUNNY"'));
+  ok("PATCH marks via DASHBOARD only (Sunny marks via its typed primitive MARK_OWNER_INBOX_ITEM)", patch.includes('"DASHBOARD"') && !patch.includes('"SUNNY"'));
   const store2 = read("lib/owner-inbox-store.ts");
   ok("writes ONLY through the two approved RPCs (no insert / update / delete)", store2.includes('"sunny_owner_inbox_submit"') && store2.includes('"sunny_owner_inbox_mark_processed"') && !/\.(insert|update|upsert|delete)\s*\(/.test(store2));
   ok("no push / calendar / finance in the writer", !/sendPush|google-calendar|transactions/.test(read("lib/writes/owner-inbox.ts")));

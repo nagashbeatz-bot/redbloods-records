@@ -73,3 +73,25 @@ export function mapInboxRow(r: unknown): OwnerInboxItem | null {
     processedAt: s(x.processed_at), processedVia: isInboxVia(via) ? via : null, outcome: isInboxOutcome(outcome) ? outcome : null, outcomeRef: s(x.outcome_ref),
   };
 }
+
+// ── outcomeRef: a REAL reference, never a free-text note (Owner decision 2026-09-30) ──
+/** The Action Layer plan id shape (the partner_action_plans.plan_id CHECK). */
+export const PLAN_ID_RE = /^pl_[A-Za-z0-9_-]{16,64}$/;
+/** What each outcome links to: ACTION_PLANNED → a plan, LEARNED_KNOWLEDGE → an Owner-knowledge record id, else nothing. */
+export const OUTCOME_LINK: Record<InboxOutcome, "PLAN" | "KNOWLEDGE" | null> = { ACTION_PLANNED: "PLAN", LEARNED_KNOWLEDGE: "KNOWLEDGE", NO_ACTION_NEEDED: null, DISMISSED: null };
+export const OUTCOME_LINK_HE: Record<InboxOutcome, string> = {
+  ACTION_PLANNED: "מקושר ל-plan", LEARNED_KNOWLEDGE: "מקושר לידע שנלמד", NO_ACTION_NEEDED: "ללא אובייקט מקושר", DISMISSED: "ללא אובייקט מקושר",
+};
+
+export type RefCheck = { ok: true; ref: string | null } | { ok: false; code: "REF_REQUIRED" | "BAD_PLAN_REF" | "BAD_KNOWLEDGE_REF" | "REF_NOT_ALLOWED"; messageHe: string };
+
+/** ACTION_PLANNED needs a plan id (pl_…); LEARNED_KNOWLEDGE needs a knowledge record id (uuid); NO_ACTION_NEEDED / DISMISSED take none (null). */
+export function checkOutcomeRef(outcome: InboxOutcome, raw: unknown): RefCheck {
+  const ref = raw === undefined || raw === null ? null : typeof raw === "string" ? (raw.trim() || null) : undefined;
+  if (ref === undefined) return { ok: false, code: "REF_NOT_ALLOWED", messageHe: "הפניה חייבת להיות טקסט." };
+  const link = OUTCOME_LINK[outcome];
+  if (link === null) return ref === null ? { ok: true, ref: null } : { ok: false, code: "REF_NOT_ALLOWED", messageHe: "בתוצאה הזו אין אובייקט מקושר — outcomeRef חייב להיות ריק (הוא לא שדה הערה)." };
+  if (ref === null) return { ok: false, code: "REF_REQUIRED", messageHe: link === "PLAN" ? "ACTION_PLANNED מחייב את מזהה ה-plan (pl_…)." : "LEARNED_KNOWLEDGE מחייב את מזהה רשומת הידע (uuid)." };
+  if (link === "PLAN") return PLAN_ID_RE.test(ref) ? { ok: true, ref } : { ok: false, code: "BAD_PLAN_REF", messageHe: "מזהה plan לא תקין (צריך pl_…)." };
+  return UUID_RE.test(ref) ? { ok: true, ref: ref.toLowerCase() } : { ok: false, code: "BAD_KNOWLEDGE_REF", messageHe: "מזהה ידע לא תקין (צריך uuid)." };
+}
