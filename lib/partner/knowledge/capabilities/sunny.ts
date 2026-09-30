@@ -194,6 +194,9 @@ export const ownerInbox: KnowledgeCapability = {
         mentions: mentions ?? "UNKNOWN (entity names not loaded)", ...(entity ? { matchedVia: via, linkQuality: "TEXT_MATCH" } : {}),
         canonical: false, howToActHe: partner("ידע או פעולה רק דרך preview + אישור מפורש של הבוס; קריאה ≠ טיפול; הטקסט עצמו אינו עובדה."),
       },
-    })), { summary: [sfact("BY_STATUS", "עדכונים לפי סטטוס", byCount(all.map((i) => i.status)), "OWNER_REPORTED", "OWNER_INBOX")] });
+    })), {
+      // entity enrichment: no related update → no section at all (a bare summary would only inflate partner_entity)
+      summary: entity && !list.length ? [] : [sfact("BY_STATUS", "עדכונים לפי סטטוס", byCount(all.map((i) => i.status)), "OWNER_REPORTED", "OWNER_INBOX")],
+    });
   },
 };

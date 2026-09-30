@@ -83,7 +83,9 @@ const q = (mode: string, params: Record<string, string> = {}) => ownerInbox.read
 const eShalev = q("new", { entity: `label-artist:${A_SHALEV}` });
 ok("a label artist gets only the NEW updates that name them (the PROCESSED one is not shown)", eShalev.items.length === 1 && eShalev.items[0].id === U(901), eShalev.items.map((i) => i.id));
 ok("…marked TEXT_MATCH (a mention, not a canonical link) with no stored entity", eShalev.items.every((i) => i.relationQuality === "TEXT_MATCH" && i.entity === null && (i.fields as Record<string, unknown>).canonical === false));
-ok("an AMBIGUOUS name never enriches an entity (דניאל כהן)", q("new", { entity: `client:${C_DANIEL}` }).items.length === 0);
+const eDaniel = q("new", { entity: `client:${C_DANIEL}` });
+ok("an AMBIGUOUS name never enriches an entity (דניאל כהן)", eDaniel.items.length === 0);
+ok("no related update → an empty, COMPLETE result with no summary (partner_entity then adds no section)", eDaniel.summary.length === 0 && eDaniel.completeness === "COMPLETE");
 const eLayla = q("new", { entity: `project:${P_LAYLA}` });
 ok("a project gets the updates naming it (its artist counts only when the artist name is a record — עילי is not, so that update is not linked)", eLayla.items.some((i) => i.id === U(903)) && !eLayla.items.some((i) => i.id === U(904)), eLayla.items.map((i) => [i.id, (i.fields as Record<string, unknown>).matchedVia]));
 const eAlbum = q("new", { entity: `project:${P_ALBUM}` });
