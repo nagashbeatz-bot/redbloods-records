@@ -200,7 +200,7 @@ export default function DashboardV2() {
 
   // ── Open handlers (existing drawers / modals / pages only) ─────────────────
   const [modal, setModal] = useState<"partner-actions" | "partner-integrity" | null>(null);
-  const [taskOpen, setTaskOpen] = useState<{ id: string; title: string; due_date: string | null } | null>(null);
+  const [taskOpen, setTaskOpen] = useState<{ id: string; title: string; due_date: string | null }[] | null>(null);
   const [editRelease, setEditRelease] = useState<LabelRelease | null>(null);
   const [showAllNeeds, setShowAllNeeds] = useState(false);
   const [showAllTimeline, setShowAllTimeline] = useState(false);
@@ -209,7 +209,8 @@ export default function DashboardV2() {
     switch (t.kind) {
       case "project": openProject(t.id); break;
       case "client": router.push(`/clients?open=${encodeURIComponent(t.id)}`); break;
-      case "task": setTaskOpen({ id: t.id, title: t.title, due_date: t.dueDate }); break;
+      case "task": setTaskOpen([{ id: t.id, title: t.title, due_date: t.dueDate }]); break;
+      case "tasks": setTaskOpen(t.tasks.map((x) => ({ id: x.id, title: x.title, due_date: x.dueDate }))); break;
       case "partner-actions": setModal("partner-actions"); break;
       case "partner-integrity": setModal("partner-integrity"); break;
       case "href": router.push(t.href); break;
@@ -410,7 +411,7 @@ export default function DashboardV2() {
         <Modal onClose={() => setModal(null)} width={680}><PartnerIntegritySection isMobile={false} /><ModalHint /></Modal>
       )}
       {taskOpen && (
-        <TasksAttentionModal tasks={[taskOpen]} today={today} onClose={() => setTaskOpen(null)} onDone={onTaskDone} onDefer={onTaskDefer} />
+        <TasksAttentionModal tasks={taskOpen} today={today} onClose={() => setTaskOpen(null)} onDone={onTaskDone} onDefer={onTaskDefer} />
       )}
       {editRelease && <EditReleaseModal item={editRelease} onClose={() => setEditRelease(null)} onSaved={loadReleases} />}
     </div>

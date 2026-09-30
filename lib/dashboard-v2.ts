@@ -17,6 +17,10 @@ export type NeedBadge = "החלטה" | "דחוף" | "פעולה" | "ממתין";
 /** Fixed presentation order of the badge groups. */
 export const NEED_BADGE_ORDER: readonly NeedBadge[] = ["החלטה", "דחוף", "פעולה", "ממתין"];
 export const NEEDS_ME_VISIBLE = 5;
+/** Owner decision 2026-09-30: an open task more than this many days overdue, with no update in as many days, is folded
+ *  into ONE "משימות ישנות באיחור (N)" item (display aggregation only — the tasks themselves are never changed). */
+export const STALE_TASK_DAYS = 14;
+export const STALE_TASKS_KEY = "stale-tasks|TASK";
 
 /** The business reason an item needs the Owner — the dedupe key is entity + reason. */
 export type NeedReason = "DEADLINE" | "FOLLOWUP" | "TASK" | "OWNER_FEEDBACK" | "MONEY" | "RELEASE" | "QUESTION" | "OTHER";
@@ -25,6 +29,7 @@ export type OpenTarget =
   | { kind: "project"; id: string }
   | { kind: "client"; id: string }
   | { kind: "task"; id: string; title: string; dueDate: string | null }
+  | { kind: "tasks"; tasks: { id: string; title: string; dueDate: string | null }[] }
   | { kind: "partner-actions" }
   | { kind: "partner-integrity" }
   | { kind: "href"; href: string }
@@ -52,7 +57,7 @@ export interface CooSignalIn { type: string; role: string }
 export interface CooCaseIn { id: string; entity: CooEntityIn; title: string; subtitle: string | null; tier: string; signals: CooSignalIn[]; summary: RichPart[] }
 export interface PartnerActionIn { actionId: string; actionType: string; state: string; headlineHe: string; projectId?: string; projectName?: string; titleHe?: string; reasonHe?: string }
 export interface IntegrityQuestionIn { questionId: string; subjectLabel: string; textHe: string }
-export interface TaskIn { id: string; title?: string | null; status?: string | null; due_date?: string | null; start_time?: string | null; related_type?: string | null; related_id?: string | null; notes?: string | null }
+export interface TaskIn { id: string; title?: string | null; status?: string | null; due_date?: string | null; start_time?: string | null; related_type?: string | null; related_id?: string | null; notes?: string | null; updated_at?: string | null }
 export interface ProposalIn { id: string; title?: string | null; status?: string | null; amount?: number | null; currency?: string | null; followup_date?: string | null; client_id?: string | null; client_name?: string | null }
 
 /** Tie-break between sources of the same entity + reason (most canonical first) — a display order, not a priority. */
@@ -157,11 +162,14 @@ export function buildNeedsMe(input: NeedsMeInput): NeedItem[] {
     }, "coo");
   }
 
-  // 4. Open tasks due today (פעולה) or overdue (דחוף).
+  // 4. Open tasks due today (פעולה) or overdue (דחוף). Old overdue tasks with no recent update are folded (below).
+  const staleCutoff = addDaysYmd(today, -STALE_TASK_DAYS);
+  const staleTasks: TaskIn[] = [];
   for (const t of input.tasks ?? []) {
     if ((t.status ?? "פתוח") !== "פתוח" || !t.due_date || !isStrictYmd(t.due_date) || t.due_date > today) continue;
     const overdue = t.due_date < today;
     const marker = t.notes ? PROPOSAL_MARKER.exec(t.notes) : null;
+    if (!marker && isStaleOverdueTask(t, staleCutoff)) { staleTasks.push(t); continue; }
     const entityKey = marker ? `proposal:${marker[1].toLowerCase()}` : `task:${t.id}`;
     push({
       entityKey, reason: marker ? "FOLLOWUP" : "TASK",
@@ -207,10 +215,32 @@ export function buildNeedsMe(input: NeedsMeInput): NeedItem[] {
     });
   }
 
-  return [...byKey.values()].sort((a, b) =>
+  const sorted = [...byKey.values()].sort((a, b) =>
     NEED_BADGE_ORDER.indexOf(a.badge) - NEED_BADGE_ORDER.indexOf(b.badge)
     || (a.date ?? "9999-99-99").localeCompare(b.date ?? "9999-99-99")
     || a.title.localeCompare(b.title, "he"));
+
+  // The folded old overdue tasks: ONE item, always last (never one of the first five by itself).
+  if (staleTasks.length > 0) {
+    const byDue = [...staleTasks].sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""));
+    sorted.push({
+      key: STALE_TASKS_KEY, entityKey: "stale-tasks", reason: "TASK", badge: "דחוף",
+      title: `משימות ישנות באיחור (${staleTasks.length})`,
+      context: [{ t: `באיחור של יותר מ-${STALE_TASK_DAYS} ימים וללא עדכון מאז · הכי ישנה: ${ymdShort(byDue[0].due_date!)}` }],
+      date: byDue[0].due_date ?? null,
+      open: { kind: "tasks", tasks: byDue.map((t) => ({ id: t.id, title: t.title || "משימה", dueDate: t.due_date ?? null })) },
+      sources: ["task"],
+    });
+  }
+  return sorted;
+}
+
+/** Overdue by more than STALE_TASK_DAYS and not updated since the cutoff (a missing / unparseable update = not recent). */
+function isStaleOverdueTask(t: TaskIn, cutoffYmd: string): boolean {
+  if (!t.due_date || t.due_date >= cutoffYmd) return false;
+  const ts = t.updated_at ? new Date(t.updated_at) : null;
+  const updated = ts && !Number.isNaN(ts.getTime()) ? israelTodayYmd(ts) : null;
+  return !updated || !isStrictYmd(updated) || updated < cutoffYmd;
 }
 
 // ── Timeline (today + 7 days) ──────────────────────────────────────────────────

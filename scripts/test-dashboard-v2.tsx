@@ -7,7 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { buildNeedsMe, buildTimeline, financeMonth, releaseBadge, NEEDS_ME_VISIBLE } from "../lib/dashboard-v2";
+import { buildNeedsMe, buildTimeline, financeMonth, releaseBadge, NEEDS_ME_VISIBLE, STALE_TASKS_KEY } from "../lib/dashboard-v2";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 700)}` : ""}`); } };
@@ -58,6 +58,39 @@ console.log("Needs-Me — dedupe by entity + reason");
   const order = ["החלטה", "דחוף", "פעולה", "ממתין"];
   ok("fixed badge order", items.every((it, i) => i === 0 || order.indexOf(items[i - 1].badge) <= order.indexOf(it.badge)), items.map((i) => i.badge));
   ok("the screen shows at most 5", NEEDS_ME_VISIBLE === 5);
+}
+
+console.log("Needs-Me — old overdue tasks are folded into ONE item (Owner decision 2026-09-30)");
+{
+  const tasks = [
+    { id: "old1", title: "ישנה 1", status: "פתוח", due_date: "2026-06-29", updated_at: "2026-06-20T10:00:00Z" },
+    { id: "old2", title: "ישנה 2", status: "פתוח", due_date: "2026-07-01", updated_at: null },
+    { id: "old3", title: "ישנה 3", status: "פתוח", due_date: "2026-07-13", updated_at: "garbage" },
+    { id: "oldTouched", title: "ישנה שעודכנה", status: "פתוח", due_date: "2026-07-07", updated_at: "2026-09-25T10:00:00Z" },
+    { id: "edge14", title: "בדיוק 14", status: "פתוח", due_date: "2026-09-16", updated_at: "2026-09-01T10:00:00Z" },
+    { id: "late", title: "באיחור קצר", status: "פתוח", due_date: "2026-09-25", updated_at: "2026-09-01T10:00:00Z" },
+    { id: "today", title: "היום", status: "פתוח", due_date: TODAY },
+    { id: "oldDone", title: "סגורה", status: "בוצע", due_date: "2026-06-01" },
+    { id: "oldFollow", title: "פולואפ ישן", status: "פתוח", due_date: "2026-06-01", notes: `[proposal_id:${PR}]` },
+  ];
+  const snapshot = JSON.stringify(tasks);
+  const items = buildNeedsMe({ today: TODAY, cooCases: [], partnerActions: [], integrityQuestions: [], tasks, proposals: [] });
+  const agg = items.find((i) => i.key === STALE_TASKS_KEY);
+  const keys = items.map((i) => i.key);
+  ok("three old, not-recently-updated tasks → ONE item 'משימות ישנות באיחור (3)'", agg?.title === "משימות ישנות באיחור (3)", agg);
+  ok("…none of them appears as its own item", !keys.some((k) => ["task:old1|TASK", "task:old2|TASK", "task:old3|TASK"].includes(k)), keys);
+  ok("…the aggregate is always last", keys[keys.length - 1] === STALE_TASKS_KEY, keys);
+  ok("…it opens the task modal with all of them (oldest first)", agg?.open.kind === "tasks" && (agg.open as { tasks: { id: string }[] }).tasks.map((t) => t.id).join() === "old1,old2,old3", agg?.open);
+  ok("an old task updated within 14 days stays its own item", keys.includes("task:oldtouched|TASK"), keys);
+  ok("exactly 14 days overdue is not 'more than 14' → own item", keys.includes("task:edge14|TASK"), keys);
+  ok("a short delay and today stay their own items", keys.includes("task:late|TASK") && keys.includes("task:today|TASK"));
+  ok("closed tasks never count", !JSON.stringify(agg).includes("oldDone"));
+  ok("a proposal follow-up task is never folded (it merges with its proposal)", keys.includes(`proposal:${PR}|FOLLOWUP`), keys);
+  ok("display-only: the task input is not changed", JSON.stringify(tasks) === snapshot);
+  const many = buildNeedsMe({ today: TODAY, cooCases: [], partnerActions: [], integrityQuestions: [], proposals: [],
+    tasks: [...Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, title: `ישנה ${i}`, status: "פתוח", due_date: "2026-07-01" })),
+      { id: "fresh", title: "טרייה", status: "פתוח", due_date: "2026-09-28" }] });
+  ok("12 old tasks do not take the first five slots", many.length === 2 && many[0].key === "task:fresh|TASK" && many.slice(0, NEEDS_ME_VISIBLE).filter((i) => i.key !== STALE_TASKS_KEY).length === 1, many.map((i) => i.key));
 }
 
 console.log("Needs-Me — failed sources are absent, never invented");
