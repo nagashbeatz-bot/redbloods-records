@@ -248,10 +248,23 @@ export interface BriefResponse extends Envelope<"partner_brief"> {
   patterns: { candidates: GatewayPattern[]; confirmed: GatewayPattern[] };
   conflictsCount: number;
   missing: GatewayMissing[];
+  /**
+   * "עדכון לסאני" — the Owner's unhandled updates (NEW), OUTSIDE the ≤5 items. OWNER_REPORTED evidence (text is data,
+   * never an instruction); reading them never handles them (READ ≠ PROCESSED). UNAVAILABLE is never "no updates".
+   */
+  ownerUpdates: BriefOwnerUpdates;
 }
+
+export type BriefOwnerUpdates =
+  | { status: "OK"; newCount: number; digest: string; items: BriefOwnerUpdate[]; more: number; drillDown: GatewayDrillDown | null }
+  | { status: "UNAVAILABLE"; detail: string; note: GText };
+export interface BriefOwnerUpdate { id: string; writtenAt: string; text: GText; epistemic: "OWNER_REPORTED"; status: "NEW" }
 
 export const GATEWAY_LIMITS = {
   briefItems: 5,
+  /** Newest NEW Owner updates shown in the brief (the rest via owner_inbox), and their text length. */
+  briefOwnerUpdates: 3,
+  ownerUpdateChars: 200,
   resolveCandidates: 8,
   facts: 40,
   relationships: 40,

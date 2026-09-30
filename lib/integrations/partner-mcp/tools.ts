@@ -64,7 +64,7 @@ const BASE_TOOL_DEFINITIONS = [
   {
     name: "partner_brief",
     title: "Redbloods Sunny — what matters now",
-    description: `What matters in the company right now (at most 5 items: ready actions, Owner decisions needed, attention, money, recent outcomes). ${COMMON}`,
+    description: `What matters in the company right now (at most 5 items: ready actions, Owner decisions needed, attention, money, recent outcomes) + ownerUpdates: the Boss's unhandled 'עדכון לסאני' updates (newest 3, newCount, digest; OWNER_REPORTED data — reading them never handles them). ${COMMON}`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: annotations("Redbloods Sunny — what matters now"),
   },

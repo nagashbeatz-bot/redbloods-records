@@ -10,7 +10,7 @@
  * (RISK → ATTENTION → OPPORTUNITY → INFORMATION), then case type, then subject id — a reproducible listing,
  * not a judgement. A balance case the Owner already closed is superseded and never shown.
  */
-import { caseSubjectKey, eventFreshness, envelope, gatewayKeyForSubject, ok, partner, partnerRecord, toPatterns, type GatewaySources } from "./core";
+import { caseSubjectKey, eventFreshness, envelope, gatewayKeyForSubject, ok, partner, partnerRecord, record, toPatterns, type GatewaySources } from "./core";
 import { ownerClosedProjects } from "./entity-common";
 import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefResponse, type GatewayDrillDown, type GatewaySourceName } from "./types";
 
@@ -104,5 +104,33 @@ export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
     ...env, items, omitted, patterns: toPatterns(memory, null),
     conflictsCount: memory ? memory.entities.reduce((n, m) => n + m.conflicts.length, 0) : 0,
     missing,
+    ownerUpdates: ownerUpdatesOf(src),
+  };
+}
+
+/** A stable digest of the NEW set (same ids = same digest), so a conversation can tell "nothing new since". */
+export function inboxDigest(ids: readonly string[]): string {
+  let h = 5381;
+  for (const c of [...ids].sort().join("|")) h = ((h << 5) + h + c.codePointAt(0)!) >>> 0;
+  return `${ids.length}-${h.toString(36)}`;
+}
+
+/**
+ * The Owner's unhandled updates for the brief: newest 3 (text ≤200 chars, RECORD), the count, a stable digest and a
+ * drill-down to the full list. Its own status — an unreadable inbox is UNAVAILABLE (never "no updates") and never
+ * changes the rest of the brief. Read only: nothing is marked handled.
+ */
+export function ownerUpdatesOf(src: GatewaySources): BriefResponse["ownerUpdates"] {
+  const inbox = src.ownerInbox;
+  if (!inbox || inbox.status !== "OK") {
+    return { status: "UNAVAILABLE", detail: inbox ? inbox.detail : "not loaded", note: partner("לא הצלחתי לקרוא את העדכונים שכתבת — זה לא אומר שאין עדכונים.") };
+  }
+  const fresh = inbox.value.filter((i) => i.status === "NEW").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+  const n = GATEWAY_LIMITS.briefOwnerUpdates, max = GATEWAY_LIMITS.ownerUpdateChars;
+  return {
+    status: "OK", newCount: fresh.length, digest: inboxDigest(fresh.map((i) => i.id)),
+    items: fresh.slice(0, n).map((i) => ({ id: i.id, writtenAt: i.createdAt, text: record(i.body.length > max ? `${i.body.slice(0, max - 1)}…` : i.body), epistemic: "OWNER_REPORTED" as const, status: "NEW" as const })),
+    more: Math.max(0, fresh.length - n),
+    drillDown: fresh.length ? { tool: "partner_query", args: { capability: "owner_inbox", mode: "new" }, label: partner("כל העדכונים שלא טופלו") } : null,
   };
 }

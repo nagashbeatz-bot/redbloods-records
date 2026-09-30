@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.09.30-64";
+export const SYSTEM_BASELINE_VERSION = "2026.09.30-65";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -734,6 +734,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("OWNER_CONTEXT_APPEND_ONLY", "CANONICAL_BUSINESS_RULE", "Owner answers are append-only; a revision supersedes, history is never rewritten."),
+      R("OWNER_INBOX_PREFLIGHT", "OWNER_POLICY", "The Owner's unhandled updates reach Sunny without an extra step (2026-09-30): partner_brief carries ownerUpdates (newest 3, newCount, a stable digest; UNAVAILABLE is never 'none'), partner_entity attaches up to 3 NEW updates that NAME the entity (TEXT_MATCH by whole words; short / generic / several-entity names are AMBIGUOUS and never linked; nothing stored), and the connector instructions ask Claude to check them at the start of a business conversation. READ ≠ PROCESSED — nothing is learned, acted on or marked automatically."),
       R("OWNER_INBOX_IS_EVIDENCE", "OWNER_POLICY", "'עדכון לסאני' (Dashboard V2, 2026-09-30): the Owner's free text is stored as OWNER_REPORTED evidence (owner_inbox), never a fact; it becomes typed knowledge or an action only through their own preview + the Owner's approval; NEW → PROCESSED (final) records the outcome with a REAL reference (a plan id / a knowledge id / none — never a note), from the dashboard or by Sunny through MARK_OWNER_INBOX_ITEM after the Owner's approval; marking never creates knowledge or an action; the text is never edited or deleted."),
       R("LIVE_BEATS_MEMORY", "CANONICAL_BUSINESS_RULE", "Live canonical state wins over remembered knowledge; memory is context, never a fact."),
       R("PATTERN_LADDER", "OWNER_POLICY", "Single evidence = OBSERVATION; repeated = PATTERN_CANDIDATE; only with Owner confirmation does it become operating knowledge — never an automatic rule or Charter change."),
@@ -1059,4 +1060,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.09.29-62", date: "2026-09-29", domain: "FINANCE", dimension: "read", from: "FULL", to: "FULL", noteHe: "חריגה כספית (financeException + סיבה + תאריך, החלטת בעלים קנונית) נצרכת בכל מקום: הבדיקות \"הושלם, יש הוצאה, אין הכנסה\" (COMPLETED_WORK_NO_INCOME / COMPLETED_WORK_EXPENSE_NO_INCOME) ושאלת \"התקבלה מקדמה?\" לא עולות על פרויקט חריג; partner_entity מציג FINANCE_EXCEPTION (סיבה, תאריך, OWNER_DECISION) במקום \"מחיר לא ידוע\". הנתונים הכספיים עצמם לא משתנים; שורות הכנסה פתוחות מפורשות על פרויקט חריג עדיין מדווחות (שאלה פתוחה לבעלים)." },
   { version: "2026.09.30-63", date: "2026-09-30", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "עדכון לסאני (דשבורד V2): מה שכתבת לסאני מהדשבורד נשמר (טבלה חדשה, SQL שאושר) וסאני קורא אותו דרך owner_inbox — כעדכון שלך (OWNER_REPORTED), לעולם לא כעובדה. ידע או פעולה ממנו רק דרך preview ואישור. סימון \"טופל\" (NEW → PROCESSED עם תוצאה) היום מהדשבורד בלבד." },
   { version: "2026.09.30-64", date: "2026-09-30", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "סאני יכולה לסמן עדכון לסאני כטופל (MARK_OWNER_INBOX_ITEM) — רק אחרי preview ו\"מאשר\" שלך; התוצאה עם הפניה אמיתית (plan / ידע / כלום), PROCESSED סופי, והסימון לא יוצר ידע ולא פעולה. בלי שינוי DB." },
+  { version: "2026.09.30-65", date: "2026-09-30", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "עדכונים שכתבת לסאני מגיעים אליה בלי צעד נוסף: ב-partner_brief (ownerUpdates — 3 אחרונים, כמה פתוחים, digest), וב-partner_entity עד 3 עדכונים שמזכירים את הישות בשמה (TEXT_MATCH במילה שלמה; שם קצר / כללי / של כמה ישויות — AMBIGUOUS ולא מקושר). קריאה ≠ טיפול: שום דבר לא נלמד, מבוצע או מסומן אוטומטית." },
 ];

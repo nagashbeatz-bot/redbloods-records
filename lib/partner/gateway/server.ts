@@ -62,7 +62,7 @@ async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], a
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {
-  return getPartnerBriefCore(await loadSources(ctx, ["FINANCE", "CASES", "ACTIONS", "OUTCOMES", "MEMORY", "INTEGRITY"], audience));
+  return getPartnerBriefCore(await loadSources(ctx, ["FINANCE", "CASES", "ACTIONS", "OUTCOMES", "MEMORY", "INTEGRITY", "OWNER_INBOX"], audience));
 }
 
 export async function resolvePartnerEntity(query: string, ctx: AnyCtx = createCompanyReadContext()): Promise<ResolveResponse> {
@@ -75,7 +75,7 @@ export async function getPartnerEntity(key: string, ctx: AnyCtx = createCompanyR
   if (!parseEntityKey(k)) return getPartnerEntityCore(k, { now: ctx.now, identities: APP_IDENTITIES });
   // project entities also load the project's human context + material metadata (Owner-only capability, bounded);
   // a transaction loads the same detail sources for its text and its clip / Red Films ownership links (no new reader)
-  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") || k.startsWith("transaction:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(k.startsWith("show:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : [])];
+  const needs: KnowledgeSourceNeed[] = ["STATE", "FINANCE", "MEMORY", "CASES", "ACTIONS", "INTEGRITY", "OWNER_KNOWLEDGE", "OPERATIONS", ...(k.startsWith("project:") ? ["PROJECT_DETAIL" as const] : []), ...(k.startsWith("client:") || k.startsWith("transaction:") ? ["PROJECT_DETAIL" as const, "CLIENT_DETAIL" as const] : []), ...(k.startsWith("label-artist:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(k.startsWith("show:") ? ["PROJECT_DETAIL" as const, "LABEL_DETAIL" as const, "SETTINGS" as const] : []), ...(/^(project|client|show|release|label-artist|session):/.test(k) ? ["CALENDAR" as const] : []), ...(/^(project|client|label-artist|dj|show|vendor):/.test(k) ? ["OWNER_INBOX" as const] : [])];
   const src = await loadSources(ctx, needs, audience);
   return getPartnerEntityCore(k, { ...src, entityKnowledge: (entityKey) => entityKnowledge(registry, src, entityKey) });
 }
