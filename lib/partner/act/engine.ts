@@ -24,6 +24,7 @@
  *     recorded in THIS run (K must be APPLIED_AS_EXPECTED — dependsOn); unresolved → NOT_RUN, never guessed. The
  *     resolved step is what is fingerprinted / checked against its exact preview / executed / verified.
  */
+import { OWNER_EVENT_DETAIL, STANDING_EVENT_DETAIL, standingEligible } from "./standing";
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
 import { verifyApproval, type NonceStore } from "./approval";
@@ -107,7 +108,11 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
     await log("REFUSED", null, "ALREADY_EXECUTED");
     return { planId: plan.planId, planHash: hash, status: "REFUSED", refusal: "ALREADY_EXECUTED", steps: plan.steps.map((s, i) => (recordedBefore[i] ? { ...recordedBefore[i]!, replayed: true } : { index: s.index, actionId: s.actionId, status: "NOT_RUN" as StepStatus, detail: "no recorded outcome for this step", replayed: false })) };
   }
-  await log("APPROVED", null, "owner approval verified");
+  // 2c. a STANDING approval (Owner-inbox housekeeping) is re-checked here: only a plan made solely of standing-authorized
+  //     primitives; it is recorded distinctly so the history always says who approved
+  const standing = v.claims.k === "S";
+  if (standing && !standingEligible(plan)) { await log("REFUSED", null, "STANDING_NOT_ELIGIBLE"); return refuse(plan, hash, "STANDING_NOT_ELIGIBLE"); }
+  await log("APPROVED", null, standing ? STANDING_EVENT_DETAIL : OWNER_EVENT_DETAIL);
   const at = new Date(d.nowMs).toISOString();
   const meta = (s: PlanStep): ClaimMeta => ({ planId: plan.planId, stepIndex: s.index, actionId: s.actionId, actionVersion: s.actionVersion, atMs: d.nowMs });
   /** a terminal row for a step that did not run; a store failure never turns "did not run" into anything else */

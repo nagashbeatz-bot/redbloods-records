@@ -49,9 +49,9 @@ export interface PlanStore {
   /** Recorded step outcomes of a plan (status reads). For a CLAIMED row, `outcome` carries only { at } (the claim time). */
   executions(planId: string): Promise<Array<{ stepIndex: number; actionId: string; status: string; outcome: StepOutcome | null }>>;
   /** Event types recorded for a plan (status reads; details are sanitized). */
-  events(planId: string): Promise<Array<{ type: string; step: number | null; at: string }>>;
+  events(planId: string): Promise<Array<{ type: string; step: number | null; at: string; detail?: string | null }>>;
   /** The Owner's plans, newest first (cursor = created_at of the last item), with their recorded executions + event types. */
-  history?(ownerId: string, q: HistoryQuery): Promise<{ items: Array<{ plan: Plan; executions: Array<{ stepIndex: number; status: string; outcome?: StepOutcome | null }>; eventTypes: string[]; executedAt: string | null }>; nextBefore: string | null }>;
+  history?(ownerId: string, q: HistoryQuery): Promise<{ items: Array<{ plan: Plan; executions: Array<{ stepIndex: number; status: string; outcome?: StepOutcome | null }>; eventTypes: string[]; executedAt: string | null; approvalDetail?: string | null }>; nextBefore: string | null }>;
 }
 export interface HistoryQuery { limit: number; before: string | null; since: string | null; actionId: string | null; entity: string | null }
 /** Rows scanned per history page when filtering by action / entity (the plan JSON is filtered here, never by raw SQL). */
@@ -85,9 +85,10 @@ export function supabaseActStores(sb: SupabaseClient) {
       return ((data ?? []) as Array<{ step_index: number; action_id: string; status: string; outcome: StepOutcome | null }>).map((r) => ({ stepIndex: r.step_index, actionId: r.action_id, status: r.status, outcome: r.outcome }));
     },
     async events(planId) {
-      const { data, error } = await sb.from(ACT_TABLES.events).select("event_type, step_index, created_at").eq("plan_id", planId).order("id", { ascending: true });
+      const { data, error } = await sb.from(ACT_TABLES.events).select("event_type, step_index, created_at, detail").eq("plan_id", planId).order("id", { ascending: true });
       if (error) fail("read_events", error);
-      return ((data ?? []) as Array<{ event_type: string; step_index: number | null; created_at: string }>).map((r) => ({ type: r.event_type, step: r.step_index, at: r.created_at }));
+      // the detail is returned ONLY for APPROVED events (who approved: the Owner or the standing authorization)
+      return ((data ?? []) as Array<{ event_type: string; step_index: number | null; created_at: string; detail?: string | null }>).map((r) => ({ type: r.event_type, step: r.step_index, at: r.created_at, ...(r.event_type === "APPROVED" ? { detail: r.detail ?? null } : {}) }));
     },
     async history(ownerId, q) {
       const limit = Math.max(1, Math.min(q.limit, 50));
@@ -106,17 +107,17 @@ export function supabaseActStores(sb: SupabaseClient) {
       const ids = rows.map((r) => r.plan_id);
       const [{ data: ex, error: e2 }, { data: ev, error: e3 }] = await Promise.all([
         sb.from(ACT_TABLES.executions).select("plan_id, step_index, status, outcome, recorded_at").in("plan_id", ids),
-        sb.from(ACT_TABLES.events).select("plan_id, event_type").in("plan_id", ids),
+        sb.from(ACT_TABLES.events).select("plan_id, event_type, detail").in("plan_id", ids),
       ]);
       if (e2) fail("read_history_executions", e2);
       if (e3) fail("read_history_events", e3);
       const exs = (ex ?? []) as Array<{ plan_id: string; step_index: number; status: string; outcome: StepOutcome | null; recorded_at: string | null }>;
-      const evs = (ev ?? []) as Array<{ plan_id: string; event_type: string }>;
+      const evs = (ev ?? []) as Array<{ plan_id: string; event_type: string; detail?: string | null }>;
       return {
         items: rows.map((r) => {
           const mine = exs.filter((x) => x.plan_id === r.plan_id);
           const at = mine.map((x) => x.recorded_at).filter((x): x is string => !!x).sort();
-          return { plan: r.plan, executions: mine.map((x) => ({ stepIndex: x.step_index, status: x.status, outcome: x.outcome ?? null })), eventTypes: [...new Set(evs.filter((x) => x.plan_id === r.plan_id).map((x) => x.event_type))], executedAt: at.length ? at[at.length - 1] : null };
+          return { plan: r.plan, executions: mine.map((x) => ({ stepIndex: x.step_index, status: x.status, outcome: x.outcome ?? null })), eventTypes: [...new Set(evs.filter((x) => x.plan_id === r.plan_id).map((x) => x.event_type))], executedAt: at.length ? at[at.length - 1] : null, approvalDetail: evs.find((x) => x.plan_id === r.plan_id && x.event_type === "APPROVED")?.detail ?? null };
         }),
         nextBefore,
       };

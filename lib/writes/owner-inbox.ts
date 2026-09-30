@@ -50,3 +50,13 @@ function fromWrite<S extends "SAVED" | "PROCESSED">(r: InboxWriteResult, okStatu
     default: return { status: "FAILED" as const, messageHe: "השמירה נכשלה — שום דבר לא נשמר." };
   }
 }
+
+// ── outcomeRef must point at something REAL (Owner decision 2026-09-30, standing housekeeping) ──
+export type PlanRefState = "EXECUTED" | "NOT_EXECUTED" | "NOT_FOUND" | "HOUSEKEEPING_ONLY";
+const DONE_STEP = new Set(["APPLIED_AS_EXPECTED", "NO_CHANGE"]);
+/** ACTION_PLANNED needs a business plan that already went through the normal flow and ran: every step applied. */
+export function planRefState(plan: { steps: ReadonlyArray<{ actionId: string }> } | null, executions: ReadonlyArray<{ status: string }>): PlanRefState {
+  if (!plan) return "NOT_FOUND";
+  if (plan.steps.length > 0 && plan.steps.every((s) => s.actionId === "MARK_OWNER_INBOX_ITEM")) return "HOUSEKEEPING_ONLY";
+  return executions.length === plan.steps.length && executions.every((e) => DONE_STEP.has(e.status)) ? "EXECUTED" : "NOT_EXECUTED";
+}

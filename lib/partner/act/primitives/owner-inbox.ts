@@ -14,6 +14,10 @@ export interface OwnerInboxFamilyWriters {
   listOwnerInboxNew(): Promise<Array<{ id: string; body: string }>>;
   /** lib/writes/owner-inbox markOwnerInboxItemProcessed(store, "SUNNY", …) — throws when the writer refuses. */
   markOwnerInboxItem(id: string, outcome: string, outcomeRef: string | null): Promise<void>;
+  /** Read-only: the referenced Action Layer plan (ACTION_PLANNED) — it must be a business plan that already ran. */
+  readActionPlanState(planId: string): Promise<"EXECUTED" | "NOT_EXECUTED" | "NOT_FOUND" | "HOUSEKEEPING_ONLY">;
+  /** Read-only: does an Owner-knowledge record with this id exist (LEARNED_KNOWLEDGE)? */
+  ownerKnowledgeExists(id: string): Promise<boolean>;
 }
 
 const LABEL_CHARS = 80;
@@ -28,6 +32,15 @@ async function onItem(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
   };
   const k = parseKey(a.item, ["owner-inbox"]); if (!k) return refuse("BAD_ENTITY", `צריך עדכון לסאני (owner-inbox:…)${await choices()}`);
   const it = await d.readOwnerInboxItem(k.id); if (!it) return refuse("ENTITY_NOT_FOUND", `לא מצאתי עדכון במזהה הזה${await choices()}`);
+  // the reference must be REAL (no human reviews a standing housekeeping mark): a plan that already ran / a saved knowledge record
+  if (isInboxOutcome(a.outcome)) {
+    const ref = checkOutcomeRef(a.outcome, a.outcomeRef);
+    if (ref.ok && ref.ref && a.outcome === "ACTION_PLANNED") {
+      const st = await d.readActionPlanState(ref.ref);
+      if (st !== "EXECUTED") return refuse("REF_PLAN_NOT_EXECUTED", st === "NOT_FOUND" ? "לא מצאתי את ה-plan הזה" : st === "HOUSEKEEPING_ONLY" ? "ה-plan הזה הוא רק סימון עדכונים — ACTION_PLANNED צריך plan של פעולה אמיתית" : "ה-plan הזה עוד לא בוצע במלואו — אפשר לסמן ACTION_PLANNED רק אחרי שהפעולה בוצעה");
+    }
+    if (ref.ok && ref.ref && a.outcome === "LEARNED_KNOWLEDGE" && !(await d.ownerKnowledgeExists(ref.ref))) return refuse("REF_KNOWLEDGE_NOT_FOUND", "לא מצאתי רשומת ידע במזהה הזה — אפשר לסמן LEARNED_KNOWLEDGE רק אחרי שהידע נשמר");
+  }
   return { key: `owner-inbox:${k.id}`, id: k.id, label: `עדכון לסאני: ${short(it.body)}`, fields: fieldsOf(it) };
 }
 

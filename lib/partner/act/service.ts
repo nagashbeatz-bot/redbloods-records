@@ -30,6 +30,7 @@
  *     own verify against the planned after-values → APPLIED_AS_EXPECTED or FAILED ("outcome unknown → not applied");
  *     it is NEVER re-executed.
  */
+import { STANDING_PHRASE, approvedByOf, mentionsStanding, standingEligible } from "./standing";
 import { COVERAGE_MAP } from "./coverage-map";
 import { randomBytes } from "node:crypto";
 import type { ActionContract, Plan, PlanOutcome, PlanStep, StepOutcome } from "./types";
@@ -382,9 +383,13 @@ export async function approveAction(input: { planId: unknown; planHash: unknown;
   if (d.nowMs() > Date.parse(plan.expiresAt)) return refused("EXPIRED", "התוכנית פגה — צריך תצוגה חדשה");
   const text = typeof input.confirmationText === "string" ? input.confirmationText.trim() : "";
   if (!text || text.length > 500) return refused("APPROVAL_MISSING", "צריך את האישור המפורש שלך, בוס");
+  // STANDING authorization (Owner decision 2026-09-30): the exact phrase approves ONLY a plan made solely of Owner-inbox
+  // housekeeping; anything else that mentions it is never an approval (the Boss's own words are needed)
+  const standing = text === STANDING_PHRASE;
+  if (mentionsStanding(text) && !(standing && standingEligible(plan))) return refused("NOT_AN_APPROVAL", "הרשאה קבועה חלה רק על סימון עדכונים שכתבת לסאני כטופלים — כל פעולה אחרת (וכל תוכנית מעורבת) צריכה את האישור שלך, בוס. לא אישרתי כלום");
   // Owner decision 2026-09-27: "מאשר" after a clear preview is enough (no repeated values). The safety is the binding
   // below (plan hash + Owner + client + expiry + one-time nonce) and the fresh re-read / stale check at execution.
-  const verdict = classifyApprovalText(text, planValuesOf(plan));
+  const verdict = standing ? { ok: true as const } : classifyApprovalText(text, planValuesOf(plan));
   if (!verdict.ok) return verdict.code === "APPROVAL_WITH_CHANGES"
     ? refused("APPROVAL_WITH_CHANGES", "בוס, זה שינוי של התוכנית ולא אישור שלה — לא אישרתי כלום. אבנה תוכנית חדשה עם השינוי ואראה לך אותה")
     : refused("NOT_AN_APPROVAL", "לא זיהיתי אישור, בוס — לא אישרתי כלום");
@@ -392,9 +397,9 @@ export async function approveAction(input: { planId: unknown; planHash: unknown;
   const newer = await newerOpenPreview(plan, c, d);
   if (newer === "UNKNOWN") return refused("AMBIGUITY_CHECK_FAILED", "לא הצלחתי לוודא שאין תצוגה פתוחה אחרת — לא אישרתי כלום");
   if (newer) return refused("AMBIGUOUS_OPEN_PREVIEWS", "בוס, יש תצוגה חדשה יותר שמחכה לאישור — לא אנחש לאיזו התכוונת. איזו לבצע? (אם את הקודמת — אכין לה תצוגה מחדש)", { newerPlanId: newer });
-  const token = issueApprovalToken(d.approvalSecret, { planHash: hash, ownerId: c.ownerId, clientId: c.clientId, nowMs: d.nowMs() });
+  const token = issueApprovalToken(d.approvalSecret, { planHash: hash, ownerId: c.ownerId, clientId: c.clientId, nowMs: d.nowMs(), standing });
   // the token and the confirmation text are returned to the caller only — never stored
-  return { status: "APPROVED_PENDING_EXECUTION", planId: plan.planId, planHash: hash, approvalToken: token, noteHe: "האישור תקף לתוכנית הזאת בלבד, פעם אחת, ל-10 דקות" };
+  return { status: "APPROVED_PENDING_EXECUTION", planId: plan.planId, planHash: hash, approvalToken: token, approvedBy: standing ? "STANDING_AUTHORIZATION" : "OWNER_APPROVAL", noteHe: "האישור תקף לתוכנית הזאת בלבד, פעם אחת, ל-10 דקות" };
 }
 
 // ── execute ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -470,7 +475,7 @@ async function newerOpenPreview(plan: Plan, c: Caller, d: ActServiceDeps): Promi
   try {
     const h = await d.stores.plans.history(c.ownerId, { limit: 50, before: null, since: null, actionId: null, entity: null }); // newest first — newer plans are at the top
     const now = d.nowMs();
-    const open = h.items.find((x) => x.plan.planId !== plan.planId && x.plan.clientId === c.clientId && Date.parse(x.plan.createdAt) > Date.parse(plan.createdAt) && now <= Date.parse(x.plan.expiresAt) && x.executions.length === 0 && !x.eventTypes.some((t) => /APPROVED|EXECUT|VERIFIED|OUTCOME|STALE|REFUS|FAIL|EXPIRED/.test(t)));
+    const open = h.items.find((x) => x.plan.planId !== plan.planId && !standingEligible(x.plan) && x.plan.clientId === c.clientId && Date.parse(x.plan.createdAt) > Date.parse(plan.createdAt) && now <= Date.parse(x.plan.expiresAt) && x.executions.length === 0 && !x.eventTypes.some((t) => /APPROVED|EXECUT|VERIFIED|OUTCOME|STALE|REFUS|FAIL|EXPIRED/.test(t)));
     return open ? open.plan.planId : null;
   } catch { return "UNKNOWN"; }
 }
@@ -615,7 +620,7 @@ export async function planStatus(input: Record<string, unknown>, c: Caller, d: A
     status: agg.outcome === "EXPIRED_NOT_EXECUTED" ? "EXPIRED" : agg.outcome,
     planId: plan.planId, planHash: planHash(plan), steps: agg.steps, events: ev,
     ...(agg.outcome === "IN_PROGRESS" ? { messageHe: "הביצוע עדיין רץ — לבדוק שוב עוד רגע; לא להריץ שוב" } : agg.outcome === "OUTCOME_UNKNOWN" ? { messageHe: "תוצאת שלב לא ידועה עדיין — לא לדווח כבוצע" } : {}),
-    detail: { intentHe: { text: plan.intentHe, trust: "OWNER_REQUEST" }, createdAt: plan.createdAt, expiresAt: plan.expiresAt, riskClass: plan.riskClass, approved: ev.some((e) => e.type === "APPROVED"), plannedSteps: plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], changes: s.changes, dependsOn: s.dependsOn })) },
+    detail: { intentHe: { text: plan.intentHe, trust: "OWNER_REQUEST" }, createdAt: plan.createdAt, expiresAt: plan.expiresAt, riskClass: plan.riskClass, approved: ev.some((e) => e.type === "APPROVED"), approvedBy: approvedByOf(ev.find((e) => e.type === "APPROVED")?.detail), plannedSteps: plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], changes: s.changes, dependsOn: s.dependsOn })) },
   };
 }
 
@@ -638,7 +643,7 @@ async function actionHistory(input: Record<string, unknown>, c: Caller, d: ActSe
     const lc = lifecycleOf(r.plan, r.executions.map((x) => ({ actionId: "", outcome: null, ...x })), r.eventTypes, nowMs);
     return {
       planId: r.plan.planId, createdAt: r.plan.createdAt, executedAt: r.executedAt, intentHe: { text: r.plan.intentHe, trust: "OWNER_REQUEST" },
-      compound: r.plan.steps.length > 1, approved: lc.approved, outcome: lc.outcome, partiallyApplied: lc.partial, staleSeen: lc.stale,
+      compound: r.plan.steps.length > 1, approved: lc.approved, approvedBy: lc.approved ? approvedByOf(r.approvalDetail ?? "") : null, outcome: lc.outcome, partiallyApplied: lc.partial, staleSeen: lc.stale,
       steps: r.plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], fields: s.changes.map((x) => x.field), outcome: lc.steps.find((x) => x.index === s.index)?.status ?? null })),
     };
   });

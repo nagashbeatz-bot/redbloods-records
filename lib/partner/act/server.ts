@@ -516,7 +516,7 @@ async function socialFamilyWriters(): Promise<SocialFamilyWriters> {
 
 /** "עדכון לסאני" — the SAME store + shared writer the dashboard route uses; Sunny marks with via = SUNNY. */
 async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
-  const [{ supabase }, { createOwnerInboxStore }, { markOwnerInboxItemProcessed }] = await Promise.all([import("@/lib/supabase"), import("@/lib/owner-inbox-store"), import("@/lib/writes/owner-inbox")]);
+  const [{ supabase }, { createOwnerInboxStore }, { markOwnerInboxItemProcessed, planRefState }] = await Promise.all([import("@/lib/supabase"), import("@/lib/owner-inbox-store"), import("@/lib/writes/owner-inbox")]);
   const store = createOwnerInboxStore(supabase as unknown as import("@/lib/owner-inbox-store").OwnerInboxClient);
   return {
     async readOwnerInboxItem(id) {
@@ -532,6 +532,17 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
     async markOwnerInboxItem(id, outcome, outcomeRef) {
       const r = await markOwnerInboxItemProcessed(store, "SUNNY", { id, outcome, outcomeRef });
       if (r.status !== "PROCESSED") throw new Error(`owner inbox mark refused: ${r.status} ${r.messageHe}`);
+    },
+    async readActionPlanState(planId) {
+      const plans = supabaseActStores(supabase).plans;
+      const plan = await plans.load(planId);
+      return planRefState(plan, plan ? await plans.executions(planId) : []);
+    },
+    async ownerKnowledgeExists(id) {
+      const { createOwnerKnowledgeStore } = await import("@/lib/partner/owner-knowledge/store");
+      const r = await createOwnerKnowledgeStore(supabase as unknown as import("@/lib/partner/owner-knowledge/store").OwnerKnowledgeTableClient).list();
+      if (r.status !== "OK") throw new Error(`owner knowledge read failed: ${r.status}`);
+      return r.records.some((k) => k.id === id);
     },
   };
 }

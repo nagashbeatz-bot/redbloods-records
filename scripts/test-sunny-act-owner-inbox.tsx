@@ -10,7 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runCases, mkDeps, fullFlow, U, OWNER, type FamilyCase } from "./fixtures/act-harness";
-import { planAction, approveAction, executeAction } from "../lib/partner/act/service";
+import { planAction, approveAction, executeAction, planStatus } from "../lib/partner/act/service";
+import { STANDING_AUTHORIZATIONS, STANDING_PHRASE, standingEligible } from "../lib/partner/act/standing";
 import { ACT_TABLES } from "../lib/partner/act/store-supabase";
 import { OWNER_INBOX_PRIMITIVES } from "../lib/partner/act/primitives/owner-inbox";
 import { ACTION_REGISTRY } from "../lib/partner/act/registry";
@@ -23,7 +24,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 interface Item { body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null }
-interface W { items: Record<string, Item>; knowledge: number; actions: number }
+interface W { items: Record<string, Item>; knowledge: number; actions: number; plans: Record<string, "EXECUTED" | "NOT_EXECUTED" | "HOUSEKEEPING_ONLY">; knowledgeIds: string[] }
 const PLAN = "pl_AbCdEfGhIjKlMnOpQrStUvWx";
 const KNOW = U(77);
 const world = (): W => ({
@@ -34,6 +35,8 @@ const world = (): W => ({
     [U(4)]: { body: "כבר טופל", status: "PROCESSED", outcome: "DISMISSED", outcomeRef: null, processedVia: "DASHBOARD" },
   },
   knowledge: 27, actions: 0,
+  plans: { [PLAN]: "EXECUTED", pl_NotRunYetAbcdefghijklmnop: "NOT_EXECUTED", pl_OnlyHousekeepingAbcdefghij: "HOUSEKEEPING_ONLY" },
+  knowledgeIds: [KNOW],
 });
 function mk() {
   const w = world(); const calls: string[] = [];
@@ -41,6 +44,8 @@ function mk() {
     async readOwnerInboxItem(id: string) { const x = w.items[id]; return x ? { ...x } : null; },
     async listOwnerInboxNew() { return Object.entries(w.items).filter(([, x]) => x.status === "NEW").map(([id, x]) => ({ id, body: x.body })); },
     // behaves like the shared writer + the RPC: validates the ref, NEW only, via stored
+    async readActionPlanState(planId: string) { return w.plans[planId] ?? "NOT_FOUND"; },
+    async ownerKnowledgeExists(id: string) { return w.knowledgeIds.includes(id); },
     async markOwnerInboxItem(id: string, outcome: string, outcomeRef: string | null) {
       calls.push("markOwnerInboxItem");
       const r = checkOutcomeRef(outcome as never, outcomeRef);
@@ -82,6 +87,66 @@ const CASES: FamilyCase<W>[] = [
   for (const [outcome, ref] of [["ACTION_PLANNED", PLAN], ["LEARNED_KNOWLEDGE", KNOW], ["DISMISSED", null]] as const) {
     const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "MARK_OWNER_INBOX_ITEM", { item: I1, outcome, ...(ref ? { outcomeRef: ref } : {}) }, "מאשר");
     ok(`${outcome}: executes and verifies exactly (via SUNNY, ref ${ref ?? "null"})`, r.e?.status === "APPLIED_AS_EXPECTED" && done(h.w.items[U(1)], outcome, ref), { e: r.e?.status, item: h.w.items[U(1)] });
+  }
+
+  console.log("\nThe reference must be REAL (server-checked)");
+  ok("ACTION_PLANNED with a plan that has not run → refused", (await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: "pl_NotRunYetAbcdefghijklmnop" })).status === "REF_PLAN_NOT_EXECUTED");
+  ok("ACTION_PLANNED with an unknown plan → refused", (await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: "pl_DoesNotExistAbcdefghijk" })).status === "REF_PLAN_NOT_EXECUTED");
+  ok("ACTION_PLANNED with a housekeeping-only plan → refused (needs a real business action)", (await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: "pl_OnlyHousekeepingAbcdefghij" })).status === "REF_PLAN_NOT_EXECUTED");
+  ok("LEARNED_KNOWLEDGE with a knowledge id that was never saved → refused", (await q({ item: I1, outcome: "LEARNED_KNOWLEDGE", outcomeRef: U(78) })).status === "REF_KNOWLEDGE_NOT_FOUND");
+
+  console.log("\nStanding authorization (housekeeping only)");
+  {
+    const h = mk(); const d = mkDeps(h.writers);
+    const p = await planAction({ intentHe: "x", actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "DISMISSED" } }, OWNER, d.d);
+    const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: STANDING_PHRASE }, OWNER, d.d);
+    ok("a housekeeping-only plan is approved with the standing phrase (approvedBy STANDING_AUTHORIZATION)", a.status === "APPROVED_PENDING_EXECUTION" && a.approvedBy === "STANDING_AUTHORIZATION", a);
+    const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: STANDING_PHRASE }, OWNER, d.d);
+    ok("…executes through the same engine, verified exactly (via SUNNY)", e.status === "APPLIED_AS_EXPECTED" && done(h.w.items[U(1)], "DISMISSED", null), e);
+    const ev = d.db.rows(ACT_TABLES.events).filter((r) => r.plan_id === p.planId && r.event_type === "APPROVED");
+    ok("the APPROVED event records STANDING_AUTHORIZATION (not the Owner)", ev.length === 1 && String(ev[0].detail).startsWith("STANDING_AUTHORIZATION"), ev);
+    const st = await planStatus({ planId: p.planId }, OWNER, d.d);
+    ok("plan_status says approvedBy STANDING_AUTHORIZATION", (st.detail as { approvedBy?: string })?.approvedBy === "STANDING_AUTHORIZATION", st.detail);
+    const hist = await planStatus({ history: true }, OWNER, d.d);
+    ok("history says approvedBy STANDING_AUTHORIZATION", ((hist.items as Array<{ planId: string; approvedBy: string | null }>) ?? []).find((x) => x.planId === p.planId)?.approvedBy === "STANDING_AUTHORIZATION", hist.items);
+  }
+  {
+    const h = mk(); const d = mkDeps(h.writers);
+    const p = await planAction({ intentHe: "x", actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "NO_ACTION_NEEDED" } }, OWNER, d.d);
+    const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: "מאשר" }, OWNER, d.d);
+    const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: "מאשר" }, OWNER, d.d);
+    const st = await planStatus({ planId: p.planId }, OWNER, d.d);
+    ok("the Owner can still approve housekeeping himself → recorded OWNER_APPROVAL", e.status === "APPLIED_AS_EXPECTED" && a.approvedBy === "OWNER_APPROVAL" && (st.detail as { approvedBy?: string })?.approvedBy === "OWNER_APPROVAL", st.detail);
+  }
+  {
+    // a business action planned beside the housekeeping — the mixed plan is never standing-eligible
+    const writers = { ...mk().writers };
+    const d = mkDeps(writers);
+    const mixed = { intentHe: "x", steps: [{ actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "DISMISSED" } }, { actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I2, outcome: "DISMISSED" } }] };
+    const ok2 = await planAction(mixed, OWNER, d.d);
+    ok("several housekeeping steps in ONE plan are standing-eligible", standingEligible({ steps: [{ actionId: "MARK_OWNER_INBOX_ITEM" }, { actionId: "MARK_OWNER_INBOX_ITEM" }] }) && ok2.status === "PREVIEW");
+    ok("a MIXED plan (housekeeping + any other action) is never standing-eligible", !standingEligible({ steps: [{ actionId: "MARK_OWNER_INBOX_ITEM" }, { actionId: "UPDATE_PROJECT_DEADLINE" }] }) && !standingEligible({ steps: [] }));
+  }
+  ok("the standing list is LOCKED to exactly one primitive", STANDING_AUTHORIZATIONS.length === 1 && STANDING_AUTHORIZATIONS[0] === "MARK_OWNER_INBOX_ITEM");
+  {
+    // the standing phrase on a business action → NOT_AN_APPROVAL (server-enforced), nothing approved
+    const sysW = { async readBusinessGoals() { return { monthlyRevenue: { target: 20000, currency: "₪" } }; }, async setBusinessGoal() { throw new Error("must not write"); } };
+    const d = mkDeps(sysW);
+    const p = await planAction({ intentHe: "x", actionId: "SET_BUSINESS_GOAL", args: { goal: "monthlyRevenue", target: 25000, currency: "₪" } }, OWNER, d.d);
+    const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: STANDING_PHRASE }, OWNER, d.d);
+    ok("the standing phrase on ANY other action → NOT_AN_APPROVAL", p.status === "PREVIEW" && a.status === "NOT_AN_APPROVAL", { p: p.status, a: a.status });
+    const a2 = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: `מאשר ${STANDING_PHRASE}` }, OWNER, d.d);
+    ok("…also when it is hidden inside other words", a2.status === "NOT_AN_APPROVAL");
+  }
+  {
+    // a forged / reused standing token cannot run a business plan: the engine re-checks eligibility
+    const { issueApprovalToken } = await import("../lib/partner/act/approval");
+    const sysW = { async readBusinessGoals() { return { monthlyRevenue: { target: 20000, currency: "₪" } }; }, async setBusinessGoal() { throw new Error("must not write"); } };
+    const d = mkDeps(sysW);
+    const p = await planAction({ intentHe: "x", actionId: "SET_BUSINESS_GOAL", args: { goal: "monthlyRevenue", target: 25000, currency: "₪" } }, OWNER, d.d);
+    const forged = issueApprovalToken((d.d as unknown as { approvalSecret: string }).approvalSecret, { planHash: p.planHash as string, ownerId: OWNER.ownerId, clientId: OWNER.clientId, nowMs: (d.d as unknown as { nowMs(): number }).nowMs(), standing: true });
+    const e = await executeAction({ planId: p.planId, approvalToken: forged, confirmationText: STANDING_PHRASE }, OWNER, d.d);
+    ok("a STANDING token on a business plan is refused by the engine (STANDING_NOT_ELIGIBLE), nothing written", e.status !== "APPLIED_AS_EXPECTED" && String(e.refusal ?? "").includes("STANDING_NOT_ELIGIBLE"), e);
   }
 
   console.log("\nPreview names the linked object");
@@ -132,7 +197,7 @@ const CASES: FamilyCase<W>[] = [
     ok("LEARNED_KNOWLEDGE only records the link: no knowledge / action writer is called", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.knowledge === 27 && h.w.actions === 0 && h.calls.join() === "markOwnerInboxItem");
     const src = read("lib/partner/act/primitives/owner-inbox.ts");
     ok("the primitive has no knowledge / plan / push / finance / calendar path", !/propose|commitKnowledge|planAction|sendPush|transactions|google-calendar|owner-knowledge\/store/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")));
-    ok("its only writer is markOwnerInboxItem", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem("].includes(m)));
+    ok("its only WRITE is markOwnerInboxItem; every other dep it calls is a read-only reader", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem(", "d.readActionPlanState(", "d.ownerKnowledgeExists("].includes(m)) && (src.match(/d\.markOwnerInboxItem\(/g) ?? []).length === 1);
   }
 
   console.log("\nWiring");

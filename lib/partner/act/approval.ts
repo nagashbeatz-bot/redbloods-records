@@ -12,13 +12,14 @@ import { canonicalJson, sha256 } from "./plan";
 
 export const APPROVAL_TOKEN_TTL_MS = 10 * 60_000;
 const TOKEN_RE = /^ak1\.([A-Za-z0-9_-]{20,1200})\.([A-Za-z0-9_-]{43})$/;
-export interface ApprovalClaims { ph: string; o: string; c: string; exp: number; n: string; v?: string[] }
+/** k = "S": approved by the STANDING authorization (lib/partner/act/standing), HMAC-bound; absent = the Owner. */
+export interface ApprovalClaims { ph: string; o: string; c: string; exp: number; n: string; v?: string[]; k?: "S" }
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64url");
 const mac = (secret: string, payload: string) => createHmac("sha256", secret).update(`ak1.${payload}`).digest("base64url");
 
-export function issueApprovalToken(secret: string, o: { planHash: string; ownerId: string; clientId: string; nowMs: number; nonce?: string }): string {
+export function issueApprovalToken(secret: string, o: { planHash: string; ownerId: string; clientId: string; nowMs: number; nonce?: string; standing?: boolean }): string {
   if (secret.length < 32) throw new Error("approval secret too short");
-  const claims: ApprovalClaims = { ph: o.planHash, o: o.ownerId, c: o.clientId, exp: o.nowMs + APPROVAL_TOKEN_TTL_MS, n: o.nonce ?? randomBytes(16).toString("base64url") };
+  const claims: ApprovalClaims = { ph: o.planHash, o: o.ownerId, c: o.clientId, exp: o.nowMs + APPROVAL_TOKEN_TTL_MS, n: o.nonce ?? randomBytes(16).toString("base64url"), ...(o.standing ? { k: "S" as const } : {}) };
   const payload = b64(JSON.stringify(claims));
   return `ak1.${payload}.${mac(secret, payload)}`;
 }
