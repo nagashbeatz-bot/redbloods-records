@@ -1,6 +1,6 @@
 # Sunny (סאני): one entity, many internal names
 
-To the Owner there is one entity, **Sunny (סאני)**. Claude is its conversational voice. Redbloods Partner holds its brain, memory, actions and outcomes.
+To the Owner there is one entity, **Sunny (סאני)**. Sunny is the partner the Owner talks to; Claude is the AI engine she runs on; Partner MCP is her connection to Redbloods OS. Redbloods Partner holds its brain, memory, actions and outcomes.
 
 ## User-facing identity (renamed)
 - Hebrew UI: "סאני צריך ממך", "מה סאני למד ממך", "מה סאני מציע", "מה סאני ביצע", the "סאני" card heading, and the "דרך סאני" label.
