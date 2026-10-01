@@ -147,7 +147,7 @@ export const SUNNY_CONNECTOR_MODEL = {
     { tool: "partner_resolve", reads: "name → entity candidates" },
     { tool: "partner_entity", reads: "one entity with enrichment (incl. up to 3 NEW Owner updates that NAME it — TEXT_MATCH, never stored)" },
     { tool: "partner_query", reads: "any registered capability (progressive, paged)" },
-    { tool: "partner_answer_question", reads: "answers one of Sunny's open questions (writes Owner context) — flag-gated" },
+    { tool: "partner_answer_question", reads: "answers one of Sunny's open questions (writes Owner context); Integrity questions when the answer switch is on, Finance questions only with the extra PARTNER_MCP_ANSWER_FINANCE flag (default off; Owner decision only, never a transaction) — flag-gated" },
     { tool: "partner_propose_knowledge", reads: "preview → confirm → commit typed Owner knowledge — flag-gated" },
   ],
   /** The five action tools (lib/partner/act/mcp-tools.ts) — LIVE in production since 2026-09-27 (act flags on, partner:act consent). */

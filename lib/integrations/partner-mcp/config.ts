@@ -62,7 +62,7 @@ export interface McpConfig {
    * advertised, not consentable, not accepted, and the answer tool does not exist.
    */
   answerEnabled: boolean;
-  /** Reserved (finance answers through Claude). NOT wired in P1: finance question refs are refused regardless. */
+  /** Finance answers through Claude: true ONLY with the answer switch + MCP-only + PARTNER_MCP_ANSWER_FINANCE="true" (default off: finance refs are refused). */
   answerFinanceEnabled: boolean;
   answerRateLimit: Array<{ windowMs: number; max: number }>;
   /**
@@ -116,7 +116,7 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       maxActiveClients: 10, toolTimeoutMs: 60_000, maxResultChars: 100_000, maxRequestBytes: 16 * 1024,
       rateLimit: [{ windowMs: 60_000, max: 30 }, { windowMs: 3_600_000, max: 300 }],
       answerEnabled: env.PARTNER_MCP_ANSWER_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
-      answerFinanceEnabled: false,
+      answerFinanceEnabled: env.PARTNER_MCP_ANSWER_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true" && env.PARTNER_MCP_ANSWER_FINANCE === "true",
       answerRateLimit: [{ windowMs: 3_600_000, max: 10 }, { windowMs: 86_400_000, max: 30 }],
       knowledgeEnabled: env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
       knowledgeRateLimit: [{ windowMs: 3_600_000, max: 20 }, { windowMs: 86_400_000, max: 60 }],

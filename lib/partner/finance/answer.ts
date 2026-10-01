@@ -24,6 +24,7 @@ import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { isValidYmd } from "../investigation/answer-value";
 import { OwnerContextStoreError, type OwnerContextDraft } from "../investigation/context-persistence";
 import type { PersistedOwnerContext } from "../investigation/context-row";
+import type { OwnerContextProvenance } from "../investigation/types";
 import { isFinanceQuestionType } from "../investigation/finance-questions";
 import { FINANCE_QUESTION_ID_RE } from "./dto";
 import { INTEGRITY_SCHEMA_VERSION, type OwnerQuestion, type PartnerFinanceIntegrityState } from "./integrity";
@@ -40,6 +41,8 @@ export interface FinanceAnswerDeps {
   appendOwnerContext(draft: OwnerContextDraft): Promise<PersistedOwnerContext>;
   ledger: RequestLedger;
   audit(event: string, data: Record<string, unknown>): void;
+  /** Who answered. Absent = the Owner in the dashboard (owner_manual); the connector bridge sets owner_via_claude. */
+  provenance?: OwnerContextProvenance;
 }
 
 export type FinanceAnswerResult =
@@ -150,7 +153,7 @@ async function answerOnce(deps: FinanceAnswerDeps, actorUserId: string, v: Valid
     triggerContextId: null,
     note: null,
     scope: "CASE_INSTANCE",
-    provenance: { source: "owner_manual" },
+    provenance: deps.provenance ?? { source: "owner_manual" },
     supersedesId,
   };
   try {

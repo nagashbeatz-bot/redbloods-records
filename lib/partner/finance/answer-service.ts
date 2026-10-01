@@ -11,7 +11,11 @@ import "server-only";
 import { getAuthUser, requireOwner } from "@/lib/require-auth";
 import { appendOwnerContext } from "../investigation/context-store";
 import { answerFinanceQuestionCore, createRequestLedger, type FinanceAnswerDeps, type FinanceAnswerResult } from "./answer";
-import { loadFinanceLive } from "./server";
+import type { OwnerContextProvenance } from "../investigation/types";
+import { loadFinanceLive, type FinanceLiveResult } from "./server";
+
+/** A brand-new live read, for post-write verification and the next questions (bridge). */
+export const loadFinanceFresh = (): Promise<FinanceLiveResult> => loadFinanceLive();
 
 export type OwnerAuthFailure = { status: "UNAUTHORIZED" } | { status: "FORBIDDEN" };
 
@@ -27,6 +31,11 @@ const deps: FinanceAnswerDeps = {
   ledger: createRequestLedger(),
   audit: (event, data) => console.info(`[partner-finance] ${event}`, JSON.stringify(data)),
 };
+
+/** The SAME dependencies (store, live loader, replay ledger) for another channel: only the provenance differs (owner_via_claude from the connector bridge). */
+export function financeAnswerDeps(provenance?: OwnerContextProvenance): FinanceAnswerDeps {
+  return provenance ? { ...deps, provenance } : deps;
+}
 
 export async function answerFinanceQuestion(input: unknown): Promise<FinanceAnswerResult | OwnerAuthFailure> {
   const denied = await requireOwner();

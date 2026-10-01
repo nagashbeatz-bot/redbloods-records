@@ -10,6 +10,7 @@ import type { KnowledgeRegistry } from "../registry";
 import type { KnowledgeCapability, KnowledgeDomain, KnowledgeItem } from "../types";
 import { byCount, item, ok, partner, partnerRecord, record, result, sfact, unavailable } from "./common";
 import { encodeQuestionRef } from "../../bridge/ref";
+import { financeAnswerAvailableFor, financeAnswerOffer } from "../../bridge/finance-ref";
 import type { IntegrityQuestion } from "../../integrity/types";
 
 /** P1: the opaque ref + option codes a connector with partner:answer may use (the ref is re-validated live). */
@@ -19,7 +20,8 @@ const DOMAINS: KnowledgeDomain[] = ["COMPANY", "PARTNER", "FINANCE", "PROJECTS",
 const EPI = (e: string) => (e === "FACT" || e === "DERIVED" || e === "OWNER_DECISION" || e === "HYPOTHESIS" ? e : "UNKNOWN") as KnowledgeItem["epistemic"];
 /** A stable, neutral id: entity keys stay (they are public Gateway keys); internal register subject keys are hashed (no table / column names). */
 const findingId = (f: IntegrityFinding) => `${f.type}:${f.subject.type === "label-artist" ? f.subject.key : `${f.subject.type}-${sha256Hex(f.subject.key).slice(0, 10)}`}`;
-const WHERE_TO_ANSWER = "הבעלים עונה בלוח הבקרה של Redbloods (\"צריך ממך\"), או — רק אם החיבור קיבל את הרשאת המענה — לענות ל־Claude בשיחה, ו־Claude ישלח את התשובה הסגורה (partner_answer_question).";
+const WHERE_TO_ANSWER_DASHBOARD = "הבעלים עונה על השאלה הזו בלוח הבקרה של Redbloods (\"צריך ממך\") בלבד — היא לא נענית דרך החיבור הזה.";
+const WHERE_TO_ANSWER ="הבעלים עונה בלוח הבקרה של Redbloods (\"צריך ממך\"), או — רק אם החיבור קיבל את הרשאת המענה — לענות ל־Claude בשיחה, ו־Claude ישלח את התשובה הסגורה (partner_answer_question).";
 
 /** The catalog is itself a capability: discovery goes through the same allowlist. */
 export function catalogCapability(getRegistry: () => KnowledgeRegistry): KnowledgeCapability {
@@ -40,7 +42,7 @@ export function catalogCapability(getRegistry: () => KnowledgeRegistry): Knowled
 
 export const ownerNeeds: KnowledgeCapability = {
   id: "owner_needs", domain: "PARTNER", titleHe: "מה Partner צריך מהבעלים",
-  descriptionForModel: "What Partner currently needs from the Owner: open Owner questions (business definitions such as label project classification, finance questions) and suggested actions waiting for the Owner's decision. Answers happen ONLY in the Redbloods dashboard, never through this connector. Use for 'what do you need from me?'.",
+  descriptionForModel: "What Partner currently needs from the Owner: open Owner questions (business definitions such as label project classification, finance questions) and suggested actions waiting for the Owner's decision. A question is answerable through this connector (partner_answer_question) ONLY when it carries answer.questionRef + answer.options (answerable true); every other question is answered in the Redbloods dashboard. A Finance answer is the Owner's decision only: it never records income or a transaction. Use for 'what do you need from me?'.",
   examplesHe: ["מה אתה צריך ממני?", "יש משהו שמחכה לי?", "על מה אני צריך להחליט?"],
   modes: { current: { descriptionForModel: "Everything currently waiting for the Owner (questions are capped by Partner at 2 per area; deferred ones are counted)" } }, defaultMode: "current",
   params: {}, paging: { defaultLimit: 10, maxLimit: 20 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" },
@@ -65,10 +67,23 @@ export const ownerNeeds: KnowledgeCapability = {
     } else missing.push({ fact: "Company Integrity questions", whyNeeded: "the integrity register could not be read — open definition questions may exist" });
     const f = ok(src.finance);
     if (f?.brief) {
-      f.brief.rehab.questions.forEach((q, i) => items.push(item({
-        id: `finance:q${i}`, label: partnerRecord(q.textHe), epistemic: "UNKNOWN", source: "FINANCE",
-        fields: { kind: "OWNER_QUESTION", area: "FINANCE", topic: q.questionType, why: partnerRecord(q.whyHe), options: q.options.map((o) => partner(o.labelHe)), whereToAnswer: partner(WHERE_TO_ANSWER) },
-      })));
+      // Finance answering through Claude is a separate switch: only then does a question carry a ref and answerable = true.
+      const surfaced = new Map(f.integrity.top.questions.map((x) => [x.identity?.questionId, x] as const));
+      const viaClaude = financeAnswerAvailableFor(src.audience);
+      f.brief.rehab.questions.forEach((q, i) => {
+        const live = q.answer ? surfaced.get(q.answer.questionId) : undefined;
+        const offer = viaClaude && live ? financeAnswerOffer(live) : null;
+        items.push(item({
+          id: `finance:q${i}`, label: partnerRecord(q.textHe), epistemic: "UNKNOWN", source: "FINANCE",
+          fields: {
+            kind: "OWNER_QUESTION", area: "FINANCE", topic: q.questionType, why: partnerRecord(q.whyHe),
+            options: q.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })),
+            answerable: !!offer, answerVia: offer ? "CLAUDE" : "DASHBOARD_ONLY",
+            whereToAnswer: partner(offer ? WHERE_TO_ANSWER : WHERE_TO_ANSWER_DASHBOARD),
+            ...(offer ? { answer: { questionRef: offer.questionRef, options: offer.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) } } : {}),
+          },
+        }));
+      });
     } else if (f && !f.answersAvailable) missing.push({ fact: "Finance Owner questions", whyNeeded: "hidden until Owner answers can be read (never re-ask blindly)" });
     else if (!f) missing.push({ fact: "Finance Owner questions", whyNeeded: "the Finance Brain could not be read" });
     const acts = ok(src.actions);

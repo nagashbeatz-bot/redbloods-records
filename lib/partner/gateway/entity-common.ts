@@ -8,6 +8,7 @@ import type { PartnerCase } from "../cases/types";
 import { caseEntityIds, caseSubjectKey, cap, eventFreshness, gatewayEntityOfMemoryKey, gatewayKeyForSubject, memoryFor, ok, partner, partnerRecord, toConflicts, toObservations, toOwnerDecisions, toPatterns, type GatewaySources } from "./core";
 import { salaryLinkedId } from "../../victor-salary-format";
 import { encodeQuestionRef } from "../bridge/ref";
+import { financeAnswerAvailableFor, financeAnswerOffer } from "../bridge/finance-ref";
 import { isCancelledStatus, isExpenseFullyPaidStatus } from "../../finance/classify";
 import {
   GATEWAY_LIMITS,
@@ -43,16 +44,25 @@ export function issuesFor(src: GatewaySources, key: string, ids: ReadonlySet<str
 
 /**
  * Unanswered Owner questions about these entities: the Finance view's list (already memory-preflighted) + the
- * Company Integrity questions surfaced right now (max 2, already Owner-Context-preflighted). answerable = the Owner
- * can answer it in the Redbloods dashboard (never through a read-only interface).
+ * Company Integrity questions surfaced right now (max 2, already Owner-Context-preflighted). answerable = the Owner can
+ * answer it THROUGH THIS CONNECTION (partner_answer_question): Integrity questions always carry their ref; a Finance question
+ * only when the Finance answer switch is on (otherwise answerable = false: it is answered in the Redbloods dashboard).
  */
 export function questionsFor(src: GatewaySources, keys: ReadonlySet<string>): GatewayQuestion[] {
   const out: GatewayQuestion[] = [];
   const f = ok(src.finance);
   if (f && f.answersAvailable) {
+    // A Finance question is answerable through Claude only when the dedicated switch is on for THIS audience AND it is one of the
+    // surfaced (≤ 2, memory-preflighted) questions the answer core will accept; otherwise it is dashboard-only (answerable = false).
+    const surfaced = new Set(f.integrity.top.questions.map((x) => x.identity?.questionId).filter((x): x is string => !!x));
+    const viaClaude = financeAnswerAvailableFor(src.audience);
     out.push(...f.integrity.questions
       .filter((q) => keys.has(gatewayKeyForSubject(q.subject.type, q.subject.id)))
-      .map((q): GatewayQuestion => ({ questionType: q.questionType, subject: gatewayKeyForSubject(q.subject.type, q.subject.id), text: partnerRecord(q.textHe), why: partnerRecord(q.whyItMattersHe), answerable: !!q.identity })));
+      .map((q): GatewayQuestion => {
+        const offer = viaClaude && q.identity && surfaced.has(q.identity.questionId) ? financeAnswerOffer(q) : null;
+        return { questionType: q.questionType, subject: gatewayKeyForSubject(q.subject.type, q.subject.id), text: partnerRecord(q.textHe), why: partnerRecord(q.whyItMattersHe), answerable: !!offer,
+          ...(offer ? { answer: { questionRef: offer.questionRef, options: offer.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) } } : {}) };
+      }));
   }
   for (const q of ok(src.integrity)?.questions ?? []) {
     const subject = `${q.subject.type}:${q.subject.id}`;

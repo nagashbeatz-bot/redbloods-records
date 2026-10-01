@@ -111,7 +111,7 @@ void (async () => {
     check("switch off → the deployment advertises / grants read only", [advertisedScope(off), protectedResourceMetadata(off).scopes_supported], [MCP_SCOPE, [MCP_SCOPE]]);
     check("switch on without MCP-only → still off (never on the main app)", cfg({ ...BASE_ENV, PARTNER_MCP_ANSWER_ENABLED: "true" }).answerEnabled, false);
     check("switch on + MCP-only → partner:answer advertised", [on.answerEnabled, protectedResourceMetadata(on).scopes_supported], [true, ["partner:read", "partner:answer"]]);
-    check("finance answering stays off (not wired)", [on.answerFinanceEnabled, cfg({ ...ENV_ON, PARTNER_MCP_ANSWER_FINANCE: "true" }).answerFinanceEnabled], [false, false]);
+    check("finance answering has its OWN flag: off unless PARTNER_MCP_ANSWER_FINANCE=true on top of the answer switch + MCP-only", [on.answerFinanceEnabled, cfg({ ...ENV_ON, PARTNER_MCP_ANSWER_FINANCE: "true" }).answerFinanceEnabled, cfg({ ...BASE_ENV, PARTNER_MCP_ANSWER_FINANCE: "true" }).answerFinanceEnabled], [false, true, false]);
     const mk = (c: typeof on): OAuthDeps => ({ config: c, store: memoryMcpStore(() => Date.now()), nowSec: () => Math.floor(Date.now() / 1000), consentReplay: new MemoryConsentReplayGuard() });
     const offDeps = mk(off), onDeps = mk(on);
     check("switch off: DCR with partner:answer refused", (await registerClientCore({ redirect_uris: [CALLBACK], scope: "partner:read partner:answer" }, offDeps)).status, 400);
@@ -289,8 +289,8 @@ void (async () => {
     const mcpSrc = ["mcp.ts", "tools.ts", "server.ts", "oauth.ts", "mcp-only.ts", "store-supabase.ts"].map((x) => read(`lib/integrations/partner-mcp/${x}`)).join("\n");
     ok("MCP never imports the Owner Context store / persistence / answer cores (only the bridge server, lazily)", !/context-store|context-persistence|integrity\/answer|integrity\/server|finance\/answer/.test(mcpSrc) && /await import\("@\/lib\/partner\/bridge\/server"\)/.test(read("lib/integrations/partner-mcp/server.ts")));
     ok("MCP has no generic table write (only the audit insert)", (mcpSrc.match(/\.from\("/g) ?? []).length === 2 && /from\("partner_gateway_audit"\)\.insert/.test(mcpSrc) && /from\("partner_mcp_clients"\)\.select/.test(mcpSrc));
-    const bridge = read("lib/partner/bridge/answer.ts") + read("lib/partner/bridge/server.ts") + read("lib/partner/bridge/ref.ts");
-    ok("the bridge imports no store, no Supabase table access, no finance / action code", !/context-store|context-persistence|appendOwnerContext|\.insert\(|\.rpc\(|finance\/|actions\/(service|action-service|event)/.test(bridge) && !/\.from\(/.test(bridge.replace(/Uint8Array\.from\(/g, "")));
+    const bridge = (read("lib/partner/bridge/answer.ts") + read("lib/partner/bridge/server.ts") + read("lib/partner/bridge/ref.ts") + read("lib/partner/bridge/finance-ref.ts")).replace(/from "\.\.\/(finance\/(answer|answer-service|integrity)|investigation\/finance-questions)"/g, "");
+    ok("the bridge imports no store, no Supabase table access, no finance / action code (except the existing Finance answer core + question types)", !/context-store|context-persistence|appendOwnerContext|\.insert\(|\.rpc\(|finance\/|actions\/(service|action-service|event)/.test(bridge) && !/\.from\(/.test(bridge.replace(/Uint8Array\.from\(/g, "")));
     ok("the bridge calls ONLY the existing integrity core (with provenance) — no draft is built here", /answerIntegrityQuestionCore\(deps\.integrityDeps\(provenance\)/.test(bridge) && !/questionText:|caseFactsFingerprint:|supersedesId:/.test(bridge));
     const core = read("lib/partner/integrity/answer.ts").replace(/\/\*[\s\S]*?\*\//g, "");
     ok("the core builds every draft field from the LIVE question; only provenance comes from the binding", /questionText: q\.textHe/.test(core) && /caseFactsFingerprint: q\.fingerprint/.test(core) && /subjectId: q\.subject\.id/.test(core) && /provenance: deps\.provenance \?\? \{ source: "owner_manual" \}/.test(core));
