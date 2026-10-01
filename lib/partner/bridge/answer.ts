@@ -25,10 +25,13 @@ import { FINANCE_ANSWER_OPTIONS, isFinanceQuestionType } from "../investigation/
 import { answerFinanceQuestionCore, type FinanceAnswerDeps, type FinanceLiveView } from "../finance/answer";
 import { financeAnswerOffer } from "./finance-ref";
 import { decodeQuestionRef, encodeQuestionRef, type QuestionRef } from "./ref";
+import { ownerApprovalVerdict } from "../owner-approval";
 
 export type BridgeAnswerStatus =
   | "LEARNED" | "ALREADY_ANSWERED" | "STALE_QUESTION" | "NOT_CURRENT" | "INVALID_ANSWER" | "NOT_AUTHORIZED"
-  | "NOT_VERIFIED" | "FINANCE_ANSWERING_DISABLED" | "UNAVAILABLE" | "FAILED";
+  | "NOT_VERIFIED" | "FINANCE_ANSWERING_DISABLED" | "UNAVAILABLE" | "FAILED"
+  /** T1 (2026-10-01): the Owner's confirmation words were missing / not an approval / named something else — nothing written. */
+  | "APPROVAL_MISSING" | "NOT_AN_APPROVAL" | "APPROVAL_WITH_CHANGES";
 
 export interface BridgeQuestionView { questionRef: string; subject: string | null; questionHe: string; options: Array<{ code: string; label: string }> }
 
@@ -91,10 +94,26 @@ export function verifiedInRegister(reg: CompanyIntegrityRegister, questionId: st
   return applied && decision && learned && !reg.questions.some((q) => q.questionId === questionId);
 }
 
+type AnswerOption = { code: string; labelHe: string };
+const normText = (x: string) => x.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+/**
+ * T1: the Owner confirmed THIS answer. Read-back = the chosen option's label + code (repeating them is fine); naming
+ * another option's label is a change, never an approval of the chosen one.
+ */
+export function answerApproval(text: unknown, options: readonly AnswerOption[], chosen: string): { ok: true } | { ok: false; code: "APPROVAL_MISSING" | "NOT_AN_APPROVAL" | "APPROVAL_WITH_CHANGES"; messageHe: string } {
+  const picked = options.find((o) => o.code === chosen);
+  const v = ownerApprovalVerdict(text, picked ? [picked.labelHe, picked.code] : [chosen]);
+  if (!v.ok) return v;
+  const t = normText(String(text));
+  const other = options.find((o) => o.code !== chosen && t.includes(normText(o.labelHe)) && !(picked && normText(picked.labelHe).includes(normText(o.labelHe))));
+  if (other) return { ok: false, code: "APPROVAL_WITH_CHANGES", messageHe: "הבעלים ציין תשובה אחרת מזו שנבחרה — זה לא אישור. צריך לקרוא לו שוב את התשובה ולקבל אישור. לא נשמר דבר." };
+  return { ok: true };
+}
+
 const learnedMessage = (subject: string | null, questionType: string) =>
   questionType === "INTEGRITY_LABEL_PROJECT_CLASSIFICATION" && subject ? `למדתי. אשתמש בזה כשאני מנתח את הפרויקטים של ${subject}.` : "למדתי. שמרתי את זה כהחלטה שלך.";
 
-export async function answerViaConnectorCore(deps: BridgeDeps, i: { questionRef: unknown; answer: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
+export async function answerViaConnectorCore(deps: BridgeDeps, i: { questionRef: unknown; answer: unknown; confirmationText?: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
   const out = (status: BridgeAnswerStatus, ownerMessageHe: string, reg: CompanyIntegrityRegister | null, recorded: BridgeAnswerResult["recorded"] = null, persisted = false): BridgeAnswerResult =>
     ({ status, recorded, ownerMessageHe, nextQuestions: questionViews(reg), persisted });
   const ref = decodeQuestionRef(i.questionRef);
@@ -105,6 +124,8 @@ export async function answerViaConnectorCore(deps: BridgeDeps, i: { questionRef:
   if (typeof i.answer !== "string" || !CODE_RE.test(i.answer) || !INTEGRITY_ANSWER_OPTIONS[type].some((o) => o.code === i.answer)) {
     return out("INVALID_ANSWER", "זו לא אחת מהתשובות האפשריות לשאלה. שאל את הבעלים שוב עם האפשרויות של Partner.", await deps.freshRegister().catch(() => null));
   }
+  const approval = answerApproval(i.confirmationText, INTEGRITY_ANSWER_OPTIONS[type], i.answer);
+  if (!approval.ok) return out(approval.code, approval.messageHe, null);
   let owner = false;
   try { owner = await deps.isOwner(i.actor.userId); } catch { owner = false; }
   if (!owner) return out("NOT_AUTHORIZED", "רק הבעלים של Redbloods יכול לענות על שאלות של Partner.", null);
@@ -148,7 +169,7 @@ export function financeQuestionViews(live: FinanceLiveView | null): BridgeQuesti
   });
 }
 
-async function answerFinanceViaConnector(deps: BridgeDeps, ref: QuestionRef, i: { answer: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
+async function answerFinanceViaConnector(deps: BridgeDeps, ref: QuestionRef, i: { answer: unknown; confirmationText?: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
   const fresh = async () => (deps.freshFinance ? await deps.freshFinance().catch(() => null) : null);
   const out = (status: BridgeAnswerStatus, ownerMessageHe: string, live: FinanceLiveView | null, recorded: BridgeAnswerResult["recorded"] = null, persisted = false): BridgeAnswerResult =>
     ({ status, recorded, ownerMessageHe, nextQuestions: financeQuestionViews(live), persisted });
@@ -161,6 +182,8 @@ async function answerFinanceViaConnector(deps: BridgeDeps, ref: QuestionRef, i: 
   }
   // A typed date cannot travel through { questionRef, answer }: that answer stays a dashboard answer.
   if (i.answer === "EXACT_DATE") return out("INVALID_ANSWER", "תשובה עם תאריך מדויק אפשר לתת רק בלוח הבקרה של Redbloods.", await fresh());
+  const approval = answerApproval(i.confirmationText, offered, i.answer);
+  if (!approval.ok) return out(approval.code, approval.messageHe, null);
   let owner = false;
   try { owner = await deps.isOwner(i.actor.userId); } catch { owner = false; }
   if (!owner) return out("NOT_AUTHORIZED", "רק הבעלים של Redbloods יכול לענות על שאלות של Partner.", null);

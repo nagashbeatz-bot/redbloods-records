@@ -70,7 +70,7 @@ function world() {
   };
   const question = async (): Promise<OwnerQuestion> => (await view()).v.integrity.top.questions.find((q) => q.questionType === TYPE)!;
   const refOf = (q: OwnerQuestion) => financeAnswerOffer(q)!.questionRef;
-  const answer = (questionRef: unknown, a: unknown) => answerViaConnectorCore(bridge, { questionRef, answer: a, actor: ACTOR, attemptAuditId: "00000000-0000-4000-8000-000000000001" });
+  const answer = (questionRef: unknown, a: unknown, confirmationText: unknown = "כן") => answerViaConnectorCore(bridge, { questionRef, answer: a, confirmationText, actor: ACTOR, attemptAuditId: "00000000-0000-4000-8000-000000000001" });
   return { db, st, view, question, refOf, answer, bridge };
 }
 
@@ -195,7 +195,7 @@ void (async () => {
     w.st.flag = false;
     const r = await w.answer(w.refOf(q), CODE);
     check("FINANCE_ANSWERING_DISABLED, nothing written, no finance dependency created", [r.status, r.persisted, w.db.rows.length, w.st.calls.financeDeps, w.st.calls.live], ["FINANCE_ANSWERING_DISABLED", false, 0, 0, 0]);
-    const bare = await answerViaConnectorCore({ isOwner: async () => true, integrityDeps: () => { throw new Error("x"); }, freshRegister: async () => null }, { questionRef: w.refOf(q), answer: CODE, actor: ACTOR, attemptAuditId: "a" });
+    const bare = await answerViaConnectorCore({ isOwner: async () => true, integrityDeps: () => { throw new Error("x"); }, freshRegister: async () => null }, { questionRef: w.refOf(q), answer: CODE, confirmationText: "כן", actor: ACTOR, attemptAuditId: "a" });
     check("a bridge without finance dependencies behaves as OFF (the pre-existing default)", bare.status, "FINANCE_ANSWERING_DISABLED");
   }
 
@@ -232,6 +232,15 @@ void (async () => {
     ok("the bridge writes only through the existing Finance answer core (no own Owner Context store import)", !/context-store|context-persistence/.test(rd("lib/partner/bridge/answer.ts") + rd("lib/partner/bridge/finance-ref.ts")) && /answerFinanceQuestionCore/.test(rd("lib/partner/bridge/answer.ts")));
     ok("no hardcoded finance enablement in the config", !/answerFinanceEnabled:\s*(true|false)\b/.test(rd("lib/integrations/partner-mcp/config.ts")));
     ok("the dashboard route is unchanged: it never sets a provenance", !/provenance/.test(rd("app/api/partner/finance/answer/route.ts")));
+  }
+
+  console.log("\nT1 (2026-10-01). Finance answers need the Owner's confirmation words too");
+  {
+    const w = world();
+    const q = await w.question();
+    const ref = w.refOf(q);
+    check("missing / \"לא\" / approval + change → refused, nothing written", [(await w.answer(ref, CODE, null)).status, (await w.answer(ref, CODE, "לא")).status, (await w.answer(ref, CODE, "כן אבל 200")).status, w.db.rows.length], ["APPROVAL_MISSING", "NOT_AN_APPROVAL", "APPROVAL_WITH_CHANGES", 0]);
+    check("the Owner's \"מאשר\" → LEARNED", [(await w.answer(ref, CODE, "מאשר")).status, w.db.rows.length], ["LEARNED", 1]);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

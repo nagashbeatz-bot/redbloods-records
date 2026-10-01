@@ -37,9 +37,9 @@ export const SERVER_INSTRUCTIONS =
   "Redbloods Partner is the canonical business intelligence of Redbloods — use it instead of guessing about the company. partner_brief = what matters now; " +
   "partner_resolve = turn a name into an entity key; partner_entity = everything Partner knows about one entity; partner_query = any registered Partner knowledge " +
   "(collections such as shows, projects, finance, Owner questions, what Partner does not know — capability \"catalog\" lists them). Everything is read-only, except " +
-  "partner_answer_question when it is present: then, and only when the Owner explicitly answers one of Partner's current questions in this conversation, submit that closed " +
-  "answer and say \"למדתי\" only if the result is LEARNED. When partner_propose_knowledge is present and the Owner tells you durable organizational knowledge (who is who, roles, " +
-  "relationships — ownership is OWNER_OF / FOUNDER_OF, never a role; roster = LABEL_ARTIST_OF ACTIVE / ENDED, non-roster = WORKS_WITH — classifications such as RELEASE_TYPE, blockers, commitments, Owner-reported payments, friction, working-policy candidates; resolve to the canonical entity first, KNOWN_ENTITY only as a fallback), preview it, read it back, and commit ONLY after the Owner explicitly confirms. " +
+  "partner_answer_question when it is present: then, and only when the Owner explicitly answers one of Partner's current questions in this conversation, read the chosen option back, submit that closed " +
+  "answer with confirmationText = his exact words confirming it, and say \"למדתי\" only if the result is LEARNED. When partner_propose_knowledge is present and the Owner tells you durable organizational knowledge (who is who, roles, " +
+  "relationships — ownership is OWNER_OF / FOUNDER_OF, never a role; roster = LABEL_ARTIST_OF ACTIVE / ENDED, non-roster = WORKS_WITH — classifications such as RELEASE_TYPE, blockers, commitments, Owner-reported payments, friction, working-policy candidates; resolve to the canonical entity first, KNOWN_ENTITY only as a fallback), preview it, read it back, and commit ONLY after the Owner explicitly confirms — with confirmationText = his exact words (the server refuses anything that is not an approval of that read-back; never write the words yourself). " +
   "A request to change something (a deadline, a payment record) is an action, not knowledge. Actions are approved only in the Redbloods dashboard — UNLESS the partner_plan_action tool is present: then " +
   "(1) turn the Boss's words into ONE registered action id + typed args — or, when one business event needs several registered actions (a show + its rehearsal + a task…), into steps: [{ actionId, args }] in execution order, ONE plan (entity keys from partner_resolve / partner_query records; conversation context is only a hint — if the entity is ambiguous or info is missing, ASK; never guess), " +
   "(2) call partner_plan_action — the SERVER resolves every entity, reads live state and builds the plan, (3) show the Boss the preview in plain Hebrew — EVERY step: the entity, current value → new value, amounts with currency, dates, recipients, finance / calendar / push effects, execution order, what will NOT happen — and ask \"לאשר?\", " +
@@ -84,7 +84,7 @@ export interface McpAnswerDeps {
   limiter: SlidingWindowLimiter;
   /** A fresh uuid for the attempt audit row (referenced by the Owner Context provenance). */
   newId(): string;
-  submit(i: { questionRef: string; answer: string; actor: { userId: string; clientId: string; tokenId: string }; attemptAuditId: string }): Promise<Record<string, unknown>>;
+  submit(i: { questionRef: string; answer: string; confirmationText: string; actor: { userId: string; clientId: string; tokenId: string }; attemptAuditId: string }): Promise<Record<string, unknown>>;
 }
 
 /**
@@ -95,7 +95,7 @@ export interface McpKnowledgeDeps {
   limiter: SlidingWindowLimiter;
   newId(): string;
   preview(i: { items: KnowledgeItemArgs[]; actor: { userId: string; clientId: string; tokenId: string } }): Promise<Record<string, unknown>>;
-  commit(i: { items: KnowledgeItemArgs[]; confirmationToken: string; actor: { userId: string; clientId: string; tokenId: string }; attemptAuditId: string }): Promise<Record<string, unknown>>;
+  commit(i: { items: KnowledgeItemArgs[]; confirmationToken: string; confirmationText: string; actor: { userId: string; clientId: string; tokenId: string }; attemptAuditId: string }): Promise<Record<string, unknown>>;
 }
 
 /**
@@ -152,6 +152,9 @@ function baseAudit(p: Principal | null, method: string, protocolVersion: string 
     freshness: null, response_bytes: null, latency_ms: null, protocol_version: protocolVersion && /^[0-9-]{1,20}$/.test(protocolVersion) ? protocolVersion : null,
   };
 }
+
+/** The audit fingerprint of the Owner's approval words (T1): sha256 only — the words themselves are never stored. */
+export const confirmationFingerprint = (text: string) => sha256Hex(`owner-confirmation-v1|${text}`);
 
 class TimeoutError extends Error {}
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -303,13 +306,14 @@ async function callAnswerTool(id: string | number, params: Record<string, unknow
   if (!lim.ok) return finish(rateLimited(id, lim), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
   const attemptId = ans.newId();
   try {
-    await deps.audit({ ...audit, ...base, id: attemptId, method: "answer/attempt", status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
+    // the attempt row fingerprints the Owner's approval words (never the text itself): what each write relied on stays checkable
+    await deps.audit({ ...audit, ...base, id: attemptId, method: "answer/attempt", input_fingerprint: confirmationFingerprint(a.confirmationText), status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
   } catch {
     return rpcError(id, -32001, "audit unavailable — request refused (nothing was recorded)");
   }
   let payload: Record<string, unknown>;
   try {
-    payload = await withTimeout(ans.submit({ questionRef: a.questionRef, answer: a.answer, actor: { userId: p.userId, clientId: p.clientId, tokenId: p.tokenId }, attemptAuditId: attemptId }), deps.config.toolTimeoutMs);
+    payload = await withTimeout(ans.submit({ questionRef: a.questionRef, answer: a.answer, confirmationText: a.confirmationText, actor: { userId: p.userId, clientId: p.clientId, tokenId: p.tokenId }, attemptAuditId: attemptId }), deps.config.toolTimeoutMs);
   } catch (e) {
     const timeout = e instanceof TimeoutError;
     const body = { status: timeout ? "OUTCOME_UNKNOWN" : "FAILED", ownerMessageHe: timeout ? "לא קיבלתי אישור בזמן. ייתכן שהתשובה נשמרה — קרא שוב את Partner לפני שתגיד משהו לבעלים." : "התשובה לא נשמרה. אפשר לנסות שוב או לענות בלוח הבקרה.", recorded: null, nextQuestions: [], persisted: null };
@@ -361,13 +365,13 @@ async function callKnowledgeTool(id: string | number, params: Record<string, unk
   }
   const attemptId = kn.newId();
   try {
-    await deps.audit({ ...audit, ...base, id: attemptId, method: "knowledge/attempt", status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
+    await deps.audit({ ...audit, ...base, id: attemptId, method: "knowledge/attempt", input_fingerprint: confirmationFingerprint(a.confirmationText!), status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
   } catch {
     return rpcError(id, -32001, "audit unavailable — request refused (nothing was recorded)");
   }
   let payload: Record<string, unknown>;
   try {
-    payload = await withTimeout(kn.commit({ items: a.items, confirmationToken: a.confirmationToken!, actor, attemptAuditId: attemptId }), deps.config.toolTimeoutMs);
+    payload = await withTimeout(kn.commit({ items: a.items, confirmationToken: a.confirmationToken!, confirmationText: a.confirmationText!, actor, attemptAuditId: attemptId }), deps.config.toolTimeoutMs);
   } catch (e) {
     const timeout = e instanceof TimeoutError;
     const body = { status: timeout ? "OUTCOME_UNKNOWN" : "FAILED", ownerMessageHe: timeout ? "לא קיבלתי אישור בזמן. ייתכן שהידע נשמר — אבדוק שוב לפני שאגיד משהו." : "הידע לא נשמר. אפשר לנסות שוב.", recorded: null, persisted: null };
