@@ -25,6 +25,7 @@ import type { GatewaySources } from "../gateway/core";
 import type { ProjectDetailRaw, DetailTask } from "../projects/detail-types";
 import type { LabelDetailRaw } from "../label/detail-types";
 import type { ActionSurfaceItemDto } from "../actions/surface-dto";
+import type { OpsProjectAction } from "../operations/types";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import { buildWork as buildVictorWork } from "../victor/view";
 import { buildMixWork } from "../mix/view";
@@ -226,15 +227,25 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   }
 
   // ── 3. Send log (project_view's own signals), only for projects with an open send-log entry ──
-  const sendProjects = [...new Set((det?.actions?.rows ?? []).filter((a) => a.projectId && (a.status === "pending_feedback" || a.status === "pending_version")).map((a) => a.projectId as string))]
+  // the SAME rows project_view reads (operations.projectActions)
+  const sendLog = (ok(src.operations) as { projectActions?: { rows: OpsProjectAction[] } } | null)?.projectActions?.rows ?? null;
+  const sendProjects = [...new Set((sendLog ?? []).filter((a) => a.projectId && (a.status === "pending_feedback" || a.status === "pending_version")).map((a) => a.projectId as string))]
     .filter((pid) => !!projIdx[pid]);
   for (const pid of sendProjects) {
     checked++;
     const codes = new Set(buildProjectView(src, pid).signals.map((s) => s.code));
     const name = pname(pid) ?? "פרויקט";
+    // the send log says BOTH "waiting on you" and "waiting on others" for the same project = MIXED → not decided here
+    const mixedLog = codes.has("OWNER_FEEDBACK_DUE") && (codes.has("WAITING_FEEDBACK") || codes.has("WAITING_VERSION"));
+    if (mixedLog) {
+      mark(pid, "unknown", "יומן שליחות");
+      undecided.push({ key: `project:${pid}|SEND_LOG_MIXED`, entityKey: `project:${pid}`, title: name, reasonCode: "SEND_LOG_MIXED",
+        reasonHe: "יומן השליחות מראה גם גרסה שמחכה לפידבק שלך וגם המתנה לאחרים — לא מוכרע אצל מי הכדור (אולי טופל מחוץ למערכת)", ball: "UNKNOWN", party: null, date: null, open: projectOpen(pid) });
+      continue;
+    }
     if (codes.has("OWNER_FEEDBACK_DUE")) {
       mark(pid, "owner", "יומן שליחות");
-      const at = (det?.actions?.rows ?? []).filter((a) => a.projectId === pid && a.status === "pending_feedback" && a.actionType === "received").map((a) => a.actionDate).filter((x): x is string => !!x).sort().pop() ?? null;
+      const at = (sendLog ?? []).filter((a) => a.projectId === pid && a.status === "pending_feedback" && a.actionType === "received").map((a) => a.actionDate).filter((x): x is string => !!x).sort().pop() ?? null;
       const n = at && isStrictYmd(at.slice(0, 10)) ? daysBetween(at, today) : null;
       const existing = ownerItemOf(pid);
       const ev: NeedsEvidence = { code: "OWNER_FEEDBACK_DUE", he: "התקבלה גרסה ומחכים לפידבק שלך (יומן שליחות; אין פידבק רשום אחריה)", source: "PROJECT_ACTIONS", epistemic: "DERIVED", at };

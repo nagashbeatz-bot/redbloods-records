@@ -65,7 +65,7 @@ function src(o: Opts = {}): GatewaySources {
     mixComments: { rows: o.comments ?? [], capped: false }, mixTargets: { rows: [], capped: false }, mixTargetNotes: { rows: [], capped: false }, finalFiles: { rows: [], capped: false },
     projectSettings: { rows: [], capped: false }, tasks: { rows: o.tasks ?? [], capped: false }, actions: { rows: o.actionsLog ?? [], capped: false },
   };
-  const ops = { engineerWork: { rows: o.engineer ?? [], capped: false }, mixVersions: { rows: o.versions ?? [], capped: false }, projectsMeta: { rows: [], capped: false } };
+  const ops = { engineerWork: { rows: o.engineer ?? [], capped: false }, mixVersions: { rows: o.versions ?? [], capped: false }, projectsMeta: { rows: [], capped: false }, projectActions: { rows: o.actionsLog ?? [], capped: false } };
   return {
     now: new Date(`${TODAY}T09:00:00Z`), identities: { cleantone: null },
     state: { status: "OK", value: state } as never,
@@ -144,6 +144,16 @@ console.log("\nThe Owner must send feedback → the update enriches the item (ca
   const only: InboxMemory = { links: [], interpretations: [interp(U(63), `project:${P_SEND}`, { basisStatus: "בעבודה", basisEventAt: null, basisBall: "NONE" })] };
   const n3 = buildNeedsMe(src({ ...BASE, memory: only }));
   ok("an update that says 'the ball is yours' with NO record evidence does not create an item — it goes to 'לא הוכרע'", !n3.items.some((i) => i.projectId === P_SEND) && n3.undecided.some((e) => e.reasonCode === "INBOX_ONLY" && e.entityKey === `project:${P_SEND}`), n3.undecided);
+}
+
+console.log("\nSend log: Owner-side alone → today; Owner-side + waiting on others = MIXED → 'לא הוכרע'");
+{
+  const act = (id: number, status: string, actionType: string, date: string) => ({ id: U(id), projectId: P_SEND, actionType, contentType: "mix", versionLabel: null, recipientRole: "client", recipientName: "X", recipientClientId: null, recipientPhone: null, hasLink: false, status, actionDate: date, followupDate: null, notes: null, linkedWorkId: null, linkedTaskId: null, createdAt: `${date}T10:00:00Z`, updatedAt: null });
+  const alone = buildNeedsMe(src({ actionsLog: [act(700, "pending_feedback", "received", "2026-09-29")] }));
+  const it = alone.items.find((i) => i.entityKey === `project:${P_SEND}`);
+  ok("a received version with no feedback after it → WAITING_ON_YOU", !!it && it.evidence.some((e) => e.code === "OWNER_FEEDBACK_DUE"), { items: alone.items.map((i) => i.entityKey), undecided: alone.undecided });
+  const mixed = buildNeedsMe(src({ actionsLog: [act(700, "pending_feedback", "received", "2026-06-14"), act(701, "pending_version", "sent", "2026-06-20")] }));
+  ok("the same project also waits on others → not in today; 'לא הוכרע' (SEND_LOG_MIXED)", !mixed.items.some((i) => i.projectId === P_SEND) && mixed.undecided.some((e) => e.reasonCode === "SEND_LOG_MIXED"), { items: mixed.items.map((i) => i.entityKey), undecided: mixed.undecided });
 }
 
 console.log("\nProposals, partner actions, shows, integrity");
