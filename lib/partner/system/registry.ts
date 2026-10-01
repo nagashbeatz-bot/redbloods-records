@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.01-73";
+export const SYSTEM_BASELINE_VERSION = "2026.10.01-74";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -701,12 +701,13 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     rules: [
       R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods)."),
       R("ONE_SUNNY", "CANONICAL_BUSINESS_RULE", "The company view composes every domain view; attention = every domain signal classified by nature + dimensions + whose move, deduplicated by concept — no score, no ranking; the order is a fixed presentation order."),
+      R("DASHBOARD_V2_IS_MAIN", "OWNER_POLICY", "Owner decision 2026-10-01: /dashboard (the sidebar 'דשבורד', the Owner's landing, the app start URL) renders Dashboard V2. The previous dashboard is kept intact at /dashboard-legacy as a technical backup (not linked); /dashboard-v2 is a temporary alias of the same page; /dashboard-old is a different, older view and unchanged."),
       R("NEEDS_ME_CURATED", "OWNER_POLICY", "Owner decision 2026-10-01: Dashboard V2 'מה צריך ממני היום' = the needs_me capability, the SAME list Sunny reads. ≤5 items, never filled. The ball comes only from the records (computeVictorBall, engineerHandoff, the send log); a task inherits the ball of what it is linked to (an auto Victor task with the ball at Victor is out); own task / follow-up = today when due or overdue ≤3 days, else Backlog (the Owner's ball beats age); client-held money never enters; integrity questions are a separate line; a NEW update never enters, a processed interpretation only enriches and a contradiction is shown (records win). Unknown / conflicting = 'לא הוכרע', unreadable = 'לא נבדק'. Read-only. Precedence (Owner decision, never a shown score): NEW since yesterday (a version / received entry, or his processed update) → scheduled today / tomorrow → someone actively waiting (+ approvals) → own task → aggregated long-running waits; inside a group the most recent first. Several Victor works waiting on the Owner = ONE always-visible SUMMARY line under the five (count, oldest wait, updated in the last 7 days, open follow-ups, opens the list) — awareness, never a top-5 slot; a work with a version since yesterday is lifted out as NEW. Display only: no ball, task or work changes; no age rule (C not chosen)."),
       R("PROJECT_BALL_STATUS_VS_EVIDENCE", "CONFLICT", "project_view projects the engineer ball from the work STATUS (AT_ENGINEER when נשלח / בתהליך, ENGINEER_RETURNED_WORK when חזר) while engineerHandoff reads uploads vs feedback. needs_me uses the evidence ball (also for an interpretation's freshness); project_memory keeps canonicalBallOf over project_view. Reported, not unified — a separate task 'Canonical engineer ball consistency' (Owner decision 2026-10-01) will make one definition for Project View, Needs Me, Sunny and Project Memory."),
       R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
     ],
     sideEffects: [], limitationsHe: ["'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
-    surfaces: S(["/", "/dashboard", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo"]),
+    surfaces: S(["/", "/dashboard", "/dashboard-legacy", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo"]),
   },
   {
     id: "PLATFORM_ACCESS", group: "OPERATIONS", titleHe: "משתמשים, הרשאות ותחזוקה",
@@ -1075,4 +1076,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.01-71", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'מה צריך ממני היום' עכשיו נבחר על ידי סאני (needs_me): רק מה שהכדור בו אצלך לפי הרשומות, עד 5, בלי מילוי. לכל פריט — למה היום, אצל מי הכדור, ראיות והצעד הבא. Backlog / לא הוכרע / לא נבדק בשורות נפרדות; סאני יכולה לענות 'למה X לא מופיע'. אותה רשימה בדשבורד ובשיחה." },
   { version: "2026.10.01-72", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'מה צריך ממני היום': מה שחדש מאז אתמול קודם (למשל Steven העלה היום), אחר כך מתוזמן, מי שמחכה, משימות שלך — ובסוף 'ויקטור מחכה לפידבק שלך ב-N עבודות' כפריט אחד (נפתח לרשימה). רק תצוגה — הכדור לא משתנה." },
   { version: "2026.10.01-73", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'ויקטור מחכה לפידבק שלך ב-N עבודות' היא עכשיו שורת מצב קבועה מתחת לחמשת הפריטים — לא מתחרה על מקום. עבודה שקיבלה גרסה מאז אתמול ממשיכה להופיע בנפרד ב-5 הראשונים." },
+  { version: "2026.10.01-74", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "Dashboard V2 הוא עכשיו הדשבורד הראשי (/dashboard). הדשבורד הקודם נשמר כגיבוי ב-/dashboard-legacy; /dashboard-v2 נשאר כינוי זמני לאותו דף." },
 ];

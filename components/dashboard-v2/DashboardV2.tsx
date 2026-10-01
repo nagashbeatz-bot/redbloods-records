@@ -1,6 +1,7 @@
 "use client";
 
-// Dashboard V2 (/dashboard-v2) — the simpler Owner dashboard, built BESIDE the current /dashboard (which is untouched).
+// Dashboard V2 — the main Owner dashboard at /dashboard since 2026-10-01 (/dashboard-v2 = alias; the previous dashboard
+// is kept at /dashboard-legacy).
 // It reads existing endpoints and opens existing drawers / modals / pages. Its own single write is "עדכון לסאני"
 // (POST /api/sunny/inbox → sunny_owner_inbox, OWNER_REPORTED evidence). Other writes are the
 // ones the reused components already make (TasksAttentionModal, the Partner sections, EditReleaseModal).

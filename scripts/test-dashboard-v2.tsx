@@ -163,8 +163,12 @@ console.log("Wiring");
 {
   const page = read("components/dashboard-v2/DashboardV2.tsx");
   const lib = read("lib/dashboard-v2.ts");
-  ok("the current /dashboard still renders the old dashboard", read("app/dashboard/page.tsx").includes("DashboardDesignPreview") && !read("app/dashboard/page.tsx").includes("DashboardV2"));
-  ok("/dashboard-v2 wraps the same AppShell", read("app/dashboard-v2/page.tsx").includes("<AppShell>"));
+  // Owner decision 2026-10-01: V2 is the main dashboard; the previous one is a backup at /dashboard-legacy
+  ok("/dashboard renders Dashboard V2 inside the AppShell", read("app/dashboard/page.tsx").includes("<DashboardV2 />") && read("app/dashboard/page.tsx").includes("<AppShell>") && !read("app/dashboard/page.tsx").includes("DashboardDesignPreview"));
+  ok("/dashboard-legacy renders the previous dashboard intact (DashboardDesignPreview in the AppShell)", read("app/dashboard-legacy/page.tsx").includes("<DashboardDesignPreview />") && read("app/dashboard-legacy/page.tsx").includes("<AppShell>"));
+  ok("/dashboard-v2 stays an alias of the same V2 page", read("app/dashboard-v2/page.tsx").includes("<DashboardV2 />") && read("app/dashboard-v2/page.tsx").includes("<AppShell>"));
+  ok("/dashboard-old is the separate older view, still on DashboardContent", read("app/dashboard-old/page.tsx").includes("DashboardContent") && fs.existsSync(path.resolve(__dirname, "..", "app/dashboard/DashboardContent.tsx")));
+  ok("the sidebar / mobile nav 'דשבורד' still lead to /dashboard; no sidebar link to the legacy backup", /href: "\/dashboard",\s*label: "דשבורד"/.test(read("components/Sidebar.tsx")) && /href: "\/dashboard",\s*label: "דשבורד"/.test(read("components/MobileNav.tsx")) && !read("components/Sidebar.tsx").includes("dashboard-legacy") && !read("components/MobileNav.tsx").includes("dashboard-legacy"));
   const writes = [...page.matchAll(/fetch\("([^"]+)",\s*\{\s*method:\s*"(POST|PATCH|PUT|DELETE)"/g)].map((m) => `${m[2]} ${m[1]}`);
   ok("V2's ONLY own write is 'עדכון לסאני' (POST /api/sunny/inbox)", writes.length === 1 && writes[0] === "POST /api/sunny/inbox", writes);
   ok("…with a per-text requestKey (a retry / double click reuses it)", page.includes("crypto.randomUUID()") && page.includes("requestKey: sunnyKey.current.key"));
@@ -172,7 +176,7 @@ console.log("Wiring");
   ok("no push / agent-alert / calendar-write call", !/\/api\/push|\/api\/agent\/alerts|create-event|create-task/.test(page));
   ok("the calendar read failure is never shown as empty", page.includes("זה לא יומן ריק"));
   ok("money reuses calcPeriodStats (no second rule)", lib.includes("calcPeriodStats(") && !/payment_status\s*===/.test(lib));
-  ok("the registry knows the surface", read("lib/partner/system/registry.ts").includes('"/dashboard-v2"'));
+  ok("the registry knows the surfaces", read("lib/partner/system/registry.ts").includes('"/dashboard-v2"') && read("lib/partner/system/registry.ts").includes('"/dashboard-legacy"'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
