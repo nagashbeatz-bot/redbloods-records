@@ -152,6 +152,13 @@ export default function DashboardV2() {
   const [releases, setReleases] = useState<Load<LabelRelease[]>>(undefined);
   const [board, setBoard] = useState<Load<NeedsBoard>>(undefined);
 
+  // Sunny-curated Needs-Me (read-only capability). A non-OK answer = not checked, never "nothing needs you".
+  // Also re-run after a task action so a card that no longer applies does not stay stale.
+  const loadBoard = useCallback(() =>
+    getJson("/api/partner/knowledge?capability=needs_me&mode=board&limit=50")
+      .then((r) => setBoard(r.ok ? parseBoard(r.body) ?? null : null))
+      .catch(() => setBoard(null)), []);
+
   useEffect(() => {
     const run = <T,>(url: string, pick: (b: Record<string, unknown>) => T, set: (v: T | null) => void) =>
       getJson(url).then((r) => set(r.ok ? pick(r.body) : null)).catch(() => set(null));
@@ -166,8 +173,7 @@ export default function DashboardV2() {
     run("/api/sessions?all=1", (b) => (Array.isArray(b.sessions) ? b.sessions as SessionIn[] : []), setSessions);
     run("/api/shows", (b) => (Array.isArray(b.shows) ? b.shows as ShowIn[] : []), setShows);
     run("/api/transactions?all=1", (b) => (Array.isArray(b.transactions) ? b.transactions as FinanceTxIn[] : []), setFinance);
-    // Sunny-curated Needs-Me (read-only capability). A non-OK answer = not checked, never "nothing needs you".
-    run("/api/partner/knowledge?capability=needs_me&mode=board&limit=50", (b) => parseBoard(b), (v) => setBoard(v ?? null));
+    loadBoard();
 
     // Calendar: the existing read-only week route (today + 7 days). A read failure is NEVER an empty calendar.
     getJson(`/api/calendar/week?weekStart=${israelTodayYmd()}&days=8`).then((r) => {
@@ -228,8 +234,18 @@ export default function DashboardV2() {
   };
   const [listOpen, setListOpen] = useState<ListOpen | null>(null);
   const openCurated = (t: CuratedOpen) => (t.kind === "list" ? setListOpen(t) : open(t));
-  const onTaskDone = (id: string) => setTasks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
-  const onTaskDefer = (id: string, d: string) => setTasks((prev) => (prev ? prev.map((t) => (t.id === id ? { ...t, due_date: d } : t)) : prev));
+  // Called by the modal only AFTER a successful PATCH. The handled task leaves the modal (next one shows; none left → closes).
+  const leaveModal = (id: string) => setTaskOpen((prev) => { const rest = prev ? prev.filter((t) => t.id !== id) : []; return rest.length ? rest : null; });
+  const onTaskDone = (id: string) => {
+    setTasks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
+    leaveModal(id);
+    loadBoard();
+  };
+  const onTaskDefer = (id: string, d: string) => {
+    setTasks((prev) => (prev ? prev.map((t) => (t.id === id ? { ...t, due_date: d } : t)) : prev));
+    leaveModal(id);
+    loadBoard();
+  };
 
   // ── Sunny update: POST /api/sunny/inbox (sunny_owner_inbox, OWNER_REPORTED evidence; idempotent by requestKey) ──
   const [sunnyText, setSunnyText] = useState("");
