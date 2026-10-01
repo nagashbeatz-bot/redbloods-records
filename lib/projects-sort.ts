@@ -5,7 +5,8 @@ import { ALL_STATUSES, type Project, type ProjectStatus } from "@/lib/types";
  * ORDERS rows that were already filtered; filters, search and paging are elsewhere
  * and untouched. Statuses are read, never invented or renamed.
  *
- * Two layers of priority:
+ * CURRENT RULE (Owner, 2026-10-01): deadline ascending, no deadline last — see
+ * compareProjectsForList. The older layers below now only break ties:
  *
  *   1. Status — the mix statuses are ALWAYS at the top of the list; every other
  *      status follows in its canonical ALL_STATUSES order.
@@ -46,17 +47,28 @@ function updatedTs(p: Project): number {
   return isNaN(t) ? -Infinity : t;
 }
 
-/** The comparator behind the list order. See the file header for the rules. */
+/** deadline → sortable ms. Missing/unparseable = no deadline → last. */
+function deadlineTs(p: Project): number {
+  const t = p.deadline ? Date.parse(p.deadline) : NaN;
+  return isNaN(t) ? Infinity : t;
+}
+
+/**
+ * The comparator behind the list order (Owner decision 2026-10-01): by deadline,
+ * soonest first; a project with no deadline goes last. Status / label / file
+ * recency no longer rank anything — they only break ties.
+ */
 export function compareProjectsForList(a: Project, b: Project): number {
-  // Tier 1 — status.
+  const dA = deadlineTs(a), dB = deadlineTs(b);
+  if (dA !== dB) return dA < dB ? -1 : 1;
+
+  // Tie (same deadline, or both without one): the previous tiers, in order.
   const rA = statusRank(a.status), rB = statusRank(b.status);
   if (rA !== rB) return rA - rB;
 
-  // Tier 2 — inside one status: label artists first.
   const lA = a.isLabelArtist ? 0 : 1, lB = b.isLabelArtist ? 0 : 1;
   if (lA !== lB) return lA - lB;
 
-  // Tier 3 — inside each group: newest file/version first.
   const fA = lastAssetTs(a), fB = lastAssetTs(b);
   if (fA !== fB) return fB - fA;
 
