@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.01-70";
+export const SYSTEM_BASELINE_VERSION = "2026.10.01-71";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -696,11 +696,13 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Views over company state (no own data).",
     entityTypes: [],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view"], learnKinds: [], proposableActions: [],
+    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view", "needs_me"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
       R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods)."),
       R("ONE_SUNNY", "CANONICAL_BUSINESS_RULE", "The company view composes every domain view; attention = every domain signal classified by nature + dimensions + whose move, deduplicated by concept — no score, no ranking; the order is a fixed presentation order."),
+      R("NEEDS_ME_CURATED", "OWNER_POLICY", "Owner decision 2026-10-01: Dashboard V2 'מה צריך ממני היום' = the needs_me capability, the SAME list Sunny reads. ≤5 items, never filled. The ball comes only from the records (computeVictorBall, engineerHandoff, the send log); a task inherits the ball of what it is linked to (an auto Victor task with the ball at Victor is out); own task / follow-up = today when due or overdue ≤3 days, else Backlog (the Owner's ball beats age); client-held money never enters; integrity questions are a separate line; a NEW update never enters, a processed interpretation only enriches and a contradiction is shown (records win). Unknown / conflicting = 'לא הוכרע', unreadable = 'לא נבדק'. Read-only."),
+      R("PROJECT_BALL_STATUS_VS_EVIDENCE", "CONFLICT", "project_view projects the engineer ball from the work STATUS (AT_ENGINEER when נשלח / בתהליך, ENGINEER_RETURNED_WORK when חזר) while engineerHandoff reads uploads vs feedback. needs_me uses the evidence ball (also for an interpretation's freshness); project_memory keeps canonicalBallOf over project_view. Reported, not unified."),
       R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
     ],
     sideEffects: [], limitationsHe: ["'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
@@ -1070,4 +1072,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.01-68", date: "2026-10-01", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני בודקת את העדכונים שלך בכל הודעה (לא רק פעם בשיחה): קודם בדיקה מהירה, ורק אם יש חדש — owner_inbox understand (הישויות שהעדכון מזכיר + הקשר קנוני קצר). היא לא מקריאה לך את מה שכתבת: מבינה, מסיקה (מסומן), בודקת ברשומות ושואלת 'נכון?'. partner_brief מחזיר עד 10 עדכונים — בלי 'ועוד עדכון אחד'. סגירה רק עם 4 התוצאות הקיימות (MEMORY_RECORDED לא בשימוש)." },
   { version: "2026.10.01-69", date: "2026-10-01", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מגיעה בעצמה עד הישות הספציפית: 'חיים אוהב את המיקס' → חיים באינסאי → קרוב אלייך → המיקס אצל סטיבן — לפי הרשומות (עבודת מיקס פעילה, גרסאות, הערות פתוחות, סשנים, פעילות אחרונה, כינויים שאישרת), בלי ניחוש. היא שואלת רק כשבאמת יש שני מועמדים סבירים או כשהשם לא קיים ברשומות; סתירה עסקית גוברת על שם; הערות חופשיות הן ראיה חלשה בלבד." },
   { version: "2026.10.01-70", date: "2026-10-01", domain: "SESSIONS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סימון אוטומטי של סשנים חזר — רק בשרת (cron כל 5 דקות), לא בטעינת דף: סשן / ניקוי מיקס / צילום קליפ במצב מתוכנן שזמן הסיום שלו עבר (שעון ישראל, כולל חציית חצות) הופך ל'התקיים' עם מקור AUTO_MARK. חזרות להופעה וחזרות לא נוגעות; סטטוס שקבעת (בוטל / נדחה / לא הגיע) לא נדרס. סאני מבדילה: התקיים אוטומטי = הזמן עבר ולא בוטל, לא אישור שלך; התקיים ידני = אישור שלך." },
+  { version: "2026.10.01-71", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'מה צריך ממני היום' עכשיו נבחר על ידי סאני (needs_me): רק מה שהכדור בו אצלך לפי הרשומות, עד 5, בלי מילוי. לכל פריט — למה היום, אצל מי הכדור, ראיות והצעד הבא. Backlog / לא הוכרע / לא נבדק בשורות נפרדות; סאני יכולה לענות 'למה X לא מופיע'. אותה רשימה בדשבורד ובשיחה." },
 ];

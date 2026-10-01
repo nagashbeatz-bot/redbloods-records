@@ -252,6 +252,14 @@ Rules:
 - **Contextual business resolution (Owner decision 2026-10-01):** `owner_inbox` `understand` resolves each update deterministically (`lib/partner/knowledge/inbox-signals.ts` + `inbox-evidence.ts`): candidates → typed evidence from the records → LIKELY / AMBIGUOUS / UNRESOLVED / NONE + the most specific entity the links allow (never an invented song / track); a contradiction beats a name; notes (`deep`, only after an UNRESOLVED name) are weak; approved aliases identify. Evidence, never a link or a fact. `scripts/test-inbox-evidence.tsx` (cases A–K, A = the real חיים / קרוב אלייך reference) must pass.
 - The applied SQL + rollback live in `scripts/sql/2026-10-01-inbox-memory*.sql`. `scripts/test-inbox-memory.tsx`, `scripts/test-sunny-act-inbox-memory.tsx` and `scripts/test-project-memory.tsx` must pass.
 
+## Sunny Awareness Check: "מה צריך ממני היום" = needs_me (Owner decision 2026-10-01, Q1–Q5)
+
+- Dashboard V2's Needs-Me is the capability `needs_me` (`lib/partner/needs-me/curate.ts`), read through the Owner-only `GET /api/partner/knowledge` — the SAME list Sunny reads. Deterministic, read-only, no DB, no write on load, no push / cron / alert.
+- An item enters only when the RECORDS put the ball with the Owner (computeVictorBall, engineerHandoff, the send log), a show today / tomorrow misses something of his, a partner action awaits him, or his own task / proposal follow-up is due (today or overdue ≤ 3 days; older = Backlog; the Owner's ball beats age). A task inherits the ball of what it is linked to — an auto Victor / mix task whose ball is with Victor / the engineer is out. Client-held money (DONE_UNPAID / SHOW_DONE_UNPAID) never enters; only the Owner's own dated action does. Integrity questions are a separate line (only a blocking one may enter).
+- ≤ 5 items, never filled; more → `moreToday`. Unknown / conflicting → "לא הוכרע"; unreadable → "לא נבדק"; checked-and-out → `excluded` with the reason (Sunny answers "why is X not there?").
+- A NEW Owner update never enters. A processed interpretation only enriches (its next step only when CURRENT); records set the ball; a contradiction is shown ("לפי מה שכתבת … — לפי הרשומות כרגע …"), never resolved.
+- If needs_me cannot be read, the dashboard shows only partner actions + tasks due today, labelled "לא מסונן" — never the old aggregation. `scripts/test-needs-me-curation.tsx` must pass.
+
 ## Retired: the in-app AI assistant ("Mai")
 
 The older in-app AI assistant was removed on 2026-09-25 by Owner decision. Sunny, through Claude, is the only AI / organizational partner.

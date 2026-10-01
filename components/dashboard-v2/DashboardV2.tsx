@@ -5,6 +5,9 @@
 // (POST /api/sunny/inbox → sunny_owner_inbox, OWNER_REPORTED evidence). Other writes are the
 // ones the reused components already make (TasksAttentionModal, the Partner sections, EditReleaseModal).
 // All derivations live in lib/dashboard-v2.ts (pure). No page-load write, no push, no calendar write.
+// "מה צריך ממני היום" is Sunny-curated (Owner decision 2026-10-01): the needs_me capability, read through the Owner-only
+// GET /api/partner/knowledge — the SAME list Sunny reads. The raw aggregation (buildNeedsMe) is only the labelled
+// "לא מסונן" fallback when needs_me cannot be read (partner actions + tasks due today, nothing else).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -25,7 +28,7 @@ import type { LabelRelease } from "@/lib/types";
 import {
   buildNeedsMe, buildTimeline, financeMonth, releaseBadge, dayLabel, NEEDS_ME_VISIBLE,
   type NeedItem, type NeedBadge, type OpenTarget, type RichPart, type TimelineItem, type TimelineKind,
-  type CooCaseIn, type PartnerActionIn, type IntegrityQuestionIn, type TaskIn, type ProposalIn,
+  type CooCaseIn, type PartnerActionIn, type IntegrityQuestionIn, type TaskIn,
   type CalendarEventIn, type SessionIn, type ShowIn, type FinanceTxIn,
 } from "@/lib/dashboard-v2";
 
@@ -140,13 +143,13 @@ export default function DashboardV2() {
   const [actions, setActions] = useState<Load<PartnerActionIn[]>>(undefined);
   const [integrity, setIntegrity] = useState<Load<IntegrityQuestionIn[]>>(undefined);
   const [tasks, setTasks] = useState<Load<TaskIn[]>>(undefined);
-  const [proposals, setProposals] = useState<Load<ProposalIn[]>>(undefined);
   const [sessions, setSessions] = useState<Load<SessionIn[]>>(undefined);
   const [shows, setShows] = useState<Load<ShowIn[]>>(undefined);
   const [calendar, setCalendar] = useState<Load<CalendarEventIn[]>>(undefined);
   const [calendarState, setCalendarState] = useState<"loading" | "ok" | "not_connected" | "error">("loading");
   const [finance, setFinance] = useState<Load<FinanceTxIn[]>>(undefined);
   const [releases, setReleases] = useState<Load<LabelRelease[]>>(undefined);
+  const [board, setBoard] = useState<Load<NeedsBoard>>(undefined);
 
   useEffect(() => {
     const run = <T,>(url: string, pick: (b: Record<string, unknown>) => T, set: (v: T | null) => void) =>
@@ -159,10 +162,11 @@ export default function DashboardV2() {
     run("/api/partner/actions", (b) => (Array.isArray(b.items) ? b.items as PartnerActionIn[] : []), setActions);
     run("/api/partner/integrity", (b) => (Array.isArray(b.questions) ? b.questions as IntegrityQuestionIn[] : []), setIntegrity);
     run("/api/tasks?status=פתוח", (b) => (Array.isArray(b.tasks) ? b.tasks as TaskIn[] : []), setTasks);
-    run("/api/proposals/all", (b) => (Array.isArray(b.proposals) ? b.proposals as ProposalIn[] : []), setProposals);
     run("/api/sessions?all=1", (b) => (Array.isArray(b.sessions) ? b.sessions as SessionIn[] : []), setSessions);
     run("/api/shows", (b) => (Array.isArray(b.shows) ? b.shows as ShowIn[] : []), setShows);
     run("/api/transactions?all=1", (b) => (Array.isArray(b.transactions) ? b.transactions as FinanceTxIn[] : []), setFinance);
+    // Sunny-curated Needs-Me (read-only capability). A non-OK answer = not checked, never "nothing needs you".
+    run("/api/partner/knowledge?capability=needs_me&mode=board&limit=50", (b) => parseBoard(b), (v) => setBoard(v ?? null));
 
     // Calendar: the existing read-only week route (today + 7 days). A read failure is NEVER an empty calendar.
     getJson(`/api/calendar/week?weekStart=${israelTodayYmd()}&days=8`).then((r) => {
@@ -180,13 +184,15 @@ export default function DashboardV2() {
   useEffect(() => { loadReleases(); }, [loadReleases]);
 
   // ── Derivations (lib/dashboard-v2.ts) ──────────────────────────────────────
-  const needs = useMemo(() => buildNeedsMe({
-    today, cooCases: coo ? coo.cases : null, partnerActions: actions ?? null, integrityQuestions: integrity ?? null,
-    tasks: tasks ?? null, proposals: proposals ?? null,
-  }), [today, coo, actions, integrity, tasks, proposals]);
-  const needsSources: [string, Load<unknown>][] = [["COO", coo], ["פעולות Partner", actions], ["שאלות סאני", integrity], ["משימות", tasks], ["הצעות", proposals]];
-  const needsLoading = needsSources.some(([, v]) => v === undefined);
-  const needsFailed = needsSources.filter(([, v]) => v === null).map(([n]) => n);
+  // Fallback ONLY when needs_me failed, labelled "לא מסונן": what is certain without the ball check (partner actions
+  // awaiting the Owner + tasks due today). Never the old aggregation of every overdue item.
+  const fallback = useMemo(() => (board === null ? buildNeedsMe({
+    today, cooCases: null, partnerActions: actions ?? null, integrityQuestions: null,
+    tasks: (tasks ?? []).filter((t) => t.due_date === today), proposals: null,
+  }) : []), [board, today, actions, tasks]);
+  const needsLoading = board === undefined;
+  const needsCount = board ? board.today.length + board.moreToday.length : fallback.length;
+  const integrityCount = board?.integrityCount ?? (integrity ? integrity.length : null);
 
   const timeline = useMemo(() => buildTimeline({
     today, calendar: calendar ?? null, sessions: sessions ?? null, shows: shows ?? null,
@@ -204,6 +210,7 @@ export default function DashboardV2() {
   const [taskOpen, setTaskOpen] = useState<{ id: string; title: string; due_date: string | null }[] | null>(null);
   const [editRelease, setEditRelease] = useState<LabelRelease | null>(null);
   const [showAllNeeds, setShowAllNeeds] = useState(false);
+  const [openList, setOpenList] = useState<"backlog" | "undecided" | null>(null);
   const [showAllTimeline, setShowAllTimeline] = useState(false);
 
   const open = (t: OpenTarget) => {
@@ -258,7 +265,7 @@ export default function DashboardV2() {
 
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "לילה טוב" : hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
-  const visibleNeeds = showAllNeeds ? needs : needs.slice(0, NEEDS_ME_VISIBLE);
+  const visibleFallback = showAllNeeds ? fallback : fallback.slice(0, NEEDS_ME_VISIBLE);
   const visibleTimeline = showAllTimeline ? timeline : timeline.slice(0, TIMELINE_VISIBLE);
 
   return (
@@ -299,8 +306,8 @@ export default function DashboardV2() {
       {/* ── B. Three summary cards ── */}
       <div className="rb-dv2-cards">
         <SummaryCard
-          title="דורש ממני" sub={needsFailed.length ? `חלק מהמקורות לא נטענו` : "החלטות, פעולות ומה שמחכה לך"}
-          color={BRAND} icon={IC.check} value={needsLoading ? "…" : String(needs.length)}
+          title="דורש ממני" sub={board === null ? "לא מסונן — סאני לא בדקה את הכדור" : "רק מה שהכדור בו אצלך היום"}
+          color={BRAND} icon={IC.check} value={needsLoading ? "…" : String(needsCount)}
         />
         <SummaryCard
           title="היום / השבוע" sub={timelineLoading ? "טוען…" : `${todayCount} היום · עד 7 ימים קדימה`}
@@ -401,16 +408,35 @@ export default function DashboardV2() {
 
         {/* ── D. What's needed from me today (the main area) ── */}
         <Panel className="rb-dv2-needs" title="מה צריך ממני היום" icon={IC.list} iconColor={BRAND} style={{ minHeight: 360 }}
-          right={!needsLoading && needs.length > 0 ? <span style={{ fontSize: 11, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 9px" }}>{needs.length}</span> : undefined}>
+          right={!needsLoading && needsCount > 0 ? <span style={{ fontSize: 11, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 9px" }}>{needsCount}</span> : undefined}>
           <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-            {needsLoading && needs.length === 0 ? <Note>טוען…</Note> : needs.length === 0 ? (
-              <Note>{needsFailed.length ? "לא נמצאו פריטים במקורות שנטענו" : "✅ אין כרגע משהו שמחכה לך"}</Note>
-            ) : visibleNeeds.map((n) => <NeedRow key={n.key} item={n} hidden={privacyHidden} onOpen={() => open(n.open)} />)}
-            {needs.length > NEEDS_ME_VISIBLE && (
-              <MoreButton open={showAllNeeds} more={needs.length - NEEDS_ME_VISIBLE} onClick={() => setShowAllNeeds((v) => !v)} />
+            {needsLoading ? <Note>סאני בודקת אצל מי הכדור…</Note> : board ? (
+              <>
+                {board.today.length === 0 ? (
+                  <Note>{board.unchecked.length ? "לא נמצא משהו שמחכה לך במה שנבדק — חלק מהמקורות לא נבדקו (למטה)" : `✅ אין כרגע משהו שמחכה לך · נבדקו ${board.checked}`}</Note>
+                ) : board.today.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => open(n.open)} />)}
+                {board.moreToday.length > 0 && (
+                  <>
+                    {showAllNeeds && board.moreToday.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => open(n.open)} />)}
+                    <MoreButton open={showAllNeeds} more={board.moreToday.length} onClick={() => setShowAllNeeds((v) => !v)} />
+                  </>
+                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 2 }}>
+                  {board.backlog.length > 0 && <LineChip label={`Backlog — לא היום (${board.backlog.length})`} active={openList === "backlog"} onClick={() => setOpenList((v) => (v === "backlog" ? null : "backlog"))} />}
+                  {board.undecided.length > 0 && <LineChip label={`לא הוכרע (${board.undecided.length})`} color={AMBER} active={openList === "undecided"} onClick={() => setOpenList((v) => (v === "undecided" ? null : "undecided"))} />}
+                  {integrityCount !== null && integrityCount > 0 && <LineChip label={`שאלות של סאני (${integrityCount})`} color={PURPLE} onClick={() => setModal("partner-integrity")} />}
+                </div>
+                {openList && <EntryList entries={openList === "backlog" ? board.backlog : board.undecided} onOpen={(t) => open(t)} />}
+                {board.unchecked.length > 0 && <div style={{ fontSize: 11, color: AMBER, padding: "2px 4px", lineHeight: 1.5 }}>לא נבדק: {board.unchecked.join(" · ")}</div>}
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 11.5, color: AMBER, padding: "2px 4px", lineHeight: 1.5 }}>לא מסונן — סאני לא הצליחה לבדוק כרגע אצל מי הכדור. מוצג רק מה שבטוח: אישורים שממתינים לך ומשימות להיום.</div>
+                {fallback.length === 0 ? <Note>אין אישורים ממתינים או משימות להיום (שאר הרשימה לא נבדקה)</Note>
+                  : visibleFallback.map((n) => <NeedRow key={n.key} item={n} hidden={privacyHidden} onOpen={() => open(n.open)} />)}
+                {fallback.length > NEEDS_ME_VISIBLE && <MoreButton open={showAllNeeds} more={fallback.length - NEEDS_ME_VISIBLE} onClick={() => setShowAllNeeds((v) => !v)} />}
+              </>
             )}
-            {needsFailed.length > 0 && <div style={{ fontSize: 11, color: AMBER, padding: "2px 4px" }}>לא נטען: {needsFailed.join(", ")} — הרשימה חלקית.</div>}
-            {needsLoading && needs.length > 0 && <div style={{ fontSize: 11, color: MUTED, padding: "2px 4px" }}>עוד מקורות נטענים…</div>}
           </div>
         </Panel>
       </div>
@@ -492,6 +518,112 @@ function NeedRow({ item, hidden, onOpen }: { item: NeedItem; hidden: boolean; on
       {canOpen && (
         <button type="button" onClick={onOpen} style={{ flexShrink: 0, height: 32, padding: "0 16px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>פתח</button>
       )}
+    </div>
+  );
+}
+
+// ── Sunny-curated Needs-Me (the needs_me capability) ───────────────────────────
+type GT = string | { text?: string } | null | undefined;
+const gt = (v: GT): string => (typeof v === "string" ? v : v?.text ?? "");
+type CuratedGroup = "WAITING_ON_YOU" | "SCHEDULED" | "APPROVAL" | "YOUR_TASK";
+const GROUP_COLOR: Record<CuratedGroup, string> = { WAITING_ON_YOU: RED, SCHEDULED: PURPLE, APPROVAL: BLUE, YOUR_TASK: "#9CA3AF" };
+const GROUP_HE: Record<CuratedGroup, string> = { WAITING_ON_YOU: "מחכים לך", SCHEDULED: "מתוזמן", APPROVAL: "אישור", YOUR_TASK: "משימה שלך" };
+interface CuratedItem {
+  key: string; group: CuratedGroup; title: string; whyToday: string; waitingDays: number | null;
+  ball: { waitingParty: string | null; ruleHe: string }; evidence: { code: string; he: string; epistemic: string }[];
+  nextAction: string; inbox: { whatHappened: string; freshnessHe: string; conflictHe: string | null } | null; open: OpenTarget;
+}
+interface CuratedEntry { key: string; title: string; reasonHe: string; open: OpenTarget }
+export interface NeedsBoard { today: CuratedItem[]; moreToday: CuratedItem[]; backlog: CuratedEntry[]; undecided: CuratedEntry[]; unchecked: string[]; integrityCount: number | null; checked: number }
+
+const OPEN_KINDS = new Set(["project", "client", "task", "partner-actions", "href", "none"]);
+const GROUPS = new Set<string>(["WAITING_ON_YOU", "SCHEDULED", "APPROVAL", "YOUR_TASK"]);
+/** Strict parse of the needs_me answer; anything but status OK = not checked (null). */
+export function parseBoard(b: Record<string, unknown>): NeedsBoard | null {
+  if (b.status !== "OK" || !Array.isArray(b.items)) return null;
+  const board: NeedsBoard = { today: [], moreToday: [], backlog: [], undecided: [], unchecked: [], integrityCount: null, checked: 0 };
+  for (const raw of b.items as Array<{ label?: GT; fields?: Record<string, unknown> }>) {
+    const f = raw.fields ?? {};
+    const o = f.open as OpenTarget | undefined;
+    const open: OpenTarget = o && OPEN_KINDS.has(o.kind) ? o : { kind: "none" };
+    if (f.section === "today" || f.section === "more_today") {
+      const inbox = f.fromInbox as { whatHappened?: GT; freshnessHe?: string; conflictHe?: GT } | null;
+      const ball = (f.ball ?? {}) as { waitingParty?: string | null; ruleHe?: string };
+      const it: CuratedItem = {
+        key: String(f.key), group: GROUPS.has(String(f.group)) ? (f.group as CuratedGroup) : "YOUR_TASK", title: gt(raw.label), whyToday: gt(f.whyToday as GT),
+        waitingDays: typeof f.waitingDays === "number" ? f.waitingDays : null,
+        ball: { waitingParty: ball.waitingParty ?? null, ruleHe: ball.ruleHe ?? "" },
+        evidence: Array.isArray(f.evidence) ? (f.evidence as Array<{ code: string; he: GT; epistemic: string }>).map((e) => ({ code: e.code, he: gt(e.he), epistemic: e.epistemic })) : [],
+        nextAction: gt((f.nextAction as { he?: GT } | undefined)?.he),
+        inbox: inbox ? { whatHappened: gt(inbox.whatHappened), freshnessHe: inbox.freshnessHe ?? "", conflictHe: inbox.conflictHe ? gt(inbox.conflictHe) : null } : null,
+        open,
+      };
+      (f.section === "today" ? board.today : board.moreToday).push(it);
+    } else if (f.section === "backlog" || f.section === "undecided") {
+      (f.section === "backlog" ? board.backlog : board.undecided).push({ key: String(f.key), title: gt(raw.label), reasonHe: gt(f.reasonHe as GT), open });
+    } else if (f.section === "unchecked") board.unchecked.push(gt(raw.label));
+  }
+  for (const s of (Array.isArray(b.summary) ? b.summary : []) as Array<{ code: string; value: unknown }>) {
+    if (s.code === "INTEGRITY") board.integrityCount = (s.value as { count?: number | null } | null)?.count ?? null;
+    if (s.code === "CHECKED" && typeof s.value === "number") board.checked = s.value;
+  }
+  return board;
+}
+
+export function CuratedRow({ item, onOpen }: { item: CuratedItem; onOpen: () => void }) {
+  const [why, setWhy] = useState(false);
+  const color = GROUP_COLOR[item.group];
+  const canOpen = item.open.kind !== "none";
+  return (
+    <div className="rb-dv2-need" style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 13, padding: "11px 14px", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <Pill color={color}>{GROUP_HE[item.group]}</Pill>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div dir="auto" style={{ fontSize: 14, fontWeight: 800, color: "#EDEDED", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+          <div dir="auto" style={{ fontSize: 12, color: SUB, textAlign: "right", marginTop: 2, lineHeight: 1.45 }}>{item.whyToday}</div>
+        </div>
+        {canOpen && (
+          <button type="button" onClick={onOpen} style={{ flexShrink: 0, height: 32, padding: "0 16px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>פתח</button>
+        )}
+      </div>
+      <div style={{ paddingInlineStart: 20, marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div dir="auto" style={{ fontSize: 12.5, color: "#D6D6D6", textAlign: "right" }}><span style={{ color: MUTED }}>הצעד הבא: </span>{item.nextAction}</div>
+        {item.inbox && (
+          <div dir="auto" style={{ fontSize: 11.5, color: SUB, textAlign: "right", lineHeight: 1.45 }}>
+            <span style={{ color: MUTED }}>מהעדכון שלך: </span>{item.inbox.whatHappened}
+            {item.inbox.conflictHe && <div style={{ color: AMBER, marginTop: 2 }}>{item.inbox.conflictHe}</div>}
+          </div>
+        )}
+        <button type="button" onClick={() => setWhy((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "none", padding: 0, color: BLUE, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{why ? "הסתר" : "למה זה כאן?"}</button>
+        {why && (
+          <div style={{ fontSize: 11.5, color: SUB, lineHeight: 1.5, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 10px" }}>
+            <div><span style={{ color: MUTED }}>הכדור: </span>אצלך{item.ball.waitingParty ? ` — ${item.ball.waitingParty} מחכה` : ""}{item.waitingDays !== null ? ` · ${item.waitingDays} ימים` : ""}</div>
+            <div style={{ color: MUTED }}>{item.ball.ruleHe}</div>
+            {item.evidence.map((e, i) => <div key={i} dir="auto">• {e.he}{e.epistemic === "HYPOTHESIS" ? " (ההבנה של סאני מהעדכון שלך)" : ""}</div>)}
+            {item.inbox && <div style={{ color: MUTED }}>{item.inbox.freshnessHe}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function LineChip({ label, color = SUB, active, onClick }: { label: string; color?: string; active?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ fontSize: 11.5, fontWeight: 700, color, background: active ? "rgba(255,255,255,0.07)" : "transparent", border: `1px solid ${BORDER}`, borderRadius: 99, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+  );
+}
+
+export function EntryList({ entries, onOpen }: { entries: CuratedEntry[]; onOpen: (t: OpenTarget) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, background: "rgba(255,255,255,0.02)", border: `1px solid ${BORDER2}`, borderRadius: 11, padding: "6px 8px" }}>
+      {entries.map((e) => (
+        <button key={e.key} type="button" disabled={e.open.kind === "none"} onClick={() => onOpen(e.open)} style={{ textAlign: "right", background: "transparent", border: "none", color: TEXT, fontFamily: "inherit", padding: "5px 4px", cursor: e.open.kind === "none" ? "default" : "pointer" }}>
+          <div dir="auto" style={{ fontSize: 12.5, fontWeight: 700 }}>{e.title}</div>
+          <div dir="auto" style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>{e.reasonHe}</div>
+        </button>
+      ))}
     </div>
   );
 }
