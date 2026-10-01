@@ -8,7 +8,10 @@
  *   • an owned row is NEVER deleted from Finance (delete it through its owner);
  *   • amount / currency / type / project / scope / links / description never change on an owned row;
  *   • allowed on an owned row, only when the value really changes:
- *       DJ_FEE / ARTIST_FEE / REHEARSAL / VICTOR_SALARY / MIX_WORK / PROMOTION / RF_BUDGET → status, date, payment method, notes
+ *       DJ_FEE / ARTIST_FEE / REHEARSAL / VICTOR_SALARY / PROMOTION / RF_BUDGET → status, date, payment method, notes
+ *       MIX_WORK (Owner decision 2026-10-01, F2) → payment method, notes ONLY: the payment of an engineer work belongs to the WORK
+ *         (amount paid + payment date, written together with this row by apply_engineer_payment) — a status / date set here would
+ *         disconnect the row from its work (expense paid, work still owed)
  *       CLIP_ROW → the same + amount / currency / description / category: since B3 (2026-09-27) a promoted clip planning
  *         row is KEPT as provenance and never re-writes its expense — the Finance expense is the canonical actual cost
  *         (a plan ≠ expense difference is the CLIP_PLAN_VS_EXPENSE signal), so only delete / type / project / links stay locked
@@ -57,7 +60,7 @@ export type TxPatchField = keyof typeof TX_PATCH_FIELDS;
 
 const FEE_LIKE: readonly TxPatchField[] = ["paymentStatus", "date", "paymentMethod", "notes"];
 export const OWNED_ALLOWED_FIELDS: Readonly<Record<FinanceOwnerCode, readonly TxPatchField[]>> = {
-  DJ_FEE: FEE_LIKE, ARTIST_FEE: FEE_LIKE, REHEARSAL: FEE_LIKE, VICTOR_SALARY: FEE_LIKE, MIX_WORK: FEE_LIKE,
+  DJ_FEE: FEE_LIKE, ARTIST_FEE: FEE_LIKE, REHEARSAL: FEE_LIKE, VICTOR_SALARY: FEE_LIKE, MIX_WORK: ["paymentMethod", "notes"],
   CLIP_ROW: [...FEE_LIKE, "amount", "currency", "description", "category"], PROMOTION: FEE_LIKE, RF_BUDGET: FEE_LIKE,
   SHOW_PAYMENT: ["notes", "paymentMethod", "date"],
   SHOW_BALANCE_EXPECTED: ["notes"], SHOW: ["notes"], RF_PAYMENT: ["notes"],

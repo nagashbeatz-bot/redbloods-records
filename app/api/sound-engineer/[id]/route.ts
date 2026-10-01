@@ -5,7 +5,7 @@ import {
   PaidExpenseProtectedError,
 } from "@/lib/sound-engineer-store";
 import { requireOwner } from "@/lib/require-auth";
-import { deleteEngineerWorkClean } from "@/lib/writes/mix";
+import { deleteEngineerWorkClean, EngineerPaymentConflictError } from "@/lib/writes/mix";
 import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
 import type { StevenCompletionOutcome } from "@/lib/steven-completed-pure";
 
@@ -13,7 +13,9 @@ import type { StevenCompletionOutcome } from "@/lib/steven-completed-pure";
  * PATCH /api/sound-engineer/[id]
  * Body: partial fields to update.
  * Finance-relevant changes run THE one expense writer (lib/writes/mix reconcileEngineerExpense) server-side — the
- * Steven page needs no second call. Un-pay while the linked expense is "שולם" → 409 (paid money is protected).
+ * Steven page needs no second call. A payment change is written TOGETHER with the linked expense in one database
+ * transaction (apply_engineer_payment): a failure leaves both untouched. Un-pay while the linked expense is "שולם" → 409
+ * (paid money is protected); a lost race → 409 PAYMENT_CONFLICT (nothing written).
  */
 export async function PATCH(
   req: NextRequest,
@@ -53,6 +55,8 @@ export async function PATCH(
     return NextResponse.json({ ok: true, work, ...(flow.completion ? { completion: flow.completion } : {}) });
   } catch (err) {
     if (err instanceof PaidExpenseProtectedError) return NextResponse.json({ ok: false, error: err.message, code: err.code }, { status: 409 });
+    // the atomic payment write lost a race twice — nothing was written (work AND expense untouched)
+    if (err instanceof EngineerPaymentConflictError) return NextResponse.json({ ok: false, error: err.message, code: err.code }, { status: 409 });
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

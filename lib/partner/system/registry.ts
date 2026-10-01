@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.01-75";
+export const SYSTEM_BASELINE_VERSION = "2026.10.01-76";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1077,4 +1077,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.01-73", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'ויקטור מחכה לפידבק שלך ב-N עבודות' היא עכשיו שורת מצב קבועה מתחת לחמשת הפריטים — לא מתחרה על מקום. עבודה שקיבלה גרסה מאז אתמול ממשיכה להופיע בנפרד ב-5 הראשונים." },
   { version: "2026.10.01-74", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "Dashboard V2 הוא עכשיו הדשבורד הראשי (/dashboard). הדשבורד הקודם נשמר כגיבוי ב-/dashboard-legacy; /dashboard-v2 נשאר כינוי זמני לאותו דף." },
   { version: "2026.10.01-75", date: "2026-10-01", domain: "CLIPS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מודל קליפ אחד (החלטת בעלים): שיר = פרויקט, קליפ = פרויקט, לכל פרויקט מחיר מוסכם אחד (SET_AGREED_PRICE) ויתרה אחת — כל הכנסה של הפרויקט נספרת, גם בשיוך קליפ. הוסרו מחיר קליפ, עסקת קליפ, תשלומי קליפ, SET_CLIP_PRICE / OPEN_CLIP_DEAL / ADD_CLIP_PAYMENT והסוג 'שיר + קליפ'. יומן: מקום הסשן עובר לאירוע ולהזמנה, והתצוגה המקדימה מציגה מקום / הערות / תיאור ציבורי." },
+  { version: "2026.10.01-76", date: "2026-10-01", domain: "MIX_PIPELINE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "תשלום לעבודת מיקס (Steven) נכתב עכשיו בפעולה אטומית אחת: העבודה + ההוצאה בכספים + הקישור באותה טרנזקציה — כישלון משאיר את שניהם ללא שינוי, ושתי לחיצות במקביל יוצרות הוצאה אחת. ההודעה 'Payment sent' נשלחת רק אחרי שהכתיבה הצליחה ובמעבר אמיתי מלא-שולם לשולם (לא על שורה מוגנת / התנגשות / כישלון / ניסיון חוזר). שורת Finance של עבודת מיקס: אי אפשר לשנות בה סטטוס תשלום או תאריך מתוך Finance (רק אמצעי תשלום והערות) — התשלום שייך לעבודה. עדכון הוצאה לא דורס אמצעי תשלום / אסמכתה." },
 ];

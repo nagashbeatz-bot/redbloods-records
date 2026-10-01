@@ -3386,7 +3386,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "7dc0b6fa50f26c2ac246fdde2d97113890dd90f7baca8a1d38e3d2deb45a95f2",
+  "sha256": "c395017418675c792240f15a7169ae2a6c59c6c35f779730c9e5b148001c3ba0",
   "effects": [
    "DELETION",
    "FILES",

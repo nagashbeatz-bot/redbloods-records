@@ -174,6 +174,43 @@ export function decideEngineerExpense(w: ReconcileWork, linked: ReconcileTx | nu
 }
 
 /**
+ * The typed arguments of the DB function public.apply_engineer_payment (scripts/sql/2026-10-01-engineer-payment-rpc.sql) —
+ * ONE atomic write of the work's payment + its linked mix expense + the link. Pure mapper, no jsonb: the function can only
+ * write the columns named here. payment_method / receipt_ref / expense_scope are NOT written on an UPDATE (Owner decision
+ * 2026-10-01: an Owner edit of the payment method in Finance is never wiped by a reconcile).
+ */
+export interface ApplyEngineerPaymentArgs {
+  p_work_id: string; p_expected_updated_at: string | null; p_expected_linked: string; p_action: "INSERT" | "UPDATE"; p_tx_id: string | null;
+  p_touch_payment: boolean; p_amount_paid: number | null; p_payment_date: string | null;
+  p_project_id: string | null; p_scope: "project" | "general"; p_description: string; p_artist: string;
+  p_amount: number; p_currency: string; p_payment_status: string; p_notes: string; p_date: string | null; p_set_date: boolean;
+  p_business_unit: string | null; p_business_unit_source: string | null;
+}
+export function applyEngineerPaymentArgs(a: {
+  workId: string; expectedUpdatedAt: string | null; expectedLinked: string | null; action: "INSERT" | "UPDATE"; txId: string | null;
+  fields: ExpenseFields; payment: { amountPaid: number; paymentDate: string | null } | null;
+  unit: { business_unit: string | null; business_unit_source: string | null };
+}): ApplyEngineerPaymentArgs {
+  const f = a.fields;
+  return {
+    p_work_id: a.workId, p_expected_updated_at: a.expectedUpdatedAt, p_expected_linked: a.expectedLinked ?? "", p_action: a.action, p_tx_id: a.action === "UPDATE" ? a.txId : null,
+    p_touch_payment: !!a.payment, p_amount_paid: a.payment ? a.payment.amountPaid : null, p_payment_date: a.payment ? a.payment.paymentDate : null,
+    p_project_id: f.project_id, p_scope: f.scope, p_description: f.description, p_artist: f.artist,
+    p_amount: f.amount, p_currency: f.currency, p_payment_status: f.payment_status, p_notes: f.notes, p_date: f.date ?? null, p_set_date: "date" in f,
+    p_business_unit: a.action === "INSERT" ? a.unit.business_unit : null, p_business_unit_source: a.action === "INSERT" ? a.unit.business_unit_source : null,
+  };
+}
+
+/**
+ * Push rule (Owner decision 2026-10-01): the "payment confirmed" push goes out ONLY for a real unpaid → paid transition
+ * whose Finance write COMMITTED (INSERT / UPDATE of the linked expense by the atomic function) with no reported conflict.
+ * PROTECTED_PAID / NONE / REFUSED / a rolled-back write / a retry that finds the work already paid never push.
+ */
+export function shouldPushPaymentConfirmed(p: { wasPaid: boolean; nowPaid: boolean; outcomeKind: ReconcileDecision["kind"] | null; conflictHe: string | null }): boolean {
+  return !p.wasPaid && p.nowPaid && (p.outcomeKind === "INSERT" || p.outcomeKind === "UPDATE") && !p.conflictHe;
+}
+
+/**
  * Explicit un-pay guard: a request that changes the payment (amount paid / payment date) and leaves the work NOT paid
  * is refused while its linked expense is "שולם" — paid money is cancelled in Finance first (an explicit Owner action
  * there), never deleted or rewritten from a work screen.

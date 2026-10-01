@@ -125,7 +125,7 @@ const CASES: FamilyCase<W>[] = [
   const store = read("lib/sound-engineer-store.ts");
   ok("payment: ONE call for every engineer (the store update runs THE one writer server-side); no second Steven sync", /await updateSoundEngineerWork\(workId, \{ amountPaid: paid \? w\.agreedPrice : 0, paymentDate: paid \? paymentDate : null \}\)/.test(wm) && !/syncStevenPaymentExpense/.test(wm + store));
   ok("the one writer: reconcileEngineerExpense decides with decideEngineerExpense; every store path uses it (create / update / force sync)", /export async function reconcileEngineerExpense/.test(wm) && /decideEngineerExpense\(/.test(wm) && (store.match(/await reconcile\(/g) ?? []).length >= 3 && !/function syncTransaction/.test(store));
-  ok("paid rows protected on both write paths: the conditional update / delete never touch a שולם row", /\.update\(d\.fields\)\.eq\("id", d\.txId\)\.neq\("payment_status", "שולם"\)/.test(wm) && /\.delete\(\)\.eq\("id", d\.txId\)\.not\("payment_status", "in", \'\("שולם","חלקי","התקבל"\)\'\)/.test(wm));
+  ok("paid rows protected on both write paths: the conditional update / delete never touch a שולם row", (/supabase\.rpc\("apply_engineer_payment"/.test(wm) && /t\.payment_status <> 'שולם'/.test(read("scripts/sql/2026-10-01-engineer-payment-rpc.sql"))) && /\.delete\(\)\.eq\("id", d\.txId\)\.not\("payment_status", "in", \'\("שולם","חלקי","התקבל"\)\'\)/.test(wm));
   ok("no caller supplies a storage path (paths come from the stored records)", !/path:\s*string/.test(read("lib/partner/act/primitives/mix.ts")));
 
   console.log(`\n${pass} passed, ${fail} failed`);

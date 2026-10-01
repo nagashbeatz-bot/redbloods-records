@@ -30,7 +30,7 @@ function mk(o: { engineer?: string } = {}) {
   const reconcile = () => {
     const t = work.linkedTx ? txs.get(work.linkedTx) : undefined;
     if (t && t.paymentStatus === "שולם") return;
-    if (t) { t.amount = work.agreedPrice; t.currency = work.currency; t.paymentStatus = paid() ? "שולם" : "צפוי"; }
+    if (t) { t.amount = work.agreedPrice; t.currency = work.currency; t.paymentStatus = paid() ? "שולם" : "צפוי"; t.notes = `ממתין לתשלום — ${work.currency}${work.agreedPrice}`; /* the real writer regenerates the notes (engineerExpenseNotes) */ }
   };
   const writers = {
     async readEngineerWork(id: string) {
@@ -170,10 +170,11 @@ async function main() {
   {
     const h = mk(); const { d } = mkDeps(h.writers);
     // step 1 changes the work (its reconcile moves the LINKED expense 200 → 500); step 2 targets that expense row directly
-    const p = await plan(d, [PRICE(), { actionId: "SET_TRANSACTION_STATUS", args: { transaction: TX, paymentStatus: "שולם" } }]) as Planned;
+    // (F2, 2026-10-01: a mix expense's payment status / date can no longer be set in Finance at all — the cross-entity case uses a field Finance may still edit: the notes the reconcile regenerates)
+    const p = await plan(d, [PRICE(), { actionId: "UPDATE_TRANSACTION_DETAILS", args: { transaction: TX, notes: "בדיקה" } }]) as Planned;
     ok("different records → a normal (not chained) plan: step 2 has no dependsOn", p.status === "PREVIEW" && (p.steps?.length ?? 0) === 2, p);
     const e = await exec(d, p, await approve(d, p));
-    ok("the reconcile changed the expense → step 2 STALE at its turn, the status was NOT written", e.status === "PARTIALLY_APPLIED" && stepsOf(e) === "APPLIED_AS_EXPECTED,STALE" && !h.calls.some((c) => c.startsWith("tx:")) && h.txs.get(T)!.paymentStatus === "צפוי", { e, calls: h.calls });
+    ok("the reconcile changed the expense → step 2 STALE at its turn, the notes were NOT written", e.status === "PARTIALLY_APPLIED" && stepsOf(e) === "APPLIED_AS_EXPECTED,STALE" && !h.calls.some((c) => c.startsWith("tx:")) && h.txs.get(T)!.notes !== "בדיקה", { e, calls: h.calls });
   }
 
   console.log("\n10. Interrupted chained step → reconciled read-only, never re-executed");

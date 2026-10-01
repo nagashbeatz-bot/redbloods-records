@@ -14,7 +14,7 @@
  */
 import { supabase } from "@/lib/supabase";
 import { inferBusinessUnit, unitColumns } from "@/lib/business-unit";
-import { decideEngineerExpense, engineerExpenseMode, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
+import { applyEngineerPaymentArgs, decideEngineerExpense, engineerExpenseMode, type ExpenseFields, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
 
 async function deleteDropboxPaths(paths: string[]): Promise<void> {
   if (!paths.length) return;
@@ -63,7 +63,21 @@ export interface EngineerExpenseOutcome {
   /** A disagreement left in place (paid row protected) — reported, never resolved here. */
   conflictHe: string | null;
   messageHe: string;
+  /** The requested payment fields (opts.payment, if any) are really stored — the only moment a push may follow. */
+  committed: boolean;
 }
+
+/** A payment change (amount paid / payment date) the caller wants written TOGETHER with the linked expense. */
+export interface EngineerPaymentChange { amountPaid: number; paymentDate: string | null }
+
+/** The atomic write lost a race twice (the work, its link or its expense changed between the read and the write) — nothing was written. */
+export class EngineerPaymentConflictError extends Error {
+  readonly code = "PAYMENT_CONFLICT";
+  constructor() { super("העבודה השתנתה במקביל — לא נכתב כלום. נסה שוב."); }
+}
+class StaleRaceError extends Error {}
+/** The function's own race codes: the work moved (STALE_WORK), its link moved (STALE_LINK) or the expense became paid (TX_NOT_UPDATABLE). */
+const isRaceError = (msg: string) => /STALE_(WORK|LINK)|TX_NOT_UPDATABLE/.test(msg);
 
 /**
  * THE ONE WRITER of an engineer work's linked Finance expense (sound_engineer_work.linked_transaction_id). Every path
@@ -81,10 +95,25 @@ export interface EngineerExpenseOutcome {
  *    other engineers on a project: an expected row that follows the price in the work currency;
  *  • `force` (explicit sync) refuses a standalone work.
  */
-export async function reconcileEngineerExpense(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean }): Promise<EngineerExpenseOutcome> {
+/**
+ * `opts.payment` (the payment path): the new amount paid / payment date are decided as if already written (the decision
+ * runs on the PROJECTED work) and are written in the SAME database transaction as the linked expense and the link
+ * (public.apply_engineer_payment) — so a failure leaves BOTH untouched (never "work paid, no expense"). A decision that
+ * writes no expense (NONE / PROTECTED_PAID / REFUSED / REMOVE_UNPAID) writes the payment fields with one single UPDATE.
+ * `outcome.committed` is true once the payment fields really are stored (the only moment a push may follow).
+ */
+export async function reconcileEngineerExpense(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean; payment?: EngineerPaymentChange }): Promise<EngineerExpenseOutcome> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return await reconcileOnce(workId, opts); }
+    catch (e) { if (!(e instanceof StaleRaceError)) throw e; }
+  }
+  throw new EngineerPaymentConflictError();
+}
+
+async function reconcileOnce(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean; payment?: EngineerPaymentChange }): Promise<EngineerExpenseOutcome> {
   const { data: w, error: wErr } = await supabase
     .from("sound_engineer_work")
-    .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id, status")
+    .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id, status, updated_at")
     .eq("id", workId)
     .maybeSingle();
   if (wErr) throw new Error(wErr.message);
@@ -92,8 +121,20 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
   const work: ReconcileWork = {
     id: String(w.id), projectId: (w.project_id as string | null) ?? null, engineerName: String(w.engineer_name ?? ""), workType: String(w.work_type ?? "מיקס"),
     workTitle: (w.work_title as string | null) ?? null, currency: String(w.currency ?? "$"),
-    agreedPrice: Number(w.agreed_price ?? 0), amountPaid: Number(w.amount_paid ?? 0), paymentDate: (w.payment_date as string | null) ?? null,
+    agreedPrice: Number(w.agreed_price ?? 0),
+    amountPaid: opts.payment ? opts.payment.amountPaid : Number(w.amount_paid ?? 0),
+    paymentDate: opts.payment ? opts.payment.paymentDate : ((w.payment_date as string | null) ?? null),
     status: (w.status as string | null) ?? null,
+  };
+  const expectedUpdatedAt = (w.updated_at as string | null) ?? null;
+  // the payment fields on their own (no expense write): ONE statement
+  const writePaymentOnly = async () => {
+    if (!opts.payment) return;
+    const { data, error } = await supabase.from("sound_engineer_work")
+      .update({ amount_paid: opts.payment.amountPaid, payment_date: opts.payment.paymentDate, updated_at: new Date().toISOString() })
+      .eq("id", workId).select("id");
+    if (error) throw new Error(error.message);
+    if (!data || data.length !== 1) throw new Error("עדכון התשלום בעבודה לא נשמר");
   };
   const linkedId = (w.linked_transaction_id as string | null) ?? null;
   let linked: ReconcileTx | null = null;
@@ -112,40 +153,49 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
     const { error } = await supabase.from("sound_engineer_work").update({ linked_transaction_id: id }).eq("id", workId);
     if (error) throw new Error(error.message);
   };
+  // INSERT / UPDATE of the expense: ONE database transaction together with the link (and the payment fields when asked) —
+  // business unit (Owner decision 2026-09-28): the unit of the PROJECT the work belongs to — a Records (לייבל) project →
+  // RECORDS (100 % Records, 0 % artist), a client project → STUDIO; no project → "דורש סיווג"
+  const applyAtomic = async (action: "INSERT" | "UPDATE", txId: string | null, fields: ExpenseFields): Promise<string> => {
+    const unit = unitColumns(inferBusinessUnit({ writer: "MIX", type: "expense", project: work.projectId ? { businessType } : null }));
+    const args = applyEngineerPaymentArgs({ workId, expectedUpdatedAt, expectedLinked: linkedId, action, txId, fields, payment: opts.payment ?? null, unit });
+    const { data, error } = await supabase.rpc("apply_engineer_payment", args);
+    if (error) { if (isRaceError(error.message)) throw new StaleRaceError(); throw new Error(error.message); }
+    const id = String((data as { txId?: string } | null)?.txId ?? "");
+    if (!id) throw new Error("apply_engineer_payment returned no transaction id");
+    return id;
+  };
   switch (d.kind) {
     case "REFUSED":
-      return { kind: d.kind, txId: linkedId, conflictHe: null, messageHe: d.reasonHe };
+      await writePaymentOnly();
+      return { kind: d.kind, txId: linkedId, conflictHe: null, messageHe: d.reasonHe, committed: true };
     case "NONE":
+      await writePaymentOnly();
       if (linkedId && !linked) await setLink(null); // a dangling link to a row that no longer exists
-      return { kind: d.kind, txId: linked?.id ?? null, conflictHe: null, messageHe: d.reasonHe };
+      return { kind: d.kind, txId: linked?.id ?? null, conflictHe: null, messageHe: d.reasonHe, committed: true };
     case "PROTECTED_PAID":
+      await writePaymentOnly();
       if (d.conflictHe) console.warn(`[mix] reconcile (${opts.reason}) work ${workId}: paid expense ${d.txId} protected — ${d.conflictHe}`);
-      return { kind: d.kind, txId: d.txId, conflictHe: d.conflictHe, messageHe: "שורה ששולמה לא נדרסת — ההוצאה בכספים נשארה כפי שהיא" };
+      return { kind: d.kind, txId: d.txId, conflictHe: d.conflictHe, messageHe: "שורה ששולמה לא נדרסת — ההוצאה בכספים נשארה כפי שהיא", committed: true };
     case "REMOVE_UNPAID": {
+      await writePaymentOnly();
       // conditional delete: only while the row is still NOT paid (never deletes paid money, even in a race)
       const { error } = await supabase.from("transactions").delete().eq("id", d.txId).not("payment_status", "in", '("שולם","חלקי","התקבל")');
       if (error) throw new Error(error.message);
       const { data: still, error: stErr } = await supabase.from("transactions").select("id").eq("id", d.txId).maybeSingle();
       if (stErr) throw new Error(stErr.message);
-      if (still) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — נשארה", messageHe: "שורה ששולמה לא נדרסת" };
+      if (still) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — נשארה", messageHe: "שורה ששולמה לא נדרסת", committed: true };
       await setLink(null);
-      return { kind: d.kind, txId: null, conflictHe: null, messageHe: "הוצאה שלא שולמה הוסרה (אין הוצאה עד שמסמנים שולם)" };
+      return { kind: d.kind, txId: null, conflictHe: null, messageHe: "הוצאה שלא שולמה הוסרה (אין הוצאה עד שמסמנים שולם)", committed: true };
     }
     case "UPDATE": {
-      // conditional update: never rewrites a row that became "שולם" meanwhile
-      const { data: upd, error } = await supabase.from("transactions").update(d.fields).eq("id", d.txId).neq("payment_status", "שולם").select("id");
-      if (error) throw new Error(error.message);
-      if (!upd || upd.length === 0) return { kind: "PROTECTED_PAID", txId: d.txId, conflictHe: "השורה סומנה בינתיים כשולמה — לא נדרסה", messageHe: "שורה ששולמה לא נדרסת" };
-      return { kind: d.kind, txId: d.txId, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)" };
+      // the function updates only a row that is still NOT "שולם" (a row paid meanwhile → a retry that sees it as protected)
+      const id = await applyAtomic("UPDATE", d.txId, d.fields);
+      return { kind: d.kind, txId: id, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)", committed: true };
     }
     case "INSERT": {
-      // business unit (Owner decision 2026-09-28): the unit of the PROJECT the work belongs to — a Records (לייבל) project
-      // → RECORDS (100 % Records, 0 % artist), a client project → STUDIO; no project → "דורש סיווג"
-      const { data: ins, error } = await supabase.from("transactions").insert({ ...d.fields, ...unitColumns(inferBusinessUnit({ writer: "MIX", type: "expense", project: work.projectId ? { businessType } : null })) }).select("id").single();
-      if (error) throw new Error(error.message);
-      const newId = String(ins?.id ?? "");
-      await setLink(newId);
-      return { kind: d.kind, txId: newId, conflictHe: null, messageHe: "נרשמה הוצאה מקושרת (במטבע העבודה)" };
+      const id = await applyAtomic("INSERT", null, d.fields);
+      return { kind: d.kind, txId: id, conflictHe: null, messageHe: "נרשמה הוצאה מקושרת (במטבע העבודה)", committed: true };
     }
   }
 }

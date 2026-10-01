@@ -135,7 +135,7 @@ function main() {
     check("legacy show link (DJ fee column) → DJ_FEE", own(T_LEGACY_SHOW)?.owner, "DJ_FEE");
     check("clip planning row (PROJECT_DETAIL link) → CLIP_ROW", own(T_CLIP)?.owner, "CLIP_ROW");
     check("social promotion (OPERATIONS link) → PROMOTION", own(T_PROMO)?.owner, "PROMOTION");
-    check("the allowed Finance fields come from the ownership module", own(T_MIX)?.financeEditableFields, ["paymentStatus", "date", "paymentMethod", "notes"]);
+    check("the allowed Finance fields come from the ownership module", own(T_MIX)?.financeEditableFields, ["paymentMethod", "notes"]);
     const noDetail = sources({ noDetail: true });
     const u = ent(T_FREE, noDetail);
     check("detail sources unreadable → ownership UNKNOWN (never 'free'), named in missing", [factOf(u, "TX_OWNER")?.epistemic, u.missing.some((m) => m.fact === "ownership")], ["UNKNOWN", true]);

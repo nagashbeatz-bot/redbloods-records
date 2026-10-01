@@ -1110,7 +1110,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
         // 409 = paid money is protected (the linked expense is already "שולם") — show the server's explanation.
         const e = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
-        notify(e?.code === "PAID_EXPENSE_PROTECTED" && e.error ? e.error : (rtl ? "השמירה נכשלה" : "Save failed"), e?.code ? 8000 : 2500);
+        notify((e?.code === "PAID_EXPENSE_PROTECTED" || e?.code === "PAYMENT_CONFLICT") && e.error ? e.error : (rtl ? "השמירה נכשלה" : "Save failed"), e?.code ? 8000 : 2500);
         return false;
       }
       // A real Steven work → completed transition reports what the server found about the

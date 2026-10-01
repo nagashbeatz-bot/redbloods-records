@@ -13,7 +13,7 @@ import type {
   SoundEngineerWorkType,
 } from "@/lib/types";
 import { isClosedStatus } from "@/lib/steven-mix-reminder-pure";
-import { isEngineerWorkPaid, unpayBlocked, UNPAY_BLOCKED_HE } from "@/lib/mix-payment-pure";
+import { isEngineerWorkPaid, shouldPushPaymentConfirmed, unpayBlocked, UNPAY_BLOCKED_HE } from "@/lib/mix-payment-pure";
 import {
   isCompletionTransition,
   isBecameOpenTransition,
@@ -32,7 +32,7 @@ export class PaidExpenseProtectedError extends Error {
 }
 
 /** Runs THE one Finance writer (dynamic import — lib/writes/mix imports this store lazily too). */
-async function reconcile(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean }) {
+async function reconcile(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean; payment?: { amountPaid: number; paymentDate: string | null } }) {
   const { reconcileEngineerExpense } = await import("@/lib/writes/mix");
   return reconcileEngineerExpense(workId, opts);
 }
@@ -453,6 +453,12 @@ export async function updateSoundEngineerWork(
     if (unpayBlocked({ touchesPayment: true, projectedPaid, linkedStatus })) throw new PaidExpenseProtectedError();
   }
 
+  // The payment fields (amount paid / payment date) are NOT written here: they travel WITH the linked expense and the link in
+  // ONE database transaction (reconcile → public.apply_engineer_payment), so a failure never leaves "work paid, no expense".
+  const touchesPayment = fields.amountPaid !== undefined || fields.paymentDate !== undefined;
+  const payment = touchesPayment
+    ? { amountPaid: fields.amountPaid ?? Number(cur.amount_paid ?? 0), paymentDate: fields.paymentDate !== undefined ? fields.paymentDate : ((cur.payment_date as string | null) ?? null) }
+    : undefined;
   const dbUpdate: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -461,12 +467,10 @@ export async function updateSoundEngineerWork(
   if (fields.status           !== undefined) dbUpdate.status             = fields.status;
   if (fields.agreedPrice      !== undefined) dbUpdate.agreed_price       = fields.agreedPrice;
   if (fields.currency         !== undefined) dbUpdate.currency           = fields.currency;
-  if (fields.amountPaid       !== undefined) dbUpdate.amount_paid        = fields.amountPaid;
   if (fields.sentDate         !== undefined) dbUpdate.sent_date          = fields.sentDate;
   if (fields.internalDeadline !== undefined) dbUpdate.internal_deadline  = fields.internalDeadline;
   if (fields.filesLink        !== undefined) dbUpdate.files_link         = fields.filesLink;
   if (fields.notes            !== undefined) dbUpdate.notes              = fields.notes;
-  if (fields.paymentDate      !== undefined) dbUpdate.payment_date       = fields.paymentDate;
 
   const { data: updated, error } = await supabase
     .from("sound_engineer_work")
@@ -490,9 +494,17 @@ export async function updateSoundEngineerWork(
     fields.currency     !== undefined ||
     fields.engineerName !== undefined ||
     fields.workType     !== undefined;
+  let payOutcome: Awaited<ReturnType<typeof reconcile>> | null = null;
   if (financeChanged) {
-    const r = await reconcile(id, { reason: "work update", skipPriceSync: !!fields.skipFinanceSync });
+    const r = await reconcile(id, { reason: "work update", skipPriceSync: !!fields.skipFinanceSync, payment });
     row.linked_transaction_id = r.txId;
+    payOutcome = r;
+  }
+  if (touchesPayment) {
+    // the payment fields were written by the atomic function — read the row back so the result (and the push rule) see them
+    const { data: fresh, error: freshErr } = await supabase.from("sound_engineer_work").select("*").eq("id", id).single();
+    if (freshErr || !fresh) throw new Error(freshErr?.message ?? "רשומה לא נמצאה");
+    Object.assign(row, fresh as Record<string, unknown>);
   }
 
   const projectMap = await buildProjectMap();
@@ -502,7 +514,9 @@ export async function updateSoundEngineerWork(
   // Fires only when the work goes from non-Paid → Paid (THE shared rule, lib/mix-payment-pure). Best-effort, never
   // throws, localhost-guarded, deduped in settings. No other path is touched.
   const nowPaid = isEngineerWorkPaid(result);
-  if (!wasPaid && nowPaid) {
+  // Owner decision 2026-10-01: a push only for a real unpaid → paid transition whose Finance write COMMITTED with no conflict
+  // (never on PROTECTED_PAID / NONE / REFUSED, a rolled-back write — that throws before this line — or a retry on a paid work).
+  if (shouldPushPaymentConfirmed({ wasPaid, nowPaid, outcomeKind: payOutcome?.committed ? payOutcome.kind : null, conflictHe: payOutcome?.conflictHe ?? null })) {
     try {
       const { notifyStevenPaymentPaid } = await import("@/lib/steven-payment-notify");
       await notifyStevenPaymentPaid({
