@@ -746,6 +746,8 @@ export async function createCalendarEvent(
   opts?: {
     attendees?:    { email: string }[];
     description?:  string;
+    /** The event's place (e.g. the session location) — shown in the invitation. */
+    location?:     string;
     allDay?:       boolean;   // use date-only format (YYYY-MM-DD) for all-day events
   }
 ): Promise<{ id: string; htmlLink: string }> {
@@ -765,6 +767,7 @@ export async function createCalendarEvent(
     requestBody: {
       summary,
       description:              opts?.description,
+      location:                 opts?.location || undefined,
       start: startField,
       end:   endField,
       attendees:                opts?.attendees,

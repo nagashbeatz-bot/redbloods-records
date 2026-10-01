@@ -20,7 +20,7 @@ import {
   orderCurrencies, RECEIVED_STATUSES,
 } from "../lib/finance";
 import { actualBalanceAgainstAgreedPrice } from "../lib/payment-status";
-import { isSongIncome } from "../lib/clip-finance";
+import { isProjectIncome } from "../lib/clip-finance";
 
 let pass = 0, fail = 0;
 function check(name: string, actual: unknown, expected: unknown) {
@@ -183,19 +183,19 @@ console.log("5. R5: project money is compared only in the project's own currency
     { type: "income", payment_status: "שולם", amount: 500, currency: "₪" },
     { type: "income", payment_status: "בוטל", amount: 400, currency: "₪" },
     { type: "income", payment_status: "התקבל", amount: 999, currency: "$" },          // must NOT reduce a ₪ balance
-    { type: "income", payment_status: "התקבל", amount: 700, currency: "₪", expense_scope: "קליפ" }, // clip deal, not the song
+    { type: "income", payment_status: "התקבל", amount: 700, currency: "₪", expense_scope: "קליפ" }, // a קליפ tag is reporting only — it counts (one clip model)
     { type: "expense", payment_status: "שולם", amount: 388, currency: "$" },
   ];
   const { same, other } = partitionByCurrency(projectTx, projCur);
-  const song = same.filter(isSongIncome);
+  const song = same.filter(isProjectIncome);
   const paid = song.filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const cancelled = song.filter((t) => isCancelledStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  check("paid counts ₪ song income only", paid, 1500);
+  check("paid counts every ₪ income row of the project (the קליפ tag included)", paid, 2200);
   check("cancelled classification finds the ₪400 cancelled row", cancelled, 400);
-  check("actual balance = 3000 − 1500 (cancelled never subtracted — Finance Semantics Unification, 2026-09-22)", actualBalanceAgainstAgreedPrice(agreed, paid), 1500);
+  check("actual balance = 3000 − 2200 (cancelled never subtracted — Finance Semantics Unification, 2026-09-22)", actualBalanceAgainstAgreedPrice(agreed, paid), 800);
   check("$ rows kept aside, not dropped", other.map((t) => `${t.type}:${t.currency}:${t.amount}`), ["income:$:999", "expense:$:388"]);
-  const before = projectTx.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  check("(old behaviour would have counted the $ 999)", before, 2499);
+  const before = projectTx.filter(isProjectIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  check("(without R5 the $ 999 would be counted)", before, 3199);
 
   // The four real priced projects: all ₪ setting, all ₪ income -> R5 changes nothing.
   const real = [
@@ -207,8 +207,8 @@ console.log("5. R5: project money is compared only in the project's own currency
   let unchanged = true;
   for (const r of real) {
     const list: Tx[] = r.income.map((a) => ({ type: "income", payment_status: "התקבל", amount: a, currency: "₪" }));
-    const oldPaid = list.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-    const newPaid = partitionByCurrency(list, "₪").same.filter(isSongIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+    const oldPaid = list.filter(isProjectIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+    const newPaid = partitionByCurrency(list, "₪").same.filter(isProjectIncome).filter((t) => isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
     if (oldPaid !== newPaid || partitionByCurrency(list, "₪").other.length !== 0) unchanged = false;
     if (actualBalanceAgainstAgreedPrice(r.agreed, oldPaid) !== actualBalanceAgainstAgreedPrice(r.agreed, newPaid)) unchanged = false;
   }

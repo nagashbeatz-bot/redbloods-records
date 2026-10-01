@@ -85,14 +85,12 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   RF_LEDGER_NOT_IN_FINANCE: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   LINE_ACTUAL_VS_PAYMENTS: a("CONFLICT", "NONE", "DATA_CONFLICT"),
   BUDGET_LINE_STATUS_VS_PAYMENTS: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
-  BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC: a("CONTEXT", "NONE", "DATA_CONFLICT"),
   MISSING_RECORDED_PREP: a("CONTEXT", "UNKNOWN"),
   DUPLICATE_PRODUCTIONS: a("SYSTEM_GAP", "NONE", "DATA_CONFLICT"),
   PROJECT_VIDEO_NO_PRODUCTION: a("CONTEXT", "UNKNOWN"),
   CLIP_ROW_PROMOTED_MISSING_TX: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   CLIP_EXPENSE_UNPAID: a("NEEDS_ATTENTION", "OWNER", "MONEY_RELEVANT"),
   CLIP_EXPENSE_RECEIVED_STATUS: a("CONFLICT", "NONE", "MONEY_RELEVANT", "DATA_CONFLICT"),
-  CLIP_DEAL_OPEN: a("NEEDS_ATTENTION", "EXTERNAL", "MONEY_RELEVANT"),
   CLIP_PLAN_VS_EXPENSE: a("CONFLICT", "NONE", "DATA_CONFLICT"),
   PUBLISHED_CONTENT_VS_PRODUCTION: a("CONFLICT", "NONE", "DATA_CONFLICT"),
   CLIP_IN_PRODUCTION: a("CONTEXT", "NONE"),
@@ -205,7 +203,7 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
 // ── cross-domain graph (semantic; never a fake DB link) ───────────────────────────────────────────────────────────
 export type RelQuality = "CANONICAL_RELATION" | "OWNER_CONFIRMED_RELATION" | "DERIVED_RELATION" | "TEXT_MATCH" | "AMBIGUOUS" | "UNKNOWN";
 export interface GraphEdge { from: string; to: string; quality: RelQuality; via: string; note?: string }
-export const COMPANY_NODES = ["PROJECT", "CLIENT", "PROPOSAL", "LABEL_ARTIST", "RELEASE", "SHOW", "DJ", "SESSION", "MEETING", "TASK", "FINANCE_TRANSACTION", "ARTIST_LEDGER", "BALANCE_CYCLE", "MEDIA_INCOME", "VICTOR_WORK", "MIX_WORK", "MIX_VERSION", "MIX_COMMENT", "FINAL_FILE", "RED_FILMS_PRODUCTION", "CLIP_DEAL", "CLIP_ITEM", "SHOOT_SESSION", "SOCIAL", "CALENDAR_EVENT", "OWNER_KNOWLEDGE", "OWNER_CONTEXT", "SUNNY_ACTION", "SUNNY_OUTCOME", "NOTIFICATION", "AGENT_ALERT", "BEAT", "DELIVERY", "PORTAL_USER"] as const;
+export const COMPANY_NODES = ["PROJECT", "CLIENT", "PROPOSAL", "LABEL_ARTIST", "RELEASE", "SHOW", "DJ", "SESSION", "MEETING", "TASK", "FINANCE_TRANSACTION", "ARTIST_LEDGER", "BALANCE_CYCLE", "MEDIA_INCOME", "VICTOR_WORK", "MIX_WORK", "MIX_VERSION", "MIX_COMMENT", "FINAL_FILE", "RED_FILMS_PRODUCTION", "CLIP_PROJECT", "CLIP_ITEM", "SHOOT_SESSION", "SOCIAL", "CALENDAR_EVENT", "OWNER_KNOWLEDGE", "OWNER_CONTEXT", "SUNNY_ACTION", "SUNNY_OUTCOME", "NOTIFICATION", "AGENT_ALERT", "BEAT", "DELIVERY", "PORTAL_USER"] as const;
 const E = (from: string, to: string, quality: RelQuality, via: string, note?: string): GraphEdge => ({ from, to, quality, via, ...(note ? { note } : {}) });
 export const COMPANY_GRAPH: readonly GraphEdge[] = [
   E("PROPOSAL", "CLIENT", "CANONICAL_RELATION", "client_view"), E("PROPOSAL", "PROJECT", "CANONICAL_RELATION", "client_view", "the proposal chain (converted proposals)"),
@@ -224,7 +222,7 @@ export const COMPANY_GRAPH: readonly GraphEdge[] = [
   E("FINAL_FILE", "MIX_WORK", "CANONICAL_RELATION", "mix_view"), E("FINAL_FILE", "PROJECT", "CANONICAL_RELATION", "mix_view"), E("MIX_WORK", "FINANCE_TRANSACTION", "CANONICAL_RELATION", "mix_view", "one linked expense, two writers"),
   E("VICTOR_WORK", "MIX_WORK", "UNKNOWN", "—", "no production → mix handoff record; only same-project evidence"),
   E("RED_FILMS_PRODUCTION", "PROJECT", "CANONICAL_RELATION", "video_view"), E("RED_FILMS_PRODUCTION", "CLIENT", "TEXT_MATCH", "video_view", "artist name → client, stored as an id"),
-  E("CLIP_DEAL", "PROJECT", "CANONICAL_RELATION", "video_view"), E("CLIP_ITEM", "PROJECT", "CANONICAL_RELATION", "video_view"), E("CLIP_ITEM", "FINANCE_TRANSACTION", "CANONICAL_RELATION", "video_view", "older rows only; today the row is deleted on transfer"),
+  E("CLIP_PROJECT", "PROJECT", "CANONICAL_RELATION", "project_view", "a clip is its own project linked to its song by song_project_id (one clip model 2026-10-01)"), E("CLIP_ITEM", "PROJECT", "CANONICAL_RELATION", "video_view"), E("CLIP_ITEM", "FINANCE_TRANSACTION", "CANONICAL_RELATION", "video_view", "older rows only; today the row is deleted on transfer"),
   E("SHOOT_SESSION", "PROJECT", "CANONICAL_RELATION", "video_view"), E("SHOOT_SESSION", "RED_FILMS_PRODUCTION", "DERIVED_RELATION", "video_view", "same project only — not linked"),
   E("RED_FILMS_PRODUCTION", "ARTIST_LEDGER", "TEXT_MATCH", "artist_view", "a clip production matches the artist by name (information: A / B / C + the agreement allocation); the ledger clip expense is recorded by the Owner — no recoup, no automatic link"),
   E("SOCIAL", "PROJECT", "CANONICAL_RELATION", "project_view"), E("SOCIAL", "RED_FILMS_PRODUCTION", "DERIVED_RELATION", "video_view", "same project only"),
@@ -283,7 +281,7 @@ export const COMPANY_WORKFLOWS: Readonly<Record<string, readonly WorkflowStage[]
   SHOW: [W("opportunity / quote", "RECORDED", "MANUAL", "show_view", "pipeline statuses + quote follow-up"), W("confirmation", "RECORDED", "MANUAL", "show_view"), W("DJ", "RECORDED", "MANUAL", "show_view", "per show; DJ confirms in his portal"),
     W("rehearsals", "RECORDED", "MANUAL", "show_view"), W("calendar", "RECORDED", "AUTOMATIC", "calendar"), W("notifications", "RECORDED", "MANUAL", "show_view"), W("performance", "PARTIAL", "MANUAL", "show_view", "status בוצע"),
     W("client payment", "RECORDED", "AUTOMATIC", "show_view", "finance sync"), W("artist / DJ / label accounting", "PARTIAL", "AUTOMATIC", "show_view", "ledger sync paths with known inconsistencies"), W("close", "PARTIAL", "MANUAL", "show_view")],
-  VIDEO: [W("clip deal / production", "RECORDED", "MANUAL", "video_view", "two systems"), W("planning / budget", "RECORDED", "MANUAL", "video_view"), W("crew", "PARTIAL", "MANUAL", "video_view", "free-text names"), W("shoot", "RECORDED", "MANUAL", "video_view", "session + production date, not linked"),
+  VIDEO: [W("clip project / production", "RECORDED", "MANUAL", "video_view", "two systems; the clip project's money is its ONE agreedPrice"), W("planning / budget", "RECORDED", "MANUAL", "video_view"), W("crew", "PARTIAL", "MANUAL", "video_view", "free-text names"), W("shoot", "RECORDED", "MANUAL", "video_view", "session + production date, not linked"),
     W("expenses", "PARTIAL", "MANUAL", "video_view", "Red Films ledger vs Finance"), W("edit / review / final", "PARTIAL", "MANUAL", "video_view", "links + edit status"), W("publication / release context", "PARTIAL", "MANUAL", "video_view")],
   VENDOR: [W("assignment", "RECORDED", "MANUAL", "victor_view / mix_view"), W("work", "RECORDED", "MANUAL", "victor_view / mix_view"), W("handoff", "PARTIAL", "MANUAL", "victor_view / mix_view", "evidence rules; outside communication invisible"), W("feedback", "RECORDED", "MANUAL", "victor_view / mix_view"),
     W("completion", "RECORDED", "MANUAL", "victor_view / mix_view", "no approval record"), W("final materials", "PARTIAL", "MANUAL", "mix_view", "final files (mix only)"), W("payment", "PARTIAL", "MANUAL", "victor_view:money / mix_view:money", "salary vs per-work; several writers"), W("outcome", "NOT_RECORDED", "NONE", "—")],

@@ -272,14 +272,12 @@ const show = (o: Row = {}) => ({ id: randomUUID(), name: "הופעה", artist: "
   console.log("\nA9 — clip");
   const CLIP = await import("../lib/writes/clip");
   reset();
-  t("projects").push({ id: "pc", name: "קליפ", artist: "x", project_type: "שיר" });
-  t("settings").push({ key: "finance_pc", value: { clipAgreedPrice: 3000, currency: "₪" } });
-  failNext["transactions:select"] = "read failed";
-  const eSeed = await threw(() => CLIP.addClipPayments("pc", { seed: true }));
-  ok("seed: a failed read of the existing clip payments THROWS — no second מקדמה / יתרה pair", eSeed !== null && t("transactions").length === 0, eSeed?.message);
+  t("projects").push({ id: "pc", name: "קליפ", artist: "x", project_type: "קליפ" });
+  t("settings").push({ key: "finance_pc", value: { agreedPrice: 3000, currency: "$" } });
+  ok("one clip model (2026-10-01): the clip writer has no seed / clip payments (no second deal to seed)", !("addClipPayments" in CLIP) && !("setClipPrice" in CLIP));
   failNext["settings:select"] = "read failed";
-  const eSet = await threw(() => CLIP.addClipPayments("pc", { seed: true }));
-  ok("seed: a failed read of the finance settings THROWS — never a default price / currency", eSet !== null && t("transactions").length === 0);
+  const eSet = await threw(() => CLIP.sendClipToRedFilms("pc"));
+  ok("'שלח קליפ': a failed read of the finance settings THROWS — never a default currency, no production created", eSet !== null && t("red_films_productions").length === 0, eSet?.message);
   ok("the clip row mirror is awaited, checked and runs both ways", /await syncClipItemPaidMirror\(id,/.test(read("lib/writes/finance.ts")) && /status: paid \? "שולם" : "הועבר לכספים"/.test(read("lib/writes/finance.ts")) && !/clip_items"\)\.update\(\{ status: "שולם"[^\n]*\.then\(\(\) => \{\}, \(\) => \{\}\)/.test(read("lib/writes/finance.ts")));
 
   console.log("\nA10 — Sunny's contracts say what production says (verified 2026-09-29)");

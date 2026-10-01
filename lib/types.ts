@@ -20,12 +20,11 @@ export const ALL_STATUSES: ProjectStatus[] = [
 ];
 
 export type ProjectType =
-  | "שיר" | "קליפ" | "שיר + קליפ" | "EP" | "אלבום" | "רידים" | "לימודים" | "אחר" | "";
+  | "שיר" | "קליפ" | "EP" | "אלבום" | "רידים" | "לימודים" | "אחר" | "";
 
 export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "שיר",
   "קליפ",
-  "שיר + קליפ",
   "EP",
   "אלבום",
   "רידים",
@@ -33,55 +32,37 @@ export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "אחר",
 ];
 
-/** The combined type — a song project that also carries a clip deal. */
-export const SONG_WITH_CLIP_TYPE = "שיר + קליפ";
-
 /**
- * True for a project that IS a song — plain "שיר" or the combined "שיר + קליפ".
- *
- * Use this instead of `projectType === "שיר"` anywhere the question is "is there
- * a song here", so adding a clip deal to a song never drops it out of song
- * pipelines (releases, the label view, campaign ordering). Places that ask about
- * the clip side keep asking about the clip side.
+ * ONE clip model (Owner decision 2026-10-01): a song is a project, a clip is a project (project_type "קליפ", linked to
+ * its song by projects.song_project_id). There is no combined "שיר + קליפ" type — a clip never lives inside a song.
  */
+/** True for a project that IS a song. */
 export function isSongType(t: string | null | undefined): boolean {
-  return t === "שיר" || t === SONG_WITH_CLIP_TYPE;
+  return t === "שיר";
 }
 
 /**
- * Project types that can be a label release — the music products: a song (with or
- * without a clip deal), an EP, an album, a riddim pack. Deliberately NOT: a
- * clip-only project (tracked in Red Films), courses, "אחר" or an untyped project.
+ * Project types that can be a label release — the music products: a song, an EP, an album, a riddim pack.
+ * Deliberately NOT: a clip project (its own project, tracked with Red Films), courses, "אחר" or an untyped project.
  *
  * The single source of truth for release eligibility by type: the server guard
  * (convertProjectToLabelRelease), /label's "סמן קיים כריליס" list and the
  * dashboard's "הוסף ריליס" list all use it. Unrelated to isSongType, which keeps
  * meaning "a song" for campaigns and the type filter chips.
  */
-export const RELEASABLE_PROJECT_TYPES: readonly string[] = ["שיר", SONG_WITH_CLIP_TYPE, "EP", "אלבום", "רידים"];
+export const RELEASABLE_PROJECT_TYPES: readonly string[] = ["שיר", "EP", "אלבום", "רידים"];
 export function isReleasableType(t: string | null | undefined): boolean {
   return !!t && RELEASABLE_PROJECT_TYPES.includes(t);
 }
 
-/** True for a project that carries a clip — "קליפ" or the combined type. */
+/** True for a clip project. */
 export function hasClipType(t: string | null | undefined): boolean {
-  return t === "קליפ" || t === SONG_WITH_CLIP_TYPE;
+  return t === "קליפ";
 }
 
-/**
- * Does a project match a project-type filter chip? The single rule, shared by
- * every list that filters by type.
- *
- * A combined project is genuinely both, so it answers to both parent chips:
- *   "שיר"        → שיר + שיר + קליפ
- *   "קליפ"       → קליפ + שיר + קליפ
- *   "שיר + קליפ" → only the combined projects
- * Every other chip stays an exact match.
- */
+/** Does a project match a project-type filter chip? The single rule, shared by every list that filters by type. */
 export function matchesTypeFilter(projectType: string | null | undefined, filter: string): boolean {
   if (!filter) return true;                       // "כל הסוגים"
-  if (filter === "שיר")  return isSongType(projectType);
-  if (filter === "קליפ") return hasClipType(projectType);
   return projectType === filter;
 }
 

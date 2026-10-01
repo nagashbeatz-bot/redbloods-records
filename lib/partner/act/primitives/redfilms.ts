@@ -6,7 +6,7 @@
  * App rules only: planned ≠ spent (production budget, budget lines and clip rows are planning; Red Films payments are
  * their own ledger; only a Finance expense with scope קליפ is actual spend, and only שולם is paid). Every Red Films money
  * row carries its currency (₪ / $ / €, SET_RF_CURRENCY); clip rows carry their own; nothing is ever converted. B3 (Owner
- * canon 2026-09-27): the client clip price (A) is never the planned budget (B) — no price → budget sync and no budget
+ * canon 2026-09-27): a project's price (A) is never the planned budget (B) — no price → budget sync and no budget
  * lock; a production created by 'שלח קליפ' owns its planning budget like any other. D7 ("production
  * approved") is unchanged: status מאושר is today's status value, nothing more. Crew names are free text. Link / URL
  * fields are never written through Sunny (plans never persist URL values — a registered, reported limit).
@@ -16,7 +16,7 @@
  * clip without a project → PROJECT_REQUIRED, a similar unlinked Finance expense → POSSIBLE_DUPLICATE: the Boss decides).
  */
 import type { ArgSpec } from "../types";
-import { finishPlan, newProjectMeta, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { dupContext, dupField, dupGate, dupWarnings, DUP_ARGS, type DupCandidate } from "./duplicates";
 import { isClipItemPromoted, rfPaymentFinanceScope, RF_CLIENT_SOURCES } from "@/lib/clip-rf-money-pure";
 
@@ -56,9 +56,8 @@ export interface RedFilmsFamilyWriters {
   updateClipItemRecord(id: string, body: Record<string, unknown>): Promise<void>;
   deleteClipItemRecord(id: string): Promise<void>;
   promoteClipItemRecord(id: string, date: string): Promise<"ok" | "not_found" | "already_promoted">;
-  clipDealOf(projectId: string): Promise<{ clipAgreedPrice: number; currency: string; paymentCount: number; managedProductionId: string | null }>;
-  setClipPrice(projectId: string, price: number): Promise<void>;
-  addClipPayments(projectId: string, body: Record<string, unknown>): Promise<"ok" | "not_found">;
+  /** lib/clip-production getManagedClipProductionId — the production 'שלח קליפ' created for the project (provenance), or null. */
+  managedClipProductionOf(projectId: string): Promise<string | null>;
   sendClipToRedFilms(projectId: string): Promise<"ok" | "not_found">;
   readEquipmentRow(id: string): Promise<Row | null>;
   countEquipmentNamed(name: string): Promise<number>;
@@ -178,11 +177,12 @@ async function onClip(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
   const f = await clipFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את השורה");
   return { key: `clip-row:${k.id}`, id: k.id, label: `${f.category} ${money(Number(f.amount), String(f.currency))}`, fields: f };
 }
-const dealFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { if (!(await d.readProjectMeta(id))) return null; const c = await d.clipDealOf(id); return { clipAgreedPrice: c.clipAgreedPrice, currency: c.currency, paymentCount: c.paymentCount, managed: !!c.managedProductionId }; };
-async function onDeal(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+/** 'שלח קליפ' view of a project: is there already a production it created (provenance only — never money). */
+const sendClipFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { if (!(await d.readProjectMeta(id))) return null; return { managed: !!(await d.managedClipProductionOf(id)) }; };
+async function onSendClip(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.project, ["project"]); if (!k) return refuse("BAD_ENTITY", "צריך פרויקט (project:…)");
   const p = await d.readProjectMeta(k.id); if (!p) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הפרויקט");
-  return { key: `project:${k.id}`, id: k.id, label: p.name, fields: (await dealFields(d, k.id))! };
+  return { key: `project:${k.id}`, id: k.id, label: p.name, fields: (await sendClipFields(d, k.id))! };
 }
 /** Duplicate awareness (POLISH FIX #1): the same budget line / project clip income + amount, near the date, similar notes. */
 const rfPayDup = (d: WriterDeps, a: Readonly<Record<string, unknown>>) => {
@@ -196,8 +196,6 @@ async function newPaymentLink(d: WriterDeps, lineId: string): Promise<string | n
   if (!rfPaymentFinanceScope((prod.production_type as string | null) ?? null).scope) return "SCOPE_REQUIRED";
   return prod.project_id ? "WILL_LINK" : "PROJECT_REQUIRED";
 }
-const clipDup = (d: WriterDeps, id: string, a: Readonly<Record<string, unknown>>, currency: string) =>
-  dupContext(d, typeof a.amount === "number" ? { kind: "CLIP_PAYMENT", projectId: id, amount: a.amount } : null, { date: realYmd(a.date) ? String(a.date) : null, text: [str(a.description), str(a.notes)].filter(Boolean).join(" "), currency });
 export const RF_EQUIPMENT_CATEGORY: readonly string[] = ["מצלמות", "עדשות", "ייצוב", "תאורה", "סאונד", "אביזרים", "אחר"];
 const equipFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readEquipmentRow(id); return r ? { name: String(r.name ?? ""), category: String(r.category ?? ""), quantity: Number(r.quantity) || 0, purchasePrice: r.purchase_price === null || r.purchase_price === undefined ? null : Number(r.purchase_price), purchasedFrom: String(r.purchased_from ?? ""), serialNumber: String(r.serial_number ?? ""), notes: String(r.notes ?? ""), status: String(r.status ?? "קיים") } : null; };
 const bulkIds = (v: unknown): string[] | null => { if (typeof v !== "string") return null; const ids = v.split(/[,;\s]+/).filter(Boolean).map((x) => parseKey(x, ["rf-production"])?.id ?? ""); return ids.length && ids.length <= 50 && ids.every(Boolean) && new Set(ids).size === ids.length ? ids : null; };
@@ -260,7 +258,7 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, after, a) { return { createdId: await d.createProductionRecord({ title: after.title, production_type: after.productionType, project_id: parseKey(a.project, ["project"])?.id ?? null, artist_name: str(a.artistName) ?? "", photographer_name: str(a.photographerName) ?? "" }) }; },
     async verify(d, id, after) { const f = await prodFields(d, id); return !!f && f.title === after.title && f.status === "רעיון"; },
     warnings: (c) => (Number(c.sameTitle) > 0 ? [`כבר יש ${c.sameTitle} הפקה באותו שם`] : []),
-    disclosuresHe: ["הפקה חדשה בסטטוס רעיון; לא נוצר תקציב, תיקייה, משימה או רשומה כספית", "מקור הלקוח נגזר מסיווג הפרויקט (לייבל → פנימי - לייבל, לקוח → לקוח חיצוני)", "לפרויקט עם עסקת קליפ עדיף 'שלח קליפ' (מקשר את ההפקה לפרויקט)"],
+    disclosuresHe: ["הפקה חדשה בסטטוס רעיון; לא נוצר תקציב, תיקייה, משימה או רשומה כספית", "מקור הלקוח נגזר מסיווג הפרויקט (לייבל → פנימי - לייבל, לקוח → לקוח חיצוני)", "לפרויקט קליפ עדיף 'שלח קליפ' (מקשר את ההפקה לפרויקט)"],
   },
   {
     actionId: "UPDATE_PRODUCTION_DETAILS", kinds: ["rf-production"],
@@ -281,7 +279,7 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_PRODUCTION_MONEY", kinds: ["rf-production"],
-    meta: meta("כסף של הפקה (תקציב / מחיר ללקוח / מקדמה נדרשת / התקבלה / סטטוס גבייה)", "Set a production's planning money (B3: the budget is planning — never the client clip price; no lock on productions created by 'שלח קליפ')", [K("production"), M("generalBudget"), M("clientPrice"), M("advanceRequired"), M("advanceReceived"), E("collectionStatus", RF_COLLECTION)], ["generalBudget", "clientPrice", "advanceRequired", "advanceReceived", "collectionStatus"], "updateProduction (lib/writes/redfilms)", { effects: ["FINANCE"], riskClass: "FINANCIAL" }),
+    meta: meta("כסף של הפקה (תקציב / מחיר ללקוח / מקדמה נדרשת / התקבלה / סטטוס גבייה)", "Set a production's planning money (B3: the budget is planning — never the project's agreed price; no lock on productions created by 'שלח קליפ')", [K("production"), M("generalBudget"), M("clientPrice"), M("advanceRequired"), M("advanceReceived"), E("collectionStatus", RF_COLLECTION)], ["generalBudget", "clientPrice", "advanceRequired", "advanceReceived", "collectionStatus"], "updateProduction (lib/writes/redfilms)", { effects: ["FINANCE"], riskClass: "FINANCIAL" }),
     resolve: onProd, read: prodFields,
     plan(a, cur) {
       const after: Fields = {};
@@ -291,8 +289,8 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     async apply(d, id, a) { const r = await d.updateProductionRecord(id, snake(a)); if (r !== "ok") throw new Error(`not updated: ${r}`); },
     requiredValues: (_a, after) => Object.entries(after).map(([k, v]) => (k === "collectionStatus" ? String(v) : ils(Number(v)))),
-    warnings: (c) => (c.managed ? ["ההפקה נוצרה מהפרויקט ('שלח קליפ') — התקציב הוא תכנון שלה; מחיר הקליפ ללקוח בפרויקט לא משתנה"] : []),
-    disclosuresHe: [PLANNING, NO_CUR, "תקציב ≠ מחיר הקליפ ללקוח ≠ עלות בפועל ≠ סכום לקיזוז מהאמן", "לא נוצרת רשומה כספית; לא נשלח כלום"],
+    warnings: (c) => (c.managed ? ["ההפקה נוצרה מהפרויקט ('שלח קליפ') — התקציב הוא תכנון שלה; המחיר המוסכם של הפרויקט לא משתנה"] : []),
+    disclosuresHe: [PLANNING, NO_CUR, "תקציב ≠ המחיר המוסכם של הפרויקט ≠ עלות בפועל ≠ סכום לקיזוז מהאמן", "לא נוצרת רשומה כספית; לא נשלח כלום"],
   },
   {
     actionId: "CANCEL_PRODUCTION", kinds: ["rf-production"],
@@ -490,59 +488,15 @@ export const RF_PRIMITIVES: readonly PrimitiveSpec[] = [
     warnings: (c) => [`תיווצר הוצאה 'לא שולם' של ${money(Number(c.amount), String(c.currency))} (שיוך קליפ); שורת התכנון נשארת, מסומנת 'הועבר לכספים' ומקושרת להוצאה`],
     disclosuresHe: ["הוצאה אחת בכספים בסטטוס לא שולם — היא ההוצאה בפועל (שולם רק כשמסמנים שולם)", "שורת התכנון לא נמחקת: היא נשארת כהיסטוריית תכנון ולא נספרת יותר כ'מתוכנן'", "הגנה מכפילות: לחיצה כפולה לא יוצרת שתי הוצאות"],
   },
-  // ── the project's clip deal ──
-  {
-    actionId: "SET_CLIP_PRICE", kinds: ["project"],
-    // chainable: one compare-and-swap merge of clipAgreedPrice into the project's finance settings — nothing else changes
-    chain: { derived: () => [] },
-    // `$stepK.created` as its own project: a new project has no settings row and no clip payments / production
-    refTarget: { arg: "project", kinds: ["project"], view: (cb) => (newProjectMeta(cb) ? { clipAgreedPrice: 0, currency: "₪", paymentCount: 0, managed: false } : null) },
-    meta: meta("מחיר הקליפ בפרויקט (העסקה עם האמן)", "Set the project's CLIENT clip price (kept apart from the song price; B3: it never changes a Red Films production's planned budget)", [K("project"), M("clipAgreedPrice", true)], ["clipAgreedPrice"], "setClipPrice (lib/writes/clip)", { effects: ["FINANCE", "SETTINGS"], riskClass: "FINANCIAL" }),
-    resolve: onDeal, read: dealFields,
-    plan: (a, cur) => (typeof a.clipAgreedPrice !== "number" || a.clipAgreedPrice < 0 ? refuse("BAD_MONEY", "מחיר לא תקין") : finishPlan(cur, { clipAgreedPrice: a.clipAgreedPrice })),
-    apply: async (d, id, a) => { await d.setClipPrice(id, Number(a.clipAgreedPrice)); },
-    requiredValues: (_a, after) => [String(Number(after.clipAgreedPrice).toLocaleString("en-US"))],
-    warnings: (c) => [`היום: ${money(Number(c.clipAgreedPrice), String(c.currency))}`],
-    disclosuresHe: ["מחיר הקליפ נפרד ממחיר השיר (לא מנפח אותו)", "מחיר הקליפ ללקוח ≠ תקציב ההפקה: תקציב ההפקה ב-Red Films לא משתנה", "תשלומי קליפ קיימים לא משתנים", "לא נשלח כלום"],
-  },
-  {
-    actionId: "OPEN_CLIP_DEAL", kinds: ["project"],
-    meta: meta("פתיחת עסקת קליפ (מקדמה + יתרה 50/50)", "Open the clip deal: two expected clip payments (advance today, balance in 30 days — the app's seed); a שיר becomes שיר + קליפ", [K("project"), M("clipAgreedPrice")], ["paymentCount"], "addClipPayments seed (lib/writes/clip)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete / cancel the two payments (Finance primitives)" }),
-    resolve: onDeal, read: dealFields,
-    plan(a, cur) {
-      if (Number(cur.paymentCount) > 0) return refuse("NO_CHANGE_NEEDED", "לפרויקט כבר יש תשלומי קליפ");
-      const price = a.clipAgreedPrice !== undefined ? Number(a.clipAgreedPrice) : Number(cur.clipAgreedPrice);
-      if (!(price > 0)) return refuse("BAD_MONEY", "יש להזין מחיר שסוכם לקליפ");
-      return { ok: true, after: { paymentCount: 2 } };
-    },
-    async apply(d, id, _after, a) { const r = await d.addClipPayments(id, { seed: true, ...(a.clipAgreedPrice !== undefined ? { clipAgreedPrice: a.clipAgreedPrice } : {}) }); if (r !== "ok") throw new Error(`not opened: ${r}`); },
-    requiredValues: (a) => (a.clipAgreedPrice !== undefined ? [String(Number(a.clipAgreedPrice).toLocaleString("en-US"))] : ["פתיחת עסקה"]),
-    warnings: (c) => [`מחיר הקליפ: ${money(Number(c.clipAgreedPrice), String(c.currency))} → שני תשלומים צפויים (מקדמה היום, יתרה בעוד 30 יום)`],
-    disclosuresHe: ["תשלומי קליפ הם הכנסות צפויות (שיוך קליפ) — כסף שהתקבל רק כשמסמנים התקבל", "לחיצה כפולה לא מכפילה (כבר יש תשלומים → לא נוצר כלום)"],
-  },
-  {
-    actionId: "ADD_CLIP_PAYMENT", kinds: ["project"],
-    meta: meta("תשלום קליפ נוסף", "Add one clip payment (income with scope קליפ) to the project", [K("project"), M("amount", true), E("paymentStatus", ["התקבל", "שולם", "צפוי", "לא שולם", "בוטל"]), { name: "date", kind: "ymd", required: false }, T("category"), T("description"), T("notes"), ...DUP_ARGS], ["paymentCount"], "addClipPayments (lib/writes/clip)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "delete the payment (Finance primitives)" }),
-    async resolve(d, a) { const r = await onDeal(d, a); if (!("key" in r)) return r; return { ...r, fields: { ...r.fields, ...(await clipDup(d, r.id, a, String(r.fields.currency))) } }; },
-    async read(d, id, a) { const f = await dealFields(d, id); return f && a ? { ...f, ...(await clipDup(d, id, a, String(f.currency))) } : f; },
-    plan(a, cur) {
-      if (typeof a.amount !== "number" || !(a.amount > 0)) return refuse("BAD_MONEY", "סכום לא תקין"); if (a.date !== undefined && !realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין");
-      const g = dupGate(a, cur, "רשומת תשלום קליפ"); if (g) return g;
-      return { ok: true, after: { paymentCount: Number(cur.paymentCount) + 1 } };
-    },
-    async verify(d, id, after) { const f = await dealFields(d, id); return !!f && f.paymentCount === after.paymentCount; },
-    async apply(d, id, _after, a) { const r = await d.addClipPayments(id, { amount: a.amount, paymentStatus: a.paymentStatus ?? "צפוי", date: a.date, category: a.category, description: a.description, notes: a.notes }); if (r !== "ok") throw new Error(`not added: ${r}`); },
-    requiredValues: (a) => [String(Number(a.amount).toLocaleString("en-US")), String(a.paymentStatus ?? "צפוי")],
-    warnings: (c, a) => [`מטבע הפרויקט: ${c.currency} (לא מומר)`, ...(a ? [`התשלום: ${c.currency}${Number(a.amount).toLocaleString("en-US")} · ${String(a.paymentStatus ?? "צפוי")}${str(a.date) ? ` · ${a.date}` : ""}${str(a.description) ? ` · ${a.description}` : ""}`] : []), ...dupWarnings(c, a)],
-    disclosuresHe: ["רשומת הכנסה אחת (שיוך קליפ) במטבע של הפרויקט", "לא נשלח כלום"],
-  },
+  // ── 'שלח קליפ' (one clip model 2026-10-01: a clip is its own project with ONE agreedPrice — SET_AGREED_PRICE; there
+  //    is no clip price, clip deal or clip payment action) ──
   {
     actionId: "SEND_CLIP_TO_RED_FILMS", kinds: ["project"],
-    meta: meta("'שלח קליפ' — הפקה מנוהלת ב-Red Films", "Create (or reuse) the project's Red Films production (created by 'שלח קליפ'): planning budget 0 in the clip deal currency (B3: never the clip price); client source from the project's classification", [K("project")], ["managed"], "sendClipToRedFilms (lib/writes/clip)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "cancel the production" }),
-    resolve: onDeal, read: dealFields,
+    meta: meta("'שלח קליפ' — הפקה מנוהלת ב-Red Films", "Create (or reuse) the project's Red Films production (created by 'שלח קליפ'): planning budget 0 in the project's currency (B3: never the project's price); client source from the project's classification", [K("project")], ["managed"], "sendClipToRedFilms (lib/writes/clip)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "cancel the production" }),
+    resolve: onSendClip, read: sendClipFields,
     plan: (_a, cur) => (cur.managed ? refuse("NO_CHANGE_NEEDED", "לפרויקט כבר יש הפקה מנוהלת") : { ok: true, after: { managed: true } }),
     async apply(d, id) { if ((await d.sendClipToRedFilms(id)) !== "ok") throw new Error("project not found"); },
-    disclosuresHe: ["נוצרת הפקה 'רעיון' (שם ואמן מהפרויקט, לקוח לפי שם האמן — התאמת טקסט), תקציב תכנון 0 במטבע עסקת הקליפ — מחיר הקליפ הוא לא התקציב", "מקור הלקוח לפי סיווג הפרויקט (לייבל → פנימי - לייבל, לקוח → לקוח חיצוני)", "אם כבר קיימת הפקה מקושרת — היא נשמרת (לא נוצרת שנייה)", "לא נשלח כלום"],
+    disclosuresHe: ["נוצרת הפקה 'רעיון' (שם ואמן מהפרויקט, לקוח לפי שם האמן — התאמת טקסט), תקציב תכנון 0 במטבע הפרויקט — מחיר הפרויקט הוא לא התקציב", "מקור הלקוח לפי סיווג הפרויקט (לייבל → פנימי - לייבל, לקוח → לקוח חיצוני)", "אם כבר קיימת הפקה מקושרת — היא נשמרת (לא נוצרת שנייה)", "לא נשלח כלום"],
   },
   // ── equipment, documents / references, cancelled-production cleanup ──
   {

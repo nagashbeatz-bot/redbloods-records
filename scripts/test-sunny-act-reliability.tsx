@@ -274,7 +274,7 @@ const storedPlan = (db: ReturnType<typeof mkDeps>["db"], planId: unknown) => db.
   ok("R7f. connector instructions: surface the candidate, never set separateFromSimilar alone, never re-execute after OUTCOME_UNKNOWN", /duplicateAck/.test(SERVER_INSTRUCTIONS) && /never set separateFromSimilar on your own/.test(SERVER_INSTRUCTIONS) && /NEVER execute the plan again/.test(SERVER_INSTRUCTIONS));
   const mcpSrc = read("lib/integrations/partner-mcp/mcp.ts");
   ok("R7g. a relay timeout on execute → OUTCOME_UNKNOWN pointing at partner_plan_status (never a retry)", /status: "OUTCOME_UNKNOWN", planId:[^\n]*next: "partner_plan_status"/.test(mcpSrc));
-  ok("R7h. the reader selects the row id (only to leave out the plan's own creations)", (read("lib/writes/duplicates.ts").match(/select\("id, /g) ?? []).length === 5);
+  ok("R7h. the reader selects the row id (only to leave out the plan's own creations)", (read("lib/writes/duplicates.ts").match(/select\("id, /g) ?? []).length === 4); // the clip-payment reader retired with ADD_CLIP_PAYMENT (one clip model)
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

@@ -2,23 +2,25 @@
  * Sunny — ONE project's money, explained. Pure, READ-ONLY. No new business rule: it applies the SAME canonical
  * primitives, in the SAME order, as the Finance Brain's project loop (lib/partner/finance/core.ts):
  *   validateTx (received = שולם|התקבל for income; paid = שולם only for expenses; invalid rows dropped),
- *   parseSetting (agreed price / currency / exception / clip price), isSongIncome / isClipIncome,
- *   collectibleAmount / overpaymentAmount (lib/payment-status), summarizeClipFinance (lib/clip-finance).
+ *   parseSetting (agreed price / currency / exception), isProjectIncome (lib/clip-finance — every income row of the
+ *   project, any expense_scope: one clip model 2026-10-01, a clip is its own project with ONE agreedPrice),
+ *   collectibleAmount / overpaymentAmount (lib/payment-status).
  * Currencies are NEVER combined: the deal is measured only in the price's currency; everything else is listed per
  * currency. The verdict carries its reasons so Sunny can say WHY it believes there is / isn't debt.
  */
 import { parseSetting, validateTx } from "../finance/core";
 import type { FinanceRaw } from "../finance/types";
-import { isClipIncome, isSongIncome, summarizeClipFinance } from "../../clip-finance";
+import { isProjectIncome } from "../../clip-finance";
 import { actualBalanceAgainstAgreedPrice, collectibleAmount, isFullyPaid, overpaymentAmount } from "../../payment-status";
 
 export type MoneyVerdict =
   | "DEBT" | "NO_DEBT" | "OVERPAYMENT" | "FINANCE_EXCEPTION" | "PRICE_UNKNOWN" | "PROJECT_CANCELLED" | "INSUFFICIENT_EVIDENCE";
 
 export interface ProjectMoney {
-  price: { agreed: number | null; currency: string; exception: boolean; clipAgreed: number | null; malformedSetting: boolean; settingExists: boolean };
+  price: { agreed: number | null; currency: string; exception: boolean; malformedSetting: boolean; settingExists: boolean };
+  /** The project's ONE deal (field name kept): agreedPrice vs every income row of the project. */
   song: {
-    /** received song income in the price currency (שולם|התקבל, not cancelled) */
+    /** received income in the price currency (שולם|התקבל, not cancelled) */
     received: number;
     /** open (not received, not cancelled) song income rows in the price currency — צפוי / לא שולם / חלקי … */
     openExpected: number;
@@ -30,7 +32,6 @@ export interface ProjectMoney {
     overpayment: number;
     fullyPaid: boolean | null;
   } | null;
-  clip: { agreed: number; paid: number; expected: number; remaining: number; credit: number; status: string } | null;
   /** income in OTHER currencies (never merged into the deal) */
   otherCurrencyIncome: Record<string, { received: number; open: number }>;
   expenses: Record<string, { paid: number; notPaid: number }>;
@@ -48,10 +49,9 @@ export function projectMoney(raw: FinanceRaw, project: { id: string; status: str
   const settingRow = raw.financeSettings.find((s) => s.projectId === project.id) ?? null;
   const st = settingRow ? parseSetting(settingRow.value) : null;
   const currency = st?.currency ?? "₪";
-  const txLike = (t: (typeof txs)[number]) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope, currency: t.currency });
   const open = (t: (typeof txs)[number]) => t.type === "income" && !t.received && !t.cancelled;
 
-  const song = txs.filter((t) => t.type === "income" && isSongIncome(txLike(t)));
+  const song = txs.filter((t) => isProjectIncome(t));
   const same = song.filter((t) => t.currency === currency);
   const received = r2(same.filter((t) => t.received && !t.cancelled).reduce((s, t) => s + t.amount, 0));
   const cancelled = r2(same.filter((t) => t.cancelled).reduce((s, t) => s + t.amount, 0));
@@ -68,8 +68,6 @@ export function projectMoney(raw: FinanceRaw, project: { id: string; status: str
     const e = (expenses[t.currency] ??= { paid: 0, notPaid: 0 });
     if (t.received) e.paid = r2(e.paid + t.amount); else e.notPaid = r2(e.notPaid + t.amount);
   }
-  const clipRows = txs.filter((t) => t.type === "income" && isClipIncome(txLike(t)) && t.currency === currency);
-  const clip = st?.clipPrice && !st.exception ? (() => { const c = summarizeClipFinance(clipRows.map(txLike), st.clipPrice!, currency); return { agreed: c.agreed, paid: c.paid, expected: c.expected, remaining: c.remaining, credit: c.credit, status: c.status }; })() : null;
 
   const reasons: string[] = [];
   let verdict: MoneyVerdict;
@@ -95,7 +93,7 @@ export function projectMoney(raw: FinanceRaw, project: { id: string; status: str
   if (Object.keys(other).length) reasons.push(`יש הכנסות במטבע אחר (${Object.keys(other).join(", ")}) — לא מחושבות מול המחיר ולא מומרות.`);
   if (invalidRows) reasons.push(`${invalidRows} רשומות כספים לא תקינות לא נספרו.`);
   return {
-    price: { agreed: price, currency, exception: !!st?.exception, clipAgreed: st?.clipPrice ?? null, malformedSetting: !!st?.malformed, settingExists: !!settingRow },
-    song: songOut, clip, otherCurrencyIncome: other, expenses, invalidRows, verdict: verdict!, reasonsHe: reasons,
+    price: { agreed: price, currency, exception: !!st?.exception, malformedSetting: !!st?.malformed, settingExists: !!settingRow },
+    song: songOut, otherCurrencyIncome: other, expenses, invalidRows, verdict: verdict!, reasonsHe: reasons,
   };
 }

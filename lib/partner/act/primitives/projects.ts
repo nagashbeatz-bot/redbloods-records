@@ -4,7 +4,7 @@
  * Redbloods screens use (lib/writes/projects, lib/projects-store, lib/release-store, lib/project-cover-store).
  */
 import type { ArgSpec } from "../types";
-import { ALL_STATUSES, PROJECT_BUSINESS_TYPES, PROJECT_TYPES, RELEASE_STAGES } from "@/lib/types";
+import { ALL_STATUSES, PROJECT_BUSINESS_TYPES, PROJECT_TYPES, RELEASE_STAGES, isReleasableType } from "@/lib/types";
 import { COVER_THEMES } from "@/lib/project-cover";
 import { COMMON_NO, finishPlan, parseKey, projectFields, realYmd, refuse, resolveProject, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 
@@ -223,7 +223,7 @@ export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (!parseKey(args.labelArtist, ["label-artist"])) return refuse("BAD_ENTITY", "צריך אמן לייבל (label-artist:…)");
       if (args.releaseStage !== undefined && !(RELEASE_STAGES as readonly string[]).includes(String(args.releaseStage))) return refuse("BAD_ENUM", "שלב ריליס לא מוכר");
       if (args.releaseTargetDate !== undefined && !realYmd(args.releaseTargetDate)) return refuse("BAD_DATE", "תאריך יעד לא תקין");
-      if (!["שיר", "שיר + קליפ", "EP", "אלבום", "רידים"].includes(String(cur.projectType))) return refuse("NOT_RELEASABLE", "סוג הפרויקט לא מתאים לריליס (שיר, EP, אלבום או רידים)");
+      if (!isReleasableType(String(cur.projectType))) return refuse("NOT_RELEASABLE", "סוג הפרויקט לא מתאים לריליס (שיר, EP, אלבום או רידים)");
       return { ok: true, after: { hasRelease: true } };
     },
     async apply(d, id, _a, args) {

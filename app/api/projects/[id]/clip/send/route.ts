@@ -9,9 +9,9 @@
  * with created:false instead of making a second one. (There is no DB-level
  * unique index; adding one would require SQL, which is out of scope here.)
  *
- * The agreed clip price is copied into general_budget (תקציב) so the owner never
- * types the same number twice. From then on the project's clipAgreedPrice stays
- * the source of truth and pushes updates one-way (see /api/projects/[id]/clip).
+ * B3 (Owner canon 2026-09-27): the production starts with a planning budget of 0 in the
+ * project's currency — a project's price is never its budget. One clip model (2026-10-01):
+ * a clip is its own project with ONE agreedPrice; this route is operational only.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";

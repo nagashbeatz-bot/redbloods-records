@@ -5,7 +5,7 @@
  */
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
 import { isCancelledPayment, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
-import { CLIP_SCOPE } from "@/lib/clip-finance";
+import { projectIncomeTotals } from "@/lib/finance/project-summary";
 import { isExpectedStatus, isReceivedStatus } from "@/lib/finance/classify";
 import { normalizeCurrency, orderCurrencies, type CurrencyTotals } from "@/lib/finance/currency";
 import { sessionEndLocal, israelNowString } from "@/lib/session-duration";
@@ -154,20 +154,23 @@ export function checkSessionsNeedingUpdate(
 export type RuleFinanceSetting = { agreedPrice?: number | null; financeException?: boolean; currency?: string | null };
 
 /**
- * Received SONG income per project, counted ONLY in the project's own finance currency (Finance single truth:
- * income in another currency is never compared with the agreed price — no FX). Clip income is a separate deal.
+ * Received income per project — the ONE aggregation (lib/finance/project-summary projectIncomeTotals): every income row
+ * of the project, whatever its expense_scope (one clip model 2026-10-01), ONLY in the project's own finance currency
+ * (income in another currency is never compared with the agreed price — no FX).
  */
-function paidSongIncomeByProject(
-  transactions: ReadonlyArray<{ projectId: string | null; amount: number; type: string; paymentStatus: string; expenseScope?: string | null; currency?: string | null }>,
+function paidIncomeByProject(
+  transactions: ReadonlyArray<{ projectId: string | null; amount: number; type: string; paymentStatus: string; currency?: string | null }>,
   financeMap: Map<string, RuleFinanceSetting>,
-  isIncome: (type: string) => boolean,
 ): Map<string, number> {
-  const paid = new Map<string, number>();
+  const rows = new Map<string, Array<{ type: string; payment_status: string; amount: number; currency?: string | null }>>();
   for (const t of transactions) {
-    if (!t.projectId || !isIncome(t.type) || (t.expenseScope ?? "") === CLIP_SCOPE || !isReceivedStatus(t.paymentStatus)) continue;
-    if (normalizeCurrency(t.currency) !== normalizeCurrency(financeMap.get(t.projectId)?.currency)) continue;
-    paid.set(t.projectId, (paid.get(t.projectId) ?? 0) + t.amount);
+    if (!t.projectId) continue;
+    const list = rows.get(t.projectId) ?? [];
+    list.push({ type: t.type, payment_status: t.paymentStatus, amount: t.amount, currency: t.currency });
+    rows.set(t.projectId, list);
   }
+  const paid = new Map<string, number>();
+  for (const [id, list] of rows) paid.set(id, projectIncomeTotals(list, financeMap.get(id)?.currency).received);
   return paid;
 }
 
@@ -177,12 +180,8 @@ export function checkOverduePayments(
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
 
-  // Received song income per project, in the project's currency (same statuses as ProjectDrawer).
-  // Clip income (expense_scope="קליפ") is a separate deal — it is not measured
-  // against the project's agreed price, so it never enters this total.
-  const isClip = (t: { expenseScope?: string | null }) => (t.expenseScope ?? "") === CLIP_SCOPE;
-  // Income = the explicit income types only (an "expense" row is never income, never overdue income).
-  const paidByProject = paidSongIncomeByProject(transactions, financeMap, (type) => INCOME_TYPES.has(type));
+  // Received income per project, in the project's currency — every income row counts (one clip model 2026-10-01).
+  const paidByProject = paidIncomeByProject(transactions, financeMap);
 
   const overdue = transactions.filter((t) => {
     // Cancelled ("בוטל") income is never overdue — it counts as no income at all.
@@ -190,14 +189,11 @@ export function checkOverduePayments(
     if (t.projectId) {
       // Skip projects flagged as a finance exception (no charge / favor).
       if (financeMap.get(t.projectId)?.financeException) return false;
-      // Skip if project is already fully paid or overpaid. A clip payment is
-      // owed regardless of the song's price, so it skips this comparison.
+      // Skip if project is already fully paid or overpaid (its ONE agreed price).
       // A missing / zero agreed price is PRICE_UNKNOWN — never "fully paid".
-      if (!isClip(t)) {
-        const agreedPrice = Number(financeMap.get(t.projectId)?.agreedPrice ?? 0) || 0;
-        const paidIncome  = paidByProject.get(t.projectId) ?? 0;
-        if (agreedPrice > 0 && paidIncome >= agreedPrice) return false;
-      }
+      const agreedPrice = Number(financeMap.get(t.projectId)?.agreedPrice ?? 0) || 0;
+      const paidIncome  = paidByProject.get(t.projectId) ?? 0;
+      if (agreedPrice > 0 && paidIncome >= agreedPrice) return false;
     }
     return true;
   });
@@ -244,14 +240,11 @@ export function checkBalanceMissingDueDate(
   financeMap: Map<string, RuleFinanceSetting>
 ): AlertInput[] {
   // Paid income per project — same income predicate + statuses as the UI balance, in the project's currency only.
-  const paidByProject = paidSongIncomeByProject(transactions, financeMap, (type) => INCOME_TYPES.has(type));
+  const paidByProject = paidIncomeByProject(transactions, financeMap);
   // Projects that already have an expected ("צפוי") income carrying a date.
   const hasDatedExpected = new Set<string>();
   for (const t of transactions) {
     if (!t.projectId || !INCOME_TYPES.has(t.type)) continue;
-    // Clip income belongs to the clip deal — it neither pays down the song's
-    // balance nor counts as a scheduled payment for it.
-    if ((t.expenseScope ?? "") === CLIP_SCOPE) continue;
     if (isExpectedStatus(t.paymentStatus) && t.date) {
       hasDatedExpected.add(t.projectId);
     }

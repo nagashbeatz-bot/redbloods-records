@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
+import { projectIncomeTotalsByProject } from "@/lib/finance/project-summary";
 import {
   calcPeriodTotals, normalizeCurrency, sameCurrency, otherAmountsFrom, formatOtherAmount, DEFAULT_CURRENCY,
-  isReceivedStatus, sumByCurrency, formatTotalsInline,
+  sumByCurrency, formatTotalsInline,
 } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
@@ -736,18 +736,13 @@ export default function InsightsPage() {
   // of its finance_<projectId> setting (missing = ₪). Other-currency rows never count
   // toward paid / cancelled / balance.
   const finCurrencyByProject = new Map(finSettings.map((s) => [s.project_id, normalizeCurrency(s.currency)]));
-  const inProjectCurrency = (t: Transaction) => sameCurrency(t.currency, finCurrencyByProject.get(t.project_id));
-  // Song-deal income only — clip income (expense_scope="קליפ") is a separate deal
-  // and must not count against a project's agreed price (lib/clip-finance.ts).
+  // The project's ONE deal (one clip model 2026-10-01): every income row of the project counts against its agreedPrice —
+  // the ONE aggregation lib/finance/project-summary projectIncomeTotals, per project in its own currency.
+  const incomeByProject = projectIncomeTotalsByProject(transactions, (id) => finCurrencyByProject.get(id));
   const paidByProject: Record<string, number> = {};
-  transactions.filter((t) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
-    paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
-  });
   // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
   const cancelledByProject: Record<string, number> = {};
-  transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status) && inProjectCurrency(t)).forEach((t) => {
-    cancelledByProject[t.project_id] = (cancelledByProject[t.project_id] ?? 0) + t.amount;
-  });
+  for (const [id, tot] of incomeByProject) { if (tot.received) paidByProject[id] = tot.received; if (tot.cancelled) cancelledByProject[id] = tot.cancelled; }
 
   // Period totals per currency (lib/finance/stats.ts — same formulas as before). The ₪
   // figures are the headline; any other currency is computed separately (`.other`) and is

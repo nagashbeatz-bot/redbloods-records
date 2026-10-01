@@ -207,7 +207,6 @@ async function financeFamilyWriters(): Promise<FinanceFamilyWriters> {
     async splitIncome(id, paid, date, method) { if (await F.financeOwnerOf(id)) return "invalid"; const r = await F.splitIncome(id, paid, date, method); return r.status === "ok" ? "ok" : r.code === "TX404" ? "not_found" : r.code === "TX409" ? "conflict" : "invalid"; },
     readFinanceSettings: (id) => F.readFinanceSettings(id),
     setFinanceSettings: async (id, patch) => { await F.setFinanceSettings(id, patch); },
-    readProjectIncomeContext: (pid) => F.readProjectIncomeContext(pid),
   };
 }
 
@@ -438,9 +437,7 @@ async function redFilmsFamilyWriters(): Promise<RedFilmsFamilyWriters> {
     updateClipItemRecord: async (id, b) => { await RF.updateClipItem(id, b); },
     deleteClipItemRecord: (id) => RF.deleteClipItem(id),
     promoteClipItemRecord: async (id, date) => (await RF.promoteClipItem(id, date)).kind,
-    clipDealOf: async (pid) => (await import("@/lib/writes/clip")).clipDealOf(pid),
-    setClipPrice: async (pid, price) => { await (await import("@/lib/writes/clip")).setClipPrice(pid, price); },
-    addClipPayments: async (pid, body) => (await (await import("@/lib/writes/clip")).addClipPayments(pid, body)).kind,
+    managedClipProductionOf: async (pid) => (await import("@/lib/clip-production")).getManagedClipProductionId(pid),
     sendClipToRedFilms: async (pid) => (await (await import("@/lib/writes/clip")).sendClipToRedFilms(pid)).kind,
     readEquipmentRow: (id) => RF.readEquipmentRow(id),
     countEquipmentNamed: (n) => RF.countEquipmentNamed(n),

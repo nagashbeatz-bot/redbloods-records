@@ -23,8 +23,8 @@ type Tx = { projectId: string | null; scope: string; type: string; date: string 
 type Meta = { name: string; artist: string; status: string; isHidden: boolean; businessType: string; projectType: string; hasRelease: boolean };
 
 function mk() {
-  const projects = new Map<string, Meta>([[P, { name: "בלאגן — שיר", artist: "בלאגן", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר + קליפ", hasRelease: false }]]);
-  const blobs = new Map<string, Record<string, unknown>>([[P, { agreedPrice: 5000, currency: "₪", clipAgreedPrice: 3000 }]]);
+  const projects = new Map<string, Meta>([[P, { name: "בלאגן — שיר", artist: "בלאגן", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false }]]);
+  const blobs = new Map<string, Record<string, unknown>>([[P, { agreedPrice: 5000, currency: "₪" }]]);
   const tx = (id: string, amount: number): [string, Tx] => [id, { projectId: P, scope: "project", type: "income", date: "2026-09-10", description: "מקדמה קליפ", artist: "בלאגן", amount, currency: "₪", paymentStatus: "התקבל", paymentMethod: "", receiptRef: "", notes: "", category: "", expenseScope: "קליפ", linkedSessionId: "" }];
   const txs = new Map<string, Tx>([tx(TXID, 1500), tx(TX2, 1500)]);
   const calls: string[] = [];
@@ -53,8 +53,6 @@ function mk() {
     },
     async readFinanceSettings(id: string) { const b = blobs.get(id) ?? {}; return { agreedPrice: Number(b.agreedPrice ?? 0), currency: String(b.currency ?? "₪"), financialNotes: String(b.financialNotes ?? ""), financeException: b.financeException === true, financeExceptionReason: String(b.financeExceptionReason ?? ""), financeExceptionDate: String(b.financeExceptionDate ?? "") }; },
     async setFinanceSettings(id: string, patch: Record<string, unknown>) { calls.push(`settings:${id === P ? "P" : "new"}`); blobs.set(id, { ...(blobs.get(id) ?? {}), ...patch }); },
-    async clipDealOf(id: string) { const b = blobs.get(id) ?? {}; return { clipAgreedPrice: Number(b.clipAgreedPrice ?? 0), currency: String(b.currency ?? "₪"), paymentCount: 0, managedProductionId: null }; },
-    async setClipPrice(id: string, price: number) { calls.push(`clip:${id === P ? "P" : "new"}`); blobs.set(id, { ...(blobs.get(id) ?? {}), clipAgreedPrice: price }); },
   };
   const created = () => [...projects.keys()].filter((k) => k !== P);
   return { projects, blobs, txs, calls, hooks, writers, created };
@@ -100,7 +98,7 @@ async function main() {
     const cases: Array<[string, Step[], string]> = [
       ["4. forward reference", [MOVE(1), CREATE], "REF_FORWARD"],
       ["5. self reference", [CREATE, MOVE(1)], "REF_SELF"],
-      ["6. a reference to a step that is not a CREATE", [{ actionId: "SET_CLIP_PRICE", args: { project: PROJECT, clipAgreedPrice: 0 } }, MOVE(0)], "REF_NOT_A_CREATE"],
+      ["6. a reference to a step that is not a CREATE", [{ actionId: "SET_FINANCIAL_NOTES", args: { project: PROJECT, financialNotes: "x", mode: "REPLACE" } }, MOVE(0)], "REF_NOT_A_CREATE"],
       ["8. a reference in an argument that is not an entityKey", [CREATE, { actionId: "SET_FINANCIAL_NOTES", args: { project: PROJECT, financialNotes: "$step0.created", mode: "REPLACE" } }], "REF_NOT_ENTITY_KEY"],
       ["9. an arbitrary field ($step0.id)", [CREATE, { actionId: "MOVE_TRANSACTION", args: { transaction: TX, toProject: "$step0.id" } }], "REF_SYNTAX"],
       ["9. a path ($step0.created.name)", [CREATE, { actionId: "MOVE_TRANSACTION", args: { transaction: TX, toProject: "$step0.created.name" } }], "REF_SYNTAX"],
@@ -203,28 +201,28 @@ async function main() {
     const p = await plan(d, [CREATE, { actionId: "MOVE_TRANSACTION", args: { transaction: TX, toProject: PROJECT } }]);
     const stored = JSON.stringify(db.rows(ACT_TABLES.plans)[0]);
     ok("an existing target: no dependsOn, a normal fingerprint", p.status === "NO_CHANGE_NEEDED" || (p.status === "PREVIEW" && (stored.match(/"dependsOn":\[\]/g) ?? []).length === 2), { p: p.status });
-    const p2 = await plan(d, [{ actionId: "SET_CLIP_PRICE", args: { project: PROJECT, clipAgreedPrice: 0 } }, { actionId: "MOVE_TRANSACTION", args: { transaction: TX, toGeneral: true } }]);
+    const p2 = await plan(d, [{ actionId: "SET_FINANCIAL_NOTES", args: { project: PROJECT, financialNotes: "הערה", mode: "REPLACE" } }, { actionId: "MOVE_TRANSACTION", args: { transaction: TX, toGeneral: true } }]);
     const e2 = await exec(d, p2, await approve(d, p2));
-    ok("a plain two-record plan executes as before", e2.status === "APPLIED_AS_EXPECTED" && h.txs.get(TXID)!.projectId === null && h.blobs.get(P)!.clipAgreedPrice === 0, e2);
+    ok("a plain two-record plan executes as before", e2.status === "APPLIED_AS_EXPECTED" && h.txs.get(TXID)!.projectId === null && h.blobs.get(P)!.financialNotes === "הערה", e2);
   }
 
-  console.log("\n16. With chained steps (stage 2): the whole clip split in ONE plan");
+  console.log("\n16. With chained steps (stage 2): moving a clip out of its song into its own project in ONE plan (one clip model)");
   {
     const h = mk(); const { d } = mkDeps(h.writers);
     const steps: Step[] = [
-      { actionId: "SET_CLIP_PRICE", args: { project: PROJECT, clipAgreedPrice: 0 } },
+      { actionId: "SET_FINANCIAL_NOTES", args: { project: PROJECT, financialNotes: "הקליפ עבר לפרויקט נפרד", mode: "REPLACE" } },
       { actionId: "SET_FINANCE_EXCEPTION", args: { project: PROJECT, on: true, reason: "הקליפ פוצל לפרויקט נפרד", date: "2026-09-29" } },
       CREATE,
       MOVE(2, TX), MOVE(2, `transaction:${TX2}`),
-      { actionId: "SET_CLIP_PRICE", args: { project: "$step2.created", clipAgreedPrice: 3000 } },
+      { actionId: "SET_AGREED_PRICE", args: { project: "$step2.created", agreedPrice: 3000, currency: "₪" } },
     ];
     const p = await plan(d, steps) as unknown as Record<string, unknown> & { steps: Array<{ entity: { key: string; labelHe: { text: string } }; changes: Array<{ field: string; before: { value: unknown }; after: { value: unknown } }> }> };
     const own = p.steps?.[5];
-    ok("planned: the new project's clip price step shows the created record and its 'before' of a fresh project (₪0)", p.status === "PREVIEW" && own?.entity.labelHe.text.includes('הפרויקט שייווצר בשלב 3: "קליפ — בלאגן"') && own?.changes[0].before.value === 0 && own?.changes[0].after.value === 3000, own ?? p);
+    ok("planned: the new clip project's agreed-price step shows the created record and its 'before' of a fresh project (₪0)", p.status === "PREVIEW" && own?.entity.labelHe.text.includes('הפרויקט שייווצר בשלב 3: "קליפ — בלאגן"') && own?.changes.find((c) => c.field === "agreedPrice")?.before.value === 0 && own?.changes.find((c) => c.field === "agreedPrice")?.after.value === 3000, own ?? p);
     const e = await exec(d, p, await approve(d, p));
     const nid = h.created()[0];
-    ok("ONE approval → EXECUTED: original clip price 0 + exception, new project, both payments moved, new clip price 3000", e.status === "APPLIED_AS_EXPECTED" && h.blobs.get(P)!.clipAgreedPrice === 0 && h.blobs.get(P)!.financeException === true && h.txs.get(TXID)!.projectId === nid && h.txs.get(TX2)!.projectId === nid && h.blobs.get(nid)?.clipAgreedPrice === 3000, { e: stepsOf(e), blobs: [...h.blobs], calls: h.calls });
-    const two = await plan(mkDeps(mk().writers).d, [CREATE, { actionId: "SET_CLIP_PRICE", args: { project: "$step0.created", clipAgreedPrice: 1 } }, { actionId: "SET_AGREED_PRICE", args: { project: "$step0.created", agreedPrice: 1, currency: "₪" } }]);
+    ok("ONE approval → EXECUTED: the song's notes + exception, new clip project, both payments moved, its ONE agreed price 3000", e.status === "APPLIED_AS_EXPECTED" && h.blobs.get(P)!.financialNotes === "הקליפ עבר לפרויקט נפרד" && h.blobs.get(P)!.financeException === true && h.txs.get(TXID)!.projectId === nid && h.txs.get(TX2)!.projectId === nid && h.blobs.get(nid)?.agreedPrice === 3000, { e: stepsOf(e), blobs: [...h.blobs], calls: h.calls });
+    const two = await plan(mkDeps(mk().writers).d, [CREATE, { actionId: "SET_FINANCIAL_NOTES", args: { project: "$step0.created", financialNotes: "x", mode: "REPLACE" } }, { actionId: "SET_AGREED_PRICE", args: { project: "$step0.created", agreedPrice: 1, currency: "₪" } }]);
     ok("two steps on the SAME created record are not chained yet → SAME_ENTITY_TWICE (separate plan after the create)", two.status === "SAME_ENTITY_TWICE", two);
   }
 

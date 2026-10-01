@@ -25,7 +25,7 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
       .then((d) => {
         const all: Project[] = d.projects ?? d ?? [];
         // שירים ראשון, שאר אחרי
-        // Songs first — "שיר + קליפ" is a song, so it stays in the first group.
+        // Songs first.
         const sorted = [...all.filter((p) => isSongType(p.projectType) && !p.isHidden),
                         ...all.filter((p) => !isSongType(p.projectType) && !p.isHidden)];
         setProjects(sorted);

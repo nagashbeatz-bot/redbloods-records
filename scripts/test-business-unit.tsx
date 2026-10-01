@@ -54,14 +54,14 @@ async function main() {
   ok("3. a show of a Records roster artist → RECORDS; a collab / other artist → NULL (never a guess)", infer({ writer: "SHOW_SYNC", type: "income", show: { artistIsRecords: true } }).unit === "RECORDS" && infer({ writer: "SHOW_SYNC", type: "income", show: { artistIsRecords: false } }).unit === null);
   ok("4. label project → RECORDS (income, clip cost, promotion)", ["income", "expense"].every((type) => infer({ writer: "FINANCE_MANUAL", type, expenseScope: "קליפ", project: { businessType: "לייבל" } }).unit === "RECORDS") && infer({ writer: "PROMOTION", type: "expense", expenseScope: "שיווק", project: { businessType: "לייבל" } }).unit === "RECORDS");
   ok("   client project: song income → STUDIO; session cost → STUDIO; other expense → NULL", infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "כללי", project: { businessType: "לקוח" } }).unit === "STUDIO" && infer({ writer: "FINANCE_MANUAL", type: "expense", expenseScope: "סשן", project: { businessType: "לקוח" } }).unit === "STUDIO" && infer({ writer: "PROMOTION", type: "expense", expenseScope: "שיווק", project: { businessType: "לקוח" } }).unit === null);
-  ok("   client clip money → FILMS only with an external-client Red Films production; otherwise NULL", infer({ writer: "CLIP_PAYMENT", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: true } }).unit === "FILMS" && infer({ writer: "CLIP_PAYMENT", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: false } }).unit === null);
+  ok("   client clip money → FILMS only with an external-client Red Films production; otherwise NULL", infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: true } }).unit === "FILMS" && infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: false } }).unit === null);
   ok("5. no show / project / rule → NULL (דורש סיווג)", infer({ writer: "FINANCE_MANUAL", type: "expense" }).unit === null && /דורש סיווג/.test(infer({ writer: "FINANCE_MANUAL", type: "expense" }).reasonHe) && infer({ writer: "FINANCE_MANUAL", type: "income", project: { businessType: null } }).unit === null);
-  const allInputs = ["FINANCE_MANUAL", "SUNNY", "SHOW_SYNC", "MIX", "VICTOR", "CLIP_PAYMENT", "CLIP_PROMOTE", "RF_PAYMENT", "PROMOTION", "SPLIT"].flatMap((writer) => ["income", "expense"].flatMap((type) => [null, "לקוח", "לייבל"].flatMap((bt) => ["כללי", "קליפ", "סשן", "שיווק"].map((scope) => infer({ writer: writer as never, type, expenseScope: scope, project: bt === null ? null : { businessType: bt, hasExternalClipProduction: true } })))));
+  const allInputs = ["FINANCE_MANUAL", "SUNNY", "SHOW_SYNC", "MIX", "VICTOR", "CLIP_PROMOTE", "RF_PAYMENT", "PROMOTION", "SPLIT"].flatMap((writer) => ["income", "expense"].flatMap((type) => [null, "לקוח", "לייבל"].flatMap((bt) => ["כללי", "קליפ", "סשן", "שיווק"].map((scope) => infer({ writer: writer as never, type, expenseScope: scope, project: bt === null ? null : { businessType: bt, hasExternalClipProduction: true } })))));
   ok("CORPORATE is never inferred (only an explicit choice) — over every writer × type × project × scope", allInputs.every((d) => d.unit !== "CORPORATE") && infer({ writer: "FINANCE_MANUAL", type: "expense", ownerChoice: "CORPORATE" }).unit === "CORPORATE");
 
   section("2. בלאגן: the Owner's STUDIO decision is never overturned by the client-clip rule");
   const balagan = { businessType: "לקוח", hasExternalClipProduction: true, ownerDecidedUnits: ["STUDIO"] as const };
-  ok("a new clip row on a project where the Owner decided STUDIO → NULL (not FILMS, not an inherited STUDIO)", infer({ writer: "CLIP_PAYMENT", type: "income", expenseScope: "קליפ", project: { ...balagan, ownerDecidedUnits: ["STUDIO"] } }).unit === null);
+  ok("a new clip row on a project where the Owner decided STUDIO → NULL (not FILMS, not an inherited STUDIO)", infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "קליפ", project: { ...balagan, ownerDecidedUnits: ["STUDIO"] } }).unit === null);
   ok("   and without a Red Films production it is NULL anyway (never FILMS by guess)", infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", ownerDecidedUnits: ["STUDIO"] } }).unit === null);
   ok("   an agreeing rule still classifies (song income = STUDIO, as decided)", infer({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "כללי", project: { ...balagan, ownerDecidedUnits: ["STUDIO"] } }).unit === "STUDIO");
 
@@ -108,14 +108,13 @@ async function main() {
     ["lib/shows-finance-sync.ts", /unitColumnsOrUnclassified\(\{ writer: "SHOW_SYNC"/],
     ["lib/writes/mix.ts", /inferBusinessUnit\(\{ writer: "MIX"/],
     ["lib/writes/victor.ts", /inferBusinessUnit\(\{ writer: "VICTOR"/],
-    ["lib/writes/clip.ts", /writer: "CLIP_PAYMENT"/],
     ["lib/writes/redfilms.ts", /writer: "CLIP_PROMOTE"/],
     ["lib/social-promotions-store.ts", /writer: "PROMOTION"/],
     ["lib/writes/rf-finance-link.ts", /unitWriter: "RF_PAYMENT"/],
     ["lib/writes/artist-payments.ts", /inferBusinessUnit\(\{ writer: "ARTIST_PAYMENT"/],
   ];
   ok("each insert site names its writer", writers.every(([f, re]) => re.test(read(f))), writers.filter(([f, re]) => !re.test(read(f))).map(([f]) => f));
-  const inserts = ["lib/writes/finance.ts", "lib/shows-finance-sync.ts", "lib/writes/mix.ts", "lib/writes/victor.ts", "lib/writes/clip.ts", "lib/writes/redfilms.ts", "lib/social-promotions-store.ts", "lib/writes/artist-payments.ts"];
+  const inserts = ["lib/writes/finance.ts", "lib/shows-finance-sync.ts", "lib/writes/mix.ts", "lib/writes/victor.ts", "lib/writes/redfilms.ts", "lib/social-promotions-store.ts", "lib/writes/artist-payments.ts"];
   const all = fs.readdirSync(path.resolve(__dirname, "../lib"), { recursive: true } as never) as unknown as string[];
   const insertFiles = all.filter((f) => /\.ts$/.test(f) && !/partner[\\/]/.test(String(f))).map((f) => `lib/${String(f).replace(/\\/g, "/")}`).filter((f) => /from\("transactions"\)[\s\S]{0,80}\.insert\(/.test(read(f)));
   ok("no other module inserts Finance rows (a new writer must set the unit)", insertFiles.every((f) => inserts.includes(f)), insertFiles);

@@ -5,7 +5,8 @@ import type { Project, AlbumTrack, AlbumTrackStatus, FileLink, ProjectStatus } f
 import { ALL_STATUSES } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
-import { isSongIncome } from "@/lib/clip-finance";
+import { isProjectIncome } from "@/lib/clip-finance";
+import { projectIncomeTotals } from "@/lib/finance/project-summary";
 import { isExpectedStatus, isExpenseFullyPaidStatus, isReceivedStatus, isCancelledStatus as isCancelledPayment, sameCurrency } from "@/lib/finance";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 
@@ -335,11 +336,11 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const transactions = txData?.transactions ?? [];
   const agreedPrice  = txData?.agreedPrice ?? 0;
   const currency     = txData?.currency ?? "₪";
-  // Finance contract (same as AlbumFinanceTab): song income only, project currency only, paid expenses only.
+  // Finance contract (same as AlbumFinanceTab): the project's ONE deal — every income row (the ONE aggregation,
+  // lib/finance/project-summary projectIncomeTotals), project currency only, paid expenses only.
   const inCur        = (t: Transaction) => sameCurrency(t.currency, currency);
-  const isReceivedSong = (t: Transaction) => isSongIncome(t) && isReceivedStatus(t.payment_status) && inCur(t);
-  const received     = transactions.filter(isReceivedSong).reduce((s, t) => s + t.amount, 0);
-  const expected     = transactions.filter((t) => isSongIncome(t) && isExpectedStatus(t.payment_status) && inCur(t)).reduce((s, t) => s + t.amount, 0);
+  const isReceivedSong = (t: Transaction) => isProjectIncome(t) && isReceivedStatus(t.payment_status) && inCur(t);
+  const { received, expected } = projectIncomeTotals(transactions, currency);
   const expenses     = transactions.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status) && inCur(t)).reduce((s, t) => s + t.amount, 0);
   const balance      = agreedPrice - received;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;

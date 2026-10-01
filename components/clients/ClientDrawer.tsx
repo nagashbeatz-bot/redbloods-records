@@ -7,8 +7,9 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/proposal-followups";
-import { isCancelledPayment, actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
+import { actualBalanceAgainstAgreedPrice, actualOutstandingAgainstAgreedPrice, isFullyPaid } from "@/lib/payment-status";
+import { isProjectIncome } from "@/lib/clip-finance";
+import { projectIncomeTotalsByProject } from "@/lib/finance/project-summary";
 import { sameCurrency, normalizeCurrency, addToTotals, orderCurrencies, formatOtherAmount, isExpenseFullyPaidStatus, isReceivedStatus, isExpectedStatus, formatTotalsInline, sumByCurrency, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import CurrencyLines, { type CurrencyLine } from "@/components/ui/CurrencyLines";
 import { PROJECT_TYPES } from "@/lib/types";
@@ -175,15 +176,21 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
         fin.currency    = normalizeCurrency(s.currency);
         fin.financeException = !!s.financeException;
       }
-      for (const t of allTx) {
-        if (!projectIds.has(t.project_id)) continue;
+      // The project's ONE deal (one clip model 2026-10-01): every income row counts against its agreedPrice — the ONE
+      // aggregation lib/finance/project-summary projectIncomeTotals, in the project's own currency (R5).
+      const clientTx = allTx.filter((t) => projectIds.has(t.project_id));
+      for (const [pid, tot] of projectIncomeTotalsByProject(clientTx, (pid) => finMap.get(pid)?.currency)) {
+        const fin = finMap.get(pid); if (!fin) continue;
+        fin.totalPaid = tot.received; fin.cancelledIncome = tot.cancelled; fin.totalExpected = tot.expected;
+      }
+      for (const t of clientTx) {
         const fin = finMap.get(t.project_id)!;
         const inProjectCurrency = sameCurrency(t.currency, fin.currency); // R5
-        // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
-        if (isSongIncome(t)) {
-          if (isReceivedStatus(t.payment_status)) { if (inProjectCurrency) fin.totalPaid += t.amount; else addToTotals(fin.otherPaid, t.currency, t.amount); }
-          else if (isCancelledPayment(t.payment_status)) { if (inProjectCurrency) fin.cancelledIncome += t.amount; }
-          else if (isExpectedStatus(t.payment_status)) { if (inProjectCurrency) fin.totalExpected += t.amount; else addToTotals(fin.otherExpected, t.currency, t.amount); }
+        if (isProjectIncome(t)) {
+          // other-currency income is shown apart (display only, never added)
+          if (inProjectCurrency) continue;
+          if (isReceivedStatus(t.payment_status)) addToTotals(fin.otherPaid, t.currency, t.amount);
+          else if (isExpectedStatus(t.payment_status)) addToTotals(fin.otherExpected, t.currency, t.amount);
         } else if (t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)) { if (inProjectCurrency) fin.totalExpenses += t.amount; else addToTotals(fin.otherExpenses, t.currency, t.amount); }
       }
 
@@ -1220,9 +1227,7 @@ function IconBtn({ onClick, title, children, style }: { onClick: () => void; tit
 
 // ─── NewProjectForm ───────────────────────────────────────────────────────────
 
-// Now the canonical list — PROJECT_TYPES was reordered to this exact order when
-// "שיר + קליפ" was added, so the local copy that existed to avoid a reorder has
-// no reason to exist any more.
+// The canonical list (lib/types PROJECT_TYPES).
 const PROJECT_TYPES_LIST = PROJECT_TYPES;
 const PROJECT_INIT_STATUSES = ["לא התחיל", "בעבודה"] as const;
 

@@ -19,14 +19,13 @@ import { refuse, type Fields, type PlanRefusal } from "./core";
  *  it only lets the engine leave out records created by earlier steps of the SAME plan (never rendered, never in the
  *  fingerprinted summary). */
 export interface DupRow { id?: string; date: string | null; amount: number; currency: string | null; text: string; /** always a LIKELY_SAME candidate (e.g. the budget line's legacy Finance row) */ forced?: boolean }
-export type DupKind = "LEDGER_ENTRY" | "TRANSACTION" | "MEDIA_INCOME" | "RF_PAYMENT" | "SHOW_PAYMENT" | "CLIP_PAYMENT";
+export type DupKind = "LEDGER_ENTRY" | "TRANSACTION" | "MEDIA_INCOME" | "RF_PAYMENT" | "SHOW_PAYMENT";
 /** The focused, context-bound query (exact equality on context + amount; the reader never scans globally). */
 export type DupQuery =
   | { kind: "LEDGER_ENTRY"; artistId: string; entryType: string; amount: number }
   | { kind: "TRANSACTION"; projectId: string | null; type: string; amount: number; currency: string }
   | { kind: "MEDIA_INCOME"; artistId: string; grossAmount: number }
-  | { kind: "RF_PAYMENT"; budgetLineId: string; amount: number }
-  | { kind: "CLIP_PAYMENT"; projectId: string; amount: number };
+  | { kind: "RF_PAYMENT"; budgetLineId: string; amount: number };
 /**
  * RF payment → Finance link (DB-1, 2026-09-27): an UNLINKED Finance expense of the same project, amount and currency,
  * within ±RF_LINK_DUP_DAYS days AND with a similar description is LIKELY_SAME (the Boss decides; duplicateAck flow);
@@ -119,8 +118,8 @@ export const DUP_ACK_ARG = { name: "duplicateAck", kind: "text", required: false
 export const DUP_ARGS = [SEPARATE_ARG, DUP_ACK_ARG] as const;
 
 // ── duplicates INSIDE one compound plan (pure; from the typed arguments only) ─────────────────────────────────────
-/** The money CREATE actions that carry the duplicate layer (the same six that take DUP_ARGS). */
-export const DUP_ACTIONS = ["ADD_LEDGER_ENTRY", "ADD_TRANSACTION", "ADD_MEDIA_INCOME", "RECORD_RF_BUDGET_PAYMENT", "ADD_CLIP_PAYMENT", "RECORD_SHOW_PAYMENT"] as const;
+/** The money CREATE actions that carry the duplicate layer (the same five that take DUP_ARGS). */
+export const DUP_ACTIONS = ["ADD_LEDGER_ENTRY", "ADD_TRANSACTION", "ADD_MEDIA_INCOME", "RECORD_RF_BUDGET_PAYMENT", "RECORD_SHOW_PAYMENT"] as const;
 const s_ = (v: unknown) => (typeof v === "string" ? v : "");
 const n_ = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const d_ = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
@@ -133,7 +132,6 @@ export function dupDescriptor(actionId: string, a: Readonly<Record<string, unkno
     case "ADD_LEDGER_ENTRY": return m(`${s_(a.labelArtist)}|${s_(a.entryType)}`, a.amount, a.entryDate, t(a.description, a.note));
     case "ADD_MEDIA_INCOME": return m(s_(a.labelArtist), a.grossAmount, a.receivedDate, t(a.reportPeriod, a.notes));
     case "RECORD_RF_BUDGET_PAYMENT": return m(s_(a.budgetLine), a.amount, a.paymentDate, t(a.notes));
-    case "ADD_CLIP_PAYMENT": return m(s_(a.project), a.amount, a.date, t(a.description, a.notes));
     case "RECORD_SHOW_PAYMENT": return m(`${s_(a.show)}|${s_(a.currency)}`, a.amount, a.date, t(a.note));
     default: return null;
   }

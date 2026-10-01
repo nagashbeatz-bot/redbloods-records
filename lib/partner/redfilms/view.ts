@@ -1,20 +1,22 @@
 /**
- * Sunny — the CONNECTED VIDEO VIEW: Red Films productions + the project clip deal. Pure, read-only.
+ * Sunny — the CONNECTED VIDEO VIEW: Red Films productions + the project's video work. Pure, read-only.
  *
  * Two systems, never merged:
  *   - RED FILMS: productions (status, edit status, crew names, shoot date, links, budget, budget lines + Red Films' own
  *     payments ledger, documents, references, tasks, client price / collection);
- *   - the PROJECT clip deal: clip price + clip income, clip planning rows, clip shoot sessions (+ calendar), clip-scoped
- *     Finance expenses.
+ *   - the PROJECT side: clip planning rows, shoot sessions (+ calendar), clip-scoped Finance expenses. ONE clip model
+ *     (Owner decision 2026-10-01): a clip is its own project (project_type קליפ, song_project_id → its song) with ONE
+ *     agreedPrice; its price / received / balance are the project's own money (lib/partner/projects/money.ts) — there
+ *     is no clip price and no clip deal inside a project.
  * They are joined only on the stored project id. Money stays in layers (B3 Owner canon 2026-09-27, never added together):
- *   A client clip price / clip income ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance, scope קליפ, paid
+ *   A the project's agreedPrice / income ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance, scope קליפ, paid
  *   only when שולם) ≠ D recoupable (none — שליו / אבי: a cycle expense; others: no agreement). Red Films ledger payments
  *   are real company money: DB-1 (live 2026-09-27) links each payment to exactly ONE Finance expense — a LINKED payment
  *   is part of C (never counted again); only UNLINKED payments are outside Finance (RF_LEDGER_NOT_IN_FINANCE); a
  *   non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Line paid state = lib/clip-rf-money-pure budgetLinePaidState
  *   (payments; the stored line status is planning intent; actual_amount is a LEGACY manual mirror, never paid).
- * A plan is never counted as spent; currencies are never added (each Red Films money row carries its own currency since 2026-09-27; totals are per currency). The clip deal
- * uses the app's own summarizeClipFinance; expenses use the Finance Brain's validateTx.
+ * A plan is never counted as spent; currencies are never added (each Red Films money row carries its own currency since 2026-09-27; totals are per currency).
+ * Expenses use the Finance Brain's validateTx.
  * No score, no readiness verdict, no invented policy (a release never requires a video).
  */
 import type { GatewaySources } from "../gateway/core";
@@ -25,9 +27,9 @@ import type { FinanceRaw, FinanceTxRow } from "../finance/types";
 import { validateTx } from "../finance/core";
 import { heldMeaning, heldConfirmedByOwner } from "../../session-duration";
 import { projectOperating } from "../sunny/operating";
-import { summarizeClipFinance, CLIP_SCOPE } from "../../clip-finance";
+import { CLIP_SCOPE } from "../../clip-finance";
 import { normalizeCurrency } from "../../finance/currency";
-import { budgetLinePaidState, budgetLineStatusConflict, budgetEqualsOldClipPriceSync, BUDGET_EQUALS_CLIP_PRICE_HE, clipRecoupContribution, isClipItemPlanned, isClipItemPromoted, rfPaymentFinanceScope, rfPaymentLinkage, RF_LEDGER_LINKAGE, RF_LEDGER_LINKAGE_HE } from "../../clip-rf-money-pure";
+import { budgetLinePaidState, budgetLineStatusConflict, clipRecoupContribution, isClipItemPlanned, isClipItemPromoted, rfPaymentFinanceScope, rfPaymentLinkage, RF_LEDGER_LINKAGE, RF_LEDGER_LINKAGE_HE } from "../../clip-rf-money-pure";
 import { agreementArtistOf, AGREEMENT_CYCLE_ACCOUNTING_HE } from "../../label-agreements";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -94,7 +96,6 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
   const paidOutsideFinance = byCur(pays.filter((_x, i) => payLinkage[i] !== "LINKED"), (x) => x.currency, (x) => x.amount);
   const linkedCount = payLinkage.filter((x) => x === "LINKED").length;
   const manualActual = byCur(lines, (l) => l.currency, (l) => l.actual);
-  const clipPrice = Number(projSetting?.clipAgreedPrice ?? 0) || 0;
   const scope = rfPaymentFinanceScope(p.productionType);
   const links = d?.links ?? null;
   return {
@@ -111,8 +112,7 @@ export function buildProduction(src: GatewaySources, p: OpsRedFilmsProduction) {
     files: { folder: d?.dropboxFolderPath ? "RECORDED" : "NONE", documents: docs.map((x) => ({ fileName: x.fileName, type: x.fileType, mime: x.mimeType, uploadedAt: x.createdAt, publicLink: x.hasPublicLink })), referenceImages: refImages.length, referenceLinks: refLinks.map((x) => ({ provider: x.provider, title: x.title })), storageListing: "NOT_AVAILABLE (capability gap) — records only; 'no link' ≠ 'no footage'" },
     tasks: tasks.map((t) => ({ title: t.title, status: t.status, due: t.dueDate, relation: "CANONICAL (production task)" })),
     money: { currency: d?.currency ?? "₪", totalsNote: "planned / paid / actual are grouped PER CURRENCY — never added across currencies (no FX)", budget: p.generalBudget,
-      budgetIsPlanning: "B — the production's own planning budget; never the client clip price (A), never an actual cost (C), never a recoup (D)",
-      budgetEqualsOldClipPriceSync: budgetEqualsOldClipPriceSync({ managedBySendClip: !!p.projectId && managedId === p.id, budget: p.generalBudget, budgetCurrency: d?.currency ?? p.currency, clipAgreedPrice: clipPrice, clipCurrency: typeof projSetting?.currency === "string" ? projSetting.currency : null }) ? { epistemic: "DERIVED", he: BUDGET_EQUALS_CLIP_PRICE_HE } : null,
+      budgetIsPlanning: "B — the production's own planning budget; never the project's agreedPrice (A), never an actual cost (C), never a recoup (D)",
       plannedLines, paidRedFilmsLedger: paidLedger, paidLinkedInFinance: paidLinked, paidOutsideFinance, legacyManualActualOnLines: manualActual,
       payments: pays.map((x, i) => ({ key: x.id ? `rf-payment:${x.id}` : null, date: x.date, amount: x.amount, currency: x.currency ?? "₪", method: x.method, line: lines.find((l) => l.id === x.budgetItemId)?.title ?? null, financeLinkage: payLinkage[i] })),
       lines: lines.map((l) => { const s = lineState(l); return { title: l.title, category: l.category, storedStatus: l.status, storedStatusMeaning: "planning intent only", paidState: s.state, paid: s.paid, remaining: s.remaining, over: s.over, statusConflict: s.conflict ? s.conflict.code : null, currency: l.currency ?? "₪", planned: l.planned, legacyManualActual: l.actual, paidFromPayments: linePaid(l.id), vendor: l.vendorName, legacyFinanceLink: !!l.linkedTransactionId }; }),
@@ -129,19 +129,13 @@ export type VideoProduction = ReturnType<typeof buildProduction>;
 const anyAmount = (m: Record<string, number>) => Object.values(m).some((x) => x > 0);
 const fmtByCur = (m: Record<string, number>) => Object.entries(m).filter(([, a]) => a !== 0).sort(([a], [b]) => a.localeCompare(b)).map(([c, a]) => `${c}${a}`).join(" · ") || "0";
 
-/** The PROJECT side: clip deal, clip rows, shoot sessions, clip expenses — for one project. */
+/** The PROJECT side: clip rows, shoot sessions, clip expenses — for one project (its money is the project's own). */
 export function buildProjectVideo(src: GatewaySources, projectId: string) {
   const c = ctxOf(src);
   const idx = c.st?.domains.projects.data?.index ?? {};
   const proj = idx[projectId] ?? null;
   const op = proj ? projectOperating(src, projectId) : null;
-  const setting = ((c.fin?.financeSettings ?? []).find((s) => s.projectId === projectId)?.value ?? {}) as Record<string, unknown>;
-  const price = Number(setting.clipAgreedPrice ?? 0) || 0;
-  // The clip deal is in the project's finance currency (the same setting as the agreed price); clip rows in any other currency
-  // are reported apart by summarizeClipFinance (otherCurrency), never summed with the deal — same rule as projects/money.ts.
-  const dealCurrency = normalizeCurrency(typeof setting.currency === "string" ? setting.currency : null);
   const txs = clipTx(c, projectId);
-  const deal = summarizeClipFinance(txs.map((t) => ({ type: t.type, amount: Number(t.amount) || 0, payment_status: t.status, expense_scope: t.expenseScope, currency: t.currency })), price, dealCurrency);
   const rows = (c.det?.clipItems?.rows ?? []).filter((r) => r.projectId === projectId);
   const txIds = new Set((c.fin?.transactions ?? []).map((t) => t.id));
   const planned: Record<string, number> = {};
@@ -154,7 +148,7 @@ export function buildProjectVideo(src: GatewaySources, projectId: string) {
   return {
     key: `project-video:${projectId}`, project: { key: `project:${projectId}`, name: proj?.name ?? null, status: proj?.status ?? null, businessType: proj?.businessType ?? null, exists: !!proj },
     labelWork: op?.label.labelWork ?? null, clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the client / project commitment — not a video deadline" } : null,
-    clipDeal: { price, ...deal, note: "clip deal = the artist pays for the clip (INCOME, expense scope קליפ) — revenue, never a video expense; excluded from the song balance" },
+    money: { where: "the project's own agreedPrice / received / balance — project_view (ONE clip model: no clip price, no clip deal)", projectType: (c.ops?.projectsMeta?.rows ?? []).find((x) => x.id === projectId)?.projectType ?? null },
     planning: { rows: rows.map((r) => { const tx = r.linkedTransactionId ? (c.fin?.transactions ?? []).find((t) => t.id === r.linkedTransactionId) ?? null : null; const txAmt = tx ? validateTx(tx)?.amount ?? null : null;
       return { category: r.category, description: r.description, amount: r.amount, currency: r.currency, status: r.status, transferred: !!r.linkedTransactionId, promoted: isClipItemPromoted(r), transactionExists: r.linkedTransactionId ? (c.fin ? txIds.has(r.linkedTransactionId) : null) : null,
         expenseDiffers: tx ? (txAmt !== r.amount || (tx.currency ?? "₪") !== (r.currency ?? "₪") ? { planned: r.amount, plannedCurrency: r.currency, expense: txAmt, expenseCurrency: tx.currency } : null) : null }; }), plannedByCurrency: planned, note: "PLANNED (B) — never money spent. 'העבר לכספים' keeps the row, marks it הועבר לכספים and links it to its Finance expense (B3 provenance; rows promoted before B3 were deleted); a promoted row is never counted as planned" },
@@ -174,7 +168,7 @@ export function buildVideoView(src: GatewaySources) {
     ...(c.det?.clipItems?.rows ?? []).map((r) => r.projectId).filter((x): x is string => !!x),
     ...(c.det?.sessions?.rows ?? []).filter((s) => s.type === SHOOT_SESSION_TYPE).map((s) => s.projectId).filter((x): x is string => !!x),
     ...clipTx(c, null).map((t) => t.projectId).filter((x): x is string => !!x),
-    ...(c.fin?.financeSettings ?? []).filter((s) => Number((s.value as Record<string, unknown> | null)?.clipAgreedPrice ?? 0) > 0).map((s) => s.projectId),
+    ...(c.ops?.projectsMeta?.rows ?? []).filter((x) => x.projectType === "קליפ").map((x) => x.id),
   ]);
   const projects = [...videoProjectIds].map((id) => buildProjectVideo(src, id));
   const signals: VideoSignal[] = [];
@@ -192,7 +186,6 @@ export function buildVideoView(src: GatewaySources) {
     if (anyAmount(p.money.paidOutsideFinance)) S("RF_LEDGER_NOT_IN_FINANCE", "CANONICAL_FACT", `${p.title}: ${fmtByCur(p.money.paidOutsideFinance)} שולמו בפנקס של Red Films ועדיין לא מקושרים לכספים (${p.money.linkage.unlinked} תשלומים) — כסף אמיתי של החברה${p.money.financeScope.scope ? (p.project ? "; קישור: LINK_RF_PAYMENT_TO_FINANCE / LINK_RF_PAYMENTS_FOR_PRODUCTION" : " — הפקת קליפ בלי פרויקט: צריך פרויקט לפני קישור (PROJECT_REQUIRED)") : " — אין שיוך קנוני בכספים להפקה שאינה קליפ (SCOPE_REQUIRED: נדרשת החלטה, לא 'כללי')"}`);
     if (fmtByCur(p.money.legacyManualActualOnLines) !== fmtByCur(p.money.paidRedFilmsLedger) && p.money.lines.length) S("LINE_ACTUAL_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title}: 'בפועל' ידני (שדה ישן) ${fmtByCur(p.money.legacyManualActualOnLines)} ≠ תשלומים ${fmtByCur(p.money.paidRedFilmsLedger)} — התשלומים הם הקובעים`);
     for (const l of p.money.lines.filter((x) => x.statusConflict)) S("BUDGET_LINE_STATUS_VS_PAYMENTS", "DERIVED_SIGNAL", `${p.title} · ${l.title || l.category || "שורה"}: ${l.statusConflict === "STATUS_PAID_WITHOUT_PAYMENTS" ? "מסומנת 'שולם' ואין עליה תשלום רשום" : `מסומנת 'מתוכנן' והתשלומים כבר מכסים את התכנון (${l.currency}${l.paid})`} — שני מקורות סותרים; התשלומים קובעים מה שולם`);
-    if (p.money.budgetEqualsOldClipPriceSync) S("BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC", "DERIVED_SIGNAL", `${p.title}: ${BUDGET_EQUALS_CLIP_PRICE_HE}`);
     const missing = [!p.shoot.locations && !p.shoot.sessions.some((s) => s.location) ? "לוקיישן" : null, !p.crew.photographer && !p.crew.director ? "צלם / במאי" : null, !p.files.documents.length ? "מסמכים" : null].filter(Boolean);
     if (missing.length) S("MISSING_RECORDED_PREP", "CANONICAL_FACT", `${p.title}: לא רשום במערכת — ${missing.join(", ")} (עובדה, לא קביעה שההפקה לא מוכנה)`);
   }
@@ -201,11 +194,10 @@ export function buildVideoView(src: GatewaySources) {
     const name = pv.project.name ?? "פרויקט";
     const activeProds = pv.productions.filter((x) => x.status !== "בוטל");
     if (pv.productions.length > 1) S("DUPLICATE_PRODUCTIONS", "CANONICAL_FACT", `${name}: ${pv.productions.length} הפקות על אותו פרויקט (${activeProds.length} פעילות)`);
-    if (!activeProds.length && (pv.clipDeal.price > 0 || pv.planning.rows.length || pv.shoots.length || Object.keys(pv.expenses.total).length)) S("PROJECT_VIDEO_NO_PRODUCTION", "CANONICAL_FACT", `${name}: יש מידע קליפ בפרויקט (עסקה / תכנון / יום צילום / הוצאה) ואין הפקה פעילה ב-Red Films`);
+    if (!activeProds.length && (pv.planning.rows.length || pv.shoots.length || Object.keys(pv.expenses.total).length)) S("PROJECT_VIDEO_NO_PRODUCTION", "CANONICAL_FACT", `${name}: יש מידע קליפ בפרויקט (תכנון / יום צילום / הוצאה) ואין הפקה פעילה ב-Red Films`);
     for (const r of pv.planning.rows.filter((x) => x.transferred && x.transactionExists === false)) S("CLIP_ROW_PROMOTED_MISSING_TX", "CANONICAL_FACT", `${name}: שורת תכנון '${r.category ?? ""}' ${r.currency ?? ""}${r.amount ?? ""} מסומנת 'הועבר לכספים' — העסקה לא קיימת`);
     for (const [cur, amt] of Object.entries(pv.expenses.unpaid)) S("CLIP_EXPENSE_UNPAID", "CANONICAL_FACT", `${name}: הוצאות קליפ לא משולמות ${cur}${amt}`);
     for (const x of pv.expenses.invalid) S("CLIP_EXPENSE_RECEIVED_STATUS", "CANONICAL_FACT", `${name}: הוצאת קליפ בסטטוס '${x.status ?? "—"}' — לא תקין להוצאה, לא נחשבת ששולמה`);
-    if (pv.clipDeal.price > 0 && pv.clipDeal.remaining > 0) S("CLIP_DEAL_OPEN", "CANONICAL_FACT", `${name}: עסקת קליפ ${pv.clipDeal.currency}${pv.clipDeal.price}, התקבל ${pv.clipDeal.currency}${pv.clipDeal.paid}, נותר ${pv.clipDeal.currency}${pv.clipDeal.remaining}`);
     for (const r of pv.planning.rows.filter((x) => x.expenseDiffers)) S("CLIP_PLAN_VS_EXPENSE", "DERIVED_SIGNAL", `${name}: תכנון ${r.currency ?? ""}${r.amount ?? ""} מול הוצאה בפועל ${r.expenseDiffers!.expenseCurrency ?? ""}${r.expenseDiffers!.expense ?? ""} — ההוצאה בכספים היא הקנונית`);
     if (pv.social.some((x) => x.posted) && activeProds.some((x) => x.status !== "פורסם")) S("PUBLISHED_CONTENT_VS_PRODUCTION", "DERIVED_SIGNAL", `${name}: יש תוכן שפורסם בפרויקט אבל ההפקה עדיין "${activeProds.find((x) => x.status !== "פורסם")!.status}" — שני מקורות, לא מתקן`);
     if (pv.release) S("RELEASE_CONTEXT", "CANONICAL_FACT", `${name}: ריליס בשלב ${pv.release.stage}${pv.release.target ? `, יעד ${pv.release.target}` : ""} — הקשר בלבד, ריליס לא מחייב קליפ`);
@@ -222,29 +214,13 @@ export function buildVideoView(src: GatewaySources) {
   for (const pv of projects) for (const [cur, amt] of Object.entries(pv.planning.plannedByCurrency)) addByCurrency(clipPlanned, cur, amt);
   return {
     counts: { productions: prods.length, active: active.length, cancelled: prods.length - active.length, byStatus: prods.reduce<Record<string, number>>((m, p) => { m[p.status ?? "—"] = (m[p.status ?? "—"] ?? 0) + 1; return m; }, {}),
-      withoutProject: prods.filter((p) => !p.project).length, managedBySendClip: prods.filter((p) => p.managedBySendClip).length, videoProjects: projects.length, clipDeals: projects.filter((p) => p.clipDeal.price > 0).length,
+      withoutProject: prods.filter((p) => !p.project).length, managedBySendClip: prods.filter((p) => p.managedBySendClip).length, videoProjects: projects.length, clipProjects: projects.filter((p) => p.money.projectType === "קליפ").length,
       shootSessions: projects.reduce((n, p) => n + p.shoots.length, 0), upcomingShoots: projects.reduce((n, p) => n + p.shoots.filter((s) => !s.datePassed && s.status !== "בוטל").length, 0), note: "recorded counts — no score, no readiness verdict" },
-    money: { redFilms: totals, clipPlanningByCurrency: clipPlanned, actualClipExpenses: expenses, clipIncome: clipIncomeByCurrency(projects),
-      rule: "A client clip price / clip income (revenue) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — none: for שליו / אבי the artist's 50 % of C is an artist expense in the bi-monthly cycle, never repaid by a specific income — media is separate 50 / 50 income; any other artist has no agreement). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
+    money: { redFilms: totals, clipPlanningByCurrency: clipPlanned, actualClipExpenses: expenses,
+      rule: "A the project's agreedPrice / income (a clip is its own project — its money is the project's own) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — none: for שליו / אבי the artist's 50 % of C is an artist expense in the bi-monthly cycle, never repaid by a specific income — media is separate 50 / 50 income; any other artist has no agreement). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
       clipRecoup: clipRecoupContribution(`${AGREEMENT_CYCLE_ACCOUNTING_HE} (שליו / אבי); לכל אמן אחר — אין הסכם.`) },
     productions: prods, projects, signals, questions,
-    unavailable: [...(c.ops ? [] : ["OPERATIONS (productions) — unknown, not none"]), ...(c.det ? [] : ["PROJECT_DETAIL (production detail, budget lines, documents, sessions, clip rows)"]), ...(c.fin ? [] : ["FINANCE (clip deal, expenses)"]), "storage itself is not listed — 'no link' ≠ 'no footage'", "calendar event details are read live by the calendar capability"],
+    unavailable: [...(c.ops ? [] : ["OPERATIONS (productions) — unknown, not none"]), ...(c.det ? [] : ["PROJECT_DETAIL (production detail, budget lines, documents, sessions, clip rows)"]), ...(c.fin ? [] : ["FINANCE (expenses)"]), "storage itself is not listed — 'no link' ≠ 'no footage'", "calendar event details are read live by the calendar capability"],
   };
 }
 export type VideoView = ReturnType<typeof buildVideoView>;
-
-/**
- * Clip-deal income PER CURRENCY (deal price / received / expected in each deal's own currency, plus clip rows that were
- * recorded in a currency other than their deal's). Never a mixed scalar, no FX.
- */
-export function clipIncomeByCurrency(projects: ReadonlyArray<{ clipDeal: { currency: string; price: number; paid: number; expected: number; otherCurrency: Record<string, { paid: number; expected: number; count: number }> } }>): Record<string, { price: number; received: number; expected: number }> {
-  const out: Record<string, { price: number; received: number; expected: number }> = {};
-  const at = (c: string) => (out[c] ??= { price: 0, received: 0, expected: 0 });
-  for (const p of projects) {
-    const b = at(p.clipDeal.currency);
-    b.price = round2(b.price + p.clipDeal.price); b.received = round2(b.received + p.clipDeal.paid); b.expected = round2(b.expected + p.clipDeal.expected);
-    for (const [c, o] of Object.entries(p.clipDeal.otherCurrency)) { const x = at(c); x.received = round2(x.received + o.paid); x.expected = round2(x.expected + o.expected); }
-  }
-  for (const [c, b] of Object.entries(out)) if (!b.price && !b.received && !b.expected) delete out[c];
-  return out;
-}

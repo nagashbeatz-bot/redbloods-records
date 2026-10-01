@@ -286,13 +286,14 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const clipRecoup = {
     clipContribution: clipRecoupContribution(agreementArtist ? AGREEMENT_CYCLE_ACCOUNTING_HE : null),
     clipMoneyByCurrency: clipMoneyByCurrency({
-      clientClipPrices: clipSettings.map((v) => ({ amount: Number(v?.clipAgreedPrice) || 0, currency: typeof v?.currency === "string" ? v.currency : null })),
+      // A = the clip PROJECT's agreedPrice (one clip model 2026-10-01: a clip is its own project with ONE price)
+      clientClipPrices: clipSettings.map((v) => ({ amount: Number(v?.agreedPrice) || 0, currency: typeof v?.currency === "string" ? v.currency : null })),
       plannedBudgets: clipProds.map((r) => ({ amount: r.generalBudget, currency: r.currency ?? null })),
       actualCostsPaid: fin ? fin.raw.transactions.filter((t) => t.type === "expense" && t.expenseScope === "קליפ" && t.projectId && clipProjIds.has(t.projectId) && isExpenseFullyPaidStatus(t.status)).map((t) => ({ amount: Number(t.amount) || 0, currency: t.currency })) : [],
       rfLedgerPaid: (c.ops?.budgetPayments?.rows ?? []).filter((x) => !x.hasTransaction && clipProds.some((r) => r.id === x.productionId)).map((x) => ({ amount: x.amount, currency: x.currency ?? null })),
     }),
     financeRead: !!fin,
-    rule: "A client clip price ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D does not exist (Owner model 2026-09-27): for שליו / אבי the artist's 50 % of C (ACTUAL PAID) is an artist expense in the bi-monthly cycle, never repaid by a specific income; any other artist has no agreement — never from the budget or the price. Red Films payments are real money: a LINKED payment is its Finance expense (already in C); rfLedgerPaid shows only the UNLINKED ones (DB-1) — never counted twice. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
+    rule: "A the clip project's agreedPrice ≠ B planned budget ≠ C actual cost (Finance, paid) ≠ D recoupable. D does not exist (Owner model 2026-09-27): for שליו / אבי the artist's 50 % of C (ACTUAL PAID) is an artist expense in the bi-monthly cycle, never repaid by a specific income; any other artist has no agreement — never from the budget or the price. Red Films payments are real money: a LINKED payment is its Finance expense (already in C); rfLedgerPaid shows only the UNLINKED ones (DB-1) — never counted twice. Clips ↔ artist = TEXT_MATCH (artist name) or via the artist's projects",
   };
   const money = {
     currencyRule: "the artist ledger, cycles and media income store NO currency (screens show ₪); shows carry one currency each and project / show finance rows carry their own currency — nothing is added across these",

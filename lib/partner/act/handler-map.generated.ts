@@ -40,7 +40,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
  "app/api/agent/check/route.ts": {
   "methods": [],
   "getWrites": true,
-  "sha256": "4062865deed954c0a8823e6267e9f1c970ec51b2761b58e801c1c13ec02b0974",
+  "sha256": "9fd25c6e93fe53181a9a0324c9f06eab5f0351a947db480bec89db9315c08f87",
   "effects": [
    "DELETION",
    "PUSH",
@@ -372,7 +372,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "3161bb993cc1644601d85e70c4d6e36a3c10f5d7dea4a463681d0d1c21606f71",
+  "sha256": "354c00e5da7ffafe93bb7be19bbb9029ccd053a3f69460763adbf1fba6a7343a",
   "effects": [
    "CALENDAR"
   ],
@@ -1642,74 +1642,16 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "version_label"
   ]
  },
- "app/api/projects/[id]/clip/payments/route.ts": {
-  "methods": [
-   "POST"
-  ],
-  "getWrites": false,
-  "sha256": "702daa9ca700179488d3427137dbe4ffc3daaf2e015b8dacc0acff965aaae3d5",
-  "effects": [
-   "DELETION",
-   "FINANCE",
-   "LEDGER",
-   "SETTINGS"
-  ],
-  "fields": [
-   "amount",
-   "category",
-   "clipAgreedPrice",
-   "date",
-   "description",
-   "notes",
-   "paymentStatus",
-   "seed"
-  ]
- },
- "app/api/projects/[id]/clip/route.ts": {
-  "methods": [
-   "PATCH"
-  ],
-  "getWrites": false,
-  "sha256": "b97d7b15f72005dd63bde526336aa8dc536f3d5155d4d446a1b79060f28d5f15",
-  "effects": [
-   "DELETION",
-   "FINANCE",
-   "LEDGER",
-   "SETTINGS"
-  ],
-  "fields": [
-   "amount",
-   "category",
-   "clipAgreedPrice",
-   "date",
-   "description",
-   "notes",
-   "paymentStatus",
-   "seed"
-  ]
- },
  "app/api/projects/[id]/clip/send/route.ts": {
   "methods": [
    "POST"
   ],
   "getWrites": false,
-  "sha256": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
+  "sha256": "3ea338796194ef6281a795b810583a51a24169666dc7fc857c305a69155ee46b",
   "effects": [
-   "DELETION",
-   "FINANCE",
-   "LEDGER",
    "SETTINGS"
   ],
-  "fields": [
-   "amount",
-   "category",
-   "clipAgreedPrice",
-   "date",
-   "description",
-   "notes",
-   "paymentStatus",
-   "seed"
-  ]
+  "fields": []
  },
  "app/api/projects/[id]/cover/route.ts": {
   "methods": [
@@ -2927,6 +2869,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "startTime",
    "start_time",
    "status",
+   "status_changed_at",
+   "status_source",
    "summary",
    "title"
   ]
@@ -2963,6 +2907,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "startTime",
    "start_time",
    "status",
+   "status_changed_at",
+   "status_source",
    "summary",
    "title"
   ]
@@ -3003,6 +2949,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "startTime",
    "start_time",
    "status",
+   "status_changed_at",
+   "status_source",
    "summary",
    "title"
   ]
@@ -3988,7 +3936,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "13fc08cb7a391ddeae2840d577e9270ad521bcf8c1d387282cae77227aa2e84f",
+  "sha256": "a15c85359cb174ba6b48810a6f0046ce04b9aa129317d6bac79e726fc837d4d5",
   "effects": [
    "DELETION",
    "FINANCE",

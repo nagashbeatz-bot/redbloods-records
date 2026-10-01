@@ -124,7 +124,6 @@ export async function GET(req: NextRequest) {
       date:          t.date,
       type:          t.type,
       paymentStatus: t.payment_status,
-      // Needed so clip income is not measured against the song's agreed price.
       expenseScope:  t.expense_scope as string | null,
     }));
 

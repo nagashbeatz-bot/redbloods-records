@@ -5,9 +5,9 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
-import { isCancelledPayment } from "@/lib/payment-status";
 import { isExpectedStatus } from "@/lib/finance/classify";
-import { isSongIncome } from "@/lib/clip-finance";
+import { isProjectIncome } from "@/lib/clip-finance";
+import { projectIncomeTotalsByProject } from "@/lib/finance/project-summary";
 import { sameCurrency } from "@/lib/finance";
 
 // ── Mobile summary: group issues into up to 3 category lines ─────────────────
@@ -35,7 +35,7 @@ function buildSummaryLines(issues: ProjectIssue[]): string[] {
 
 const TYPE_COLORS: Record<string, string> = {
   "שיר": "#3B82F6", "EP": "#A855F7", "אלבום": "#EC4899",
-  "קליפ": "#F59E0B", "שיר + קליפ": "#DC2626", "רידים": "#10B981",
+  "קליפ": "#F59E0B", "רידים": "#10B981",
   "לימודים": "#6366F1", "אחר": "#6B7280",
 };
 
@@ -264,20 +264,17 @@ export default function HealthAlert() {
           s.currency    = setting.currency    ?? "₪";
         }
 
+        // The project's ONE deal (one clip model 2026-10-01): every income row counts against its agreedPrice — the ONE
+        // aggregation lib/finance/project-summary projectIncomeTotals, per project in its own currency (R5).
+        for (const [pid, tot] of projectIncomeTotalsByProject(transactions, (pid) => ensure(pid).currency)) {
+          const s = ensure(pid);
+          s.totalPaid = tot.received; s.cancelledIncome = tot.cancelled; s.totalExpected = tot.expected;
+        }
         for (const t of transactions) {
           const s = ensure(t.project_id);
           if (!sameCurrency(t.currency, s.currency)) continue;
-          // Clip income belongs to the clip deal, not to the project's agreed
-          // price — counting it here would fake a fully-paid / overpaid song.
-          if (isSongIncome(t)) {
-            if (t.payment_status === "שולם" || t.payment_status === "התקבל") {
-              s.totalPaid += t.amount;
-            } else if (isCancelledPayment(t.payment_status)) {
-              s.cancelledIncome += t.amount;
-            } else if (isExpectedStatus(t.payment_status)) {
-              s.totalExpected += t.amount;
-              if (t.date && t.date < today) s.overduePayment = true;
-            }
+          if (isProjectIncome(t)) {
+            if (isExpectedStatus(t.payment_status) && t.date && t.date < today) s.overduePayment = true;
           } else if (t.type === "expense") {
             if (t.payment_status === "שולם") s.totalExpenses += t.amount;
           }

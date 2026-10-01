@@ -3,7 +3,7 @@
  *
  * Produced by the Red Films + Clip Deep Brain discovery (2026-09-25). Sources:
  *   - the Red Films pages, drawer, budget / payments / documents / references / tasks / equipment components;
- *   - the Red Films routes and the project clip routes (clip deal, clip payments, send clip);
+ *   - the Red Films routes and the project clip routes (the linked production read, send clip);
  *   - the clip planning rows + promote, the clip-finance / clip-production / label-clips modules;
  *   - shoot days (clip sessions) + calendar, the Finance / Insights / agent / COO / week-summary consumers;
  *   - the live production schema and read-only production counts.
@@ -30,7 +30,8 @@ export const RF_SCHEMA: Readonly<Record<string, readonly string[]>> = {
 /** Served entity → stored table (internal). */
 export const RF_ENTITY_TABLE: Readonly<Record<string, string>> = { production: "red_films_productions", budget_item: "red_films_budget_items", budget_payment: "red_films_budget_payments", crew_row: "red_films_crew", document: "red_films_documents", equipment: "red_films_equipment", reference_image: "red_films_reference_images", reference_link: "red_films_reference_links", scene: "red_films_scenes", clip_item: "clip_items" };
 /** Settings keys / JSON keys that carry video meaning (internal). */
-export const RF_SETTINGS_KEYS = ["finance_<projectId>.clipAgreedPrice", "finance_<projectId>.clipProductionId"] as const;
+/** One clip model (Owner decision 2026-10-01): clipAgreedPrice is RETIRED (a clip is its own project with ONE agreedPrice) — only the production marker remains. */
+export const RF_SETTINGS_KEYS = ["finance_<projectId>.clipProductionId"] as const;
 
 export type FieldClass = "CANONICAL" | "DERIVED" | "DISPLAY_ONLY" | "LEGACY" | "AMBIGUOUS" | "POSSIBLE_BUG" | "CONFLICT" | "SECRET_LINK";
 export interface RfField { entity: string; field: string; classification: FieldClass; meaning: string; writers: string; readers: string; history: string; sunnyReads: string }
@@ -137,15 +138,13 @@ export const RF_VOCABULARIES = {
   documentType: ["תסריט", "בריף", "שוט ליסט", "לו״ז צילום", "אישור / חוזה", "ציוד", "אחר"],
   equipmentCategory: ["מצלמות", "עדשות", "ייצוב", "תאורה", "סאונד", "אביזרים", "אחר"],
   clipItemCategory: ["צילום קליפ", "עריכת קליפ", "ציוד צילום", "תאורה", "לוקיישן", "דוגמניות / משתתפים", "איפור / סטיילינג", "הסעות", "אוכל / הפקה", "אביזרים", "אחר"],
-  clipDealStatus: ["אין עסקה", "ממתין", "חלקי", "שולם", "יתרת זכות"],
-  clipPaymentStatus: ["התקבל", "שולם", "צפוי", "לא שולם", "בוטל"],
 } as const;
 
 export const DOMAIN_MODEL = {
-  twoSystems: "Video lives in TWO connected systems: (1) the PROJECT clip deal — a clip price the artist pays (project finance settings), clip payments = INCOME transactions with expense scope קליפ, clip planning rows, clip shoot days (sessions), clip expenses (expense scope קליפ); (2) RED FILMS — productions with their own status, crew names, budget lines + payments (a separate ledger), documents, references, tasks, links. They meet on the production's project id.",
-  workUnit: "Red Films work unit = the production. Project video unit = the project's clip deal + clip rows + shoot sessions + clip-scoped transactions. Neither implies the other: a project can have clip data and no production; a production can have no project.",
-  projectType: "Owner decision 2026-09-29 (new canonical model, rolled out in phases): a clip IS a separate project (project_type 'קליפ') linked to its song by projects.song_project_id (canonical id link; the song finds its clips by the reverse lookup; parent_project text is never this link). P1 = the link + read awareness only: no writer yet, the 'add clip' flow, money rules and Red Films are unchanged. LEGACY (still read as before): a song whose clip lives inside it — 'שיר + קליפ' is the type a song gets when a clip deal is seeded, clipAgreedPrice / scope 'קליפ' are that song's clip deal (e.g. פרנציפ).",
-  sendClip: "'שלח קליפ' (Owner): creates a Red Films production (type קליפ, status רעיון, the project's name / artist, client matched by artist NAME, client source from the project classification, budget 0 in the clip deal's currency) and records it as the project's production marker (compare-and-swap settings merge). Provenance only — the budget is the production's own planning, the clip price never sets it and nothing is locked (2026-09-27). Idempotent by lookup twice (no database unique guard); cancelled productions do not block a new one. Production: 0 productions created by the flow.",
+  twoSystems: "Video lives in TWO connected systems: (1) the PROJECT's video work — clip planning rows, clip shoot days (sessions), clip expenses (expense scope קליפ); the clip project's money is the project's own ONE agreedPrice + its income (one clip model, Owner decision 2026-10-01 — no clip price, no clip deal, no clip payment list); (2) RED FILMS — productions with their own status, crew names, budget lines + payments (a separate ledger), documents, references, tasks, links. They meet on the production's project id.",
+  workUnit: "Red Films work unit = the production. Project video unit = the clip project + its clip rows + shoot sessions + clip-scoped transactions. Neither implies the other: a project can have clip data and no production; a production can have no project.",
+  projectType: "Owner decision 2026-09-29 (new canonical model, rolled out in phases): a clip IS a separate project (project_type 'קליפ') linked to its song by projects.song_project_id (canonical id link; the song finds its clips by the reverse lookup; parent_project text is never this link). ONE MODEL (Owner decision 2026-10-01, the old model removed): song = project, clip = project, each with ONE agreedPrice (finance_<project>.agreedPrice — SET_AGREED_PRICE) and ONE balance (every income row of the project counts, any expense scope). There is no 'שיר + קליפ' type, no clipAgreedPrice, no clip deal / clip payments inside a song. Expense scope קליפ stays a reporting tag only. The old song-with-clip data (פרנציפ, יהלום, בלאגן) was migrated into clip projects.",
+  sendClip: "'שלח קליפ' (Owner): creates a Red Films production (type קליפ, status רעיון, the project's name / artist, client matched by artist NAME, client source from the project classification, budget 0 in the project's currency) and records it as the project's production marker (compare-and-swap settings merge). Provenance only — the budget is the production's own planning, the project's price never sets it and nothing is locked (2026-09-27). Idempotent by lookup twice (no database unique guard); cancelled productions do not block a new one. Production: 0 productions created by the flow.",
   equipment: "company inventory of cameras / lenses / lights … (8 items) — not per production.",
 } as const;
 
@@ -163,14 +162,14 @@ export const MONEY_MODEL = {
     "RED_FILMS_PAID: budget payments = REAL company money (Owner canon 2026-09-27). DB-1 (live 2026-09-27): each payment → exactly ONE linked Finance expense (scope קליפ, שולם, same currency) — a LINKED payment is part of ACTUAL_EXPENSE and is never counted again; only UNLINKED payments are outside Finance (historical ones until the Boss links them). A clip production maps to expense scope קליפ, any other type needs an explicit scope (SCOPE_REQUIRED — never auto-created); a clip production without a project → PROJECT_REQUIRED",
     "ACTUAL_EXPENSE: Finance expenses with expense scope קליפ (from 'העבר לכספים', a shoot-day expense, or a manual Finance entry) — canonical once they exist",
     "PAID_EXPENSE: an expense with status שולם (חלקי = partial; התקבל = invalid for an expense)",
-    "CLIP_DEAL_INCOME: the artist's clip payments (INCOME with scope קליפ) vs the clip price — revenue, never an expense",
-    "BUSINESS_UNIT (task 4, Owner decision 2026-09-28): a REAL clip cost of a Records (label) project is RECORDS — Red Films may execute it, but there is no internal revenue, transfer or theoretical cost for Films. Clip money of a client project is FILMS only when the project has a Red Films production for an external client; otherwise it is NULL (דורש סיווג) and the Owner decides (e.g. בלאגן is a Studio deal). RF payment rows, 'העבר לכספים' rows and clip deal payments get their unit from the ONE unit rule on creation.",
+    "PROJECT_INCOME: a clip project's income (any expense scope; קליפ is a reporting tag) counts against the clip project's ONE agreedPrice — revenue, never an expense; there is no separate clip deal",
+    "BUSINESS_UNIT (task 4, Owner decision 2026-09-28): a REAL clip cost of a Records (label) project is RECORDS — Red Films may execute it, but there is no internal revenue, transfer or theoretical cost for Films. Clip money of a client project is FILMS only when the project has a Red Films production for an external client; otherwise it is NULL (דורש סיווג) and the Owner decides (e.g. בלאגן is a Studio deal). RF payment rows and 'העבר לכספים' rows get their unit from the ONE unit rule on creation.",
   ],
   promote: "'העבר לכספים' on a clip planning row: the row is CLAIMED first (status → הועבר לכספים only while it has no linked expense — a double click could create two expenses before 2026-09-27; now the second click finds the claim), then an expense (project scope, status לא שולם, expense scope קליפ, amount + currency of the row, the date chosen) is created and the row is KEPT and linked to it (plan → actual provenance); a failed insert releases the claim. The expense is canonical; a plan ≠ expense difference is CLIP_PLAN_VS_EXPENSE. The expense is owned by the row in Finance (not deletable there; amount / currency / description / category stay editable). No Owner check in the route (proxy only).",
   shootExpense: "adding a shoot day can optionally create an expense (status לא שולם, category צילום קליפ, expense scope קליפ, linked to the session).",
   noDoubleCount: "Sunny never adds a planning row / budget line to an expense. A LINKED Red Films payment IS its Finance expense (paidLinkedInFinance ⊂ actual clip expenses) — never added to it; only paidOutsideFinance (unlinked) is shown apart. Linking checks for a similar UNLINKED Finance expense (same project / amount / currency, ±14 days, similar text, or the line's legacy Finance row) → POSSIBLE_DUPLICATE for the Boss — never summed, never merged automatically.",
   currency: "every money row carries its currency (₪ / $ / €; migration 75bf144e… applied 2026-09-27, every existing row = ₪): productions (budget / client price / advances), budget lines (planned / actual) and their payments (always the line's currency), equipment purchase price, clip rows, Finance. Nothing is converted; totals are grouped by currency, never added across currencies (SET_RF_CURRENCY; refused on a line that already has payments).",
-  clipDeal: "clip deal status: אין עסקה / ממתין / חלקי / שולם / יתרת זכות; remaining = max(0, price − received), overpayment = credit. Clip income is excluded from the song's balance.",
+  projectMoney: "ONE clip model (Owner decision 2026-10-01): a clip project's price / received / balance are the project's own money (the same one rule as a song's); the clip deal status, clip price and clip payment list are retired.",
   recoup: "Owner canon 2026-09-27: there is NO clip recoup — for שליו / אבי the artist's clip share (50 % of the ACTUAL PAID cost, funded by the label) is an artist expense in the bi-monthly cycle, never repaid by a specific income (media is separate 50 / 50 income); every other artist has no agreement (NOT_DEFINED; never 50 % of the budget, never the client price). Active clip productions matched by artist name give INFORMATION per currency only (A client price, B planned budget, C paid clip cost, Red Films ledger). Media records stored before 2026-09-27 carry 'recouped' values from a retired rule — history only.",
 } as const;
 
@@ -216,7 +215,7 @@ const X = (e: RA): RfActionEntry => { const { routes, ...rest } = e; return { ..
 const RF = "app/api/red-films", PC = "app/api/projects/[id]/clip", CL = "app/api/clip-items";
 export const RF_ACTIONS: readonly RfActionEntry[] = [
   X({ id: "CREATE_PRODUCTION", action: "Create a Red Films production (new-production modal)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "production", finance: null, calendar: null, files: null, project: "optional link", destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "CREATE_VIDEO_PRODUCTION", routes: [`${RF}/productions/route.ts`] }),
-  X({ id: "SEND_CLIP", action: "'שלח קליפ' — create / return the project's clip production", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "production + the production marker in the project's finance settings (compare-and-swap merge)", finance: "budget 0 in the deal currency (planning — never the clip price)", calendar: null, files: null, project: "production marker (provenance)", destructive: false, reversible: "PARTIAL", approvalClass: "STANDARD", futurePrimitive: "SEND_CLIP_TO_RED_FILMS", routes: [`${PC}/send/route.ts`] }),
+  X({ id: "SEND_CLIP", action: "'שלח קליפ' — create / return the project's clip production", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "production + the production marker in the project's finance settings (compare-and-swap merge)", finance: "budget 0 in the project's currency (planning — never the project's price)", calendar: null, files: null, project: "production marker (provenance)", destructive: false, reversible: "PARTIAL", approvalClass: "STANDARD", futurePrimitive: "SEND_CLIP_TO_RED_FILMS", routes: [`${PC}/send/route.ts`] }),
   X({ id: "EDIT_PRODUCTION", action: "Edit a production (status, edit status, crew names, dates, concept, script, budget unless managed, client price, links, publish)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "production", finance: null, calendar: null, files: null, project: null, destructive: false, reversible: "PARTIAL", approvalClass: "STANDARD", futurePrimitive: "UPDATE_VIDEO_PRODUCTION", routes: [`${RF}/productions/[id]/route.ts`] }),
   X({ id: "CANCEL_PRODUCTION", action: "Cancel a production (status בוטל)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "status + its future / undated tasks cancelled", finance: null, calendar: "Google Tasks deleted", files: null, project: null, destructive: false, reversible: "PARTIAL", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "CANCEL_VIDEO_PRODUCTION", routes: [`${RF}/productions/[id]/route.ts`] }),
   X({ id: "BULK_DELETE_PRODUCTIONS", action: "Permanently delete productions (bulk)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "A5 (2026-09-27): read-only preflight first — only בוטל productions; any Red Films payment refuses the whole delete (HAS_PAYMENTS, real money, zero writes); then reference images, documents, reference links, scenes, crew, budget lines (a linked Finance transaction stays), tasks, the project's clip-production marker (only when it still points at the production, compare-and-swap) and the productions — every step checked, verified by a re-read; stored files + Google Tasks after the DB, failures reported; the storage folder stays", finance: null, calendar: "Google Tasks", files: "reference files", project: null, destructive: true, reversible: "NO", approvalClass: "DESTRUCTIVE", futurePrimitive: "DELETE_VIDEO_PRODUCTION", routes: [`${RF}/productions/bulk-permanent-delete/route.ts`] }),
@@ -226,17 +225,15 @@ export const RF_ACTIONS: readonly RfActionEntry[] = [
   X({ id: "REFERENCES", action: "Add / edit / delete reference images and video links", who: "OWNER", enforcement: "PROXY_ONLY", writes: "references", finance: null, calendar: null, files: "image upload (+ public thumbnail link) / delete; video link edit = title / notes only (hardened 2026-09-27: the shared writer updateVideoReference accepts only title / notes; the PATCH used to write the whole body)", project: null, destructive: true, reversible: "NO", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${RF}/productions/[id]/references/upload/route.ts`, `${RF}/references/[refId]/route.ts`, `${RF}/productions/[id]/reference-links/route.ts`, `${RF}/reference-links/[linkId]/route.ts`] }),
   X({ id: "STORAGE_FOLDER", action: "Create the production storage folder", who: "OWNER", enforcement: "PROXY_ONLY", writes: "folder path + link", finance: null, calendar: null, files: "storage folder", project: null, destructive: false, reversible: "YES", approvalClass: "EXTERNAL_EFFECT", futurePrimitive: "—", routes: [`${RF}/productions/[id]/dropbox-folder/route.ts`] }),
   X({ id: "EQUIPMENT", action: "Add / edit / remove equipment", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "equipment", finance: null, calendar: null, files: null, project: null, destructive: false, reversible: "YES", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${RF}/equipment/route.ts`, `${RF}/equipment/[id]/route.ts`] }),
-  X({ id: "CLIP_PRICE", action: "Set the project's clip price (A — the deal; never a production budget)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "project finance settings", finance: "clip deal price", calendar: null, files: null, project: null, destructive: false, reversible: "YES", approvalClass: "FINANCIAL", futurePrimitive: "SET_CLIP_PRICE", routes: [`${PC}/route.ts`] }),
-  X({ id: "CLIP_PAYMENTS", action: "Add clip payments (seed 50/50 advance + final, or one payment)", who: "OWNER", enforcement: "ROUTE_CHECKS_OWNER", writes: "INCOME transactions (expense scope קליפ)", finance: "clip income", calendar: null, files: null, project: "a שיר becomes שיר + קליפ", destructive: false, reversible: "PARTIAL", approvalClass: "FINANCIAL", futurePrimitive: "RECORD_CLIP_PAYMENT", routes: [`${PC}/payments/route.ts`] }),
   X({ id: "CLIP_ROWS", action: "Add / edit / delete a clip planning row", who: "OWNER", enforcement: "PROXY_ONLY", writes: "clip planning row", finance: null, calendar: null, files: null, project: null, destructive: true, reversible: "PARTIAL", approvalClass: "STANDARD", futurePrimitive: "—", routes: [`${CL}/route.ts`, `${CL}/[id]/route.ts`] }),
   X({ id: "PROMOTE_CLIP_ROW", action: "'העבר לכספים' — clip planning row → Finance expense (row deleted)", who: "OWNER", enforcement: "PROXY_ONLY", writes: "expense (לא שולם, scope קליפ) + the row deleted", finance: "actual expense", calendar: null, files: null, project: null, destructive: true, reversible: "NO", approvalClass: "FINANCIAL", futurePrimitive: "PROMOTE_CLIP_PLAN", routes: [`${CL}/[id]/promote/route.ts`] }),
 ];
 /** Read-only Red Films routes (internal). */
-export const RF_READ_ROUTES = [`${RF}/productions/[id]/budget-payments/route.ts`, `${RF}/productions/[id]/documents/route.ts`, `${RF}/documents/[docId]/preview/route.ts`, `${RF}/productions/[id]/references/route.ts`, `${RF}/references/thumbnail/route.ts`] as const;
+export const RF_READ_ROUTES = [`${PC}/route.ts`, `${RF}/productions/[id]/budget-payments/route.ts`, `${RF}/productions/[id]/documents/route.ts`, `${RF}/documents/[docId]/preview/route.ts`, `${RF}/productions/[id]/references/route.ts`, `${RF}/references/thumbnail/route.ts`] as const;
 
 export interface RfWorkflow { event: string; support: "SUPPORTED" | "PARTIAL" | "NOT_SUPPORTED"; concept: string; missing: string[] }
 export const RF_WORKFLOWS: readonly RfWorkflow[] = [
-  { event: "CREATE_VIDEO_WORK", support: "SUPPORTED", concept: "a production (modal) or a project clip deal", missing: [] },
+  { event: "CREATE_VIDEO_WORK", support: "SUPPORTED", concept: "a clip project (project_type קליפ, its ONE agreedPrice) + a production (modal / 'שלח קליפ')", missing: [] },
   { event: "SEND_TO_RED_FILMS", support: "SUPPORTED", concept: "'שלח קליפ' (idempotent by lookup)", missing: ["no database unique guard"] },
   { event: "PLAN_CLIP_BUDGET", support: "SUPPORTED", concept: "production budget + budget lines + clip planning rows", missing: [] },
   { event: "TRANSFER_CLIP_ITEM_TO_FINANCE", support: "SUPPORTED", concept: "'העבר לכספים' (row deleted)", missing: ["plan history", "atomic claim"] },
@@ -267,14 +264,12 @@ export const RF_SIGNAL_MODEL: ReadonlyArray<{ code: string; kind: "CANONICAL_FAC
   { code: "CLIP_EXPENSE_RECEIVED_STATUS", kind: "CANONICAL_FACT", note: "a clip EXPENSE with status התקבל — invalid for an expense" },
   { code: "DUPLICATE_PRODUCTIONS", kind: "CANONICAL_FACT", note: "more than one production on one project" },
   { code: "PRODUCTION_WITHOUT_PROJECT", kind: "CANONICAL_FACT", note: "a production with no project" },
-  { code: "PROJECT_VIDEO_NO_PRODUCTION", kind: "CANONICAL_FACT", note: "project clip data (deal / rows / shoot / expense) with no active production" },
+  { code: "PROJECT_VIDEO_NO_PRODUCTION", kind: "CANONICAL_FACT", note: "project clip data (rows / shoot / expense) with no active production" },
   { code: "CLIENT_SOURCE_MISLABELLED", kind: "DERIVED_SIGNAL", note: "production says פנימי - לייבל while its project is a client project (older rows; new ones follow the classification)" },
   { code: "BUDGET_LINE_STATUS_VS_PAYMENTS", kind: "DERIVED_SIGNAL", note: "a budget line's stored status (planning intent) disagrees with its payments — the payments decide paid" },
-  { code: "BUDGET_EQUALS_CLIP_PRICE_OLD_SYNC", kind: "DERIVED_SIGNAL", note: "the production budget equals the clip price — a remnant of the retired price → budget sync; planning, not a decision" },
   { code: "CLIP_PLAN_VS_EXPENSE", kind: "DERIVED_SIGNAL", note: "a transferred plan whose expense differs (amount / currency) — the expense is canonical" },
   { code: "PUBLISHED_CONTENT_VS_PRODUCTION", kind: "DERIVED_SIGNAL", note: "posted social content on the project while its production is not פורסם — two sources, never rewritten" },
   { code: "RELEASE_CONTEXT", kind: "CANONICAL_FACT", note: "the project has a release — context only; a release never requires a video" },
-  { code: "CLIP_DEAL_OPEN", kind: "CANONICAL_FACT", note: "clip price not fully received" },
   { code: "MISSING_RECORDED_PREP", kind: "CANONICAL_FACT", note: "an active production / upcoming shoot without a recorded location / crew / documents — facts, never 'not ready'" },
 ];
 
@@ -314,7 +309,7 @@ export const SECURITY_REVIEW = {
 /** Files whose video semantics the Sunny contract encodes — internal; the test pins their fingerprints. */
 export const RF_REVIEWED_FILES = [
   "lib/clip-finance.ts", "lib/clip-production.ts", "lib/label-clips.ts",
-  "app/api/projects/[id]/clip/send/route.ts", "app/api/projects/[id]/clip/route.ts", "app/api/projects/[id]/clip/payments/route.ts",
+  "app/api/projects/[id]/clip/send/route.ts", "app/api/projects/[id]/clip/route.ts",
   "app/api/clip-items/route.ts", "app/api/clip-items/[id]/route.ts", "app/api/clip-items/[id]/promote/route.ts",
   "app/api/red-films/productions/route.ts", "app/api/red-films/productions/[id]/route.ts", "app/api/red-films/productions/bulk-permanent-delete/route.ts",
   "app/api/red-films/budget-items/[itemId]/payments/route.ts", "app/api/red-films/productions/[id]/documents/upload/route.ts",
@@ -328,13 +323,14 @@ export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "app/api/red-films/budget-payments/[paymentId]/route.ts": "d0986855ef6d1d2e5eaffa7858101c3233d0bb7ad2abcc6c443185fdde5c657b",
   "lib/writes/redfilms.ts": "af1be1f106ba4e102c25de457f9f98c41bb64f2798a55c401d2606cbd8b3c298",
   // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
-  "lib/writes/clip.ts": "968cdbd635dbbcd36b7692489e1ea1e250d1628031ba3b7bc62d8bfe525fdf35",
-  "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
-  "lib/clip-production.ts": "dcdb87951da5443020449a2a96a66f841f828c0e07f9456a74af130044140a58",
-  "lib/label-clips.ts": "bc82ac926a2b6d0a0735aa0dbc9a090ad30957dd098b23f5340188e16a2289a4",
-  "app/api/projects/[id]/clip/send/route.ts": "356bcbde091e657738998046edc4e7cf41f6972dec0f783063e980152ebd1fba",
-  "app/api/projects/[id]/clip/route.ts": "b97d7b15f72005dd63bde526336aa8dc536f3d5155d4d446a1b79060f28d5f15",
-  "app/api/projects/[id]/clip/payments/route.ts": "702daa9ca700179488d3427137dbe4ffc3daaf2e015b8dacc0acff965aaae3d5",
+  // 2026-10-01 review (one clip model): clip price / clip deal / clip payments removed — 'שלח קליפ' + the linked-production read only;
+  // the clip project's money is its ONE agreedPrice (no clip-finance math, no clipAgreedPrice)
+  "lib/writes/clip.ts": "84d335176eebc04d0fcab3b735d1cdb04e72af13874a41831c344e2c531a1c7c",
+  "lib/clip-finance.ts": "53652a6d8b70f760b089dce8d3f7c087f7ff08de39a50e8bf04cc57a6bb3f61a",
+  "lib/clip-production.ts": "e2d5054bc6bba5c243b86e180e9875f62bf297dd557752ab28b1c3234a4314b4",
+  "lib/label-clips.ts": "b230a193c6bac1fcd7e1f1b577931681cb8e37397db03f4a916449fab86a4d86",
+  "app/api/projects/[id]/clip/send/route.ts": "3ea338796194ef6281a795b810583a51a24169666dc7fc857c305a69155ee46b",
+  "app/api/projects/[id]/clip/route.ts": "aecac0bfb01e091492847eee8d63cdfd4bf98ace12c5f71eedd57d07024d085a",
   "app/api/clip-items/route.ts": "c40439dae22f8b175b85c3a35ecbdf3188633a05c225ded96b428c0f0cae6f89",
   "app/api/clip-items/[id]/route.ts": "d31ca649d1ced7a5a346963da1330e29cdc953560bcba7825b7b271aa0c54f17",
   "app/api/clip-items/[id]/promote/route.ts": "d2a6dbdcee397491afb7d1b82244a94c8754a3b7243703a75c08ddab64e89218",
@@ -350,5 +346,5 @@ export const RF_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
 export const RF_ROUTE_GROUPS = [
   { pattern: "^app/api/red-films/", note: "Red Films productions / budget / payments / documents / references / equipment" },
   { pattern: "^app/api/clip-items/", note: "project clip planning rows + promote" },
-  { pattern: "^app/api/projects/\\[id\\]/clip/", note: "project clip deal (price, payments, send clip)" },
+  { pattern: "^app/api/projects/\\[id\\]/clip/", note: "project video: the linked production (read) + send clip" },
 ] as const;

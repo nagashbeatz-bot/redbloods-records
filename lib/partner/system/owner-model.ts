@@ -11,7 +11,8 @@
  * Provenance: OWNER_CONFIRMED (the Owner's own words in the Sunny operating-model conversation, 2026-09-25).
  */
 
-export const OWNER_MODEL_VERSION = "2026.09.27-owner-7";
+// owner-8 (2026-10-01, Owner decision): NEW_CLIP = a clip PROJECT with ONE agreedPrice (one clip model — no clip deal)
+export const OWNER_MODEL_VERSION = "2026.10.01-owner-8";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -188,8 +189,8 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
     required: [{ item: "label artist", knownFrom: "CANONICAL_DATA" }, { item: "song / project", knownFrom: "CANONICAL_DATA" }, { item: "target date + stage", knownFrom: "ASK_OWNER" }],
     downstream: ["project becomes לייבל; release row created", "portal cover / visibility by the release row"], notifications: [], actions: ["CONVERT_TO_LABEL_RELEASE / CREATE_LABEL_SONG — FUTURE (dashboard today)"] },
   { event: "NEW_CLIP", titleHe: "קליפ חדש", source: "SYSTEM_CONTRACT",
-    required: [{ item: "project", knownFrom: "CANONICAL_DATA" }, { item: "clip price", knownFrom: "ASK_OWNER" }, { item: "Red Films production", knownFrom: "CANONICAL_DATA" }],
-    downstream: ["clip deal seeds advance + balance income rows", "'שלח קליפ' creates a Red Films production with its own planning budget (0 in the deal currency — never the clip price); recoup stays NOT_DEFINED until the artist agreement rule"], notifications: [], actions: ["OPEN_CLIP_DEAL / START_CLIP_PRODUCTION — FUTURE (financial)"] },
+    required: [{ item: "clip project (project_type קליפ, linked to its song)", knownFrom: "CANONICAL_DATA" }, { item: "the clip project's agreed price", knownFrom: "ASK_OWNER" }, { item: "Red Films production", knownFrom: "CANONICAL_DATA" }],
+    downstream: ["one clip model (Owner decision 2026-10-01): the clip is its own project with ONE agreedPrice — its income counts against it like a song's", "'שלח קליפ' creates a Red Films production with its own planning budget (0 in the project's currency — never the project's price); recoup stays NOT_DEFINED until the artist agreement rule"], notifications: [], actions: ["CREATE_PROJECT (type קליפ) + SET_AGREED_PRICE + SEND_CLIP_TO_RED_FILMS — typed actions, each with the Boss's approval (the workflow as one action is NOT_YET_EXECUTABLE)"] },
   { event: "NEW_TASK", titleHe: "משימה חדשה", source: "IMPLEMENTATION_BEHAVIOR",
     required: [{ item: "what + related entity", knownFrom: "ASK_OWNER" }, { item: "due date", knownFrom: "ASK_OWNER" }],
     downstream: ["mirrored as a Google Task"], notifications: [], actions: ["CREATE_TASK — FUTURE (external effect)"] },

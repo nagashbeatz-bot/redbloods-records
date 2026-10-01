@@ -3,7 +3,8 @@
  * server routes, Sunny views and scripts all import these same functions.
  *
  * Owner canon (four different things, never merged, never derived from each other):
- *   A  the CLIENT clip price / clip income (finance_<project>.clipAgreedPrice + income rows with expense scope קליפ);
+ *   A  the clip PROJECT's agreedPrice / income (one clip model 2026-10-01: a clip is its own project with ONE price —
+ *      finance_<clipProject>.agreedPrice; income rows count toward it whatever their expense scope);
  *   B  the PLANNED budget (red_films_productions.general_budget, budget lines, clip planning rows) — planning, not money;
  *   C  the ACTUAL cost (Finance expenses with expense scope קליפ; paid only when שולם). A Red Films budget payment is
  *      real company money: since DB-1 (live 2026-09-27, red_films_budget_payments.linked_transaction_id) each payment of a
@@ -14,7 +15,6 @@
  *      income; for every other artist there is no agreement. D is NOT_DEFINED (null) with the reason — never the budget.
  */
 import { normalizeCurrency } from "./finance/currency";
-import { isReceivedStatus as _received, isCancelledStatus as _cancelled } from "./finance/classify";
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -127,17 +127,6 @@ export function clipMoneyByCurrency(input: { clientClipPrices?: readonly Amount[
   add(input.clientClipPrices, "clientClipPrice"); add(input.plannedBudgets, "plannedBudget"); add(input.actualCostsPaid, "actualCostPaid"); add(input.rfLedgerPaid, "rfLedgerPaid");
   return out;
 }
-/**
- * DERIVED observation: a production created by 'שלח קליפ' before B3 got its budget from the clip price (the retired
- * price → budget sync). When the budget still equals the clip price in the same currency, say so — it is planning that
- * happens to equal A, not a decision that B = A.
- */
-export function budgetEqualsOldClipPriceSync(p: { managedBySendClip: boolean; budget: number | null | undefined; budgetCurrency: string | null | undefined; clipAgreedPrice: number | null | undefined; clipCurrency: string | null | undefined }): boolean {
-  const b = num(p.budget), c = num(p.clipAgreedPrice);
-  return p.managedBySendClip && b > 0 && b === c && normalizeCurrency(p.budgetCurrency) === normalizeCurrency(p.clipCurrency);
-}
-export const BUDGET_EQUALS_CLIP_PRICE_HE = "התקציב שווה למחיר הקליפ — שריד של הסנכרון הישן (מחיר → תקציב); זה תכנון, לא החלטה שהתקציב = המחיר";
-
 // ── 8. clip planning rows ────────────────────────────────────────────────────────────────────────────────────────────
 /** The clip_items.status vocabulary — pinned to components/ui/ProjectDrawer.tsx ClipItemStatus. */
 export const CLIP_ITEM_STATUSES = ["תכנון בלבד", "הועבר לכספים", "שולם", "בוטל"] as const;
@@ -177,33 +166,7 @@ export function rfClientSourceFor(project: { businessType?: string | null } | nu
   return RF_CLIENT_SOURCE_DEFAULT;
 }
 
-// ── 5. income scope: song money vs clip money, before / after a scope change ──────────────────────────────────────
-/** The only scopes an INCOME row may be given by the scope action (show income keeps its own writer). */
+// ── 5. income scope: a REPORTING category (one clip model 2026-10-01 — never a second deal) ─────────────────────────
+/** The only scopes an INCOME row may be given by the scope action (show income keeps its own writer). Both count toward
+ * the project's agreedPrice — the scope is a reporting tag only. */
 export const INCOME_SCOPES: readonly string[] = ["קליפ", "כללי"];
-export interface IncomeRowLike { id: string; amount: number; currency: string | null; paymentStatus: string | null; expenseScope: string | null }
-export interface SongClipSplit { song: { received: number; open: number }; clip: { received: number; open: number } }
-/**
- * A project's income PER CURRENCY split into song money (everything not scoped קליפ) and clip money (scope קליפ), now and
- * after moving ONE row to `newScope`. Received = שולם / התקבל (lib/finance/classify); cancelled rows are never money.
- * Used by the preview of the income-scope action — the Owner sees exactly what moves between the song and the clip deal.
- */
-export function songClipSplitBeforeAfter(incomes: readonly IncomeRowLike[], txId: string, newScope: string): { before: Record<string, SongClipSplit>; after: Record<string, SongClipSplit> } {
-  const build = (scopeOf: (r: IncomeRowLike) => string) => {
-    const out: Record<string, SongClipSplit> = {};
-    for (const r of incomes) {
-      if (_cancelled(r.paymentStatus)) continue;
-      const c = normalizeCurrency(r.currency);
-      const b = (out[c] ??= { song: { received: 0, open: 0 }, clip: { received: 0, open: 0 } });
-      const side = scopeOf(r) === "קליפ" ? b.clip : b.song;
-      if (_received(r.paymentStatus)) side.received = r2(side.received + num(r.amount)); else side.open = r2(side.open + num(r.amount));
-    }
-    return out;
-  };
-  return { before: build((r) => r.expenseScope ?? ""), after: build((r) => (r.id === txId ? newScope : r.expenseScope ?? "")) };
-}
-/** One-line Hebrew text of a split (per currency; no "/" so it is never path-like). */
-export function songClipSplitText(m: Record<string, SongClipSplit>): string {
-  const e = Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
-  if (!e.length) return "אין הכנסות";
-  return e.map(([c, s]) => `${c}: שיר התקבל ${c}${s.song.received} (פתוח ${c}${s.song.open}) · קליפ התקבל ${c}${s.clip.received} (פתוח ${c}${s.clip.open})`).join(" | ");
-}

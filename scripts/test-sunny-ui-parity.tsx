@@ -82,10 +82,10 @@ async function main() {
   section("1. Project money — the Projects table badge (lib/finance/project-summary) vs Sunny's project_view money (lib/partner/projects/money)");
   {
     const a = ui("P1"), b = sunny("P1");
-    check("P1 partial: received (song, deal currency only)", [a.f.paid, b.song?.received], [600, 600]);
-    check("P1 partial: remaining", [a.badge.kind === "BALANCE" ? a.badge.balance : null, a.collectible, b.song?.collectible], [400, 400, 400]);
+    check("P1 partial: received (every income row incl. the קליפ tag, deal currency only)", [a.f.paid, b.song?.received], [800, 800]);
+    check("P1 partial: remaining", [a.badge.kind === "BALANCE" ? a.badge.balance : null, a.collectible, b.song?.collectible], [200, 200, 200]);
     ok("P1 partial: neither says paid", a.badge.kind === "BALANCE" && b.verdict === "DEBT" && b.song?.fullyPaid === false);
-    ok("P1: clip income and $ income are NOT counted against the song price (both sides)", a.f.paid === 600 && b.song?.received === 600 && b.otherCurrencyIncome["$"]?.received === 300);
+    ok("P1: the קליפ-tagged income COUNTS (one clip model), $ income does not (both sides)", a.f.paid === 800 && b.song?.received === 800 && b.otherCurrencyIncome["$"]?.received === 300);
     const c = ui("P2"), d = sunny("P2");
     ok("P2 paid in full: UI PAID ⇔ Sunny NO_DEBT / fullyPaid", c.badge.kind === "PAID" && d.verdict === "NO_DEBT" && d.song?.fullyPaid === true && c.collectible === 0 && d.song?.collectible === 0);
     const e = ui("P4"), f = sunny("P4");
@@ -242,7 +242,7 @@ async function main() {
   {
     ok("'expected income' is ONE rule now: the former conflict is closed (CANONICAL_BUSINESS_RULE naming isExpectedStatus)", rule("EXPECTED_INCOME_CONFLICT")?.class === "CANONICAL_BUSINESS_RULE" && /isExpectedStatus/.test(rule("EXPECTED_INCOME_CONFLICT")?.text ?? "") && rule("LO_SHULAM_INCOME_CONFLICT")?.class === "CANONICAL_BUSINESS_RULE");
     const expectedScreens = ["lib/finance/stats.ts", "components/clients/ClientDrawer.tsx", "components/ui/ProjectDrawer.tsx", "components/ui/ProjectDrawerV2.tsx", "components/ui/HealthAlert.tsx", "components/ui/StatusDropdown.tsx", "components/album/AlbumFinanceTab.tsx", "components/album/AlbumOverviewTab.tsx", "components/dashboard/DashboardDesignPreview.tsx", "lib/agent/rules.ts"];
-    ok("every expected-income screen (Finance stats / Insights, project + client drawers, health, balance reminder, album, dashboard, agent) uses isExpectedStatus — no literal expected set left", expectedScreens.every((f) => uses(f, "isExpectedStatus") && !/\[\s*"צפוי",\s*"חלקי"|"לבדיקה"\]\.includes|EXPECT_S|=== "צפוי" \|\| [\w.]+ === "(חלקי|לא שולם)"/.test(code(f))));
+    ok("every expected-income screen (Finance stats / Insights, project + client drawers, health, balance reminder, album, dashboard, agent) uses isExpectedStatus — no literal expected set left", expectedScreens.every((f) => (uses(f, "isExpectedStatus") || uses(f, "projectIncomeTotals") || uses(f, "projectIncomeTotalsByProject")) && !/\[\s*"צפוי",\s*"חלקי"|"לבדיקה"\]\.includes|EXPECT_S|=== "צפוי" \|\| [\w.]+ === "(חלקי|לא שולם)"/.test(code(f))));
     check("the one rule's set, pinned", [...EXPECTED_STATUSES], ["צפוי", "לא שולם", "חלקי"]);
     ok("report money (creation date / UTC day) vs the Finance Brain → a registered CONFLICTING_SOURCES gap", KNOWLEDGE_GAPS.some((g) => g.id === "RP_REPORT_SEMANTICS_CONFLICT" && g.class === "CONFLICTING_SOURCES"));
     ok("media = 50 / 50 income: old withheld snapshots are registered HISTORY (LEGACY_CONFLICT); the active rule never repays a clip; no double-charge conflict remains", KNOWLEDGE_GAPS.some((g) => g.id === "LBL_MEDIA_RECOUP_TARGET_LEGACY" && g.class === "LEGACY_CONFLICT" && g.status === "PARTIALLY_CLOSED") && rule("MEDIA_IS_INCOME_NOT_CLIP_RECOUP")?.class === "OWNER_POLICY" && rule("ARTIST_CYCLE_ACCOUNTING")?.class === "OWNER_POLICY" && !KNOWLEDGE_GAPS.some((g) => /DOUBLE_OFFSET/.test(g.id)));

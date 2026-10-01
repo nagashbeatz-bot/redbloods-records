@@ -43,6 +43,7 @@ export const VICTOR_VENDOR = "vendor:VICTOR";
 export const PAID_BUT_MISSING_FINANCE_RECORD = "PAID_BUT_MISSING_FINANCE_RECORD";
 
 const VICTOR_PERIOD = /^VICTOR_SALARY:(\d{4}-(?:0[1-9]|1[0-2]))$/;
+// CLIP_BALANCE: a LEGACY receivable key (retired 2026-10-01, one clip model) — parsed for stored history only
 const RECEIVABLE = /^(PROJECT_BALANCE|CLIP_BALANCE):([0-9a-f-]{36})$/;
 
 /** The stable entity for an Owner Context / Action subject. Period instances never collapse into each other. */

@@ -67,6 +67,7 @@ export const WORKFLOW_EVENT_MAP: Readonly<Record<string, EventMapping>> = {
   NEW_PAYMENT: { kind: "ACTIONS", actions: ["PROJECT.SPLIT_INCOME", "PROJECT.ADD_TRANSACTION", "RECORD_PAID_EXPENSE"], noteHe: "התקבל / שולם בלבד = כסף שהתקבל; חלקי ≠ שולם; מטבעות לא מחוברים" },
   NEW_SESSION: { kind: "ACTIONS", actions: ["PROJECT.ADD_SESSION", "PROJECT.CALENDAR_INVITE"] },
   NEW_RELEASE: { kind: "ACTIONS", actions: ["PROJECT.CREATE_LABEL_SONG", "PROJECT.CONVERT_TO_RELEASE", "CHANGE_RELEASE_STAGE"] },
-  NEW_CLIP: { kind: "ACTIONS", actions: ["RF.SEND_CLIP", "PROJECT.OPEN_CLIP_DEAL", "RF.CLIP_ROWS"] },
+  // one clip model (2026-10-01): a new clip = a clip PROJECT (+ its ONE agreed price) + its production + planning rows
+  NEW_CLIP: { kind: "ACTIONS", actions: ["PROJECT.CREATE_PROJECT", "PROJECT.SET_PRICE", "RF.SEND_CLIP", "RF.CLIP_ROWS"] },
   NEW_TASK: { kind: "ACTIONS", actions: ["PROJECT.ADD_TASK"] },
 };

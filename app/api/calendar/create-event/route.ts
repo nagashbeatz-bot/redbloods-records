@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * POST /api/calendar/create-event
- * Body: { summary, start, end }
+ * Body: { summary, start, end, artistEmail?, publicDescription?, location?, allDay? }
  * Creates a Google Calendar event only after explicit user approval.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { summary, start, end, artistEmail, publicDescription, allDay } = await req.json() as {
+    const { summary, start, end, artistEmail, publicDescription, location, allDay } = await req.json() as {
       summary: string; start: string; end: string;
-      artistEmail?: string; publicDescription?: string; allDay?: boolean;
+      artistEmail?: string; publicDescription?: string; location?: string; allDay?: boolean;
     };
 
     if (!summary || !start || !end) {
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     const event = await createCalendarEvent(summary, start, end, {
       attendees:   emails.length ? emails.map((email) => ({ email })) : undefined,
       description: publicDescription,
+      location:    typeof location === "string" && location.trim() ? location.trim() : undefined,
       allDay,
     });
     return NextResponse.json({ ok: true, event, inviteSent: emails.length > 0 });

@@ -113,7 +113,7 @@ const SHALEV = "8806fe5e-1238-4228-8078-b3db3ccc9b46", AVI = "b3499c72-069d-46c9
   ok("4/5. NagashBeatz (alone / with Shalev) → 100 % Records", (ex(1000, "קליפ", "נגש ביטס") as { recordsAmount: number }).recordsAmount === 1000 && (ex(1000, "קליפ", "נגש ביטס, שליו טסמה") as { artists: unknown[] }).artists.length === 0);
   ok("14. Records clip → RECORDS cash in full + the artist's share", amt(ex(3000, "קליפ", "שליו טסמה"), SHALEV) === 1500);
   ok("16/17/18. visual content / marketing / distribution cost → the same share", ["צילום", "שיווק", "הפצה", "כללי"].every((s) => amt(ex(600, s, "שליו טסמה"), SHALEV) === 300));
-  ok("15. an external client clip → FILMS (with its external Red Films production)", BU.inferBusinessUnit({ writer: "CLIP_PAYMENT", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: true } }).unit === "FILMS");
+  ok("15. an external client clip → FILMS (with its external Red Films production)", BU.inferBusinessUnit({ writer: "FINANCE_MANUAL", type: "income", expenseScope: "קליפ", project: { businessType: "לקוח", hasExternalClipProduction: true } }).unit === "FILMS");
   ok("24. show expenses (DJ / rehearsal / show scope) never get the general 50 / 50 again", R.expenseShareOf({ id: "s", type: "expense", amount: 500, currency: "₪", paymentStatus: "שולם", businessUnit: "RECORDS", category: "שכר דיג'יי", expenseScope: "הופעה", projectId: null }, null).status === "NOT_APPLICABLE");
 
   console.log("\nK / L / M / N. Income — distribution 50 / 50, YouTube + ACUM 100 % Records");

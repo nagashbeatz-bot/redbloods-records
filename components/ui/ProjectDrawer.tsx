@@ -9,7 +9,8 @@ import { PROJECT_TYPES, hasClipType } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import { isCancelledPayment, actualBalanceAgainstAgreedPrice } from "@/lib/payment-status";
-import { isSongIncome } from "@/lib/clip-finance";
+import { isProjectIncome } from "@/lib/clip-finance";
+import { projectIncomeTotals } from "@/lib/finance/project-summary";
 import { isClipItemPlanned, isClipItemPromoted, txEditScopePatch, type ClipItemStatus } from "@/lib/clip-rf-money-pure";
 import { partitionByCurrency, sumByCurrency, orderCurrencies, formatOtherAmount, DEFAULT_CURRENCY, isReceivedStatus, isExpectedStatus, isExpenseFullyPaidStatus, isActualMoneyTx, formatTotalsInline } from "@/lib/finance";
 import { mergeCurrencyTotals } from "@/lib/finance/expected-income";
@@ -296,13 +297,14 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
   // R5: only money in the project's finance currency is measured against its agreedPrice.
   const txs = partitionByCurrency(transactions, currency).same;
 
-  // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
-  const totalPaid     = txs.filter((t) => isSongIncome(t) && isReceivedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpected = txs.filter((t) => isSongIncome(t) && isExpectedStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome = txs.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  // The project's ONE deal (one clip model 2026-10-01) — the ONE aggregation (lib/finance/project-summary).
+  const incomeTotals  = projectIncomeTotals(transactions, currency);
+  const totalPaid     = incomeTotals.received;
+  const totalExpected = incomeTotals.expected;
+  const cancelledIncome = incomeTotals.cancelled;
   // Finance contract: an expense is money only when PAID ("שולם"); expected / cancelled / "התקבל" expenses are not.
   const totalExpenses = txs.filter((t) => t.type === "expense" && isExpenseFullyPaidStatus(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const overduePayment = txs.some((t) => isSongIncome(t) && isExpectedStatus(t.payment_status) && t.date && t.date < today);
+  const overduePayment = txs.some((t) => isProjectIncome(t) && isExpectedStatus(t.payment_status) && t.date && t.date < today);
 
   const summary: FinanceSummary = {
     projectId:    project.id,
@@ -1599,9 +1601,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Finance computed ──────────────────────────────────────────────────────
   const incomeList       = transactions.filter((t) => t.type === "income");
-  // Song-deal income only — clip income belongs to the clip deal and must not
-  // count against this project's agreedPrice (lib/clip-finance.ts).
-  const songIncomeList   = incomeList.filter(isSongIncome);
+  // The project's ONE deal (one clip model 2026-10-01): every income row counts against its agreedPrice.
+  const songIncomeList   = incomeList.filter(isProjectIncome);
   const expenseList      = transactions.filter((t) => t.type === "expense");
   const clipExpenseList  = expenseList.filter((t) => t.expense_scope === "קליפ");
   const nonClipExpenses  = expenseList.filter((t) => t.expense_scope !== "קליפ");

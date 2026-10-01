@@ -206,7 +206,7 @@ async function main() {
   const pc = (id: string, o: Parameters<typeof sources>[0] = {}) => priceEvidence(sources(o), id).class;
   check("canonical price", pc(P(2)), "PRICE_EXISTS_CANONICALLY");
   check("stored 0 (not collapsed into unknown)", pc(P(4)), "PRICE_ZERO_STORED");
-  check("clip price only — not the project price", pc(P(5)), "CLIP_PRICE_ONLY");
+  ok("a legacy clipAgreedPrice key is NOT a price (one clip model 2026-10-01) — no CLIP_PRICE_ONLY class, never canonical", !["CLIP_PRICE_ONLY", "PRICE_EXISTS_CANONICALLY"].includes(pc(P(5))));
   check("label project with no price", pc(P(1)), "LABEL_NO_RECEIVABLE_CONTEXT");
   check("nothing anywhere", pc(P(7)), "LABEL_NO_RECEIVABLE_CONTEXT");
   check("no price but income rows", pc(P(6)), "UNRESOLVED");

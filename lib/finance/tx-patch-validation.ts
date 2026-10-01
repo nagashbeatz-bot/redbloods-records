@@ -6,8 +6,8 @@
  *   type          income / expense
  *   status        the vocabulary of the final type ('לבדיקה' stays retired — lib/finance/classify)
  *   scope         project / general; a project row needs a project
- *   expenseScope  a known scope; on an INCOME row only song (כללי) / clip (קליפ) money, and only on a project row —
- *                 moving money between song and clip debt is a validated, explicit edit
+ *   expenseScope  a known scope; on an INCOME row only the reporting tags כללי / קליפ, and only on a project row (the tag
+ *                 never moves money between deals — a project has ONE agreedPrice, one clip model 2026-10-01)
  *   currency      ₪ / $ / € (no conversion — the amount is kept as typed)
  *   amount        a finite number ≥ 0
  *   linkedSessionId  never to / from an OWNER marker (artist_payment: / media_income: / victor_salary_) — a free edit
@@ -48,9 +48,9 @@ export function validateTxPatch(cur: TxPatchCurrent, p: TxPatchInput): string | 
   if (changed("expenseScope", cur.expenseScope) || changed("type", cur.type) || changed("project_id", cur.projectId) || changed("scope", cur.scope)) {
     if (finalType === "expense" && changed("expenseScope", cur.expenseScope) && !TX_EXPENSE_SCOPES.includes(finalExpScope)) return `היקף הוצאה לא מוכר: "${finalExpScope}"`;
     if (finalType === "income" && finalExpScope !== "כללי") {
-      // clip vs song money on an income: only the two income scopes, and only on a project row
-      if (!INCOME_SCOPES.includes(finalExpScope)) return "הכנסה יכולה להיות רק כסף שיר (כללי) או כסף קליפ (קליפ)";
-      if (!(finalScope === "project" && finalProject)) return "הכנסת קליפ חייבת להיות משויכת לפרויקט";
+      // an income's reporting tag (כללי / קליפ — never a separate deal, one clip model 2026-10-01): only on a project row
+      if (!INCOME_SCOPES.includes(finalExpScope)) return "שיוך הכנסה: כללי או קליפ בלבד";
+      if (!(finalScope === "project" && finalProject)) return "שיוך קליפ להכנסה רק בהכנסה של פרויקט";
     }
   }
   if (changed("currency", cur.currency) && !TX_CURRENCY_VALUES.includes(String(p.currency))) return "מטבע לא נתמך (₪ / $ / €)";

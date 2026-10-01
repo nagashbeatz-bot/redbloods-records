@@ -18,10 +18,9 @@ import { mergeSettingsKey } from "./writes/settings-merge";
  *     written ONLY when "שלח קליפ" creates the production. That marker is the
  *     PROVENANCE record of the flow — nothing more.
  *
- * B3 (Owner canon 2026-09-27): the client clip price (A) is never the planned budget (B). The price → budget sync
- * and the budget lock are RETIRED: every production — managed or legacy — owns its own planning budget and currency.
- * A managed production created before B3 may still carry a budget equal to the clip price (the old sync); readers
- * report that as a DERIVED observation (lib/clip-rf-money-pure budgetEqualsOldClipPriceSync), never as a rule.
+ * B3 (Owner canon 2026-09-27): a project's price (A) is never the planned budget (B). The price → budget sync and the
+ * budget lock are RETIRED: every production — managed or legacy — owns its own planning budget and currency. One clip
+ * model (Owner decision 2026-10-01): a clip is its own project with ONE agreedPrice — there is no clip price at all.
  */
 
 export interface LinkedClipProduction {

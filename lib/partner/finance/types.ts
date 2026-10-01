@@ -132,7 +132,8 @@ export interface CollectionInfo {
   importanceBasis: ImportanceBasis;
 }
 
-export type ReceivableSource = "PROJECT_BALANCE" | "CLIP_BALANCE" | "EXPECTED_TX";
+/** One clip model (2026-10-01): a project has ONE balance — there is no separate clip balance. */
+export type ReceivableSource = "PROJECT_BALANCE" | "EXPECTED_TX";
 export interface Receivable {
   id: string;
   source: ReceivableSource;
@@ -158,7 +159,7 @@ export interface Receivable {
   reason: "UNKNOWN";
   evidence: Evidence[];
 }
-export interface ProjectCredit { projectId: string; projectName: string; amount: number; currency: string; kind: "SONG" | "CLIP"; evidence: Evidence[] }
+export interface ProjectCredit { projectId: string; projectName: string; amount: number; currency: string; kind: "PROJECT"; evidence: Evidence[] }
 
 export interface PriceCoverage { liveProjects: number; priced: number; priceUnknownOpen: number; priceUnknownCompleted: number; financeExceptions: number; malformedSettings: number }
 

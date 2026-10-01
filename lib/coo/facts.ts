@@ -18,7 +18,8 @@ import type {
 } from "./types";
 import { COO_TZ, addDays, daysSinceIso, diffDays, ilYmd, monthOf, parseYmd, prevMonth, weekdayHe } from "./dates";
 import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, isExpenseFullyPaidStatus, isCancelledStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "../finance";
-import { isSongIncome } from "../clip-finance";
+import { isProjectIncome } from "../clip-finance";
+import { projectIncomeTotals } from "../finance/project-summary";
 import { actualBalanceAgainstAgreedPrice } from "../payment-status";
 import { totalsRich, richText } from "./rich";
 import { computeVictorBall } from "./victor-ball";
@@ -314,12 +315,12 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
         if (!(st.agreedPrice > 0)) continue;
         withPrice++;
         const currency = normalizeCurrency(st.currency);
-        const mine = raw.transactions
-          .filter((t) => t.projectId === p.id)
-          .map((t) => ({ ...t, currency: t.currency, type: t.type, expense_scope: t.expenseScope }));
-        const song = partitionByCurrency(mine.filter((t) => isSongIncome(t)), currency).same;
-        const received = song.filter((t) => isReceivedStatus(t.status)).reduce((s, t) => s + t.amount, 0);
-        const cancelledSum = song.filter((t) => isCancelledStatus(t.status)).reduce((s, t) => s + t.amount, 0);
+        const mine = raw.transactions.filter((t) => t.projectId === p.id);
+        // the ONE project income rule (lib/finance/project-summary.ts): every income row, any expense_scope
+        const totals = projectIncomeTotals(mine.map((t) => ({ type: t.type, payment_status: t.status, amount: t.amount, currency: t.currency })), currency);
+        const song = partitionByCurrency(mine.filter((t) => isProjectIncome(t)), currency).same;
+        const received = totals.received;
+        const cancelledSum = totals.cancelled;
         // Actual payment truth — agreedPrice vs received ONLY. `considered` already
         // excludes cancelled PROJECTS (line above); an individually-cancelled
         // transaction on a still-open project must never reduce this (Finance

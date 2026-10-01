@@ -11,6 +11,7 @@ import { planAction } from "../lib/partner/act/service";
 import { SESSION_PRIMITIVES, SESSION_STATUSES, SESSION_TYPES } from "../lib/partner/act/primitives/sessions";
 import { ACTION_REGISTRY } from "../lib/partner/act/registry";
 
+const seen: { lastCreate: { location?: string; invite: { emails: string[]; publicDescription?: string } | null } | null } = { lastCreate: null };
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); } };
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
@@ -33,9 +34,9 @@ function mk() {
     async countSessionTransactions(id: string) { return w.tx[id] ?? 0; },
     async isShalevProject(id: string) { return w.projects[id]?.artist === "שליו טסמה"; },
     async calendarConnected() { return w.connected; },
-    async createSession(s: { projectId: string | null; title: string | null; date: string; startTime: string; endTime: string | null; status: string; sessionType: string; addToCalendar: boolean; invite: { emails: string[] } | null }) {
-      calls.push("createSession"); const id = U(++n);
-      w.sessions[id] = { projectId: s.projectId, showId: null, title: s.title ?? "", date: s.date, startTime: s.startTime, endTime: s.endTime, status: s.status, sessionType: s.sessionType, notes: "", location: "", photographer: "", hasCalendarEvent: s.addToCalendar || !!s.invite };
+    async createSession(s: { projectId: string | null; title: string | null; date: string; startTime: string; endTime: string | null; status: string; sessionType: string; notes?: string; location?: string; photographer?: string; addToCalendar: boolean; invite: { emails: string[]; publicDescription?: string } | null }) {
+      calls.push("createSession"); seen.lastCreate = s; const id = U(++n);
+      w.sessions[id] = { projectId: s.projectId, showId: null, title: s.title ?? "", date: s.date, startTime: s.startTime, endTime: s.endTime, status: s.status, sessionType: s.sessionType, notes: s.notes ?? "", location: s.location ?? "", photographer: s.photographer ?? "", hasCalendarEvent: s.addToCalendar || !!s.invite };
       if (s.invite) w.invites.push(s.invite.emails);
       return { id, calendarError: null };
     },
@@ -76,6 +77,12 @@ const CASES: FamilyCase<W>[] = [
   const iv = mk(); const ri = await fullFlow(mkDeps(iv.writers).d, "SCHEDULE_SESSION_WITH_INVITE", { project: `project:${U(11)}`, date: "2026-10-06", startTime: "10:00", inviteEmails: "a@b.co, c@d.co", publicTitle: "x" }, "מאשר אבל בלי c@d.co");
   ok("\"מאשר אבל בלי …\" on an invite is a change → nothing sent", ri.a?.status === "APPROVAL_WITH_CHANGES" && iv.calls.length === 0, ri.a?.status);
   ok("SCHEDULE_SESSION_WITH_INVITE is external communication (EMAIL) with C3", ACTION_REGISTRY.get("SCHEDULE_SESSION_WITH_INVITE")!.effects.includes("EMAIL" as never) && ACTION_REGISTRY.get("SCHEDULE_SESSION_WITH_INVITE")!.confirmation !== "C1_APPROVAL");
+  // the בלאגן shoot (2026-10-01): the place, notes and public description are SHOWN before approval and reach the writer
+  const loc = mk(); const rl = await fullFlow(mkDeps(loc.writers).d, "SCHEDULE_SESSION_WITH_INVITE", { project: `project:${U(11)}`, date: "2026-10-04", startTime: "16:00", endTime: "21:00", sessionType: "צילום קליפ", location: "יער בן שמן", notes: "להביא תאורה", publicDescription: "צילום הקליפ — נפגשים בחניה", inviteEmails: "a@b.co", publicTitle: "צילום קליפ – בלאגן 🎬" }, "מאשר");
+  const lp = JSON.stringify(rl.p);
+  ok("invite preview shows location / notes / publicDescription (not only date / time)", /יער בן שמן/.test(lp) && /להביא תאורה/.test(lp) && /נפגשים בחניה/.test(lp), rl.p);
+  ok("executed: the writer receives the place + the public description; the stored session has the place (exact verify)", rl.e?.status === "APPLIED_AS_EXPECTED" && seen.lastCreate?.location === "יער בן שמן" && seen.lastCreate?.invite?.publicDescription === "צילום הקליפ — נפגשים בחניה", rl.e ?? rl.p);
+  ok("the Google event gets the session's place on create (invite + plain paths) and on a real place change", /location: place \}\)/.test(read("lib/writes/sessions.ts")) && /\.\.\.\(place \? \{ location: place \} : \{\}\)/.test(read("lib/writes/sessions.ts")) && /if \(placeChanged\) upd\.location = /.test(read("lib/writes/sessions.ts")) && /location:\s+opts\?\.location \|\| undefined/.test(read("lib/google-calendar.ts")));
   const pd = await planAction({ intentHe: "x", actionId: "DELETE_SESSION", args: { session: S1 } }, OWNER, mkDeps(mk().writers).d);
   ok("deleting a session with a linked finance row says the row is kept", pd.status === "PREVIEW" && JSON.stringify(pd).includes("רשומות כספים מקושרות לסשן — הן נשארות"));
 

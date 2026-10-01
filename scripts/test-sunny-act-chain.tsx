@@ -5,7 +5,7 @@
  *
  * The REAL service + engine + primitives over fakes that behave like the shared writers: a mix-work price / engineer /
  * payment change re-runs the linked-expense reconcile (its status and the linked Finance row can change), the finance
- * settings are one merged blob (clip price + agreed price + exception). NEVER touches production.
+ * settings are one merged blob (agreed price + notes + exception). NEVER touches production.
  */
 import { approveAction, executeAction, planAction, planStatus, previewAction, type ActServiceDeps } from "../lib/partner/act/service";
 import { ACT_TABLES } from "../lib/partner/act/store-supabase";
@@ -22,7 +22,7 @@ type Tx = { projectId: string | null; scope: string; type: string; date: string 
 function mk(o: { engineer?: string } = {}) {
   const work = { projectId: P, projectType: "שיר", title: "שיר", engineerName: o.engineer ?? "Dani", workType: "מיקס", status: "בתהליך", agreedPrice: 200, currency: "$", amountPaid: 0, paymentDate: null as string | null, sentDate: "2026-09-01", internalDeadline: "2026-09-30" as string | null, notes: "", linkedTx: T as string | null };
   const txs = new Map<string, Tx>([[T, { projectId: P, scope: "project", type: "expense", date: "2026-09-01", description: "מיקס", artist: "", amount: 200, currency: "$", paymentStatus: "צפוי", paymentMethod: "", receiptRef: "", notes: "", category: "מיקס / מאסטר", expenseScope: "מיקס / מאסטר", linkedSessionId: "" }]]);
-  const blob: Record<string, unknown> = { agreedPrice: 3000, currency: "₪", clipAgreedPrice: 2000 };
+  const blob: Record<string, unknown> = { agreedPrice: 3000, currency: "₪" };
   const calls: string[] = [];
   const hooks: { afterWorkUpdate?: () => void; failPrice?: boolean; crashAfterWrite?: () => void; throwOnDeadline?: () => void } = {};
   const paid = () => work.agreedPrice > 0 && work.amountPaid >= work.agreedPrice && !!work.paymentDate;
@@ -55,8 +55,6 @@ function mk(o: { engineer?: string } = {}) {
     async readProjectMeta(id: string) { return id === P ? { name: "הסיפור שלי", artist: "לקוח", status: "בעבודה", isHidden: false, businessType: "לקוח", projectType: "שיר", hasRelease: false } : null; },
     async readFinanceSettings() { return { agreedPrice: Number(blob.agreedPrice ?? 0), currency: String(blob.currency ?? "₪"), financialNotes: String(blob.financialNotes ?? ""), financeException: blob.financeException === true, financeExceptionReason: String(blob.financeExceptionReason ?? ""), financeExceptionDate: String(blob.financeExceptionDate ?? "") }; },
     async setFinanceSettings(_id: string, patch: Record<string, unknown>) { calls.push(`settings:${Object.keys(patch).join(",")}`); Object.assign(blob, patch); },
-    async clipDealOf() { return { clipAgreedPrice: Number(blob.clipAgreedPrice ?? 0), currency: String(blob.currency ?? "₪"), paymentCount: 0, managedProductionId: null }; },
-    async setClipPrice(_id: string, price: number) { calls.push("clip:price"); blob.clipAgreedPrice = price; },
   };
   return { work, txs, blob, calls, hooks, writers };
 }
@@ -65,7 +63,7 @@ type Step = { actionId: string; args: Record<string, unknown> };
 const PRICE = (n = 500): Step => ({ actionId: "SET_ENGINEER_WORK_PRICE", args: { mixWork: WORK, agreedPrice: n, currency: "$" } });
 const DATE: Step = { actionId: "UPDATE_ENGINEER_WORK", args: { mixWork: WORK, internalDeadline: "2026-10-15" } };
 const PAY: Step = { actionId: "RECORD_ENGINEER_PAYMENT", args: { mixWork: WORK, paid: true, paymentDate: "2026-09-28" } };
-const CLIP: Step = { actionId: "SET_CLIP_PRICE", args: { project: PROJECT, clipAgreedPrice: 0 } };
+const NOTES: Step = { actionId: "SET_FINANCIAL_NOTES", args: { project: PROJECT, financialNotes: "קליפ פוצל לפרויקט נפרד" } };
 const EXC: Step = { actionId: "SET_FINANCE_EXCEPTION", args: { project: PROJECT, on: true, reason: "קליפ פוצל לפרויקט נפרד", date: "2026-09-29" } };
 
 async function plan(d: ActServiceDeps, steps: Step[]) { return planAction({ intentHe: "תהליך בשיחה", steps }, OWNER, d); }
@@ -106,14 +104,14 @@ async function main() {
     ok("a work with NO price: pay alone is refused (NO_PRICE), but price → pay in one plan is valid", (await planAction({ intentHe: "x", actionId: PAY.actionId, args: PAY.args }, OWNER, d0)).status === "NO_PRICE" && p0.status === "PREVIEW");
   }
 
-  console.log("\n4. SET_CLIP_PRICE + SET_FINANCE_EXCEPTION on the same project (different views, no shared field)");
+  console.log("\n4. SET_FINANCIAL_NOTES + SET_FINANCE_EXCEPTION on the same project (the same settings view — projected)");
   {
     const h = mk(); const { d } = mkDeps(h.writers);
-    const p = await plan(d, [CLIP, EXC]) as Planned;
+    const p = await plan(d, [NOTES, EXC]) as Planned;
     ok("accepted; step 2 depends on step 1", p.status === "PREVIEW", p);
     const e = await exec(d, p, await approve(d, p));
-    ok("EXECUTED: clip price 0 + exception on (reason / date) in the one settings blob", e.status === "APPLIED_AS_EXPECTED" && h.blob.clipAgreedPrice === 0 && h.blob.financeException === true && h.blob.financeExceptionReason === "קליפ פוצל לפרויקט נפרד", { e, blob: h.blob });
-    const r = mk(); const rd = mkDeps(r.writers).d; const pr = await plan(rd, [EXC, CLIP]);
+    ok("EXECUTED: notes + exception on (reason / date) in the one settings blob", e.status === "APPLIED_AS_EXPECTED" && h.blob.financialNotes === "קליפ פוצל לפרויקט נפרד" && h.blob.financeException === true && h.blob.financeExceptionReason === "קליפ פוצל לפרויקט נפרד", { e, blob: h.blob });
+    const r = mk(); const rd = mkDeps(r.writers).d; const pr = await plan(rd, [EXC, NOTES]);
     ok("the reverse order is accepted too", pr.status === "PREVIEW", pr);
   }
 
@@ -159,12 +157,13 @@ async function main() {
   console.log("\n8. Unsafe combinations are refused (fail closed)");
   {
     const h = mk(); const { d, db } = mkDeps(h.writers);
-    const r = await plan(d, [{ actionId: "SET_AGREED_PRICE", args: { project: PROJECT, agreedPrice: 3500, currency: "$" } }, CLIP]);
-    ok("SET_AGREED_PRICE (writes currency) + SET_CLIP_PRICE (its view reads currency) → SAME_ENTITY_CONFLICT, nothing stored", r.status === "SAME_ENTITY_CONFLICT" && JSON.stringify(r.fields) === JSON.stringify(["currency"]) && !db.rows(ACT_TABLES.plans).length, r);
+    // (one clip model 2026-10-01: SET_CLIP_PRICE — the only different-view opt-in on a project — is gone; the engine's
+    //  SAME_ENTITY_CONFLICT path stays, every remaining opt-in pair on one record shares its view)
+    ok("no plan was stored by the refusals below", !db.rows(ACT_TABLES.plans).length);
     const s = await plan(d, [PRICE(), { actionId: "SET_ENGINEER_WORK_STATUS", args: { mixWork: WORK, status: "אושר" } }]);
     ok("a primitive that did not opt in (status: the completion flow) → SAME_ENTITY_TWICE, as before", s.status === "SAME_ENTITY_TWICE", s);
-    const spec = PRIMITIVES_BY_ID.get("SET_CLIP_PRICE")!;
-    ok("a declared side effect on a field the later step reads and does NOT tolerate → no chain (chainOmit null)", chainOmit(spec, { clipAgreedPrice: 1, currency: "₪" }, ["currency"]) === null && JSON.stringify(chainOmit(PRIMITIVES_BY_ID.get("UPDATE_ENGINEER_WORK")!, { expenseStatus: "צפוי", notes: "" }, ["expenseStatus"])) === JSON.stringify(["expenseStatus"]));
+    const spec = PRIMITIVES_BY_ID.get("SET_AGREED_PRICE")!;
+    ok("a declared side effect on a field the later step reads and does NOT tolerate → no chain (chainOmit null)", chainOmit(spec, { agreedPrice: 1, currency: "₪" }, ["currency"]) === null && JSON.stringify(chainOmit(PRIMITIVES_BY_ID.get("UPDATE_ENGINEER_WORK")!, { expenseStatus: "צפוי", notes: "" }, ["expenseStatus"])) === JSON.stringify(["expenseStatus"]));
   }
 
   console.log("\n9. A cross-entity side effect never bypasses stale protection");
@@ -211,13 +210,13 @@ async function main() {
   console.log("\n12. A plan that is not chained behaves exactly as before");
   {
     const h = mk(); const { d, db } = mkDeps(h.writers);
-    const p = await plan(d, [PRICE(), CLIP]) as Planned;
+    const p = await plan(d, [PRICE(), NOTES]) as Planned;
     const stored = JSON.parse(JSON.stringify(db.rows(ACT_TABLES.plans)[0] ?? {})) as Record<string, unknown>;
     const j = JSON.stringify(stored);
     const live = await h.writers.readEngineerWork(W);
     ok("different records: no dependsOn, the plain live fingerprint (unchanged scheme)", p.status === "PREVIEW" && (j.match(/"dependsOn":\[\]/g) ?? []).length === 2 && j.includes(fieldsFingerprint("SET_ENGINEER_WORK_PRICE", W, live as never)), j.slice(0, 300));
     const e = await exec(d, p, await approve(d, p));
-    ok("EXECUTED as before", e.status === "APPLIED_AS_EXPECTED" && h.work.agreedPrice === 500 && h.blob.clipAgreedPrice === 0);
+    ok("EXECUTED as before", e.status === "APPLIED_AS_EXPECTED" && h.work.agreedPrice === 500 && h.blob.financialNotes === "קליפ פוצל לפרויקט נפרד");
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

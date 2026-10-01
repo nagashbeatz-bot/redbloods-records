@@ -2,18 +2,20 @@
  * Project payment summary — the pure, testable core of the Projects table money column, the
  * collection card / modal and any other "per project: agreed vs received" surface.
  *
- * Finance single truth (Owner-approved integrity fix, 2026-09-27):
- *   - received = song-deal INCOME with a received status (lib/finance/classify.ts), in the
- *     project's OWN finance currency only (R5 — other currencies are never compared, no FX);
+ * Finance single truth (Owner-approved integrity fix, 2026-09-27; one clip model 2026-10-01):
+ *   - received = the project's INCOME with a received status (lib/finance/classify.ts), in the
+ *     project's OWN finance currency only (R5 — other currencies are never compared, no FX). Every
+ *     income row counts, whatever its expense_scope ("קליפ" is a reporting tag, never a second deal —
+ *     lib/clip-finance.ts). `projectIncomeTotals` is the ONE per-project aggregation every surface uses;
  *   - agreed price missing / 0 → PRICE_UNKNOWN (never "שולם ✓");
  *   - financeException → no debt, excluded from every collection total;
  *   - every aggregation returns per-currency buckets, never one mixed number.
  *
  * Deliberately a plain module (no "server-only") — the Projects table is a client component.
  */
-import { isSongIncome } from "../clip-finance";
+import { isProjectIncome } from "../clip-finance";
 import { collectibleAmount, isCancelledPayment, paymentPosition, actualOutstandingAgainstAgreedPrice, overpaymentAmount } from "../payment-status";
-import { isReceivedStatus } from "./classify";
+import { isReceivedStatus, isExpectedStatus } from "./classify";
 import { normalizeCurrency, sameCurrency, type CurrencyTotals } from "./currency";
 
 export interface ProjectFinSummary {
@@ -31,7 +33,42 @@ export interface FinanceTxLike { project_id: string | null; type?: string | null
 
 const blank = (): ProjectFinSummary => ({ paid: 0, agreed: 0, cancelled: 0, currency: normalizeCurrency(null), financeException: false });
 
-/** Settings first (the project's currency must be known), then song income in that currency only. */
+/** A transaction as any surface holds it — DB rows and UI rows alike. */
+export interface ProjectIncomeTxLike { type?: string | null; payment_status?: string | null; amount?: number | null; currency?: string | null }
+
+/** The project's income against its agreed price, in ONE currency (R5: other currencies are never summed). */
+export interface ProjectIncomeTotals { received: number; expected: number; cancelled: number }
+
+/**
+ * THE one per-project income aggregation: every income row of the project (any expense_scope), in `currency` only.
+ * received = שולם / התקבל, expected = צפוי / לא שולם / חלקי, cancelled = בוטל. Callers pass the project's own rows.
+ */
+export function projectIncomeTotals(txs: readonly ProjectIncomeTxLike[], currency: string | null | undefined): ProjectIncomeTotals {
+  const out: ProjectIncomeTotals = { received: 0, expected: 0, cancelled: 0 };
+  for (const t of txs) {
+    if (!isProjectIncome(t) || !sameCurrency(t.currency, currency)) continue;
+    const a = Number(t.amount) || 0;
+    if (isReceivedStatus(t.payment_status)) out.received += a;
+    else if (isExpectedStatus(t.payment_status)) out.expected += a;
+    else if (isCancelledPayment(t.payment_status)) out.cancelled += a;
+  }
+  return out;
+}
+
+/** `projectIncomeTotals` for every project at once — rows grouped by project_id, each in its project's own currency. */
+export function projectIncomeTotalsByProject<T extends ProjectIncomeTxLike & { project_id?: string | null }>(txs: readonly T[], currencyOf: (projectId: string) => string | null | undefined): Map<string, ProjectIncomeTotals> {
+  const byProject = new Map<string, T[]>();
+  for (const t of txs) {
+    if (!t.project_id) continue;
+    const list = byProject.get(t.project_id);
+    if (list) list.push(t); else byProject.set(t.project_id, [t]);
+  }
+  const out = new Map<string, ProjectIncomeTotals>();
+  for (const [id, rows] of byProject) out.set(id, projectIncomeTotals(rows, currencyOf(id)));
+  return out;
+}
+
+/** Settings first (the project's currency must be known), then the project's income in that currency only. */
 export function buildProjectFinanceSummary(settings: readonly FinanceSettingLike[], transactions: readonly FinanceTxLike[]): Record<string, ProjectFinSummary> {
   const map: Record<string, ProjectFinSummary> = {};
   for (const s of settings) {
@@ -40,13 +77,18 @@ export function buildProjectFinanceSummary(settings: readonly FinanceSettingLike
     f.currency = normalizeCurrency(s.currency);
     f.financeException = s.financeException === true;
   }
+  const byProject = new Map<string, FinanceTxLike[]>();
   for (const t of transactions) {
     if (!t.project_id) continue;
-    const f = (map[t.project_id] ??= blank());
-    if (!isSongIncome(t)) continue;
-    if (!sameCurrency(t.currency, f.currency)) continue;
-    if (isReceivedStatus(t.payment_status)) f.paid += t.amount;
-    if (isCancelledPayment(t.payment_status)) f.cancelled += t.amount;
+    map[t.project_id] ??= blank();
+    const list = byProject.get(t.project_id);
+    if (list) list.push(t); else byProject.set(t.project_id, [t]);
+  }
+  for (const [id, rows] of byProject) {
+    const f = map[id];
+    const tot = projectIncomeTotals(rows, f.currency);
+    f.paid = tot.received;
+    f.cancelled = tot.cancelled;
   }
   return map;
 }

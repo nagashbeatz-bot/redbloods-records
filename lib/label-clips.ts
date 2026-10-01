@@ -15,7 +15,7 @@ export function round2(n: number): number {
 }
 
 /**
- * B3 (Owner canon 2026-09-27): A client clip price ≠ B planned budget ≠ C actual cost ≠ D recoupable. The old per-clip
+ * B3 (Owner canon 2026-09-27): A the clip project's agreedPrice ≠ B planned budget ≠ C actual cost ≠ D recoupable. The old per-clip
  * "50 % of the BUDGET" split is RETIRED for every reader. The split of C (the ACTUAL PAID cost) between Records and the
  * artists is the ONE rule lib/records-expense-share (Owner decision 2026-09-28, task 6) — per Finance TRANSACTION and by
  * the project's credits: one Records artist 50 / 50, Shalev + Avi 50 / 25 / 25, NagashBeatz 100 % Records, a Records
@@ -33,7 +33,7 @@ export interface ArtistClip {
   /** B — the production's planned budget, in `currency` (planning, not money). */
   plannedBudget: number;
   currency: string;
-  /** A — the project's client clip price (finance_<project>.clipAgreedPrice) + its deal currency; null when none recorded. */
+  /** A — the linked clip PROJECT's agreedPrice (finance_<project>.agreedPrice, one clip model 2026-10-01) + its currency; null when none recorded. */
   clientClipPrice: number | null;
   clientClipCurrency: string | null;
   /** C — Finance expenses with scope קליפ on the linked project, paid (שולם) only, PER CURRENCY. Empty without a project. */
@@ -102,7 +102,7 @@ export async function listArtistClips(artistName: string, artistId?: string | nu
   const pays = ((payRes.data ?? []) as Array<{ production_id: string; amount: unknown; currency: unknown; linked_transaction_id?: string | null }>).filter((x) => !x.linked_transaction_id);
   return prods.map((p) => {
     const s = p.project_id ? setting.get(p.project_id) ?? null : null;
-    const price = s ? Number(s.clipAgreedPrice) : NaN;
+    const price = s ? Number(s.agreedPrice) : NaN;
     const mineTx = p.project_id ? paidTx.filter((t) => t.project_id === p.project_id) : [];
     const actualCostPaid = byCur(mineTx);
     const shareTransactions = mineTx.map(shareOf);

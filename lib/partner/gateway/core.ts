@@ -184,7 +184,8 @@ export function toPatterns(memory: PartnerMemory | null, family: ((signatureFami
   return { candidates: memory.patternCandidates.filter(keep).map((p) => map(p, "CANDIDATE")), confirmed: memory.confirmedPatterns.filter(keep).map((p) => map(p, "CONFIRMED")) };
 }
 
-/** Memory keys that are not Gateway entities (a receivable) map to the entity that owns them. */
+/** Memory keys that are not Gateway entities (a receivable) map to the entity that owns them. CLIP_BALANCE is a LEGACY
+ * key (retired 2026-10-01, one clip model) — still parsed so stored history keeps resolving; nothing produces it now. */
 export function gatewayEntityOfMemoryKey(key: string): string {
   const m = /^receivable:(?:PROJECT_BALANCE|CLIP_BALANCE):([0-9a-f-]{36})$/.exec(key);
   return m ? `project:${m[1]}` : key;

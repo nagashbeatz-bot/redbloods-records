@@ -37,9 +37,5 @@ export async function similarRecords(q: DupQuery): Promise<DupRow[]> {
       const rows = must(await supabase.from("red_films_budget_payments").select("id, payment_date, amount, currency, notes, payment_method").eq("budget_item_id", q.budgetLineId).eq("amount", q.amount).order("payment_date", { ascending: false }).limit(LIMIT));
       return (rows as Array<{ id: string; payment_date: string | null; amount: number; currency: string | null; notes: string | null; payment_method: string | null }>).map((r) => ({ id: String(r.id), date: r.payment_date, amount: Number(r.amount), currency: r.currency, text: txt(r.notes) })); // the payment method is shared by most rows — never a similarity signal
     }
-    case "CLIP_PAYMENT": {
-      const rows = must(await supabase.from("transactions").select("id, date, amount, currency, description, notes").eq("project_id", q.projectId).eq("type", "income").eq("expense_scope", "קליפ").eq("amount", q.amount).order("date", { ascending: false }).limit(LIMIT));
-      return (rows as Array<{ id: string; date: string | null; amount: number; currency: string | null; description: string | null; notes: string | null }>).map((r) => ({ id: String(r.id), date: r.date, amount: Number(r.amount), currency: r.currency, text: txt(r.description, r.notes) }));
-    }
   }
 }

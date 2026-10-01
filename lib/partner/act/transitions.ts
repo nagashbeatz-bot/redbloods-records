@@ -76,8 +76,6 @@ export const LIFECYCLES: readonly Lifecycle[] = [
   L({ id: "RF_EDIT_STATUS", vocabulary: "RF.editStatus", states: S(RF_VOCABULARIES.editStatus), kind: "FREE", setBy: ["RF.EDIT_PRODUCTION"], terminal: ["פורסם"], special: [] }),
   L({ id: "RF_COLLECTION_STATUS", vocabulary: "RF.collectionStatus", states: S(RF_VOCABULARIES.collectionStatus), kind: "FREE", setBy: ["RF.EDIT_PRODUCTION"], terminal: [], special: [], noteHe: "תכנון ≠ גבייה בפועל" }),
   L({ id: "RF_BUDGET_ITEM_STATUS", vocabulary: "RF.budgetItemStatus", states: S(RF_VOCABULARIES.budgetItemStatus), kind: "FREE", setBy: ["RF.BUDGET_LINES"], terminal: ["שולם", "בוטל"], special: [] }),
-  L({ id: "CLIP_DEAL_STATUS", vocabulary: "RF.clipDealStatus", states: S(RF_VOCABULARIES.clipDealStatus), kind: "DERIVED", setBy: [], terminal: [], special: [], noteHe: "נגזר מתשלומי הקליפ" }),
-  L({ id: "CLIP_PAYMENT_STATUS", vocabulary: "RF.clipPaymentStatus", states: S(RF_VOCABULARIES.clipPaymentStatus), kind: "FREE", setBy: ["RF.CLIP_PAYMENTS", "PROJECT.EDIT_TRANSACTION"], terminal: [], special: [] }),
   L({ id: "VICTOR_STATUS", vocabulary: "VICTOR.status", states: S(VICTOR_VOCABULARIES.status), kind: "FREE", setBy: ["VICTOR.CHANGE_STATUS"], terminal: ["הושלם", "בוטל"], special: [{ to: "פעיל", via: "VICTOR.SEND_TO_VICTOR", effectsHe: "יצירה + רשומת שליחה" }] }),
   L({ id: "VICTOR_WORK_STATE", vocabulary: "VICTOR.workState", states: S(VICTOR_VOCABULARIES.workState), kind: "FREE", setBy: ["VICTOR.CHANGE_STATUS", "UPDATE_VICTOR_WORK_STATE"], terminal: [], special: [] }),
   L({ id: "VICTOR_OUTCOME", vocabulary: "VICTOR.outcome", states: S(VICTOR_VOCABULARIES.outcome), kind: "FREE", setBy: ["VICTOR.CHANGE_STATUS", "UPDATE_VICTOR_OUTCOME"], terminal: [], special: [] }),

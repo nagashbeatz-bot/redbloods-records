@@ -46,7 +46,7 @@ export const isBusinessUnitSource = (v: unknown): v is BusinessUnitSource => typ
 /** Who creates the row. MANUAL writers must end with a unit (the person chooses); automatic writers may leave NULL. */
 export type UnitWriter =
   | "FINANCE_MANUAL" | "SUNNY"                                   // a person / the Owner through Sunny
-  | "SHOW_SYNC" | "MIX" | "VICTOR" | "CLIP_PAYMENT" | "CLIP_PROMOTE" | "RF_PAYMENT" | "PROMOTION" | "SPLIT"
+  | "SHOW_SYNC" | "MIX" | "VICTOR" | "CLIP_PROMOTE" | "RF_PAYMENT" | "PROMOTION" | "SPLIT"
   | "ARTIST_PAYMENT";                                             // a real payment to a Records roster artist (net model)
 export const MANUAL_UNIT_WRITERS: readonly UnitWriter[] = ["FINANCE_MANUAL", "SUNNY"];
 

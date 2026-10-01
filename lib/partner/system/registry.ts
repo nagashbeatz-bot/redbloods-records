@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.01-74";
+export const SYSTEM_BASELINE_VERSION = "2026.10.01-75";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -22,7 +22,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
   {
     id: "PROJECTS", group: "WORK", titleHe: "פרויקטים",
     purpose: "Every piece of studio / label work (song, clip, song+clip, EP, album, riddim, lessons, other) with status, deadline, artist(s), business type (client / label) and its files, finance settings, sessions and engineers.",
-    canonicalSource: "Project records in Redbloods OS; per-project finance settings (agreed price, currency, finance exception, clip price); project files list (Dropbox metadata).",
+    canonicalSource: "Project records in Redbloods OS; per-project finance settings (agreed price, currency, finance exception); project files list (Dropbox metadata).",
     entityTypes: ["project"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
@@ -228,7 +228,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
   {
     id: "FINANCE", group: "MONEY", titleHe: "כספים",
     purpose: "All income and expenses (project, general, clip, show, marketing, team), project price / debt, receivables, Victor salary, profitability — per currency, never converted.",
-    canonicalSource: "Finance transactions + per-project finance settings (agreed price, currency, exception, clip price); the Finance Brain (Partner) is the most complete interpretation.",
+    canonicalSource: "Finance transactions + per-project finance settings (agreed price, currency, exception); the Finance Brain (Partner) is the most complete interpretation.",
     entityTypes: ["transaction", "receivable"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
@@ -246,13 +246,13 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("ARTIST_NET_SETTLEMENT", "CANONICAL_BUSINESS_RULE", "Owner decision 2026-09-28 (net model): Finance = real cash in / out; the artist ledger = the settlement (entitlements − the artist's expense share − payments = the balance). A show share is an ENTITLEMENT in the ledger (expected at booking, realized at the close, marked not active — never deleted — when the show is cancelled), never a Finance expense; no artist-fee Finance row is created any more. A REAL payment to an artist = ONE writer: a Finance expense שכר אמן שולם (RECORDS) + the ledger payment linked by source_tx_id, idempotent per key, a similar payment refused as DUPLICATE unless the Owner confirms, a failed ledger step PARTIAL (the Finance row stays — no automatic delete); cancelling a payment marks its Finance row בוטל. The historical 1,000 + 810 payments stay outside the ledger (an explained exception)."),
       R("UNIT_BALANCE", "CANONICAL_BUSINESS_RULE", "Owner decision 2026-09-28: ONE pure unit balance (read by Finance and Sunny only). Per unit and per currency: realized (income שולם / התקבל, expense שולם) = Cash, expected, cancelled. Records adds artist liabilities (Σ positive realized ledger balances of the roster), receivables apart, available to invest = Cash − liabilities − reserve (0), future artist entitlements (active expected ledger rows) and future Cash expenses (expected Records expenses) — three separate categories. All Redbloods = the units' Cash per currency and 'available after liabilities'. No target is shown (the 15K / 20K / 20–30K targets conflict is registered). ₪ and $ are never added."),
       R("NO_FX", "CANONICAL_BUSINESS_RULE", "Currencies stay separate — no conversion anywhere; a blank currency means ₪; only transactions in the project's currency count against its agreed price."),
-      R("PROJECT_DEBT", "CANONICAL_BUSINESS_RULE", "Project debt = agreed price − received song income (clip income excluded) in the project currency; received ≥ agreed = no debt; the excess stays an overpayment / credit (שולם ביתר), never income elsewhere."),
+      R("PROJECT_DEBT", "CANONICAL_BUSINESS_RULE", "Project debt = agreed price − the project's received income (EVERY income row of the project, any expense scope — one clip model 2026-10-01) in the project currency; received ≥ agreed = no debt; the excess stays an overpayment / credit (שולם ביתר), never income elsewhere."),
       R("FINANCE_EXCEPTION", "CANONICAL_BUSINESS_RULE", "A project with a finance exception (no charge / favour) has no receivable."),
-      R("CLIP_MONEY_SEPARATE", "CANONICAL_BUSINESS_RULE", "Clip income / expenses (expense scope קליפ) belong to the clip deal (its own agreed clip price), not to the song's debt.", ["CLIPS"]),
+      R("ONE_CLIP_MODEL", "CANONICAL_BUSINESS_RULE", "Owner decision 2026-10-01: a song is a project and a clip is a project (project_type קליפ, linked to its song by song_project_id); each has ONE agreedPrice (SET_AGREED_PRICE) and ONE balance. Expense scope קליפ is a reporting tag only — it never removes an income row from its project's paid amount. There is no clip price, clip deal or clip payment list.", ["CLIPS"]),
       R("LO_SHULAM_INCOME_CONFLICT", "CANONICAL_BUSINESS_RULE", "Closed 2026-09-27: income marked 'לא שולם' is EXPECTED everywhere (the one rule isExpectedStatus) — the Finance statistics / Insights now count it like the cancel flow, clip math and reports."),
       R("EXPECTED_INCOME_CONFLICT", "CANONICAL_BUSINESS_RULE", "Closed 2026-09-27: 'expected income' is ONE rule on every screen and in Sunny — the shared status rule isExpectedStatus (צפוי / לא שולם / חלקי): the Finance statistics / Insights, the project + client drawers, the health check, the album tabs, the balance reminder, the dashboard and the agent. 'לבדיקה' is DEPRECATED (Owner decision 2026-09-27; production inventory 0 rows): no new write may set it (the shared finance writer refuses it, no picker offers it); a legacy row would stay readable and is neither received nor expected. The Finance 'attention' tab (לא שולם / חלקי only) is a different question — what needs attention — not an expected-income total."),
       R("FINANCE_OWNED_ROWS", "CANONICAL_BUSINESS_RULE", "A transaction created and kept in step by another writer (show payment / expected balance / DJ fee / artist fee / rehearsal, mix work payment, clip planning row, Red Films budget line, social promotion, Victor salary) is OWNED by it: it is never deleted from Finance, and its money / identity fields are refused there (a Hebrew refusal naming the owner and where to change it); only the owner's allowed fields (usually status, date, payment method, notes) change in Finance. The Finance list returns each row's owner (2026-09-27)."),
-      R("PROJECT_PRICE_UNKNOWN", "CANONICAL_BUSINESS_RULE", "A project is fully paid only when its agreed price is > 0 and received song income in the project currency covers it; no agreed price is PRICE_UNKNOWN — never 'paid' and never 'free' (2026-09-27)."),
+      R("PROJECT_PRICE_UNKNOWN", "CANONICAL_BUSINESS_RULE", "A project is fully paid only when its agreed price is > 0 and received song income in the project currency covers it (every income row of the project); no agreed price is PRICE_UNKNOWN — never 'paid' and never 'free' (2026-09-27)."),
       R("MONEY_PER_CURRENCY_BUCKETS", "CANONICAL_BUSINESS_RULE", "Every money total Sunny or a screen shows (receivables, collectible, show money, Red Films budgets / payments, clip A / B / C, overdue expected income) is a per-currency map — never a single mixed number and never converted."),
       R("DEBT_WITHOUT_CURRENCY", "CONFLICT", "Some screens (AI context, schedule modal, health check, legacy tables, album tabs) compute debt without the currency partition or the finance exception. Sunny uses the Finance Brain rules."),
       R("REPORTS_CROSS_CURRENCY", "POSSIBLE_BUG", "Weekly reports drop non-₪ money (the report money model is a registered conflict with the Finance Brain)."),
@@ -577,25 +577,24 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     surfaces: S(["/red-films", "/red-films/[id]"], ["red-films"]),
   },
   {
-    id: "CLIPS", group: "MEDIA_FILES", titleHe: "קליפים (עסקת קליפ בפרויקט)",
-    purpose: "The clip deal inside a music project: clip price, clip payments (advance / final), clip planning rows, and the managed Red Films production.",
-    canonicalSource: "Project finance settings (clip agreed price, managed production id) + clip transactions (expense scope קליפ) + clip planning rows + Red Films production.",
-    entityTypes: ["clip_deal", "clip_item"],
+    id: "CLIPS", group: "MEDIA_FILES", titleHe: "קליפים (פרויקט קליפ)",
+    purpose: "A clip is its own project (project_type קליפ, linked to its song by song_project_id) with ONE agreedPrice — the same money mechanism as a song. Its video work: clip planning rows, shoot days and the managed Red Films production.",
+    canonicalSource: "The clip project + its finance settings (agreedPrice, the managed production marker) + its transactions (any scope; קליפ is a reporting tag) + clip planning rows + Red Films production.",
+    entityTypes: ["project", "clip_item"],
     support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["READ_ONLY"], readCapabilities: ["clip_planning", "red_films", "finance_receivables", "video_view", "video_portfolio"], learnKinds: [], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
-      R("CLIP_DEAL_STATUS", "CANONICAL_BUSINESS_RULE", "Clip deal status: אין עסקה, ממתין, חלקי, שולם, יתרת זכות; remaining = max(0, agreed − paid), overpayment = credit. Only clip rows in the deal currency count against the clip price; rows in another currency are reported separately, never added (2026-09-27)."),
-      R("CLIP_SEED_5050", "IMPLEMENTATION_BEHAVIOR", "Seeding a clip deal creates two expected incomes 50/50 (advance today, final +30 days) and switches a שיר project to שיר + קליפ."),
+      R("CLIP_PROJECT_MONEY", "CANONICAL_BUSINESS_RULE", "One clip model (Owner decision 2026-10-01): a clip project's price / received / balance are the project's own money (the same one rule as a song's). The clip deal status, the clip price, the 50 / 50 clip-deal seed and the שיר → שיר + קליפ retype are retired."),
       R("CLIP_ITEMS_PLANNING", "CANONICAL_BUSINESS_RULE", "Clip planning rows are planning only; promoting one creates a Finance expense (scope קליפ) and KEEPS the row, marked הועבר לכספים and linked to the expense (plan → actual provenance). A promoted / linked row is never counted as planned. The row status vocabulary is validated (תכנון בלבד / הועבר לכספים / שולם / בוטל)."),
       R("CLIP_PROMOTE_CLAIMED", "IMPLEMENTATION_BEHAVIOR", "Promoting claims the row first (status change only while it has no linked expense), so a double click creates one expense (2026-09-27)."),
-      R("CLIP_NO_PROJECT_TYPE", "CANONICAL_BUSINESS_RULE", "There is no clip project type: a clip deal turns a שיר into שיר + קליפ. A clip is never a separate top-level project."),
-      R("CLIP_DEAL_IS_INCOME", "CANONICAL_BUSINESS_RULE", "Expense scope קליפ on INCOME = the artist paying for the clip (clip deal); on an EXPENSE = a clip cost. Clip income never counts toward the song balance."),
+      R("CLIP_IS_A_PROJECT", "CANONICAL_BUSINESS_RULE", "A clip is a separate project (project_type קליפ) linked to its song by projects.song_project_id; there is no combined שיר + קליפ type (Owner decision 2026-10-01)."),
+      R("CLIP_SCOPE_IS_A_TAG", "CANONICAL_BUSINESS_RULE", "Expense scope קליפ is a reporting category on income and expenses; every income row counts toward its own project's agreedPrice whatever its scope."),
       R("CLIP_PROMOTED_ROWS_KEPT", "CANONICAL_BUSINESS_RULE", "Promoted planning rows (status הועבר לכספים / שולם or linked to an expense) are provenance of Finance money, never planning."),
       R("CLIP_RECOUP_NOT_DEFINED", "OWNER_POLICY", "A clip's contribution to an artist's recoup is NOT_DEFINED until the artist agreement rule is recorded (Owner canon 2026-09-27)."),
     ],
-    sideEffects: [E("CLIP_SEND_PRODUCTION", "The Owner sends a project clip to Red Films", "A production is created with budget 0 in the deal currency and the client source from the project classification; the project's clip marker is set with a compare-and-swap settings merge (idempotent by lookup, no unique guard).", ["RED_FILMS"], "MANUAL")],
-    limitationsHe: ["סאני רואה את סכומי עסקת הקליפ דרך הכספים ואת שורות התכנון — לא עורך אותם."],
+    sideEffects: [E("CLIP_SEND_PRODUCTION", "The Owner sends a project clip to Red Films", "A production is created with budget 0 in the project's currency and the client source from the project classification; the project's clip marker is set with a compare-and-swap settings merge (idempotent by lookup, no unique guard).", ["RED_FILMS"], "MANUAL")],
+    limitationsHe: ["קליפ הוא פרויקט עם מחיר מוסכם אחד — סאני קובעת אותו ב-SET_AGREED_PRICE (אין מחיר קליפ נפרד). שורות התכנון הן תכנון בלבד."],
     surfaces: S([], ["clip-items"]),
   },
   {
@@ -777,7 +776,7 @@ export const RELATIONSHIPS: readonly Relationship[] = [
   L("project", "client", "artist text of the project matched to client names", "TEXT_MATCH", "several names per project; case handling differs by screen"),
   L("project", "label-artist", "artist text matched to the label roster", "TEXT_MATCH"),
   L("project", "transaction", "transaction project id", "CANONICAL_RELATION"),
-  L("project", "finance_setting", "per-project finance setting (agreed price, currency, exception, clip price)", "CANONICAL_RELATION"),
+  L("project", "finance_setting", "per-project finance setting (agreed price, currency, exception)", "CANONICAL_RELATION"),
   L("project", "session", "session project id", "CANONICAL_RELATION"),
   L("project", "proposal", "proposal linked project id", "CANONICAL_RELATION"),
   L("project", "engineer_work", "engineer work project id (Steven / external)", "CANONICAL_RELATION"),
@@ -1077,4 +1076,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.01-72", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'מה צריך ממני היום': מה שחדש מאז אתמול קודם (למשל Steven העלה היום), אחר כך מתוזמן, מי שמחכה, משימות שלך — ובסוף 'ויקטור מחכה לפידבק שלך ב-N עבודות' כפריט אחד (נפתח לרשימה). רק תצוגה — הכדור לא משתנה." },
   { version: "2026.10.01-73", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "'ויקטור מחכה לפידבק שלך ב-N עבודות' היא עכשיו שורת מצב קבועה מתחת לחמשת הפריטים — לא מתחרה על מקום. עבודה שקיבלה גרסה מאז אתמול ממשיכה להופיע בנפרד ב-5 הראשונים." },
   { version: "2026.10.01-74", date: "2026-10-01", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "Dashboard V2 הוא עכשיו הדשבורד הראשי (/dashboard). הדשבורד הקודם נשמר כגיבוי ב-/dashboard-legacy; /dashboard-v2 נשאר כינוי זמני לאותו דף." },
+  { version: "2026.10.01-75", date: "2026-10-01", domain: "CLIPS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "מודל קליפ אחד (החלטת בעלים): שיר = פרויקט, קליפ = פרויקט, לכל פרויקט מחיר מוסכם אחד (SET_AGREED_PRICE) ויתרה אחת — כל הכנסה של הפרויקט נספרת, גם בשיוך קליפ. הוסרו מחיר קליפ, עסקת קליפ, תשלומי קליפ, SET_CLIP_PRICE / OPEN_CLIP_DEAL / ADD_CLIP_PAYMENT והסוג 'שיר + קליפ'. יומן: מקום הסשן עובר לאירוע ולהזמנה, והתצוגה המקדימה מציגה מקום / הערות / תיאור ציבורי." },
 ];

@@ -18,7 +18,7 @@ import { collectibleAmount } from "@/lib/payment-status";
 import { normalizeCurrency, formatTotalsInline, type CurrencyTotals } from "@/lib/finance";
 import { buildProjectFinanceSummary, collectionTotalsByCurrency, type ProjectFinSummary } from "@/lib/finance/project-summary";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
-import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
+import { ALL_STATUSES, PROJECT_TYPES, matchesTypeFilter } from "@/lib/types";
 import { sortProjectsForList } from "@/lib/projects-sort";
 
 // ── Design tokens — identical to DashboardDesignPreview ──────────────────────
@@ -45,7 +45,6 @@ const TYPE_COLORS: Record<string, string> = {
   "EP":   "#A855F7",
   "אלבום":"#EC4899",
   "קליפ": "#F59E0B",
-  "שיר + קליפ": BRAND,   // combined project — Redbloods red, see TypeBadge
   "רידים":"#10B981",
   "לימודים":"#6366F1",
   "אחר":  "#6B7280",
@@ -292,29 +291,6 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
     }}>
       <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "inline-block" }} />
       {status}
-    </span>
-  );
-}
-
-// ── Type badge ───────────────────────────────────────────────────────────────
-// "שיר + קליפ" gets the Redbloods red treatment — a touch stronger than the other
-// types (deeper fill, slightly brighter border, a small glow and a 🎵🎬 mark) so a
-// combined project reads as combined at a glance without shouting on a dark list.
-function TypeBadge({ type }: { type: ProjectType }) {
-  if (!type) return <span style={{ color: MUTED, fontSize: 11 }}>—</span>;
-  const color = TYPE_COLORS[type] ?? "#6B7280";
-  const combined = type === SONG_WITH_CLIP_TYPE;
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: combined ? 800 : 700, color: combined ? "#FF6B6B" : color,
-      background: combined ? "rgba(220,38,38,0.16)" : `${color}18`,
-      border: `1px solid ${combined ? "rgba(220,38,38,0.50)" : `${color}35`}`,
-      boxShadow: combined ? "0 0 8px rgba(220,38,38,0.28)" : undefined,
-      borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap",
-      display: "inline-flex", alignItems: "center", gap: 4,
-    }}>
-      {combined && <span style={{ fontSize: 9 }}>🎵🎬</span>}
-      {type}
     </span>
   );
 }
@@ -987,11 +963,6 @@ function MobileCard({ project: p, onOpen, player }: { project: Project; onOpen: 
             <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {p.name}
             </span>
-            {/* The mobile card carries no type badge by design; the combined type
-                is the one case worth calling out, so it alone shows here. */}
-            {p.projectType === SONG_WITH_CLIP_TYPE && (
-              <span style={{ flexShrink: 0 }}><TypeBadge type={p.projectType} /></span>
-            )}
           </div>
           <div style={{ fontSize: 13, color: SUB, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {visibleArtists.length > 0

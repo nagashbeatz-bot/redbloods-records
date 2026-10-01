@@ -38,7 +38,7 @@ const A: SettingsClass = "A_BUSINESS_SYSTEM_INFORMATION", B: SettingsClass = "B_
 
 export const SETTINGS_FAMILIES: readonly SettingsFamily[] = [
   // ── A: business / system information ──
-  F("PROJECT_FINANCE", A, "FINANCE", "A project's agreed price, currency, finance exception (+ reason / date), clip price, managed clip production and financial notes", "Owner (price / exception / clip), proposal conversion, clip flow", "PROJECT_DETAIL", "PROJECT", "^finance_", { like: "finance_" }),
+  F("PROJECT_FINANCE", A, "FINANCE", "A project's agreed price, currency, finance exception (+ reason / date), managed clip production marker and financial notes (one clip model 2026-10-01: no clip price)", "Owner (price / exception), proposal conversion, 'שלח קליפ' (the production marker)", "PROJECT_DETAIL", "PROJECT", "^finance_", { like: "finance_" }),
   F("PROJECT_DELIVERY", A, "DELIVERY", "A project's delivery folder, status, delivered date (only while status is delivered) and lastDeliveredAt (the last delivery date — history that survives a status change and a folder delete; B5) (the share link is reduced to a boolean)", "Owner (legacy drawer)", "PROJECT_DETAIL", "PROJECT", "^delivery_", { like: "delivery_" }),
   F("PROJECT_SESSION_LIMIT", A, "SESSIONS", "How many sessions a project was sold with", "Owner", "PROJECT_DETAIL", "PROJECT", "^session_limit_", { like: "session_limit_" }),
   F("ALBUM_FINANCE_LEGACY", A, "ALBUMS", "Legacy album finance (agreed / payments / expenses) — no UI caller today", "old album finance route", "PROJECT_DETAIL", "PROJECT", "^album_finance_", { like: "album_finance_" }),
@@ -99,7 +99,6 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/calendar/debug/route.ts",
   "app/api/delivery/route.ts",
   "app/api/dropbox/status/route.ts",
-  "app/api/projects/[id]/clip/route.ts",
   "app/api/push/check/route.ts",
   "app/api/sessions/route.ts",
   "app/api/transactions/route.ts",
@@ -109,7 +108,7 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/agent/snapshot.ts",
   "lib/artist-balance-cycles-store.ts",
   "lib/clip-production.ts",
-  "lib/label-clips.ts", // B3: reads finance_<project>.clipAgreedPrice (A, the client clip price) as information next to B / C — never recoup
+  "lib/label-clips.ts", // B3: reads finance_<clip project>.agreedPrice (A, the clip project's price) as information next to B / C — never recoup
   "lib/coo/readers.ts",
   "lib/dj-show-notify.ts",
   "lib/dropbox-token.ts",
@@ -142,7 +141,7 @@ export const SETTINGS_ACCESS_FILES = [
   "lib/writes/projects.ts",
   "lib/writes/project-delete.ts",
   "lib/writes/proposals.ts", // A5 (2026-09-29): the proposal-conversion claim (proposal_conversion:<id>, C)
-  "lib/writes/settings-merge.ts", // B1: the compare-and-swap settings merge (finance_<project> blob) used by the clip writers
+  "lib/writes/settings-merge.ts", // B1: the compare-and-swap settings merge (finance_<project> blob) used by the finance-settings writers
   "lib/writes/redfilms.ts", // A5: clears finance_<project>.clipProductionId (compare-and-swap) when a cancelled production is deleted
   "lib/writes/system.ts",
   "lib/writes/uploads.ts",

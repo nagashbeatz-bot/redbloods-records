@@ -141,7 +141,6 @@ export function buildClientView(src: GatewaySources, clientId: string) {
       }
       if (m.song) { addTo(realized, m.price.currency, m.song.received); addTo(expected, m.price.currency, m.song.openExpected); if (m.song.collectible) addTo(collectible, m.price.currency, m.song.collectible); }
       for (const [cur, o] of Object.entries(m.otherCurrencyIncome)) { addTo(realized, cur, o.received); addTo(expected, cur, o.open); }
-      if (m.clip) { addTo(realized, m.price.currency, m.clip.paid); addTo(expected, m.price.currency, m.clip.expected); }
       moneyRows.push({ project: p.key, name: p.name, link: p.basis, agreedPrice: m.price.agreed, currency: m.price.currency, received: m.song?.received ?? 0, openExpected: m.song?.openExpected ?? 0, collectible: m.song?.collectible ?? null, verdict: m.verdict, financeException: m.price.exception });
     }
     const textById = new Map((c.cdet?.unlinkedTransactionsText?.rows ?? []).map((t) => [t.id, t]));

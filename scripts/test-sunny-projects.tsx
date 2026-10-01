@@ -137,8 +137,9 @@ function main() {
   check("cancelled project with a balance → PROJECT_CANCELLED", mk([{ amount: 200, status: "שולם" }], { agreedPrice: 1000, currency: "₪" }, "בוטל").verdict, "PROJECT_CANCELLED");
   const usd = mk([{ amount: 100, status: "שולם", currency: "$" }, { amount: 900, status: "שולם" }], { agreedPrice: 100, currency: "$" });
   check("the deal is measured in the PRICE's currency", [usd.verdict, usd.song?.received, Object.keys(usd.otherCurrencyIncome)], ["NO_DEBT", 100, ["₪"]]);
-  const clip = mk([{ amount: 500, status: "שולם" }, { amount: 700, status: "שולם", expenseScope: "קליפ" }], { agreedPrice: 500, currency: "₪", clipAgreedPrice: 2000 });
-  check("clip income is separated from the song deal", [clip.verdict, clip.song?.received, clip.clip?.paid, clip.clip?.remaining], ["NO_DEBT", 500, 700, 1300]);
+  // one clip model (Owner decision 2026-10-01): בלאגן — קליפ — a clip project with ONE agreedPrice; its קליפ-tagged income counts
+  const clip = mk([{ amount: 1500, status: "התקבל", expenseScope: "קליפ" }, { amount: 2000, status: "התקבל", expenseScope: "קליפ" }], { agreedPrice: 3500, currency: "₪", clipAgreedPrice: 3500 });
+  check("a clip project: every income row counts toward its ONE price (a legacy clipAgreedPrice key is ignored) → NO_DEBT, received 3500, balance 0", [clip.verdict, clip.song?.received, clip.song?.balance, "clip" in clip, "clipAgreed" in clip.price], ["NO_DEBT", 3500, 0, false, false]);
   check("invalid rows are dropped and counted", mk([{ amount: -5, status: "שולם" }, { type: "expense", amount: 10, status: "התקבל" }], { agreedPrice: 100, currency: "₪" }).invalidRows, 2);
   ok("every verdict carries reasons", [m, over, clip].every((x) => x.reasonsHe.length > 0));
 

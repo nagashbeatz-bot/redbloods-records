@@ -68,9 +68,11 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
             : isFilming ? "צילום קליפ" : "סשן";
         } else summary = cleanTitle || (isFilming ? "צילום קליפ" : "סשן");
         if (sessionType === REHEARSAL_SESSION_TYPE && cleanTitle) summary = `חזרה להופעה - ${cleanTitle}`;
+        // the session's place reaches the event (and the invitation) in both paths — never only the DB row
+        const place = typeof location === "string" && location.trim() ? location.trim() : undefined;
         const event = invite?.emails.length
-          ? await createCalendarEvent(invite.publicTitle, calStart, calEnd, { attendees: invite.emails.map((email) => ({ email })), description: invite.publicDescription })
-          : await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
+          ? await createCalendarEvent(invite.publicTitle, calStart, calEnd, { attendees: invite.emails.map((email) => ({ email })), description: invite.publicDescription, location: place })
+          : await createCalendarEvent(summary, calStart, calEnd, { ...(notes ? { description: notes } : {}), ...(place ? { location: place } : {}) });
         const calId = (event as { id?: string }).id ?? null;
         if (calId) {
           await supabase.from("sessions").update({ calendar_event_id: calId }).eq("id", data.id);
@@ -141,7 +143,15 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
   if (sessionType !== undefined) patch.session_type = sessionType;
   if (notes !== undefined) patch.notes = notes;
   if (photographer !== undefined) patch.photographer = photographer;
-  if (location !== undefined) patch.location = location;
+  // the stored place BEFORE this write: only a REAL change of place is pushed to the calendar event (an edit form that
+  // re-posts the same place never touches — or clears — a place set on the event)
+  let prevLocation: string | null = null;
+  if (location !== undefined) {
+    const { data: curLoc, error: locErr } = await supabase.from("sessions").select("location").eq("id", id).maybeSingle();
+    if (locErr) throw new Error(locErr.message);
+    prevLocation = String((curLoc as { location?: string | null } | null)?.location ?? "");
+    patch.location = location;
+  }
   if (cost !== undefined) {
     const costNum = cost === "" || cost == null ? null : Number(cost);
     if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) throw new SessionInputError("עלות לא תקינה");
@@ -181,13 +191,18 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
   }
   let calendarSynced: boolean | null = null;
   const calEventId = row.calendar_event_id;
-  if (!fromCalendar && calEventId && (startIso || endIso || (typeof summary === "string" && summary.trim()))) {
+  // the session's place follows to the event (the place shown in the invitation): a non-empty place is (re)written — so
+  // re-saving it repairs an event created before the place was sent; an empty place clears the event's place ONLY when
+  // the stored place really changed (an edit form re-posting "" never wipes a place set on the event)
+  const placeChanged = typeof location === "string" && prevLocation !== null && (location.trim() !== "" || location.trim() !== prevLocation.trim());
+  if (!fromCalendar && calEventId && (startIso || endIso || placeChanged || (typeof summary === "string" && summary.trim()))) {
     try {
       const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
       if ((await isConnected()) && (await calendarEventExists(calEventId))) {
-        const upd: { startIso?: string; endIso?: string; summary?: string; keepSummaryIfAttendees?: boolean } = {};
+        const upd: { startIso?: string; endIso?: string; summary?: string; location?: string; keepSummaryIfAttendees?: boolean } = {};
         if (startIso) upd.startIso = startIso;
         if (endIso) upd.endIso = endIso;
+        if (placeChanged) upd.location = String(location).trim();
         if (typeof summary === "string" && summary.trim()) { upd.summary = summary.trim(); upd.keepSummaryIfAttendees = true; }
         await updateCalendarEvent(calEventId, upd);
         calendarSynced = true;

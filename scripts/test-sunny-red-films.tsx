@@ -7,7 +7,7 @@
  *   - every video route belongs to a family and every mutating route is an inventoried action;
  *   - every writer of expense scope קליפ is known;
  *   - the reviewed files are unchanged (RF_REVIEWED_FINGERPRINTS);
- *   - the view reuses the app's clip-deal math and the Finance validation.
+ *   - the view reuses the Finance validation; there is no clip-deal math (one clip model 2026-10-01).
  * The view is pure.
  *
  * Run with:   npx tsx scripts/test-sunny-red-films.tsx      Pure; never touches production.
@@ -30,7 +30,6 @@ import { SECURITY_GAPS } from "../lib/partner/system/people";
 import { DOMAIN_CONTRACTS, FORBIDDEN_SERVED_TERMS, CAPABILITY_CHANGES, validateSystemRegistry } from "../lib/partner/system";
 import { DOMAIN_KNOWLEDGE_DEPTH, KNOWLEDGE_GAPS, validateKnowledgeGaps } from "../lib/partner/system/gaps";
 import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
-import { CLIP_PAYMENT_STATUSES } from "../lib/clip-finance";
 import { NOW, P, U, input } from "./fixtures/integrity-company";
 import { empty, tx } from "./fixtures/finance-mirror";
 
@@ -89,7 +88,7 @@ function sources(): GatewaySources {
     tx({ id: "tx-manual", projectId: P(5), type: "expense", amount: 700, currency: "₪", status: "התקבל", category: "אחר", scope: "project", expenseScope: "קליפ", date: "2026-09-09" }),
     tx({ id: "tx-clip-in-1", projectId: P(2), type: "income", amount: 1500, currency: "₪", status: "התקבל", category: "מקדמה", scope: "project", expenseScope: "קליפ", date: "2026-09-01" }),
     tx({ id: "tx-clip-in-2", projectId: P(2), type: "income", amount: 2000, currency: "₪", status: "צפוי", category: "תשלום סופי", scope: "project", expenseScope: "קליפ", date: "2026-10-01" }),
-  ], financeSettings: [{ projectId: P(2), value: { agreedPrice: 5000, clipAgreedPrice: 3500 } }] });
+  ], financeSettings: [{ projectId: P(2), value: { agreedPrice: 5000 } }] });
   const view = deriveFinanceView(raw, NOW, []);
   const f: GatewayFinance = { state: view.state, integrity: view.integrity, actions: view.actions, raw, brief: buildFinanceBrief(view.state, view.integrity, { answersAvailable: true, actionNoteHe: view.actionNoteHe }), answersAvailable: true };
   return { now: NOW, state: { status: "OK", value: st }, finance: { status: "OK", value: f }, identities: { cleantone: null },
@@ -115,18 +114,18 @@ function main() {
   check("document types = the code", [...RF.RF_VOCABULARIES.documentType], arr(read("components/red-films/RedFilmsDocuments.tsx"), /const FILE_TYPES = \[([^\]]+)\]/));
   check("equipment categories = the code", [...RF.RF_VOCABULARIES.equipmentCategory], arr(read("components/red-films/RedFilmsEquipment.tsx"), /export const EQUIPMENT_CATEGORIES = \[([^\]]+)\]/));
   check("clip planning categories = the project drawer", [...RF.RF_VOCABULARIES.clipItemCategory], arr(read("components/ui/ProjectDrawer.tsx"), /const CLIP_EXPENSE_CATS = \[([^\]]+)\]/));
-  check("clip payment statuses = clip-finance", [...RF.RF_VOCABULARIES.clipPaymentStatus], [...CLIP_PAYMENT_STATUSES]);
+  ok("one clip model: no clip deal / clip payment vocabulary is served (a clip is its own project with ONE price)", !("clipPaymentStatus" in RF.RF_VOCABULARIES) && !("clipDealStatus" in RF.RF_VOCABULARIES));
   const routes = [...walk("app/api/red-films"), ...walk("app/api/clip-items"), ...walk("app/api/projects/[id]/clip")];
   ok(`every video route belongs to a family (${routes.length})`, routes.every((r) => RF.RF_ROUTE_GROUPS.some((g) => new RegExp(g.pattern).test(r))));
   const actionRoutes = new Set([...RF.RF_ACTIONS.flatMap((a) => a.internal.routes), ...RF.RF_READ_ROUTES]);
   check("every video route is an inventoried action or a known read route", routes.filter((r) => !actionRoutes.has(r)), []);
   ok("every action route exists; executability is served only by the action coverage matrix", RF.RF_ACTIONS.every((a) => a.internal.routes.every((r) => fs.existsSync(path.join(ROOT, r))) && a.sunnyToday === "SEE_ACTION_COVERAGE"));
   const scopeWriters = [...walk("app/api"), ...fs.readdirSync(path.join(ROOT, "lib/writes")).map((f) => `lib/writes/${f}`), ...fs.readdirSync(path.join(ROOT, "components/ui")).map((f) => `components/ui/${f}`)].filter((f) => fs.statSync(path.join(ROOT, f)).isFile() && /expense_?[sS]cope:\s*(CLIP_SCOPE|"קליפ")|expenseScope:\s*"קליפ"/.test(code(read(f))));
-  check("the known writers of expense scope קליפ (promote, clip payments, shoot-day expense)", scopeWriters.sort(), ["lib/writes/redfilms.ts" /* promote (since 2026-09-27 the shared writer) */, "lib/writes/clip.ts" /* clip payments */, "components/ui/ProjectDrawer.tsx", "components/ui/ProjectDrawerV2.tsx" /* a local clip-deal summary preview, not a write */].sort());
+  check("the known writers of expense scope קליפ (promote, shoot-day expense) — no clip payment writer (one clip model 2026-10-01)", scopeWriters.sort(), ["lib/writes/redfilms.ts" /* promote (since 2026-09-27 the shared writer) */, "components/ui/ProjectDrawer.tsx" /* shoot-day / clip expense */].sort());
   for (const [f, want] of Object.entries(RF.RF_REVIEWED_FINGERPRINTS)) check(`${f} unchanged since the last Sunny Red Films review (update lib/partner/system/red-films.ts + fingerprint together)`, createHash("sha256").update(read(f).replace(/\r\n/g, "\n")).digest("hex"), want);
   check("fingerprints cover every reviewed file", Object.keys(RF.RF_REVIEWED_FINGERPRINTS).sort(), [...RF.RF_REVIEWED_FILES].sort());
   const view = code(read("lib/partner/redfilms/view.ts"));
-  ok("view reuses the app's clip-deal math + Finance validation", /summarizeClipFinance\(/.test(view) && /validateTx\(/.test(view));
+  ok("view reuses the Finance validation and has NO clip-deal math (one clip model)", !/summarizeClipFinance|clipAgreedPrice/.test(view) && /validateTx\(/.test(view));
   ok("promote KEEPS the row (claim → link, B3) and writes expense scope קליפ (the contract's statement; the shared writer, claim-first since 2026-09-27)", /CLIP_ITEM_PROMOTED_STATUS/.test(read("lib/writes/redfilms.ts")) && /update\(\{ linked_transaction_id: txId/.test(read("lib/writes/redfilms.ts")) && /KEPT and linked/.test(RF.MONEY_MODEL.promote) && /expense_scope:\s*"קליפ"/.test(read("lib/writes/redfilms.ts")) && /promoteClipItem\(id, date\)/.test(read("app/api/clip-items/[id]/promote/route.ts")));
   ok("pure view: no DB / fetch / write / push", !/supabase|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendPush/.test(view + code(read("lib/partner/knowledge/capabilities/video-deep.ts"))));
 
@@ -218,7 +217,7 @@ function main() {
   ok("label context (אבי מולה) + no clip recoup (NOT_DEFINED, the bi-monthly cycle reason), no priority", PV(P(1)).labelWork === true && PRD(PR_NODATE).money.recoup.status === "NOT_DEFINED" && PRD(PR_NODATE).money.recoup.amount === null && /במחזור של חודשיים/.test(PRD(PR_NODATE).money.recoup.reasonHe ?? "") && !/50/.test(JSON.stringify(PRD(PR_NODATE).money.recoup)) && !/priority/.test(JSON.stringify(PV(P(1)))));
 
   section("SCENARIO Z — client video");
-  ok("clip income ≠ expense", PV(P(2)).labelWork === false && PV(P(2)).clipDeal.price === 3500 && PV(P(2)).clipDeal.paid === 1500 && PV(P(2)).expenses.total["₪"] === 1100 && /revenue, never a video expense/.test(PV(P(2)).clipDeal.note));
+  ok("the project side carries no clip deal — its money is the project's own (project_view); clip expenses stay apart", PV(P(2)).labelWork === false && !("clipDeal" in PV(P(2))) && /project_view/.test(PV(P(2)).money.where) && PV(P(2)).expenses.total["₪"] === 1100);
 
   section("2. money layers, Red Films ledger, awareness");
   ok("Red Films ledger: unlinked payments shown as outside Finance (DB-1 live, link actions named); legacy manual actual vs payments flagged; no currency", a.money.paidRedFilmsLedger["₪"] === 1200 && a.money.paidOutsideFinance["₪"] === 1200 && a.money.legacyManualActualOnLines["₪"] === 500 && v.signals.some((s) => s.code === "LINE_ACTUAL_VS_PAYMENTS") && v.signals.some((s) => s.code === "RF_LEDGER_NOT_IN_FINANCE" && /לא מקושרים לכספים/.test(s.he)) && a.money.linkage.state === "RF_LEDGER_NOT_IN_FINANCE" && a.money.currency === "₪" && /PER CURRENCY|never added across currencies/.test(a.money.totalsNote) && !/no Finance expense is linked to a line/.test(a.money.layers));

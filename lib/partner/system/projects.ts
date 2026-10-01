@@ -15,7 +15,7 @@ export const PROJECT_FIELDS: readonly ProjectField[] = [
   { field: "name", meaning: "Project title", writtenBy: "Owner (create / edit), proposal conversion, label release creation", cls: "CANONICAL", lifecycle: "First rename freezes the project's Dropbox folder", sunnyReads: true },
   { field: "artist", meaning: "Free-text artist name(s), several separated by , ، ;", writtenBy: "Owner, client rename (rewrites it), label conversion", cls: "CANONICAL", lifecycle: "The ONLY link to clients and (outside releases) to label artists — by name", sunnyReads: true },
   { field: "status", meaning: "Work state", writtenBy: "Owner (status menu / drawer; accepting the Steven-completion suggestion), a Victor hand-off 'complete the project too' (server rule: refused for בוטל / בהשהייה / already הושלם), client restore, sending to Steven (במיקס)", cls: "CANONICAL", lifecycle: "a REAL transition into הושלם stamps the end date (a re-save keeps it); any other status clears it; not validated on the server; Steven completion never changes it (suggestion only, Owner decision 2026-09-27)", sunnyReads: true },
-  { field: "project_type", meaning: "What kind of work", writtenBy: "Owner, clip seeding (שיר → שיר + קליפ), label creation", cls: "CANONICAL", lifecycle: "Album / EP open the album center; רידים drives riddim mix mode; Steven accepts only שיר / רידים / אלבום / EP", sunnyReads: true },
+  { field: "project_type", meaning: "What kind of work", writtenBy: "Owner, label creation", cls: "CANONICAL", lifecycle: "One clip model (Owner decision 2026-10-01): a clip is its own project (קליפ) — there is no combined שיר + קליפ type and nothing retypes a song. Album / EP open the album center; רידים drives riddim mix mode; Steven accepts only שיר / רידים / אלבום / EP", sunnyReads: true },
   { field: "project_business_type", meaning: "לקוח or לייבל — the ONE classification field (2026-09-27)", writtenBy: "Create (UI, proposal conversion, Sunny) by the Owner rule: NagashBeatz credited → לייבל; שליו טסמה / אבי מולה credited with nobody external (solo or both) → לייבל; a Records artist next to an external party (a guest at an external host, e.g. בלאגן) → no rule (לקוח default, the Owner decides) — Owner decision 2026-09-28; else לקוח; label conversion / label creation; the Owner's explicit classification control", cls: "CANONICAL", lifecycle: "the only classifier for every screen and Sunny; never reclassified automatically — a stored לקוח the Owner rule would call לייבל is the signal MISMATCH_OWNER_RULE (fixed only by the Owner)", sunnyReads: true },
   { field: "deadline", meaning: "Target date", writtenBy: "Owner, the Partner deadline action", cls: "CANONICAL", lifecycle: "Overdue has ONE rule (valid date before today in Israel; never for הושלם / בוטל / בהשהייה / hidden); a value that is not a valid date is never overdue and is reported as unparseable", sunnyReads: true },
   { field: "start_date", meaning: "When work started", writtenBy: "Create (today), the session writer on the first session (only when empty), manual", cls: "DERIVED", lifecycle: "Auto-filled; editable; no page-load write (the legacy drawer backfill is retired, 2026-09-27)", sunnyReads: true },
@@ -34,12 +34,11 @@ export const PROJECT_FIELDS: readonly ProjectField[] = [
 
 export const PROJECT_VOCABULARIES = {
   status: ["לא התחיל (default)", "בעבודה", "מחכה למיקס", "במיקס", "בהשהייה", "הושלם", "בוטל"],
-  projectType: ["שיר", "קליפ", "שיר + קליפ", "EP", "אלבום", "רידים", "לימודים", "אחר"],
+  projectType: ["שיר", "קליפ", "EP", "אלבום", "רידים", "לימודים", "אחר"],
   businessType: ["לקוח (default)", "לייבל"],
   conflicts: [
     "'Active' means בעבודה/מחכה למיקס/במיקס on the dashboard and stats, adds לא התחיל in health / agent rules, only בעבודה/מחכה למיקס in the projects KPI, and 'everything but הושלם' (incl. בוטל) in the projects filter.",
     "Album track status defaults to 'טרום הקלטה', which is not a project status.",
-    "Steven's allowed types exclude 'שיר + קליפ'.",
   ],
 } as const;
 
@@ -63,7 +62,7 @@ export const PROJECT_LINKS: readonly ProjectLink[] = [
   L("LABEL_ARTIST_BY_RELEASE", "label artist", "release details carry the label-artist id", "1:1", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleting the project deletes the release row", "releases", "project_release_details"),
   L("PROPOSAL", "proposal", "proposal's linked project id (conversion)", "N:1 (one conversion)", "CANONICAL_RELATION", "DB_FK_SET_NULL", "project delete → proposal back to לא נסגר, follow-up task deleted; a proposal edit can point anywhere", "project_view", "proposals"),
   L("TRANSACTIONS", "finance transaction", "transaction project id (+ scope / expense scope)", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "project delete unlinks them (orphan project-scope rows)", "project_view", "transactions"),
-  L("FINANCE_SETTING", "agreed price / currency / exception / clip price", "settings row finance_<project id>", "1:1", "CANONICAL_RELATION", "SETTINGS_KEY", "deleted with the project; orphans exist (9 in production)", "project_view", null),
+  L("FINANCE_SETTING", "agreed price / currency / exception", "settings row finance_<project id>", "1:1", "CANONICAL_RELATION", "SETTINGS_KEY", "deleted with the project; orphans exist (9 in production)", "project_view", null),
   L("SESSIONS", "session", "session project id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "project delete hard-deletes sessions; their calendar events are removed after the database commit (failures reported) (1 orphan session exists)", "project_view", "sessions"),
   L("CALENDAR_EVENT", "Google Calendar event", "session's stored event id; the event title holds project + artist at creation", "1:1 per session", "CANONICAL_RELATION", "EXTERNAL_ID", "project rename does not retitle events", null, null),
   L("TASKS", "task", "task related type 'project' + related id (polymorphic)", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned on project delete; a Victor task can have no id", "tasks", null),
@@ -102,10 +101,10 @@ export const PROJECT_SCHEMA_COLUMNS = [
 
 export const PROJECT_MONEY_MODEL = {
   rules: [
-    "The agreed price, currency, finance exception and clip price live in the project's finance setting.",
+    "The agreed price, currency and finance exception live in the project's finance setting — ONE price per project (a song's or a clip project's; one clip model 2026-10-01).",
     "Received income = שולם or התקבל (ONE shared status rule for every screen and Sunny); צפוי / לא שולם / בוטל are not received; חלקי is not paid.",
     "An expense is paid only when שולם.",
-    "Only song income in the PRICE currency counts against the price; clip income belongs to the clip deal (its own clip price).",
+    "Every income row of the project in the PRICE currency counts against the price, whatever its expense scope (קליפ is a reporting tag — there is no clip deal).",
     "received ≥ agreed → no debt; received > agreed → overpayment / credit / tip (never income elsewhere).",
     "A finance exception (no charge / favour) means no receivable.",
     "A cancelled project's remaining balance is not collectible.",
@@ -182,7 +181,8 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   // 2026-09-29 review (song ↔ clip P1): the store reads song_project_id and lists a song's clips (listClipsOfSong) — new PROJECT_FIELDS song_project_id + PROJECT_LINKS SONG_CLIP; no write path, no money / vocabulary change
   "lib/projects-store.ts": "367952f3d58dd8514421fb6fc752f5e8fb0a27799511135f93fdee7bd5d6c3dc",
   // 2026-09-29 review (song ↔ clip P1): Project gained optional songProjectId (canonical clip → song link); parentProject documented as legacy / display — no vocabulary change
-  "lib/types.ts": "1036b8e77a336f9afca0a9e3f33867b5cd1ab11ad90f26121039e1dca3de22bf",
+  // 2026-10-01 review (one clip model): no "שיר + קליפ" type; a clip is its own project; matchesTypeFilter = exact type
+  "lib/types.ts": "1c593ce7f14a22b92639a7ab62a473223d4c5d3823a32b8a5539c3540d3d31e3",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",
@@ -190,9 +190,11 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   // 500 with the Hebrew message), never swallowed by .catch(() => 0). No field, vocabulary or link semantics changed.
   "app/api/projects/[id]/route.ts": "515506e0e771a3d5bdb7e40df1bfd0e6efbe080d7aca5028964aaba1d3a7ddaa",
   "lib/payment-status.ts": "99ed0806205a2fbaca511835f1cc1adfa3f78713b00026fa9f2c26d2a29b05e3",
-  "lib/clip-finance.ts": "6cb3e64c6b7dad5b994e977cd55da864a93d9b466b023faea46da8851fdaa23c",
+  // 2026-10-01 review (one clip model): isProjectIncome — every income row counts toward the project's ONE price; no clip deal math
+  "lib/clip-finance.ts": "53652a6d8b70f760b089dce8d3f7c087f7ff08de39a50e8bf04cc57a6bb3f61a",
   "lib/finance/classify.ts": "737c8f69b79f2b08606b78c26e9a3d4f0312f0b723edd68deea2ab02cd87aefd",
   "lib/project-paths.ts": "69c88d46ab47affddbe1b1d94dcfc118026e94a2bc0e41c85b5e4a5ae7e46b07",
-  "components/ui/ProjectDrawer.tsx": "e4397a2e3f454e60da710ff29f3d618d7d517b1aeb85551e381d8dc787477e11",
+  // 2026-10-01 review (one clip model): the legacy drawer counts the project's income through projectIncomeTotals
+  "components/ui/ProjectDrawer.tsx": "0e8813138d4a21631c369c0fe232d8d499ddade0c63876fbdcd0626c775bf7cc",
   "components/AppShell.tsx": "9e6cab9ae8c07d28f32c07f37a078b05312627a751fa738fa67825eee5f9e800",
 };

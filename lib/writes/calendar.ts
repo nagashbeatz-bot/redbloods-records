@@ -9,8 +9,8 @@ const g = () => import("@/lib/google-calendar");
 
 export async function calendarConnected(): Promise<boolean> { return (await g()).isConnected(); }
 export async function readEvent(eventId: string) { return (await g()).getCalendarEventDetail(eventId); }
-export async function addEvent(e: { summary: string; start: string; end: string; description?: string; allDay?: boolean; attendees?: string[] }): Promise<string> {
-  return (await (await g()).createCalendarEvent(e.summary, e.start, e.end, { description: e.description, allDay: e.allDay, attendees: e.attendees?.map((email) => ({ email })) })).id;
+export async function addEvent(e: { summary: string; start: string; end: string; description?: string; location?: string; allDay?: boolean; attendees?: string[] }): Promise<string> {
+  return (await (await g()).createCalendarEvent(e.summary, e.start, e.end, { description: e.description, location: e.location, allDay: e.allDay, attendees: e.attendees?.map((email) => ({ email })) })).id;
 }
 export async function editEvent(eventId: string, patch: { summary?: string; startIso?: string; endIso?: string; location?: string; description?: string }): Promise<void> {
   await (await g()).updateCalendarEvent(eventId, patch);

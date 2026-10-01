@@ -9,7 +9,8 @@
  *   cancelled           lib/finance/classify.ts isCancelledStatus ("בוטל")
  *   currency            lib/finance/currency.ts normalizeCurrency (blank = ₪; no FX anywhere)
  *   project balance     lib/payment-status.ts   actualOutstanding / overpayment / collectibleAmount
- *   song vs clip income lib/clip-finance.ts     isSongIncome / isClipIncome / summarizeClipFinance
+ *   project income      lib/clip-finance.ts     isProjectIncome — every income row of the project counts against its ONE
+ *                       agreedPrice ("קליפ" scope is a reporting tag, never a second deal; one clip model 2026-10-01)
  *   Victor salary       lib/vendor-store.ts     getVictorSalaryMonths (resolved by the server binding)
  *
  * Owner policy (authoritative): realized net = actual business cash received − actual business
@@ -23,7 +24,7 @@ import { EXPENSE_FULLY_PAID_STATUS, isCancelledStatus, isExpenseFullyPaidStatus,
 import { normalizeCurrency } from "../../finance/currency";
 import { collectibleAmount, overpaymentAmount } from "../../payment-status";
 import { isEngineerWorkPaid } from "../../mix-payment-pure";
-import { isClipIncome, isSongIncome, summarizeClipFinance } from "../../clip-finance";
+import { isProjectIncome } from "../../clip-finance";
 import { splitArtistNames } from "../dossiers/relations";
 import { HIGH_VALUE_THRESHOLD_ILS, resolveCollection } from "./collections";
 import type {
@@ -90,14 +91,13 @@ export function validateTx(row: FinanceTxRow): Tx | null {
 }
 
 /** Exported (read-only reuse by the connected project view — the SAME parse, no second copy). */
-export interface PriceSetting { price: number | null; currency: string; exception: boolean; clipPrice: number | null; malformed: boolean }
+export interface PriceSetting { price: number | null; currency: string; exception: boolean; malformed: boolean }
 export function parseSetting(value: unknown): PriceSetting {
-  if (!isObj(value)) return { price: null, currency: ILS, exception: false, clipPrice: null, malformed: true };
+  if (!isObj(value)) return { price: null, currency: ILS, exception: false, malformed: true };
   const rawPrice = value.agreedPrice;
   const price = num(rawPrice);
   const malformed = rawPrice !== undefined && rawPrice !== null && rawPrice !== "" && price === null;
-  const clip = num(value.clipAgreedPrice);
-  return { price: price !== null && price > 0 ? price : null, currency: normalizeCurrency(typeof value.currency === "string" ? value.currency : null), exception: !!value.financeException, clipPrice: clip !== null && clip > 0 ? clip : null, malformed };
+  return { price: price !== null && price > 0 ? price : null, currency: normalizeCurrency(typeof value.currency === "string" ? value.currency : null), exception: !!value.financeException, malformed };
 }
 
 /**
@@ -228,7 +228,7 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
 
   /** Allocates a known outstanding amount over explicit expected rows (dated first); the rest is an undated balance. */
   const allocate = (
-    p: { id: string; name: string; status: string }, outstanding: number, currency: string, rows: Tx[], source: "PROJECT_BALANCE" | "CLIP_BALANCE", baseEv: Evidence[], notCollectible: boolean,
+    p: { id: string; name: string; status: string }, outstanding: number, currency: string, rows: Tx[], source: "PROJECT_BALANCE", baseEv: Evidence[], notCollectible: boolean,
   ) => {
     let remaining = outstanding;
     const ordered = [...rows].sort((a, b) => (a.date ?? "9999") < (b.date ?? "9999") ? -1 : (a.date ?? "9999") > (b.date ?? "9999") ? 1 : a.row.id < b.row.id ? -1 : 1);
@@ -248,22 +248,21 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   for (const p of projects) {
     const st = settingByProject.get(p.id);
     const mine = txs.filter((t) => t.row.projectId === p.id);
-    const txLike = (t: Tx) => ({ type: t.type, amount: t.amount, payment_status: t.row.status, expense_scope: t.row.expenseScope, currency: t.currency });
     if (st?.exception) priceCoverage.financeExceptions++;
     else if (st?.price) priceCoverage.priced++;
     else if (p.status === COMPLETED) priceCoverage.priceUnknownCompleted++;
     else if (p.status !== CANCELLED_PROJECT) priceCoverage.priceUnknownOpen++;
     const notCollectible = p.status === CANCELLED_PROJECT;
 
-    // Song deal
-    const song = mine.filter((t) => isSongIncome(txLike(t)));
+    // The project's ONE deal: every income row of the project against its agreedPrice (any expense_scope)
+    const song = mine.filter((t) => isProjectIncome(t));
     if (st?.price && !st.exception) {
       const same = song.filter((t) => t.currency === st.currency);
       const received = round2(same.filter((t) => t.received && !t.cancelled).reduce((s, t) => s + t.amount, 0));
       const cancelledIncome = round2(same.filter((t) => t.cancelled).reduce((s, t) => s + t.amount, 0));
       const baseEv: Evidence[] = [{ sourceType: "finance_setting", sourceId: p.id, projectId: p.id, currency: st.currency, reasonCode: "AGREED_PRICE" }, ...same.filter((t) => t.received).map((t) => txEv(t, "RECEIVED_AGAINST_PRICE"))];
       const over = overpaymentAmount(st.price, received);
-      if (over > 0) credits.push({ projectId: p.id, projectName: p.name, amount: round2(over), currency: st.currency, kind: "SONG", evidence: baseEv });
+      if (over > 0) credits.push({ projectId: p.id, projectName: p.name, amount: round2(over), currency: st.currency, kind: "PROJECT", evidence: baseEv });
       const collectible = collectibleAmount(st.price, received, cancelledIncome, p.status);
       const openRows = same.filter(openIncome);
       for (const t of openRows) handledIncomeTx.add(t.row.id);
@@ -274,17 +273,6 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
         currencyMismatchEv.push(txEv(t, "EXPECTED_INCOME_CURRENCY_DIFFERS_FROM_PRICE"));
         pushReceivable({ id: `EXPECTED_TX:${t.row.id}`, source: "EXPECTED_TX", priceKnown: false, projectId: p.id, projectName: p.name, projectStatus: p.status, amount: t.amount, currency: t.currency, dueDate: t.date, createdAt: t.row.createdAt, evidence: [txEv(t, "EXPECTED_INCOME_CURRENCY_DIFFERS_FROM_PRICE")], needsReview: true });
       }
-    }
-    // Clip deal (its own agreed price; canonical clip math)
-    const clip = mine.filter((t) => isClipIncome(txLike(t)));
-    if (st?.clipPrice && !st.exception) {
-      const same = clip.filter((t) => t.currency === st.currency);
-      const summary = summarizeClipFinance(same.map(txLike), st.clipPrice, st.currency);
-      const baseEv: Evidence[] = [{ sourceType: "finance_setting", sourceId: p.id, projectId: p.id, currency: st.currency, reasonCode: "CLIP_AGREED_PRICE" }, ...same.filter((t) => t.received).map((t) => txEv(t, "CLIP_RECEIVED"))];
-      if (summary.credit > 0) credits.push({ projectId: p.id, projectName: p.name, amount: round2(summary.credit), currency: st.currency, kind: "CLIP", evidence: baseEv });
-      const openRows = same.filter(openIncome);
-      for (const t of openRows) handledIncomeTx.add(t.row.id);
-      if (summary.remaining > 0) allocate(p, round2(summary.remaining), st.currency, openRows, "CLIP_BALANCE", baseEv, notCollectible);
     }
   }
   // Explicit expected income not covered by an agreed price (still real, recorded evidence — amount from the record itself).

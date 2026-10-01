@@ -54,7 +54,10 @@ function schedPlan(a: Readonly<Record<string, unknown>>, cur: Fields): { ok: tru
   if (!SESSION_STATUSES.includes(status)) return refuse("BAD_ENUM", "סטטוס סשן לא מוכר");
   for (const k of ["notes", "location", "photographer"]) if (a[k] !== undefined && text(a[k]) === null) return refuse("BAD_TEXT", `${k} לא תקין`);
   if (cur.connected === false) return refuse("NOT_CONNECTED", "Google Calendar לא מחובר — אפשר לקבוע בלי יומן, או לחבר מחדש באפליקציה");
-  return { ok: true, after: { date: String(a.date), startTime: String(a.startTime), endTime: (a.endTime as string | undefined) ?? null, sessionType: type, status } };
+  // the preview shows EVERY value the Boss approves — place, notes and photographer included (never only date / time)
+  const extra: Fields = {};
+  for (const k of ["location", "notes", "photographer"] as const) { const v = str(a[k])?.trim(); if (v) extra[k] = v; }
+  return { ok: true, after: { date: String(a.date), startTime: String(a.startTime), endTime: (a.endTime as string | undefined) ?? null, sessionType: type, status, ...extra } };
 }
 const schedApply = (invite: boolean) => async (d: WriterDeps, _id: string, after: Fields, a: Readonly<Record<string, unknown>>) => {
   const emails = invite ? String(a.inviteEmails).split(/[,;]/).map((x) => x.trim()).filter(Boolean) : [];
@@ -68,14 +71,16 @@ const schedApply = (invite: boolean) => async (d: WriterDeps, _id: string, after
 };
 const schedVerify = async (d: WriterDeps, id: string, after: Fields, out: { receipt?: unknown }) => {
   const s = await d.readSession(id);
-  return !!s && s.date === after.date && s.startTime === after.startTime && s.sessionType === after.sessionType && (out.receipt === null || out.receipt === undefined);
+  return !!s && s.date === after.date && s.startTime === after.startTime && s.sessionType === after.sessionType
+    && (after.location === undefined || s.location === after.location) && (after.notes === undefined || s.notes === after.notes) && (after.photographer === undefined || s.photographer === after.photographer)
+    && (out.receipt === null || out.receipt === undefined);
 };
 const pushWarning = (c: Fields) => (c.shalevPush ? ["הפרויקט של שליו טסמה — הוא ואתה תקבלו Push 'נקבע סשן' (כמו באפליקציה)"] : []);
 
 export const SESSION_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "SCHEDULE_SESSION", kinds: ["session"],
-    meta: meta("קביעת סשן (לפרויקט או עצמאי)", "Book a studio session / cleanup / rehearsal / shoot (optionally + a Google event, no guests)", [...SCHED_ARGS, { name: "addToCalendar", kind: "boolean", required: false }], ["date", "startTime", "endTime", "sessionType", "status"], "createSession (lib/writes/sessions)", { effects: ["CALENDAR", "PUSH"], riskClass: "EXTERNAL_SYSTEM_WRITE", reversible: "PARTIAL", compensation: "delete the session (separate approved action; its event is removed with it)" }),
+    meta: meta("קביעת סשן (לפרויקט או עצמאי)", "Book a studio session / cleanup / rehearsal / shoot (optionally + a Google event, no guests; the place is on the event)", [...SCHED_ARGS, { name: "addToCalendar", kind: "boolean", required: false }], ["date", "startTime", "endTime", "sessionType", "status", "location", "notes", "photographer"], "createSession (lib/writes/sessions)", { effects: ["CALENDAR", "PUSH"], riskClass: "EXTERNAL_SYSTEM_WRITE", reversible: "PARTIAL", compensation: "delete the session (separate approved action; its event is removed with it)" }),
     createContext: schedContext, resolve: schedResolve,
     read: async (d, id) => { const s = await d.readSession(id); return s ? { ...s } : null; },
     plan: schedPlan, apply: schedApply(false), verify: schedVerify,
@@ -85,7 +90,7 @@ export const SESSION_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SCHEDULE_SESSION_WITH_INVITE", kinds: ["session"],
-    meta: meta("קביעת סשן + הזמנה ביומן לאמן", "Book a session and INVITE the artist on the calendar event (Google emails the guests)", [...SCHED_ARGS, T("inviteEmails", true), T("publicTitle", true), T("publicDescription")], ["date", "startTime", "endTime", "sessionType", "status"], "createSession with invite (lib/writes/sessions)", { effects: ["CALENDAR", "EMAIL", "PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
+    meta: meta("קביעת סשן + הזמנה ביומן לאמן", "Book a session and INVITE the artist on the calendar event (Google emails the guests; the invitation carries the public title, the public description and the place)", [...SCHED_ARGS, T("inviteEmails", true), T("publicTitle", true), T("publicDescription")], ["date", "startTime", "endTime", "sessionType", "status", "location", "notes", "photographer", "inviteEmails", "publicTitle", "publicDescription"], "createSession with invite (lib/writes/sessions)", { effects: ["CALENDAR", "EMAIL", "PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
     createContext: schedContext, resolve: schedResolve,
     read: async (d, id) => { const s = await d.readSession(id); return s ? { ...s } : null; },
     plan(a, cur) {
@@ -93,12 +98,14 @@ export const SESSION_PRIMITIVES: readonly PrimitiveSpec[] = [
       const emails = String(a.inviteEmails ?? "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
       if (!emails.length || emails.length > 10 || emails.some((e) => !EMAIL.test(e))) return refuse("BAD_EMAIL", "רשימת מוזמנים לא תקינה");
       if (text(a.publicTitle, 200) === null) return refuse("BAD_TEXT", "חסרה כותרת ציבורית (מה שהאמן יראה)");
-      return { ok: true, after: { ...p.after, inviteEmails: emails.join(", "), publicTitle: String(a.publicTitle).trim() } };
+      if (a.publicDescription !== undefined && text(a.publicDescription) === null) return refuse("BAD_TEXT", "תיאור ציבורי לא תקין");
+      const pd = str(a.publicDescription)?.trim();
+      return { ok: true, after: { ...p.after, inviteEmails: emails.join(", "), publicTitle: String(a.publicTitle).trim(), ...(pd ? { publicDescription: pd } : {}) } };
     },
     apply: schedApply(true), verify: schedVerify,
     requiredValues: (_a, after) => [String(after.date), String(after.startTime), ...String(after.inviteEmails).split(", ")],
     warnings: pushWarning,
-    disclosuresHe: ["Google שולח הזמנה במייל לכל מוזמן — עם הכותרת הציבורית שבתצוגה (לא השם הפנימי)", "נוצר סשן מקושר לאירוע", "לא נוצרת רשומה כספית"],
+    disclosuresHe: ["Google שולח הזמנה במייל לכל מוזמן — עם הכותרת הציבורית, התיאור הציבורי והמקום שבתצוגה (לא השם הפנימי, לא ההערות הפנימיות)", "נוצר סשן מקושר לאירוע", "לא נוצרת רשומה כספית"],
   },
   {
     actionId: "UPDATE_SESSION", kinds: ["session"],

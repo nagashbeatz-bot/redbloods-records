@@ -91,7 +91,6 @@ const TYPE_COLORS: Record<string, string> = {
   "EP":   "#A855F7",
   "אלבום":"#EC4899",
   "קליפ": "#F59E0B",
-  "שיר + קליפ": "#DC2626",   // combined project — Redbloods red
   "רידים":"#10B981",
   "לימודים":"#6366F1",
   "אחר":  "#6B7280",
@@ -926,7 +925,7 @@ export default function ProjectsTable() {
           const matchesParent = p.parentProject?.startsWith(prefix) ?? false;
           if (!matchesType && !matchesParent) return false;
         } else {
-          // Shared rule: "שיר" and "קליפ" also match a "שיר + קליפ" project.
+          // Shared rule (lib/types matchesTypeFilter).
           if (!matchesTypeFilter(p.projectType, typeFilter)) return false;
         }
       }

@@ -72,7 +72,7 @@ function ctxOf(src: GatewaySources, projectId: string): Ctx {
 
 // ── price evidence (never collapsed into PRICE_UNKNOWN; never picks between conflicting sources) ──
 export type PriceClass =
-  | "PRICE_EXISTS_CANONICALLY" | "FINANCE_EXCEPTION" | "PRICE_ZERO_STORED" | "CLIP_PRICE_ONLY" | "PRICE_EXISTS_ELSEWHERE" | "PRICE_CONFLICT"
+  | "PRICE_EXISTS_CANONICALLY" | "FINANCE_EXCEPTION" | "PRICE_ZERO_STORED" | "PRICE_EXISTS_ELSEWHERE" | "PRICE_CONFLICT"
   | "LABEL_NO_RECEIVABLE_CONTEXT" | "PRICE_NOT_RECORDED" | "UNRESOLVED";
 export function priceEvidence(src: GatewaySources, projectId: string) {
   const fin = ok(src.finance);
@@ -84,7 +84,6 @@ export function priceEvidence(src: GatewaySources, projectId: string) {
   const val = (setting?.value && typeof setting.value === "object" ? setting.value : {}) as Record<string, unknown>;
   const storedPrice = setting && "agreedPrice" in val ? val.agreedPrice : undefined;
   const priceNum = storedPrice === undefined || storedPrice === null || storedPrice === "" ? null : Number(storedPrice);
-  const clipPrice = Number(val.clipAgreedPrice ?? 0) > 0 ? Number(val.clipAgreedPrice) : null;
   const exception = val.financeException === true;
   const proposals = (st?.domains.proposalsFull.data?.items ?? []).filter((p) => p.linkedProjectId === projectId).map((p) => ({ status: p.status, amount: p.amount, currency: p.currency }));
   const productions = rows(ops?.redFilms).filter((p) => p.projectId === projectId).map((p) => ({ status: p.status, clientPrice: p.clientPrice, generalBudget: p.generalBudget }));
@@ -92,7 +91,7 @@ export function priceEvidence(src: GatewaySources, projectId: string) {
   const notes = rows(det?.financeNotes).find((f) => f.projectId === projectId) ?? null;
   const businessType = st?.domains.projects.data?.index[projectId]?.businessType ?? rows(ops?.projectsMeta).find((p) => p.id === projectId)?.businessType ?? null;
   const evidence = {
-    setting: setting ? { exists: true, agreedPriceStored: storedPrice ?? null, currency: typeof val.currency === "string" ? val.currency : null, financeException: exception, clipAgreedPrice: clipPrice, financialNotes: notes?.financialNotes ?? null, exceptionReason: notes?.exceptionReason ?? null } : { exists: false },
+    setting: setting ? { exists: true, agreedPriceStored: storedPrice ?? null, currency: typeof val.currency === "string" ? val.currency : null, financeException: exception, financialNotes: notes?.financialNotes ?? null, exceptionReason: notes?.exceptionReason ?? null } : { exists: false },
     linkedProposals: proposals, productionPrices: productions, incomeRows: income, businessType,
   };
   const proposalAmounts = [...new Set(proposals.filter((p) => p.amount > 0).map((p) => `${p.amount}${p.currency}`))];
@@ -104,7 +103,6 @@ export function priceEvidence(src: GatewaySources, projectId: string) {
     cls = disagree.length ? "PRICE_CONFLICT" : "PRICE_EXISTS_CANONICALLY";
     reasonHe = disagree.length ? `המחיר השמור ${cur}${priceNum} שונה מסכום ההצעה המקושרת (${disagree.join(", ")}) — לא נבחר מקור.` : `מחיר מוסכם שמור: ${cur}${priceNum}.`;
   } else if (priceNum === 0) { cls = "PRICE_ZERO_STORED"; reasonHe = "המחיר נשמר במפורש כ-0 בלי סימון חריג כספים — לא ידוע אם זו עבודה חינם, מחיר זמני או חוסר. דורש החלטת בעלים."; }
-  else if (clipPrice) { cls = "CLIP_PRICE_ONLY"; reasonHe = `יש רק מחיר קליפ (${clipPrice}) — הוא של עסקת הקליפ, לא מחיר השיר/הפרויקט. מחיר השיר לא נרשם.`; }
   else if (proposalAmounts.length > 1) { cls = "PRICE_CONFLICT"; reasonHe = `כמה הצעות מקושרות בסכומים שונים (${proposalAmounts.join(", ")}) ואין מחיר שמור — לא נבחר מקור.`; }
   else if (proposalAmounts.length === 1) { cls = "PRICE_EXISTS_ELSEWHERE"; reasonHe = `אין מחיר שמור, אבל ההצעה המקושרת היא ${proposalAmounts[0]} — זה לא מחיר מוסכם שמור.`; }
   else if (businessType === "לייבל") { cls = "LABEL_NO_RECEIVABLE_CONTEXT"; reasonHe = "פרויקט לייבל — הסיווג יכול להסביר למה אין חוב של לקוח; לא ממציאים מחיר."; }
@@ -379,7 +377,7 @@ export function buildProjectSection(src: GatewaySources, projectId: string, sect
         crew: { photographer: p.photographer, director: p.director, editor: p.editor, identity: "CREW_IDENTITY_TEXT (names typed by hand; not linked people)" }, publishedWhere: p.publishedWhere, folder: p.dropboxFolderPath, links: p.links,
         budget: rows(d?.budgetItems).filter((b) => b.productionId === p.id).map((b) => ({ title: b.title, category: b.category, vendor: b.vendorName, status: b.status, planned: b.planned, actual: b.actual })) });
     }) };
-    case "clip": return { ...base, rows: one("clip", { finance: v.money?.clip ?? null, clipPrice: v.money?.price.clipAgreed ?? null, planning: rows(d?.clipItems).filter((k) => k.projectId === id).map((k) => ({ category: k.category, status: k.status, description: k.description, notes: k.notes })), redFilms: v.work.redFilms }) };
+    case "clip": return { ...base, rows: one("clip", { planning: rows(d?.clipItems).filter((k) => k.projectId === id).map((k) => ({ category: k.category, status: k.status, description: k.description, notes: k.notes })), redFilms: v.work.redFilms }) };
     case "social": return { ...base, rows: [...rows(d?.campaigns).filter((k) => k.projectId === id).map((k) => R(`campaign:${k.id}`, k.title ?? "קמפיין", "FACT", { ...k })), ...rows(d?.contentItems).filter((k) => k.projectId === id).map((k) => R(`content:${k.id}`, k.title ?? "תוכן", "FACT", { ...k }))] };
     case "release": { const rel = rows(d?.releases).find((x) => x.projectId === id); return { ...base, rows: v.work.release || rel ? one("release", { ...(v.work.release ?? {}), nextAction: rel?.nextAction ?? null, blocker: rel?.blocker ?? null, responsible: rel?.responsible ?? null, stageEnteredAt: rel?.stageEnteredAt ?? null }) : [] }; }
     case "album": return { ...base, rows: [...rows(d?.albumTracks).filter((t) => t.projectId === id).map((t) => R(`track:${t.trackNumber}`, t.title ?? "", "FACT", { ...t, live: (c.ops?.albumTracks?.rows ?? []).find((x) => x.projectId === id && x.trackNumber === t.trackNumber) ?? null })),

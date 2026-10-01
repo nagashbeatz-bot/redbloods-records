@@ -14,7 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
 import { isActualMoneyTx, isDeprecatedPaymentStatus } from "@/lib/finance/classify";
 import { mergeSettingsKey } from "@/lib/writes/settings-merge";
-import { INCOME_SCOPES, type IncomeRowLike } from "@/lib/clip-rf-money-pure";
+import { INCOME_SCOPES } from "@/lib/clip-rf-money-pure";
 import { copyUnitToSplitRows, recomputeUnitIfRule, setTransactionUnit, unitColumnsForNewTransaction } from "@/lib/writes/business-unit";
 import { syncExpenseShareOrFail } from "@/lib/writes/artist-expense-share";
 import type { UnitWriter } from "@/lib/business-unit";
@@ -37,8 +37,8 @@ export class FinanceInputError extends Error {}
 export const DEPRECATED_STATUS_MESSAGE = "הסטטוס 'לבדיקה' הוסר (החלטת בעלים) — בחר צפוי / התקבל / חלקי / בוטל";
 
 /**
- * The expense_scope a NEW row gets: an expense keeps its scope (default כללי); an INCOME row of a project may be
- * clip money (קליפ, B3 2026-09-27) — any other income scope stays כללי (song / general money).
+ * The expense_scope a NEW row gets: an expense keeps its scope (default כללי); an INCOME row of a project may carry the
+ * reporting tag קליפ — any other income scope stays כללי. The tag never changes the project's balance (one clip model).
  */
 export function txScopeForCreate(type: string, scope: string | null | undefined, hasProject: boolean): string {
   if (type === "expense") return scope || "כללי";
@@ -176,25 +176,10 @@ export async function setFinanceSettings(projectId: string, b: FinanceSettingsPa
     ...(b.financeExceptionReason !== undefined ? { financeExceptionReason: b.financeExceptionReason } : {}),
     ...(b.financeExceptionDate !== undefined ? { financeExceptionDate: b.financeExceptionDate } : {}),
   };
-  // a concurrent writer of the same blob (clip price, clip production marker, notes …) is never overwritten
+  // a concurrent writer of the same blob (the clip production marker, notes …) is never overwritten
   return mergeSettingsKey(`finance_${projectId}`, patch);
 }
 
-/** Read-only context for the income-scope preview (B3): the project's income rows + its clip price / deal currency. */
-export async function readProjectIncomeContext(projectId: string): Promise<{ clipAgreedPrice: number | null; clipCurrency: string; incomes: IncomeRowLike[] }> {
-  const [{ data: rows, error }, { data: s, error: sErr }] = await Promise.all([
-    supabase.from("transactions").select("id, amount, currency, payment_status, expense_scope").eq("project_id", projectId).eq("type", "income"),
-    supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle(),
-  ]);
-  if (error) throw new Error(error.message);
-  if (sErr) throw new Error(sErr.message);
-  const v = (s?.value ?? {}) as Record<string, unknown>;
-  const price = Number(v.clipAgreedPrice);
-  return {
-    clipAgreedPrice: Number.isFinite(price) && price > 0 ? price : null, clipCurrency: String(v.currency ?? "₪"),
-    incomes: ((rows ?? []) as Array<Record<string, unknown>>).map((r) => ({ id: String(r.id), amount: Number(r.amount) || 0, currency: (r.currency as string | null) ?? null, paymentStatus: (r.payment_status as string | null) ?? null, expenseScope: (r.expense_scope as string | null) ?? null })),
-  };
-}
 export async function readFinanceSettings(projectId: string): Promise<{ agreedPrice: number; currency: string; financialNotes: string; financeException: boolean; financeExceptionReason: string; financeExceptionDate: string }> {
   const { data, error } = await supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle();
   if (error) throw new Error(error.message);

@@ -199,7 +199,7 @@ async function main() {
     check("16. paid ≥ agreed → no debt", s2.receivables.length, 0);
     const over = project({ status: "הושלם" });
     const s3 = brain(empty({ projects: [over], financeSettings: [withPrice(over, 3000)], transactions: [tx({ projectId: over.id, scope: "project", amount: 3500 })] }));
-    check("17. overpayment → credit (not debt)", [s3.receivables.length, s3.credits.map((c) => [c.amount, c.currency, c.kind])], [0, [[500, "₪", "SONG"]]]);
+    check("17. overpayment → credit (not debt)", [s3.receivables.length, s3.credits.map((c) => [c.amount, c.currency, c.kind])], [0, [[500, "₪", "PROJECT"]]]);
     const part = project({ status: "בעבודה" });
     const exp = tx({ projectId: part.id, scope: "project", amount: 1000, status: "צפוי", date: "2026-10-15" });
     const s4 = brain(empty({ projects: [part], financeSettings: [withPrice(part, 4000)], transactions: [tx({ projectId: part.id, scope: "project", amount: 1000, status: "התקבל" }), exp] }));
@@ -213,8 +213,8 @@ async function main() {
     const s5 = brain(empty({ projects: [cancelled], financeSettings: [withPrice(cancelled, 3000)], transactions: [tx({ projectId: cancelled.id, scope: "project", amount: 3000, status: "בוטל" })] }));
     check("a cancelled project's written-off balance is NOT_COLLECTIBLE (canonical collectibleAmount)", s5.receivables.map((r) => r.collection.state), ["NOT_COLLECTIBLE"]);
     const clip = project({ status: "בעבודה" });
-    const s6 = brain(empty({ projects: [clip], financeSettings: [{ projectId: clip.id, value: { clipAgreedPrice: 3500, currency: "₪" } }], transactions: [tx({ projectId: clip.id, scope: "project", expenseScope: "קליפ", amount: 1500 }), tx({ projectId: clip.id, scope: "project", expenseScope: "קליפ", amount: 2000, status: "צפוי", date: "2026-09-30" })] }));
-    check("clip deal uses its own agreed price (canonical clip math) and never mixes with song income", s6.receivables.map((r) => [r.source, r.amount, r.dueDate, r.priceKnown]), [["EXPECTED_TX", 2000, "2026-09-30", true]]);
+    const s6 = brain(empty({ projects: [clip], financeSettings: [{ projectId: clip.id, value: { agreedPrice: 3500, currency: "₪" } }], transactions: [tx({ projectId: clip.id, scope: "project", expenseScope: "קליפ", amount: 1500 }), tx({ projectId: clip.id, scope: "project", expenseScope: "קליפ", amount: 2000, status: "צפוי", date: "2026-09-30" })] }));
+    check("one clip model: a clip project's קליפ-tagged income counts against its ONE agreedPrice (1500 received, the dated 2000 is the open balance)", s6.receivables.map((r) => [r.source, r.amount, r.dueDate, r.priceKnown]), [["EXPECTED_TX", 2000, "2026-09-30", true]]);
   }
 
   console.log("Collections — adaptive policy (23-31)");
@@ -449,7 +449,7 @@ async function main() {
     ok("no FX conversion anywhere (no rate / exchange)", src.every((s) => !/exchange ?rate|fxRate|convertCurrency|usdToIls/i.test(s)));
     ok("the core is pure: no supabase, no server-only, no clock", ["core", "collections", "brief", "dto", "types", "readers"].every((f) => !/lib\/supabase|server-only|new Date\(\)|Date\.now\(/.test(strip(rd(`lib/partner/finance/${f}.ts`)))));
     ok("the binding is server-only", /^import "server-only";/m.test(rd("lib/partner/finance/server.ts")));
-    ok("canonical helpers are reused, not redefined", /from "..\/..\/finance\/classify"/.test(rd("lib/partner/finance/core.ts")) && /collectibleAmount, overpaymentAmount/.test(rd("lib/partner/finance/core.ts")) && /summarizeClipFinance/.test(rd("lib/partner/finance/core.ts")) && !/\["שולם", "התקבל"\]/.test(strip(rd("lib/partner/finance/core.ts"))));
+    ok("canonical helpers are reused, not redefined", /from "..\/..\/finance\/classify"/.test(rd("lib/partner/finance/core.ts")) && /collectibleAmount, overpaymentAmount/.test(rd("lib/partner/finance/core.ts")) && /isProjectIncome/.test(rd("lib/partner/finance/core.ts")) && !/summarizeClipFinance|isSongIncome/.test(rd("lib/partner/finance/core.ts")) && !/\["שולם", "התקבל"\]/.test(strip(rd("lib/partner/finance/core.ts"))));
     ok("Victor salary resolved by the canonical getVictorSalaryMonths", /getVictorSalaryMonths/.test(rd("lib/partner/finance/server.ts")));
     ok("no cron / instrumentation / agent module reaches the finance brain", !/partner\/finance/.test(rd("instrumentation.ts")) && fs.readdirSync(path.join(ROOT, "lib", "agent")).every((f) => !/partner\/finance/.test(fs.readFileSync(path.join(ROOT, "lib", "agent", f), "utf8"))));
   }
