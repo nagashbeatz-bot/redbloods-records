@@ -116,9 +116,36 @@ console.log("The ball decides — auto Victor tasks follow their work");
   ok("own task due today → today", keys.includes(`task:${U(34)}`));
   ok("Steven's version uploaded, no Owner comment after → the mix item is the Owner's (engineerHandoff)", n.items.some((i) => i.entityKey === `mix-work:${U(70)}` && i.ball.waitingParty === "Steven"));
   ok("a task linked to a project whose ball is the Owner's merges into that item (the age does not matter — Q1 exception)", !keys.includes(`task:${U(35)}`) && !!n.items.find((i) => i.entityKey === `mix-work:${U(70)}`)?.evidence.some((e) => e.code === "LINKED_TASK"));
-  ok("order: WAITING_ON_YOU first, the longest wait first", n.items[0].entityKey === `victor-work:${U(21)}` && n.items[1].entityKey === `mix-work:${U(70)}`, n.items.map((i) => i.entityKey));
+  ok("order: WAITING_ON_YOU before own tasks; inside it the most recent event first (Steven 28.09 before Victor 19.09)", n.items[0].entityKey === `mix-work:${U(70)}` && n.items[1].entityKey === `victor-work:${U(21)}` && n.items[2].group === "YOUR_TASK", n.items.map((i) => i.entityKey));
+  ok("ONE Victor work waiting is not aggregated (aggregation needs several)", !n.items.some((i) => i.group === "LONG_WAITS"));
   ok(`at most ${NEEDS_ME_MAX}`, n.items.length <= NEEDS_ME_MAX);
   ok("a NEW (unprocessed) Owner update never enters by itself", !n.items.some((i) => i.fromInbox) && n.inbox.interpretations === 0);
+}
+
+console.log("\nPrecedence + Victor aggregation (Owner decision 2026-10-01): fresh actionable > stale repeated backlog");
+{
+  const P = (n: number) => U(300 + n);
+  const victor = [
+    victorRow(U(220), P(1), { uploads: ["2026-08-18T10:00:00Z"], notes: [] }),                    // 44 days
+    victorRow(U(221), P(2), { uploads: ["2026-08-25T10:00:00Z"], notes: [], task: U(230) }),        // 37 days + its auto task
+    victorRow(U(222), P(3), { uploads: ["2026-09-28T10:00:00Z"], notes: [] }),                    // 3 days (recent week)
+    victorRow(U(223), P(4), { uploads: ["2026-09-30T18:00:00Z"], notes: [] }),                    // yesterday → its own NEW item
+  ];
+  const memory: InboxMemory = { links: [], interpretations: [interp(U(64), `project:${P_MIX}`, { basisEventAt: "2026-10-01T06:00:00Z", basisBall: "OWNER" })] };
+  const n = buildNeedsMe(src({ victor, engineer: [steven("בתהליך")], versions: [mixV("2026-10-01T06:00:00Z")], memory,
+    tasks: [task(U(230), "מעקב ויקטור — 2", "2026-09-10", { relatedType: "project", relatedId: P(2) }), task(U(231), "משימה להיום", TODAY), ...Array.from({ length: 4 }, (_, i) => task(U(240 + i), `משימה ${i}`, TODAY))] }));
+  ok("'קרוב אלייך' (Steven uploaded today + the Owner's update) is FIRST — NEW_TODAY beats a 44-day Victor wait", n.items[0].entityKey === `mix-work:${U(70)}` && n.items[0].group === "NEW_TODAY" && n.items[0].evidence.some((e) => e.code === "NEW_SINCE_YESTERDAY"), n.items.map((i) => [i.group, i.entityKey]));
+  ok("its next step comes from the Owner's CURRENT update", n.items[0].nextAction.he.includes("לסגור 2 תיקוני מיקס"), n.items[0].nextAction);
+  ok("a Victor work whose version arrived yesterday is lifted OUT of the group as its own NEW item", n.items.some((i) => i.entityKey === `victor-work:${U(223)}` && i.group === "NEW_TODAY"));
+  const all = [...n.items, ...n.moreToday];
+  const agg = all.find((i) => i.group === "LONG_WAITS");
+  ok("the other Victor waits become ONE item 'ויקטור מחכה לפידבק שלך ב-3 עבודות' (never 3 slots)", !!agg && agg.title === "ויקטור מחכה לפידבק שלך ב-3 עבודות" && !all.some((i) => [U(220), U(221), U(222)].some((id) => i.entityKey === `victor-work:${id}`)), agg?.title);
+  ok("the aggregate says how long the oldest waits, how many got a version in the last 7 days, and the linked tasks", !!agg && agg.whyToday.includes("44 ימים") && agg.whyToday.includes("1 קיבלו גרסה ב-7 הימים האחרונים") && agg.whyToday.includes("1 משימות מעקב"), agg?.whyToday);
+  ok("'פתח' on the aggregate = the list of its works, each opening its own record", agg?.open.kind === "list" && agg.open.entries.length === 3 && agg.open.entries.every((e) => e.open.kind !== "list"));
+  ok("the aggregate is the LAST group and the balls are unchanged (display only)", all.at(-1)?.group === "LONG_WAITS" && agg?.ball.holder === "OWNER" && agg.ball.ruleHe.includes("לתצוגה בלבד"));
+  const order = all.map((i) => i.group);
+  const rank = (g: string) => ["NEW_TODAY", "SCHEDULED", "WAITING_ON_YOU", "APPROVAL", "YOUR_TASK", "LONG_WAITS"].indexOf(g);
+  ok("the fixed precedence holds across the whole list", order.every((g, i) => i === 0 || rank(order[i - 1]) <= rank(g)), order);
 }
 
 console.log("\nSteven must work → out; the Owner's update cannot pull it back (records win, contradiction shown — Q5)");
@@ -202,7 +229,7 @@ console.log("\nThe capability (one list for Dashboard V2 and Sunny)");
   ok("not served without the Owner's authority", denied.status !== "OK");
   const board = parseBoard(JSON.parse(JSON.stringify(r)) as Record<string, unknown>);
   ok("Dashboard V2's parser reads the real capability answer (same items, ball party, evidence, backlog)", !!board && board.today.length === buildNeedsMe(src(BASE)).items.length
-    && board.today[0].ball.waitingParty === "ויקטור" && board.today[0].evidence.length > 0 && board.backlog.length > 0 && board.today.every((i) => i.title && i.whyToday && i.nextAction), board);
+    && board.today.some((i) => i.ball.waitingParty === "ויקטור") && board.today[0].evidence.length > 0 && board.backlog.length > 0 && board.today.every((i) => i.title && i.whyToday && i.nextAction), board);
   ok("a non-OK answer parses as 'not checked' (null), never an empty list", parseBoard({ status: "FORBIDDEN", items: [] }) === null);
   const cap = reg.get("needs_me");
   ok("the capability needs no write source and declares PROJECT_DETAIL / OWNER_INBOX", !!cap && cap.needs.includes("PROJECT_DETAIL") && cap.needs.includes("OWNER_INBOX"));

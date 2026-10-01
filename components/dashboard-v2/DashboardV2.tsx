@@ -225,6 +225,8 @@ export default function DashboardV2() {
       case "none": break;
     }
   };
+  const [listOpen, setListOpen] = useState<ListOpen | null>(null);
+  const openCurated = (t: CuratedOpen) => (t.kind === "list" ? setListOpen(t) : open(t));
   const onTaskDone = (id: string) => setTasks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
   const onTaskDefer = (id: string, d: string) => setTasks((prev) => (prev ? prev.map((t) => (t.id === id ? { ...t, due_date: d } : t)) : prev));
 
@@ -414,10 +416,10 @@ export default function DashboardV2() {
               <>
                 {board.today.length === 0 ? (
                   <Note>{board.unchecked.length ? "לא נמצא משהו שמחכה לך במה שנבדק — חלק מהמקורות לא נבדקו (למטה)" : `✅ אין כרגע משהו שמחכה לך · נבדקו ${board.checked}`}</Note>
-                ) : board.today.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => open(n.open)} />)}
+                ) : board.today.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => openCurated(n.open)} />)}
                 {board.moreToday.length > 0 && (
                   <>
-                    {showAllNeeds && board.moreToday.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => open(n.open)} />)}
+                    {showAllNeeds && board.moreToday.map((n) => <CuratedRow key={n.key} item={n} onOpen={() => openCurated(n.open)} />)}
                     <MoreButton open={showAllNeeds} more={board.moreToday.length} onClick={() => setShowAllNeeds((v) => !v)} />
                   </>
                 )}
@@ -463,6 +465,13 @@ export default function DashboardV2() {
       )}
       {modal === "partner-integrity" && (
         <Modal onClose={() => setModal(null)} width={680}><PartnerIntegritySection isMobile={false} /><ModalHint /></Modal>
+      )}
+      {listOpen && (
+        <Modal onClose={() => setListOpen(null)} width={620}>
+          <div style={{ fontSize: 16, fontWeight: 800, padding: "4px 6px 10px" }}>{listOpen.title}</div>
+          <EntryList entries={listOpen.entries} onOpen={(t) => { setListOpen(null); open(t); }} />
+          <div style={{ fontSize: 11, color: MUTED, textAlign: "center", padding: "10px 8px 6px" }}>מאוחד לתצוגה בלבד — הכדור בכל עבודה נקבע לפי הרשומות ולא שונה.</div>
+        </Modal>
       )}
       {taskOpen && (
         <TasksAttentionModal tasks={taskOpen} today={today} onClose={() => setTaskOpen(null)} onDone={onTaskDone} onDefer={onTaskDefer} />
@@ -525,27 +534,35 @@ function NeedRow({ item, hidden, onOpen }: { item: NeedItem; hidden: boolean; on
 // ── Sunny-curated Needs-Me (the needs_me capability) ───────────────────────────
 type GT = string | { text?: string } | null | undefined;
 const gt = (v: GT): string => (typeof v === "string" ? v : v?.text ?? "");
-type CuratedGroup = "WAITING_ON_YOU" | "SCHEDULED" | "APPROVAL" | "YOUR_TASK";
-const GROUP_COLOR: Record<CuratedGroup, string> = { WAITING_ON_YOU: RED, SCHEDULED: PURPLE, APPROVAL: BLUE, YOUR_TASK: "#9CA3AF" };
-const GROUP_HE: Record<CuratedGroup, string> = { WAITING_ON_YOU: "מחכים לך", SCHEDULED: "מתוזמן", APPROVAL: "אישור", YOUR_TASK: "משימה שלך" };
+type CuratedGroup = "NEW_TODAY" | "SCHEDULED" | "WAITING_ON_YOU" | "APPROVAL" | "YOUR_TASK" | "LONG_WAITS";
+const GROUP_COLOR: Record<CuratedGroup, string> = { NEW_TODAY: GREEN, SCHEDULED: PURPLE, WAITING_ON_YOU: RED, APPROVAL: BLUE, YOUR_TASK: "#9CA3AF", LONG_WAITS: AMBER };
+const GROUP_HE: Record<CuratedGroup, string> = { NEW_TODAY: "חדש", SCHEDULED: "מתוזמן", WAITING_ON_YOU: "מחכים לך", APPROVAL: "אישור", YOUR_TASK: "משימה שלך", LONG_WAITS: "ממתין זמן רב" };
+/** The aggregated item (e.g. "ויקטור מחכה לפידבק שלך ב-N עבודות") opens its member list. */
+export interface ListOpen { kind: "list"; title: string; entries: CuratedEntry[] }
+type CuratedOpen = OpenTarget | ListOpen;
 interface CuratedItem {
   key: string; group: CuratedGroup; title: string; whyToday: string; waitingDays: number | null;
   ball: { waitingParty: string | null; ruleHe: string }; evidence: { code: string; he: string; epistemic: string }[];
-  nextAction: string; inbox: { whatHappened: string; freshnessHe: string; conflictHe: string | null } | null; open: OpenTarget;
+  nextAction: string; inbox: { whatHappened: string; freshnessHe: string; conflictHe: string | null } | null; open: CuratedOpen;
 }
 interface CuratedEntry { key: string; title: string; reasonHe: string; open: OpenTarget }
 export interface NeedsBoard { today: CuratedItem[]; moreToday: CuratedItem[]; backlog: CuratedEntry[]; undecided: CuratedEntry[]; unchecked: string[]; integrityCount: number | null; checked: number }
 
 const OPEN_KINDS = new Set(["project", "client", "task", "partner-actions", "href", "none"]);
-const GROUPS = new Set<string>(["WAITING_ON_YOU", "SCHEDULED", "APPROVAL", "YOUR_TASK"]);
+const GROUPS = new Set<string>(["NEW_TODAY", "SCHEDULED", "WAITING_ON_YOU", "APPROVAL", "YOUR_TASK", "LONG_WAITS"]);
+const openOf = (o: unknown): OpenTarget => (o && typeof o === "object" && OPEN_KINDS.has((o as OpenTarget).kind) ? (o as OpenTarget) : { kind: "none" });
+function curatedOpenOf(o: unknown): CuratedOpen {
+  const l = o as { kind?: string; title?: unknown; entries?: unknown } | null;
+  if (l && l.kind === "list" && Array.isArray(l.entries)) return { kind: "list", title: String(l.title ?? ""), entries: (l.entries as Array<{ key?: unknown; title?: unknown; reasonHe?: unknown; open?: unknown }>).map((e) => ({ key: String(e.key), title: String(e.title ?? ""), reasonHe: String(e.reasonHe ?? ""), open: openOf(e.open) })) };
+  return openOf(o);
+}
 /** Strict parse of the needs_me answer; anything but status OK = not checked (null). */
 export function parseBoard(b: Record<string, unknown>): NeedsBoard | null {
   if (b.status !== "OK" || !Array.isArray(b.items)) return null;
   const board: NeedsBoard = { today: [], moreToday: [], backlog: [], undecided: [], unchecked: [], integrityCount: null, checked: 0 };
   for (const raw of b.items as Array<{ label?: GT; fields?: Record<string, unknown> }>) {
     const f = raw.fields ?? {};
-    const o = f.open as OpenTarget | undefined;
-    const open: OpenTarget = o && OPEN_KINDS.has(o.kind) ? o : { kind: "none" };
+    const open = openOf(f.open);
     if (f.section === "today" || f.section === "more_today") {
       const inbox = f.fromInbox as { whatHappened?: GT; freshnessHe?: string; conflictHe?: GT } | null;
       const ball = (f.ball ?? {}) as { waitingParty?: string | null; ruleHe?: string };
@@ -556,7 +573,7 @@ export function parseBoard(b: Record<string, unknown>): NeedsBoard | null {
         evidence: Array.isArray(f.evidence) ? (f.evidence as Array<{ code: string; he: GT; epistemic: string }>).map((e) => ({ code: e.code, he: gt(e.he), epistemic: e.epistemic })) : [],
         nextAction: gt((f.nextAction as { he?: GT } | undefined)?.he),
         inbox: inbox ? { whatHappened: gt(inbox.whatHappened), freshnessHe: inbox.freshnessHe ?? "", conflictHe: inbox.conflictHe ? gt(inbox.conflictHe) : null } : null,
-        open,
+        open: curatedOpenOf(f.open),
       };
       (f.section === "today" ? board.today : board.moreToday).push(it);
     } else if (f.section === "backlog" || f.section === "undecided") {

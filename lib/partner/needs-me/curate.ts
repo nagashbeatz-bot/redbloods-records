@@ -47,10 +47,19 @@ export const NEEDS_ME_MAX = 5;
 /** A scheduled event enters when it is today or tomorrow. */
 export const SCHEDULED_WINDOW_DAYS = 1;
 
-export type NeedsGroup = "WAITING_ON_YOU" | "SCHEDULED" | "APPROVAL" | "YOUR_TASK";
+/**
+ * Owner decision 2026-10-01 (precedence, never a score shown to anyone): 1 NEW_TODAY — something new since yesterday
+ * that needs his response (a version / received entry since yesterday, or his own processed update since yesterday);
+ * 2 SCHEDULED — an event today / tomorrow; 3 WAITING_ON_YOU (+ APPROVAL) — someone actively waiting; 4 YOUR_TASK — his
+ * own task / follow-up (today, ≤ 3 days late); 5 LONG_WAITS — the aggregated long-running Victor waits. Fresh actionable
+ * beats stale repeated backlog. Inside a group: the most recent event first.
+ */
+export type NeedsGroup = "NEW_TODAY" | "SCHEDULED" | "WAITING_ON_YOU" | "APPROVAL" | "YOUR_TASK" | "LONG_WAITS";
 /** Fixed presentation order (never a score). */
-export const NEEDS_GROUP_ORDER: readonly NeedsGroup[] = ["WAITING_ON_YOU", "SCHEDULED", "APPROVAL", "YOUR_TASK"];
-export const NEEDS_GROUP_HE: Record<NeedsGroup, string> = { WAITING_ON_YOU: "מחכים לך", SCHEDULED: "מתוזמן", APPROVAL: "אישור", YOUR_TASK: "משימה שלך" };
+export const NEEDS_GROUP_ORDER: readonly NeedsGroup[] = ["NEW_TODAY", "SCHEDULED", "WAITING_ON_YOU", "APPROVAL", "YOUR_TASK", "LONG_WAITS"];
+export const NEEDS_GROUP_HE: Record<NeedsGroup, string> = { NEW_TODAY: "חדש", SCHEDULED: "מתוזמן", WAITING_ON_YOU: "מחכים לך", APPROVAL: "אישור", YOUR_TASK: "משימה שלך", LONG_WAITS: "ממתין זמן רב" };
+/** A display window for "received a version recently" inside the Victor aggregate (a count shown, never a rule). */
+export const RECENT_VERSION_DAYS = 7;
 
 export type NeedsOpen =
   | { kind: "project"; id: string }
@@ -58,7 +67,9 @@ export type NeedsOpen =
   | { kind: "task"; id: string; title: string; dueDate: string | null }
   | { kind: "partner-actions" }
   | { kind: "href"; href: string }
-  | { kind: "none" };
+  | { kind: "none" }
+  /** the aggregated item opens its member list (each member opens its own record) */
+  | { kind: "list"; title: string; entries: Array<{ key: string; title: string; reasonHe: string; open: NeedsOpen }> };
 
 export type NeedsEpistemic = "FACT" | "DERIVED" | "OWNER_REPORTED" | "HYPOTHESIS";
 export interface NeedsEvidence { code: string; he: string; source: string; epistemic: NeedsEpistemic; at: string | null }
@@ -428,12 +439,51 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   };
   if (!integrity) unchecked.push({ source: "INTEGRITY", he: "שאלות סאני לא נקראו" });
 
-  // ── order: the fixed group order; inside a group the longest wait first, then the date ──
+  // ── precedence (Owner decision 2026-10-01): something NEW since yesterday first ──
+  const recentFrom = addDays(today, -1);
+  const dayOf = (iso: string | null | undefined) => (iso && Number.isFinite(Date.parse(iso)) ? ilYmd(new Date(iso)) : null);
+  for (const i of items) {
+    if (i.group !== "WAITING_ON_YOU") continue;
+    const eventDay = dayOf(i.ball.sinceAt);
+    const updateDay = i.fromInbox?.freshness === "CURRENT" ? dayOf(i.fromInbox.recordedAt) : null;
+    if ((eventDay && eventDay >= recentFrom) || (updateDay && updateDay >= recentFrom)) {
+      i.group = "NEW_TODAY";
+      i.evidence.push({ code: "NEW_SINCE_YESTERDAY", he: eventDay && eventDay >= recentFrom ? `האירוע שהעביר אליך את הכדור קרה ${eventDay === today ? "היום" : "אתמול"}` : `כתבת עליו עדכון ${updateDay === today ? "היום" : "אתמול"}`, source: "PARTNER_KNOWLEDGE", epistemic: "DERIVED", at: null });
+    }
+  }
+
+  // ── Victor aggregation (Owner decision B): several Victor works waiting on the Owner = ONE item; a work whose version
+  //    arrived since yesterday was already lifted to NEW_TODAY above. Display only — the balls are unchanged. ──
+  const victorWaits = items.filter((i) => i.group === "WAITING_ON_YOU" && i.entityKey.startsWith("victor-work:"));
+  if (victorWaits.length >= 2) {
+    const members = [...victorWaits].sort((a, b) => (b.waitingDays ?? -1) - (a.waitingDays ?? -1));
+    const oldest = members[0];
+    const recentCut = addDays(today, -RECENT_VERSION_DAYS);
+    const recent = members.filter((m) => (dayOf(m.ball.sinceAt) ?? "") >= recentCut).length;
+    const tasks = members.reduce((n, m) => n + m.evidence.filter((e) => e.code === "LINKED_TASK").length, 0);
+    for (const m of members) items.splice(items.indexOf(m), 1);
+    items.push({
+      key: "vendor:VICTOR|OWNER_FEEDBACK_AGGREGATE", entityKey: "vendor:VICTOR", projectId: null, group: "LONG_WAITS",
+      title: `ויקטור מחכה לפידבק שלך ב-${members.length} עבודות`,
+      whyToday: `הישנה (${oldest.title.split(" — ")[0]}) מחכה ${dayWord(oldest.waitingDays ?? 0)}${recent ? ` · ${recent} קיבלו גרסה ב-${RECENT_VERSION_DAYS} הימים האחרונים` : ""}${tasks ? ` · ${tasks} משימות מעקב מקושרות` : ""}`,
+      waitingDays: oldest.waitingDays,
+      ball: { holder: "OWNER", waitingParty: "ויקטור", sinceAt: oldest.ball.sinceAt, ruleHe: "computeVictorBall לכל עבודה (ההעלאה האחרונה מול ההערות האחרונות) — מאוחד לתצוגה בלבד; הכדור בכל עבודה לא שונה" },
+      evidence: members.map((m) => ({ code: "VICTOR_WAITING_OWNER", he: `${m.title.split(" — ")[0]} — ${m.waitingDays !== null ? `מחכה ${dayWord(m.waitingDays)}` : "בלי חותמת זמן"}`, source: "TEAM_VICTOR", epistemic: "DERIVED" as const, at: m.ball.sinceAt })),
+      nextAction: { he: "לעבור על הגרסאות ולשלוח לויקטור הערות (מה שכבר נענה מחוץ למערכת — כדאי לרשום)", actionId: null },
+      fromInbox: null, date: oldest.date,
+      open: { kind: "list", title: `ויקטור מחכה לפידבק שלך (${members.length})`, entries: members.map((m) => ({ key: m.key, title: m.title.split(" — ")[0], reasonHe: m.whyToday, open: m.open })) },
+    });
+  }
+
+  // ── order: the fixed group order; inside a group the most recent event first (approvals: approved-awaiting first;
+  //    own tasks: due today first; scheduled: the soonest first) ──
+  const ts = (i: NeedsItem) => (i.ball.sinceAt && Number.isFinite(Date.parse(i.ball.sinceAt)) ? Date.parse(i.ball.sinceAt) : -1);
   const sorted = [...items].sort((a, b) =>
     NEEDS_GROUP_ORDER.indexOf(a.group) - NEEDS_GROUP_ORDER.indexOf(b.group)
-    || (b.waitingDays ?? -1) - (a.waitingDays ?? -1)
     || (a.group === "APPROVAL" ? Number(b.whyToday.startsWith("אישרת")) - Number(a.whyToday.startsWith("אישרת")) : 0)
-    || (a.date ?? "9999").localeCompare(b.date ?? "9999")
+    || (a.group === "SCHEDULED" ? (a.date ?? "9999").localeCompare(b.date ?? "9999") : 0)
+    || (a.group === "YOUR_TASK" ? (b.date ?? "").localeCompare(a.date ?? "") : 0)
+    || ts(b) - ts(a)
     || a.title.localeCompare(b.title, "he"));
   const byDate = (x: NeedsEntry, y: NeedsEntry) => (x.date ?? "9999").localeCompare(y.date ?? "9999") || x.title.localeCompare(y.title, "he");
   return {
