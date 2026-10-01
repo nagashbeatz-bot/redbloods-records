@@ -8,7 +8,10 @@
  * improvement_signals are ANALYSIS outputs only: Sunny never edits application code or changes a process by itself.
  */
 import { knowledgeKind, KNOWLEDGE_KINDS } from "../../owner-knowledge/kinds";
-import { activeKnowledge, type OwnerKnowledgeRecord } from "../../owner-knowledge/store";
+import { activeKnowledge, knowledgeTemporal, type KnowledgeTemporal, type OwnerKnowledgeRecord } from "../../owner-knowledge/store";
+import { provenanceOf } from "../../owner-knowledge/provenance";
+import { BUSINESS_AREAS, CLASSIFICATION_TYPES, RELATION_TYPES, SOURCE_TYPES } from "../../owner-knowledge/taxonomy";
+import { parseEntityKey } from "../../gateway/keys";
 import type { GatewayEntityType } from "../../gateway/types";
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeReadResult, KnowledgeSources } from "../types";
 import { byCount, item, ok, partner, partnerRecord, record, result, sfact, unavailable } from "./common";
@@ -28,13 +31,27 @@ const touches = (r: OwnerKnowledgeRecord, key: string) => r.identityKeys.include
 const knowledgeOf = (src: KnowledgeSources) => ok(src.ownerKnowledge);
 const todayOf = (src: KnowledgeSources) => ok(src.state)?.todayIL ?? src.now.toISOString().slice(0, 10);
 
-const toItem = (r: OwnerKnowledgeRecord, active: boolean): KnowledgeItem => {
+/** A Gateway-addressable key, or null (a `known:` identity / the company are not Gateway entities). */
+const gatewayKey = (k: string | null | undefined): string | null => (k && (parseEntityKey(k) ? k : null)) ?? null;
+
+/** What a stored row reads as: an INFERRED item is a HYPOTHESIS, never an Owner decision / fact. */
+const epistemicOf = (r: OwnerKnowledgeRecord) => (r.value.sourceType === "INFERRED" ? ("HYPOTHESIS" as const) : r.epistemic);
+
+const provenanceFields = (r: OwnerKnowledgeRecord) => {
+  const p = provenanceOf(r.value);
+  return { sourceType: p.sourceType, confidence: p.confidence, sourceRef: p.sourceRef, observedAt: p.observedAt, stated: p.explicit };
+};
+
+const toItem = (r: OwnerKnowledgeRecord, active: boolean, temporal: KnowledgeTemporal): KnowledgeItem => {
   const k = knowledgeKind(r.kind);
+  const prov = provenanceFields(r);
   return item({
-    id: r.id, entity: r.subjectKey.startsWith("company:") ? null : (r.servedSubjectKey ?? r.subjectKey), label: partnerRecord(r.meaningHe), epistemic: r.epistemic, source: "OWNER_KNOWLEDGE",
-    freshness: active ? "LIVE" : "HISTORICAL", relationQuality: k?.relationQuality ? "OWNER_CONFIRMED" : undefined,
+    id: r.id, entity: r.subjectKey.startsWith("company:") ? null : gatewayKey(r.servedSubjectKey ?? r.subjectKey), label: partnerRecord(r.meaningHe), epistemic: epistemicOf(r), source: "OWNER_KNOWLEDGE",
+    freshness: active ? "LIVE" : "HISTORICAL", relationQuality: k?.relationQuality ? (prov.sourceType === "INFERRED" ? "DERIVED" : "OWNER_CONFIRMED") : undefined,
     fields: {
       kind: r.kind, kindTitle: k ? partner(k.titleHe) : null, status: active ? "ACTIVE" : r.operation === "WITHDRAW" ? "WITHDRAWN" : "SUPERSEDED_OR_EXPIRED",
+      temporal, validity: { status: r.value.status ?? "ACTIVE", validFrom: r.value.validFrom ?? null, validUntil: r.value.validUntil ?? null },
+      provenance: prov, subjectKey: r.subjectKey,
       value: r.value, learnedAt: r.createdAt, reviewAt: r.reviewAt, expiresAt: r.expiresAt, via: "SUNNY", notes: (k?.notesHe ?? []).map((n) => partner(n)),
       canonical: false,
     },
@@ -43,22 +60,33 @@ const toItem = (r: OwnerKnowledgeRecord, active: boolean): KnowledgeItem => {
 
 export const ownerKnowledge: KnowledgeCapability = {
   id: "owner_knowledge", domain: "PARTNER", titleHe: "מה סאני למד ממך",
-  descriptionForModel: "Organizational knowledge the Owner explicitly taught Sunny and confirmed (typed kinds: aliases, organizational roles, relationships, project blockers, follow-up expectations, vendor commitments, release priority, Owner-reported payments, process friction, working-policy candidates). Always Owner knowledge — never a database fact: an Owner-reported payment is NOT a Finance record, a frequency is NOT a booking rule, a policy is only a CANDIDATE. ACTIVE = in use; all = including superseded / withdrawn / expired history.",
-  examplesHe: ["מה לימדתי אותך?", "מי הדי-ג׳יי של הלייבל?", "מה אתה יודע על קלינטון?", "מה סאני יודע?"],
-  modes: { active: { descriptionForModel: "Knowledge in use now" }, all: { descriptionForModel: "Including superseded / withdrawn / expired history" } }, defaultMode: "active",
+  descriptionForModel: "Organizational knowledge the Owner taught Sunny and confirmed: aliases, roles, ENTITY_RELATIONSHIP (OWNER_OF / LABEL_ARTIST_OF / WORKS_WITH … with ACTIVE / ENDED / HISTORICAL status + validity), ENTITY_CLASSIFICATION, KNOWN_ENTITY, blockers, follow-ups, commitments, priorities, Owner-reported payments, frictions, policy candidates by business area. Always Owner knowledge, never a database fact (WORKS_WITH is NOT a label artist; a policy is only a candidate). Each item has provenance (sourceType, confidence) and a temporal state: CURRENT, HISTORICAL (ended, kept), FUTURE, SUPERSEDED, WITHDRAWN. active = CURRENT only (relation=LABEL_ARTIST_OF → the current roster); historical = ended facts (who WAS on it); all = everything. INFERRED = a HYPOTHESIS.",
+  examplesHe: ["מה לימדתי אותך?", "מי הבעלים של Redbloods?", "מי נמצא כרגע בסגל?", "מי היה בעבר בסגל?", "מה סאני יודע?"],
+  modes: { active: { descriptionForModel: "Knowledge in use now (CURRENT only)" }, historical: { descriptionForModel: "Ended / past-validity knowledge — kept as history" }, all: { descriptionForModel: "Everything: current, historical, superseded, withdrawn, expired" } }, defaultMode: "active",
   params: {
     entity: { kind: "entityKey", types: ENTITY_TYPES, descriptionForModel: "Only knowledge about this entity (every key of the same identity counts, and knowledge that points at it)" },
+    known: { kind: "text", maxLength: 63, descriptionForModel: "Only knowledge about a declared KNOWN_ENTITY, by its slug (e.g. nagashbeatz)" },
     kind: { kind: "enum", values: KNOWLEDGE_KINDS.map((k) => k.kind), descriptionForModel: "Only this knowledge kind" },
+    relation: { kind: "enum", values: RELATION_TYPES, descriptionForModel: "Only this relationship type (ENTITY_RELATIONSHIP)" },
+    area: { kind: "enum", values: BUSINESS_AREAS, descriptionForModel: "Only policies / frictions of this business area" },
+    classification: { kind: "enum", values: CLASSIFICATION_TYPES, descriptionForModel: "Only this classification type (ENTITY_CLASSIFICATION)" },
   },
   entityScope: { types: ENTITY_TYPES, param: "entity", mode: "active", limit: 10 },
   paging: { defaultLimit: 20, maxLimit: 50 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: ["OWNER_KNOWLEDGE", "STATE"],
   read(src, q) {
     const all = knowledgeOf(src);
     if (!all) return NOT_ACTIVE;
-    const active = new Set(activeKnowledge(all, todayOf(src)).map((r) => r.id));
-    const list = all.filter((r) => (q.mode === "all" || active.has(r.id)) && (!q.params.entity || touches(r, q.params.entity)) && (!q.params.kind || r.kind === q.params.kind))
+    const today = todayOf(src);
+    const active = new Set(activeKnowledge(all, today).map((r) => r.id));
+    const temporal = knowledgeTemporal(all, today);
+    const knownKey = q.params.known ? `known:${q.params.known.toLowerCase()}` : null;
+    const inMode = (r: OwnerKnowledgeRecord) => q.mode === "all" || (q.mode === "historical" ? temporal.get(r.id) === "HISTORICAL" : active.has(r.id));
+    const list = all.filter((r) => inMode(r) && (!q.params.entity || touches(r, q.params.entity)) && (!knownKey || touches(r, knownKey)) && (!q.params.kind || r.kind === q.params.kind)
+      && (!q.params.relation || r.value.relation === q.params.relation) && (!q.params.area || r.value.area === q.params.area) && (!q.params.classification || r.value.classificationType === q.params.classification))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-    return result(list.map((r) => toItem(r, active.has(r.id))), { summary: [sfact("BY_KIND", "ידע לפי סוג", byCount(list.map((r) => r.kind)), "OWNER_DECISION", "OWNER_KNOWLEDGE")] });
+    return result(list.map((r) => toItem(r, active.has(r.id), temporal.get(r.id) ?? "CURRENT")), {
+      summary: [sfact("BY_KIND", "ידע לפי סוג", byCount(list.map((r) => r.kind)), "OWNER_DECISION", "OWNER_KNOWLEDGE"), sfact("BY_TEMPORAL", "ידע לפי מצב בזמן", byCount(list.map((r) => temporal.get(r.id) ?? "CURRENT")), "OWNER_DECISION", "OWNER_KNOWLEDGE")],
+    });
   },
 };
 
@@ -74,12 +102,15 @@ export const relations: KnowledgeCapability = {
   descriptionForModel: "How one entity is connected to others, each edge labelled with its relation quality: CANONICAL_RELATION (an id link in the app), OWNER_CONFIRMED_RELATION (the Owner told Sunny and confirmed). Text matches and derived links are reported by the entity's own capabilities (shows, releases…) with their own quality. A relation here never implies a canonical database link.",
   examplesHe: ["עם מי קלינטון קשור?", "מי עובד עם שליו?"],
   modes: { entity: { descriptionForModel: "All known edges of one entity" } }, defaultMode: "entity",
-  params: { entity: { kind: "entityKey", types: ENTITY_TYPES, descriptionForModel: "The entity (required)" } },
+  params: {
+    entity: { kind: "entityKey", types: ENTITY_TYPES, descriptionForModel: "The entity (pass this OR known)" },
+    known: { kind: "text", maxLength: 63, descriptionForModel: "A declared KNOWN_ENTITY by its slug (e.g. nagashbeatz) — for an entity with no canonical Redbloods record" },
+  },
   entityScope: { types: ENTITY_TYPES, param: "entity", mode: "entity", limit: 10 },
   paging: { defaultLimit: 20, maxLimit: 40 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: ["STATE", "OWNER_KNOWLEDGE"],
   read(src, q) {
-    const key = q.params.entity;
-    if (!key) return result([], { completeness: "UNKNOWN", missing: [{ fact: "entity", whyNeeded: "relations are listed per entity — pass params.entity" }] });
+    const key = q.params.entity ?? (q.params.known ? `known:${q.params.known.toLowerCase()}` : undefined);
+    if (!key) return result([], { completeness: "UNKNOWN", missing: [{ fact: "entity", whyNeeded: "relations are listed per entity — pass params.entity or params.known" }] });
     const items: KnowledgeItem[] = [];
     const ct = src.identities.cleantone;
     const st = ok(src.state);
@@ -93,10 +124,19 @@ export const relations: KnowledgeCapability = {
     }
     const kn = knowledgeOf(src);
     if (kn) {
-      for (const r of activeKnowledge(kn, todayOf(src)).filter((x) => knowledgeKind(x.kind)?.relationQuality && touches(x, key))) {
+      const today = todayOf(src);
+      const temporal = knowledgeTemporal(kn, today);
+      // every terminal ASSERT relationship edge: CURRENT ones are live, ended / past ones are kept as HISTORICAL edges
+      const edgeRows = kn.filter((x) => knowledgeKind(x.kind)?.relationQuality && touches(x, key) && (temporal.get(x.id) === "CURRENT" || temporal.get(x.id) === "HISTORICAL" || temporal.get(x.id) === "FUTURE"));
+      for (const r of edgeRows) {
+        const prov = provenanceFields(r);
         const other = r.identityKeys.includes(key) ? (typeof r.value.object === "string" ? r.value.object : null) : (r.servedSubjectKey ?? r.subjectKey);
-        items.push(item({ id: `owner:${r.id}`, entity: other && !other.startsWith("company:") ? other : null, label: partnerRecord(r.meaningHe), epistemic: r.epistemic, source: "OWNER_KNOWLEDGE", relationQuality: "OWNER_CONFIRMED",
-          fields: { relation: r.kind === "ORGANIZATIONAL_ROLE" ? `ROLE:${r.value.role}` : String(r.value.relation ?? r.kind), frequency: r.value.frequency ?? null, relationQuality: "OWNER_CONFIRMED_RELATION", counterpart: other ? record(String(r.value.objectLabel ?? other)) : null } }));
+        const t = temporal.get(r.id) ?? "CURRENT";
+        items.push(item({ id: `owner:${r.id}`, entity: other && !other.startsWith("company:") ? gatewayKey(other) : null, label: partnerRecord(r.meaningHe), epistemic: epistemicOf(r), source: "OWNER_KNOWLEDGE", freshness: t === "CURRENT" ? "LIVE" : "HISTORICAL",
+          relationQuality: prov.sourceType === "INFERRED" ? "DERIVED" : "OWNER_CONFIRMED",
+          fields: { relation: r.kind === "ORGANIZATIONAL_ROLE" ? `ROLE:${r.value.role}` : String(r.value.relation ?? r.kind), frequency: r.value.frequency ?? null, relationQuality: prov.sourceType === "INFERRED" ? "DERIVED_RELATION" : "OWNER_CONFIRMED_RELATION",
+            temporal: t, validity: { status: r.value.status ?? "ACTIVE", validFrom: r.value.validFrom ?? null, validUntil: r.value.validUntil ?? null }, provenance: prov,
+            counterpartKey: other, counterpart: other ? record(String(r.value.objectLabel ?? other)) : null } }));
       }
     }
     return result(items, {

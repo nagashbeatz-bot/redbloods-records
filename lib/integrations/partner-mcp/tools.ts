@@ -17,7 +17,7 @@ export const ANSWER_TOOL = "partner_answer_question";
 export const KNOWLEDGE_TOOL = "partner_propose_knowledge";
 /** Must match lib/partner/owner-knowledge/kinds.ts (a test pins it); the Partner core re-validates every field. */
 export const KNOWLEDGE_KINDS_FOR_TOOL = ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "PROJECT_BLOCKER", "FOLLOW_UP_EXPECTATION", "VENDOR_COMMITMENT",
-  "RELEASE_PRIORITY", "PAYMENT_REPORTED_BY_OWNER", "PROCESS_FRICTION", "WORKING_POLICY_CANDIDATE"] as const;
+  "RELEASE_PRIORITY", "PAYMENT_REPORTED_BY_OWNER", "PROCESS_FRICTION", "WORKING_POLICY_CANDIDATE", "ENTITY_CLASSIFICATION", "KNOWN_ENTITY"] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 const COMMON =
@@ -120,12 +120,15 @@ export const KNOWLEDGE_TOOL_DEFINITION = {
   description:
     "Teach Sunny durable organizational knowledge the Owner stated in THIS conversation (not a question Sunny asked — use partner_answer_question for those). " +
     "Only typed kinds exist: ENTITY_ALIAS {alias}, ORGANIZATIONAL_ROLE {role: LABEL_DJ|LABEL_ARTIST_MANAGER|MIX_ENGINEER|MASTERING_ENGINEER|PRODUCER|BOOKER|TEAM_MEMBER}, " +
-    "ENTITY_RELATIONSHIP {relation: PARTICIPATES_IN_SHOWS|WORKS_WITH|REPRESENTS|COLLABORATES_WITH, object: name or key (\"הלייבל\" = the company), frequency?: ALWAYS|MOST|SOMETIMES|RARELY}, " +
+    "ENTITY_RELATIONSHIP {relation: OWNER_OF|FOUNDER_OF|LABEL_ARTIST_OF|WORKS_WITH|PRODUCER_FOR|MANAGES|COLLABORATES_WITH (legacy: PARTICIPATES_IN_SHOWS|REPRESENTS), object: name or key (\"הלייבל\" = the company; LABEL_ARTIST_OF always points at the company; WORKS_WITH is NOT a label artist), status?: ACTIVE|ENDED|HISTORICAL (an ended relationship is kept as history — assert it again with ENDED, never delete), validFrom?, validUntil?: YYYY-MM-DD, frequency?: ALWAYS|MOST|SOMETIMES|RARELY}, " +
+    "ENTITY_CLASSIFICATION {classificationType: RELEASE_TYPE|PROJECT_TYPE|CHANNEL_PURPOSE|CONTENT_SERIES|CATALOG_POSITION, value: a registered value of that type (e.g. RELEASE_TYPE=NEW_VERSION, CONTENT_SERIES=RED_BARS), status?, validFrom?, validUntil?}, " +
+    "KNOWN_ENTITY {displayName} — subject = the same canonical Latin name; a FALLBACK identity (known:<slug>) ONLY when partner_resolve found no canonical entity, never for a variant / nickname of an existing one, no aliases. Relationship / classification items may point at it by name once declared (even earlier in the same call). " +
+    "PROVENANCE (optional on ENTITY_RELATIONSHIP / ENTITY_CLASSIFICATION / WORKING_POLICY_CANDIDATE / KNOWN_ENTITY): sourceType?: OWNER_STATEMENT (default — the Owner said it) | SYSTEM_RECORD (needs sourceRef) | EXTERNAL_SOURCE | INFERRED (your own inference — never CONFIRMED, and it can never replace what the Owner or the system established: PROVENANCE_CONFLICT), confidence?: CONFIRMED|HIGH|MEDIUM|LOW, sourceRef?, observedAt?. " +
     "PROJECT_BLOCKER {reason: WAITING_FOR_ARTIST|WAITING_FOR_CLIENT|WAITING_FOR_PAYMENT|WAITING_FOR_VENDOR|WAITING_FOR_OWNER|EXTERNAL_DEPENDENCY, waitingOn?, detail?}, " +
     "FOLLOW_UP_EXPECTATION {who: COUNTERPART_WILL_CONTACT|OWNER_WILL_CONTACT, when?: YYYY-MM-DD, whenRelative?: AFTER_HOLIDAYS|NEXT_WEEK|NEXT_MONTH|UNSPECIFIED}, " +
     "VENDOR_COMMITMENT {commitment: DELIVER_WORK|SEND_REVISION|SEND_FILES, due: YYYY-MM-DD, project?}, RELEASE_PRIORITY {priority: URGENT|NORMAL|NOT_URGENT}, " +
     "PAYMENT_REPORTED_BY_OWNER {direction: RECEIVED|PAID, amount, currency: ₪|$|€, date?} (Owner-reported only — NEVER a Finance record), " +
-    "PROCESS_FRICTION {area, frictionHe} and WORKING_POLICY_CANDIDATE {area, policyHe, appliesWhenHe?} (subject \"Redbloods\"; a policy stays a candidate). " +
+    "PROCESS_FRICTION {area, frictionHe} and WORKING_POLICY_CANDIDATE {area, policyHe, appliesWhenHe?, status?, validFrom?, validUntil?} (subject \"Redbloods\"; area: PROJECTS|SHOWS|FINANCE|RELEASES|TEAM|CLIENTS|SOCIAL|MARKETING|CONTENT|OPERATIONS; a policy stays a candidate). " +
     "Requests to CHANGE something (a deadline, a payment record, a task) are actions, not knowledge — do not use this tool for them. " +
     "Flow: stage \"preview\" with up to 3 items → show the Owner readBackHe → ONLY after the Owner explicitly confirms, stage \"commit\" with the SAME items and the confirmationToken. " +
     "NEEDS_CLARIFICATION → ask the Owner which entity they meant (never pick). STALE / TOKEN_EXPIRED → preview again. Say \"למדתי\" ONLY when status is LEARNED. " +
@@ -141,7 +144,7 @@ export const KNOWLEDGE_TOOL_DEFINITION = {
           properties: {
             kind: { type: "string", enum: [...KNOWLEDGE_KINDS_FOR_TOOL] },
             subject: { type: "string", minLength: 1, maxLength: 120, description: "Who / what the knowledge is about: a name as the Owner said it, or an entity key from partner_resolve (\"Redbloods\" for company-wide kinds)" },
-            fields: { type: "object", additionalProperties: { type: ["string", "number"] }, maxProperties: 5, description: "The kind's fields (see the list above)" },
+            fields: { type: "object", additionalProperties: { type: ["string", "number"] }, maxProperties: 12, description: "The kind's fields (see the list above)" },
             operation: { type: "string", enum: ["ASSERT", "WITHDRAW"], description: "WITHDRAW = the Owner says it is no longer true (default ASSERT)" },
           },
           required: ["kind", "subject"],
@@ -215,7 +218,7 @@ function validateKnowledgeArgs(args: Record<string, unknown>): ArgsValidation {
     if (typeof it.subject !== "string" || !it.subject.trim() || it.subject.length > 120 || CONTROL.test(it.subject)) return bad("subject must be 1–120 printable characters");
     const out: KnowledgeItemArgs = { kind: it.kind, subject: it.subject.trim() };
     if (it.fields !== undefined) {
-      if (!isObj(it.fields) || Object.keys(it.fields).length > 5) return bad("fields must be an object with at most 5 fields");
+      if (!isObj(it.fields) || Object.keys(it.fields).length > 12) return bad("fields must be an object with at most 12 fields");
       const f: Record<string, string | number> = {};
       for (const [k, v] of Object.entries(it.fields)) {
         if (!/^[a-zA-Z]{1,30}$/.test(k)) return bad("field names are the kind's field names");

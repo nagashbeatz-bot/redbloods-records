@@ -20,7 +20,8 @@ import { resolvePartnerEntityCore } from "../gateway/resolve";
 import { parseEntityKey } from "../gateway/keys";
 import type { GatewaySources } from "../gateway/core";
 import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
-import { activeKnowledge, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
+import { assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
+import { isAuthoritative, withProvenanceDefaults } from "./provenance";
 
 export const MAX_ITEMS = 3;
 export const TOKEN_TTL_MS = 10 * 60_000;
@@ -71,6 +72,8 @@ export type PreviewResult =
   | { status: "NEEDS_CLARIFICATION"; questionHe: string; candidates: Array<{ key: string; label: string; type: string }> }
   | { status: "INVALID"; errors: string[] }
   | { status: "CONFLICT_WITH_LIVE"; messagesHe: string[] }
+  /** An INFERRED assertion would replace what the Owner / the system already established — explicit, never a silent overwrite. */
+  | { status: "PROVENANCE_CONFLICT"; messageHe: string; existing: { id: string; meaningHe: string; sourceType: string } }
   | { status: "ALREADY_KNOWN"; messageHe: string }
   | { status: "NOTHING_TO_WITHDRAW"; messageHe: string }
   | { status: "NOT_AUTHORIZED" }
@@ -81,14 +84,33 @@ export type CommitResult =
   | { status: "STALE"; messageHe: string }
   | { status: "TOKEN_INVALID" | "TOKEN_EXPIRED" | "ALREADY_COMMITTED" | "NOT_AUTHORIZED" }
   | { status: "NOT_VERIFIED"; messageHe: string; persisted: true }
-  | { status: "INVALID" | "CONFLICT_WITH_LIVE" | "NEEDS_CLARIFICATION" | "ALREADY_KNOWN" | "NOTHING_TO_WITHDRAW"; detail: unknown }
+  | { status: "INVALID" | "CONFLICT_WITH_LIVE" | "NEEDS_CLARIFICATION" | "ALREADY_KNOWN" | "NOTHING_TO_WITHDRAW" | "PROVENANCE_CONFLICT"; detail: unknown }
   | { status: "UNAVAILABLE" | "FAILED"; detail: string };
 
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 const TYPE_PREF: KnowledgeSubjectType[] = ["label-artist", "dj", "client", "vendor", "project", "release", "show", "company"];
 
-function entityLabel(src: GatewaySources, key: string): string | null {
+/** The one deterministic key of a KNOWN_ENTITY: its canonical Latin name folded to [a-z0-9-] (empty = not representable). */
+export function slugOf(name: string): string {
+  return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63).replace(/-+$/, "");
+}
+export const KNOWN_KEY_RE = /^known:[a-z0-9][a-z0-9-]{1,62}$/;
+
+/** Declared KNOWN_ENTITY identities (terminal ASSERT rows) plus the ones declared earlier in the SAME batch. */
+export interface KnownIndex { byKey: Map<string, string>; bySlug: Map<string, { key: string; displayName: string }> }
+export function buildKnownIndex(records: readonly OwnerKnowledgeRecord[]): KnownIndex {
+  const idx: KnownIndex = { byKey: new Map(), bySlug: new Map() };
+  for (const slot of new Set(records.filter((r) => r.kind === "KNOWN_ENTITY").map((r) => r.slotKey))) {
+    const t = assertedTerminal(records, slot);
+    if (t) addKnown(idx, t.subjectKey, String(t.value.displayName ?? ""));
+  }
+  return idx;
+}
+const addKnown = (idx: KnownIndex, key: string, displayName: string) => { idx.byKey.set(key, displayName); idx.bySlug.set(key.slice("known:".length), { key, displayName }); };
+
+function entityLabel(src: GatewaySources, key: string, known?: KnownIndex): string | null {
   if (key === COMPANY_KEY) return "Redbloods";
+  if (key.startsWith("known:")) return known?.byKey.get(key) ?? null;
   if (key === "vendor:VICTOR") return "Victor";
   if (key === "vendor:STEVEN") return "Steven";
   const st = src.state?.status === "OK" ? src.state.value : null;
@@ -104,16 +126,16 @@ function entityLabel(src: GatewaySources, key: string): string | null {
 type Resolved = { ok: true; key: string; label: string; identityKeys: string[] } | { ok: false; clarify: { questionHe: string; candidates: Array<{ key: string; label: string; type: string }> } } | { ok: false; error: string };
 
 /** Deterministic entity resolution for a subject / entity field: an explicit key must exist; a name goes through partner_resolve rules. */
-export function resolveEntity(src: GatewaySources, raw: unknown, allowed: readonly KnowledgeSubjectType[], what: string): Resolved {
+export function resolveEntity(src: GatewaySources, raw: unknown, allowed: readonly KnowledgeSubjectType[], what: string, known?: KnownIndex): Resolved {
   // A string is a KEY when it has the exact shape of one (partner_resolve output), otherwise a name as the Owner said it.
-  const looksLikeKey = (t: string) => t === COMPANY_KEY || /^vendor:(VICTOR|STEVEN)$/.test(t) || !!parseEntityKey(t);
+  const looksLikeKey = (t: string) => t === COMPANY_KEY || /^vendor:(VICTOR|STEVEN)$/.test(t) || KNOWN_KEY_RE.test(t) || !!parseEntityKey(t);
   const r = (typeof raw === "string" ? (looksLikeKey(raw.trim()) ? { key: raw } : { name: raw }) : raw) as { key?: unknown; name?: unknown } | null;
   if (!r || typeof r !== "object") return { ok: false, error: `${what}: expected { key } or { name }` };
   if (typeof r.key === "string") {
     const key = r.key.trim();
-    const type = key === COMPANY_KEY ? "company" : key.startsWith("vendor:") ? "vendor" : parseEntityKey(key)?.type;
+    const type = key === COMPANY_KEY ? "company" : key.startsWith("vendor:") ? "vendor" : key.startsWith("known:") ? "known" : parseEntityKey(key)?.type;
     if (!type || !allowed.includes(type as KnowledgeSubjectType)) return { ok: false, error: `${what}: ${key} is not an allowed entity (${allowed.join(" / ")})` };
-    const label = entityLabel(src, key);
+    const label = entityLabel(src, key, known);
     if (!label) return { ok: false, error: `${what}: ${key} does not exist` };
     return { ok: true, key, label, identityKeys: [key] };
   }
@@ -122,7 +144,12 @@ export function resolveEntity(src: GatewaySources, raw: unknown, allowed: readon
   const res = resolvePartnerEntityCore(r.name.trim(), src);
   const cands = res.candidates.filter((c) => allowed.includes(c.type as KnowledgeSubjectType));
   const ask = (q: string) => ({ ok: false as const, clarify: { questionHe: q, candidates: res.candidates.map((c) => ({ key: c.key, label: c.label.text, type: c.type })) } });
-  if (res.status === "NOT_FOUND" || !cands.length) return ask(`לא מצאתי ישות מתאימה בשם "${r.name.trim()}". למי התכוונת?`);
+  // A canonical entity ALWAYS wins; a declared KNOWN_ENTITY is only the fallback when no canonical one matched.
+  if (res.status === "NOT_FOUND" || !cands.length) {
+    const k = allowed.includes("known") && known ? known.bySlug.get(slugOf(r.name.trim())) : undefined;
+    if (k) return { ok: true, key: k.key, label: k.displayName, identityKeys: [k.key] };
+    return ask(`לא מצאתי ישות מתאימה בשם "${r.name.trim()}". למי התכוונת?${allowed.includes("known") ? " (אם אין לה רשומה ב-Redbloods — צריך להצהיר עליה קודם כישות מוכרת, KNOWN_ENTITY.)" : ""}`);
+  }
   if (res.status === "AMBIGUOUS") return ask(`יש כמה אפשרויות ל"${r.name.trim()}". למי התכוונת?`);
   const groups = new Set(cands.map((c) => c.identityGroup.id));
   if (groups.size > 1) return ask(`"${r.name.trim()}" יכול להיות כמה ישויות שונות. למי התכוונת?`);
@@ -131,16 +158,41 @@ export function resolveEntity(src: GatewaySources, raw: unknown, allowed: readon
   return { ok: true, key: pick.key, label: pick.label.text, identityKeys };
 }
 
-function validField(name: string, spec: FieldSpec, raw: unknown, src: GatewaySources, value: KnowledgeValue, errors: string[], clarify: { v: Resolved | null }) {
+function validField(name: string, spec: FieldSpec, raw: unknown, src: GatewaySources, value: KnowledgeValue, errors: string[], clarify: { v: Resolved | null }, known?: KnownIndex) {
   if (raw === undefined || raw === null || raw === "") { if (spec.required) errors.push(`${name}: required`); return; }
   if (spec.type === "enum") { if (typeof raw !== "string" || !spec.values.includes(raw)) errors.push(`${name}: one of ${spec.values.join(", ")}`); else value[name] = raw; return; }
   if (spec.type === "text") { const t = typeof raw === "string" ? raw.normalize("NFKC").trim().replace(/\s+/g, " ") : ""; if (!t || t.length > spec.maxLength || CONTROL.test(t)) errors.push(`${name}: 1–${spec.maxLength} printable characters`); else value[name] = t; return; }
   if (spec.type === "ymd") { const t = String(raw); const d = new Date(`${t}T12:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t) errors.push(`${name}: YYYY-MM-DD`); else value[name] = t; return; }
   if (spec.type === "amount") { const n = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, "")); if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) errors.push(`${name}: a positive amount`); else value[name] = Math.round(n * 100) / 100; return; }
-  const r = resolveEntity(src, raw, spec.subjectTypes, name);
+  const r = resolveEntity(src, raw, spec.subjectTypes, name, known);
   if (!r.ok) { if ("clarify" in r) clarify.v = r; else errors.push(r.error); return; }
   value[name] = r.key; value[`${name}Label`] = r.label;
 }
+
+/**
+ * KNOWN_ENTITY: declare the controlled identity of an entity with NO canonical record. The key is deterministic
+ * (known:<slug of the canonical Latin name>); a canonical entity always wins, a similar declared one is refused (no
+ * duplicate identity because of a spelling variant), and nothing here stores an alias.
+ */
+function declareKnown(src: GatewaySources, known: KnownIndex, rawSubject: unknown, displayNameRaw: unknown, what: string): Resolved {
+  const name = typeof rawSubject === "string" ? rawSubject : (rawSubject as { name?: unknown } | null)?.name;
+  if (typeof name !== "string" || !name.trim() || name.length > 120 || CONTROL.test(name)) return { ok: false, error: `${what}: the canonical name of the new entity (1–120 printable characters)` };
+  const dn = String(displayNameRaw ?? "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  const slug = slugOf(dn);
+  if (slug.length < 2) return { ok: false, error: `${what}: displayName must contain latin letters / digits — the stable key is built from them` };
+  if (slugOf(name) !== slug) return { ok: false, error: `${what}: subject and displayName must be the same canonical name (a variant is never declared separately)` };
+  const res = resolvePartnerEntityCore(dn, src);
+  if (res.status !== "NOT_FOUND" && res.candidates.length) return { ok: false, error: `ENTITY_ALREADY_EXISTS: "${dn}" already exists (${res.candidates.slice(0, 3).map((c) => c.key).join(", ")}) — use that entity; no known entity is created` };
+  const same = known.bySlug.get(slug);
+  if (same && same.displayName !== dn) return { ok: false, error: `ENTITY_KEY_COLLISION: the key known:${slug} already belongs to "${same.displayName}"` };
+  for (const [other, e] of known.bySlug) if (other !== slug && Math.min(other.length, slug.length) >= 4 && (other.startsWith(slug) || slug.startsWith(other))) return { ok: false, error: `POSSIBLE_DUPLICATE_ENTITY: "${dn}" looks like a variant of the declared entity "${e.displayName}" (${e.key}) — use ${e.key}; no second identity is created` };
+  const key = `known:${slug}`;
+  addKnown(known, key, dn);
+  return { ok: true, key, label: dn, identityKeys: [key] };
+}
+
+const epistemicOf = (kind: KnowledgeKind, value: KnowledgeValue): KnowledgeKind["epistemic"] =>
+  kind.epistemic === "OWNER_DECISION" && value.sourceType && value.sourceType !== "OWNER_STATEMENT" ? "OWNER_REPORTED" : kind.epistemic;
 
 type NormalizeOut = { ok: true; items: NormalizedItem[] } | { ok: false; result: PreviewResult };
 
@@ -149,34 +201,51 @@ export function normalizeItems(inputs: unknown, live: KnowledgeLive): NormalizeO
   if (!Array.isArray(inputs) || inputs.length < 1 || inputs.length > MAX_ITEMS) return { ok: false, result: { status: "INVALID", errors: [`items: 1–${MAX_ITEMS} knowledge items`] } };
   const errors: string[] = [];
   const items: NormalizedItem[] = [];
-  const active = activeKnowledge(live.records, live.facts.todayIL);
+  const known = buildKnownIndex(live.records);
   for (const [i, raw] of inputs.entries()) {
     const it = raw as KnowledgeItemInput;
     const kind = knowledgeKind(it?.kind);
     if (!kind) { errors.push(`items[${i}].kind: unknown knowledge kind (no generic notes)`); continue; }
     const op = it.operation === undefined ? "ASSERT" : it.operation;
     if (op !== "ASSERT" && op !== "WITHDRAW") { errors.push(`items[${i}].operation: ASSERT or WITHDRAW`); continue; }
-    const subj = resolveEntity(live.src, it.subject, kind.subjectTypes, `items[${i}].subject`);
-    if (!subj.ok) { if ("clarify" in subj) return { ok: false, result: { status: "NEEDS_CLARIFICATION", ...subj.clarify } }; errors.push(subj.error); continue; }
     const fields = (it.fields ?? {}) as Record<string, unknown>;
-    if (typeof fields !== "object" || Array.isArray(fields)) { errors.push(`items[${i}].fields: object`); continue; }
+    if (typeof fields !== "object" || fields === null || Array.isArray(fields)) { errors.push(`items[${i}].fields: object`); continue; }
     const unknown = Object.keys(fields).filter((k) => !(k in kind.fields));
     if (unknown.length) { errors.push(`items[${i}].fields: unknown ${unknown.join(", ")} (allowed: ${Object.keys(kind.fields).join(", ")})`); continue; }
     const value: KnowledgeValue = {};
     const clarify = { v: null as Resolved | null };
-    for (const [n, spec] of Object.entries(kind.fields)) validField(`${n}`, spec, fields[n], live.src, value, errors, clarify);
+    const isDeclare = kind.subjectMode === "DECLARE_KNOWN";
+    let subj: Resolved;
+    if (isDeclare) {
+      // the identity being declared comes from the validated displayName, so the fields are read first
+      for (const [n, spec] of Object.entries(kind.fields)) validField(`${n}`, spec, fields[n], live.src, value, errors, clarify, known);
+      if (errors.length) continue;
+      subj = declareKnown(live.src, known, it.subject, value.displayName, `items[${i}].subject`);
+    } else {
+      subj = resolveEntity(live.src, it.subject, kind.subjectTypes, `items[${i}].subject`, known);
+    }
+    if (!subj.ok) { if ("clarify" in subj) return { ok: false, result: { status: "NEEDS_CLARIFICATION", ...subj.clarify } }; errors.push(subj.error); continue; }
+    if (!isDeclare) for (const [n, spec] of Object.entries(kind.fields)) validField(`${n}`, spec, fields[n], live.src, value, errors, clarify, known);
     if (clarify.v && !clarify.v.ok && "clarify" in clarify.v) return { ok: false, result: { status: "NEEDS_CLARIFICATION", ...clarify.v.clarify } };
     if (errors.length) continue;
+    if (op === "ASSERT" && (kind.provenance || kind.timeAware)) Object.assign(value, withProvenanceDefaults(value, new Set(Object.keys(kind.fields))));
+    if (op === "ASSERT" && kind.check) { const ce = kind.check(value); if (ce.length) { for (const m of ce) errors.push(`items[${i}].fields: ${m}`); continue; } }
+    if (!isDeclare && typeof value.object === "string" && value.object === subj.key) { errors.push(`items[${i}].fields.object: an entity cannot be related to itself`); continue; }
     const slotKey = `${kind.kind}|${subj.key}|${kind.slot(value)}`.slice(0, 300);
     const terminal = terminalOfSlot(live.records, slotKey);
     const conflicts = op === "ASSERT" ? kind.conflicts(subj.key, value, live.facts) : [];
-    const current = active.find((r) => r.slotKey === slotKey) ?? null;
-    if (op === "ASSERT" && current && canonicalStableStringify(current.value) === canonicalStableStringify(value)) return { ok: false, result: { status: "ALREADY_KNOWN", messageHe: `סאני כבר יודע: ${current.meaningHe}` } };
-    if (op === "WITHDRAW" && !current) return { ok: false, result: { status: "NOTHING_TO_WITHDRAW", messageHe: "אין ידע פעיל כזה לבטל." } };
+    const current = assertedTerminal(live.records, slotKey);
+    const inUse = current && (!current.expiresAt || current.expiresAt >= live.facts.todayIL) ? current : null;
+    const defaultsOf = (v: KnowledgeValue) => (kind.provenance || kind.timeAware ? withProvenanceDefaults(v, new Set(Object.keys(kind.fields))) : v);
+    if (op === "ASSERT" && inUse && canonicalStableStringify(defaultsOf(inUse.value)) === canonicalStableStringify(value)) return { ok: false, result: { status: "ALREADY_KNOWN", messageHe: `סאני כבר יודע: ${inUse.meaningHe}` } };
+    if (op === "ASSERT" && value.sourceType === "INFERRED" && terminal && (terminal.operation === "WITHDRAW" || isAuthoritative(terminal.value))) {
+      return { ok: false, result: { status: "PROVENANCE_CONFLICT", messageHe: terminal.operation === "WITHDRAW" ? "הבעלים כבר ביטל את הידע הזה — הסקה של סאני לא מחזירה אותו." : `כבר קיים ידע מבוסס ${terminal.value.sourceType ?? "OWNER_STATEMENT"}: ${terminal.meaningHe} — הסקה של סאני לא דורסת אותו.`, existing: { id: terminal.id, meaningHe: terminal.meaningHe, sourceType: String(terminal.value.sourceType ?? "OWNER_STATEMENT") } } };
+    }
+    if (op === "WITHDRAW" && !inUse) { return { ok: false, result: { status: "NOTHING_TO_WITHDRAW", messageHe: "אין ידע פעיל כזה לבטל." } }; }
     const readBack = kind.readBackHe(subj.label, value);
     items.push({
-      kind: kind.kind, operation: op, subjectKey: subj.key, subjectLabel: subj.label, identityKeys: subj.identityKeys, slotKey, value, epistemic: kind.epistemic,
-      meaningHe: op === "WITHDRAW" ? `לא נכון יותר: ${current!.meaningHe}` : readBack, supersedesId: terminal?.id ?? null, supersedesMeaningHe: terminal && terminal.operation === "ASSERT" ? terminal.meaningHe : null,
+      kind: kind.kind, operation: op, subjectKey: subj.key, subjectLabel: subj.label, identityKeys: subj.identityKeys, slotKey, value, epistemic: epistemicOf(kind, value),
+      meaningHe: op === "WITHDRAW" ? `לא נכון יותר: ${inUse!.meaningHe}` : readBack, supersedesId: terminal?.id ?? null, supersedesMeaningHe: terminal && terminal.operation === "ASSERT" ? terminal.meaningHe : null,
       reviewAt: op === "ASSERT" ? kind.reviewAt(value, live.facts.todayIL) : null, expiresAt: op === "ASSERT" ? kind.expiresAt(value) : null, conflicts, notesHe: [...kind.notesHe],
     });
   }
@@ -233,6 +302,7 @@ export async function commitKnowledgeCore(deps: KnowledgeProposeDeps, actor: Kno
   if (!n.ok) {
     const r = n.result;
     if (r.status === "ALREADY_KNOWN") return { status: "ALREADY_KNOWN", detail: r.messageHe };
+    if (r.status === "PROVENANCE_CONFLICT") return { status: "PROVENANCE_CONFLICT", detail: r.messageHe };
     return { status: "STALE", messageHe: "משהו השתנה מאז ההצגה. צריך להציג שוב את מה שאני אמור לשמור." };
   }
   if (payloadHash(n.items) !== b.h || stateHash(n.items) !== b.f) return { status: "STALE", messageHe: "הנתונים או הניסוח השתנו מאז האישור. אציג שוב לפני שמירה." };

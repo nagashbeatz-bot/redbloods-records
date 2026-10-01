@@ -9,9 +9,13 @@
  * kind (compile-enforced). An Owner-reported payment stays OWNER_REPORTED; a Finance record only ever comes from a
  * Finance Action. A frequency ("most shows") never becomes a booking rule; a policy stays a CANDIDATE.
  */
+import { BUSINESS_AREAS, BUSINESS_AREA_HE, ALL_CLASSIFICATION_VALUES, CLASSIFICATION_REGISTRY, CLASSIFICATION_TYPES, CLASSIFICATION_VALUE_HE, CONFIDENCES, RELATION_HE, RELATION_TYPES, SOURCE_TYPES, SOURCE_TYPE_HE, TIME_STATUSES, TIME_STATUS_HE, classificationValueAllowed } from "./taxonomy";
+import { checkProvenanceAndTime, provenanceOf } from "./provenance";
+
 export const COMPANY_KEY = "company:REDBLOODS";
 
-export type KnowledgeSubjectType = "label-artist" | "dj" | "client" | "project" | "show" | "release" | "vendor" | "company";
+/** "known" = a controlled identity declared through KNOWN_ENTITY (key `known:<slug>`) for an entity with NO canonical Redbloods record. */
+export type KnowledgeSubjectType = "label-artist" | "dj" | "client" | "project" | "show" | "release" | "vendor" | "company" | "known";
 export type KnowledgeEpistemic = "OWNER_DECISION" | "OWNER_REPORTED" | "OWNER_POLICY_CANDIDATE";
 export type KnowledgeFamily = "IDENTITY_RELATIONSHIP" | "WORK_OPERATIONS" | "OWNER_REPORTED_BUSINESS" | "OPERATING_KNOWLEDGE";
 
@@ -58,6 +62,14 @@ export interface KnowledgeKind {
   relationQuality: "OWNER_CONFIRMED_RELATION" | null;
   /** Fixed notes shown with every read-back (e.g. "a frequency is not a booking rule"). */
   notesHe: readonly string[];
+  /** Carries provenance (sourceType / confidence / sourceRef / observedAt) in its value — enforced by validateKnowledgeKinds. */
+  provenance?: true;
+  /** Carries time-awareness (status / validFrom / validUntil) in its value. */
+  timeAware?: true;
+  /** Cross-field validation after the single fields passed (clear errors, empty = valid). */
+  check?(value: KnowledgeValue): string[];
+  /** DECLARE_KNOWN: the subject is the NEW identity being declared (KNOWN_ENTITY), not an existing entity to resolve. */
+  subjectMode?: "DECLARE_KNOWN";
 }
 
 const addDays = (ymd: string, n: number) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -69,13 +81,32 @@ export const ROLE_HE: Record<string, string> = {
   LABEL_DJ: "ה-DJ של הלייבל", LABEL_ARTIST_MANAGER: "מנהל/ת האמנים של הלייבל", MIX_ENGINEER: "מהנדס/ת המיקס", MASTERING_ENGINEER: "מהנדס/ת המאסטרינג",
   PRODUCER: "מפיק/ה", BOOKER: "מזמין/ת ההופעות", TEAM_MEMBER: "חבר/ת צוות",
 };
-const RELATION_HE: Record<string, string> = { PARTICIPATES_IN_SHOWS: "משתתף בהופעות", WORKS_WITH: "עובד עם", REPRESENTS: "מייצג את", COLLABORATES_WITH: "משתף פעולה עם" };
 const FREQ_HE: Record<string, string> = { ALWAYS: "תמיד", MOST: "ברוב", SOMETIMES: "לפעמים", RARELY: "לעיתים רחוקות" };
 const BLOCKER_HE: Record<string, string> = { WAITING_FOR_ARTIST: "מחכים לאמן", WAITING_FOR_CLIENT: "מחכים ללקוח", WAITING_FOR_PAYMENT: "מחכים לתשלום", WAITING_FOR_VENDOR: "מחכים לספק / איש צוות", WAITING_FOR_OWNER: "מחכה לבעלים", EXTERNAL_DEPENDENCY: "תלות חיצונית" };
 const WHEN_HE: Record<string, string> = { AFTER_HOLIDAYS: "אחרי החגים", NEXT_WEEK: "בשבוע הבא", NEXT_MONTH: "בחודש הבא", UNSPECIFIED: "בלי מועד מוגדר" };
 const RELATIVE_DAYS: Record<string, number> = { AFTER_HOLIDAYS: 30, NEXT_WEEK: 7, NEXT_MONTH: 30, UNSPECIFIED: 14 };
 const CLOSED_PROJECT = new Set(["הושלם", "בוטל"]);
 const ENTITY_TYPES_ALL: readonly KnowledgeSubjectType[] = ["label-artist", "dj", "client", "project", "show", "release", "vendor"];
+/** Subjects / objects of the generic model: every canonical entity, the company, and a declared KNOWN_ENTITY. */
+const RELATABLE: readonly KnowledgeSubjectType[] = [...ENTITY_TYPES_ALL, "company", "known"];
+
+const PROVENANCE_FIELDS: Record<string, FieldSpec> = {
+  sourceType: { type: "enum", values: SOURCE_TYPES, required: false, labelsHe: SOURCE_TYPE_HE },
+  confidence: { type: "enum", values: CONFIDENCES, required: false },
+  sourceRef: { type: "text", maxLength: 120, required: false },
+  observedAt: { type: "ymd", required: false },
+};
+const TIME_FIELDS: Record<string, FieldSpec> = {
+  status: { type: "enum", values: TIME_STATUSES, required: false, labelsHe: TIME_STATUS_HE },
+  validFrom: { type: "ymd", required: false },
+  validUntil: { type: "ymd", required: false },
+};
+const timeHe = (v: KnowledgeValue) => {
+  const st = s(v.status) as keyof typeof TIME_STATUS_HE;
+  const parts = [st && st !== "ACTIVE" ? TIME_STATUS_HE[st] : "", v.validFrom ? `מ־${s(v.validFrom)}` : "", v.validUntil ? `עד ${s(v.validUntil)}` : ""].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+};
+const provHe = (v: KnowledgeValue) => (provenanceOf(v).sourceType === "INFERRED" ? " [הסקה של סאני — לא עובדה מאושרת]" : "");
 
 export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   // ── IDENTITY / RELATIONSHIP ──
@@ -96,17 +127,52 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: "OWNER_CONFIRMED_RELATION", notesHe: [],
   },
   {
-    kind: "ENTITY_RELATIONSHIP", family: "IDENTITY_RELATIONSHIP", titleHe: "קשר בין ישויות", subjectTypes: ENTITY_TYPES_ALL,
-    descriptionForModel: "A recurring relationship the Owner states (e.g. participates in most label shows). A frequency describes the past — it is never a booking rule.",
+    kind: "ENTITY_RELATIONSHIP", family: "IDENTITY_RELATIONSHIP", titleHe: "קשר בין ישויות", subjectTypes: RELATABLE,
+    descriptionForModel: "A typed relationship between two entities the Owner states: OWNER_OF, FOUNDER_OF, LABEL_ARTIST_OF (the label roster; the object is the company), WORKS_WITH (is NOT a label artist), PRODUCER_FOR, MANAGES, COLLABORATES_WITH — plus the legacy PARTICIPATES_IN_SHOWS / REPRESENTS (a frequency describes the past, never a booking rule). status ACTIVE / ENDED / HISTORICAL with validFrom / validUntil: an ended relationship is kept as history (assert the same relation again with status ENDED), never deleted.",
     fields: {
-      relation: { type: "enum", values: Object.keys(RELATION_HE), required: true, labelsHe: RELATION_HE },
-      object: { type: "entity", subjectTypes: ["label-artist", "dj", "client", "project", "vendor", "company"], required: true },
+      relation: { type: "enum", values: RELATION_TYPES, required: true, labelsHe: RELATION_HE },
+      object: { type: "entity", subjectTypes: RELATABLE, required: true },
       frequency: { type: "enum", values: Object.keys(FREQ_HE), required: false, labelsHe: FREQ_HE },
+      ...TIME_FIELDS, ...PROVENANCE_FIELDS,
     },
     epistemic: "OWNER_DECISION", slot: (v) => `rel:${s(v.relation)}:${s(v.object)}`, reviewAt: () => null, expiresAt: () => null,
-    readBackHe: (l, v) => `${l} ${RELATION_HE[s(v.relation)] ?? s(v.relation)}${v.frequency ? ` (${FREQ_HE[s(v.frequency)] ?? ""})` : ""} — ${s(v.objectLabel) || s(v.object)}.`,
-    conflicts: () => [], influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: "OWNER_CONFIRMED_RELATION",
-    notesHe: ["תדירות מתארת את מה שקורה — היא לא כלל שיבוץ להופעות עתידיות."],
+    readBackHe: (l, v) => `${l} ${RELATION_HE[s(v.relation) as keyof typeof RELATION_HE] ?? s(v.relation)}${v.frequency ? ` (${FREQ_HE[s(v.frequency)] ?? ""})` : ""} — ${s(v.objectLabel) || s(v.object)}${timeHe(v)}${provHe(v)}.`,
+    check: (v) => {
+      const e = checkProvenanceAndTime(v);
+      if (v.relation === "LABEL_ARTIST_OF" && v.object !== COMPANY_KEY) e.push("object: LABEL_ARTIST_OF points at the company (Redbloods) — someone who only works with us is WORKS_WITH");
+      return e;
+    },
+    conflicts: () => [], influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: "OWNER_CONFIRMED_RELATION", provenance: true, timeAware: true,
+    notesHe: ["תדירות מתארת את מה שקורה — היא לא כלל שיבוץ להופעות עתידיות.", "קשר שהסתיים נשמר כהיסטוריה — לא נמחק."],
+  },
+  {
+    kind: "ENTITY_CLASSIFICATION", family: "IDENTITY_RELATIONSHIP", titleHe: "סיווג ישות", subjectTypes: RELATABLE,
+    descriptionForModel: `What an entity IS, as a typed classification (type + controlled value, never free text): ${CLASSIFICATION_TYPES.map((t) => `${t}{${Object.keys(CLASSIFICATION_REGISTRY[t].values).join("|")}}`).join(", ")}. One current value per type per entity; a change supersedes the old value (history kept). Optional status / validFrom / validUntil.`,
+    fields: {
+      classificationType: { type: "enum", values: CLASSIFICATION_TYPES, required: true, labelsHe: Object.fromEntries(CLASSIFICATION_TYPES.map((t) => [t, CLASSIFICATION_REGISTRY[t].titleHe])) },
+      value: { type: "enum", values: ALL_CLASSIFICATION_VALUES, required: true, labelsHe: CLASSIFICATION_VALUE_HE },
+      ...TIME_FIELDS, ...PROVENANCE_FIELDS,
+    },
+    epistemic: "OWNER_DECISION", slot: (v) => `class:${s(v.classificationType)}`, reviewAt: () => null, expiresAt: () => null,
+    readBackHe: (l, v) => `${l}: ${CLASSIFICATION_REGISTRY[s(v.classificationType) as keyof typeof CLASSIFICATION_REGISTRY]?.titleHe ?? s(v.classificationType)} = ${CLASSIFICATION_VALUE_HE[s(v.value)] ?? s(v.value)}${timeHe(v)}${provHe(v)}.`,
+    check: (v) => {
+      const e = checkProvenanceAndTime(v);
+      const reg = CLASSIFICATION_REGISTRY[s(v.classificationType) as keyof typeof CLASSIFICATION_REGISTRY];
+      if (!classificationValueAllowed(s(v.classificationType), s(v.value))) e.push(`value: "${s(v.value)}" is not a registered value of ${s(v.classificationType)} (allowed: ${reg ? Object.keys(reg.values).join(", ") : "—"})`);
+      return e;
+    },
+    conflicts: () => [], influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, provenance: true, timeAware: true,
+    notesHe: ["סיווג הוא ידע ארגוני — לא משנה שום רשומה במערכת."],
+  },
+  {
+    kind: "KNOWN_ENTITY", family: "IDENTITY_RELATIONSHIP", titleHe: "ישות מוכרת (ללא רשומה קנונית)", subjectTypes: ["known"], subjectMode: "DECLARE_KNOWN",
+    descriptionForModel: "A controlled identity (key known:<slug>) for an entity that has NO canonical Redbloods record — a FALLBACK only: declare it ONLY after partner_resolve found nothing, with the one canonical Latin display name (subject = displayName). Never for a variant, nickname or spelling of an existing entity (no aliases are stored). Refused when a canonical entity or a similar known entity exists.",
+    fields: { displayName: { type: "text", maxLength: 60, required: true }, ...PROVENANCE_FIELDS },
+    epistemic: "OWNER_DECISION", slot: () => "identity", reviewAt: () => null, expiresAt: () => null,
+    readBackHe: (_l, v) => `ישות מוכרת: ${norm(s(v.displayName))}${provHe(v)}.`,
+    check: (v) => checkProvenanceAndTime(v),
+    conflicts: () => [], influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, provenance: true,
+    notesHe: ["זו זהות בלבד — לא מאגר אנשים מקביל. אם קיימת ישות קנונית משתמשים בה."],
   },
   // ── WORK / OPERATIONS ──
   {
@@ -165,21 +231,23 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   {
     kind: "PROCESS_FRICTION", family: "OPERATING_KNOWLEDGE", titleHe: "חיכוך בתהליך", subjectTypes: ["company"],
     descriptionForModel: "A recurring operational problem the Owner reports (e.g. \"we forget to confirm the DJ before shows\"). Evidence for a pattern candidate — never a rule and never an automatic change.",
-    fields: { area: { type: "enum", values: ["PROJECTS", "SHOWS", "FINANCE", "RELEASES", "TEAM", "CLIENTS"], required: true }, frictionHe: { type: "text", maxLength: 160, required: true } },
+    fields: { area: { type: "enum", values: BUSINESS_AREAS, required: true, labelsHe: BUSINESS_AREA_HE }, frictionHe: { type: "text", maxLength: 160, required: true } },
     epistemic: "OWNER_REPORTED", slot: (v) => `friction:${s(v.area)}:${shortHash(norm(s(v.frictionHe)))}`, reviewAt: (_v, t) => addDays(t, 30), expiresAt: () => null,
     readBackHe: (_l, v) => `חיכוך שדיווחת עליו (${s(v.area)}): ${norm(s(v.frictionHe))}.`, conflicts: () => [],
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, notesHe: ["זו תצפית, לא מדיניות — לא ישתנה שום תהליך אוטומטית."],
   },
   {
     kind: "WORKING_POLICY_CANDIDATE", family: "OPERATING_KNOWLEDGE", titleHe: "מדיניות עבודה (מועמדת)", subjectTypes: ["company"],
-    descriptionForModel: "How the Owner wants something done from now on (\"from now on in such projects we work like X\"). Stored only as a CANDIDATE — never promoted to a rule automatically.",
-    fields: { area: { type: "enum", values: ["PROJECTS", "SHOWS", "FINANCE", "RELEASES", "TEAM", "CLIENTS"], required: true }, policyHe: { type: "text", maxLength: 200, required: true }, appliesWhenHe: { type: "text", maxLength: 120, required: false } },
+    descriptionForModel: "How the Owner wants something done from now on in a business area (PROJECTS / SHOWS / FINANCE / RELEASES / TEAM / CLIENTS / SOCIAL / MARKETING / CONTENT / OPERATIONS — SOCIAL is a policy area only). Stored only as a CANDIDATE — never promoted to a rule automatically. Optional status ACTIVE / ENDED / HISTORICAL with validFrom / validUntil.",
+    fields: { area: { type: "enum", values: BUSINESS_AREAS, required: true, labelsHe: BUSINESS_AREA_HE }, policyHe: { type: "text", maxLength: 200, required: true }, appliesWhenHe: { type: "text", maxLength: 120, required: false }, ...TIME_FIELDS, ...PROVENANCE_FIELDS },
     epistemic: "OWNER_POLICY_CANDIDATE", slot: (v) => `policy:${s(v.area)}:${shortHash(norm(s(v.policyHe)))}`, reviewAt: (_v, t) => addDays(t, 30), expiresAt: () => null,
-    readBackHe: (_l, v) => `מדיניות עבודה (${s(v.area)}): ${norm(s(v.policyHe))}${v.appliesWhenHe ? ` — כש${norm(s(v.appliesWhenHe))}` : ""}.`, conflicts: () => [],
-    influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, notesHe: ["נשמר כמדיניות מועמדת — לא הופך לכלל אוטומטית."],
+    readBackHe: (_l, v) => `מדיניות עבודה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)}): ${norm(s(v.policyHe))}${v.appliesWhenHe ? ` — כש${norm(s(v.appliesWhenHe))}` : ""}${timeHe(v)}${provHe(v)}.`,
+    check: (v) => checkProvenanceAndTime(v), conflicts: () => [],
+    influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, provenance: true, timeAware: true, notesHe: ["נשמר כמדיניות מועמדת — לא הופך לכלל אוטומטית."],
   },
 ];
 
+export const MAX_FIELDS = 12;
 const BY_KIND = new Map(KNOWLEDGE_KINDS.map((k) => [k.kind, k]));
 export const knowledgeKind = (kind: unknown): KnowledgeKind | null => (typeof kind === "string" && BY_KIND.has(kind) ? BY_KIND.get(kind)! : null);
 
@@ -192,9 +260,11 @@ export function validateKnowledgeKinds(kinds: readonly KnowledgeKind[] = KNOWLED
     if (seen.has(k.kind)) e.push(`${k.kind}: duplicate`);
     seen.add(k.kind);
     if (/NOTE|MEMO|FREE|GENERIC/.test(k.kind)) e.push(`${k.kind}: generic kinds are not allowed`);
-    if (!k.subjectTypes.length || Object.keys(k.fields).length === 0 || Object.keys(k.fields).length > 5) e.push(`${k.kind}: needs subjects and 1–5 fields`);
+    if (!k.subjectTypes.length || Object.keys(k.fields).length === 0 || Object.keys(k.fields).length > MAX_FIELDS) e.push(`${k.kind}: needs subjects and 1–${MAX_FIELDS} fields`);
     for (const [n, f] of Object.entries(k.fields)) if (f.type === "text" && f.maxLength > 200) e.push(`${k.kind}.${n}: text too long`);
     if (k.mutatesCanonicalState !== false) e.push(`${k.kind}: must never mutate canonical state`);
+    if (k.provenance && !["sourceType", "confidence", "sourceRef", "observedAt"].every((f) => f in k.fields)) e.push(`${k.kind}: provenance kinds declare sourceType / confidence / sourceRef / observedAt`);
+    if (k.timeAware && !["status", "validFrom", "validUntil"].every((f) => f in k.fields)) e.push(`${k.kind}: time-aware kinds declare status / validFrom / validUntil`);
   }
   return e;
 }

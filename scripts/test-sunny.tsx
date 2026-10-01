@@ -10,7 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { KNOWLEDGE_KINDS, validateKnowledgeKinds, type KnowledgeKind } from "../lib/partner/owner-knowledge/kinds";
+import { KNOWLEDGE_KINDS, MAX_FIELDS, validateKnowledgeKinds, type KnowledgeKind } from "../lib/partner/owner-knowledge/kinds";
 import { createOwnerKnowledgeStore, activeKnowledge, withIdentityAliases, mapOwnerKnowledgeRow, OWNER_KNOWLEDGE_TABLE, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../lib/partner/owner-knowledge/store";
 import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, TOKEN_TTL_MS, type KnowledgeProposeDeps } from "../lib/partner/owner-knowledge/propose";
 import { proposeActionPreviewCore } from "../lib/partner/sunny/action-proposal";
@@ -140,15 +140,14 @@ async function main() {
   ok("every required kind exists", ["ENTITY_ALIAS", "ORGANIZATIONAL_ROLE", "ENTITY_RELATIONSHIP", "PROJECT_BLOCKER", "FOLLOW_UP_EXPECTATION", "VENDOR_COMMITMENT", "RELEASE_PRIORITY", "PAYMENT_REPORTED_BY_OWNER", "WORKING_POLICY_CANDIDATE"].every((k) => kinds.includes(k)));
   ok("no NOTE / MEMO / FREE / GENERIC kind", !kinds.some((k) => /NOTE|MEMO|FREE|GENERIC/.test(k)));
   ok("every kind: mutatesCanonicalState === false", KNOWLEDGE_KINDS.every((k) => k.mutatesCanonicalState === false));
-  ok("every kind declares subjects, 1–5 typed fields, epistemic, slot, review/expiry, read-back, conflicts", KNOWLEDGE_KINDS.every((k) => k.subjectTypes.length > 0 && Object.keys(k.fields).length >= 1 && Object.keys(k.fields).length <= 5 && !!k.epistemic && typeof k.slot === "function" && typeof k.reviewAt === "function" && typeof k.expiresAt === "function" && typeof k.readBackHe === "function" && typeof k.conflicts === "function"));
+  ok("every kind declares subjects, 1–12 typed fields, epistemic, slot, review/expiry, read-back, conflicts", KNOWLEDGE_KINDS.every((k) => k.subjectTypes.length > 0 && Object.keys(k.fields).length >= 1 && Object.keys(k.fields).length <= MAX_FIELDS && !!k.epistemic && typeof k.slot === "function" && typeof k.reviewAt === "function" && typeof k.expiresAt === "function" && typeof k.readBackHe === "function" && typeof k.conflicts === "function"));
   ok("a generic NOTE kind would be rejected by the validator", validateKnowledgeKinds([{ ...KNOWLEDGE_KINDS[0], kind: "OWNER_NOTE" } as KnowledgeKind]).some((e) => /generic/.test(e)));
   ok("a kind that could mutate canonical state would be rejected", validateKnowledgeKinds([{ ...KNOWLEDGE_KINDS[0], mutatesCanonicalState: true } as unknown as KnowledgeKind]).some((e) => /canonical/.test(e)));
   check("the MCP tool's kind enum = the registry", [...KNOWLEDGE_KINDS_FOR_TOOL].sort(), [...kinds].sort());
-  const sqlPath = "C:/Redbloods-F1G-Test/mcp/p2/p2-owner-knowledge-forward.sql";
-  if (fs.existsSync(sqlPath)) {
-    const m = fs.readFileSync(sqlPath, "utf8").match(/kind\s+text not null check \(kind in \(([^)]*)\)\)/);
-    check("the P2 SQL kind CHECK = the registry", (m?.[1].match(/'([A-Z_]+)'/g) ?? []).map((x) => x.replace(/'/g, "")).sort(), [...kinds].sort());
-  } else ok("(P2 SQL candidate not on this machine — kind parity checked by the harness)", true);
+  // the kind CHECK applied to production on 2026-10-01 (scripts/sql/2026-10-01-knowledge-infra-CANDIDATE.sql, new_kind) = the registry
+  const sqlText = read("scripts/sql/2026-10-01-knowledge-infra-CANDIDATE.sql");
+  const newKind = sqlText.match(/new_kind constant text := \$d\$([^$]*)\$d\$/)?.[1] ?? "";
+  check("the live kind CHECK (migration 2026-10-01) = the registry", (newKind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), [...kinds].sort());
   ok("payment kind is OWNER_REPORTED; policy is a CANDIDATE; frequency note says it is not a booking rule",
     KNOWLEDGE_KINDS.find((k) => k.kind === "PAYMENT_REPORTED_BY_OWNER")!.epistemic === "OWNER_REPORTED" && KNOWLEDGE_KINDS.find((k) => k.kind === "WORKING_POLICY_CANDIDATE")!.epistemic === "OWNER_POLICY_CANDIDATE"
     && KNOWLEDGE_KINDS.find((k) => k.kind === "ENTITY_RELATIONSHIP")!.notesHe.some((n) => n.includes("לא כלל שיבוץ")));

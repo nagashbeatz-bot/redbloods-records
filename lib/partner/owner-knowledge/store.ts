@@ -8,6 +8,7 @@
  * Every stored row is parsed strictly on read; any unreadable row fails the whole read closed (never partial memory).
  */
 import { knowledgeKind, type KnowledgeEpistemic, type KnowledgeValue } from "./kinds";
+import { temporalOf, type Temporal } from "./provenance";
 
 export const OWNER_KNOWLEDGE_TABLE = "partner_owner_knowledge";
 export const OWNER_KNOWLEDGE_SCHEMA = "partner-owner-knowledge-v1";
@@ -50,7 +51,7 @@ export interface OwnerKnowledgeTableClient {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
-export const SUBJECT_KEY_RE = /^((project|client|label-artist|dj|show|release):[0-9a-f-]{36}|vendor:(VICTOR|STEVEN)|company:REDBLOODS)$/;
+export const SUBJECT_KEY_RE = /^((project|client|label-artist|dj|show|release):[0-9a-f-]{36}|vendor:(VICTOR|STEVEN)|company:REDBLOODS|known:[a-z0-9][a-z0-9-]{1,62})$/;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 export function parseKnowledgeProvenance(p: unknown): OwnerKnowledgeProvenance | null {
@@ -147,9 +148,32 @@ export function withIdentityAliases(records: readonly OwnerKnowledgeRecord[], al
   });
 }
 
-/** ACTIVE knowledge: each slot's terminal row, an ASSERT, not expired. History = everything else. */
+/**
+ * ACTIVE knowledge = IN USE NOW: each slot's terminal row, an ASSERT, not expired, and — for time-aware values — CURRENT
+ * (status ACTIVE and inside validFrom / validUntil). An ENDED / HISTORICAL / future-dated value is history, not in use.
+ */
 export function activeKnowledge(records: readonly OwnerKnowledgeRecord[], todayIL: string): OwnerKnowledgeRecord[] {
   const slots = [...new Set(records.map((r) => r.slotKey))];
-  return slots.map((s) => terminalOfSlot(records, s)).filter((r): r is OwnerKnowledgeRecord => !!r && r.operation === "ASSERT" && (!r.expiresAt || r.expiresAt >= todayIL))
+  return slots.map((s) => terminalOfSlot(records, s)).filter((r): r is OwnerKnowledgeRecord => !!r && r.operation === "ASSERT" && (!r.expiresAt || r.expiresAt >= todayIL) && temporalOf(r.value, todayIL) === "CURRENT")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** The slot's terminal row when it is an ASSERT (whatever its time state) — what "already known" / "withdraw" refer to. */
+export function assertedTerminal(records: readonly OwnerKnowledgeRecord[], slotKey: string): OwnerKnowledgeRecord | null {
+  const t = terminalOfSlot(records, slotKey);
+  return t && t.operation === "ASSERT" ? t : null;
+}
+
+export type KnowledgeTemporal = Temporal | "SUPERSEDED" | "WITHDRAWN" | "EXPIRED";
+/** Current vs historical for EVERY stored row (the reader's `temporal` field). Nothing is hidden: history stays readable. */
+export function knowledgeTemporal(records: readonly OwnerKnowledgeRecord[], todayIL: string): Map<string, KnowledgeTemporal> {
+  const out = new Map<string, KnowledgeTemporal>();
+  const terminal = new Set([...new Set(records.map((r) => r.slotKey))].map((s) => terminalOfSlot(records, s)?.id));
+  for (const r of records) {
+    if (!terminal.has(r.id)) out.set(r.id, "SUPERSEDED");
+    else if (r.operation === "WITHDRAW") out.set(r.id, "WITHDRAWN");
+    else if (r.expiresAt && r.expiresAt < todayIL) out.set(r.id, "EXPIRED");
+    else out.set(r.id, temporalOf(r.value, todayIL));
+  }
+  return out;
 }
