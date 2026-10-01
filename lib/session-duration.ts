@@ -110,3 +110,48 @@ export function heldIsLegacyPossiblyAutoMarked(s: { status?: string | null; date
   const end = sessionEndLocal(s.date, s.start_time, s.end_time) ?? (s.date ? `${s.date}T23:59:59` : null);
   return end == null || end.slice(0, 10) <= AUTO_MARK_RETIRED_AT; // ended on / before the retirement day (deploy happened during it)
 }
+
+// ── AUTO MARK, reinstated server-side (Owner decision 2026-10-01) ─────────────────────────────────────────────────────
+/**
+ * The day the clock-based mark was REINSTATED — server-side only (a cron in the MAIN process, never a page load):
+ * a PLANNED session of an allowed type whose real end (Israel wall clock, overnight-aware) has passed becomes התקיים
+ * with status_source AUTO_MARK. AUTO_MARK is NOT proof the Owner confirmed it happened; MANUAL is.
+ */
+export const AUTO_MARK_REINSTATED_AT = "2026-10-01";
+/** Only these types (never a show rehearsal — D6: only בוצע counts toward a show split — and never a generic rehearsal). */
+export const AUTO_MARK_SESSION_TYPES: readonly string[] = ["סשן", "ניקוי מיקס", "צילום קליפ"];
+export const STATUS_SOURCES = ["CREATED", "MANUAL", "AUTO_MARK"] as const;
+export type StatusSource = (typeof STATUS_SOURCES)[number];
+
+/**
+ * THE eligibility rule (Owner canon 2026-10-01): status is מתוכנן now, the type is allowed, no show link (D6), and the
+ * session's end has passed by the Israel clock. status_source does NOT block (a planned session never stays planned
+ * forever because someone once touched its status). The write re-checks status = מתוכנן atomically.
+ */
+export function autoMarkEligible(s: { status?: string | null; session_type?: string | null; show_id?: string | null; date?: string | null; start_time?: string | null; end_time?: string | null }, nowIsrael: string): boolean {
+  return s.status === "מתוכנן" && AUTO_MARK_SESSION_TYPES.includes(String(s.session_type ?? "")) && !s.show_id && sessionEndPassed(s, nowIsrael);
+}
+
+/**
+ * What a held status (התקיים) means, by who wrote it:
+ *   MANUAL                → the Owner marked / confirmed it (UI or an approved Sunny action)
+ *   AUTO_MARK             → time passed and nobody cancelled it — NOT the Owner's confirmation
+ *   LEGACY_POSSIBLY_AUTO  → no source recorded and it ended on / before AUTO_MARK_RETIRED_AT (the old page-load writer)
+ *   MANUAL_A3_ERA         → no source recorded and it ended after that day (between 27.09 and tracking, only the Owner wrote)
+ * null = not a held status.
+ */
+export type HeldMeaning = "MANUAL" | "AUTO_MARK" | "LEGACY_POSSIBLY_AUTO" | "MANUAL_A3_ERA";
+export function heldMeaning(s: { status?: string | null; status_source?: string | null; date?: string | null; start_time?: string | null; end_time?: string | null }): HeldMeaning | null {
+  if (s.status !== "התקיים") return null;
+  if (s.status_source === "AUTO_MARK") return "AUTO_MARK";
+  if (s.status_source === "MANUAL" || s.status_source === "CREATED") return "MANUAL";
+  return heldIsLegacyPossiblyAutoMarked(s) ? "LEGACY_POSSIBLY_AUTO" : "MANUAL_A3_ERA";
+}
+/** Held AND confirmed by the Owner (MANUAL / the A3 era) — the only held that counts as proof it happened. */
+export const heldConfirmedByOwner = (s: Parameters<typeof heldMeaning>[0]) => { const m = heldMeaning(s); return m === "MANUAL" || m === "MANUAL_A3_ERA"; };
+export const HELD_MEANING_HE: Record<HeldMeaning, string> = {
+  MANUAL: "התקיים — סומן / אושר על ידך",
+  AUTO_MARK: "התקיים — סומן אוטומטית (זמן הסיום עבר ולא בוטל); לא אישור שלך",
+  LEGACY_POSSIBLY_AUTO: "התקיים — לפני 27.09; ייתכן שסומן אוטומטית (legacy)",
+  MANUAL_A3_ERA: "התקיים — נרשם ידנית (27.09–01.10, כשלא היה סימון אוטומטי)",
+};

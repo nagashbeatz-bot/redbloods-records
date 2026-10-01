@@ -9,7 +9,7 @@
 import { supabase } from "@/lib/supabase";
 import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
 import { notifySessionCreatedForShalev } from "@/lib/session-notify";
-import { sessionEndLocal } from "@/lib/session-duration";
+import { sessionEndLocal, autoMarkEligible, israelNowString, AUTO_MARK_SESSION_TYPES } from "@/lib/session-duration";
 
 export const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
@@ -46,6 +46,8 @@ export async function createSession(b: SessionInput): Promise<{ session: Record<
     project_id: projectId ?? null, title: cleanTitle || null, date: date || null, start_time: startTime || null, end_time: endTime || null,
     status: status || "מתוכנן", session_type: sessionType || "סשן", notes: notes || "", calendar_event_id: calendarEventId || null,
     photographer: photographer || "", location: location || "", show_id: showId || null, cost: costNum,
+    // who set the current status (2026-10-01): a new planned session is CREATED; created directly in another status = the Owner chose it
+    status_source: !status || status === "מתוכנן" ? "CREATED" : "MANUAL", status_changed_at: new Date().toISOString(),
   }).select().single();
   if (error) throw new Error(error.message);
 
@@ -128,7 +130,14 @@ export async function updateSession(id: string, body: SessionPatch, opts: Sessio
   if (date !== undefined) patch.date = date || null;
   if (startTime !== undefined) patch.start_time = startTime || null;
   if (endTime !== undefined) patch.end_time = endTime || null;
-  if (status !== undefined) patch.status = status;
+  if (status !== undefined) {
+    patch.status = status;
+    // a REAL status change by the Owner (UI or an approved Sunny action) records its source; re-sending the same status
+    // (an edit form that posts every field) keeps who set it — an AUTO_MARK held stays AUTO_MARK until the Owner changes it
+    const { data: cur, error: curErr } = await supabase.from("sessions").select("status").eq("id", id).maybeSingle();
+    if (curErr) throw new Error(curErr.message);
+    if ((cur as { status?: string } | null)?.status !== status) { patch.status_source = "MANUAL"; patch.status_changed_at = new Date().toISOString(); }
+  }
   if (sessionType !== undefined) patch.session_type = sessionType;
   if (notes !== undefined) patch.notes = notes;
   if (photographer !== undefined) patch.photographer = photographer;
@@ -293,4 +302,33 @@ async function refuseCollabRehearsalCost(showId: string): Promise<void> {
   const { getShow } = await import("@/lib/shows-store");
   const { isUnpaidCollab } = await import("@/lib/shows-types");
   if (isUnpaidCollab(await getShow(showId))) throw new SessionInputError("זו הופעת שת״פ ללא תשלום — לחזרה שלה לא נוצרת הוצאה אוטומטית. קבעו את החזרה בלי עלות; הוצאה חריגה נרשמת פרטנית בכספים");
+}
+
+// ── AUTO MARK (Owner decision 2026-10-01, server-side only — the MAIN cron in instrumentation.ts; never a page load) ──
+/**
+ * Marks every PLANNED session of an allowed type (סשן / ניקוי מיקס / צילום קליפ — never a show rehearsal, never a generic
+ * rehearsal, never a show-linked row: D6) whose real end has passed by the Israel clock (overnight-aware) as התקיים,
+ * status_source AUTO_MARK, status_changed_at now. status_source never blocks it. The UPDATE is guarded and atomic: it
+ * re-checks status = מתוכנן (and the type / no show) AT WRITE TIME, so a status the Owner set meanwhile (בוטל / נדחה /
+ * לא הגיע / התקיים) is never overwritten. No calendar, no push, no finance. Idempotent.
+ */
+export interface AutoMarkClient {
+  from(table: string): {
+    select(cols: string): { eq(col: string, v: string): PromiseLike<{ data: unknown; error: { message: string } | null }> };
+    update(patch: Record<string, unknown>): { in(col: string, v: string[]): { eq(col: string, v: string): { in(col: string, v: readonly string[]): { is(col: string, v: null): { select(cols: string): PromiseLike<{ data: unknown; error: { message: string } | null }> } } } } };
+  };
+}
+export async function autoMarkPassedSessions(now: Date = new Date(), client: AutoMarkClient = supabase as unknown as AutoMarkClient): Promise<{ marked: string[]; candidates: number }> {
+  const nowIL = israelNowString(now);
+  const { data, error } = await client.from("sessions").select("id, status, session_type, show_id, date, start_time, end_time").eq("status", "מתוכנן");
+  if (error) throw new Error(`auto-mark read failed: ${error.message}`);
+  const rows = (Array.isArray(data) ? data : []) as Array<{ id: string; status: string; session_type: string | null; show_id: string | null; date: string | null; start_time: string | null; end_time: string | null }>;
+  const due = rows.filter((r) => autoMarkEligible({ ...r, start_time: r.start_time?.slice(0, 5) ?? null, end_time: r.end_time?.slice(0, 5) ?? null }, nowIL)).map((r) => r.id);
+  if (!due.length) return { marked: [], candidates: 0 };
+  const { data: upd, error: uErr } = await client.from("sessions")
+    .update({ status: "התקיים", status_source: "AUTO_MARK", status_changed_at: now.toISOString() })
+    .in("id", due).eq("status", "מתוכנן").in("session_type", AUTO_MARK_SESSION_TYPES).is("show_id", null)
+    .select("id");
+  if (uErr) throw new Error(`auto-mark write failed: ${uErr.message}`);
+  return { marked: ((Array.isArray(upd) ? upd : []) as Array<{ id: string }>).map((r) => r.id), candidates: due.length };
 }

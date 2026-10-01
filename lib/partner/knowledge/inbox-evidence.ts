@@ -245,7 +245,10 @@ function recordVsReport(c: Candidate, sig: UpdateSignals, g: Graph): string[] {
   const st = ok(g.src.state);
   const id = c.projectKey.slice("project:".length);
   const out: string[] = [];
-  if (sig.reportsHappened) for (const s of (st?.domains.sessions.data?.items ?? []).filter((x) => x.projectId === id && sig.days.includes(x.dateYmd) && x.status === "מתוכנן")) out.push(`אמרת שהסשן התקיים — ברשומה הסשן מ-${fmt(s.dateYmd)} עדיין "מתוכנן" (כנראה צריך לעדכן; לא משנה לבד)`);
+  if (sig.reportsHappened) for (const s of (st?.domains.sessions.data?.items ?? []).filter((x) => x.projectId === id && sig.days.includes(x.dateYmd))) {
+    if (s.status === "מתוכנן") out.push(`אמרת שהסשן התקיים — ברשומה הסשן מ-${fmt(s.dateYmd)} עדיין "מתוכנן" (כנראה צריך לעדכן; לא משנה לבד)`);
+    else if (s.status === "התקיים" && s.statusSource === "AUTO_MARK") out.push(`אמרת שהסשן התקיים — ברשומה הסשן מ-${fmt(s.dateYmd)} סומן "התקיים" אוטומטית (זמן הסיום עבר); הדיווח שלך הוא האישור`);
+  }
   return out;
 }
 

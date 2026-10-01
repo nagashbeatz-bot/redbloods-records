@@ -16,7 +16,7 @@ import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { activeKnowledge } from "../owner-knowledge/store";
 import { projectMoney, type ProjectMoney } from "./money";
 import { classificationSignal, rosterIdByNameOf } from "../../project-classification";
-import { AUTO_MARK_RETIRED_AT } from "../../session-duration";
+import { AUTO_MARK_RETIRED_AT, AUTO_MARK_REINSTATED_AT, heldMeaning } from "../../session-duration";
 import { isEngineerWorkPaid } from "../../mix-payment-pure";
 import { normalizeCurrency } from "../../finance/currency";
 import { isClipItemPlanned } from "../../clip-rf-money-pure";
@@ -50,7 +50,7 @@ export interface ProjectView {
   money: ProjectMoney | null;
   moneyBrain: { receivables: Array<{ id: string; source: string; amount: number; currency: string; dueDate: string | null; collectible: boolean }>; credits: Array<{ amount: number; currency: string; kind: string }> } | null;
   work: {
-    sessions: { total: number; upcoming: number; held: number; heldPossiblyAutoMarkedLegacy: number; passedStillPlanned: number; cancelled: number; next: string | null; last: string | null; heldNote: string } | null;
+    sessions: { total: number; upcoming: number; held: number; heldAutoMarked: number; heldPossiblyAutoMarkedLegacy: number; passedStillPlanned: number; cancelled: number; next: string | null; last: string | null; heldNote: string } | null;
     proposal: Link<{ title: string; status: string; amount: number; currency: string }> | null;
     tasksOpen: number | null; tasksOverdue: number | null;
     projectActions: { open: number; waitingFeedback: number; waitingVersion: number; superseded: number; followupOverdue: number; rule: string } | null;
@@ -211,8 +211,8 @@ export function buildProjectView(src: GatewaySources, projectId: string): Projec
     },
     money, moneyBrain,
     work: {
-      sessions: sessions ? { total: sessions.length, upcoming: upcomingSessions.length, held: sessions.filter((s) => s.status === "התקיים").length, heldPossiblyAutoMarkedLegacy: sessions.filter((s) => s.status === "התקיים" && s.dateYmd <= AUTO_MARK_RETIRED_AT).length, passedStillPlanned: sessions.filter((s) => s.status === "מתוכנן" && s.dateYmd < today).length, cancelled: sessions.filter((s) => s.status === "בוטל").length, next: upcomingSessions.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd))[0]?.dateYmd ?? null, last: dated.filter((s) => s.dateYmd < today && s.status !== "בוטל").at(-1)?.dateYmd ?? null,
-        heldNote: `held = recorded התקיים. Sessions dated on / before ${AUTO_MARK_RETIRED_AT} may have been auto-marked by the retired page-load writer (legacy, not proof); after it התקיים is an explicit Owner record. A passed מתוכנן is 'עבר — לא אושר' (passed ≠ happened). last ignores cancelled sessions.` } : null,
+      sessions: sessions ? { total: sessions.length, upcoming: upcomingSessions.length, held: sessions.filter((s) => s.status === "התקיים").length, heldAutoMarked: sessions.filter((s) => heldMeaning({ status: s.status, status_source: s.statusSource ?? null, date: s.dateYmd, start_time: s.startTime ?? null, end_time: s.endTime ?? null }) === "AUTO_MARK").length, heldPossiblyAutoMarkedLegacy: sessions.filter((s) => heldMeaning({ status: s.status, status_source: s.statusSource ?? null, date: s.dateYmd, start_time: s.startTime ?? null, end_time: s.endTime ?? null }) === "LEGACY_POSSIBLY_AUTO").length, passedStillPlanned: sessions.filter((s) => s.status === "מתוכנן" && s.dateYmd < today).length, cancelled: sessions.filter((s) => s.status === "בוטל").length, next: upcomingSessions.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd))[0]?.dateYmd ?? null, last: dated.filter((s) => s.dateYmd < today && s.status !== "בוטל").at(-1)?.dateYmd ?? null,
+        heldNote: `held = recorded התקיים. heldAutoMarked = marked by the server cron since ${AUTO_MARK_REINSTATED_AT} because the end passed (NOT the Owner's confirmation); heldPossiblyAutoMarkedLegacy = no source and dated on / before ${AUTO_MARK_RETIRED_AT} (the retired page-load writer — legacy, not proof); the rest are the Owner's records. A passed מתוכנן is 'עבר — לא אושר' (passed ≠ happened). last ignores cancelled sessions.` } : null,
       proposal: proposal ? { quality: "CANONICAL_RELATION", basis: "proposal linked project id", value: { title: proposal.title, status: proposal.status, amount: proposal.amount, currency: proposal.currency } } : null,
       tasksOpen: tasks ? tasks.length : null, tasksOverdue: tasks ? tasks.filter((t) => t.dueYmd && t.dueYmd < today).length : null,
       projectActions: openActs && liveActs ? { open: openActs.length, waitingFeedback: liveActs.filter((a) => a.status === "pending_feedback").length, waitingVersion: liveActs.filter((a) => a.status === "pending_version").length, superseded: supersededActs?.length ?? 0, followupOverdue: liveActs.filter((a) => a.followupDate && a.followupDate < today).length, rule: "waiting = a pending entry with no later version / response recorded (the shared send-log rule); a superseded entry is history" } : null,

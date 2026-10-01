@@ -19,13 +19,15 @@ export interface SessionRow {
   endTime: string | null;
   status: string;
   sessionType: string;
+  /** who set the current status (CREATED / MANUAL / AUTO_MARK); null = before tracking began (2026-10-01) */
+  statusSource: string | null;
 }
 
 /** ALL sessions ever recorded — no date window, one bulk query. */
 export async function listAllSessions(): Promise<SessionRow[]> {
   const { data, error } = await supabase
     .from("sessions")
-    .select("id, project_id, show_id, date, start_time, end_time, status, session_type")
+    .select("id, project_id, show_id, date, start_time, end_time, status, session_type, status_source")
     .order("date", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({
@@ -37,5 +39,6 @@ export async function listAllSessions(): Promise<SessionRow[]> {
     endTime: (r.end_time as string | null) ?? null,
     status: r.status as string,
     sessionType: r.session_type as string,
+    statusSource: (r.status_source as string | null) ?? null,
   }));
 }

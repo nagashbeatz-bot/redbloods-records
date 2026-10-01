@@ -54,7 +54,7 @@ const REG = PARTNER_KNOWLEDGE_REGISTRY;
 
 /** Production columns (information_schema, read-only census 2026-09-25). */
 const PROD_COLUMNS: Record<string, string[]> = {
-  sessions: ["id", "project_id", "date", "start_time", "end_time", "status", "notes", "calendar_event_id", "created_at", "session_type", "photographer", "location", "title", "show_id", "cost"],
+  sessions: ["id", "project_id", "date", "start_time", "end_time", "status", "notes", "calendar_event_id", "created_at", "session_type", "photographer", "location", "title", "show_id", "cost", "status_source", "status_changed_at"],
   tasks: ["id", "title", "notes", "status", "related_type", "related_id", "due_date", "start_time", "end_time", "calendar_event_id", "created_at", "updated_at", "show_id"],
   meetings: ["id", "client_id", "client_name", "project_id", "date", "time", "duration", "location", "notes", "status", "calendar_event_id", "created_at"],
   album_tracks: ["id", "project_id", "track_number", "title", "status", "mix_status", "master_status", "notes", "created_at", "updated_at"],

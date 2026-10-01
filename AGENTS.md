@@ -233,7 +233,7 @@ They are read through `session_view`, `task_view`, `meeting_view`, `album_view`,
 - changed code business goals.
 
 Rules:
-- A passed date is never "happened". Since 2026-09-27 no page load writes a session status (the auto-mark is retired): התקיים is an explicit Owner record; a passed מתוכנן is 'עבר — לא אושר'; התקיים on a session that ended on / before `AUTO_MARK_RETIRED_AT` may be a legacy auto-mark. The calendar pull never changes a status (it reports `statusConflicts` / `calendarErrors`).
+- A passed date is never the Owner's confirmation. No page load writes a session status (the page-load auto-mark retired 2026-09-27 stays retired). Since 2026-10-01 (Owner decision) a SERVER cron (`instrumentation.ts`, `SESSION_AUTO_MARK_ENABLED`, `lib/writes/sessions.ts` autoMarkPassedSessions) marks a מתוכנן session of type סשן / ניקוי מיקס / צילום קליפ with no show link as התקיים once its real end passed (Israel clock, overnight-aware) — `status_source` AUTO_MARK, guarded (still מתוכנן at write time; בוטל / נדחה / לא הגיע / a manual התקיים are never overwritten), never a show rehearsal / rehearsal (D6), no push / calendar / finance. `sessions.status_source` (CREATED / MANUAL / AUTO_MARK, NULL = before tracking) says who set the status: AUTO_MARK is NOT the Owner's confirmation; MANUAL is; NULL keeps the legacy reading (ended on / before `AUTO_MARK_RETIRED_AT`: possibly the old page-load mark). The calendar pull never changes a status (it reports `statusConflicts` / `calendarErrors`). `scripts/test-sessions-auto-mark.tsx` must pass.
 - "Delivered" is always dated; `lastDeliveredAt` keeps delivery history (DELIVERED_BEFORE).
 - Task links by notes / title markers stay TEXT_MATCH.
 - "Delivered" comes only from a delivery record.

@@ -247,6 +247,23 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Session AUTO MARK (Owner decision 2026-10-01) — server-side only, every 5 minutes ──
+  // A PLANNED session of an allowed type (סשן / ניקוי מיקס / צילום קליפ; never a show rehearsal / rehearsal — D6) whose
+  // real end has passed (Israel clock, overnight-aware) becomes התקיים with status_source AUTO_MARK. The write is guarded
+  // (status still מתוכנן at write time), idempotent, sends no push and touches no calendar / finance. Gated by
+  // SESSION_AUTO_MARK_ENABLED so a local dev server (which runs these crons against production) never writes.
+  if (process.env.SESSION_AUTO_MARK_ENABLED === "true") {
+    cron.schedule("*/5 * * * *", async () => {
+      try {
+        const { autoMarkPassedSessions } = await import("@/lib/writes/sessions");
+        const r = await autoMarkPassedSessions(new Date());
+        if (r.marked.length) console.log(`[session-auto-mark] marked ${r.marked.length} session(s) התקיים (AUTO_MARK): ${r.marked.join(",")}`);
+      } catch (err) {
+        console.error("[session-auto-mark] tick failed:", err);
+      }
+    }, { timezone: TZ });
+  }
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }

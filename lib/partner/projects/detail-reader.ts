@@ -89,7 +89,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     r("settings", "key, fnotes:value->>financialNotes, freason:value->>financeExceptionReason, fdate:value->>financeExceptionDate", (q) => q.like("key", "finance_%")),
     r("settings", "key, folder:value->>folderPath, status:value->>deliveryStatus, delivered:value->>deliveredAt, lastDelivered:value->>lastDeliveredAt, link:value->>deliveryLink", (q) => q.like("key", "delivery_%")),
     r("project_actions", "id, project_id, action_type, content_type, version_label, recipient_role, recipient_name, recipient_client_id, recipient_phone, dropbox_url, status, action_date, followup_date, notes, linked_work_id, linked_task_id, created_at, updated_at"),
-    r("sessions", "id, project_id, show_id, date, start_time, end_time, status, session_type, title, notes, location, photographer, cost, calendar_event_id, created_at"),
+    r("sessions", "id, project_id, show_id, date, start_time, end_time, status, session_type, status_source, status_changed_at, title, notes, location, photographer, cost, calendar_event_id, created_at"),
     r("meetings", "id, project_id, client_id, client_name, date, time, duration, location, notes, status, calendar_event_id, created_at"),
     r("tasks", "id, related_type, related_id, title, notes, status, due_date, start_time, end_time, show_id, calendar_event_id, created_at, updated_at"),
     r("sound_engineer_work", "id, project_id, engineer_name, notes, files_link, sort_order, created_at, updated_at, work_title, work_type, status, agreed_price, currency, amount_paid, sent_date, internal_deadline, linked_transaction_id, payment_date"),
@@ -136,7 +136,7 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
       actionDate: s(x.action_date), followupDate: s(x.followup_date), notes: t(x.notes), linkedWorkId: s(x.linked_work_id), linkedTaskId: s(x.linked_task_id), createdAt: s(x.created_at), updatedAt: s(x.updated_at),
     } : null)),
     sessions: mapSection(sess, (x) => (s(x.id) ? {
-      id: String(x.id), projectId: s(x.project_id), showId: s(x.show_id), date: s(x.date), startTime: s(x.start_time), endTime: s(x.end_time), status: s(x.status), type: s(x.session_type),
+      id: String(x.id), projectId: s(x.project_id), showId: s(x.show_id), date: s(x.date), startTime: s(x.start_time), endTime: s(x.end_time), status: s(x.status), type: s(x.session_type), statusSource: s(x.status_source), statusChangedAt: s(x.status_changed_at),
       title: t(x.title), notes: t(x.notes), location: t(x.location), photographer: s(x.photographer), cost: n(x.cost), hasCalendarEvent: has(x.calendar_event_id), createdAt: s(x.created_at),
     } : null)),
     meetings: mapSection(meet, (x) => (s(x.id) ? {

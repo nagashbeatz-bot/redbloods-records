@@ -174,7 +174,7 @@ function buildSessions(raw: PartnerEyesRaw, coo: CooResult, asOf: string): Partn
     byStatus: raw.sessions.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}),
     byType: raw.sessions.reduce<Record<string, number>>((acc, s) => { acc[s.sessionType] = (acc[s.sessionType] ?? 0) + 1; return acc; }, {}),
     cooVisible: { count: cooCount, note: "מה ש-lib/coo רואה בפועל בחלון הקדימה שלו — cross-reference בלבד" },
-    items: raw.sessions.map((s) => ({ id: s.id, projectId: s.projectId, showId: s.showId, dateYmd: s.date, status: s.status, sessionType: s.sessionType })),
+    items: raw.sessions.map((s) => ({ id: s.id, projectId: s.projectId, showId: s.showId, dateYmd: s.date, status: s.status, sessionType: s.sessionType, statusSource: s.statusSource ?? null, startTime: s.startTime, endTime: s.endTime })),
   } : null;
   return {
     domain: "sessions", status, coverage, reliability: reliabilityFrom(coverage, "ID"),

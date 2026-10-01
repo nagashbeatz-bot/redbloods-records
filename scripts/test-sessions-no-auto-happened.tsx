@@ -1,6 +1,7 @@
 /**
- * A3 — SESSIONS: time passed ≠ session happened (Owner canon, 2026-09-27).
- *   • no page-load / background clock writer: the auto-mark route + AppShell effect + the drawer's local auto-mark are gone;
+ * A3 — SESSIONS: time passed ≠ session happened (Owner canon, 2026-09-27; the mark returned SERVER-SIDE on 2026-10-01 —
+ *   see scripts/test-sessions-auto-mark.tsx).
+ *   • no page-load clock writer: the auto-mark route + AppShell effect + the drawer's local auto-mark are gone (and stay gone);
  *   • a passed, unconfirmed מתוכנן session stays מתוכנן and reads "עבר — לא אושר" (display only, never counted as held);
  *   • the end is overnight-aware (sessionEndLocal) — the same rule for the calendar, the badge, the reports and the pull;
  *   • the calendar pull moves date / times through the shared writer, never changes a status (reports statusConflicts),
@@ -192,7 +193,8 @@ ML._load = function (request: string, parent: unknown, isMain: boolean) {
   ok("no component useEffect POSTs / PATCHes a session (static scan of components/**)", offenders.length === 0, offenders);
   ok("the drawer's session loader writes nothing (fetchSessions has no PATCH / POST)", (() => { const a = drawer.indexOf("const fetchSessions"); const b = drawer.indexOf("useEffect(", a); const body = drawer.slice(a, b); return a > 0 && !/method:\s*"(PATCH|POST)"/.test(body); })());
   const bg = read("lib/partner/act/background.ts");
-  ok("the background-writer inventory no longer lists SESSION_AUTO_MARK", !/SESSION_AUTO_MARK/.test(bg));
+  // 2026-10-01 (Owner decision): the mark is back — SERVER-SIDE ONLY (a MAIN cron), never a page load
+  ok("SESSION_AUTO_MARK is an IN_PROCESS_SCHEDULE writer (server cron) — never PAGE_LOAD, never a push", (() => { const line = bg.split("\n").find((l) => l.includes('id: "SESSION_AUTO_MARK"')) ?? ""; return line.includes('trigger: "IN_PROCESS_SCHEDULE"') && line.includes("sendsPush: false"); })());
 
   console.log("\n6. Readers use the real vocabulary + the end rule");
   for (const f of ["lib/reports/data.ts", "lib/reports/weekly.ts", "lib/agent/snapshot.ts", "lib/agent/rules.ts"]) {

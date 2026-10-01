@@ -22,7 +22,7 @@ import { validateTx } from "../finance/core";
 import { checkMissing } from "../../social-missing-checker";
 import { getRecommendations } from "../../social-recommendations";
 import type { SocialCampaign, SocialContentItem } from "../../types";
-import { sessionEndLocal, sessionEndPassed, israelNowString, heldIsLegacyPossiblyAutoMarked, AUTO_MARK_RETIRED_AT } from "../../session-duration";
+import { sessionEndLocal, sessionEndPassed, israelNowString, heldMeaning, HELD_MEANING_HE, AUTO_MARK_RETIRED_AT, AUTO_MARK_REINSTATED_AT } from "../../session-duration";
 import { socialPhaseOf, isSocialItemOverdue } from "../../types";
 import { computeFinalFilesFlags } from "../../steven-completed-pure";
 
@@ -43,7 +43,7 @@ const count = (xs: Array<string | null | undefined>) => xs.reduce<Record<string,
 // ═══════════════════════════════ SESSIONS ═══════════════════════════════
 export const SESSION_KIND: Readonly<Record<string, string>> = { "סשן": "STUDIO_SESSION", "ניקוי מיקס": "MIX_CHANNEL_CLEANING", "חזרה": "REHEARSAL", "חזרה להופעה": "SHOW_REHEARSAL", "צילום קליפ": "CLIP_SHOOT" };
 export const SESSION_STATUS_MEANING: Readonly<Record<string, string>> = {
-  "מתוכנן": "scheduled (once its end passed and nobody confirmed: 'עבר — לא אושר' — passed ≠ happened)", "התקיים": `recorded as happened — an explicit Owner record for sessions ending after ${AUTO_MARK_RETIRED_AT}; on / before it may have been written by the retired page-load auto-mark (legacy, not proof)`, "בוטל": "cancelled (its calendar event is NOT removed by a status change)",
+  "מתוכנן": "scheduled (once its end passed and nobody confirmed: 'עבר — לא אושר' — passed ≠ happened)", "התקיים": `recorded as happened — WHO set it matters (statusSource): MANUAL = the Owner marked / confirmed it; AUTO_MARK = the server cron (since ${AUTO_MARK_REINSTATED_AT}) marked it because its end passed and nobody cancelled it — NOT the Owner's confirmation; no source = before tracking (ended on / before ${AUTO_MARK_RETIRED_AT}: possibly the retired page-load auto-mark, legacy; after it: an Owner record)`, "בוטל": "cancelled (its calendar event is NOT removed by a status change)",
   "נדחה": "postponed (a recorded outcome)", "לא הגיע": "no-show (a recorded outcome)", "בוצע": "rehearsal vocabulary 'done' (the only status the show split counts)",
 };
 export function buildSessionsView(src: GatewaySources) {
@@ -64,11 +64,12 @@ export function buildSessionsView(src: GatewaySources) {
     // End passed (overnight-aware; no times → the end of its day). Passed ≠ happened.
     const endLocal = s.date ? sessionEndLocal(s.date, s.startTime, s.endTime) ?? `${s.date}T23:59:59` : null;
     const endPassed = sessionEndPassed({ date: s.date, start_time: s.startTime, end_time: s.endTime }, nowIL); // THE shared rule (the drawers' 'עבר — לא אושר')
-    const legacyHeld = heldIsLegacyPossiblyAutoMarked({ status: s.status, date: s.date, start_time: s.startTime, end_time: s.endTime });
+    const held = heldMeaning({ status: s.status, status_source: s.statusSource ?? null, date: s.date, start_time: s.startTime, end_time: s.endTime });
     const kind = SESSION_KIND[s.type ?? "סשן"] ?? "UNKNOWN_TYPE";
     return {
       key: `session:${s.id}`, id: s.id, type: s.type, kind, status: s.status, statusMeaning: SESSION_STATUS_MEANING[s.status ?? ""] ?? "unknown status", date: s.date, start: s.startTime, end: s.endTime, datePassed, endPassed, endLocal,
-      happened: s.status === "התקיים" ? (legacyHeld ? "RECORDED_AS_HAPPENED (possibly auto-marked — legacy, before the auto-mark was retired)" : "RECORDED_AS_HAPPENED (explicit record)")
+      statusSource: s.statusSource ?? null, statusChangedAt: s.statusChangedAt ?? null, heldMeaning: held, heldMeaningHe: held ? HELD_MEANING_HE[held] : null,
+      happened: s.status === "התקיים" ? (held === "AUTO_MARK" ? "AUTO_MARKED_AS_HAPPENED (time passed, not cancelled — NOT the Owner's confirmation)" : held === "LEGACY_POSSIBLY_AUTO" ? "RECORDED_AS_HAPPENED (possibly auto-marked — legacy, before the auto-mark was retired)" : "RECORDED_AS_HAPPENED (the Owner's record)")
         : s.status === "בוצע" ? "RECORDED_AS_HAPPENED (explicit record)" : s.status === "בוטל" ? "CANCELLED" : s.status === "נדחה" ? "POSTPONED (recorded outcome)" : s.status === "לא הגיע" ? "NO_SHOW (recorded outcome)"
         : s.status === "מתוכנן" && endPassed ? "PASSED_NOT_CONFIRMED — עבר — לא אושר (end passed, not recorded; passed ≠ happened)" : s.status === "מתוכנן" ? "NOT_YET" : "UNKNOWN — unrecognized status",
       project: s.projectId ? { key: `project:${s.projectId}`, name: projectName(c, s.projectId) } : null, show: s.showId ? { key: `show:${s.showId}`, name: shows.get(s.showId)?.name ?? null, date: shows.get(s.showId)?.date ?? null } : null,

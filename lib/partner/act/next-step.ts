@@ -70,7 +70,7 @@ export const STATE_MEANINGS: Readonly<Record<string, string>> = {
   "REHEARSAL_OPERATIONAL:בוטל": "D6: cancelled — does not count toward the show split",
   "REHEARSAL_OPERATIONAL:התקיים": "D6 legacy: written by the old page-load auto-mark (retired 2026-09-27, A3), not by the Owner — keeps the pre-D6 rule (counts only if paid) until the Owner confirms בוצע / בוטל",
   "SESSION_STATUS:מתוכנן": "A3 (Owner canon 2026-09-27): planned — once its end passed (overnight-aware) and nobody confirmed it, it reads 'עבר — לא אושר' (passed, not confirmed); time passed never makes it held and nothing writes התקיים automatically",
-  "SESSION_STATUS:התקיים": "A3: recorded as happened — an explicit Owner record for a session ending after AUTO_MARK_RETIRED_AT (2026-09-27); on / before it the status may have been written by the retired page-load auto-mark (legacy, not proof)",
+  "SESSION_STATUS:התקיים": "recorded as happened — by statusSource: MANUAL = the Owner marked / confirmed it; AUTO_MARK = the server cron (2026-10-01 on) marked it because its end passed and nobody cancelled it — NOT the Owner's confirmation; no source = before tracking (ended on / before 2026-09-27: possibly the retired page-load auto-mark, legacy; after: an Owner record).",
   "SESSION_STATUS:נדחה": "a recorded outcome: postponed (not held)",
   "SESSION_STATUS:לא הגיע": "a recorded outcome: no-show (not held)",
 };

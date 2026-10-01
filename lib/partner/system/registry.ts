@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.01-69";
+export const SYSTEM_BASELINE_VERSION = "2026.10.01-70";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1069,4 +1069,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.01-67", date: "2026-10-01", domain: "SUNNY_CORE", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "זיכרון פרויקט מעדכון לסאני: אתה כותב פעם אחת, וסאני מקשרת את העדכון לפרויקטים / ישויות שהוא מזכיר (שם לא חד-משמעי → שואלת אותך), שומרת לכל פרויקט מקושר מה הבינה (מה קרה, מה דווח כהושלם, מה פתוח, מה חוסם, אצל מי הכדור, צעד הבא, ביטחון — השערה בלבד), ומציגה את זה ב-project_memory וב-partner_entity מול המצב ברשומות (הרשומות גוברות; הבנה ישנה מסומנת לא עדכנית). ההרשאה הקבועה הורחבה ל-5 פעולות זיכרון בלבד — שום פעולה עסקית." },
   { version: "2026.10.01-68", date: "2026-10-01", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני בודקת את העדכונים שלך בכל הודעה (לא רק פעם בשיחה): קודם בדיקה מהירה, ורק אם יש חדש — owner_inbox understand (הישויות שהעדכון מזכיר + הקשר קנוני קצר). היא לא מקריאה לך את מה שכתבת: מבינה, מסיקה (מסומן), בודקת ברשומות ושואלת 'נכון?'. partner_brief מחזיר עד 10 עדכונים — בלי 'ועוד עדכון אחד'. סגירה רק עם 4 התוצאות הקיימות (MEMORY_RECORDED לא בשימוש)." },
   { version: "2026.10.01-69", date: "2026-10-01", domain: "SUNNY_CORE", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני מגיעה בעצמה עד הישות הספציפית: 'חיים אוהב את המיקס' → חיים באינסאי → קרוב אלייך → המיקס אצל סטיבן — לפי הרשומות (עבודת מיקס פעילה, גרסאות, הערות פתוחות, סשנים, פעילות אחרונה, כינויים שאישרת), בלי ניחוש. היא שואלת רק כשבאמת יש שני מועמדים סבירים או כשהשם לא קיים ברשומות; סתירה עסקית גוברת על שם; הערות חופשיות הן ראיה חלשה בלבד." },
+  { version: "2026.10.01-70", date: "2026-10-01", domain: "SESSIONS", dimension: "read", from: "FULL", to: "FULL", noteHe: "סימון אוטומטי של סשנים חזר — רק בשרת (cron כל 5 דקות), לא בטעינת דף: סשן / ניקוי מיקס / צילום קליפ במצב מתוכנן שזמן הסיום שלו עבר (שעון ישראל, כולל חציית חצות) הופך ל'התקיים' עם מקור AUTO_MARK. חזרות להופעה וחזרות לא נוגעות; סטטוס שקבעת (בוטל / נדחה / לא הגיע) לא נדרס. סאני מבדילה: התקיים אוטומטי = הזמן עבר ולא בוטל, לא אישור שלך; התקיים ידני = אישור שלך." },
 ];

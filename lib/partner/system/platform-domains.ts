@@ -64,6 +64,7 @@ export const REPORTS_MODEL = {
 
 export type EngineClass = "ACTIVE_OPERATIONAL" | "LEGACY" | "OBSERVATION_SOURCE" | "USER_VISIBLE" | "BACKGROUND" | "DISABLED";
 export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does: string; writes: string; classes: EngineClass[] }> = [
+  { id: "SESSION_AUTO_MARK", trigger: "in-process every 5 minutes (MAIN only, SESSION_AUTO_MARK_ENABLED)", does: "Owner decision 2026-10-01: a PLANNED session of type סשן / ניקוי מיקס / צילום קליפ, not linked to a show (never a show rehearsal / rehearsal — D6), whose real end passed (Israel clock, overnight-aware) becomes התקיים — status_source AUTO_MARK + status_changed_at; the UPDATE re-checks status = מתוכנן at write time (a status the Owner set meanwhile is never overwritten); status_source never blocks it. Never on a page load", writes: "sessions.status / status_source / status_changed_at (no calendar, no push, no finance)", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "REPORT_EMAILS", trigger: "in-process every minute (morning / evening time match)", does: "sends the morning / evening email once per Israel day (durable claim: sent only after the email service accepted it, else failed)", writes: "email + the day claim", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "UPLOAD_NOTICE_BATCHES", trigger: "in-process every minute", does: "flushes batched Victor / Steven upload and final-files pushes to the Owner — each batch claimed (processing) before the send, removed only after delivery, a failure kept as a failed row (overlapping ticks never double-send)", writes: "push + batch claims", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SHALEV_WEEKLY_SUMMARY", trigger: "Sunday 10:00–10:15", does: "pushes Shalev his week's sessions", writes: "push + claim marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
@@ -82,7 +83,7 @@ export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does:
 ];
 /** Internal (tests only, never served): which job each scheduler / secret route belongs to. */
 export const JOB_SOURCES_INTERNAL = {
-  inProcessSchedules: ["REPORT_EMAILS", "UPLOAD_NOTICE_BATCHES", "SHALEV_WEEKLY_SUMMARY", "SHALEV_SESSION_REMINDER", "AVAILABILITY_REMINDER", "WEEK_STRENGTH", "STEVEN_MIX_REMINDER", "STEVEN_DEADLINE_DIGEST", "OWNER_BELL_RESET"],
+  inProcessSchedules: ["SESSION_AUTO_MARK", "REPORT_EMAILS", "UPLOAD_NOTICE_BATCHES", "SHALEV_WEEKLY_SUMMARY", "SHALEV_SESSION_REMINDER", "AVAILABILITY_REMINDER", "WEEK_STRENGTH", "STEVEN_MIX_REMINDER", "STEVEN_DEADLINE_DIGEST", "OWNER_BELL_RESET"],
   secretRoutes: { "app/api/agent/check/route.ts": "AGENT_CHECK_ROUTE", "app/api/agent/snapshot/route.ts": "AGENT_SNAPSHOT_READ", "app/api/push/cron/route.ts": "PUSH_CRON_ROUTE", "app/api/push/status/route.ts": "PUSH_STATUS_READ", "app/api/sessions/calendar-pull/route.ts": "SESSION_CALENDAR_PULL" } as Record<string, string>,
 } as const;
 export const ATTENTION_ENGINES: ReadonlyArray<{ id: string; what: string; classes: EngineClass[]; sunnyTreatment: string }> = [

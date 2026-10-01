@@ -12,6 +12,7 @@
 import type { GatewaySources } from "../gateway/core";
 import type { OperationsRaw } from "../operations/types";
 import { buildProjectView } from "./view";
+import { heldConfirmedByOwner } from "../../session-duration";
 import { activeInterpretations, activeLinksOf, canonicalBallOf, freshnessOf, FRESHNESS_HE, type Freshness, type InboxInterpretation, type InboxMemory, type ProjectBasis } from "../../inbox-memory";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -20,7 +21,8 @@ const snippet = (t: string, n = SNIPPET) => (t.length > n ? `${t.slice(0, n - 1)
 
 /**
  * The latest RECORDED event of a project (ISO): a mix / master version upload, a Victor upload or sent notes, a held
- * session (its day), a delivery, a release. Only timestamps the app records — never "a date passed".
+ * session the Owner recorded (its day — an AUTO_MARK held is a clock tick, not an event), a delivery, a release. Only
+ * timestamps the app records — never "a date passed".
  */
 export function projectLastEventAt(src: GatewaySources, projectId: string): string | null {
   const st = ok(src.state);
@@ -30,7 +32,8 @@ export function projectLastEventAt(src: GatewaySources, projectId: string): stri
   for (const v of ops?.mixVersions?.rows ?? []) if (v.workId && works.has(v.workId) && v.createdAt) times.push(v.createdAt);
   for (const w of st?.domains.victor.data?.active ?? []) if (w.projectId === projectId) for (const x of [w.lastUploadAt, w.lastNotesSentAt]) if (x) times.push(x);
   for (const d of ops?.deliveries?.rows ?? []) if (d.projectId === projectId && d.deliveredAt) times.push(d.deliveredAt);
-  for (const s of st?.domains.sessions.data?.items ?? []) if (s.projectId === projectId && s.status === "התקיים" && s.dateYmd) times.push(`${s.dateYmd}T00:00:00Z`);
+  // a held session counts as an event only when the Owner recorded it (AUTO_MARK = the end passed, not proof — 2026-10-01)
+  for (const s of st?.domains.sessions.data?.items ?? []) if (s.projectId === projectId && s.dateYmd && heldConfirmedByOwner({ status: s.status, status_source: s.statusSource ?? null, date: s.dateYmd, start_time: s.startTime ?? null, end_time: s.endTime ?? null })) times.push(`${s.dateYmd}T00:00:00Z`);
   for (const r of st?.domains.releasesFull.data?.items ?? []) if (r.projectId === projectId && r.releasedAt) times.push(r.releasedAt);
   const valid = times.filter((x) => Number.isFinite(Date.parse(x)));
   return valid.length ? valid.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null;

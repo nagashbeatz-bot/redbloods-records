@@ -57,7 +57,7 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     }, (v) => v.length),
     // Full history — no date window (separate from lib/coo's forward-window read; that behavior is unchanged).
     track("sessions_eyes", async () => (await listAllSessions()).map((s) => ({
-      id: s.id, projectId: s.projectId, showId: s.showId, date: s.date, startTime: s.startTime, endTime: s.endTime, status: s.status, sessionType: s.sessionType,
+      id: s.id, projectId: s.projectId, showId: s.showId, date: s.date, startTime: s.startTime, endTime: s.endTime, status: s.status, sessionType: s.sessionType, statusSource: s.statusSource,
     })), (v) => v.length),
     // Full history — calls the SAME listShows() lib/coo uses, a second time (lib/coo's own
     // operational-subset read is unchanged). Read-only. artistClientId/bookerClientId are
