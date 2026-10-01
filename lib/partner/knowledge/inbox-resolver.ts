@@ -5,7 +5,7 @@
  * AMBIGUOUS) — never a guess.
  */
 import { normalizeName } from "../gateway/resolve";
-import { findMentions, type MentionEntry } from "./inbox-mentions";
+import { findMentions, findPartialMentions, type MentionEntry } from "./inbox-mentions";
 import { NOT_OVERDUE_STATUSES } from "../../project-deadline";
 import { LIMITS, type LinkMethod } from "../../inbox-memory";
 
@@ -35,7 +35,16 @@ export function resolveSurface(body: string, surfaceRaw: string, index: readonly
   const surface = surfaceRaw.trim();
   if (surface.length < LIMITS.surface[0] || surface.length > LIMITS.surface[1] || !body.includes(surface)) return { status: "NOT_IN_TEXT", messageHe: "ה-surface חייב להיות חלק מילולי מהטקסט שכתבת (2–80 תווים)" };
   const ms = findMentions(surface, index);
-  if (!ms.length) return { status: "NO_ENTITY", messageHe: `"${surface}" לא מזוהה כשם של ישות ב-Redbloods` };
+  if (!ms.length) {
+    // a first name only ("שליו") is never linked by itself: the Boss chooses among the records it can be + their open projects
+    const ps = findPartialMentions(surface, index);
+    if (ps.length !== 1) return ps.length ? { status: "SEVERAL_NAMES", messageHe: `"${surface}" מכיל כמה שמות — צריך surface עם שם אחד` } : { status: "NO_ENTITY", messageHe: `"${surface}" לא מזוהה כשם של ישות ב-Redbloods` };
+    const pm = ps[0];
+    const personNames = index.filter((e) => pm.keys.includes(e.key) && e.type !== "project").map((e) => e.norm);
+    const all = [...new Set([...pm.keys, ...personNames.flatMap((n) => openCreditedProjects(n, projects))])].sort();
+    if (all.length < LIMITS.candidates[0] || all.length > LIMITS.candidates[1]) return { status: "TOO_MANY_CANDIDATES", messageHe: `"${pm.name}" הוא שם חלקי ואין רשימה קצרה (2–8) לשאול עליה — צריך שם מלא` };
+    return { status: "OK", mentionName: pm.name, direct: [], projects: [], ambiguous: all };
+  }
   if (new Set(ms.map((m) => normalizeName(m.name))).size > 1) return { status: "SEVERAL_NAMES", messageHe: `"${surface}" מכיל כמה שמות — צריך surface עם שם אחד` };
   const m = ms[0];
   const nm = normalizeName(m.name);

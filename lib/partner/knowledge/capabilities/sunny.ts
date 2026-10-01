@@ -187,7 +187,7 @@ export const ownerInbox: KnowledgeCapability = {
         fields: {
           writtenAt: i.createdAt, status: i.status, canonical: false,
           mentions: u.get(i.id)?.mentions ?? [], context: u.get(i.id)?.context ?? [], moreEntities: u.get(i.id)?.moreEntities ?? 0,
-          howToThinkHe: partner("אל תקריא: מה אמר (חצי משפט) → מה אני מבינה → מה אני מסיקה (מסומן) → מה זה משנה → מה לבדוק / צעד הבא → 'נכון?'. mention = שם בטקסט (TEXT_MATCH), לא קישור; AMBIGUOUS = להציע ולשאול. context = רשומות; הן גוברות."),
+          howToThinkHe: partner("אל תקריא: מה אמר (חצי משפט) → מה אני מבינה → מה אני מסיקה (מסומן) → מה זה משנה → מה לבדוק / צעד הבא → 'נכון?'. mention = שם בטקסט (TEXT_MATCH), לא קישור; AMBIGUOUS / PARTIAL_NAME (שם פרטי) = להציע את המועמד הסביר ולשאול. context = רשומות (הן גוברות); via LIKELY_PARTIAL_NAME = הנחה שלי — להציג כהנחה ולאשר."),
         },
       })), {
         summary: [sfact("NEW_COUNT", "עדכונים שלא טופלו", fresh.length, "OWNER_REPORTED", "OWNER_INBOX")],

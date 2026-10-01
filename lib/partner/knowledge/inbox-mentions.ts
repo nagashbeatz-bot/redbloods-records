@@ -14,7 +14,7 @@ import type { GatewaySources } from "../gateway/core";
 import type { GatewayEntityType } from "../gateway/types";
 
 export type MentionQuality = "TEXT_MATCH" | "AMBIGUOUS";
-export type AmbiguousReason = "SHORT_OR_GENERIC_NAME" | "SEVERAL_ENTITIES";
+export type AmbiguousReason = "SHORT_OR_GENERIC_NAME" | "SEVERAL_ENTITIES" | "PARTIAL_NAME";
 export interface InboxMention {
   name: string;
   quality: MentionQuality;
@@ -93,4 +93,29 @@ export function findMentions(text: string, index: readonly MentionEntry[]): Inbo
 /** Does the text name THIS entity (TEXT_MATCH only — an AMBIGUOUS mention never counts)? */
 export function mentionsEntity(mentions: readonly InboxMention[], key: string): boolean {
   return mentions.some((m) => m.quality === "TEXT_MATCH" && m.keys.includes(key));
+}
+
+/**
+ * PARTIAL names (Owner reality 2026-10-01: he writes first names — "שליו", "מאור", "חיים"). A word of the text (one
+ * Hebrew prefix letter allowed) that equals ONE token of a multi-word record name is a PARTIAL_NAME mention — always
+ * AMBIGUOUS (a candidate list to propose and confirm, never a link and never a fact). Names already matched whole are
+ * skipped; short / generic words never count. `persons` = the non-project identity groups behind it (one = likely one person).
+ */
+export interface PartialMention extends InboxMention { persons: string[] }
+export function findPartialMentions(text: string, index: readonly MentionEntry[], covered: ReadonlySet<string> = new Set()): PartialMention[] {
+  const words = [...new Set(normalizeName(text).split(" ").filter(Boolean))];
+  const out: PartialMention[] = [];
+  for (const w of words) {
+    const forms = [w, ...(HEBREW.test(w) && w.length >= 4 && HE_PREFIXES.has(w[0]) ? [w.slice(1)] : [])];
+    for (const f of forms) {
+      if (isWeakName(f)) continue;
+      const es = index.filter((e) => !covered.has(e.norm) && e.norm.includes(" ") && e.norm.split(" ").includes(f));
+      if (!es.length) continue;
+      const keys = [...new Set(es.map((e) => e.key))].sort();
+      out.push({ name: f, quality: "AMBIGUOUS", keys, types: [...new Set(es.map((e) => e.type))], reason: "PARTIAL_NAME", persons: [...new Set(es.filter((e) => e.type !== "project").map((e) => e.group))].sort() });
+      break;
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((m) => (seen.has(m.name) ? false : (seen.add(m.name), true))).sort((a, b) => a.name.localeCompare(b.name, "he"));
 }

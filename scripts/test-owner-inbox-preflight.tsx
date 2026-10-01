@@ -165,6 +165,15 @@ ok("the Gateway loads mode-specific sources only for that mode", read("lib/partn
   ok("at most 3 entities of context per update", r.items.every((i) => ((i.fields as { context: unknown[] }).context ?? []).length <= 3));
   ok("an AMBIGUOUS name carries its candidates only — no context is picked for it", r.items.every((i) => ((i.fields as { mentions: Array<{ quality: string; keys: string[] }>; context: Array<{ key: string }> }).mentions ?? []).filter((m) => m.quality === "AMBIGUOUS").every((m) => !(i.fields as { context: Array<{ key: string }> }).context.some((c) => m.keys.includes(c.key) && !m.keys.some((k) => k.startsWith("project:"))))));
   ok("each item carries the think-don't-recite guidance", !!sh && sh.howToThinkHe.text.includes("אל תקריא") && sh.howToThinkHe.text.includes("נכון?"));
+  // first names (the Owner's reality): "שליו" / "דניאל" are PARTIAL_NAME — candidates, never a link
+  const fnItems = [inboxItem(950, "היה סשן טוב עם שליו אתמול, צריך לעבוד על הוורס השני", "NEW", "2026-10-01T08:00:00Z"), inboxItem(951, "צריך לדבר עם דניאל", "NEW", "2026-10-01T08:01:00Z")];
+  const fsrc = { ...(usrc as object), ownerInbox: { status: "OK", value: fnItems } } as never;
+  const fr = ownerInbox.read(fsrc, { mode: "understand", params: {}, limit: 20, offset: 0 } as never);
+  const ff = (id: string) => fr.items.find((x) => x.id === id)?.fields as { mentions: Array<{ name: string; quality: string; reason?: string; keys: string[]; openProjects: string[] }>; context: Array<Record<string, unknown>> };
+  const sh2 = ff(fnItems[0].id);
+  ok("a first name of ONE person (שליו → שליו טסמה) → AMBIGUOUS PARTIAL_NAME + a LIKELY context of their one open project (to propose and confirm)", sh2.mentions.some((m) => m.name === "שליו" && m.quality === "AMBIGUOUS" && m.reason === "PARTIAL_NAME" && m.keys.includes(`label-artist:${A_SHALEV}`)) && sh2.context.some((c) => c.key === `project:${P_ALBUM}` && c.via === "LIKELY_PARTIAL_NAME"), sh2);
+  const dn = ff(fnItems[1].id);
+  ok("a first name of SEVERAL people (דניאל → two different clients) → candidates only, no context", dn.mentions.some((m) => m.name === "דניאל" && m.reason === "PARTIAL_NAME" && m.keys.includes(`client:${C_DANIEL}`) && m.keys.includes(`client:${C_DANIEL2}`)) && dn.context.length === 0, dn);
   const noSt = ownerInbox.read({ now: new Date(), identities: { cleantone: null }, ownerInbox: { status: "OK", value: inbox } } as never, { mode: "understand", params: {}, limit: 20, offset: 0 } as never);
   ok("company state not read → still every NEW text, PARTIAL + said so (never silently empty)", noSt.items.length === 4 && noSt.completeness === "PARTIAL" && noSt.coverage.some((c) => c.text.includes("לא נקרא")));
 }

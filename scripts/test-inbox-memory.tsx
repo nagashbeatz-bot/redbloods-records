@@ -80,6 +80,8 @@ function world() {
   ok("…the Boss's answer links it (OWNER_ANSWER) only with EXACTLY the server's candidates", linkVerdict(rt, P_TAL, "OWNER_ANSWER", [P_TAL, C_TAL]).ok && !linkVerdict(rt, P_TAL, "OWNER_ANSWER", [P_TAL, P_CLOSER]).ok && !linkVerdict(rt, P_CLOSER, "OWNER_ANSWER", [C_TAL, P_TAL]).ok);
   const rs = R("שליו טסמה");
   ok("an artist with 2 open projects: the artist is unique; which project → a question (closed / hidden excluded)", rs.status === "OK" && linkVerdict(rs, A_SHALEV, "RESOLVER_UNIQUE", null).ok && rs.projects.join() === [P_S1, P_S2].sort().join() && !linkVerdict(rs, P_S1, "RESOLVER_UNIQUE", null).ok && linkVerdict(rs, P_S1, "OWNER_ANSWER", [P_S2, P_S1]).ok);
+  const rf = resolveSurface("הסשן עם שליו היה טוב", "שליו", INDEX, PROJECTS);
+  ok("a FIRST name (שליו) → never RESOLVER_UNIQUE; the Boss chooses among the person + their open projects (OWNER_ANSWER)", rf.status === "OK" && rf.ambiguous.join() === [A_SHALEV, P_S1, P_S2].sort().join() && !linkVerdict(rf, A_SHALEV, "RESOLVER_UNIQUE", null).ok && linkVerdict(rf, P_S1, "OWNER_ANSWER", [A_SHALEV, P_S1, P_S2]).ok, rf);
   ok("a surface that is not literally in the text → refused", R("Closers").status === "NOT_IN_TEXT" && resolveSurface(BODY, "Winter", INDEX, PROJECTS).status === "NOT_IN_TEXT");
   ok("a surface with two names → refused (one name per link)", R("Closer נשמע הרבה יותר טוב, נשאר לסדר את הבאקים ואז לשלוח לאמן. אצל טל").status === "SEVERAL_NAMES");
   ok("OWNER_ANSWER when the name is unique → refused (no question to ask)", !linkVerdict(rc, P_CLOSER, "OWNER_ANSWER", [P_CLOSER, P_TAL]).ok);
