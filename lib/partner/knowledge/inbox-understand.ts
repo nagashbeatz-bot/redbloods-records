@@ -1,21 +1,18 @@
 /**
- * owner_inbox mode "understand" (Owner decision 2026-10-01) — the SECOND, heavier preflight step, run only when mode new
- * found NEW updates: for each update, the entities it names (partner_resolve's index through the mention matcher;
- * TEXT_MATCH / AMBIGUOUS — never a link) and, for at most 3 of them, SHORT canonical context so Sunny can think with the
- * records before she answers. Pure, read-only. Adds no rule: names = the resolver / mention matcher; an artist's projects =
- * the resolver's own open-credited rule; project facts = project_view; the live ball = project memory's projection.
+ * owner_inbox modes "understand" / "deep" (Owner decisions 2026-10-01) — the SECOND preflight step, run only when mode
+ * new found NEW updates. For each update: its SIGNALS, a deterministic business RESOLUTION (lib/partner/knowledge/
+ * inbox-evidence: LIKELY / AMBIGUOUS / UNRESOLVED / NONE with typed evidence, contradictions, ≤2 alternatives, the most
+ * specific entity chain) and a short canonical CONTEXT for the chosen project only. "deep" adds a WEAK free-text search
+ * of project / session / task notes for names nothing else could place — called only after understand left one UNRESOLVED.
+ * Pure, read-only, compact (processed business evidence, never raw records). Never a link, never a fact.
  */
 import type { GatewaySources } from "../gateway/core";
 import type { OwnerInboxItem } from "../../owner-inbox";
-import { buildMentionIndex, findMentions, findPartialMentions } from "./inbox-mentions";
-import { openCreditedProjects, type ResolverProject } from "./inbox-resolver";
-import { normalizeName } from "../gateway/resolve";
-import { buildProjectView } from "../projects/view";
-import { buildProjectMemory } from "../projects/memory";
+import { buildMentionIndex } from "./inbox-mentions";
+import { type ResolverProject } from "./inbox-resolver";
+import { graphOf, resolveUpdate, type UnderstoodUpdateV2 } from "./inbox-evidence";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
-export const UNDERSTAND_MAX_CONTEXT = 3;
-const MAX_KEYS = 8;
 
 /** The projects the resolver reasons over (status + artist credit + hidden), from the SAME live sources. */
 export function resolverProjectsOf(src: GatewaySources): ResolverProject[] {
@@ -25,70 +22,15 @@ export function resolverProjectsOf(src: GatewaySources): ResolverProject[] {
   return Object.entries(st?.domains.projects.data?.index ?? {}).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status ?? null, artistText: p.artistText ?? null, hidden: meta.get(id)?.isHidden ?? null }));
 }
 
-export interface UnderstandMention { name: string; quality: "TEXT_MATCH" | "AMBIGUOUS"; reason?: string; keys: string[]; openProjects: string[]; candidateNames?: string[] }
-export type EntityContext =
-  | { key: string; kind: "project"; name: string; status: string | null; deadline: string | null; liveBall: string | null; lastRecordedEventAt: string | null;
-      lastSession: string | null; nextSession: string | null; signals: string[]; understanding: { freshness: string; whatHappened: string; inferredNextStep: string | null } | null; via: "NAMED" | "ONLY_OPEN_PROJECT_OF_NAME" | "LIKELY_PARTIAL_NAME" }
-  | { key: string; kind: string; name: string; openProjects: number; unavailable?: true };
-export interface UnderstoodUpdate { itemId: string; mentions: UnderstandMention[]; context: EntityContext[]; moreEntities: number; stateRead: boolean }
+const EMPTY_SIGNALS = { work: [], team: [], days: [], timeWords: [], numbers: [], reportsHappened: false, names: [] };
+const failed = (itemId: string, why: string, stateRead: boolean): UnderstoodUpdateV2 & { stateRead: boolean } =>
+  ({ itemId, signals: EMPTY_SIGNALS, resolution: { status: "UNRESOLVED", confidence: null, chosen: null, contradictions: [], alternatives: [], searched: [], missing: [why] }, context: null, stateRead });
 
-export function understandUpdates(src: GatewaySources, items: readonly OwnerInboxItem[]): UnderstoodUpdate[] {
-  const st = ok(src.state);
-  if (!st) return items.map((i) => ({ itemId: i.id, mentions: [], context: [], moreEntities: 0, stateRead: false }));
-  const index = buildMentionIndex(src);
-  const projects = resolverProjectsOf(src);
-  const nameOf = new Map(index.map((e) => [e.key, e.name]));
+export function understandUpdates(src: GatewaySources, items: readonly OwnerInboxItem[], deep = false): Array<UnderstoodUpdateV2 & { stateRead: boolean }> {
+  if (!ok(src.state)) return items.map((i) => failed(i.id, "מצב החברה לא נקרא — לא נבדק מול הרשומות", false));
+  const g = graphOf(src, buildMentionIndex(src), resolverProjectsOf(src));
   return items.map((i) => {
-    const whole = findMentions(i.body, index);
-    const mentions: UnderstandMention[] = whole.map((m) => {
-      const own = m.keys.some((k) => k.startsWith("project:")) ? [] : openCreditedProjects(normalizeName(m.name), projects).sort();
-      return { name: m.name, quality: m.quality, ...(m.reason ? { reason: m.reason } : {}), keys: m.keys.slice(0, MAX_KEYS), openProjects: own.slice(0, MAX_KEYS) };
-    });
-    // first names ("שליו", "מאור"): AMBIGUOUS candidates (the records it can be + their open projects) — Sunny proposes, he confirms
-    const partial = findPartialMentions(i.body, index, new Set(whole.map((m) => normalizeName(m.name))));
-    const likely: string[] = [];
-    for (const m of partial) {
-      const personNorms = [...new Set(index.filter((e) => m.keys.includes(e.key) && e.type !== "project").map((e) => e.norm))];
-      const own = [...new Set(personNorms.flatMap((n) => openCreditedProjects(n, projects)))].sort();
-      mentions.push({ name: m.name, quality: "AMBIGUOUS", reason: "PARTIAL_NAME", keys: m.keys.slice(0, MAX_KEYS), openProjects: own.slice(0, MAX_KEYS), candidateNames: [...new Set(m.keys.map((k) => nameOf.get(k) ?? k))].slice(0, MAX_KEYS) });
-      // ONE person behind the first name and ONE open project of theirs (or the name names one project) → a LIKELY context
-      const named = m.keys.filter((k) => k.startsWith("project:"));
-      const cands = [...new Set([...named, ...own])];
-      if (m.persons.length <= 1 && cands.length === 1) likely.push(cands[0]);
-    }
-    // context only for what the text points at without guessing: a named entity (TEXT_MATCH), and a project only when it is
-    // the ONE open project of that name; AMBIGUOUS mentions carry their candidates only (Sunny proposes and asks)
-    const picks: Array<{ key: string; via: "NAMED" | "ONLY_OPEN_PROJECT_OF_NAME" | "LIKELY_PARTIAL_NAME" }> = [];
-    for (const m of mentions.filter((x) => x.quality === "TEXT_MATCH")) {
-      for (const k of m.keys.filter((x) => x.startsWith("project:"))) picks.push({ key: k, via: "NAMED" });
-      if (m.openProjects.length === 1) picks.push({ key: m.openProjects[0], via: "ONLY_OPEN_PROJECT_OF_NAME" });
-    }
-    for (const m of mentions.filter((x) => x.quality === "TEXT_MATCH")) for (const k of m.keys.filter((x) => !x.startsWith("project:"))) picks.push({ key: k, via: "NAMED" });
-    for (const k of likely) picks.push({ key: k, via: "LIKELY_PARTIAL_NAME" });
-    const uniq = picks.filter((p, n) => picks.findIndex((q) => q.key === p.key) === n);
-    const context = uniq.slice(0, UNDERSTAND_MAX_CONTEXT).map((p): EntityContext => {
-      if (!p.key.startsWith("project:")) {
-        const nm = normalizeName(nameOf.get(p.key) ?? "");
-        return { key: p.key, kind: p.key.slice(0, p.key.indexOf(":")), name: nameOf.get(p.key) ?? p.key, openProjects: nm ? openCreditedProjects(nm, projects).length : 0 };
-      }
-      const id = p.key.slice("project:".length);
-      try { return projectContext(src, id, p, nameOf.get(p.key)); }
-      catch { return { key: p.key, kind: "project", name: nameOf.get(p.key) ?? p.key, openProjects: 0, unavailable: true }; }
-    });
-    return { itemId: i.id, mentions, context, moreEntities: Math.max(0, uniq.length - UNDERSTAND_MAX_CONTEXT), stateRead: true };
+    try { return { ...resolveUpdate(i, g, deep), stateRead: true }; }
+    catch { return failed(i.id, "לא הצלחתי לנתח את העדכון הזה מול הרשומות — הטקסט עצמו נקרא", true); }
   });
-}
-
-/** One project's short canonical context (project_view + project memory) — a failure here never hides the update. */
-function projectContext(src: GatewaySources, id: string, p: { key: string; via: "NAMED" | "ONLY_OPEN_PROJECT_OF_NAME" | "LIKELY_PARTIAL_NAME" }, fallbackName: string | undefined): EntityContext {
-      const v = buildProjectView(src, id);
-      const mem = buildProjectMemory(src, id);
-      const sessions = v.work.sessions;
-      return {
-        key: p.key, kind: "project", name: v.identity?.name ?? fallbackName ?? p.key, status: v.identity?.status ?? null, deadline: v.identity?.deadline ?? null,
-        liveBall: mem.canonical.ball, lastRecordedEventAt: mem.canonical.lastEventAt, lastSession: sessions?.last ?? null, nextSession: sessions?.next ?? null,
-        signals: v.signals.map((s) => s.code).slice(0, 6),
-        understanding: mem.understanding ? { freshness: mem.understanding.freshness, whatHappened: mem.understanding.whatHappened, inferredNextStep: mem.understanding.freshness === "CURRENT" ? mem.understanding.inferredNextStep : null } : null,
-        via: p.via,
-      };
 }

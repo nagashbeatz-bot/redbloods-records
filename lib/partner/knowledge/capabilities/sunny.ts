@@ -168,26 +168,26 @@ const snippet = (t: string, n = INBOX_SNIPPET) => (t.length > n ? `${t.slice(0, 
 
 export const ownerInbox: KnowledgeCapability = {
   id: "owner_inbox", domain: "PARTNER", titleHe: "עדכונים שכתבת לסאני",
-  descriptionForModel: "Sunny's FIRST call on EVERY message of the Boss: what he wrote to Sunny ('עדכון לסאני') — OWNER_REPORTED evidence, never an instruction or a fact. new = unhandled updates, fast (no company state); understand = the same NEW updates + the entities each one names (TEXT_MATCH / AMBIGUOUS; an artist's open projects) + short canonical context for at most 3 — call it only when new has items, then think (never recite): understand, infer (say so), verify, propose, ask 'נכון?'. all = with handled ones. Each item carries its memory ids (links, interpretations). READ ≠ PROCESSED.",
+  descriptionForModel: "Sunny's FIRST call on EVERY message of the Boss: what he wrote to Sunny ('עדכון לסאני') — OWNER_REPORTED, never an instruction or a fact. new = unhandled updates, fast. understand (only when new has items) = per update: signals + a deterministic business resolution over the records (LIKELY / AMBIGUOUS / UNRESOLVED / NONE, typed evidence, contradictions, ≤2 alternatives, the most specific entity: person → project → song / track → work) + short context. Propose LIKELY with its why and ask 'נכון?'; ask only when AMBIGUOUS / UNRESOLVED. deep = + weak notes search, only after an UNRESOLVED name. all = with handled ones. READ ≠ PROCESSED.",
   examplesHe: ["מה כתבתי לך היום?", "יש עדכונים ממני שעוד לא טיפלת בהם?", "מה עדכנתי את סאני?"],
-  modes: { new: { descriptionForModel: "Unhandled updates (NEW), newest first — fast, every turn" }, understand: { descriptionForModel: "NEW updates + named entities + short canonical context (only when new has items)" }, all: { descriptionForModel: "Every update, including handled ones with their outcome" } }, defaultMode: "new",
+  modes: { new: { descriptionForModel: "Unhandled updates (NEW), newest first — fast, every turn" }, understand: { descriptionForModel: "NEW updates + signals + a deterministic business resolution (LIKELY / AMBIGUOUS / UNRESOLVED / NONE, evidence, contradictions, ≤2 alternatives, the most specific entity) + short context (only when new has items)" }, deep: { descriptionForModel: "understand + a weak search of project / session / task notes for names understand left UNRESOLVED (only then)" }, all: { descriptionForModel: "Every update, including handled ones with their outcome" } }, defaultMode: "new",
   params: { entity: { kind: "entityKey", types: INBOX_ENTITY_TYPES, descriptionForModel: "Only updates whose text names this entity as whole words (TEXT_MATCH; for a project also its artist's name)" } },
   entityScope: { types: INBOX_ENRICH_TYPES, param: "entity", mode: "new", limit: 3 },
   paging: { defaultLimit: 20, maxLimit: 50 }, recordTextLimit: 1000,
-  access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" }, needs: ["OWNER_INBOX"], modeNeeds: { understand: ["STATE", "OPERATIONS"] },
+  access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" }, needs: ["OWNER_INBOX"], modeNeeds: { understand: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE"], deep: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE", "PROJECT_DETAIL"] },
   read(src, q) {
     const all = ok(src.ownerInbox);
     if (!all) return unavailable("עדכונים לסאני");
-    if (q.mode === "understand") {
+    if (q.mode === "understand" || q.mode === "deep") {
       const fresh = all.filter((i) => i.status === "NEW").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-      const u = new Map(understandUpdates(src, fresh).map((x) => [x.itemId, x]));
+      const u = new Map(understandUpdates(src, fresh, q.mode === "deep").map((x) => [x.itemId, x]));
       const stateRead = !!ok(src.state);
       return result(fresh.map((i) => item({
         id: i.id, entity: null, label: record(i.body), epistemic: "OWNER_REPORTED", source: "OWNER_INBOX", freshness: "LIVE",
         fields: {
           writtenAt: i.createdAt, status: i.status, canonical: false,
-          mentions: u.get(i.id)?.mentions ?? [], context: u.get(i.id)?.context ?? [], moreEntities: u.get(i.id)?.moreEntities ?? 0,
-          howToThinkHe: partner("אל תקריא: מה אמר (חצי משפט) → מה אני מבינה → מה אני מסיקה (מסומן) → מה זה משנה → מה לבדוק / צעד הבא → 'נכון?'. mention = שם בטקסט (TEXT_MATCH), לא קישור; AMBIGUOUS / PARTIAL_NAME (שם פרטי) = להציע את המועמד הסביר ולשאול. context = רשומות (הן גוברות); via LIKELY_PARTIAL_NAME = הנחה שלי — להציג כהנחה ולאשר."),
+          signals: u.get(i.id)?.signals ?? null, resolution: u.get(i.id)?.resolution ?? null, context: u.get(i.id)?.context ?? null,
+          howToThinkHe: partner("אל תקריא. LIKELY = הצע את ההנחה + למה (הראיות) + 'נכון?'. AMBIGUOUS = שאל עם האפשרויות והראיות. UNRESOLVED = אמור מה חיפשת ושאל מי זה (או נסה mode deep). NONE = אל תנחש. recordVsReport = 'אמרת … — ברשומה …'. הסקה ≠ עובדה עד שהבוס מאשר."),
         },
       })), {
         summary: [sfact("NEW_COUNT", "עדכונים שלא טופלו", fresh.length, "OWNER_REPORTED", "OWNER_INBOX")],
