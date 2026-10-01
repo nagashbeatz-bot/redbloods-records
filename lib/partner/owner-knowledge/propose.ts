@@ -9,8 +9,10 @@
  * bound to: Owner user id, MCP client, access token id, the exact normalized payload, the relevant live state, a
  * 10-minute expiry and a one-time nonce (HMAC-signed with the connector secret).
  *
- * COMMIT: the SAME items + the token. Signature, binding and expiry are verified, the preview is RECOMPUTED from live
- * state (payload / state changed → STALE → re-preview), the nonce is consumed once (in-process + a DB unique index),
+ * COMMIT: the SAME items + the token + the Owner's approval words. Signature, binding and expiry are verified, the
+ * preview is RECOMPUTED from live state (payload / state changed → STALE → re-preview), the Owner's words must be an
+ * approval of exactly this read-back (lib/partner/owner-approval.ts — the Action Layer's classifier; T1 2026-10-01),
+ * the nonce is consumed once (in-process + a DB unique index),
  * the batch is appended in ONE statement, and a FRESH read must show every new row as its slot's terminal → LEARNED.
  * Nothing here can write canonical business data: the only write is the injected knowledge-store append.
  */
@@ -22,6 +24,7 @@ import type { GatewaySources } from "../gateway/core";
 import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
 import { assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
 import { isAuthoritative, withProvenanceDefaults } from "./provenance";
+import { ownerApprovalVerdict } from "../owner-approval";
 
 export const MAX_ITEMS = 3;
 export const TOKEN_TTL_MS = 10 * 60_000;
@@ -82,6 +85,8 @@ export type PreviewResult =
 export type CommitResult =
   | { status: "LEARNED"; ownerMessageHe: string; recorded: Array<{ id: string; kind: string; subjectKey: string; meaningHe: string; epistemic: string; provenance: "OWNER_VIA_SUNNY" }> }
   | { status: "STALE"; messageHe: string }
+  /** The Owner's words were missing / not an approval / changed the read-back — nothing written (T1, 2026-10-01). */
+  | { status: "APPROVAL_MISSING" | "NOT_AN_APPROVAL" | "APPROVAL_WITH_CHANGES"; messageHe: string }
   | { status: "TOKEN_INVALID" | "TOKEN_EXPIRED" | "ALREADY_COMMITTED" | "NOT_AUTHORIZED" }
   | { status: "NOT_VERIFIED"; messageHe: string; persisted: true }
   | { status: "INVALID" | "CONFLICT_WITH_LIVE" | "NEEDS_CLARIFICATION" | "ALREADY_KNOWN" | "NOTHING_TO_WITHDRAW" | "PROVENANCE_CONFLICT"; detail: unknown }
@@ -256,6 +261,19 @@ export function normalizeItems(inputs: unknown, live: KnowledgeLive): NormalizeO
   return { ok: true, items };
 }
 
+/**
+ * Everything the Owner was shown in the read-back (so repeating it in the approval is never mistaken for a change):
+ * the labels, the field values and every multi-word phrase of the read-back sentences (e.g. "לא דחוף" — a repeated
+ * phrase is the read-back, never a negation). Single words come only from labels / values, never from splitting.
+ */
+export function readBackValuesOf(items: readonly NormalizedItem[]): Array<string | number> {
+  const phrases = (t: string) => t.split(/[:;,.()[\]"״—–]|\s-\s/).map((p) => p.trim()).filter((p) => /\S\s+\S/.test(p));
+  return items.flatMap((x) => {
+    const sentences = [x.meaningHe, ...(x.supersedesMeaningHe ? [x.supersedesMeaningHe] : [])];
+    return [x.subjectLabel, ...sentences, ...sentences.flatMap(phrases), ...Object.values(x.value)];
+  });
+}
+
 const payloadHash = (items: NormalizedItem[]) => sha256Hex(canonicalStableStringify(items.map((x) => [x.kind, x.operation, x.subjectKey, x.identityKeys, x.slotKey, x.value, x.reviewAt, x.expiresAt])));
 const stateHash = (items: NormalizedItem[]) => sha256Hex(canonicalStableStringify(items.map((x) => [x.slotKey, x.supersedesId, x.conflicts.map((c) => c.code)])));
 
@@ -284,11 +302,11 @@ export async function previewKnowledgeCore(deps: KnowledgeProposeDeps, actor: Kn
     status: "PREVIEW",
     readBackHe: `הבנתי: ${n.items.map((x) => x.meaningHe).join(" ")}${n.items.some((x) => x.supersedesMeaningHe) ? ` (זה מחליף: ${n.items.filter((x) => x.supersedesMeaningHe).map((x) => x.supersedesMeaningHe).join("; ")})` : ""} לשמור את זה כידע של סאני?`,
     items: n.items, confirmationToken: token, expiresAt: new Date(exp).toISOString(),
-    instructionsForModel: "Show readBackHe to the Owner in your own words. Call commit with the SAME items and this token ONLY after the Owner explicitly confirms in this conversation. If they correct anything, preview again.",
+    instructionsForModel: "Show readBackHe to the Owner in your own words. Call commit with the SAME items, this token and confirmationText = the Owner's exact words of approval, ONLY after the Owner explicitly confirms in this conversation (the server refuses words that are not an approval or that change something). If they correct anything, preview again.",
   };
 }
 
-export async function commitKnowledgeCore(deps: KnowledgeProposeDeps, actor: KnowledgeActor, items: unknown, token: unknown, attemptAuditId: string): Promise<CommitResult> {
+export async function commitKnowledgeCore(deps: KnowledgeProposeDeps, actor: KnowledgeActor, items: unknown, token: unknown, attemptAuditId: string, confirmationText?: unknown): Promise<CommitResult> {
   const b = readToken(deps.secret, token);
   if (!b) return { status: "TOKEN_INVALID" };
   if (b.u !== actor.userId || b.c !== actor.clientId || b.t !== actor.tokenId) return { status: "TOKEN_INVALID" };
@@ -306,6 +324,10 @@ export async function commitKnowledgeCore(deps: KnowledgeProposeDeps, actor: Kno
     return { status: "STALE", messageHe: "משהו השתנה מאז ההצגה. צריך להציג שוב את מה שאני אמור לשמור." };
   }
   if (payloadHash(n.items) !== b.h || stateHash(n.items) !== b.f) return { status: "STALE", messageHe: "הנתונים או הניסוח השתנו מאז האישור. אציג שוב לפני שמירה." };
+  // T1: the Owner's own approval words of exactly this read-back — judged by the Action Layer's classifier. Checked
+  // BEFORE the nonce is spent, so a refused attempt writes nothing and consumes nothing.
+  const approval = ownerApprovalVerdict(confirmationText, readBackValuesOf(n.items));
+  if (!approval.ok) return { status: approval.code, messageHe: approval.messageHe };
   if (!deps.consumeNonce(b.n, b.exp)) return { status: "ALREADY_COMMITTED" };
   const provenance = { source: "owner_via_sunny" as const, channel: "mcp" as const, client_id: actor.clientId, token_id: actor.tokenId, attempt_audit_id: attemptAuditId, operation: "LEARN_KNOWLEDGE" as const };
   const drafts: OwnerKnowledgeDraft[] = n.items.map((x, i) => ({

@@ -25,12 +25,12 @@ import { parseContextProvenance } from "../lib/partner/investigation/context-row
 import { readMcpConfig, scopeString, hasKnowledgeScope, ANSWER_SCOPE_STRING, MCP_SCOPE } from "../lib/integrations/partner-mcp/config";
 import { advertisedScope, grantedScope, insufficientScopeResponse } from "../lib/integrations/partner-mcp/oauth";
 import { protectedResourceMetadata, authorizationServerMetadata } from "../lib/integrations/partner-mcp/metadata";
-import { handleMcpHttp, SERVER_INFO, SERVER_INSTRUCTIONS, type McpDeps } from "../lib/integrations/partner-mcp/mcp";
+import { confirmationFingerprint, handleMcpHttp, SERVER_INFO, SERVER_INSTRUCTIONS, type McpDeps } from "../lib/integrations/partner-mcp/mcp";
 import { KNOWLEDGE_KINDS_FOR_TOOL, TOOL_NAMES, validateToolCall, buildToolDefinitions } from "../lib/integrations/partner-mcp/tools";
 import { isAllowedMcpOnlyFetch } from "../lib/integrations/partner-mcp/mcp-only";
 import { SlidingWindowLimiter } from "../lib/integrations/partner-mcp/rate-limit";
 import type { AuditRow } from "../lib/integrations/partner-mcp/store";
-import { NOW, P, U, LA_CLEAN, C_CLEAN, LA_SHALEV, input, financeRaw } from "./fixtures/integrity-company";
+import { NOW, P, U, LA_CLEAN, C_CLEAN, LA_SHALEV, LA_AVI, input, financeRaw } from "./fixtures/integrity-company";
 import { BASE_ENV } from "./fixtures/mcp-oauth-scenarios";
 
 let pass = 0, fail = 0;
@@ -162,7 +162,7 @@ async function main() {
     check("'הלייבל' → company:REDBLOODS; frequency MOST", [pv.items[1].value.object, pv.items[1].value.frequency], ["company:REDBLOODS", "MOST"]);
     ok("read-back: 'הבנתי: … ה-DJ של הלייבל … ברוב … לשמור את זה כידע של סאני?'", pv.readBackHe.startsWith("הבנתי:") && pv.readBackHe.includes("ה-DJ של הלייבל") && pv.readBackHe.includes("ברוב") && pv.readBackHe.endsWith("לשמור את זה כידע של סאני?"));
     check("PREVIEW writes nothing", [w.table.rows.length, w.table.inserts], [0, 0]);
-    const cm = (await commitKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS, pv.confirmationToken, U(7001))) as AnyRes & { ownerMessageHe: string; recorded: unknown[] };
+    const cm = (await commitKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS, pv.confirmationToken, U(7001), "מאשר")) as AnyRes & { ownerMessageHe: string; recorded: unknown[] };
     check("commit → LEARNED, 'למדתי' + what was recorded", [cm.status, cm.ownerMessageHe.startsWith("למדתי:"), cm.recorded.length], ["LEARNED", true, 2]);
     const recs = await w.records();
     ok("stored: provenance owner_via_sunny / mcp / client / token / attempt audit / LEARN_KNOWLEDGE (never Claude as the authority)", recs.every((r) => r.provenance.source === "owner_via_sunny" && r.provenance.channel === "mcp" && r.provenance.client_id === CLIENT && r.provenance.token_id === TOKEN_ID && r.provenance.attempt_audit_id === U(7001) && r.provenance.operation === "LEARN_KNOWLEDGE"));
@@ -190,7 +190,7 @@ async function main() {
       rel.items.some((i) => i.fields.relationQuality === "CANONICAL_RELATION" && i.entity === `client:${C_CLEAN}`) && rel.items.filter((i) => i.fields.relationQuality === "OWNER_CONFIRMED_RELATION").length === 2 && rel.items.every((i) => i.relationQuality !== "TEXT_MATCH"));
     const again = (await previewKnowledgeCore(w.deps, ACTOR, [CLINTON_ITEMS[0]])) as AnyRes;
     check("teaching it again → ALREADY_KNOWN (never re-asks / duplicates)", again.status, "ALREADY_KNOWN");
-    const replay = (await commitKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS, pv.confirmationToken, U(7002))) as AnyRes;
+    const replay = (await commitKnowledgeCore(w.deps, ACTOR, CLINTON_ITEMS, pv.confirmationToken, U(7002), "מאשר")) as AnyRes;
     ok("replaying the same confirmation → refused (ALREADY_COMMITTED / ALREADY_KNOWN), no new rows", ["ALREADY_COMMITTED", "ALREADY_KNOWN"].includes(replay.status) && w.table.rows.length === 2);
   }
 
@@ -201,35 +201,55 @@ async function main() {
     const pv = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { confirmationToken: string };
     check("preview by key", pv.status, "PREVIEW");
     const t = pv.confirmationToken;
-    check("no token → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, ACTOR, item, undefined, U(1))) as AnyRes).status, "TOKEN_INVALID");
-    check("another access token (same Owner) → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, tokenId: U(99) }, item, t, U(1))) as AnyRes).status, "TOKEN_INVALID");
-    check("another MCP client → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, clientId: "rbmcp_" + "d".repeat(40) }, item, t, U(1))) as AnyRes).status, "TOKEN_INVALID");
-    check("another user → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, userId: U(98) }, item, t, U(1))) as AnyRes).status, "TOKEN_INVALID");
+    check("no token → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, ACTOR, item, undefined, U(1), "מאשר")) as AnyRes).status, "TOKEN_INVALID");
+    check("another access token (same Owner) → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, tokenId: U(99) }, item, t, U(1), "מאשר")) as AnyRes).status, "TOKEN_INVALID");
+    check("another MCP client → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, clientId: "rbmcp_" + "d".repeat(40) }, item, t, U(1), "מאשר")) as AnyRes).status, "TOKEN_INVALID");
+    check("another user → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, { ...ACTOR, userId: U(98) }, item, t, U(1), "מאשר")) as AnyRes).status, "TOKEN_INVALID");
     check("tampered signature → TOKEN_INVALID", ((await commitKnowledgeCore(w.deps, ACTOR, item, t.slice(0, -2) + (t.endsWith("AA") ? "BB" : "AA"), U(1))) as AnyRes).status, "TOKEN_INVALID");
-    check("signed with another secret → TOKEN_INVALID", ((await commitKnowledgeCore({ ...w.deps, secret: "x".repeat(48) }, ACTOR, item, t, U(1))) as AnyRes).status, "TOKEN_INVALID");
-    check("different payload (URGENT instead of NOT_URGENT) → STALE (re-preview)", ((await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }], t, U(1))) as AnyRes).status, "STALE");
+    check("signed with another secret → TOKEN_INVALID", ((await commitKnowledgeCore({ ...w.deps, secret: "x".repeat(48) }, ACTOR, item, t, U(1), "מאשר")) as AnyRes).status, "TOKEN_INVALID");
+    check("different payload (URGENT instead of NOT_URGENT) → STALE (re-preview)", ((await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }], t, U(1), "מאשר")) as AnyRes).status, "STALE");
     w.clock.now += TOKEN_TTL_MS + 1000;
-    check("after 10 minutes → TOKEN_EXPIRED", ((await commitKnowledgeCore(w.deps, ACTOR, item, t, U(1))) as AnyRes).status, "TOKEN_EXPIRED");
+    check("after 10 minutes → TOKEN_EXPIRED", ((await commitKnowledgeCore(w.deps, ACTOR, item, t, U(1), "מאשר")) as AnyRes).status, "TOKEN_EXPIRED");
     check("nothing was written by any refused commit", w.table.rows.length, 0);
     w.clock.now = NOW.getTime();
     const pv2 = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { confirmationToken: string };
     // the slot changes between preview and commit (another session already stored a priority)
-    await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }], ((await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }])) as AnyRes & { confirmationToken: string }).confirmationToken, U(2));
-    check("relevant state changed since preview → STALE, nothing written", [((await commitKnowledgeCore(w.deps, ACTOR, item, pv2.confirmationToken, U(3))) as AnyRes).status, w.table.rows.length], ["STALE", 1]);
+    await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }], ((await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { priority: "URGENT" } }])) as AnyRes & { confirmationToken: string }).confirmationToken, U(2), "מאשר");
+    check("relevant state changed since preview → STALE, nothing written", [((await commitKnowledgeCore(w.deps, ACTOR, item, pv2.confirmationToken, U(3), "מאשר")) as AnyRes).status, w.table.rows.length], ["STALE", 1]);
     w.live.owner = false;
-    check("Owner re-check at preview + commit → NOT_AUTHORIZED", [((await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes).status, ((await commitKnowledgeCore(w.deps, ACTOR, item, pv2.confirmationToken, U(4))) as AnyRes).status], ["NOT_AUTHORIZED", "NOT_AUTHORIZED"]);
+    check("Owner re-check at preview + commit → NOT_AUTHORIZED", [((await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes).status, ((await commitKnowledgeCore(w.deps, ACTOR, item, pv2.confirmationToken, U(4), "מאשר")) as AnyRes).status], ["NOT_AUTHORIZED", "NOT_AUTHORIZED"]);
     w.live.owner = true;
     const pv3 = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { readBackHe: string; confirmationToken: string; items: Array<{ supersedesId: string | null }> };
     ok("a correction supersedes the slot's current row and the read-back says what it replaces", pv3.status === "PREVIEW" && !!pv3.items[0].supersedesId && pv3.readBackHe.includes("זה מחליף"));
     w.table.failNextInsert = { code: "23505", message: 'duplicate key value violates unique constraint "partner_owner_knowledge_slot_root_uk"' };
-    check("a concurrent writer (DB unique) → STALE, never a second truth", ((await commitKnowledgeCore(w.deps, ACTOR, item, pv3.confirmationToken, U(5))) as AnyRes).status, "STALE");
+    check("a concurrent writer (DB unique) → STALE, never a second truth", ((await commitKnowledgeCore(w.deps, ACTOR, item, pv3.confirmationToken, U(5), "מאשר")) as AnyRes).status, "STALE");
     const pv4 = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { confirmationToken: string };
-    check("correction committed", ((await commitKnowledgeCore(w.deps, ACTOR, item, pv4.confirmationToken, U(6))) as AnyRes).status, "LEARNED");
+    check("correction committed", ((await commitKnowledgeCore(w.deps, ACTOR, item, pv4.confirmationToken, U(6), "מאשר")) as AnyRes).status, "LEARNED");
     const recs = await w.records();
     check("history kept (2 rows), one active (the correction)", [recs.length, activeKnowledge(recs, "2026-09-24").length, activeKnowledge(recs, "2026-09-24")[0].value.priority], [2, 1, "NOT_URGENT"]);
     const wd = (await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], operation: "WITHDRAW" }])) as AnyRes & { confirmationToken: string };
-    check("WITHDRAW → committed; no active knowledge remains; history 3 rows", [((await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], operation: "WITHDRAW" }], wd.confirmationToken, U(7))) as AnyRes).status, activeKnowledge(await w.records(), "2026-09-24").length, (await w.records()).length], ["LEARNED", 0, 3]);
+    check("WITHDRAW → committed; no active knowledge remains; history 3 rows", [((await commitKnowledgeCore(w.deps, ACTOR, [{ ...item[0], operation: "WITHDRAW" }], wd.confirmationToken, U(7), "מאשר")) as AnyRes).status, activeKnowledge(await w.records(), "2026-09-24").length, (await w.records()).length], ["LEARNED", 0, 3]);
     check("nothing to withdraw → NOTHING_TO_WITHDRAW", ((await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], operation: "WITHDRAW" }])) as AnyRes).status, "NOTHING_TO_WITHDRAW");
+  }
+
+  section("C2. T1 (2026-10-01) — the commit needs the Owner's approval words, judged by the Action Layer classifier");
+  {
+    const w = world();
+    const item = [{ kind: "RELEASE_PRIORITY", subject: `label-artist:${LA_SHALEV}`, fields: { priority: "NOT_URGENT" } }];
+    const pv = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { confirmationToken: string; readBackHe: string };
+    const commit = async (text?: unknown) => ((await commitKnowledgeCore(w.deps, ACTOR, item, pv.confirmationToken, U(60), text)) as AnyRes).status;
+    check("a valid token alone (no words) → APPROVAL_MISSING, nothing written", [await commit(undefined), w.table.rows.length], ["APPROVAL_MISSING", 0]);
+    check("empty / whitespace words → APPROVAL_MISSING", [await commit(""), await commit("   ")], ["APPROVAL_MISSING", "APPROVAL_MISSING"]);
+    check("a refusal / hold is not an approval → NOT_AN_APPROVAL", [await commit("לא"), await commit("רגע, עוד לא"), await commit("תעצרי")], ["NOT_AN_APPROVAL", "NOT_AN_APPROVAL", "NOT_AN_APPROVAL"]);
+    check("words with no approval in them → NOT_AN_APPROVAL", await commit("מעניין"), "NOT_AN_APPROVAL");
+    check("approval + a change → APPROVAL_WITH_CHANGES (a new preview is needed)", [await commit("מאשר אבל שיהיה דחוף"), await commit("כן, 500")], ["APPROVAL_WITH_CHANGES", "APPROVAL_WITH_CHANGES"]);
+    check("the standing-authorization phrase is never the Owner's approval", await commit("STANDING:OWNER_INBOX_MEMORY"), "NOT_AN_APPROVAL");
+    check("nothing was written by any refused attempt", w.table.rows.length, 0);
+    check("refused words spent no nonce: the Owner's real \"כן\" commits with the SAME token → LEARNED", await commit("כן"), "LEARNED");
+    check("…exactly once (a replay writes nothing more)", [await commit("כן"), w.table.rows.length], ["ALREADY_KNOWN", 1]);
+    const w2 = world();
+    const pv2 = (await previewKnowledgeCore(w2.deps, ACTOR, item)) as AnyRes & { confirmationToken: string; readBackHe: string };
+    ok("repeating the read-back's own words (incl. its \"לא דחוף\") is still an approval", pv2.readBackHe.includes("לא דחוף") && ((await commitKnowledgeCore(w2.deps, ACTOR, item, pv2.confirmationToken, U(61), "כן, לא דחוף")) as AnyRes).status === "LEARNED");
   }
 
   section("D. Deterministic entity resolution — never a silent pick");
@@ -251,7 +271,7 @@ async function main() {
     const pv = (await previewKnowledgeCore(w.deps, ACTOR, item)) as AnyRes & { items: Array<{ epistemic: string; value: Record<string, unknown>; conflicts: Array<{ code: string; severity: string }> }>; readBackHe: string; confirmationToken: string };
     check("preview: OWNER_REPORTED, amount normalized, canonical gap NOTE (not blocking)", [pv.status, pv.items[0].epistemic, pv.items[0].value.amount, pv.items[0].conflicts.map((c) => `${c.code}:${c.severity}`)], ["PREVIEW", "OWNER_REPORTED", 3000, ["NOT_RECORDED_IN_FINANCE:NOTE"]]);
     ok("read-back says it is not a Finance record", pv.readBackHe.includes("זה לא רישום בכספים"));
-    await commitKnowledgeCore(w.deps, ACTOR, item, pv.confirmationToken, U(10));
+    await commitKnowledgeCore(w.deps, ACTOR, item, pv.confirmationToken, U(10), "מאשר");
     check("committed to partner_owner_knowledge ONLY (the store client can reach no other table); stored as OWNER_REPORTED", [w.table.rows.length, [...w.table.tablesTouched], (await w.records())[0].epistemic, before.length > 0], [1, [OWNER_KNOWLEDGE_TABLE], "OWNER_REPORTED", true]);
     w.live.financeMatch = true;
     const pv2 = (await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { ...item[0].fields, amount: 500 } }])) as AnyRes & { items: Array<{ conflicts: Array<{ code: string }> }> };
@@ -313,7 +333,7 @@ async function main() {
         answer: { limiter: new SlidingWindowLimiter([{ windowMs: 3_600_000, max: 10 }]), newId: () => U(8500 + ++n), submit: async () => ({ status: "FAILED" }) },
         ...(o.bind === false ? {} : { knowledge: { limiter: new SlidingWindowLimiter([{ windowMs: 3_600_000, max: 20 }]), newId: () => U(8000 + ++n),
           preview: async (i) => (await previewKnowledgeCore(w.deps, i.actor, i.items)) as unknown as Record<string, unknown>,
-          commit: async (i) => (await commitKnowledgeCore(w.deps, i.actor, i.items, i.confirmationToken, i.attemptAuditId)) as unknown as Record<string, unknown> } }),
+          commit: async (i) => (await commitKnowledgeCore(w.deps, i.actor, i.items, i.confirmationToken, i.attemptAuditId, i.confirmationText)) as unknown as Record<string, unknown> } }),
       };
       const rpc = async (method: string, params?: unknown) => {
         const res = await handleMcpHttp({ method: "POST", header: (h) => (h === "authorization" ? "Bearer t" : null), bodyText: async () => JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) }) }, deps);
@@ -335,14 +355,25 @@ async function main() {
     const pvBody = pv.json.result.structuredContent as { status: string; confirmationToken: string };
     check("preview through the adapter → PREVIEW; one audit row knowledge/preview (tool partner_propose_knowledge); nothing stored", [pvBody.status, on.audit.filter((a) => a.method.startsWith("knowledge/")).map((a) => `${a.method}:${a.tool}:${a.status}`), w.table.rows.length], ["PREVIEW", ["knowledge/preview:partner_propose_knowledge:OK"], 0]);
     const failing = mk({ env: ALL_ENV, scope: "partner:read partner:knowledge", auditFail: "knowledge/attempt" });
-    const cf = await failing.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: CLINTON_ITEMS, confirmationToken: pvBody.confirmationToken } });
+    const cf = await failing.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: CLINTON_ITEMS, confirmationToken: pvBody.confirmationToken, confirmationText: "כן, מאשר" } });
     check("attempt audit cannot be written → refused, NOTHING stored", [cf.json.error?.code, w.table.rows.length], [-32001, 0]);
-    const cm = await on.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: CLINTON_ITEMS, confirmationToken: pvBody.confirmationToken } });
+    const cm = await on.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: CLINTON_ITEMS, confirmationToken: pvBody.confirmationToken, confirmationText: "כן, מאשר" } });
     const cmBody = cm.json.result.structuredContent as { status: string };
     const attempt = on.audit.find((a) => a.method === "knowledge/attempt")!;
     check("commit → LEARNED; audit: attempt row (app id) BEFORE the write, result row after", [cmBody.status, on.audit.filter((a) => a.method.startsWith("knowledge/")).map((a) => a.method)], ["LEARNED", ["knowledge/preview", "knowledge/attempt", "knowledge/commit"]]);
     ok("stored provenance references the ATTEMPT audit row id", (await w.records()).every((r) => r.provenance.attempt_audit_id === attempt.id));
     ok("audit rows carry no bodies (only a fingerprint)", on.audit.every((a) => !JSON.stringify(a).includes("קלינטון") && !JSON.stringify(a).includes("pk1.")));
+    check("T1: the attempt row fingerprints the Owner's approval words (never the words themselves)", [attempt.input_fingerprint, on.audit.some((a) => JSON.stringify(a).includes("כן, מאשר"))], [confirmationFingerprint("כן, מאשר"), false]);
+    const t1 = mk({ env: ALL_ENV, scope: "partner:read partner:knowledge" });
+    const pvT = ((await t1.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "preview", items: [{ kind: "RELEASE_PRIORITY", subject: `label-artist:${LA_AVI}`, fields: { priority: "URGENT" } }] } })).json.result.structuredContent) as { confirmationToken: string };
+    const rowsBefore = w.table.rows.length;
+    const noWords = await t1.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: [{ kind: "RELEASE_PRIORITY", subject: `label-artist:${LA_AVI}`, fields: { priority: "URGENT" } }], confirmationToken: pvT.confirmationToken } });
+    check("T1 MCP: a commit without confirmationText is refused at the shape check — no attempt row, nothing stored", [noWords.json.error?.code, t1.audit.some((a) => a.method === "knowledge/attempt"), w.table.rows.length], [-32602, false, rowsBefore]);
+    const notApproval = await t1.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "commit", items: [{ kind: "RELEASE_PRIORITY", subject: `label-artist:${LA_AVI}`, fields: { priority: "URGENT" } }], confirmationToken: pvT.confirmationToken, confirmationText: "לא" } });
+    check("T1 MCP: \"לא\" → NOT_AN_APPROVAL (isError), nothing stored, the result row records the refusal", [notApproval.json.result.structuredContent.status, notApproval.json.result.isError, w.table.rows.length, t1.audit.find((a) => a.method === "knowledge/commit")?.error_category], ["NOT_AN_APPROVAL", true, rowsBefore, "NOT_AN_APPROVAL"]);
+    check("T1 MCP: a preview carrying confirmationText is refused (words belong to the commit only)", (await t1.rpc("tools/call", { name: "partner_propose_knowledge", arguments: { stage: "preview", items: CLINTON_ITEMS, confirmationText: "כן" } })).json.error?.code, -32602);
+    const schema = buildToolDefinitions([], { knowledge: true }).find((x) => x.name === "partner_propose_knowledge")!.inputSchema as { properties: Record<string, unknown> };
+    ok("T1: the knowledge tool schema carries confirmationText", "confirmationText" in schema.properties);
   }
 
   section("H. MCP-only fetch guard");

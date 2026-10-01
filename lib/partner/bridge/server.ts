@@ -43,6 +43,6 @@ const deps: BridgeDeps = {
   },
 };
 
-export function answerViaConnector(i: { questionRef: unknown; answer: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
+export function answerViaConnector(i: { questionRef: unknown; answer: unknown; confirmationText: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
   return answerViaConnectorCore(deps, i);
 }

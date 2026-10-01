@@ -133,7 +133,7 @@ type World = ReturnType<typeof world>;
 async function learn(w: World, items: unknown[]) {
   const pv = (await previewKnowledgeCore(w.deps, ACTOR, items)) as AnyRes & { confirmationToken?: string };
   if (pv.status !== "PREVIEW") return { pv, c: null as AnyRes | null };
-  const c = (await commitKnowledgeCore(w.deps, ACTOR, items, pv.confirmationToken!, U(++auditN))) as AnyRes;
+  const c = (await commitKnowledgeCore(w.deps, ACTOR, items, pv.confirmationToken!, U(++auditN), "מאשר")) as AnyRes;
   return { pv, c };
 }
 const prev = async (w: World, items: unknown[]) => (await previewKnowledgeCore(w.deps, ACTOR, items)) as AnyRes & { errors?: string[]; messageHe?: string };

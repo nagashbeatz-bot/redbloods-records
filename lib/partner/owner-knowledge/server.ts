@@ -65,6 +65,6 @@ export function previewKnowledgeViaConnector(secret: string, i: { items: unknown
   return previewKnowledgeCore(deps(secret), i.actor, i.items);
 }
 
-export function commitKnowledgeViaConnector(secret: string, i: { items: unknown; confirmationToken: string; actor: KnowledgeActor; attemptAuditId: string }) {
-  return commitKnowledgeCore(deps(secret), i.actor, i.items, i.confirmationToken, i.attemptAuditId);
+export function commitKnowledgeViaConnector(secret: string, i: { items: unknown; confirmationToken: string; confirmationText: string; actor: KnowledgeActor; attemptAuditId: string }) {
+  return commitKnowledgeCore(deps(secret), i.actor, i.items, i.confirmationToken, i.attemptAuditId, i.confirmationText);
 }

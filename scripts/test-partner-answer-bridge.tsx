@@ -95,7 +95,8 @@ function mcp(w: ReturnType<typeof world>, o: { scope?: string; env?: Record<stri
     const res = await handleMcpHttp({ method: "POST", header: (h) => (h === "authorization" ? "Bearer t" : null), bodyText: async () => JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) }) }, deps);
     return { status: res.status, headers: res.headers, json: res.body ? JSON.parse(res.body) : null };
   };
-  const answer = async (args: Record<string, unknown>) => rpc("tools/call", { name: "partner_answer_question", arguments: args });
+  // T1: the Owner's confirmation words travel with every answer unless a test sets them itself
+  const answer = async (args: Record<string, unknown>) => rpc("tools/call", { name: "partner_answer_question", arguments: "confirmationText" in args ? args : { ...args, confirmationText: "כן" } });
   return { deps, audit, submits, rpc, answer };
 }
 
@@ -176,7 +177,7 @@ void (async () => {
     const m = mcp(w);
     const tools = (await m.rpc("tools/list")).json.result.tools as Array<{ name: string; annotations: Record<string, boolean>; inputSchema: { properties: Record<string, unknown>; additionalProperties: boolean } }>;
     const t = tools.find((x) => x.name === "partner_answer_question")!;
-    check("answer token: listed, narrow schema {questionRef, answer}, not read-only, not destructive, idempotent", [!!t, Object.keys(t.inputSchema.properties).sort(), t.inputSchema.additionalProperties, t.annotations.readOnlyHint, t.annotations.destructiveHint, t.annotations.idempotentHint], [true, ["answer", "questionRef"], false, false, false, true]);
+    check("answer token: listed, narrow schema {questionRef, answer, confirmationText}, not read-only, not destructive, idempotent", [!!t, Object.keys(t.inputSchema.properties).sort(), t.inputSchema.additionalProperties, t.annotations.readOnlyHint, t.annotations.destructiveHint, t.annotations.idempotentHint], [true, ["answer", "confirmationText", "questionRef"], false, false, false, true]);
     const nonOwner = world({ owner: false });
     const mn = mcp(nonOwner);
     const rn = await mn.answer({ questionRef: (await refFor(nonOwner, LA_AVI)).ref, answer: "LABEL_SONGS" });
@@ -317,6 +318,25 @@ void (async () => {
     check("Hebrew subject survives", decodeQuestionRef(encodeQuestionRef({ ...r, subjectId: "לקוח כפול" }))?.subjectId, "לקוח כפול");
     check("garbage / wrong prefix / bad fingerprint → null", [decodeQuestionRef("pq2.xxxxxxxxxxxxxxxxxxxx"), decodeQuestionRef(`pq1.${Buffer.from(JSON.stringify(["i", "q", "s", "nothex"])).toString("base64url")}`), decodeQuestionRef(42)], [null, null, null]);
     ok("the ref never exposes more than kind / question / subject / fingerprint", JSON.parse(Buffer.from(encodeQuestionRef(r).slice(4), "base64url").toString()).length === 4);
+  }
+
+  console.log("\nT1 (2026-10-01). the Owner's confirmation words, judged by the Action Layer classifier");
+  {
+    const w = world();
+    const m = mcp(w);
+    const { ref } = await refFor(w, LA_AVI);
+    const noWords = await m.answer({ questionRef: ref, answer: "LABEL_SONGS", confirmationText: undefined });
+    check("no confirmationText → refused at the shape check: nothing submitted, no attempt row, no Owner Context row", [noWords.json.error?.code, m.submits.length, m.audit.some((a) => a.method === "answer/attempt"), w.db.rows.length], [-32602, 0, false, 0]);
+    const st = async (text: string) => (await m.answer({ questionRef: ref, answer: "LABEL_SONGS", confirmationText: text })).json.result.structuredContent.status;
+    check("\"לא\" / \"רגע\" / words with no approval → NOT_AN_APPROVAL", [await st("לא"), await st("רגע"), await st("נראה לי")], ["NOT_AN_APPROVAL", "NOT_AN_APPROVAL", "NOT_AN_APPROVAL"]);
+    check("approval that names ANOTHER option → APPROVAL_WITH_CHANGES (never recorded as the chosen one)", await st("כן, אלה עבודות לקוח, למרות שהאמן חתום בלייבל"), "APPROVAL_WITH_CHANGES");
+    check("approval + a change / a value not read back → APPROVAL_WITH_CHANGES", [await st("כן אבל רק חלק"), await st("כן, 3 פרויקטים")], ["APPROVAL_WITH_CHANGES", "APPROVAL_WITH_CHANGES"]);
+    check("the standing phrase is never the Owner's answer", await st("STANDING:OWNER_INBOX_MEMORY"), "NOT_AN_APPROVAL");
+    check("nothing was written by any refused attempt", w.db.rows.length, 0);
+    const okR = await m.answer({ questionRef: ref, answer: "LABEL_SONGS", confirmationText: "כן, הפרויקטים האלה הם עבודת לייבל" });
+    check("repeating the chosen option's own label is an approval → LEARNED, one row", [okR.json.result.structuredContent.status, w.db.rows.length], ["LEARNED", 1]);
+    const attempts = m.audit.filter((a) => a.method === "answer/attempt");
+    ok("each attempt row fingerprints the Owner's words (sha256), never the words", attempts.length > 0 && attempts.every((a) => /^[0-9a-f]{64}$/.test(a.input_fingerprint ?? "")) && !m.audit.some((a) => JSON.stringify(a).includes("עבודת לייבל")));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
