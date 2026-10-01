@@ -423,6 +423,7 @@ export default function DashboardV2() {
                     <MoreButton open={showAllNeeds} more={board.moreToday.length} onClick={() => setShowAllNeeds((v) => !v)} />
                   </>
                 )}
+                {board.summaries.map((n) => <SummaryLine key={n.key} item={n} onOpen={() => openCurated(n.open)} />)}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 2 }}>
                   {board.backlog.length > 0 && <LineChip label={`Backlog — לא היום (${board.backlog.length})`} active={openList === "backlog"} onClick={() => setOpenList((v) => (v === "backlog" ? null : "backlog"))} />}
                   {board.undecided.length > 0 && <LineChip label={`לא הוכרע (${board.undecided.length})`} color={AMBER} active={openList === "undecided"} onClick={() => setOpenList((v) => (v === "undecided" ? null : "undecided"))} />}
@@ -546,7 +547,7 @@ interface CuratedItem {
   nextAction: string; inbox: { whatHappened: string; freshnessHe: string; conflictHe: string | null } | null; open: CuratedOpen;
 }
 interface CuratedEntry { key: string; title: string; reasonHe: string; open: OpenTarget }
-export interface NeedsBoard { today: CuratedItem[]; moreToday: CuratedItem[]; backlog: CuratedEntry[]; undecided: CuratedEntry[]; unchecked: string[]; integrityCount: number | null; checked: number }
+export interface NeedsBoard { today: CuratedItem[]; moreToday: CuratedItem[]; summaries: CuratedItem[]; backlog: CuratedEntry[]; undecided: CuratedEntry[]; unchecked: string[]; integrityCount: number | null; checked: number }
 
 const OPEN_KINDS = new Set(["project", "client", "task", "partner-actions", "href", "none"]);
 const GROUPS = new Set<string>(["NEW_TODAY", "SCHEDULED", "WAITING_ON_YOU", "APPROVAL", "YOUR_TASK", "LONG_WAITS"]);
@@ -559,11 +560,11 @@ function curatedOpenOf(o: unknown): CuratedOpen {
 /** Strict parse of the needs_me answer; anything but status OK = not checked (null). */
 export function parseBoard(b: Record<string, unknown>): NeedsBoard | null {
   if (b.status !== "OK" || !Array.isArray(b.items)) return null;
-  const board: NeedsBoard = { today: [], moreToday: [], backlog: [], undecided: [], unchecked: [], integrityCount: null, checked: 0 };
+  const board: NeedsBoard = { today: [], moreToday: [], summaries: [], backlog: [], undecided: [], unchecked: [], integrityCount: null, checked: 0 };
   for (const raw of b.items as Array<{ label?: GT; fields?: Record<string, unknown> }>) {
     const f = raw.fields ?? {};
     const open = openOf(f.open);
-    if (f.section === "today" || f.section === "more_today") {
+    if (f.section === "today" || f.section === "more_today" || f.section === "summary") {
       const inbox = f.fromInbox as { whatHappened?: GT; freshnessHe?: string; conflictHe?: GT } | null;
       const ball = (f.ball ?? {}) as { waitingParty?: string | null; ruleHe?: string };
       const it: CuratedItem = {
@@ -575,7 +576,7 @@ export function parseBoard(b: Record<string, unknown>): NeedsBoard | null {
         inbox: inbox ? { whatHappened: gt(inbox.whatHappened), freshnessHe: inbox.freshnessHe ?? "", conflictHe: inbox.conflictHe ? gt(inbox.conflictHe) : null } : null,
         open: curatedOpenOf(f.open),
       };
-      (f.section === "today" ? board.today : board.moreToday).push(it);
+      (f.section === "today" ? board.today : f.section === "summary" ? board.summaries : board.moreToday).push(it);
     } else if (f.section === "backlog" || f.section === "undecided") {
       (f.section === "backlog" ? board.backlog : board.undecided).push({ key: String(f.key), title: gt(raw.label), reasonHe: gt(f.reasonHe as GT), open });
     } else if (f.section === "unchecked") board.unchecked.push(gt(raw.label));
@@ -622,6 +623,21 @@ export function CuratedRow({ item, onOpen }: { item: CuratedItem; onOpen: () => 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** An always-visible management line under the five (e.g. the aggregated Victor waits) — awareness, not a slot. */
+export function SummaryLine({ item, onOpen }: { item: CuratedItem; onOpen: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.22)", borderRadius: 12, padding: "9px 14px", minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div dir="auto" style={{ fontSize: 13, fontWeight: 800, color: "#EDEDED", textAlign: "right" }}>{item.title}</div>
+        <div dir="auto" style={{ fontSize: 11.5, color: SUB, textAlign: "right", marginTop: 2, lineHeight: 1.45 }}>{item.whyToday}</div>
+      </div>
+      {item.open.kind !== "none" && (
+        <button type="button" onClick={onOpen} style={{ flexShrink: 0, height: 30, padding: "0 14px", borderRadius: 10, fontFamily: "inherit", fontSize: 12, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>פתח</button>
+      )}
     </div>
   );
 }

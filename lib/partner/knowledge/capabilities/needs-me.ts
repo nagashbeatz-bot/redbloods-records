@@ -7,7 +7,7 @@ import type { KnowledgeCapability, KnowledgeItem } from "../types";
 import { item, ok, partner, record, result, sfact } from "./common";
 import { buildNeedsMe, NEEDS_GROUP_HE, NEEDS_ME_MAX, OWNER_TASK_GRACE_DAYS, type NeedsEntry, type NeedsItem } from "../../needs-me/curate";
 
-export const NEEDS_ME_SECTIONS = ["today", "more_today", "backlog", "undecided", "unchecked", "excluded", "integrity"] as const;
+export const NEEDS_ME_SECTIONS = ["today", "more_today", "summary", "backlog", "undecided", "unchecked", "excluded", "integrity"] as const;
 export type NeedsMeSection = (typeof NEEDS_ME_SECTIONS)[number];
 
 const todayItem = (n: NeedsItem, section: NeedsMeSection): KnowledgeItem => item({
@@ -29,7 +29,7 @@ const entryItem = (e: NeedsEntry, section: NeedsMeSection): KnowledgeItem => ite
 
 export const needsMe: KnowledgeCapability = {
   id: "needs_me", domain: "COMPANY", titleHe: "מה צריך ממני היום",
-  descriptionForModel: `What truly needs the Owner TODAY — Sunny-curated, the SAME list Dashboard V2 shows. ≤${NEEDS_ME_MAX} items, never filled. Enters only when the RECORDS put the ball with the Owner (Victor computeVictorBall, mix engineerHandoff, send log), a show today / tomorrow misses something of his, a partner action awaits him, or his own task / follow-up is due (overdue ≤${OWNER_TASK_GRACE_DAYS} days, else backlog; the Owner's ball beats age). A task inherits the ball of what it is linked to. Client-held money never enters. Processed Owner updates only enrich; records win; contradictions are shown. Order: new since yesterday → scheduled → waiting → own task → aggregated Victor waits (one item). Each item: whyToday, ball, evidence, nextAction. Modes: board, excluded (why X is not there), all.`,
+  descriptionForModel: `What truly needs the Owner TODAY — Sunny-curated, the SAME list Dashboard V2 shows. ≤${NEEDS_ME_MAX} items, never filled. Enters only when the RECORDS put the ball with the Owner (Victor computeVictorBall, mix engineerHandoff, send log), a show today / tomorrow misses something of his, a partner action awaits him, or his own task / follow-up is due (overdue ≤${OWNER_TASK_GRACE_DAYS} days, else backlog; the Owner's ball beats age). A task inherits the ball of what it is linked to. Client-held money never enters. Processed Owner updates only enrich; records win; contradictions are shown. Order: new since yesterday → scheduled → waiting → own task; the aggregated Victor waits are ONE summary line (section summary), never a top-5 slot. Each item: whyToday, ball, evidence, nextAction. Modes: board, excluded (why X is not there), all.`,
   examplesHe: ["מה צריך ממני היום?", "מה מחכה לי?", "למה המשימה של ויקטור לא מופיעה?", "מה בבקלוג?"],
   modes: {
     board: { descriptionForModel: "The Owner's list: today (≤5) + more_today + backlog + undecided + unchecked; integrity is a summary line" },
@@ -46,7 +46,7 @@ export const needsMe: KnowledgeCapability = {
     const n = buildNeedsMe(src);
     const items: KnowledgeItem[] = [];
     if (q.mode !== "excluded") {
-      items.push(...n.items.map((x) => todayItem(x, "today")), ...n.moreToday.map((x) => todayItem(x, "more_today")),
+      items.push(...n.items.map((x) => todayItem(x, "today")), ...n.moreToday.map((x) => todayItem(x, "more_today")), ...n.summaries.map((x) => todayItem(x, "summary")),
         ...n.backlog.map((x) => entryItem(x, "backlog")), ...n.undecided.map((x) => entryItem(x, "undecided")),
         ...n.unchecked.map((u) => item({ id: `unchecked:${u.source}`, label: partner(u.he), epistemic: "UNKNOWN", source: "PARTNER_KNOWLEDGE", fields: { section: "unchecked", source: u.source } })));
     }
@@ -56,6 +56,7 @@ export const needsMe: KnowledgeCapability = {
       summary: [
         sfact("TODAY", "מה צריך ממך היום", n.items.length, "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("MORE_TODAY", "עוד להיום מעבר לחמישה", n.moreToday.length, "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("SUMMARY_LINES", "שורות מצב (לא מתחרות על החמישה)", n.summaries.map((x) => x.title), "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("BACKLOG", "Backlog — לא היום", n.backlog.length, "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("UNDECIDED", "לא הוכרע", n.undecided.length, "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("UNCHECKED", "לא נבדק", n.unchecked.map((u) => u.source), "UNKNOWN", "PARTNER_KNOWLEDGE"),

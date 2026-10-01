@@ -138,11 +138,15 @@ console.log("\nPrecedence + Victor aggregation (Owner decision 2026-10-01): fres
   ok("its next step comes from the Owner's CURRENT update", n.items[0].nextAction.he.includes("לסגור 2 תיקוני מיקס"), n.items[0].nextAction);
   ok("a Victor work whose version arrived yesterday is lifted OUT of the group as its own NEW item", n.items.some((i) => i.entityKey === `victor-work:${U(223)}` && i.group === "NEW_TODAY"));
   const all = [...n.items, ...n.moreToday];
-  const agg = all.find((i) => i.group === "LONG_WAITS");
+  const agg = n.summaries.find((i) => i.group === "LONG_WAITS");
   ok("the other Victor waits become ONE item 'ויקטור מחכה לפידבק שלך ב-3 עבודות' (never 3 slots)", !!agg && agg.title === "ויקטור מחכה לפידבק שלך ב-3 עבודות" && !all.some((i) => [U(220), U(221), U(222)].some((id) => i.entityKey === `victor-work:${id}`)), agg?.title);
-  ok("the aggregate says how long the oldest waits, how many got a version in the last 7 days, and the linked tasks", !!agg && agg.whyToday.includes("44 ימים") && agg.whyToday.includes("1 קיבלו גרסה ב-7 הימים האחרונים") && agg.whyToday.includes("1 משימות מעקב"), agg?.whyToday);
+  ok("the aggregate says how long the oldest waits, how many got a version in the last 7 days, and the linked tasks", !!agg && agg.whyToday.includes("הישנה ביותר: 44 ימים") && agg.whyToday.includes("1 התעדכנו ב-7 הימים האחרונים") && agg.whyToday.includes("1 מעקבים פתוחים"), agg?.whyToday);
   ok("'פתח' on the aggregate = the list of its works, each opening its own record", agg?.open.kind === "list" && agg.open.entries.length === 3 && agg.open.entries.every((e) => e.open.kind !== "list"));
-  ok("the aggregate is the LAST group and the balls are unchanged (display only)", all.at(-1)?.group === "LONG_WAITS" && agg?.ball.holder === "OWNER" && agg.ball.ruleHe.includes("לתצוגה בלבד"));
+  ok("the aggregate is an always-visible SUMMARY line — never a top-5 / moreToday slot; balls unchanged (display only)", !all.some((i) => i.group === "LONG_WAITS") && n.summaries.length === 1 && agg?.ball.holder === "OWNER" && agg.ball.ruleHe.includes("לתצוגה בלבד"));
+  const many = buildNeedsMe(src({ victor, tasks: Array.from({ length: 7 }, (_, i) => task(U(260 + i), `משימה ${i}`, TODAY)) }));
+  const b2 = parseBoard(JSON.parse(JSON.stringify(queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "needs_me" }, src({ victor }), { channel: "INTERNAL", ownerAuthorized: true }))) as Record<string, unknown>);
+  ok("Dashboard V2 reads the summary line from the capability (section summary) and opens it as a list", !!b2 && b2.summaries.length === 1 && b2.summaries[0].open.kind === "list" && !b2.today.concat(b2.moreToday).some((i) => i.group === "LONG_WAITS"), b2?.summaries);
+  ok("with a full top 5 the Victor summary line is still there (it does not compete for a slot)", many.items.length === NEEDS_ME_MAX && many.summaries.length === 1 && many.summaries[0].title.startsWith("ויקטור מחכה לפידבק שלך ב-"), { items: many.items.length, summaries: many.summaries.map((x) => x.title) });
   const order = all.map((i) => i.group);
   const rank = (g: string) => ["NEW_TODAY", "SCHEDULED", "WAITING_ON_YOU", "APPROVAL", "YOUR_TASK", "LONG_WAITS"].indexOf(g);
   ok("the fixed precedence holds across the whole list", order.every((g, i) => i === 0 || rank(order[i - 1]) <= rank(g)), order);

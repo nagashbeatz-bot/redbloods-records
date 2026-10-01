@@ -96,6 +96,9 @@ export interface NeedsMe {
   items: NeedsItem[];
   /** qualified for today beyond the five (shown as a count, never mixed into the five) */
   moreToday: NeedsItem[];
+  /** Owner decision 2026-10-01: management-awareness lines shown ALWAYS under the five, never competing for a slot
+   *  (the aggregated Victor waits). Not counted as "needs you today". */
+  summaries: NeedsItem[];
   backlog: NeedsEntry[];
   /** "לא הוכרע": unknown / conflicting ball, an update that contradicts the records */
   undecided: NeedsEntry[];
@@ -455,6 +458,7 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   // ── Victor aggregation (Owner decision B): several Victor works waiting on the Owner = ONE item; a work whose version
   //    arrived since yesterday was already lifted to NEW_TODAY above. Display only — the balls are unchanged. ──
   const victorWaits = items.filter((i) => i.group === "WAITING_ON_YOU" && i.entityKey.startsWith("victor-work:"));
+  const summaries: NeedsItem[] = [];
   if (victorWaits.length >= 2) {
     const members = [...victorWaits].sort((a, b) => (b.waitingDays ?? -1) - (a.waitingDays ?? -1));
     const oldest = members[0];
@@ -462,10 +466,10 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     const recent = members.filter((m) => (dayOf(m.ball.sinceAt) ?? "") >= recentCut).length;
     const tasks = members.reduce((n, m) => n + m.evidence.filter((e) => e.code === "LINKED_TASK").length, 0);
     for (const m of members) items.splice(items.indexOf(m), 1);
-    items.push({
+    summaries.push({
       key: "vendor:VICTOR|OWNER_FEEDBACK_AGGREGATE", entityKey: "vendor:VICTOR", projectId: null, group: "LONG_WAITS",
       title: `ויקטור מחכה לפידבק שלך ב-${members.length} עבודות`,
-      whyToday: `הישנה (${oldest.title.split(" — ")[0]}) מחכה ${dayWord(oldest.waitingDays ?? 0)}${recent ? ` · ${recent} קיבלו גרסה ב-${RECENT_VERSION_DAYS} הימים האחרונים` : ""}${tasks ? ` · ${tasks} משימות מעקב מקושרות` : ""}`,
+      whyToday: `הישנה ביותר: ${dayWord(oldest.waitingDays ?? 0)} (${oldest.title.split(" — ")[0]}) · ${recent} התעדכנו ב-${RECENT_VERSION_DAYS} הימים האחרונים · ${tasks} מעקבים פתוחים`,
       waitingDays: oldest.waitingDays,
       ball: { holder: "OWNER", waitingParty: "ויקטור", sinceAt: oldest.ball.sinceAt, ruleHe: "computeVictorBall לכל עבודה (ההעלאה האחרונה מול ההערות האחרונות) — מאוחד לתצוגה בלבד; הכדור בכל עבודה לא שונה" },
       evidence: members.map((m) => ({ code: "VICTOR_WAITING_OWNER", he: `${m.title.split(" — ")[0]} — ${m.waitingDays !== null ? `מחכה ${dayWord(m.waitingDays)}` : "בלי חותמת זמן"}`, source: "TEAM_VICTOR", epistemic: "DERIVED" as const, at: m.ball.sinceAt })),
@@ -487,7 +491,7 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     || a.title.localeCompare(b.title, "he"));
   const byDate = (x: NeedsEntry, y: NeedsEntry) => (x.date ?? "9999").localeCompare(y.date ?? "9999") || x.title.localeCompare(y.title, "he");
   return {
-    today, items: sorted.slice(0, NEEDS_ME_MAX), moreToday: sorted.slice(NEEDS_ME_MAX),
+    today, items: sorted.slice(0, NEEDS_ME_MAX), moreToday: sorted.slice(NEEDS_ME_MAX), summaries,
     backlog: backlog.sort(byDate), undecided, unchecked, excluded: excluded.sort(byDate), integrity: integrityOut, checked,
     inbox: { read: !!mem, interpretations, enriched, conflicts },
   };
