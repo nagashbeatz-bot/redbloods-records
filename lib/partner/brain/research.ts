@@ -15,19 +15,18 @@
 import { brainState, type BrainAuthorization, type BrainObservation, type BrainSnapshot } from "./model";
 
 /**
- * Recheck policy — ENGINEERING DEFAULTS, NOT an Owner business policy (no approved rule defines them yet). Explicit
- * constants so the Owner can change them; never stored as DB truth.
+ * INTERNAL CONSERVATIVE HEURISTIC — NOT Owner policy, NOT a business rule, NOT Brain knowledge (never served, never
+ * stored, never shown as a rule). The Owner approved the BEHAVIOUR (notice that time passed and that a new check would
+ * help, then offer it), not a number. A proposal is led by CONTEXT; this floor only stops Sunny from offering to
+ * re-check something read a few days ago when the only reason is the conversation / a live record.
+ * A release reason needs no number: it fires when the release record changed after the last check.
  */
-export const RECHECK_POLICY = {
-  /** A series whose last current observation is at least this old is STALE (proposed default: 14 days). */
-  staleAfterDays: 14,
-  /** A release whose target date is within this many days makes stale research material (proposed default: 21). */
-  releaseWindowDays: 21,
-  /** At most this many proposals per answer — never a list to spam. */
-  maxProposals: 2,
-} as const;
+export const INTERNAL_RECHECK_HEURISTIC = { minAgeDaysWithoutReleaseChange: 14 } as const;
+/** "One short proposal" (the Owner's wording): at most one per answer. */
+export const MAX_PROPOSALS_PER_ANSWER = 1;
 
-export type Freshness = "TODAY" | "RECENT" | "STALE";
+/** TODAY = read on this Israel day; EARLIER = an older reading (always shown with its date and age — never as now). */
+export type Freshness = "TODAY" | "EARLIER";
 export type StoreStatus = "CAN_STORE" | "NO_AUTHORIZATION" | "AUTHORIZATION_REVOKED" | "AUTHORIZATION_SUPERSEDED" | "AUTHORIZATION_EXPIRED" | "AUTHORIZATION_NOT_YET_VALID";
 export type RecheckReason = "STALE_EVIDENCE" | "RELEASE_SOON" | "OWNER_DISCUSSING";
 
@@ -58,7 +57,7 @@ export interface ResearchContext {
   /** What the Owner is talking about right now (an entity key or a resource id) — a material reason, never a schedule. */
   focus?: { entityKey?: string; resourceId?: string };
   /** Upcoming releases from the canonical release records (label artist id + target date). */
-  releases?: ReadonlyArray<{ labelArtistId: string | null; targetYmd: string | null; released: boolean }>;
+  releases?: ReadonlyArray<{ labelArtistId: string | null; targetYmd: string | null; released: boolean; changedAt: string | null }>;
   labelOf?: (entityKey: string) => string | null;
 }
 
@@ -102,7 +101,7 @@ export function researchSeries(s: BrainSnapshot, ctx: ResearchContext): Research
       else comparison = { kind: "NOT_COMPARABLE", why: "different value kinds" };
     }
     const ageDays = Math.max(0, Math.floor((ctx.now.getTime() - Date.parse(last.observedAt)) / DAY));
-    const freshness: Freshness = ilYmd(last.observedAt) === ctx.todayIL ? "TODAY" : ageDays >= RECHECK_POLICY.staleAfterDays ? "STALE" : "RECENT";
+    const freshness: Freshness = ilYmd(last.observedAt) === ctx.todayIL ? "TODAY" : "EARLIER";
     const covering = s.authorizations.filter((a) => covers(a, subj, family, parentOf));
     const active = covering.filter((a) => st.authorizationState(a) === "ACTIVE");
     const states = covering.map((a) => st.authorizationState(a));
@@ -121,32 +120,35 @@ export function researchSeries(s: BrainSnapshot, ctx: ResearchContext): Research
 }
 
 /**
- * Interaction-time recheck proposals. Conservative: only a series with history that is STALE AND has a material reason
- * (stale evidence behind a live insight / recommendation, a release coming for an entity in scope, or the Owner talking
- * about it right now). Deterministic (same records → same proposals; nothing stored, so a refresh cannot multiply them).
+ * Interaction-time recheck proposal — CONTEXT-LED, at most ONE. Never for a reading from today. Reasons:
+ *   RELEASE_SOON     an upcoming (not released) release of an entity in scope whose record CHANGED after our last check;
+ *   STALE_EVIDENCE   a live insight / recommendation rests on this reading, and it is older than the internal floor;
+ *   OWNER_DISCUSSING the Owner is talking about this entity / resource now, and the reading is older than the floor.
+ * Deterministic (same records → same proposal); nothing is stored, so a refresh cannot multiply it. It executes nothing.
  */
 export function recheckProposals(series: readonly ResearchSeries[], ctx: ResearchContext): RecheckProposal[] {
-  const today = Date.parse(`${ctx.todayIL}T00:00:00Z`);
-  const releaseSoon = new Set((ctx.releases ?? []).filter((r) => !r.released && r.labelArtistId && r.targetYmd && Date.parse(`${r.targetYmd}T00:00:00Z`) >= today && Date.parse(`${r.targetYmd}T00:00:00Z`) - today <= RECHECK_POLICY.releaseWindowDays * DAY).map((r) => `label-artist:${r.labelArtistId}`));
+  const today = ctx.todayIL;
+  const floor = INTERNAL_RECHECK_HEURISTIC.minAgeDaysWithoutReleaseChange;
+  const upcoming = (ctx.releases ?? []).filter((r) => !r.released && r.labelArtistId && r.targetYmd && r.targetYmd >= today);
   const out: Array<RecheckProposal & { rank: number }> = [];
   for (const x of series) {
-    if (x.freshness !== "STALE") continue;
+    if (x.freshness === "TODAY") continue;
     const entities = "entityKey" in x.subject ? [x.subject.entityKey, ...x.scopeEntities] : x.scopeEntities;
     const reasons: RecheckReason[] = [];
-    if (x.dependentRecordIds.length) reasons.push("STALE_EVIDENCE");
-    if (entities.some((e) => releaseSoon.has(e))) reasons.push("RELEASE_SOON");
+    if (upcoming.some((r) => entities.includes(`label-artist:${r.labelArtistId}`) && !!r.changedAt && Date.parse(r.changedAt) > Date.parse(x.last.observedAt))) reasons.push("RELEASE_SOON");
+    if (x.ageDays >= floor && x.dependentRecordIds.length) reasons.push("STALE_EVIDENCE");
     const f = ctx.focus;
-    if (f && ((f.resourceId && "resourceId" in x.subject && x.subject.resourceId === f.resourceId) || (f.entityKey && entities.includes(f.entityKey)))) reasons.push("OWNER_DISCUSSING");
+    if (x.ageDays >= floor && f && ((f.resourceId && "resourceId" in x.subject && x.subject.resourceId === f.resourceId) || (f.entityKey && entities.includes(f.entityKey)))) reasons.push("OWNER_DISCUSSING");
     if (!reasons.length) continue;
     const date = ilYmd(x.last.observedAt);
-    const why = reasons.includes("RELEASE_SOON") ? " יש ריליס קרוב, והנתון האחרון שלנו כבר לא עדכני." : reasons.includes("STALE_EVIDENCE") ? " תובנה / המלצה פתוחה נשענת על הנתון הישן הזה." : "";
+    const why = reasons.includes("RELEASE_SOON") ? " מאז הבדיקה האחרונה הריליס התקדם, והוא עוד לפנינו." : reasons.includes("STALE_EVIDENCE") ? " תובנה / המלצה פתוחה נשענת על הנתון הזה." : "";
     const store = x.storeStatus === "CAN_STORE" ? "" : " כדי לשמור את הבדיקה ולהשוות לאורך זמן צריך הרשאת מעקב — אבקש אותה ממך ב-Redbloods.";
     out.push({
       seriesKey: x.key, reasons, lastCheckedAt: x.last.observedAt, ageDays: x.ageDays, storeStatus: x.storeStatus, executesNothing: true,
       nextStep: x.storeStatus === "CAN_STORE" ? "ASK_OWNER_THEN_BROWSER_CHECK_AND_RECORD" : "ASK_OWNER_THEN_REQUEST_AUTHORIZATION",
       textHe: `עבר זמן מאז שבדקנו את ${x.subjectLabel} (${x.type}) — הבדיקה האחרונה מ-${date}, לפני ${x.ageDays} ימים.${why} רוצה שאבדוק עכשיו דרך הדפדפן ואשווה לפעם הקודמת?${store}`,
-      rank: (reasons.includes("STALE_EVIDENCE") ? 0 : reasons.includes("RELEASE_SOON") ? 1 : 2),
+      rank: reasons.includes("RELEASE_SOON") ? 0 : reasons.includes("STALE_EVIDENCE") ? 1 : 2,
     });
   }
-  return out.sort((a, b) => a.rank - b.rank || b.ageDays - a.ageDays || a.seriesKey.localeCompare(b.seriesKey)).slice(0, RECHECK_POLICY.maxProposals).map(({ rank: _r, ...p }) => p);
+  return out.sort((a, b) => a.rank - b.rank || b.ageDays - a.ageDays || a.seriesKey.localeCompare(b.seriesKey)).slice(0, MAX_PROPOSALS_PER_ANSWER).map(({ rank: _r, ...p }) => p);
 }
