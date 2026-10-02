@@ -7,7 +7,7 @@
 import { notFound, redirect } from "next/navigation";
 import { consentToken, validateAuthorizeRequest } from "@/lib/integrations/partner-mcp/oauth";
 import { getConsentSession, getMcpRuntime } from "@/lib/integrations/partner-mcp/server";
-import { hasActScope, hasAnswerScope, hasKnowledgeScope, MCP_ACT_SCOPE, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_SCOPE } from "@/lib/integrations/partner-mcp/config";
+import { hasActScope, hasAnswerScope, hasKnowledgeScope, hasObserveScope, MCP_ACT_SCOPE, MCP_ANSWER_SCOPE, MCP_KNOWLEDGE_SCOPE, MCP_OBSERVE_SCOPE, MCP_SCOPE } from "@/lib/integrations/partner-mcp/config";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,8 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
   const answer = hasAnswerScope(r.scope);
   const knowledge = hasKnowledgeScope(r.scope);
   const act = hasActScope(r.scope);
-  const writes = answer || knowledge || act;
+  const observe = hasObserveScope(r.scope);
+  const writes = answer || knowledge || act || observe;
   const csrf = consentToken(r, { userId: session.userId, sessionId: session.sessionId }, rt.oauth);
   const hidden: Record<string, string> = {
     response_type: "code", client_id: r.clientId, redirect_uri: r.redirectUri, code_challenge: r.codeChallenge, code_challenge_method: "S256",
@@ -50,6 +51,9 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
         {knowledge ? (
           <li data-consent-knowledge>הרשאה: <code dir="ltr">{MCP_KNOWLEDGE_SCOPE}</code> — <b>ללמד את סאני ידע ארגוני שאמרת בשיחה</b> (מי זה מי, תפקידים, קשרים, מה תוקע פרויקט, התחייבויות, תשלום שדיווחת עליו). סאני מציג לך קודם מה הבין, ושומר רק אחרי שאתה מאשר בשיחה. זה ידע בלבד — לא משנה פרויקטים, כספים או כל נתון עסקי. <span dir="ltr">Teach Sunny typed organizational knowledge, only after you confirm.</span></li>
         ) : null}
+        {observe ? (
+          <li data-consent-observe>הרשאה: <code dir="ltr">{MCP_OBSERVE_SCOPE}</code> — <b>המוח של סאני: לבקש ממך הרשאות מעקב, ולרשום מדידות, תובנות והמלצות רק בתוך הרשאה שאישרת ב-Redbloods</b>. ההרשאה הזאת לבדה לא מתירה מעקב אחרי שום דבר: כל מעקב צריך הרשאה שאתה מאשר במסך האישורים ב-Redbloods (מה, איפה, אילו מדידות, עד מתי), ואפשר לבטל אותה בכל רגע. תובנה היא השערה של סאני, המלצה לא מבצעת כלום. סאני לא מאשרת בשמך, לא מתחברת לחשבונות שלך ולא קוראת תוכן פרטי. <span dir="ltr">Sunny Brain: ask you for tracking authorizations, and record observations / insights / recommendations only inside an authorization you approve in Redbloods. This permission alone tracks nothing.</span></li>
+        ) : null}
         {act ? (
           <li data-consent-act>הרשאה: <code dir="ltr">{MCP_ACT_SCOPE}</code> — <b>לבצע בשבילך פעולות מוגדרות ב-Redbloods, כל אחת רק אחרי שאישרת אותה במפורש בשיחה</b>. סאני מציגה לך קודם בדיוק מה ישתנה (מצב נוכחי ← מצב חדש, ומה לא יקרה), ומבצעת רק את התוכנית שאישרת, פעם אחת, אחרי שבדקה שהמצב לא השתנה. רק פעולות רשומות ומוגדרות מראש — לא גישת כתיבה כללית. פעולה יכולה לכלול, רק אם היא מוגדרת לכך ומוצגת לך לפני האישור: יומן Google ו-Google Tasks, הזמנות שגוגל שולח במייל, Push שהאפליקציה עצמה שולחת, דוח מייל לכתובת הדוחות שלך, רשומות כספים, מחיקות (גם של קבצים קיימים), תיקיות עם קישור ציבורי, עדכונים גורפים, ניתוק אינטגרציה ומצב תחזוקה. מחיקות, כסף, הזמנות, קישורים ציבוריים ועדכונים גורפים דורשים שתחזור על הערכים המדויקים. אף פעם לא סיסמאות, טוקנים, הרשאות, משתמשים ותפקידים — וסאני לא מעלה קבצים חדשים. <span dir="ltr">Perform registered typed actions only (never generic write access), each only after you explicitly approve its exact preview; external effects are always shown first.</span></li>
         ) : null}
@@ -65,7 +69,7 @@ export default async function McpAuthorizePage({ searchParams }: { searchParams:
       </p>
       <form method="post" action="/api/mcp-oauth/authorize" style={{ display: "flex", gap: 12 }}>
         {Object.entries(hidden).map(([k, val]) => <input key={k} type="hidden" name={k} value={val} />)}
-        <button type="submit" name="decision" value="allow" style={btn(true)}>{act ? "אשר קריאה, מענה, למידה ופעולות באישור" : answer && knowledge ? "אשר קריאה, מענה ולמידה" : knowledge ? "אשר קריאה ולמידה" : answer ? "אשר קריאה ומענה על שאלות" : "אשר גישת קריאה"}</button>
+        <button type="submit" name="decision" value="allow" style={btn(true)}>{act ? (observe ? "אשר קריאה, מענה, למידה, מוח ופעולות באישור" : "אשר קריאה, מענה, למידה ופעולות באישור") : observe ? "אשר קריאה, למידה ומוח (מעקב רק באישור שלך)" : answer && knowledge ? "אשר קריאה, מענה ולמידה" : knowledge ? "אשר קריאה ולמידה" : answer ? "אשר קריאה ומענה על שאלות" : "אשר גישת קריאה"}</button>
         <button type="submit" name="decision" value="deny" style={btn(false)}>דחה</button>
       </form>
     </div>

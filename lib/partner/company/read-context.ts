@@ -28,6 +28,8 @@ import type { CompanyIntegrityRegister } from "../integrity/types";
 import { readIntegrityExtras, type CompanyExtrasReadClient } from "./readers";
 import { createOwnerKnowledgeStore, withIdentityAliases, type OwnerKnowledgeRecord, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
 import type { Avail } from "../gateway/core";
+import { readBrainSnapshot, type BrainReadClient } from "../../brain-store";
+import type { BrainSnapshot } from "../brain/model";
 import { readOperationsRaw, type OperationsRaw, type OperationsReadClient } from "../operations/readers";
 import { readProjectDetailRaw } from "../projects/detail-reader";
 import type { ProjectDetailRaw } from "../projects/detail-types";
@@ -68,6 +70,8 @@ export interface CompanyReadContext extends GatewayReadContext {
   ownerInbox(): Promise<Avail<OwnerInboxItem[]>>;
   /** Sunny's memory of those updates (sunny_inbox_links / _interpretations, SELECT only, bounded) — HYPOTHESIS, never canonical. */
   inboxMemory(): Promise<Avail<InboxMemory>>;
+  /** Sunny Brain v1 + T2 queue (bounded SELECTs; NOT_INSTALLED before the migration — never "empty"). */
+  brain(): Promise<Avail<BrainSnapshot>>;
   /** Live Google Calendar window (Israel dates). MAIN: the trusted integration directly; connector: MAIN's internal endpoint. */
   calendar(startYmd: string, endYmd: string): Promise<Avail<CalendarWindowResult>>;
   ownerContexts(): Promise<PersistedOwnerContext[] | null>;
@@ -124,6 +128,12 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
       return r.status === "OK" ? { status: "OK", value: r.value } : { status: "UNAVAILABLE", detail: r.detail };
     } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
   });
+  const brain = once(async (): Promise<Avail<BrainSnapshot>> => {
+    try {
+      const r = await readBrainSnapshot(supabase as unknown as BrainReadClient);
+      return r.status === "OK" ? { status: "OK", value: r.value } : { status: "UNAVAILABLE", detail: `${r.status}: ${r.detail}`.slice(0, 200) };
+    } catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
+  });
   const operations = once(async (): Promise<Avail<OperationsRaw>> => {
     try { return { status: "OK", value: await readOperationsRaw(supabase as unknown as OperationsReadClient) }; }
     catch (e) { return { status: "UNAVAILABLE", detail: (e as Error).message.slice(0, 200) }; }
@@ -159,5 +169,5 @@ export function createCompanyReadContext(now: Date = new Date()): CompanyReadCon
     })());
     return calendarMemo.get(key)!;
   };
-  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, ownerInbox, inboxMemory, operations, projectDetail, clientDetail, labelDetail, settings, calendar };
+  return { ...g, todayIL, ownerContexts, extras, integrity, ownerKnowledge, ownerInbox, inboxMemory, brain, operations, projectDetail, clientDetail, labelDetail, settings, calendar };
 }

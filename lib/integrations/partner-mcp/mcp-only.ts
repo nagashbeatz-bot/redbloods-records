@@ -54,9 +54,17 @@ const OWNER_CONTEXT_APPEND = /^\/rest\/v1\/partner_owner_context$/;
  * never an upsert). Reached only through the Sunny owner-knowledge store; the DB blocks UPDATE / DELETE / TRUNCATE.
  */
 const OWNER_KNOWLEDGE_APPEND = /^\/rest\/v1\/partner_owner_knowledge$/;
+/**
+ * Sunny Brain (only when the deployment's observe switch is on): EXACTLY the five service-role Brain wrappers and the
+ * two T2 request functions (ask / withdraw — no effect). Never the Owner-only T2 functions (decide / revoke / owner
+ * transition — the DB grants them to the Owner session only), never a Brain core, never a table write.
+ */
+const BRAIN_RPC = /^\/rest\/v1\/rpc\/(sunny_register_content|sunny_record_observations|sunny_create_intel_record|sunny_brain_transition|sunny_add_links|owner_approval_request|owner_approval_cancel)$/;
 
 export interface McpOnlyWriteOptions {
   ownerContextAppend?: boolean; ownerKnowledgeAppend?: boolean;
+  /** Sunny Brain writes (the exact RPC list above) — only with PARTNER_MCP_OBSERVE_ENABLED=true. */
+  brainRpc?: boolean;
   /**
    * Sunny live calendar: EXACT https URLs (origin + path, no query match needed) the connector may GET on the Redbloods
    * MAIN service — the service-to-service internal calendar read. GET only; any other method / path / host stays blocked.
@@ -81,6 +89,7 @@ export function isAllowedMcpOnlyFetch(url: URL, method: string, dbHost: string, 
   if (m !== "POST") return false;
   if (WRITE_ALLOW.some((r) => r.test(url.pathname))) return true;
   if (url.searchParams.has("on_conflict")) return false;
+  if (opts.brainRpc === true && BRAIN_RPC.test(url.pathname) && !url.search) return true;
   return (opts.ownerContextAppend === true && OWNER_CONTEXT_APPEND.test(url.pathname)) || (opts.ownerKnowledgeAppend === true && OWNER_KNOWLEDGE_APPEND.test(url.pathname));
 }
 

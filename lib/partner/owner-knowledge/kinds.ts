@@ -75,6 +75,8 @@ export interface KnowledgeKind {
 const addDays = (ymd: string, n: number) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const s = (v: unknown) => (typeof v === "string" ? v : String(v ?? ""));
 const norm = (t: string) => t.normalize("NFKC").trim().replace(/\s+/g, " ");
+/** The one deterministic topic key of a decision / learning slot: lower-case [a-z0-9-], ≤ 40 (empty = not representable). */
+export const topicSlug = (t: string) => t.normalize("NFKC").trim().toLowerCase().replace(/[\s_.]+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 const shortHash = (t: string) => { let h = 5381; for (const c of t) h = ((h << 5) + h + c.codePointAt(0)!) >>> 0; return h.toString(36); };
 
 export const ROLE_HE: Record<string, string> = {
@@ -244,6 +246,59 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
     readBackHe: (_l, v) => `מדיניות עבודה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)}): ${norm(s(v.policyHe))}${v.appliesWhenHe ? ` — כש${norm(s(v.appliesWhenHe))}` : ""}${timeHe(v)}${provHe(v)}.`,
     check: (v) => checkProvenanceAndTime(v), conflicts: () => [],
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, provenance: true, timeAware: true, notesHe: ["נשמר כמדיניות מועמדת — לא הופך לכלל אוטומטית."],
+  },
+  // ── DECISION MEMORY + OWNER-APPROVED LEARNINGS (P2 kinds, DB CHECK applied 2026-10-02) ──
+  {
+    kind: "BUSINESS_DECISION", family: "OPERATING_KNOWLEDGE", titleHe: "החלטה עסקית", subjectTypes: ["company"],
+    descriptionForModel: "A business decision the Owner MADE and states (decision memory): what was decided, why, the alternatives he rejected and when to revisit it. One current decision per area + topic (a newer one supersedes; history kept). Only the Owner's own statement — never Sunny's recommendation, never inferred, never from company data. It changes nothing in Redbloods (a decision is not an action).",
+    fields: {
+      area: { type: "enum", values: BUSINESS_AREAS, required: true, labelsHe: BUSINESS_AREA_HE },
+      topic: { type: "text", maxLength: 40, required: true },
+      decisionHe: { type: "text", maxLength: 200, required: true },
+      rationaleHe: { type: "text", maxLength: 200, required: false },
+      alternativesHe: { type: "text", maxLength: 200, required: false },
+      revisitWhenHe: { type: "text", maxLength: 160, required: false },
+      decidedOn: { type: "ymd", required: false },
+      reviewAt: { type: "ymd", required: false },
+      ...TIME_FIELDS,
+    },
+    epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}`,
+    reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
+    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
+    check: (v) => {
+      const e = checkProvenanceAndTime(v);
+      if (!topicSlug(s(v.topic))) e.push("topic: a short topic in Latin letters / digits (e.g. clip-pricing)");
+      return e;
+    },
+    conflicts: (_k, v, live) => (v.decidedOn && s(v.decidedOn) > live.todayIL ? [{ code: "DATE_IN_FUTURE", severity: "BLOCKING", messageHe: "תאריך ההחלטה לא יכול להיות בעתיד." }] : []),
+    influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, timeAware: true,
+    notesHe: ["החלטה היא זיכרון של מה שהחלטת — היא לא משנה שום רשומה ולא מפעילה פעולה.", "תאריך הבדיקה (reviewAt) הוא תזכורת לקריאה בלבד — אין בדיקה או תפוגה אוטומטית."],
+  },
+  {
+    kind: "BUSINESS_LEARNING", family: "OPERATING_KNOWLEDGE", titleHe: "לקח עסקי (באישור הבעלים)", subjectTypes: ["company"],
+    descriptionForModel: "Something the Owner confirms Redbloods has LEARNED (e.g. \"a clip released on Thursday performs better for us\"). Only with the Owner's explicit approval of the exact read-back. A Sunny insight is NEVER turned into a learning silently: to learn from one, the Owner states / approves the learning and sourceRef may cite it (insight:<uuid>). sourceType OWNER_STATEMENT (default) or SYSTEM_RECORD (with sourceRef); INFERRED is refused.",
+    fields: {
+      area: { type: "enum", values: BUSINESS_AREAS, required: true, labelsHe: BUSINESS_AREA_HE },
+      topic: { type: "text", maxLength: 40, required: true },
+      statementHe: { type: "text", maxLength: 200, required: true },
+      appliesWhenHe: { type: "text", maxLength: 160, required: false },
+      basisHe: { type: "text", maxLength: 200, required: false },
+      reviewAt: { type: "ymd", required: false },
+      ...PROVENANCE_FIELDS,
+    },
+    epistemic: "OWNER_DECISION", slot: (v) => `learning:${s(v.area)}:${topicSlug(s(v.topic))}`,
+    reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
+    readBackHe: (_l, v) => `לקח (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}): ${norm(s(v.statementHe))}${v.appliesWhenHe ? ` — כש${norm(s(v.appliesWhenHe))}` : ""}${v.basisHe ? `. על סמך: ${norm(s(v.basisHe))}` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}.`,
+    check: (v) => {
+      const e = checkProvenanceAndTime(v);
+      if (!topicSlug(s(v.topic))) e.push("topic: a short topic in Latin letters / digits (e.g. release-day)");
+      const st = provenanceOf(v).sourceType;
+      if (st !== "OWNER_STATEMENT" && st !== "SYSTEM_RECORD") e.push("sourceType: a learning is the Owner's (OWNER_STATEMENT) or cites a record (SYSTEM_RECORD + sourceRef) — never INFERRED / EXTERNAL_SOURCE");
+      if (v.sourceRef && !/^(insight|recommendation|observation|record):[0-9a-f-]{36}$|^[a-z-]+:[A-Za-z0-9._:-]{1,100}$/.test(s(v.sourceRef))) e.push("sourceRef: a reference such as insight:<uuid>");
+      return e;
+    },
+    conflicts: () => [], influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, provenance: true,
+    notesHe: ["לקח נשמר רק באישור שלך — תובנה של סאני לא הופכת ללקח בעצמה.", "לקח הוא ידע, לא כלל אוטומטי — שום תהליך לא משתנה."],
   },
 ];
 

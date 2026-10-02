@@ -14,6 +14,7 @@ import { financeFlows, financeIntegrity, financePosition, financeReceivables, un
 import { clients, projects, proposals, sessions, teamSteven, teamVictor } from "./capabilities/work";
 import { labelRoster, releases, shows } from "./capabilities/label";
 import { improvementSignals, ownerInbox, ownerKnowledge, relations } from "./capabilities/sunny";
+import { brain } from "./capabilities/brain";
 import { OPERATIONS_CAPABILITIES } from "./capabilities/operations";
 import { systemAwareness } from "./capabilities/system";
 import { projectPortfolioCap, projectView } from "./capabilities/projects-deep";
@@ -54,7 +55,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   labelRoster, releases, shows,
   sessions,
   teamVictor, teamSteven, victorSalary,
-  ownerKnowledge, ownerInbox, relations, improvementSignals,
+  ownerKnowledge, ownerInbox, relations, improvementSignals, brain,
   ...OPERATIONS_CAPABILITIES,
   systemAwareness,
   projectView, projectPortfolioCap, projectMemory,
