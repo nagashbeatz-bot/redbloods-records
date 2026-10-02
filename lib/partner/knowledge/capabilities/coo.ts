@@ -24,7 +24,7 @@ const OWNER_FIN = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL
 const readinessItem = (r: Readiness, i: number): KnowledgeItem => item({
   id: `${r.key}:${i}`, entity: r.entity && /^(project|show|session|release|label-artist|client):/.test(r.entity) ? r.entity : null, label: record(`${r.titleHe}`), epistemic: "DERIVED", source: "PARTNER_KNOWLEDGE",
   fields: { kind: r.kind, date: r.date, time: r.time, daysTo: r.daysTo, state: r.state, stateHe: partner(r.stateHe), confirmed: r.confirmed.map(partner), notSeen: r.notSeen.map(partner), open: r.open.map(partner), blocked: r.blocked.map(partner),
-    ownerAttention: r.ownerAttention.map(partner), insights: r.insights.map((x) => ({ he: partner(x), epistemic: "HYPOTHESIS" })), recommendation: r.recommendationHe ? partner(r.recommendationHe) : null, narrative: partner(r.narrativeHe),
+    ownerAttention: r.ownerAttention.map(partner), insights: r.insights.map((x) => ({ he: partner(x), epistemic: "HYPOTHESIS" })), facts: r.facts.map((x) => ({ he: partner(x), epistemic: "DERIVED" })), recommendation: r.recommendationHe ? partner(r.recommendationHe) : null, narrative: partner(r.narrativeHe),
     checks: r.checks.map((c) => ({ dimension: c.dimension, label: partner(c.labelHe), state: c.state, required: c.required, he: partner(c.he), evidence: c.evidence.map((e) => ({ source: e.source, ref: e.ref, basis: e.he })) })), project: r.project, sources: r.sources },
 });
 

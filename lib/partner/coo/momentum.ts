@@ -25,6 +25,15 @@ const DEAD_RECORD = new Set(["WITHDRAWN", "INVALIDATED", "SUPERSEDED", "REJECTED
 const low = (s: string | null | undefined) => (s ?? "").normalize("NFKC").trim().toLowerCase();
 const tokens = (t: string | null | undefined) => (t ?? "").split(/[,،;&+]|\sו?עם\s|\sfeat\.?\s|\sx\s/i).map((x) => x.trim()).filter(Boolean);
 
+/** Ball-holder codes (projectOperating: engineer / Victor / send-log recipient role / the Owner's P2 blocker reason) → Hebrew. */
+const HOLDER_HE: Record<string, string> = {
+  OWNER: "אתה", WAITING_FOR_OWNER: "אתה", VICTOR: "ויקטור", EXTERNAL_PRODUCER: "המפיק החיצוני", SOUND_ENGINEER: "המהנדס", ENGINEER: "המהנדס",
+  CLIENT: "הלקוח", WAITING_FOR_CLIENT: "הלקוח", ARTIST: "האמן", WAITING_FOR_ARTIST: "האמן", WAITING_FOR_VENDOR: "ספק / איש צוות", VENDOR: "ספק",
+  WAITING_FOR_PAYMENT: "תשלום", EXTERNAL_DEPENDENCY: "תלות חיצונית", PHOTOGRAPHER: "הצלם", EDITOR: "העורך",
+};
+export const holderHe = (h: string) => (h.startsWith("ENGINEER:") ? h.slice(9) : HOLDER_HE[h] ?? "גורם אחר");
+export const isOwnerHolder = (h: string) => h === "OWNER" || h === "WAITING_FOR_OWNER";
+
 export type MomentumState = "OWNER_BALL" | "SCHEDULED" | "WAITING_EXTERNAL" | "NO_NEXT_STEP" | "NOT_ACTIVE" | "UNKNOWN";
 export const MOMENTUM_HE: Record<MomentumState, string> = {
   OWNER_BALL: "מחכה לך", SCHEDULED: "יש צעד הבא מתוכנן", WAITING_EXTERNAL: "בעבודה אצל מישהו אחר", NO_NEXT_STEP: "אין צעד הבא רשום", NOT_ACTIVE: "לא פעיל", UNKNOWN: "לא ידוע",
@@ -87,8 +96,8 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
 
   const op = c.operating(projectId);
   const holders = op?.ballHolder.holders ?? [];
-  const ownerBall = holders.includes("OWNER") || v.signals.some((s) => s.code === "OWNER_FEEDBACK_DUE" || s.code === "ENGINEER_RETURNED_WORK" || s.code === "VICTOR_WAITING_OWNER");
-  const external = holders.filter((h) => h !== "OWNER" && h !== "UNKNOWN");
+  const ownerBall = holders.some(isOwnerHolder) || v.signals.some((s) => s.code === "OWNER_FEEDBACK_DUE" || s.code === "ENGINEER_RETURNED_WORK" || s.code === "VICTOR_WAITING_OWNER");
+  const external = [...new Set(holders.filter((h) => !isOwnerHolder(h) && h !== "UNKNOWN").map(holderHe))];
   const openWork = works.some((w) => !ENGINEER_DONE.has(w.status ?? "")) || vw.length > 0;
   const state: MomentumState = ownerBall ? "OWNER_BALL" : scheduledNext ? "SCHEDULED" : external.length || openWork ? "WAITING_EXTERNAL" : next.length ? "SCHEDULED" : "NO_NEXT_STEP";
   const risks: string[] = [];
@@ -98,7 +107,7 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
   if (near(base.deadlineDaysTo) && state === "WAITING_EXTERNAL" && !scheduledNext) risks.push(`הדדליין ב-${heDate(base.deadline)} והעבודה עוד אצל ${external.join(", ") || "גורם חיצוני"}.`);
   const warning = state === "OWNER_BALL" || state === "NO_NEXT_STEP" || risks.length > 0;
   const lp = lastProgress ? `התקדמות אחרונה רשומה: ${lastProgress.he} (${heDate(lastProgress.date)})` : "אני לא רואה התקדמות רשומה";
-  const nx = state === "OWNER_BALL" ? "יש בו משהו שמחכה לך" : scheduledNext ? `הצעד הבא: ${scheduledNext.he}` : next.length ? `צעד הבא בלי תאריך: ${next[0].he}` : "אני לא רואה צעד הבא רשום או סשן המשך";
+  const nx = state === "OWNER_BALL" ? "יש בו משהו שמחכה לך" : scheduledNext ? `הצעד הבא: ${scheduledNext.he}` : state === "WAITING_EXTERNAL" ? `כרגע אצל ${external.join(", ") || "גורם אחר"}${next.length ? ` (${next[0].he})` : ""}, בלי צעד הבא בתאריך` : next.length ? `צעד הבא בלי תאריך: ${next[0].he}` : "אני לא רואה צעד הבא רשום או סשן המשך";
   return { ...base, state, stateHe: MOMENTUM_HE[state], lastProgress, nextSteps: next, scheduledNext, waitingOn: holders, risks, warning, he: `${name}: ${lp}; ${nx}.${risks.length ? ` ${risks[0]}` : ""}` };
 }
 

@@ -147,7 +147,7 @@ async function main() {
   const b = byKey(`readiness:video-production:${RF_MONEY}`);
   ok("→ דורש תשומת לב", b?.state === "ATTENTION", b?.state);
   ok("open: budget line remaining ₪600 (budgetLinePaidState), advance required but not seen", b.open.some((t) => t.includes("600")) && b.notSeen.some((t) => t.includes("מקדמה")), { open: b.open, notSeen: b.notSeen });
-  ok("expected income is reported as expected (צפוי ≠ התקבל), never received", b.insights.some((t) => t.includes("צפוי") && t.includes("2000")), b.insights);
+  ok("expected income is reported as expected (צפוי ≠ התקבל), never received", b.facts.some((t) => t.includes("צפוי") && t.includes("2000")) && !b.insights.some((t) => t.includes("צפוי")), { facts: b.facts, insights: b.insights });
   ok("never claims money is available", !allTexts(b).some((t) => /יש כסף|כסף זמין|available cash/.test(t)));
 
   section("C. SHOOT UNKNOWN CREATIVE — 'לא רואה', never 'אין'");
@@ -259,6 +259,14 @@ async function main() {
   ok("partner_entity(project) carries the COO section (readiness of its shoot)", ent.some((s) => s.capability === "coo" && s.items.length > 0), ent.map((s) => s.capability));
   const entA = entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, S as never, `label-artist:${A_AVI}`);
   ok("partner_entity(label-artist) carries artist care", entA.some((s) => s.capability === "coo"), entA.map((s) => s.capability));
+
+  section("Production-smoke regressions (2026-10-02)");
+  const { holderHe, isOwnerHolder } = await import("../lib/partner/coo/momentum");
+  ok("ball-holder codes are spoken in Hebrew (never WAITING_FOR_OWNER / CLIENT in a sentence)", holderHe("CLIENT") === "הלקוח" && holderHe("ENGINEER:Steven") === "Steven" && holderHe("WAITING_FOR_VENDOR").includes("ספק") && isOwnerHolder("WAITING_FOR_OWNER") && !isOwnerHolder("CLIENT"));
+  ok("no COO sentence carries a raw holder code", !allTexts(buildCooView(S)).some((t) => /WAITING_FOR_|EXTERNAL_PRODUCER|SOUND_ENGINEER|\bCLIENT\b/.test(t)));
+  const paidDl = readinessOf(c, `project:${P_PAID}`).find((r) => r.kind === "DEADLINE");
+  ok("a delivery deadline is not made 'not ready' by the company's own unpaid vendor expenses (they are facts)", !!paidDl && !paidDl.checks.some((x) => x.id === "money.expenses"), paidDl?.checks.map((x) => x.id));
+  ok("an optional 'not seen' item is never a priority headline (crew confirmations)", !buildCooView(S).priorities.some((p) => p.why.some((w) => w.includes("אישורי הגעה"))));
 
   section("No side effects / no background mechanism (static)");
   const cooFiles = ["context", "model", "readiness", "momentum", "schedule", "money", "priorities"].map((f) => read(`lib/partner/coo/${f}.ts`)).join("\n") + read("lib/partner/knowledge/capabilities/coo.ts");

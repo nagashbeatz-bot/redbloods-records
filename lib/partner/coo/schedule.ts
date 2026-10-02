@@ -93,7 +93,15 @@ export function scheduleHealth(c: CooCtx, input: { readiness: readonly Readiness
   const out: ScheduleDay[] = list.map((d) => {
     const items = recItems.get(d) ?? [];
     const seen = new Set<string>();
-    const uniq = items.filter((i) => { const k = `${i.time ?? "-"}|${i.source === "CALENDAR" ? "C" : "R"}`; const dup = i.source === "CALENDAR" && items.some((r) => r.source === "REDBLOODS" && r.time && r.time === i.time); if (dup || seen.has(k + i.title)) return false; seen.add(k + i.title); return true; })
+    const nameOf = (t: string) => t.split(/\s+[—–-]\s+/).slice(1).join(" ").trim().toLowerCase();
+    const calTitles = items.filter((i) => i.source === "CALENDAR").map((i) => i.title.toLowerCase());
+    const uniq = items.filter((i) => {
+      const k = `${i.time ?? "-"}|${i.source === "CALENDAR" ? "C" : "R"}`;
+      const dup = i.source === "CALENDAR" && items.some((r) => r.source === "REDBLOODS" && r.time && r.time === i.time);
+      // a Redbloods record with no time whose name already appears in a calendar event that day = the same commitment
+      const shadow = i.source === "REDBLOODS" && !i.time && !!nameOf(i.title) && calTitles.some((t) => t.includes(nameOf(i.title).split(" ")[0]));
+      if (dup || shadow || seen.has(k + i.title)) return false; seen.add(k + i.title); return true;
+    })
       .sort((a, b) => (a.time ?? "99").localeCompare(b.time ?? "99"));
     const a = av?.find((x) => x.date === d) ?? null;
     const busy = a ? a.occupiedMinutes : null;
@@ -116,7 +124,7 @@ export function scheduleHealth(c: CooCtx, input: { readiness: readonly Readiness
   }
   for (const m of input.momentum) {
     if (!m.release || m.release.daysTo === null || m.release.daysTo < 0 || m.release.daysTo > INTERNAL_COO_HEURISTICS.horizonDays) continue;
-    if (m.scheduledNext || m.state === "WAITING_EXTERNAL") continue;
+    if (m.scheduledNext || m.nextSteps.length || m.state === "WAITING_EXTERNAL" || m.state === "OWNER_BALL") continue; // open work exists — not "nothing before the release"
     findings.push({ code: "RELEASE_NO_SCHEDULED_WORK", kind: "OBSERVATION", date: m.release.target, heuristic: false, he: `הריליס "${m.name}" מתוכנן ל-${heDate(m.release.target)} ואני לא רואה עבודה מתוכננת או פתוחה לפניו.`, evidence: [m.key] });
   }
   for (const a of input.artists) {

@@ -50,7 +50,8 @@ function candidates(c: CooCtx, board: ReadinessBoard, momentum: readonly Project
     const commitment = r.kind === "SHOOT" || r.kind === "SHOW" || r.kind === "RELEASE" || r.kind === "DEADLINE";
     if (r.state === "UNKNOWN" && !near) continue;
     const tier: 1 | 2 | 3 = r.state === "BLOCKED" || (near && r.state === "ATTENTION" && commitment) ? 1 : commitment ? 2 : 3;
-    const items = [...r.blocked, ...r.open, ...r.notSeen.filter((_, i) => i < 2)];
+    // what makes it not ready: blocked, open, and REQUIRED items not seen (an optional 'not seen' is context, never a headline)
+    const items = [...r.checks.filter((x) => x.state === "BLOCKED"), ...r.checks.filter((x) => x.state === "OPEN"), ...r.checks.filter((x) => x.required && (x.state === "NOT_SEEN" || x.state === "UNREADABLE"))].map((x) => x.he);
     out.push({ key: r.key, tier, kind: "READINESS", entity: r.entity, daysTo: r.daysTo, labelWork: !!r.project && c.isLabel(r.project.slice(8)),
       he: `${r.narrativeHe.split("\n")[0]}${items.length ? ` — ${items.slice(0, 2).join(" ")}` : ""}`, why: items, recommendationHe: r.recommendationHe, epistemic: "DERIVED" });
   }
