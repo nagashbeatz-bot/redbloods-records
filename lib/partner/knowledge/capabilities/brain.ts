@@ -12,7 +12,8 @@ import type { BrainSnapshot, BrainRecord, BrainObservation } from "../../brain/m
 import { brainState } from "../../brain/model";
 import { PURPOSE_HE, STATUS_HE, RECORD_TYPES, INTEL_AREAS, UUID_RE } from "../../brain/vocab";
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeReadResult, KnowledgeSources } from "../types";
-import { byCount, item, partner, record, result, sfact } from "./common";
+import { byCount, item, labelArtistName, partner, record, result, sfact, state } from "./common";
+import { RECHECK_POLICY, recheckProposals, researchSeries, type ResearchContext, type ResearchSeries } from "../../brain/research";
 
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const snap = (src: KnowledgeSources): Avail<BrainSnapshot> | undefined => src.brain;
@@ -50,9 +51,11 @@ const recordItem = (r: BrainRecord, status: string | null): KnowledgeItem => ite
 
 export const brain: KnowledgeCapability = {
   id: "brain", domain: "PARTNER", titleHe: "המוח של סאני — מעקב, מדידות, תובנות",
-  descriptionForModel: "Sunny's Brain (v1): the tracking authorizations the Owner approved in Redbloods (scope, families, source kinds, insights / recommendations allowed, daily cap, validity, state ACTIVE / REVOKED / SUPERSEDED / EXPIRED), the approval requests waiting for him, tracked resources (accounts / content / pages), observations (one value at one time — never an inference; OWNER_REPORTED when he gave it), Sunny's INSIGHTS / RECOMMENDATIONS (always HYPOTHESIS) with lifecycle, and the evidence graph. Use mode record with id for one record + history + links. An authorization id from here is what partner_observe writes need. Not installed / unreadable = UNKNOWN, never 'none'.",
+  descriptionForModel: "Sunny's Brain: tracking authorizations the Owner approved (scope, families, sources, window, state), approval requests waiting for him, tracked resources, observations (point-in-time readings from Owner-requested browser research — never an inference; OWNER_REPORTED when he gave them), insights / recommendations (always HYPOTHESIS) and the evidence graph. mode research = last check, change since the previous check, TODAY / RECENT / STALE, whether a new check may be stored, and ≤2 recheck PROPOSALS (ask the Owner first — never browse or record before his yes); series = one metric over time; record = one record + history + links. Old data is never \"now\". Not installed = UNKNOWN, never none.",
   examplesHe: ["מה את עוקבת אחריו?", "אילו הרשאות מעקב יש לך?", "מה מחכה לאישור שלי?", "מה גילית על האינסטגרם?", "אילו תובנות פתוחות יש?"],
   modes: {
+    research: { descriptionForModel: "Research freshness per series (subject + metric): when we last checked, the value then, the change between the last two checks, where it was read, TODAY / RECENT / STALE, whether a new check may be STORED (a covering ACTIVE authorization), plus at most 2 recheck PROPOSALS for the Owner (a question — they execute nothing). Filter by entity / resource / type" },
+    series: { descriptionForModel: "Every current reading of ONE series (params resource or entity + type), oldest → newest, each with its change from the previous reading" },
     overview: { descriptionForModel: "Active authorizations, pending approvals, counts by state" },
     authorizations: { descriptionForModel: "Every tracking authorization with its current state (history included)" },
     approvals: { descriptionForModel: "Approval requests Sunny sent the Owner and their decision (PENDING first)" },
@@ -66,11 +69,13 @@ export const brain: KnowledgeCapability = {
   params: {
     id: { kind: "text", maxLength: 36, descriptionForModel: "A record id (mode record)" },
     resource: { kind: "text", maxLength: 36, descriptionForModel: "Only this resource id (observations)" },
-    entity: { kind: "text", maxLength: 120, descriptionForModel: "Only this entity key (observations / records)" },
+    entity: { kind: "entityKey", types: ["label-artist", "dj", "client", "project", "show", "release"], descriptionForModel: "Only this entity (observations / records / research — research also counts it as what the Owner is discussing now)" },
     type: { kind: "text", maxLength: 72, descriptionForModel: "Observation type FAMILY.METRIC, or a family prefix (observations); INSIGHT | RECOMMENDATION (records)" },
     status: { kind: "enum", values: ["OPEN", "ENDORSED", "REJECTED", "WITHDRAWN", "ACCEPTED", "ACTED_ON", "STALE", "INVALIDATED", "SUPERSEDED"], descriptionForModel: "Only records in this status" },
     area: { kind: "enum", values: INTEL_AREAS, descriptionForModel: "Only records of this area" },
   },
+  entityScope: { types: ["label-artist", "dj", "client"], param: "entity", mode: "research", limit: 5 },
+  modeNeeds: { research: ["STATE"] },
   paging: { defaultLimit: 20, maxLimit: 50 }, recordTextLimit: 600,
   access: { externalRead: true, ownerOnly: true, sensitivity: "STANDARD" }, needs: ["BRAIN"],
   read(src, q) {
@@ -101,6 +106,44 @@ export const brain: KnowledgeCapability = {
       id: `resource:${r.id}`, label: record(r.displayName ?? r.firstHandle ?? r.canonicalUrl ?? r.identityKey), epistemic: "FACT", source: "SUNNY_BRAIN", freshness: st.resourceActive(r.id) ? "LIVE" : "HISTORICAL",
       fields: { resourceId: r.id, platform: r.platform, resourceKind: r.resourceKind, contentKind: r.contentKind, parentId: r.parentId, identityKey: r.identityKey, canonicalUrl: r.canonicalUrl, active: st.resourceActive(r.id), registeredBy: r.approvalBasis === "OWNER_APPROVAL" ? "OWNER_APPROVAL" : "SUNNY_UNDER_AUTHORIZATION", createdAt: r.createdAt },
     })), partial);
+    if (q.mode === "research" || q.mode === "series") {
+      const stt = state(src);
+      const ctx: ResearchContext = {
+        todayIL: today, now: src.now, focus: { entityKey: q.params.entity, resourceId: q.params.resource },
+        releases: (stt?.domains.releasesFull.data?.items ?? []).map((r) => ({ labelArtistId: r.labelArtistId, targetYmd: r.targetYmd, released: !!r.releasedAt })),
+        labelOf: (k) => (k.startsWith("label-artist:") ? labelArtistName(src, k.slice(13)) : null),
+      };
+      const all = researchSeries(s, ctx);
+      const subjectOk = (x: ResearchSeries) => (!q.params.resource || ("resourceId" in x.subject && x.subject.resourceId === q.params.resource))
+        && (!q.params.entity || ("entityKey" in x.subject && x.subject.entityKey === q.params.entity) || x.scopeEntities.includes(q.params.entity))
+        && (!q.params.type || x.type === q.params.type || x.family === q.params.type);
+      const list = all.filter(subjectOk);
+      if (q.mode === "series") {
+        const x = list.length === 1 ? list[0] : null;
+        if (!x) return result([], { completeness: "UNKNOWN", missing: [{ fact: "series", whyNeeded: "pass resource or entity + type that name exactly ONE series (mode research lists them)" }] });
+        const subjOf = (o: { resourceId: string | null; entityKey: string | null }) => ("resourceId" in x.subject ? o.resourceId === x.subject.resourceId : o.entityKey === (x.subject as { entityKey: string }).entityKey);
+        const pts = s.observations.filter((o) => st.observationValid(o.id) && o.type === x.type && subjOf(o)).sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.seq - b.seq);
+        return result(pts.map((o, i) => { const it = obsItem(o, true, null); const p = pts[i - 1]; it.fields.changeFromPrevious = p && o.valueNum !== null && p.valueNum !== null && (o.unit ?? "") === (p.unit ?? "") ? o.valueNum - p.valueNum : null; return it; }), { summary: [sfact("SERIES_POINTS", "מספר בדיקות שמורות", pts.length, "OBSERVATION", "SUNNY_BRAIN")], ...partial });
+      }
+      if (!list.length) return result([], partial);
+      const proposals = recheckProposals(list, ctx);
+      const freshHe: Record<string, string> = { TODAY: "נבדק היום", RECENT: "נבדק לאחרונה", STALE: "מידע ישן" };
+      return result(list.map((x) => item({
+        id: `series:${x.key}`, entity: "entityKey" in x.subject ? x.subject.entityKey : null, label: record(`${x.subjectLabel} · ${x.type}`), epistemic: "OBSERVATION", source: "SUNNY_BRAIN",
+        freshness: x.freshness === "STALE" ? "STALE" : "RECENT",
+        fields: {
+          ...x, freshnessHe: freshHe[x.freshness], lastCheckedOn: x.last.observedAt.slice(0, 10),
+          note: partner(`הנתון האחרון נבדק ב-${x.last.observedAt.slice(0, 10)} (לפני ${x.ageDays} ימים)${x.freshness === "TODAY" ? "" : " — זה לא נתון של עכשיו"}. ${x.storeStatus === "CAN_STORE" ? "בדיקה חדשה שהבוס יבקש תישמר תחת ההרשאה." : "בדיקה חדשה לא תישמר בלי הרשאת מעקב פעילה — אפשר רק לענות עליה חד-פעמית."}`),
+        },
+      })), {
+        summary: [
+          sfact("RECHECK_PROPOSALS", "הצעות לבדיקה חוזרת (שאלה לבוס — לא מבוצעות לבד)", proposals, "DERIVED", "SUNNY_BRAIN"),
+          sfact("RECHECK_POLICY", "ברירות מחדל הנדסיות (לא מדיניות בעלים)", RECHECK_POLICY, "DERIVED", "SUNNY_BRAIN"),
+          sfact("BY_FRESHNESS", "סדרות לפי עדכניות", byCount(list.map((x) => x.freshness)), "OBSERVATION", "SUNNY_BRAIN"),
+        ],
+        ...partial,
+      });
+    }
     if (q.mode === "observations" || q.mode === "observation_history") {
       const hist = q.mode === "observation_history";
       const list = s.observations.filter((o) => (hist || st.observationValid(o.id)) && (!q.params.resource || o.resourceId === q.params.resource) && (!q.params.entity || o.entityKey === q.params.entity)
