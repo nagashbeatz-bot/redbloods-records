@@ -17,7 +17,8 @@ import { brainRefusal, readBrainSnapshot, BRAIN_RPC_CODES, type BrainReadClient 
 import * as W from "../lib/writes/brain";
 import { brainState, type BrainSnapshot } from "../lib/partner/brain/model";
 import { buildOwnerApprovalsView } from "../lib/partner/brain/owner-view";
-import { RECHECK_POLICY, recheckProposals, researchSeries } from "../lib/partner/brain/research";
+import { INTERNAL_RECHECK_HEURISTIC, MAX_PROPOSALS_PER_ANSWER, recheckProposals, researchSeries } from "../lib/partner/brain/research";
+import { entityKnowledge } from "../lib/partner/knowledge/query";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
 import { queryKnowledgeCore } from "../lib/partner/knowledge/query";
 import type { KnowledgeAudience } from "../lib/partner/knowledge/types";
@@ -295,7 +296,7 @@ async function main() {
   const ctxR = { todayIL: TODAY, now: NOW };
   const ser = researchSeries(hist, ctxR);
   check("17/18. last check + the previous one + the change, from the existing observations (no second history)", ser.map((x) => [x.points, x.last.observedAt, x.last.value, x.previous?.value, x.comparison, x.last.sourceRef, x.freshness, x.ageDays]),
-    [[2, "2026-09-02T10:00:00Z", 1200, 1000, { kind: "NUMBER", delta: 200, deltaPct: 20, daysBetween: 1 }, "https://www.instagram.com/redbloods/", "STALE", 29]]);
+    [[2, "2026-09-02T10:00:00Z", 1200, 1000, { kind: "NUMBER", delta: 200, deltaPct: 20, daysBetween: 1 }, "https://www.instagram.com/redbloods/", "EARLIER", 29]]);
   check("11. Owner yes + a covering ACTIVE authorization → CAN_STORE (a new check may be recorded)", [ser[0].storeStatus, ser[0].coveringAuthorizationIds, ser[0].allowedSourceKinds], ["CAN_STORE", [U(5)], ["PUBLIC_PROFILE_PAGE"]]);
   const noAuth = researchSeries({ ...hist, authorizations: [] }, ctxR)[0];
   check("12/16. no authorization → NO_AUTHORIZATION; a proposal leads to requesting authorization, never to 'saved'", [noAuth.storeStatus, recheckProposals([noAuth], { ...ctxR, focus: { resourceId: U(1) } })[0]?.nextStep], ["NO_AUTHORIZATION", "ASK_OWNER_THEN_REQUEST_AUTHORIZATION"]);
@@ -303,14 +304,21 @@ async function main() {
   check("13. revoked authorization → AUTHORIZATION_REVOKED (no store)", revoked.storeStatus, "AUTHORIZATION_REVOKED");
   check("14. expired / not-yet-valid authorization → no store", [researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], validUntil: "2026-09-30" }] }, ctxR)[0].storeStatus, researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], validFrom: "2026-10-09" }] }, ctxR)[0].storeStatus], ["AUTHORIZATION_EXPIRED", "AUTHORIZATION_NOT_YET_VALID"]);
   check("14b. an authorization without the family does not cover the series", researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], observationFamilies: ["YOUTUBE"] }] }, ctxR)[0].storeStatus, "NO_AUTHORIZATION");
-  check("9. STALE + a live insight resting on it → a proposal (reason STALE_EVIDENCE), executes nothing", recheckProposals(ser, ctxR).map((x) => [x.reasons, x.executesNothing, x.nextStep, /רוצה שאבדוק עכשיו דרך הדפדפן/.test(x.textHe), /2026-09-02/.test(x.textHe)]), [[["STALE_EVIDENCE"], true, "ASK_OWNER_THEN_BROWSER_CHECK_AND_RECORD", true, true]]);
+  check("9. an older reading + a live insight resting on it → a proposal (reason STALE_EVIDENCE), executes nothing", recheckProposals(ser, ctxR).map((x) => [x.reasons, x.executesNothing, x.nextStep, /רוצה שאבדוק עכשיו דרך הדפדפן/.test(x.textHe), /2026-09-02/.test(x.textHe)]), [[["STALE_EVIDENCE"], true, "ASK_OWNER_THEN_BROWSER_CHECK_AND_RECORD", true, true]]);
   const noDep = researchSeries({ ...hist, links: [] }, ctxR);
-  check("9b. STALE alone (no material reason) → no proposal (no spam)", recheckProposals(noDep, ctxR), []);
+  check("9b. an older reading alone (no context reason) → no proposal (no spam)", recheckProposals(noDep, ctxR), []);
   check("9c. the Owner discussing it → a proposal", recheckProposals(noDep, { ...ctxR, focus: { resourceId: U(1) } }).map((x) => x.reasons), [["OWNER_DISCUSSING"]]);
   const entObs = researchSeries({ ...hist, links: [], observations: [{ ...old2, resourceId: null, entityKey: "label-artist:22222222-2222-4222-8222-222222222221" }] }, ctxR);
-  check("9d. a release within the window for that entity → a proposal; a far / released one → none", [recheckProposals(entObs, { ...ctxR, releases: [{ labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-10-12", released: false }] }).map((x) => x.reasons), recheckProposals(entObs, { ...ctxR, releases: [{ labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-12-30", released: false }, { labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-10-12", released: true }] }).length], [[["RELEASE_SOON"]], 0]);
+  const LA = "22222222-2222-4222-8222-222222222221";
+  const rel = (o: { targetYmd: string; released?: boolean; changedAt: string | null }) => ({ labelArtistId: LA, released: false, ...o });
+  check("9d. release context (no window number): an upcoming release whose record changed AFTER the last check → a proposal; changed before / released / past → none", [
+    recheckProposals(entObs, { ...ctxR, releases: [rel({ targetYmd: "2026-11-20", changedAt: "2026-09-20T00:00:00Z" })] }).map((x) => x.reasons),
+    recheckProposals(entObs, { ...ctxR, releases: [rel({ targetYmd: "2026-11-20", changedAt: "2026-08-20T00:00:00Z" }), rel({ targetYmd: "2026-11-20", released: true, changedAt: "2026-09-20T00:00:00Z" }), rel({ targetYmd: "2026-09-10", changedAt: "2026-09-20T00:00:00Z" })] }).length,
+  ], [[["RELEASE_SOON"]], 0]);
+  check("9d2. a release change after the last check works even when the reading is only days old (context, not a threshold)", recheckProposals(researchSeries({ ...hist, links: [], observations: [{ ...old2, resourceId: null, entityKey: `label-artist:${LA}`, observedAt: "2026-09-29T10:00:00Z" }] }, ctxR), { ...ctxR, releases: [rel({ targetYmd: "2026-10-30", changedAt: "2026-10-01T09:00:00Z" })] }).map((x) => x.reasons), [["RELEASE_SOON"]]);
   check("9e. fresh data → no proposal even with a reason", recheckProposals(researchSeries({ ...hist, observations: [{ ...old2, observedAt: "2026-10-01T10:00:00Z" }] }, ctxR), { ...ctxR, focus: { resourceId: U(1) } }), []);
-  check("9f. at most RECHECK_POLICY.maxProposals; the policy is explicit (engineering default)", [recheckProposals(Array.from({ length: 5 }, (_, i) => ({ ...ser[0], key: `k${i}` })), ctxR).length, RECHECK_POLICY], [2, { staleAfterDays: 14, releaseWindowDays: 21, maxProposals: 2 }]);
+  check("9f. ONE proposal per answer (no spam); the floor is an INTERNAL heuristic, not served", [recheckProposals(Array.from({ length: 5 }, (_, i) => ({ ...ser[0], key: `k${i}` })), ctxR).length, MAX_PROPOSALS_PER_ANSWER, INTERNAL_RECHECK_HEURISTIC.minAgeDaysWithoutReleaseChange > 0], [1, 1, true]);
+  ok("9g. the floor / heuristic is never served as policy or knowledge (no RECHECK_POLICY fact; not in contracts as a number)", !JSON.stringify(q("research", { resource: U(1) }, { status: "OK", value: hist })).includes("minAgeDays") && !/14 \/ 21|RECHECK_POLICY/.test(read("lib/partner/system/registry.ts") + read("AGENTS.md") + read("lib/partner/knowledge/capabilities/brain.ts")));
   const before = JSON.stringify(hist);
   const p1x = JSON.stringify(recheckProposals(researchSeries(hist, ctxR), ctxR)), p2x = JSON.stringify(recheckProposals(researchSeries(hist, ctxR), ctxR));
   ok("10/24. proposals are deterministic and write nothing (no persistence → a refresh cannot multiply them)", p1x === p2x && JSON.stringify(hist) === before);
@@ -323,6 +331,21 @@ async function main() {
   ok("19/20. an insight stays a HYPOTHESIS; a recommendation stays a recommendation (no auto-learning, no execution)", q("records", {}, { status: "OK", value: hist }).items.every((i) => i.epistemic === "HYPOTHESIS") && !/BUSINESS_LEARNING|BUSINESS_DECISION/.test(researchSrc));
   ok("22. no automatic reviewAt: a record without reviewAt is sent with p_review_at NULL", f3.calls[0]?.args.p_review_at === null);
   ok("23. research adds no Agent Alert / attention signal", !/agent|alert|ATTENTION_MAP/.test(researchSrc.replace(/\/\*[\s\S]*?\*\//g, "")));
+  section("L. Proactive in NORMAL use — partner_entity carries the proposal (no research request)");
+  const entSnap: BrainSnapshot = { ...hist, links: [], observations: [{ ...old2, resourceId: null, entityKey: `label-artist:${LA}` }], authorizations: [{ ...snap.authorizations[0], resourceIds: [], entityKeys: [`label-artist:${LA}`] }] };
+  const srcE: GatewaySources = { now: NOW, identities: { cleantone: null }, brain: { status: "OK", value: entSnap }, audience: OWNER_EXT };
+  const sec = entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, srcE, `label-artist:${LA}`).find((x) => x.capability === "brain");
+  const props = (sec?.summary.find((f) => f.code === "RECHECK_PROPOSALS")?.value ?? []) as Array<{ reasons: string[]; executesNothing: boolean; textHe: string; nextStep: string }>;
+  check("L1. Owner opens / talks about the artist (partner_entity enrichment), never asked for research → Sunny sees ONE proposal (OWNER_DISCUSSING)", [!!sec, props.length, props[0]?.reasons, props[0]?.executesNothing, /רוצה שאבדוק עכשיו/.test(props[0]?.textHe ?? "")], [true, 1, ["OWNER_DISCUSSING"], true, true]);
+  check("L2. it only asks: nextStep = ask the Owner first (browser check only after his yes)", props[0]?.nextStep, "ASK_OWNER_THEN_BROWSER_CHECK_AND_RECORD");
+  ok("L3. no proposal for an artist with nothing in the Brain (the section is absent — no noise)", !entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, srcE, "label-artist:33333333-3333-4333-8333-333333333333").some((x) => x.capability === "brain"));
+  ok("L4. the enrichment runs only in the connector path: getPartnerEntity is not called by any page / component (no page-load Brain read)", walkCode().filter(([f, t]) => /^(app|components)\//.test(f) && /getPartnerEntity\(/.test(t)).length === 0);
+  ok("L5. the gateway loads BRAIN only for label-artist / dj / client entities, and partner_brief does not load it", /\^\(label-artist\|dj\|client\):\/\.test\(k\) \? \["BRAIN"/.test(read("lib/partner/gateway/server.ts")) && !/"BRAIN"/.test((/getPartnerBriefCore\(await loadSources\(ctx, \[([^\]]*)\]/.exec(read("lib/partner/gateway/server.ts")) ?? ["", ""])[1]));
+  ok("L6. NO / no answer → nothing: the proposal is pure data; the instructions say ask once and wait", /at most once per conversation, then wait; no \/ no answer = nothing happens/.test(read("lib/integrations/partner-mcp/mcp.ts")) && /ask, then WAIT; no reply \/ no = nothing happens/.test(OBSERVE_TOOL_DEFINITION.description));
+  ok("L7. YES → the browser read happens in Claude, then partner_observe records it (only with a live authorization)", /THIS TOOL NEVER BROWSES/.test(OBSERVE_TOOL_DEFINITION.description) && /storeStatus CAN_STORE = a covering ACTIVE authorization/.test(OBSERVE_TOOL_DEFINITION.description));
+  const twice = [entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, srcE, `label-artist:${LA}`), entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, srcE, `label-artist:${LA}`)].map((x) => JSON.stringify(x.find((y) => y.capability === "brain")?.summary));
+  ok("L8. same interaction / refresh → the same single proposal (deterministic, nothing stored, no duplicates)", twice[0] === twice[1] && JSON.stringify(entSnap.observations).length > 0);
+
   const toolDesc = OBSERVE_TOOL_DEFINITION.description;
   ok("tool contract: never browses / monitors; Owner-requested or approved; ask then wait; never say saved without authorization; never OWNER_STATEMENT", /NEVER BROWSES, FETCHES OR MONITORS/.test(toolDesc) && /ask, then WAIT/.test(toolDesc) && /NEVER say it was saved/.test(toolDesc) && /NEVER an OWNER_STATEMENT/.test(toolDesc) && /no platform API, no crawler, no background or scheduled checking/.test(toolDesc) && !/continuous/i.test(toolDesc.replace(/no background or scheduled checking/, "")));
   ok("approval copy: storing / learning, NOT continuous crawling (summary + screen + consent)", (() => { const t = p1.ok ? trackingSummaryHe(p1.value).riskHe : ""; return /כשתבקש מסאני לבדוק, או כשתאשר הצעה שלה לבדוק מחדש/.test(t) && /זו לא הרשאה למעקב רציף/.test(t) && !/בלי לשאול שוב, עד/.test(t); })() && /data-authorization-meaning/.test(read("components/partner/SunnyApprovals.tsx")) && /כשאבקש מסאני לבדוק, או כשאאשר הצעה שלה לבדוק מחדש, היא רשאית לשמור את הנתונים האלה כדי להשוות וללמוד מהם/.test(read("components/partner/SunnyApprovals.tsx")) && /אין מעקב רציף, אין בדיקה ברקע/.test(read("app/mcp-oauth/authorize/page.tsx")));

@@ -13,7 +13,7 @@ import { brainState } from "../../brain/model";
 import { PURPOSE_HE, STATUS_HE, RECORD_TYPES, INTEL_AREAS, UUID_RE } from "../../brain/vocab";
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeReadResult, KnowledgeSources } from "../types";
 import { byCount, item, labelArtistName, partner, record, result, sfact, state } from "./common";
-import { RECHECK_POLICY, recheckProposals, researchSeries, type ResearchContext, type ResearchSeries } from "../../brain/research";
+import { recheckProposals, researchSeries, type ResearchContext, type ResearchSeries } from "../../brain/research";
 
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const snap = (src: KnowledgeSources): Avail<BrainSnapshot> | undefined => src.brain;
@@ -51,7 +51,7 @@ const recordItem = (r: BrainRecord, status: string | null): KnowledgeItem => ite
 
 export const brain: KnowledgeCapability = {
   id: "brain", domain: "PARTNER", titleHe: "המוח של סאני — מעקב, מדידות, תובנות",
-  descriptionForModel: "Sunny's Brain: tracking authorizations the Owner approved (scope, families, sources, window, state), approval requests waiting for him, tracked resources, observations (point-in-time readings from Owner-requested browser research — never an inference; OWNER_REPORTED when he gave them), insights / recommendations (always HYPOTHESIS) and the evidence graph. mode research = last check, change since the previous check, TODAY / RECENT / STALE, whether a new check may be stored, and ≤2 recheck PROPOSALS (ask the Owner first — never browse or record before his yes); series = one metric over time; record = one record + history + links. Old data is never \"now\". Not installed = UNKNOWN, never none.",
+  descriptionForModel: "Sunny's Brain: tracking authorizations the Owner approved (scope, families, sources, window, state), approval requests waiting for him, tracked resources, observations (point-in-time readings from Owner-requested browser research — never an inference; OWNER_REPORTED when he gave them), insights / recommendations (always HYPOTHESIS) and the evidence graph. mode research = last check, change since the previous check, TODAY / EARLIER (+ date), whether a new check may be stored, and at most ONE recheck PROPOSAL (also on partner_entity of an artist / DJ / client) (ask the Owner first — never browse or record before his yes); series = one metric over time; record = one record + history + links. Old data is never \"now\". Not installed = UNKNOWN, never none.",
   examplesHe: ["מה את עוקבת אחריו?", "אילו הרשאות מעקב יש לך?", "מה מחכה לאישור שלי?", "מה גילית על האינסטגרם?", "אילו תובנות פתוחות יש?"],
   modes: {
     research: { descriptionForModel: "Research freshness per series (subject + metric): when we last checked, the value then, the change between the last two checks, where it was read, TODAY / RECENT / STALE, whether a new check may be STORED (a covering ACTIVE authorization), plus at most 2 recheck PROPOSALS for the Owner (a question — they execute nothing). Filter by entity / resource / type" },
@@ -110,7 +110,7 @@ export const brain: KnowledgeCapability = {
       const stt = state(src);
       const ctx: ResearchContext = {
         todayIL: today, now: src.now, focus: { entityKey: q.params.entity, resourceId: q.params.resource },
-        releases: (stt?.domains.releasesFull.data?.items ?? []).map((r) => ({ labelArtistId: r.labelArtistId, targetYmd: r.targetYmd, released: !!r.releasedAt })),
+        releases: (stt?.domains.releasesFull.data?.items ?? []).map((r) => ({ labelArtistId: r.labelArtistId, targetYmd: r.targetYmd, released: !!r.releasedAt, changedAt: r.stageEnteredAt ?? r.createdAt })),
         labelOf: (k) => (k.startsWith("label-artist:") ? labelArtistName(src, k.slice(13)) : null),
       };
       const all = researchSeries(s, ctx);
@@ -127,18 +127,17 @@ export const brain: KnowledgeCapability = {
       }
       if (!list.length) return result([], partial);
       const proposals = recheckProposals(list, ctx);
-      const freshHe: Record<string, string> = { TODAY: "נבדק היום", RECENT: "נבדק לאחרונה", STALE: "מידע ישן" };
+      const freshHe: Record<string, string> = { TODAY: "נבדק היום", EARLIER: "בדיקה קודמת — לא נתון של עכשיו" };
       return result(list.map((x) => item({
         id: `series:${x.key}`, entity: "entityKey" in x.subject ? x.subject.entityKey : null, label: record(`${x.subjectLabel} · ${x.type}`), epistemic: "OBSERVATION", source: "SUNNY_BRAIN",
-        freshness: x.freshness === "STALE" ? "STALE" : "RECENT",
+        freshness: x.freshness === "TODAY" ? "RECENT" : "HISTORICAL",
         fields: {
           ...x, freshnessHe: freshHe[x.freshness], lastCheckedOn: x.last.observedAt.slice(0, 10),
           note: partner(`הנתון האחרון נבדק ב-${x.last.observedAt.slice(0, 10)} (לפני ${x.ageDays} ימים)${x.freshness === "TODAY" ? "" : " — זה לא נתון של עכשיו"}. ${x.storeStatus === "CAN_STORE" ? "בדיקה חדשה שהבוס יבקש תישמר תחת ההרשאה." : "בדיקה חדשה לא תישמר בלי הרשאת מעקב פעילה — אפשר רק לענות עליה חד-פעמית."}`),
         },
       })), {
         summary: [
-          sfact("RECHECK_PROPOSALS", "הצעות לבדיקה חוזרת (שאלה לבוס — לא מבוצעות לבד)", proposals, "DERIVED", "SUNNY_BRAIN"),
-          sfact("RECHECK_POLICY", "ברירות מחדל הנדסיות (לא מדיניות בעלים)", RECHECK_POLICY, "DERIVED", "SUNNY_BRAIN"),
+          sfact("RECHECK_PROPOSALS", "הצעה לבדיקה חוזרת — אפשר להציע לבוס מיוזמתך פעם אחת, ולחכות ל'כן' (לא מבוצעת לבד)", proposals, "DERIVED", "SUNNY_BRAIN"),
           sfact("BY_FRESHNESS", "סדרות לפי עדכניות", byCount(list.map((x) => x.freshness)), "OBSERVATION", "SUNNY_BRAIN"),
         ],
         ...partial,
