@@ -31,6 +31,7 @@ let limiter: SlidingWindowLimiter | null = null;
 let answerLimiter: SlidingWindowLimiter | null = null;
 let knowledgeLimiter: SlidingWindowLimiter | null = null;
 let actLimiter: SlidingWindowLimiter | null = null;
+let observeLimiter: SlidingWindowLimiter | null = null;
 let rejectedLimiter: SlidingWindowLimiter | null = null;
 let registrationLimiter: SlidingWindowLimiter | null = null;
 const consentReplay = new MemoryConsentReplayGuard();
@@ -74,8 +75,16 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
     actLimiter ??= new SlidingWindowLimiter(config.actRateLimit);
     act = { limiter: actLimiter, call: (op, input, actor) => callInternalAct(op, { ownerId: actor.userId, clientId: actor.clientId }, input, process.env) };
   }
+  // Sunny Brain: bound only where the observe switch is on; otherwise nothing is even imported.
+  let observe: McpDeps["observe"];
+  if (config.observeEnabled) {
+    const { observeViaConnector } = await import("@/lib/partner/brain/server");
+    observeLimiter ??= new SlidingWindowLimiter(config.observeRateLimit);
+    observe = { limiter: observeLimiter, call: (op, input, actor) => observeViaConnector(op, input, actor) };
+  }
   const mcp: McpDeps = {
     config,
+    ...(observe ? { observe } : {}),
     ...(act ? { act } : {}),
     ...(answer ? { answer } : {}),
     ...(knowledge ? { knowledge } : {}),

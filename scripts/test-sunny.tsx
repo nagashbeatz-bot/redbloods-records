@@ -147,7 +147,10 @@ async function main() {
   // the kind CHECK applied to production on 2026-10-01 (scripts/sql/2026-10-01-knowledge-infra-CANDIDATE.sql, new_kind) = the registry
   const sqlText = read("scripts/sql/2026-10-01-knowledge-infra-CANDIDATE.sql");
   const newKind = sqlText.match(/new_kind constant text := \$d\$([^$]*)\$d\$/)?.[1] ?? "";
-  check("the live kind CHECK (migration 2026-10-01) = the registry", (newKind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), [...kinds].sort());
+  check("the 2026-10-01 kind CHECK = the registry minus the two P2 decision / learning kinds", (newKind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), kinds.filter((k) => k !== "BUSINESS_DECISION" && k !== "BUSINESS_LEARNING").sort());
+  // the CURRENT live kind CHECK = the P2 migration applied 2026-10-02 (scripts/sql/sunny-brain/…p2-business-decision-learning, new_def)
+  const p2Kind = read("scripts/sql/sunny-brain/2026-10-XX-p2-business-decision-learning-CANDIDATE.sql").match(/new_def constant text := \$d\$([^$]*)\$d\$/)?.[1] ?? "";
+  check("the live kind CHECK (P2 decision / learning, applied) = the registry exactly (14 kinds)", (p2Kind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), [...kinds].sort());
   ok("payment kind is OWNER_REPORTED; policy is a CANDIDATE; frequency note says it is not a booking rule",
     KNOWLEDGE_KINDS.find((k) => k.kind === "PAYMENT_REPORTED_BY_OWNER")!.epistemic === "OWNER_REPORTED" && KNOWLEDGE_KINDS.find((k) => k.kind === "WORKING_POLICY_CANDIDATE")!.epistemic === "OWNER_POLICY_CANDIDATE"
     && KNOWLEDGE_KINDS.find((k) => k.kind === "ENTITY_RELATIONSHIP")!.notesHe.some((n) => n.includes("לא כלל שיבוץ")));

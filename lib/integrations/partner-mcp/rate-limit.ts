@@ -50,7 +50,7 @@ export class SlidingWindowLimiter {
   }
 }
 
-export type LimiterName = "GENERAL" | "ACTION" | "ANSWER" | "KNOWLEDGE";
+export type LimiterName = "GENERAL" | "ACTION" | "ANSWER" | "KNOWLEDGE" | "OBSERVE";
 export type GateResult = { ok: true } | { ok: false; limiter: LimiterName; retryAfterSec: number };
 
 /**

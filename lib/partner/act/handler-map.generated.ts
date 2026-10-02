@@ -1489,6 +1489,25 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "requestId"
   ]
  },
+ "app/api/partner/approvals/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "a59ed93ee62d778bf71de88c5947569d26b4c27bbd13f9ab4359dfd508302728",
+  "effects": [],
+  "fields": [
+   "authorizationId",
+   "decision",
+   "op",
+   "reasonHe",
+   "requestId",
+   "seenHash",
+   "targetId",
+   "targetKind",
+   "toStatus"
+  ]
+ },
  "app/api/partner/finance/answer/route.ts": {
   "methods": [
    "POST"

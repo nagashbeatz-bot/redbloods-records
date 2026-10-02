@@ -8,6 +8,7 @@
  */
 import type { OwnerInboxItem } from "../../owner-inbox";
 import type { InboxMemory } from "../../inbox-memory";
+import type { BrainSnapshot } from "../brain/model";
 import type { PartnerCase } from "../cases/types";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { FinanceActionCandidate } from "../finance/actions";
@@ -71,6 +72,8 @@ export interface GatewaySources {
   ownerInbox?: Avail<OwnerInboxItem[]>;
   /** Sunny's memory of those updates (links + interpretations, 2026-10-01) — loaded with OWNER_INBOX; HYPOTHESIS, never canonical. */
   inboxMemory?: Avail<InboxMemory>;
+  /** Sunny Brain v1 + the T2 approval queue (Owner-only, capability `brain`). UNAVAILABLE "NOT_INSTALLED…" before the migration. */
+  brain?: Avail<BrainSnapshot>;
   /** Operations domains (Red Films, meetings, project actions, beats, social, balance cycles, albums, mix pipeline, deliveries, integrations). */
   operations?: Avail<OperationsRaw>;
   /** Project human context + material metadata (Owner-only; secrets reduced to booleans at the read edge). */

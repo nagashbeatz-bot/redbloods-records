@@ -274,7 +274,7 @@ async function main() {
   {
     const dir = "lib/integrations/partner-mcp";
     const files = fs.readdirSync(path.join(ROOT, dir)).map((f) => `${dir}/${f}`).sort();
-    check("connector module files", files, ["config.ts", "consent.ts", "crypto.ts", "mcp-only.ts", "mcp.ts", "metadata.ts", "oauth.ts", "rate-limit.ts", "server.ts", "store-supabase.ts", "store.ts", "tools.ts"].map((f) => `${dir}/${f}`));
+    check("connector module files", files, ["config.ts", "consent.ts", "crypto.ts", "mcp-only.ts", "mcp.ts", "metadata.ts", "oauth.ts", "observe-tool.ts", "rate-limit.ts", "server.ts", "store-supabase.ts", "store.ts", "tools.ts"].map((f) => `${dir}/${f}`));
     const code = files.map((f) => [f, strip(rd(f))] as const);
     const FORBIDDEN = /action-service|decideSuggested|executeApproved|finance\/action-core|appendOwnerContext|context-store|answer-service|event-persistence|partner_execute_(update|record)|sendPush|web-push|lib\/push|node-cron|instrumentation|alerts-store|child_process|node:fs|"fs"|(?<!\.)\bexec\(|(?<!\.)\bspawn\(|openai|anthropic|ai-router|railway|process\.env\.[A-Z_]*(KEY|TOKEN)/i;
     check("20/21. no decide / execute / Owner Context / push / cron / alert / shell / file / LLM / deploy capability in the connector", code.filter(([, s]) => FORBIDDEN.test(s)).map(([f]) => f), []);

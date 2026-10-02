@@ -154,7 +154,7 @@ async function main() {
   check("the MCP tool's kind enum = the registry", [...KNOWLEDGE_KINDS_FOR_TOOL].sort(), [...kinds].sort());
   const sqlText = read("scripts/sql/2026-10-01-knowledge-infra-CANDIDATE.sql");
   const newKind = sqlText.match(/new_kind constant text := \$d\$([^$]*)\$d\$/)?.[1] ?? "";
-  check("the live kind CHECK (migration 2026-10-01) = the registry", (newKind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), [...kinds].sort());
+  check("the 2026-10-01 kind CHECK = the registry minus the P2 decision / learning kinds (applied 2026-10-02)", (newKind.match(/'([A-Z_]+)'::text/g) ?? []).map((x) => x.replace(/'|::text/g, "")).sort(), kinds.filter((k) => k !== "BUSINESS_DECISION" && k !== "BUSINESS_LEARNING").sort());
   check("the 10 business areas, SOCIAL included", [...BUSINESS_AREAS], ["PROJECTS", "SHOWS", "FINANCE", "RELEASES", "TEAM", "CLIENTS", "SOCIAL", "MARKETING", "CONTENT", "OPERATIONS"]);
   const areaOf = (k: string) => { const f = KNOWLEDGE_KINDS.find((x) => x.kind === k)!.fields.area; return f.type === "enum" ? f.values : []; };
   check("PROCESS_FRICTION and WORKING_POLICY_CANDIDATE use the ONE area list (same reference)", [areaOf("PROCESS_FRICTION") === BUSINESS_AREAS, areaOf("WORKING_POLICY_CANDIDATE") === BUSINESS_AREAS], [true, true]);
@@ -318,7 +318,31 @@ async function main() {
     ok("every kind the tool accepts has a reader path (kind param enum covers it)", kinds.every((k) => { const p = cap.params.kind; return p.kind === "enum" && p.values.includes(k); }));
     ok("every committed row is typed and none mutates canonical state", (await w.records()).every((x) => KNOWLEDGE_KINDS.some((k) => k.kind === x.kind && k.mutatesCanonicalState === false)));
     ok("the reader and the new modules write nothing and import no writer", ["lib/partner/knowledge/capabilities/sunny.ts", "lib/partner/owner-knowledge/taxonomy.ts", "lib/partner/owner-knowledge/provenance.ts"].every((f) => !/\.(insert|update|upsert|delete|rpc)\s*\(|lib\/writes\/|createOwnerKnowledgeStore/.test(read(f))));
-    ok("the system contract names the model (KNOWLEDGE_MODEL rule) and the new learn kinds", /KNOWLEDGE_MODEL/.test(read("lib/partner/system/registry.ts")) && /"ENTITY_CLASSIFICATION", "KNOWN_ENTITY"\]/.test(read("lib/partner/system/registry.ts")));
+    ok("the system contract names the model (KNOWLEDGE_MODEL rule) and the new learn kinds", /KNOWLEDGE_MODEL/.test(read("lib/partner/system/registry.ts")) && /"ENTITY_CLASSIFICATION", "KNOWN_ENTITY"[,\]]/.test(read("lib/partner/system/registry.ts")));
+  }
+
+  section("J. BUSINESS_DECISION / BUSINESS_LEARNING (P2 kinds, Owner-approved path only)");
+  {
+    const w = world();
+    const dec = (extra: Record<string, string | number> = {}) => ({ kind: "BUSINESS_DECISION", subject: "Redbloods", fields: { area: "RELEASES", topic: "Release Day", decisionHe: "משחררים סינגלים ביום חמישי", rationaleHe: "יותר האזנות בסוף שבוע", reviewAt: "2027-01-01", ...extra } });
+    const r1 = await learn(w, [dec()]);
+    check("a decision previews and commits only after the Owner's approval words", [r1.pv.status, r1.c?.status], ["PREVIEW", "LEARNED"]);
+    const recs = await w.records();
+    check("slot = decision:<area>:<topic slug>; review_at column = value.reviewAt", [recs[0]?.slotKey.endsWith("decision:RELEASES:release-day"), recs[0]?.reviewAt], [true, "2027-01-01"]);
+    ok("read-back says it is a decision and names the reason", String(r1.pv.readBackHe).includes("החלטה") && String(r1.pv.readBackHe).includes("כי"));
+    const r2 = await learn(w, [dec({ decisionHe: "משחררים סינגלים ביום רביעי" })]);
+    check("a newer decision on the same area + topic supersedes (history kept)", [r2.c?.status, (await w.records()).length], ["LEARNED", 2]);
+    check("active owner_knowledge shows only the current decision", (await ask(w, { kind: "BUSINESS_DECISION" }, "active")).map((i) => F(i).value?.decisionHe ?? F(i).decisionHe ?? JSON.stringify(F(i))).length, 1);
+    check("a decision with a future decidedOn is refused (BLOCKING)", (await prev(world(), [dec({ decidedOn: "2099-01-01" })])).status === "PREVIEW", false);
+    check("a topic that is not representable is refused", (await prev(world(), [dec({ topic: "שבוע" })])).status, "INVALID");
+    const lrn = (extra: Record<string, string | number> = {}) => ({ kind: "BUSINESS_LEARNING", subject: "Redbloods", fields: { area: "CONTENT", topic: "reels-length", statementHe: "רילס קצרים מ-20 שניות עובדים לנו טוב יותר", ...extra } });
+    const r3 = await learn(world(), [lrn()]);
+    check("an Owner-stated learning commits (OWNER_STATEMENT default)", r3.c?.status, "LEARNED");
+    check("an INFERRED learning is refused — an insight never becomes a learning silently", (await prev(world(), [lrn({ sourceType: "INFERRED", confidence: "MEDIUM" })])).status, "INVALID");
+    check("an EXTERNAL_SOURCE learning is refused", (await prev(world(), [lrn({ sourceType: "EXTERNAL_SOURCE" })])).status, "INVALID");
+    check("a learning citing a Sunny insight needs SYSTEM_RECORD + sourceRef and still the Owner's approval", [(await prev(world(), [lrn({ sourceType: "SYSTEM_RECORD" })])).status, (await learn(world(), [lrn({ sourceType: "SYSTEM_RECORD", sourceRef: "insight:0f0f0f0f-0000-4000-8000-00000000a0a1" })])).c?.status], ["INVALID", "LEARNED"]);
+    ok("no code path maps a Brain insight to BUSINESS_LEARNING (only the Owner-approved knowledge tool writes it)", !fs.existsSync(path.join(ROOT, "lib/partner/brain")) || fs.readdirSync(path.join(ROOT, "lib/partner/brain")).every((f) => !/BUSINESS_LEARNING|BUSINESS_DECISION/.test(read(`lib/partner/brain/${f}`))));
+    ok("the legacy writer is not broadened: still ONE insert in the store", (read("lib/partner/owner-knowledge/store.ts").match(/\.insert\(/g) ?? []).length === 1);
   }
 }
 

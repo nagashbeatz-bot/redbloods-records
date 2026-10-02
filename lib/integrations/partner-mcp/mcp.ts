@@ -10,7 +10,8 @@
  * cannot be written, the Partner data is not returned. No session state (no Mcp-Session-Id), no SSE stream,
  * no CORS headers (bearer-only, never a browser JSON API).
  */
-import { hasActScope, hasAnswerScope, hasKnowledgeScope, SUPPORTED_PROTOCOL_VERSIONS, type McpConfig } from "./config";
+import { hasActScope, hasAnswerScope, hasKnowledgeScope, hasObserveScope, SUPPORTED_PROTOCOL_VERSIONS, type McpConfig } from "./config";
+import { OBSERVE_TOOL, OBSERVE_TOOL_DEFINITION, OBSERVE_WRITE_OPS, validateObserveInput, type ObserveOp } from "./observe-tool";
 import { ACT_TOOL_DEFINITIONS, ACT_TOOL_NAMES, HISTORY_OUTCOMES, validateActInput, type ActToolName } from "@/lib/partner/act/mcp-tools";
 import { sha256Hex } from "./crypto";
 import { insufficientScopeResponse, type BearerResult, type HttpOut, type Principal } from "./oauth";
@@ -107,8 +108,16 @@ export interface McpActDeps {
   call(op: "plan" | "preview" | "approve" | "execute" | "status", input: Record<string, unknown>, actor: { userId: string; clientId: string }): Promise<Record<string, unknown>>;
 }
 
+/** Sunny Brain (bound only where the observe switch is on): ONE typed op of the Brain writer (lib/writes/brain.ts). */
+export interface McpObserveDeps {
+  limiter: SlidingWindowLimiter;
+  call(op: ObserveOp, input: Record<string, unknown>, actor: { userId: string; clientId: string }): Promise<Record<string, unknown>>;
+}
+
 export interface McpDeps {
   config: McpConfig;
+  /** Present ONLY when config.observeEnabled — otherwise partner_observe does not exist for anyone. */
+  observe?: McpObserveDeps;
   /** Present ONLY when config.actEnabled — otherwise the five action tools do not exist for anyone. */
   act?: McpActDeps;
   /** Present ONLY when config.knowledgeEnabled — otherwise the knowledge tool does not exist for anyone. */
@@ -138,6 +147,7 @@ const LIMIT_TEXT: Record<Exclude<GateResult, { ok: true }>["limiter"], string> =
   ACTION: "Too many action requests right now (the action limit: 40 / hour, 150 / 24 hours — plan, preview, approve, execute and status all count)",
   ANSWER: "Too many answers right now (the answer limit: 10 / hour, 30 / 24 hours)",
   KNOWLEDGE: "Too many knowledge requests right now (the knowledge limit: 20 / hour, 60 / 24 hours)",
+  OBSERVE: "Too many Brain requests right now (the observe limit: 60 / hour, 300 / 24 hours)",
 };
 function rateLimited(id: unknown, g: Exclude<GateResult, { ok: true }>): HttpOut {
   const wait = g.retryAfterSec >= 120 ? `about ${Math.ceil(g.retryAfterSec / 60)} minutes` : `${g.retryAfterSec} seconds`;
@@ -214,7 +224,7 @@ export async function handleMcpHttp(req: McpHttpRequest, deps: McpDeps): Promise
     case "tools/list":
       // The answer tool is listed ONLY when the switch is on, it is bound, AND this token holds partner:answer.
       // The five action tools are listed ONLY when the act switch is on, it is bound, AND this token holds partner:act.
-      return finish(rpcResult(id, { tools: [...buildToolDefinitions(deps.gateway.capabilityIndex(), { answer: answerAvailable(deps) && hasAnswerScope(p.scope), knowledge: knowledgeAvailable(deps) && hasKnowledgeScope(p.scope) }), ...(actAvailable(deps) && hasActScope(p.scope) ? ACT_TOOL_DEFINITIONS : [])] }), {});
+      return finish(rpcResult(id, { tools: [...buildToolDefinitions(deps.gateway.capabilityIndex(), { answer: answerAvailable(deps) && hasAnswerScope(p.scope), knowledge: knowledgeAvailable(deps) && hasKnowledgeScope(p.scope) }), ...(observeAvailable(deps) && hasObserveScope(p.scope) ? [OBSERVE_TOOL_DEFINITION] : []), ...(actAvailable(deps) && hasActScope(p.scope) ? ACT_TOOL_DEFINITIONS : [])] }), {});
     case "tools/call":
       return callTool(id, (m.params ?? {}) as Record<string, unknown>, p, audit, finish, deps);
     default:
@@ -225,6 +235,7 @@ export async function handleMcpHttp(req: McpHttpRequest, deps: McpDeps): Promise
 const answerAvailable = (deps: McpDeps) => deps.config.answerEnabled === true && !!deps.answer;
 const knowledgeAvailable = (deps: McpDeps) => deps.config.knowledgeEnabled === true && !!deps.knowledge;
 const actAvailable = (deps: McpDeps) => deps.config.actEnabled === true && !!deps.act;
+const observeAvailable = (deps: McpDeps) => deps.config.observeEnabled === true && !!deps.observe;
 
 async function callTool(id: string | number, params: Record<string, unknown>, p: Principal, audit: AuditRow,
   finish: (out: HttpOut, patch: Partial<AuditRow>) => Promise<HttpOut>, deps: McpDeps): Promise<HttpOut> {
@@ -237,6 +248,10 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     // Switch off / not bound → the tools do not exist (same answer as any unknown tool; nothing is read or written).
     if (!actAvailable(deps)) return finish(rpcError(id, -32602, "Unknown tool"), { tool: null, status: "REJECTED", error_category: "UNKNOWN_TOOL" });
     return callActTool(id, params.name as ActToolName, params, p, audit, finish, deps);
+  }
+  if (params.name === OBSERVE_TOOL) {
+    if (!observeAvailable(deps)) return finish(rpcError(id, -32602, "Unknown tool"), { tool: null, status: "REJECTED", error_category: "UNKNOWN_TOOL" });
+    return callObserveTool(id, params, p, audit, finish, deps);
   }
   if (params.name === KNOWLEDGE_TOOL) {
     if (!knowledgeAvailable(deps)) return finish(rpcError(id, -32602, "Unknown tool"), { tool: null, status: "REJECTED", error_category: "UNKNOWN_TOOL" });
@@ -442,6 +457,52 @@ async function callActTool(id: string | number, name: ActToolName, params: Recor
     return out;
   } catch {
     const body = { status: "AUDIT_FAILED", messageHe: "לא הצלחתי לתעד את הפעולה בצד החיבור. אבדוק את סטטוס התוכנית לפני שאגיד משהו.", planStatus: st };
+    return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(body) }], structuredContent: body, isError: true });
+  }
+}
+
+/**
+ * Sunny Brain — partner_observe. Order (each step fails closed):
+ *   1 strict shape (validateObserveInput: one op, its exact fields, no SQL / table / RPC / URL / path / token / actor)
+ *   2 token holds partner:observe, else HTTP 403 insufficient_scope — the scope is necessary, never sufficient
+ *   3 rate limits (general + observe)  4 ATTEMPT audit row (tool NULL — the audit tool CHECK lists the original tools —
+ *     method observe/<op>, input HASH only)  5 the Brain writer (Owner re-check; deep validation; the DB re-checks the
+ *     tracking authorization on every write op)  6 RESULT audit row — if it fails, the reply is AUDIT_FAILED.
+ */
+async function callObserveTool(id: string | number, params: Record<string, unknown>, p: Principal, audit: AuditRow,
+  finish: (out: HttpOut, patch: Partial<AuditRow>) => Promise<HttpOut>, deps: McpDeps): Promise<HttpOut> {
+  const ob = deps.observe!;
+  const v = validateObserveInput(params.arguments);
+  const fp = sha256Hex(JSON.stringify(params.arguments ?? null));
+  if (!v.ok) return finish(rpcError(id, -32602, `invalid arguments (${v.code})`), { tool: null, method: "observe/invalid", input_fingerprint: fp, input_key: null, status: "REJECTED", error_category: v.code });
+  const base: Partial<AuditRow> = { tool: null, method: `observe/${v.op}`, input_fingerprint: fp, input_key: null };
+  if (!hasObserveScope(p.scope)) return finish(insufficientScopeResponse(deps.config), { ...base, status: "REJECTED", http_status: 403, error_category: "INSUFFICIENT_SCOPE" });
+  const now = deps.nowMs();
+  const lim = gate(p.tokenId, now, [{ name: "GENERAL", limiter: deps.limiter }, { name: "OBSERVE", limiter: ob.limiter }]);
+  if (!lim.ok) return finish(rateLimited(id, lim), { ...base, status: "REJECTED", error_category: "RATE_LIMITED" });
+  try {
+    await deps.audit({ ...audit, ...base, method: `observe/${v.op}`.slice(0, 32) + "_try", status: "OK", http_status: 200, error_category: null, response_bytes: null, latency_ms: 0 });
+  } catch {
+    return rpcError(id, -32001, "audit unavailable — request refused (nothing was recorded)");
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = await withTimeout(ob.call(v.op, v.input, { userId: p.userId, clientId: p.clientId }), deps.config.toolTimeoutMs);
+  } catch (e) {
+    const timeout = e instanceof TimeoutError;
+    const write = (OBSERVE_WRITE_OPS as readonly string[]).includes(v.op) || v.op.startsWith("request_");
+    const body = { status: timeout && write ? "OUTCOME_UNKNOWN" : "FAILED", messageHe: timeout && write ? "לא קיבלתי תשובה בזמן. ייתכן שזה נרשם — אבדוק ב-partner_query brain לפני שאגיד משהו (ואם אנסה שוב — עם אותו requestKey)." : "המוח של סאני לא זמין כרגע. שום דבר לא נרשם." };
+    return finish(rpcResult(id, { content: [{ type: "text", text: JSON.stringify(body) }], structuredContent: body, isError: true }), { ...base, status: "ERROR", error_category: timeout ? "TIMEOUT" : "BRIDGE_ERROR" });
+  }
+  const st = typeof payload.status === "string" && /^[A-Z_]{1,60}$/.test(payload.status) ? payload.status : "FAILED";
+  const good = st === "OK";
+  const g = guardOutput(payload, deps.config.maxResultChars);
+  const out = rpcResult(id, { content: [{ type: "text", text: g.text }], structuredContent: g.payload, isError: !good });
+  try {
+    await deps.audit({ ...audit, ...base, status: good ? "OK" : "REJECTED", http_status: 200, error_category: good ? null : st, response_bytes: out.body ? Buffer.byteLength(out.body, "utf8") : 0, latency_ms: deps.nowMs() - now });
+    return out;
+  } catch {
+    const body = { status: "AUDIT_FAILED", messageHe: "לא הצלחתי לתעד את הפעולה בצד החיבור. אבדוק במוח (partner_query brain) לפני שאגיד משהו.", writeStatus: st };
     return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(body) }], structuredContent: body, isError: true });
   }
 }

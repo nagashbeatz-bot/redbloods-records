@@ -45,7 +45,7 @@ export function defaultCalendarWindow(now: Date): { start: string; end: string }
 
 async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], audience: KnowledgeAudience, calendarWindow?: { start: string; end: string }): Promise<GatewaySources> {
   const want = new Set(needs);
-  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory] = await Promise.all([
+  const [state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory, brain] = await Promise.all([
     want.has("STATE") ? ctx.state() : undefined, want.has("FINANCE") ? ctx.finance() : undefined, want.has("MEMORY") ? ctx.memory() : undefined,
     want.has("CASES") ? ctx.cases() : undefined, want.has("ACTIONS") ? ctx.actions() : undefined, want.has("OUTCOMES") ? ctx.outcomes() : undefined,
     want.has("INTEGRITY") ? integrityOf(ctx) : undefined,
@@ -58,8 +58,9 @@ async function loadSources(ctx: AnyCtx, needs: readonly KnowledgeSourceNeed[], a
     want.has("CALENDAR") && "calendar" in ctx ? (() => { const w = calendarWindow ?? defaultCalendarWindow(ctx.now); return ctx.calendar(w.start, w.end); })() : undefined,
     want.has("OWNER_INBOX") && "ownerInbox" in ctx ? ctx.ownerInbox() : undefined,
     want.has("OWNER_INBOX") && "inboxMemory" in ctx ? ctx.inboxMemory() : undefined,
+    want.has("BRAIN") && "brain" in ctx ? ctx.brain() : undefined,
   ]);
-  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory, identities: APP_IDENTITIES, audience };
+  return { now: ctx.now, state, finance, memory, cases, actions, outcomes, integrity, ownerKnowledge, operations, projectDetail, clientDetail, labelDetail, settings, calendar, ownerInbox, inboxMemory, brain, identities: APP_IDENTITIES, audience };
 }
 
 /** The Gateway sources for server-side writers that must reason over the SAME live state Sunny reads (e.g. the Owner

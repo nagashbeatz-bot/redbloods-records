@@ -30,8 +30,17 @@ export const hasKnowledgeScope = (scope: string) => scope.split(" ").includes(MC
  */
 export const MCP_ACT_SCOPE = "partner:act";
 export const hasActScope = (scope: string) => scope.split(" ").includes(MCP_ACT_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
-/** The canonical stored scope string for a grant (order fixed: read, answer, knowledge, act — the DB CHECK lists exactly these). */
-export const scopeString = (o: { answer: boolean; knowledge: boolean; act?: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : []), ...(o.act ? [MCP_ACT_SCOPE] : [])].join(" ");
+/**
+ * Sunny Brain: the observe scope (track / record observations / insights / recommendations, and ASK the Owner for a
+ * tracking authorization). Grantable ONLY when the deployment's observe switch is on (observeEnabled) and only through the
+ * Owner's consent screen, which lists it separately. The scope ALONE grants no tracking: every Brain write also needs a
+ * live tracking authorization the Owner approved in Redbloods (the DB checks it on every write); an authorization alone
+ * never bypasses the scope (no tool without it). It does NOT widen partner:act in any way.
+ */
+export const MCP_OBSERVE_SCOPE = "partner:observe";
+export const hasObserveScope = (scope: string) => scope.split(" ").includes(MCP_OBSERVE_SCOPE) && scope.split(" ").includes(MCP_SCOPE);
+/** The canonical stored scope string for a grant (order fixed: read, answer, knowledge, observe, act — the DB CHECK lists exactly these). */
+export const scopeString = (o: { answer: boolean; knowledge: boolean; observe?: boolean; act?: boolean }) => [MCP_SCOPE, ...(o.answer ? [MCP_ANSWER_SCOPE] : []), ...(o.knowledge ? [MCP_KNOWLEDGE_SCOPE] : []), ...(o.observe ? [MCP_OBSERVE_SCOPE] : []), ...(o.act ? [MCP_ACT_SCOPE] : [])].join(" ");
 export const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 
@@ -81,6 +90,13 @@ export interface McpConfig {
    */
   actEnabled: boolean;
   actRateLimit: Array<{ windowMs: number; max: number }>;
+  /**
+   * Sunny Brain (observe). true ONLY when PARTNER_MCP_OBSERVE_ENABLED is exactly "true" AND the deployment is the MCP-only
+   * connector. Off → partner:observe is not advertised / consentable / accepted and partner_observe does not exist.
+   * Requires the scope migration (the OAuth scope CHECKs list partner:observe) and Brain v1 + T2 — never switch on before.
+   */
+  observeEnabled: boolean;
+  observeRateLimit: Array<{ windowMs: number; max: number }>;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -123,6 +139,8 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       proposeActionEnabled: false,
       actEnabled: env.PARTNER_MCP_ACT_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true" && !!env.PARTNER_MAIN_BASE_URL && (env.PARTNER_INTERNAL_ACT_SECRET ?? "").length >= 32,
       actRateLimit: [{ windowMs: 3_600_000, max: 40 }, { windowMs: 86_400_000, max: 150 }],
+      observeEnabled: env.PARTNER_MCP_OBSERVE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
+      observeRateLimit: [{ windowMs: 3_600_000, max: 60 }, { windowMs: 86_400_000, max: 300 }],
     },
   };
 }
