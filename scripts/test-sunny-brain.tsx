@@ -17,6 +17,7 @@ import { brainRefusal, readBrainSnapshot, BRAIN_RPC_CODES, type BrainReadClient 
 import * as W from "../lib/writes/brain";
 import { brainState, type BrainSnapshot } from "../lib/partner/brain/model";
 import { buildOwnerApprovalsView } from "../lib/partner/brain/owner-view";
+import { RECHECK_POLICY, recheckProposals, researchSeries } from "../lib/partner/brain/research";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
 import { queryKnowledgeCore } from "../lib/partner/knowledge/query";
 import type { KnowledgeAudience } from "../lib/partner/knowledge/types";
@@ -26,7 +27,7 @@ import { advertisedScope, grantedScope } from "../lib/integrations/partner-mcp/o
 import { isAllowedMcpOnlyFetch } from "../lib/integrations/partner-mcp/mcp-only";
 import { handleMcpHttp, type McpDeps } from "../lib/integrations/partner-mcp/mcp";
 import { SlidingWindowLimiter } from "../lib/integrations/partner-mcp/rate-limit";
-import { OBSERVE_OPS, OBSERVE_TOOL, validateObserveInput } from "../lib/integrations/partner-mcp/observe-tool";
+import { OBSERVE_OPS, OBSERVE_TOOL, OBSERVE_TOOL_DEFINITION, validateObserveInput } from "../lib/integrations/partner-mcp/observe-tool";
 import { BASE_ENV } from "./fixtures/mcp-oauth-scenarios";
 
 let pass = 0, fail = 0;
@@ -272,6 +273,59 @@ async function main() {
   ok("there is no Owner op in the tool (decide / revoke / endorse are not ops)", !OBSERVE_OPS.some((o) => /decide|revoke|endorse|approve|accept|grant/.test(o)));
   const consent = read("app/mcp-oauth/authorize/page.tsx");
   ok("the consent screen lists partner:observe separately and says it alone tracks nothing", /data-consent-observe/.test(consent) && /לבדה לא מתירה מעקב/.test(consent));
+
+  section("K. Browser research + recheck proposals (Owner decision 2026-10-02: Owner-requested browser work, no API / crawler / cron)");
+  const browserRead = (kind: string, ref: string) => ({ ...obs, sourceKind: kind, sourceRef: ref, captureMethod: "CLAUDE_READ", sourceType: "EXTERNAL_SOURCE", confidence: "HIGH" });
+  ok("1. browser source kinds accepted: PUBLIC_PROFILE_PAGE / PUBLIC_CONTENT_PAGE / WEB_PAGE", [browserRead("PUBLIC_PROFILE_PAGE", "https://www.instagram.com/shalev/"), browserRead("PUBLIC_CONTENT_PAGE", "https://www.youtube.com/watch?v=abc&si=x"), browserRead("WEB_PAGE", "https://example.com/press")].every((x) => checkObservationItem(x, "SUNNY", NOW.toISOString()).ok));
+  const mapped = checkObservationItem(browserRead("PUBLIC_CONTENT_PAGE", "https://www.youtube.com/watch?v=abc&si=x"), "SUNNY", NOW.toISOString());
+  check("2. a browser reading maps to EXTERNAL_SOURCE + CLAUDE_READ, URL canonical (tracking noise dropped)", mapped.ok ? [mapped.value.sourceType, mapped.value.captureMethod, mapped.value.sourceRef] : null, ["EXTERNAL_SOURCE", "CLAUDE_READ", "https://www.youtube.com/watch?v=abc"]);
+  ok("2b. a browser read with an Owner source kind / PLATFORM_ANALYTICS_EXPORT is refused (never an Owner value)", !checkObservationItem(browserRead("OWNER_SCREENSHOT", "https://x.com/a"), "SUNNY", NOW.toISOString()).ok);
+  const code = walkCode();
+  ok("3. no platform API dependency (no Graph / YouTube Data / TikTok / Spotify / X API, no platform credential env)", code.every(([, t]) => !/graph\.facebook\.com|graph\.instagram\.com|youtube\/v3|open\.tiktokapis|api\.spotify\.com|api\.(twitter|x)\.com\/2|(INSTAGRAM|YOUTUBE|TIKTOK|SPOTIFY|FACEBOOK|TWITTER)_(API_KEY|TOKEN|CLIENT_SECRET|ACCESS_TOKEN)/.test(t)), code.filter(([, t]) => /youtube\/v3|api\.spotify\.com/.test(t)).map(([f]) => f));
+  const brainFiles = ["lib/partner/brain/research.ts", "lib/partner/brain/requests.ts", "lib/partner/brain/model.ts", "lib/partner/brain/server.ts", "lib/partner/brain/owner-view.ts", "lib/brain-store.ts", "lib/writes/brain.ts", "lib/partner/knowledge/capabilities/brain.ts", "components/partner/SunnyApprovals.tsx", "app/api/partner/approvals/route.ts"];
+  ok("4. no background job / cron / timer in any Brain module, and instrumentation schedules nothing for the Brain", brainFiles.every((f) => !/node-cron|setInterval|setTimeout\(|schedule\(/.test(read(f))) && !/brain|observ/i.test(read("instrumentation.ts").replace(/brainRpc: process\.env\.PARTNER_MCP_OBSERVE_ENABLED === "true", /, "")));
+  ok("4b. no crawler / scraper / fetch of an external page anywhere in the Brain", brainFiles.every((f) => !/\bfetch\(\s*["'`]https?:|puppeteer|playwright|cheerio|jsdom/.test(read(f).replace(/fetch\("\/api\/partner\/approvals"/g, ""))));
+  ok("5/6. no browser action and no observation on page load: the approvals screen only GETs its own route and POSTs on explicit clicks; no observe op from any page", !/partner_observe|record_observations|sunny_record_observations/.test(read("components/partner/SunnyApprovals.tsx")) && (read("components/partner/SunnyApprovals.tsx").match(/method: "POST"/g) ?? []).length === 1 && !code.some(([f, t]) => /^(app|components)\//.test(f) && /recordObservations\(/.test(t)));
+  ok("7. no Push / alert / reminder in the Brain", brainFiles.every((f) => !/sendPush|web-push|lib\/push|alerts-store|agent_alerts|createAlert/.test(read(f))));
+  const researchSrc = read("lib/partner/brain/research.ts");
+  ok("8/10. research + proposals are pure: no RPC, no write, no store, no reviewAt", !/\.rpc\(|\.insert\(|\.update\(|brain-store|writes\/brain|reviewAt\s*[:=]/.test(researchSrc.replace(/\/\*[\s\S]*?\*\//g, "")));
+  const old1 = { ...snap.observations[0], id: U(81), seq: 11, valueNum: 1000, observedAt: "2026-09-01T10:00:00Z", createdAt: "2026-09-01T10:00:00Z" };
+  const old2 = { ...snap.observations[0], id: U(82), seq: 12, valueNum: 1200, observedAt: "2026-09-02T10:00:00Z", createdAt: "2026-09-02T10:00:00Z", sourceRef: "https://www.instagram.com/redbloods/" };
+  const hist: BrainSnapshot = { ...snap, observations: [old1, old2], links: [{ ...snap.links[0], fromObservationId: U(82) }] };
+  const ctxR = { todayIL: TODAY, now: NOW };
+  const ser = researchSeries(hist, ctxR);
+  check("17/18. last check + the previous one + the change, from the existing observations (no second history)", ser.map((x) => [x.points, x.last.observedAt, x.last.value, x.previous?.value, x.comparison, x.last.sourceRef, x.freshness, x.ageDays]),
+    [[2, "2026-09-02T10:00:00Z", 1200, 1000, { kind: "NUMBER", delta: 200, deltaPct: 20, daysBetween: 1 }, "https://www.instagram.com/redbloods/", "STALE", 29]]);
+  check("11. Owner yes + a covering ACTIVE authorization → CAN_STORE (a new check may be recorded)", [ser[0].storeStatus, ser[0].coveringAuthorizationIds, ser[0].allowedSourceKinds], ["CAN_STORE", [U(5)], ["PUBLIC_PROFILE_PAGE"]]);
+  const noAuth = researchSeries({ ...hist, authorizations: [] }, ctxR)[0];
+  check("12/16. no authorization → NO_AUTHORIZATION; a proposal leads to requesting authorization, never to 'saved'", [noAuth.storeStatus, recheckProposals([noAuth], { ...ctxR, focus: { resourceId: U(1) } })[0]?.nextStep], ["NO_AUTHORIZATION", "ASK_OWNER_THEN_REQUEST_AUTHORIZATION"]);
+  const revoked = researchSeries({ ...hist, authorizations: [snap.authorizations[1]] }, ctxR)[0];
+  check("13. revoked authorization → AUTHORIZATION_REVOKED (no store)", revoked.storeStatus, "AUTHORIZATION_REVOKED");
+  check("14. expired / not-yet-valid authorization → no store", [researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], validUntil: "2026-09-30" }] }, ctxR)[0].storeStatus, researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], validFrom: "2026-10-09" }] }, ctxR)[0].storeStatus], ["AUTHORIZATION_EXPIRED", "AUTHORIZATION_NOT_YET_VALID"]);
+  check("14b. an authorization without the family does not cover the series", researchSeries({ ...hist, authorizations: [{ ...snap.authorizations[0], observationFamilies: ["YOUTUBE"] }] }, ctxR)[0].storeStatus, "NO_AUTHORIZATION");
+  check("9. STALE + a live insight resting on it → a proposal (reason STALE_EVIDENCE), executes nothing", recheckProposals(ser, ctxR).map((x) => [x.reasons, x.executesNothing, x.nextStep, /רוצה שאבדוק עכשיו דרך הדפדפן/.test(x.textHe), /2026-09-02/.test(x.textHe)]), [[["STALE_EVIDENCE"], true, "ASK_OWNER_THEN_BROWSER_CHECK_AND_RECORD", true, true]]);
+  const noDep = researchSeries({ ...hist, links: [] }, ctxR);
+  check("9b. STALE alone (no material reason) → no proposal (no spam)", recheckProposals(noDep, ctxR), []);
+  check("9c. the Owner discussing it → a proposal", recheckProposals(noDep, { ...ctxR, focus: { resourceId: U(1) } }).map((x) => x.reasons), [["OWNER_DISCUSSING"]]);
+  const entObs = researchSeries({ ...hist, links: [], observations: [{ ...old2, resourceId: null, entityKey: "label-artist:22222222-2222-4222-8222-222222222221" }] }, ctxR);
+  check("9d. a release within the window for that entity → a proposal; a far / released one → none", [recheckProposals(entObs, { ...ctxR, releases: [{ labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-10-12", released: false }] }).map((x) => x.reasons), recheckProposals(entObs, { ...ctxR, releases: [{ labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-12-30", released: false }, { labelArtistId: "22222222-2222-4222-8222-222222222221", targetYmd: "2026-10-12", released: true }] }).length], [[["RELEASE_SOON"]], 0]);
+  check("9e. fresh data → no proposal even with a reason", recheckProposals(researchSeries({ ...hist, observations: [{ ...old2, observedAt: "2026-10-01T10:00:00Z" }] }, ctxR), { ...ctxR, focus: { resourceId: U(1) } }), []);
+  check("9f. at most RECHECK_POLICY.maxProposals; the policy is explicit (engineering default)", [recheckProposals(Array.from({ length: 5 }, (_, i) => ({ ...ser[0], key: `k${i}` })), ctxR).length, RECHECK_POLICY], [2, { staleAfterDays: 14, releaseWindowDays: 21, maxProposals: 2 }]);
+  const before = JSON.stringify(hist);
+  const p1x = JSON.stringify(recheckProposals(researchSeries(hist, ctxR), ctxR)), p2x = JSON.stringify(recheckProposals(researchSeries(hist, ctxR), ctxR));
+  ok("10/24. proposals are deterministic and write nothing (no persistence → a refresh cannot multiply them)", p1x === p2x && JSON.stringify(hist) === before);
+  check("13b. an invalidated reading is history, never the last check", researchSeries({ ...hist, events: [...hist.events, { ...snap.events[0], id: U(83), seq: 9, recordId: null, observationId: U(82), toStatus: "INVALIDATED", reasonHe: "טעות", actor: "SUNNY" }] }, ctxR)[0].last.value, 1000);
+  const rr = q("research", { resource: U(1) }, { status: "OK", value: hist });
+  check("15b/17. capability research: series item with date + 'not current' note + proposals fact", [rr.items.length, rr.items[0]?.fields.lastCheckedOn, /זה לא נתון של עכשיו/.test(String((rr.items[0]?.fields.note as { text: string }).text)), (rr.summary.find((f) => f.code === "RECHECK_PROPOSALS")?.value as unknown[]).length], [1, "2026-09-02", true, 1]);
+  const rs = q("series", { resource: U(1), type: "INSTAGRAM.FOLLOWERS" }, { status: "OK", value: hist });
+  check("18b. series: oldest → newest with the change from the previous reading", rs.items.map((i) => [i.fields.value, i.fields.changeFromPrevious]), [[1000, null], [1200, 200]]);
+  ok("16b. research tells Sunny a new check will NOT be saved without authorization", /לא תישמר בלי הרשאת מעקב/.test(String((q("research", {}, { status: "OK", value: { ...hist, authorizations: [] } }).items[0]?.fields.note as { text: string }).text)));
+  ok("19/20. an insight stays a HYPOTHESIS; a recommendation stays a recommendation (no auto-learning, no execution)", q("records", {}, { status: "OK", value: hist }).items.every((i) => i.epistemic === "HYPOTHESIS") && !/BUSINESS_LEARNING|BUSINESS_DECISION/.test(researchSrc));
+  ok("22. no automatic reviewAt: a record without reviewAt is sent with p_review_at NULL", f3.calls[0]?.args.p_review_at === null);
+  ok("23. research adds no Agent Alert / attention signal", !/agent|alert|ATTENTION_MAP/.test(researchSrc.replace(/\/\*[\s\S]*?\*\//g, "")));
+  const toolDesc = OBSERVE_TOOL_DEFINITION.description;
+  ok("tool contract: never browses / monitors; Owner-requested or approved; ask then wait; never say saved without authorization; never OWNER_STATEMENT", /NEVER BROWSES, FETCHES OR MONITORS/.test(toolDesc) && /ask, then WAIT/.test(toolDesc) && /NEVER say it was saved/.test(toolDesc) && /NEVER an OWNER_STATEMENT/.test(toolDesc) && /no platform API, no crawler, no background or scheduled checking/.test(toolDesc) && !/continuous/i.test(toolDesc.replace(/no background or scheduled checking/, "")));
+  ok("approval copy: storing / learning, NOT continuous crawling (summary + screen + consent)", (() => { const t = p1.ok ? trackingSummaryHe(p1.value).riskHe : ""; return /כשתבקש מסאני לבדוק, או כשתאשר הצעה שלה לבדוק מחדש/.test(t) && /זו לא הרשאה למעקב רציף/.test(t) && !/בלי לשאול שוב, עד/.test(t); })() && /data-authorization-meaning/.test(read("components/partner/SunnyApprovals.tsx")) && /כשאבקש מסאני לבדוק, או כשאאשר הצעה שלה לבדוק מחדש, היא רשאית לשמור את הנתונים האלה כדי להשוות וללמוד מהם/.test(read("components/partner/SunnyApprovals.tsx")) && /אין מעקב רציף, אין בדיקה ברקע/.test(read("app/mcp-oauth/authorize/page.tsx")));
 }
 
 /** Every deployed code file (no scripts / node_modules / .next). */
