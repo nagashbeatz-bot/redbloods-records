@@ -44,9 +44,10 @@ export function songOfClip(c: CooCtx, clipProjectId: string): { song: { id: stri
 
 // ───────────────────────────── SHOOT ─────────────────────────────
 
-function shootChecks(c: CooCtx, p: VideoProduction, date: string): { checks: Check[]; insights: string[]; sources: string[] } {
+function shootChecks(c: CooCtx, p: VideoProduction, date: string): { checks: Check[]; insights: string[]; facts: string[]; sources: string[] } {
   const checks: Check[] = [];
   const insights: string[] = [];
+  const facts: string[] = [];
   const ref = p.key;
   const sess = p.shoot.sessions.filter((s) => s.date === date || !s.date);
   const cal = calendarFor(c, date, [...(p.project ? [p.project.key] : []), ref]);
@@ -108,8 +109,8 @@ function shootChecks(c: CooCtx, p: VideoProduction, date: string): { checks: Che
   // AFTER
   checks.push(p.crew.editor ? check("after.editor", "AFTER", "עורך", "CONFIRMED", `עורך: ${p.crew.editor}.`, [ev("RED_FILMS", ref, "editor")], false)
     : check("after.editor", "AFTER", "עורך", "NOT_SEEN", "אני לא רואה עורך רשום לאחרי הצילום.", [ev("RED_FILMS", ref, "editor empty")], false));
-  if (p.publication.publishDate) insights.push(`יעד פרסום רשום: ${p.publication.publishDate}.`);
-  return { checks, insights, sources: ["RED_FILMS", "SESSIONS", ...(c.calReadable ? ["CALENDAR"] : [])] };
+  if (p.publication.publishDate) facts.push(`יעד פרסום רשום: ${p.publication.publishDate}.`);
+  return { checks, insights, facts, sources: ["RED_FILMS", "SESSIONS", ...(c.calReadable ? ["CALENDAR"] : [])] };
 }
 
 const prodMoney = (p: VideoProduction): ProductionMoneyInput => ({
@@ -127,7 +128,7 @@ export function shootReadiness(c: CooCtx, productionId: string): Readiness | nul
   const checks = [...s.checks, ...m.checks];
   return finishReadiness({
     key: `readiness:${p.key}`, kind: "SHOOT", titleHe: p.title, date, time: p.shoot.sessions.find((x) => x.date === date && x.start)?.start?.slice(0, 5) ?? null, daysTo: daysBetween(c.today, date),
-    entity: p.key, project: p.project?.key ?? null, checks, insights: [...s.insights, ...m.facts], sources: [...s.sources, "FINANCE"], coreReadable: !!c.det,
+    entity: p.key, project: p.project?.key ?? null, checks, insights: s.insights, facts: [...s.facts, ...m.facts], sources: [...s.sources, "FINANCE"], coreReadable: !!c.det,
   });
 }
 
@@ -141,7 +142,7 @@ function sessionShootReadiness(c: CooCtx, s: { id: string; projectId: string | n
   checks.push(s.photographer ? check("people.filming", "PEOPLE", "צלם", "CONFIRMED", `צלם: ${s.photographer}.`, [ev("SESSIONS", `session:${s.id}`, "photographer")]) : check("people.filming", "PEOPLE", "צלם", "NOT_SEEN", "אני לא רואה צלם רשום לסשן הצילום.", []));
   checks.push(check("creative.production", "CREATIVE", "הפקת Red Films", "NOT_SEEN", "אני לא רואה הפקת Red Films מקושרת לסשן הזה — קונספט, שוט ליסט ותקציב לא מחוברים אליי.", [], false));
   const m = moneyReadiness(s.projectId ? c.project(s.projectId) : null, { labelWork: s.projectId ? c.isLabel(s.projectId) : false, financeReadable: c.financeReadable });
-  return finishReadiness({ key: `readiness:session:${s.id}`, kind: "SHOOT", titleHe: c.projectName(s.projectId) ?? "צילום", date: s.date, time: s.startTime?.slice(0, 5) ?? null, daysTo: daysBetween(c.today, s.date), entity: `session:${s.id}`, project: pk, checks: [...checks, ...m.checks], insights: m.facts, sources: ["SESSIONS", "FINANCE"], coreReadable: true });
+  return finishReadiness({ key: `readiness:session:${s.id}`, kind: "SHOOT", titleHe: c.projectName(s.projectId) ?? "צילום", date: s.date, time: s.startTime?.slice(0, 5) ?? null, daysTo: daysBetween(c.today, s.date), entity: `session:${s.id}`, project: pk, checks: [...checks, ...m.checks], insights: [], facts: m.facts, sources: ["SESSIONS", "FINANCE"], coreReadable: true });
 }
 
 // ───────────────────────────── SHOW ─────────────────────────────
@@ -203,8 +204,8 @@ export function releaseReadiness(c: CooCtx, projectId: string): Readiness | null
   if (v.work.victor?.length) checks.push(check("deps.victor", "DEPENDENCIES", "הפקה אצל ויקטור", "OPEN", "יש עבודת הפקה פתוחה אצל ויקטור.", [ev("TEAM_VICTOR", pk, "victor work active")]));
   if (v.work.social) checks.push(check("after.social", "AFTER", "קמפיין סושיאל", "CONFIRMED", `יש קמפיין סושיאל (סטטוס: ${v.work.social.status ?? "?"}).`, [ev("SOCIAL", pk, "social campaign")], false));
   else checks.push(check("after.social", "AFTER", "קמפיין סושיאל", "NOT_SEEN", "אני לא רואה קמפיין סושיאל מחובר לריליס (ריליס לא מחייב קליפ או קמפיין).", [], false));
-  const insights = v.identity?.clipProjects.length ? [`יש קליפ מקושר: ${v.identity.clipProjects.map((x) => x.value.name).join(", ")} — פרויקט נפרד.`] : [];
-  return finishReadiness({ key: `readiness:${key}`, kind: "RELEASE", titleHe: v.identity?.name ?? c.projectName(projectId) ?? "ריליס", date: r.targetYmd, time: null, daysTo: r.targetYmd ? daysBetween(c.today, r.targetYmd) : null, entity: key, project: pk, checks, insights, sources: ["RELEASES", "MIX", "TEAM_VICTOR", "SOCIAL"], coreReadable: !!c.st });
+  const facts = v.identity?.clipProjects.length ? [`יש קליפ מקושר: ${v.identity.clipProjects.map((x) => x.value.name).join(", ")} — פרויקט נפרד.`] : [];
+  return finishReadiness({ key: `readiness:${key}`, kind: "RELEASE", titleHe: v.identity?.name ?? c.projectName(projectId) ?? "ריליס", date: r.targetYmd, time: null, daysTo: r.targetYmd ? daysBetween(c.today, r.targetYmd) : null, entity: key, project: pk, checks, insights: [], facts, sources: ["RELEASES", "MIX", "TEAM_VICTOR", "SOCIAL"], coreReadable: !!c.st });
 }
 
 // ───────────────────────────── SESSION / MEETING / DEADLINE ─────────────────────────────
@@ -229,7 +230,7 @@ export function sessionReadiness(c: CooCtx, s: { id: string; projectId: string |
   if (pk) {
     const v = c.project(s.projectId!);
     if (v.identity && CLOSED_PROJECT.has(v.identity.status ?? "")) checks.push(check("deps.project", "DEPENDENCIES", "סטטוס הפרויקט", "OPEN", `הפרויקט מסומן ${v.identity.status} — לבדוק שהסשן עדיין רלוונטי.`, [ev("PROJECTS", pk, "project status")]));
-    const owner = c.operating(s.projectId!)?.ballHolder.holders.includes("OWNER");
+    const owner = c.operating(s.projectId!)?.ballHolder.holders.some((h) => h === "OWNER" || h === "WAITING_FOR_OWNER");
     if (owner) checks.push(check("deps.owner", "OWNER_DECISION", "משהו מחכה לך בפרויקט", "OPEN", "לפי הרשומות יש בפרויקט משהו שמחכה לך — כדאי לסגור לפני הסשן.", [ev("PROJECTS", pk, "ball holder OWNER")], false));
   } else checks.push(check("deps.project", "DEPENDENCIES", "פרויקט מקושר", "NOT_SEEN", "הסשן לא מקושר לפרויקט — אני לא יודעת על מה הוא.", [ev("SESSIONS", sk, "project_id empty")], false));
   return finishReadiness({ key: `readiness:${sk}`, kind: "SESSION", titleHe: c.projectName(s.projectId) ?? s.type ?? "סשן", date: s.date, time: s.startTime?.slice(0, 5) ?? null, daysTo: daysBetween(c.today, s.date), entity: sk, project: pk, checks, insights: [], sources: ["SESSIONS", "PROJECTS"], coreReadable: true });
@@ -258,7 +259,10 @@ export function deadlineReadiness(c: CooCtx, projectId: string): Readiness | nul
   if (v.work.tasksOverdue) checks.push(check("deps.tasks", "DEPENDENCIES", "משימות שעבר מועדן", "OPEN", `${v.work.tasksOverdue} משימות של הפרויקט עבר מועדן.`, [ev("TASKS", pk, "tasks overdue")], false));
   if (!openEng.length && !v.work.victor?.length && (v.work.sessions?.upcoming ?? 0) === 0) checks.push(check("deps.next", "DEPENDENCIES", "עבודה מתוכננת עד הדדליין", "NOT_SEEN", "אני לא רואה עבודה פתוחה או סשן מתוכנן עד הדדליין — אם הפרויקט כמעט גמור, אולי זה בסדר.", [ev("PROJECTS", pk, "no open work / upcoming session")], false));
   const m = moneyReadiness(v, { labelWork: c.isLabel(projectId), financeReadable: c.financeReadable });
-  return finishReadiness({ key: `readiness:deadline:${projectId}`, kind: "DEADLINE", titleHe: v.identity.name, date: dl, time: null, daysTo: daysBetween(c.today, dl), entity: pk, project: pk, checks: [...checks, ...m.checks], insights: m.facts, sources: ["PROJECTS", "MIX", "TEAM_VICTOR", "FINANCE"], coreReadable: true });
+  // a delivery deadline is not blocked by the company's own unpaid vendor expenses — those are facts, not readiness gaps
+  const moneyChecks = m.checks.filter((x) => x.id !== "money.expenses" && !x.id.startsWith("money.engineer."));
+  const moneyFacts = [...m.facts, ...m.checks.filter((x) => !moneyChecks.includes(x)).map((x) => x.he)];
+  return finishReadiness({ key: `readiness:deadline:${projectId}`, kind: "DEADLINE", titleHe: v.identity.name, date: dl, time: null, daysTo: daysBetween(c.today, dl), entity: pk, project: pk, checks: [...checks, ...moneyChecks], insights: [], facts: moneyFacts, sources: ["PROJECTS", "MIX", "TEAM_VICTOR", "FINANCE"], coreReadable: true });
 }
 
 // ───────────────────────────── collect ─────────────────────────────

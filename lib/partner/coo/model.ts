@@ -81,6 +81,8 @@ export interface Readiness {
   checks: Check[];
   /** Sunny's inferences about this event — HYPOTHESIS, never fact. */
   insights: string[];
+  /** Record-derived facts shown as context (money totals, publish date …) — DERIVED from records, not inferences. */
+  facts: string[];
   recommendationHe: string | null;
   /** A short natural-Hebrew COO paragraph (✓ / ? / → lines). */
   narrativeHe: string;
@@ -131,7 +133,7 @@ export function narrative(title: string, state: ReadinessState, checks: readonly
   return lines.join("\n");
 }
 
-export function finishReadiness(r: Omit<Readiness, "state" | "stateHe" | "confirmed" | "notSeen" | "open" | "blocked" | "narrativeHe" | "recommendationHe" | "ownerAttention"> & { coreReadable: boolean; ownerAttention?: string[] }): Readiness {
+export function finishReadiness(r: Omit<Readiness, "state" | "stateHe" | "confirmed" | "notSeen" | "open" | "blocked" | "narrativeHe" | "recommendationHe" | "ownerAttention" | "facts"> & { coreReadable: boolean; ownerAttention?: string[]; facts?: string[] }): Readiness {
   const state = deriveReadiness(r.checks, r.coreReadable);
   const blocked = r.checks.filter((c) => c.state === "BLOCKED").map((c) => c.he);
   const open = r.checks.filter((c) => c.state === "OPEN").map((c) => c.he);
@@ -140,7 +142,7 @@ export function finishReadiness(r: Omit<Readiness, "state" | "stateHe" | "confir
   const toClose = [...r.checks.filter((c) => c.state === "BLOCKED"), ...r.checks.filter((c) => c.state === "OPEN"), ...r.checks.filter((c) => c.required && c.state === "NOT_SEEN")];
   const ownerAttention = r.ownerAttention ?? toClose.slice(0, 3).map((c) => c.labelHe);
   const recommendationHe = state === "READY" ? null : state === "UNKNOWN" ? "לא נקראו מספיק נתונים כדי לבדוק — שווה לוודא ישירות." : toClose.length ? `הייתי סוגרת: ${toClose.slice(0, 3).map((c) => c.labelHe).join(", ")}.` : null;
-  const { coreReadable: _c, ...rest } = r;
+  const { coreReadable: _c, facts, ...rest } = r;
   void _c;
-  return { ...rest, state, stateHe: READINESS_HE[state], confirmed, notSeen, open, blocked, ownerAttention, recommendationHe, narrativeHe: narrative(`${EVENT_KIND_HE[r.kind]} ${r.titleHe} ${whenHe(r.daysTo, r.date)}`, state, r.checks, recommendationHe) };
+  return { ...rest, facts: facts ?? [], state, stateHe: READINESS_HE[state], confirmed, notSeen, open, blocked, ownerAttention, recommendationHe, narrativeHe: narrative(`${EVENT_KIND_HE[r.kind]} ${r.titleHe} ${whenHe(r.daysTo, r.date)}`, state, r.checks, recommendationHe) };
 }
