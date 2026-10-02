@@ -288,6 +288,19 @@ Owner knowledge (P2, `lib/partner/owner-knowledge`) is a typed model, not a grow
 - **Owner decides from the chat (2026-10-02, built OFF):** partner_observe `present_request` (ONE exact request; a one-time presentation token bound to the connector token; presenting another replaces it) → `decide_request` (his exact words: approve as presented / explicit rejection; changed terms or a hold decide nothing — narrowing stays in /sunny-approvals or a new narrower request). The DATABASE proves the Owner itself: `owner_approval_decide_mcp(token hash, …)` checks the live connector token (`partner_mcp_check_access` VALID, partner:observe, an Owner principal, a live auth user) and runs the SAME T2 core as the dashboard (decided_role `mcp_owner_token`). Never an approved payload / user id / actor from the connector, never `owner_approval_decide` or the core from the connector. Needs the t2-chat migration (`scripts/sql/sunny-brain/t2-chat/`, CANDIDATE, Owner approval before it runs) + `PARTNER_MCP_OWNER_DECIDE_ENABLED=true`. `scripts/test-sunny-owner-chat-decision.tsx` must pass.
 - `scripts/test-sunny-brain.tsx` (SQL text ↔ TS vocab / RPC names / argument names, writer, reader, capability, connector, browser research, recheck proposals) and `scripts/test-sunny-p2-writers.tsx` must pass.
 
+## Sunny Awareness Check: Sunny COO V1 (Owner mission 2026-10-02)
+
+- **What:** capability `coo` (`lib/partner/knowledge/capabilities/coo.ts` over `lib/partner/coo/*`, pure). Modes: priorities (default, ≤5 — a DISPLAY limit), readiness, momentum, artists, schedule, money, entity (it enriches partner_entity of a project / label artist / show through `entityScope`). Owner-only, read-only, interaction time only.
+- **Readiness:** shoot / show / release / important session / meeting / client deadline in the next 14 days. Each check is CONFIRMED (a record says so) / NOT_SEEN (no record — "אני לא רואה …", never "אין …") / OPEN / BLOCKED / UNREADABLE. The state is derived: חסום > לא ידוע (core source unread) > דורש תשומת לב > מוכן. It is never a DB status. An optional item never makes an event "not ready" on its own. Shoot evidence = the production view (crew names, locations, concept, documents by type שוט ליסט / לו״ז צילום / ציוד / אישור / חוזה, references, tasks, budget lines).
+- **Momentum:** last recorded progress, next step, whether it is scheduled, who holds it (projectOperating / computeVictorBall), and the risk near a deadline / release. **No age threshold:** nothing is "stuck" because time passed. A warning appears only for NO_NEXT_STEP / OWNER_BALL / a near date with no scheduled step.
+- **Label artists:** the canonical roster only (`label_artists` minus the retired DJ identity — DJ / team never). No session quota.
+- **Schedule:** analysis only (availability(), Redbloods records). A real conflict = two blocking timed commitments. Busy alone is never a finding. It never moves, writes or schedules anything.
+- **Money:** the ONE project money computation (`projectMoney` through the project view, `isEngineerWorkPaid`, `budgetLinePaidState`). No new formula, no cash balance claimed (gap `COO_NO_CASH_POSITION`).
+- **Song ↔ clip:** only `song_project_id`. A similar name is reported, never linked.
+- **Heuristics:** `INTERNAL_COO_HEURISTICS` (14-day horizon, 7-day week, an 8-hour "full day", a 3-day stretch) are engineering windows, never Owner policy. A finding that uses one says `heuristic: true`.
+- **Never:** a cron / interval / push / alert / task / calendar write / page-load analysis / browser check. Brain is context (insights = HYPOTHESIS). BUSINESS_LEARNING only via partner_propose_knowledge with the Owner's approval.
+- `scripts/test-sunny-coo.tsx` (scenarios A–O + the no-side-effect guards) must pass.
+
 ## Retired: the in-app AI assistant ("Mai")
 
 The older in-app AI assistant was removed on 2026-09-25 by Owner decision. Sunny, through Claude, is the only AI / organizational partner.
