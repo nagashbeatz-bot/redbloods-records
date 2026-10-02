@@ -2,13 +2,14 @@
  * Sunny Brain — the ONE observe tool (partner_observe). Pure: definition + strict top-level shape check.
  *
  * Listed ONLY when the deployment's observe switch is on AND the token holds partner:observe. The scope alone grants no
- * tracking: every write op names a tracking authorization the Owner approved in Redbloods, and the DB re-checks it on
- * every write. Asking the Owner (request_*) has no effect until he decides in Redbloods. There is no generic write: each
+ * tracking: every write op names a tracking authorization the Owner approved, and the DB re-checks it on every write.
+ * Asking the Owner (request_*) has no effect until he decides — in Redbloods, or (owner-decide switch on) in the chat via
+ * present_request → decide_request, where the DB itself proves the Owner from his live connector token. There is no generic write: each
  * op has fixed typed fields (deep validation in lib/partner/brain/requests.ts, then the DB). Reads are partner_query
  * capability `brain`. No SQL / table / RPC / URL-to-fetch / path / token / header argument exists.
  */
 export const OBSERVE_TOOL = "partner_observe";
-export const OBSERVE_OPS = ["request_authorization", "request_owner_observations", "cancel_request", "register_content", "record_observations", "create_record", "transition", "add_links"] as const;
+export const OBSERVE_OPS = ["request_authorization", "request_owner_observations", "cancel_request", "register_content", "record_observations", "create_record", "transition", "add_links", "present_request", "decide_request"] as const;
 export type ObserveOp = (typeof OBSERVE_OPS)[number];
 
 /** The exact keys each op accepts (besides "op"). */
@@ -21,14 +22,22 @@ export const OBSERVE_FIELDS: Record<ObserveOp, readonly string[]> = {
   create_record: ["authorizationId", "record", "requestKey"],
   transition: ["authorizationId", "transition", "requestKey"],
   add_links: ["authorizationId", "links", "requestKey"],
+  present_request: ["requestId"],
+  decide_request: ["requestId", "decision", "presentationToken", "confirmationText", "reasonHe"],
 };
 const REQUIRED: Record<ObserveOp, readonly string[]> = {
   request_authorization: ["authorization"], request_owner_observations: ["items"], cancel_request: ["requestId"],
   register_content: ["authorizationId", "content"], record_observations: ["authorizationId", "items"], create_record: ["authorizationId", "record"],
   transition: ["authorizationId", "transition"], add_links: ["authorizationId", "links"],
+  present_request: ["requestId"], decide_request: ["requestId", "decision", "presentationToken", "confirmationText"],
 };
 /** Ops that write under an authorization (the DB checks it) vs ops that only ASK the Owner (no effect). */
-export const OBSERVE_WRITE_OPS: readonly ObserveOp[] = ["register_content", "record_observations", "create_record", "transition", "add_links"];
+export const OBSERVE_WRITE_OPS: readonly ObserveOp[] = ["register_content", "record_observations", "create_record", "transition", "add_links", "decide_request"];
+/**
+ * The Owner decides a pending request from the chat — these two ops exist ONLY when the deployment's owner-decide switch
+ * is on (config.ownerDecideEnabled); otherwise they are UNKNOWN_OP and not advertised.
+ */
+export const OWNER_DECIDE_OPS: readonly ObserveOp[] = ["present_request", "decide_request"];
 const FORBIDDEN_KEY = /^(sql|query|table|rpc|function|path|url|endpoint|route|token|secret|headers?|body|actor|approval(basis|ref)?|basis|owner(id)?|uid|role)$/i;
 
 export function validateObserveInput(raw: unknown): { ok: true; op: ObserveOp; input: Record<string, unknown> } | { ok: false; code: string } {
@@ -44,15 +53,45 @@ export function validateObserveInput(raw: unknown): { ok: true; op: ObserveOp; i
   return { ok: true, op: op as ObserveOp, input: Object.fromEntries(keys.map((k) => [k, o[k]])) };
 }
 
-export const OBSERVE_TOOL_DEFINITION = {
+const DECIDE_IN_REDBLOODS =
+    "The Owner decides it ONLY in Redbloods (the approvals screen /sunny-approvals — אישורים לסאני); tell him it is waiting there. Never say it is approved until partner_query brain shows the authorization ACTIVE. ";
+const DECIDE_IN_CHAT =
+    "The Owner decides a pending request HERE in the chat, or in Redbloods (/sunny-approvals — אישורים לסאני, also for a partial approval). In the chat: (1) op present_request {requestId} — exactly ONE request; show him its summary, risk and terms in plain Hebrew and ask \"לאשר?\"; the result carries payloadHash + presentationToken (remember both; presenting another request REPLACES the earlier one, so an old \"מאשר\" never lands on a request shown before). " +
+    "(2) ONLY after his explicit answer to THAT presentation: op decide_request {requestId, decision: APPROVED|REJECTED, presentationToken, confirmationText: his exact words, reasonHe?}. \"מאשר\" / \"כן\" = APPROVED exactly as presented; \"לא מאשר\" / \"דוחה\" = REJECTED; a hold (\"רגע\") = nothing. " +
+    "If his reply changes the terms (\"מאשר רק את שליו\") it is NOT an approval: nothing is decided — offer to narrow it in /sunny-approvals, or cancel_request + request_authorization with exactly the narrower terms, present the NEW request and ask again. " +
+    "If more than one request is pending or it is unclear which one he means: ask which one, present it, ask again — never guess. \"מאשר\" with no request presented in this conversation = no action. " +
+    "The database itself proves it is the Owner (his live connected Claude token); you never claim an approval — report only the result (APPROVED / REJECTED) and, for an approval, that partner_query brain shows the authorization ACTIVE. ";
+
+/** partner_observe's definition; ownerDecide = the deployment's owner-decide switch (adds present_request / decide_request). */
+export function observeToolDefinition(ownerDecide: boolean) {
+  const ops = ownerDecide ? [...OBSERVE_OPS] : OBSERVE_OPS.filter((o) => !OWNER_DECIDE_OPS.includes(o));
+  const d = OBSERVE_TOOL_DEFINITION_BASE;
+  return {
+    ...d,
+    description: d.description.replace(DECIDE_IN_REDBLOODS, ownerDecide ? DECIDE_IN_CHAT : DECIDE_IN_REDBLOODS),
+    inputSchema: {
+      ...d.inputSchema,
+      properties: {
+        ...d.inputSchema.properties, op: { type: "string", enum: ops },
+        ...(ownerDecide ? {
+          decision: { type: "string", enum: ["APPROVED", "REJECTED"] },
+          presentationToken: { type: "string", pattern: "^[0-9a-f]{48}$" },
+          confirmationText: { type: "string", minLength: 1, maxLength: 500 },
+        } : {}),
+      },
+    },
+  };
+}
+
+const OBSERVE_TOOL_DEFINITION_BASE = {
   name: OBSERVE_TOOL,
   title: "Redbloods Sunny — Brain: track, observe, infer (under the Owner's authorization)",
   description:
     "Sunny's Brain: record observations from an Owner-requested / Owner-approved research step, and the insights / recommendations they support. THIS TOOL NEVER BROWSES, FETCHES OR MONITORS: the reading is done by you in the Owner's browser (Chrome) on a PUBLIC page, ONLY when he asked you to check, or said yes to your proposal (\"עבר זמן מאז שבדקנו … רוצה שאבדוק עכשיו?\" — ask, then WAIT; no reply / no = nothing happens). There is no platform API, no crawler, no background or scheduled checking. " +
-    "Before a check: partner_query brain mode research (entity / resource) — last check date, the value then, TODAY / RECENT / STALE, and whether a new check may be STORED (storeStatus CAN_STORE = a covering ACTIVE authorization). Report old data as old (\"הנתון האחרון שלנו מתאריך X\"), never as current; after a stored check say what changed since the previous one (\"בדקנו בפעם הקודמת X, עכשיו Y\"). " +
+    "Before a check: partner_query brain mode research (entity / resource) — last check date, the value then, TODAY / EARLIER (+ the date), and whether a new check may be STORED (storeStatus CAN_STORE = a covering ACTIVE authorization). Report old data as old (\"הנתון האחרון שלנו מתאריך X\"), never as current; after a stored check say what changed since the previous one (\"בדקנו בפעם הקודמת X, עכשיו Y\"). " +
     "No covering authorization (storeStatus ≠ CAN_STORE, incl. revoked / expired / not yet valid): you may answer from what you read once, labelled as a one-off browser check, but NEVER say it was saved — offer to request tracking (\"אם תרצה שאשמור בדיקות כאלה ואשווה ביניהן, אפשר לאשר לי מעקב\"). A browser reading is EXTERNAL_SOURCE + captureMethod CLAUDE_READ + sourceKind PUBLIC_PROFILE_PAGE (a profile) | PUBLIC_CONTENT_PAGE (a post / video) | WEB_PAGE, sourceRef = the page URL, confidence never CONFIRMED, and NEVER an OWNER_STATEMENT. " +
     "WITHOUT an ACTIVE tracking authorization you may only ASK: op request_authorization {authorization: {purposeKind: OWN_PRESENCE|REFERENCE_RESEARCH|BUSINESS_SNAPSHOT, purposeHe, resourceIds?, newResources?: [{platform: instagram|youtube|tiktok|spotify|facebook|x|web, resourceKind: ACCOUNT|PAGE, identityKey: 'account:handle:<handle>' | 'account:id:<id>' (web: canonicalUrl only), firstHandle?, canonicalUrl?, displayName?}], includeChildResources: bool, entityKeys?, observationFamilies: ['INSTAGRAM', …], sourceKinds: [PUBLIC_PROFILE_PAGE|PUBLIC_CONTENT_PAGE|WEB_PAGE|REDBLOODS_RECORD|PLATFORM_API], insightsAllowed: bool, recommendationsAllowed: bool, maxObservationsPerDay?: int|null, validFrom: YYYY-MM-DD (today or later), validUntil?: YYYY-MM-DD|null, baseAuthorizationId?}} — every boolean explicit, never assumed. " +
-    "The Owner decides it ONLY in Redbloods (the approvals screen /sunny-approvals — אישורים לסאני); tell him it is waiting there. Never say it is approved until partner_query brain shows the authorization ACTIVE. " +
+    DECIDE_IN_REDBLOODS +
     "Values the Owner told you (numbers from his screen, his analytics export): op request_owner_observations {items} with sourceType OWNER_STATEMENT, sourceKind OWNER_STATEMENT|OWNER_SCREENSHOT|PLATFORM_ANALYTICS_EXPORT, captureMethod OWNER_PROVIDED — recorded only after he approves in Redbloods. op cancel_request {requestId, reasonHe?} withdraws your own pending request. " +
     "UNDER an active authorization (authorizationId; the database refuses anything outside its scope, families, source kinds, window or daily cap): " +
     "record_observations {items: 1–40 × {resourceId | entityKey, type: FAMILY.METRIC, valueNum | valueText | valueBool, unit?, observedAt (ISO), periodStart?, periodEnd?, sourceType: EXTERNAL_SOURCE (sourceKind PUBLIC_*/WEB_PAGE/PLATFORM_API, captureMethod CLAUDE_READ|API, confidence HIGH|MEDIUM|LOW — never CONFIRMED) | SYSTEM_RECORD (REDBLOODS_RECORD + SYSTEM_SNAPSHOT), sourceRef?: the public https page you read, correctsId?}} — an observation is ONE value you actually read, never an inference, never invented, never scraped behind a login; " +
@@ -63,7 +102,7 @@ export const OBSERVE_TOOL_DEFINITION = {
   inputSchema: {
     type: "object",
     properties: {
-      op: { type: "string", enum: [...OBSERVE_OPS] },
+      op: { type: "string", enum: OBSERVE_OPS.filter((o) => !OWNER_DECIDE_OPS.includes(o)) as string[] },
       authorizationId: { type: "string", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
       requestKey: { type: "string", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
       requestId: { type: "string", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
@@ -78,4 +117,6 @@ export const OBSERVE_TOOL_DEFINITION = {
     additionalProperties: false,
   },
   annotations: { title: "Redbloods Sunny — Brain", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-} as const;
+};
+/** The definition with the owner-decide switch OFF (the default deployment). */
+export const OBSERVE_TOOL_DEFINITION = observeToolDefinition(false);

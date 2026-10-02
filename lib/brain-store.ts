@@ -3,6 +3,8 @@
 //   service role (Sunny):   the 5 Brain wrappers + owner_approval_request / owner_approval_cancel
 //   Owner SESSION client:   owner_approval_decide / owner_revoke_tracking_authorization / owner_brain_transition
 //                           (the DB checks auth.uid() against owner_approval_principals; service_role has NO grant)
+//   Owner TOKEN (chat):     owner_approval_decide_mcp(token hash, …) — service role, but the DB proves the Owner itself
+//                           from the hash of his LIVE connector token (t2-chat migration; NOT_INSTALLED until applied)
 // READS are bounded SELECTs (service_role has SELECT only; anon / authenticated have none).
 // Only lib/writes/brain.ts calls the write methods (scripts/test-sunny-brain.tsx pins it). Injectable client for tests.
 import {
@@ -20,7 +22,7 @@ export interface BrainReadClient {
 /** The refusal codes the RPCs raise (message prefix). Anything else = WRITE_FAILED (never reported as success). */
 export const BRAIN_RPC_CODES = [
   // every RAISE code of the applied Brain + T2 SQL (longest first: OUTSIDE_AUTHORIZATION_SUBJECT before OUTSIDE_AUTHORIZATION)
-  "PARENT_NOT_AN_ACCOUNT_OF_THIS_PLATFORM", "ACTED_ON_NEEDS_IMPLEMENTED_BY_LINK", "RECOMMENDATIONS_NOT_AUTHORIZED", "RECOMMENDATION_NEEDS_GROUNDING",
+  "PARENT_NOT_AN_ACCOUNT_OF_THIS_PLATFORM", "OWNER_TOKEN_REQUIRED", "OWNER_TOKEN_INVALID", "OWNER_TOKEN_SCOPE", "ACTED_ON_NEEDS_IMPLEMENTED_BY_LINK", "RECOMMENDATIONS_NOT_AUTHORIZED", "RECOMMENDATION_NEEDS_GROUNDING",
   "CORRECTS_REQUIRES_INVALIDATED", "LINK_TO_OWNER_MEMORY_RESERVED", "OUTSIDE_AUTHORIZATION_SUBJECT", "OUTSIDE_AUTHORIZATION_FAMILY",
   "OUTSIDE_AUTHORIZATION_SOURCE", "SOURCE_NOT_ALLOWED_FOR_BASIS", "AUTHORIZATION_OUT_OF_WINDOW", "AUTHORIZATION_NOT_ACTIVE",
   "INVALID_APPROVED_PAYLOAD", "AUTHORIZATION_DAILY_CAP", "AUTHORIZATION_NOT_FOUND", "BACKDATED_AUTHORIZATION", "INSIGHTS_NOT_AUTHORIZED",
@@ -85,6 +87,18 @@ export function createBrainOwnerStore(sessionClient: BrainRpcClient) {
       call(sessionClient, "owner_revoke_tracking_authorization", { p_authorization_id: a.authorizationId, p_reason_he: a.reasonHe }),
     transition: (a: { targetKind: string; targetId: string; toStatus: string; reasonHe: string | null }) =>
       call(sessionClient, "owner_brain_transition", { p_target_kind: a.targetKind, p_target_id: a.targetId, p_to_status: a.toStatus, p_reason_he: a.reasonHe }),
+  };
+}
+
+/**
+ * The Owner decides from the chat. `tokenHash` = sha256 hex of the bearer the Owner's connector request carried; the DB
+ * checks it is a LIVE token of an Owner principal with partner:observe (the service role alone cannot decide, and there is
+ * no user id / actor / role / approved-payload argument: APPROVED = exactly as requested).
+ */
+export function createBrainOwnerTokenStore(client: BrainRpcClient) {
+  return {
+    decide: (a: { tokenHash: string; requestId: string; decision: "APPROVED" | "REJECTED"; seenHash: string; reasonHe: string | null }) =>
+      call(client, "owner_approval_decide_mcp", { p_token_hash: a.tokenHash, p_request_id: a.requestId, p_decision: a.decision, p_seen_hash: a.seenHash, p_reason_he: a.reasonHe }),
   };
 }
 

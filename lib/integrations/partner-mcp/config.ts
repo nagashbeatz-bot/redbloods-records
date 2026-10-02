@@ -97,6 +97,13 @@ export interface McpConfig {
    */
   observeEnabled: boolean;
   observeRateLimit: Array<{ windowMs: number; max: number }>;
+  /**
+   * The Owner decides a pending T2 request FROM THE CHAT (partner_observe present_request / decide_request). true ONLY with
+   * the observe switch AND PARTNER_MCP_OWNER_DECIDE_ENABLED exactly "true". Off → the two ops do not exist. Requires the
+   * t2-chat migration (owner_approval_decide_mcp: the DB itself proves the Owner from his LIVE connector token hash) —
+   * never switch on before it is applied (until then every decide answers NOT_INSTALLED, nothing is decided).
+   */
+  ownerDecideEnabled: boolean;
 }
 
 export type McpConfigResult = { ok: true; config: McpConfig } | { ok: false; reason: "DISABLED" | "MISCONFIGURED"; detail: string };
@@ -141,6 +148,7 @@ export function readMcpConfig(env: Record<string, string | undefined>): McpConfi
       actRateLimit: [{ windowMs: 3_600_000, max: 40 }, { windowMs: 86_400_000, max: 150 }],
       observeEnabled: env.PARTNER_MCP_OBSERVE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true",
       observeRateLimit: [{ windowMs: 3_600_000, max: 60 }, { windowMs: 86_400_000, max: 300 }],
+      ownerDecideEnabled: env.PARTNER_MCP_OBSERVE_ENABLED === "true" && env.REDBLOODS_MCP_ONLY === "true" && env.PARTNER_MCP_OWNER_DECIDE_ENABLED === "true",
     },
   };
 }

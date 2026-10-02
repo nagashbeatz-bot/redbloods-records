@@ -43,6 +43,8 @@ const read = (f: string) => fs.readFileSync(path.join(ROOT, f), "utf8");
 const BRAIN_SQL = read("scripts/sql/sunny-brain/2026-10-XX-sunny-brain-v1-CANDIDATE.sql");
 const T2_SQL = read("scripts/sql/sunny-brain/2026-10-XX-t2-owner-approval-queue-CANDIDATE.sql");
 const SCOPE_SQL = read("scripts/sql/sunny-brain/2026-10-XX-scope-partner-observe-CANDIDATE.sql");
+/** The Owner decides from the chat — CANDIDATE, NOT applied to production (scripts/sql/sunny-brain/t2-chat/). */
+const T2CHAT_SQL = read("scripts/sql/sunny-brain/t2-chat/2026-10-XX-t2-mcp-owner-decide-CANDIDATE.sql");
 const sha = (f: string) => createHash("sha256").update(fs.readFileSync(path.join(ROOT, f))).digest("hex");
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const sqlList = (re: RegExp, src = BRAIN_SQL) => [...(re.exec(src)?.[1] ?? "").matchAll(/'([^']+)'/g)].map((m) => m[1]);
@@ -79,7 +81,7 @@ async function main() {
   check("lifecycle transitions = sunny_intel_transition_ok (20 tuples)", tuples, V.INTEL_TRANSITIONS.map((t) => [...t]));
   check("reason-required statuses", sqlList(/to_status NOT IN \(([^)]*)\) OR reason_he IS NOT NULL/), [...V.REASON_REQUIRED]);
   check("T2 request kinds", sqlList(/kind\s+text NOT NULL CHECK \(kind IN \(([^)]*)\)\)/, T2_SQL), [...V.T2_KINDS]);
-  const raised = [...new Set([...BRAIN_SQL.matchAll(/RAISE EXCEPTION '([A-Z_]+)/g), ...T2_SQL.matchAll(/RAISE EXCEPTION '([A-Z_]+)/g)].map((m) => m[1]))].filter((c) => !["PRECONDITION", "POSTCONDITION", "VALIDATED_ONLY"].includes(c)).sort();
+  const raised = [...new Set([...BRAIN_SQL.matchAll(/RAISE EXCEPTION '([A-Z_]+)/g), ...T2_SQL.matchAll(/RAISE EXCEPTION '([A-Z_]+)/g), ...T2CHAT_SQL.matchAll(/RAISE EXCEPTION '([A-Z_]+)/g)].map((m) => m[1]))].filter((c) => !["PRECONDITION", "POSTCONDITION", "VALIDATED_ONLY"].includes(c)).sort();
   check("every RPC refusal code is mapped (no code falls through to WRITE_FAILED)", raised, [...BRAIN_RPC_CODES].sort());
 
   section("C. Grants — only the 5 wrappers for the service role; Owner moves NOT for the service role");
@@ -92,14 +94,19 @@ async function main() {
   const ownerFns = [...(/export function createBrainOwnerStore[\s\S]*?\n}\n/.exec(storeSrc)?.[0] ?? "").matchAll(/call\(sessionClient, "(\w+)"/g)].map((m) => m[1]).sort();
   check("the Owner store calls exactly decide / revoke / owner transition (session client only)", ownerFns, ["owner_approval_decide", "owner_brain_transition", "owner_revoke_tracking_authorization"]);
   // PostgREST calls an RPC by NAMED arguments: every key the store sends must be exactly the SQL signature's parameter names
-  const sigOf = (fn: string) => { const m = new RegExp(`CREATE FUNCTION public\\.${fn}\\(([\\s\\S]*?)\\)\\s*RETURNS`).exec(BRAIN_SQL + T2_SQL); return m ? [...m[1].matchAll(/\b(p_\w+)\s/g)].map((x) => x[1]).sort() : null; };
+  const sigOf = (fn: string) => { const m = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${fn}\\(([\\s\\S]*?)\\)\\s*RETURNS`).exec(BRAIN_SQL + T2_SQL + T2CHAT_SQL); return m ? [...m[1].matchAll(/\b(p_\w+)\s/g)].map((x) => x[1]).sort() : null; };
+  const tokenFns = [...(/export function createBrainOwnerTokenStore[\s\S]*?\n}\n/.exec(storeSrc)?.[0] ?? "").matchAll(/call\(client, "(\w+)"/g)].map((m) => m[1]);
+  check("the Owner-TOKEN store calls exactly owner_approval_decide_mcp (the DB proves the Owner from the token hash)", tokenFns, ["owner_approval_decide_mcp"]);
+  ok("decide_mcp takes NO approved payload / user id / actor / role (APPROVED = as requested; nothing to forge)", /CREATE FUNCTION public\.owner_approval_decide_mcp\(p_token_hash text, p_request_id uuid, p_decision text, p_seen_hash text, p_reason_he text\)/.test(T2CHAT_SQL));
+  ok("decide_mcp: EXECUTE service_role only; the core: no grant at all", /GRANT EXECUTE ON FUNCTION public\.owner_approval_decide_mcp\(text, uuid, text, text, text\) TO service_role;/.test(T2CHAT_SQL) && !/GRANT[^;]*owner_approval_decide_core/.test(T2CHAT_SQL));
   const sent = [...storeSrc.matchAll(/call\((?:client|sessionClient), "(\w+)", \{([^}]*)\}/g)].map((m) => [m[1], [...m[2].matchAll(/\b(p_\w+):/g)].map((x) => x[1]).sort()] as const);
-  check("every RPC call sends exactly the SQL parameter names (10 functions)", sent.filter(([fn, keys]) => JSON.stringify(sigOf(fn)) !== JSON.stringify(keys)).map(([fn]) => fn), []);
-  check("…and all 10 were checked", sent.length, 10);
+  check("every RPC call sends exactly the SQL parameter names (11 functions)", sent.filter(([fn, keys]) => JSON.stringify(sigOf(fn)) !== JSON.stringify(keys)).map(([fn]) => fn), []);
+  check("…and all 11 were checked", sent.length, 11);
   ok("no Brain core function name appears anywhere in deployed code", !/sunny_(grant_tracking_authorization|register_resource_core|record_observations_core|brain_transition_core|brain_insert_links)/.test(walkCode().map(([, s]) => s).join("\n")));
   ok("no direct table write to a Brain / T2 table anywhere (only RPCs)", walkCode().every(([, s]) => !/from\((BRAIN_TABLES\.\w+|"(sunny_resources|sunny_tracking_authorizations|sunny_observations|sunny_intel_records|sunny_brain_links|sunny_brain_events|owner_approval_\w+)")\)\s*\.\s*(insert|update|upsert|delete)/.test(s)));
   check("only lib/writes/brain.ts (and the store) build a Brain store", walkCode().filter(([f, s]) => /createBrain(Service|Owner)Store\(/.test(s) && f !== "lib/brain-store.ts").map(([f]) => f), ["lib/writes/brain.ts"]);
-  check("only the approvals route and the connector binding call the Brain writer", walkCode().filter(([f, s]) => /lib\/writes\/brain"/.test(s)).map(([f]) => f).sort(), ["app/api/partner/approvals/route.ts", "lib/partner/brain/server.ts"]);
+  check("only the approvals route, the connector binding and the chat-decision flow call the Brain writer", walkCode().filter(([f, s]) => /lib\/writes\/brain"/.test(s)).map(([f]) => f).sort(), ["app/api/partner/approvals/route.ts", "lib/partner/brain/chat-decision.ts", "lib/partner/brain/server.ts"]);
+  ok("the chat-decision flow uses ONLY ownerDecideFromChat from the writer", /import \{ ownerDecideFromChat \} from "@\/lib\/writes\/brain";/.test(read("lib/partner/brain/chat-decision.ts")));
   const route = read("app/api/partner/approvals/route.ts");
   ok("the approvals POST: same-origin first, requireOwner, Owner decisions with createSupabaseServer (his session) — never the service client", /checkSameOriginJson\(req\.headers\)[\s\S]*requireOwner\(\)[\s\S]*createSupabaseServer\(\)[\s\S]*ownerDecide\(session/.test(route) && /ownerRevoke\(session/.test(route) && /ownerTransition\(session/.test(route));
   ok("the approvals route passes no user id / actor / basis to the DB", !/userId|actor|approval_?basis|p_uid|decided_by/i.test(route.replace(/\/\*[\s\S]*?\*\//g, "")));
@@ -271,7 +278,8 @@ async function main() {
   const bad = await m.rpc("tools/call", { name: OBSERVE_TOOL, arguments: { op: "record_observations", authorizationId: U(5), items: [obs], sql: "select 1" } });
   check("an extra / forbidden field → refused before anything runs", [bad.json.error?.message, m.calls.length], ["invalid arguments (FORBIDDEN_FIELD)", 1]);
   check("unknown op / missing field", [validateObserveInput({ op: "decide" }), validateObserveInput({ op: "create_record", authorizationId: U(1) })], [{ ok: false, code: "UNKNOWN_OP" }, { ok: false, code: "MISSING_FIELD" }]);
-  ok("there is no Owner op in the tool (decide / revoke / endorse are not ops)", !OBSERVE_OPS.some((o) => /decide|revoke|endorse|approve|accept|grant/.test(o)));
+  ok("no Owner op besides the switch-gated chat decision (revoke / endorse / grant are never ops)", OBSERVE_OPS.filter((o) => /decide|revoke|endorse|approve|accept|grant/.test(o)).join() === "decide_request");
+  ok("switch OFF definition: present_request / decide_request are not advertised, and the Owner decides only in Redbloods", !(OBSERVE_TOOL_DEFINITION.inputSchema.properties.op.enum as string[]).some((o) => o === "present_request" || o === "decide_request") && /decides it ONLY in Redbloods/.test(OBSERVE_TOOL_DEFINITION.description));
   const consent = read("app/mcp-oauth/authorize/page.tsx");
   ok("the consent screen lists partner:observe separately and says it alone tracks nothing", /data-consent-observe/.test(consent) && /לבדה לא מתירה מעקב/.test(consent));
 
