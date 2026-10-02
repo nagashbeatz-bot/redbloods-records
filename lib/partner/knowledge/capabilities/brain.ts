@@ -94,7 +94,7 @@ export const brain: KnowledgeCapability = {
     const reqItems = () => (s.approvals?.requests ?? []).map((r) => { const state = st.approvalState(r); const d = st.decisionOf(r.id); return item({
       id: `approval:${r.id}`, label: record(r.summaryHe.split("\n")[0] ?? r.kind), epistemic: "FACT", source: "SUNNY_BRAIN", freshness: state === "PENDING" ? "LIVE" : "HISTORICAL",
       fields: { requestId: r.id, kind: r.kind, state, stateHe: STATUS_HE[state] ?? state, summaryHe: record(r.summaryHe), requestedVia: r.requestedVia, expiresAt: r.expiresAt, createdAt: r.createdAt,
-        ...(d ? { decision: { decision: d.decision, narrowed: d.narrowed, at: d.createdAt, reason: d.reasonHe ? record(d.reasonHe) : null, result: d.resultRef } } : {}),
+        ...(d ? { decision: { decision: d.decision, narrowed: d.narrowed, decidedVia: d.decidedRole === "mcp_owner_token" ? "CLAUDE_CHAT_OWNER_TOKEN" : d.decidedRole === "authenticated" ? "REDBLOODS_OWNER_SESSION" : "SUNNY_WITHDREW", at: d.createdAt, reason: d.reasonHe ? record(d.reasonHe) : null, result: d.resultRef } } : {}),
         note: partner(state === "PENDING" ? "מחכה להחלטה של הבוס ב-Redbloods (מסך אישורים). עד אז — אין הרשאה." : "הוחלט.") } }); });
 
     if (q.mode === "authorizations") return result(authItems(), { summary: [sfact("BY_STATE", "הרשאות לפי מצב", byCount(s.authorizations.map((x) => st.authorizationState(x))), "OWNER_DECISION", "SUNNY_BRAIN")], ...partial });

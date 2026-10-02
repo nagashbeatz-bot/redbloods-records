@@ -8,12 +8,14 @@
  *     requestTrackingAuthorization · requestOwnerObservations · cancelRequest (her own pending request)
  *   The Owner (his own Supabase session — the DB proves auth.uid() ∈ owner_approval_principals; service_role cannot):
  *     ownerDecide · ownerRevoke · ownerTransition
+ *   The Owner from the chat (his LIVE connector token — the DB proves the Owner from its hash; service role alone cannot):
+ *     ownerDecideFromChat (APPROVED as requested / REJECTED — never a narrowing)
  *
  * Fail closed: an RPC that does not exist yet (migration not applied) → NOT_INSTALLED, never success. A refusal keeps the
  * DB's code. Nothing here approves, grants or forges an Owner identity; there is no generic SQL / table / RPC argument.
  */
 import { randomUUID } from "node:crypto";
-import { createBrainOwnerStore, createBrainServiceStore, type BrainRpcClient, type BrainWrite } from "@/lib/brain-store";
+import { createBrainOwnerStore, createBrainOwnerTokenStore, createBrainServiceStore, type BrainRpcClient, type BrainWrite } from "@/lib/brain-store";
 import {
   buildTrackingPayload, checkContent, checkIntel, checkLinks, checkObservationBatch, checkTransition, ownerObservationsSummaryHe, trackingSummaryHe,
 } from "@/lib/partner/brain/requests";
@@ -39,6 +41,8 @@ const CODE_HE: Record<string, string> = {
   SEEN_HASH_MISMATCH: "הבקשה השתנתה מאז שהוצגה — רענן ואשר שוב.", ALREADY_DECIDED: "כבר הוחלט על הבקשה.", REQUEST_EXPIRED: "פג תוקף הבקשה.",
   NOT_NARROWING: "אישור יכול רק לצמצם את הבקשה, לא להרחיב.", STALE_BASE: "ההרשאה שהבקשה מחליפה כבר השתנתה — צריך בקשה חדשה.",
   BACKDATED_AUTHORIZATION: "תאריך ההתחלה כבר עבר — אשר מהיום.", REQUEST_KEY_REUSED: "מפתח הבקשה כבר שימש לתוכן אחר.",
+  OWNER_TOKEN_REQUIRED: "אין הוכחה שהבוס עצמו מחובר — לא הוחלט כלום.", OWNER_TOKEN_INVALID: "החיבור של Claude לא בתוקף (פג / בוטל) — צריך להתחבר מחדש. לא הוחלט כלום.",
+  OWNER_TOKEN_SCOPE: "החיבור לא כולל את הרשאת המוח (partner:observe) — לא הוחלט כלום.", REQUEST_NOT_FOUND: "הבקשה לא נמצאה.",
   RESOURCE_NOT_ACTIVE: "המקור הוצא משימוש.", ENTITY_NOT_FOUND: "הישות לא נמצאה ב-Redbloods.", REASON_REQUIRED: "צריך סיבה.",
 };
 const heOf = (code: string) => CODE_HE[code] ?? "הכתיבה נדחתה.";
@@ -166,6 +170,22 @@ export async function ownerDecide(sessionClient: BrainRpcClient, input: { reques
   }
   const w = await createBrainOwnerStore(sessionClient).decide({ requestId: input.requestId, decision: input.decision, seenHash: input.seenHash, approved, reasonHe: reason });
   return fromWrite(w, input.decision === "APPROVED" ? "אושר." : "נדחה.");
+}
+
+/**
+ * The Owner decides a T2 request FROM THE CHAT. `client` is the connector's service client — it has no power of its own
+ * here: owner_approval_decide_mcp proves the Owner in the DB from `tokenHash` (his live connector token). The caller
+ * (lib/partner/brain/server.ts) has already checked the presentation + the Owner's words; APPROVED = exactly as requested.
+ */
+export async function ownerDecideFromChat(client: BrainRpcClient, input: { tokenHash: unknown; requestId: unknown; decision: unknown; seenHash: unknown; reasonHe?: unknown }): Promise<BrainResult> {
+  if (!(typeof input.tokenHash === "string" && /^[0-9a-f]{64}$/.test(input.tokenHash))) return { status: "REFUSED", code: "OWNER_TOKEN_REQUIRED", detail: "no token hash", messageHe: heOf("OWNER_TOKEN_REQUIRED") };
+  if (!isId(input.requestId)) return invalid(["requestId: uuid"]);
+  if (input.decision !== "APPROVED" && input.decision !== "REJECTED") return invalid(["decision: APPROVED | REJECTED"]);
+  if (!(typeof input.seenHash === "string" && /^[0-9a-f]{64}$/.test(input.seenHash))) return invalid(["seenHash: the hash that was shown"]);
+  const reason = typeof input.reasonHe === "string" && input.reasonHe.trim() ? input.reasonHe.trim().slice(0, 300) : null;
+  const w = await createBrainOwnerTokenStore(client).decide({ tokenHash: input.tokenHash, requestId: input.requestId, decision: input.decision, seenHash: input.seenHash, reasonHe: reason });
+  if (w.status === "NOT_INSTALLED") return { status: "NOT_INSTALLED", messageHe: "אישור מהצ'אט עוד לא מותקן במסד הנתונים — לא הוחלט כלום. אפשר לאשר במסך \"אישורים לסאני\"." };
+  return fromWrite(w, input.decision === "APPROVED" ? "אושר — בדיוק כפי שהבקשה הוצגה." : "נדחה.");
 }
 
 export async function ownerRevoke(sessionClient: BrainRpcClient, input: { authorizationId: unknown; reasonHe: unknown }): Promise<BrainResult> {

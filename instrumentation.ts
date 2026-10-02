@@ -21,7 +21,7 @@ export async function register() {
     // Universal Action Layer: the ONE extra outgoing write — POST the MAIN service's internal action endpoint, only when the act switch is on.
     const { internalActUrl } = await import("@/lib/partner/act/remote");
     const actUrl = process.env.PARTNER_MCP_ACT_ENABLED === "true" ? internalActUrl(process.env) : null;
-    installMcpOnlyFetchGuard(process.env.SUPABASE_URL ?? "https://invalid.invalid", (m) => console.warn(m), { ownerContextAppend: process.env.PARTNER_MCP_ANSWER_ENABLED === "true", ownerKnowledgeAppend: process.env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true", brainRpc: process.env.PARTNER_MCP_OBSERVE_ENABLED === "true", internalReadUrls: calendarUrl ? [calendarUrl] : [], internalActUrls: actUrl ? [actUrl] : [] });
+    installMcpOnlyFetchGuard(process.env.SUPABASE_URL ?? "https://invalid.invalid", (m) => console.warn(m), { ownerContextAppend: process.env.PARTNER_MCP_ANSWER_ENABLED === "true", ownerKnowledgeAppend: process.env.PARTNER_MCP_KNOWLEDGE_ENABLED === "true", brainRpc: process.env.PARTNER_MCP_OBSERVE_ENABLED === "true", ownerDecideRpc: process.env.PARTNER_MCP_OWNER_DECIDE_ENABLED === "true", internalReadUrls: calendarUrl ? [calendarUrl] : [], internalActUrls: actUrl ? [actUrl] : [] });
     console.log("[mcp-only] connector-only mode — no schedulers started");
     return;
   }

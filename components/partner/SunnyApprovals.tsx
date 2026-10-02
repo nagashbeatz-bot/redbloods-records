@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Req = { id: string; kind: string; summaryHe: string; riskHe: string; payload: Record<string, unknown>; payloadHash: string; createdAt: string; expiresAt: string | null; state: string; decision: { decision: string; reasonHe: string | null; createdAt: string } | null };
+type Req = { id: string; kind: string; summaryHe: string; riskHe: string; payload: Record<string, unknown>; payloadHash: string; createdAt: string; expiresAt: string | null; state: string; decision: { decision: string; reasonHe: string | null; createdAt: string; decidedRole?: string } | null };
 type Auth = { id: string; purposeHe: string; purposeKind: string; observationFamilies: string[]; sourceKinds: string[]; entityKeys: string[]; resourceIds: string[]; insightsAllowed: boolean; recommendationsAllowed: boolean; maxObservationsPerDay: number | null; validFrom: string; validUntil: string | null; state: string };
 type Rec = { id: string; recordType: string; titleHe: string; body: Record<string, unknown>; area: string; confidence: string; status: string | null; createdAt: string };
 type View = { status: "OK"; t2Installed: boolean; todayIL: string; pending: Req[]; decided: Req[]; authorizations: Auth[]; records: Rec[]; counts: { resources: number; observations: number } } | { status: "NOT_INSTALLED" } | { status: "ERROR" } | { status: "LOADING" };
@@ -113,7 +113,7 @@ export default function SunnyApprovals() {
 
       {view.decided.length ? <>
         <h2 style={{ fontSize: 18, margin: "18px 0 8px" }}>הוחלט לאחרונה</h2>
-        {view.decided.map((q) => <div key={q.id} style={{ ...card, opacity: 0.75 }}>{q.summaryHe.split("\n")[0]} · {STATE_HE[q.state] ?? q.state}{q.decision?.reasonHe ? ` — ${q.decision.reasonHe}` : ""}</div>)}
+        {view.decided.map((q) => <div key={q.id} style={{ ...card, opacity: 0.75 }}>{q.summaryHe.split("\n")[0]} · {STATE_HE[q.state] ?? q.state}{q.decision?.decidedRole === "mcp_owner_token" ? " (מהצ'אט עם סאני)" : ""}{q.decision?.reasonHe ? ` — ${q.decision.reasonHe}` : ""}</div>)}
       </> : null}
       <p style={{ fontSize: 12, opacity: 0.6 }}>במעקב: {view.counts.resources} מקורות · {view.counts.observations} מדידות נוכחיות.</p>
     </div>

@@ -11,7 +11,7 @@
  * no CORS headers (bearer-only, never a browser JSON API).
  */
 import { hasActScope, hasAnswerScope, hasKnowledgeScope, hasObserveScope, SUPPORTED_PROTOCOL_VERSIONS, type McpConfig } from "./config";
-import { OBSERVE_TOOL, OBSERVE_TOOL_DEFINITION, OBSERVE_WRITE_OPS, validateObserveInput, type ObserveOp } from "./observe-tool";
+import { OBSERVE_TOOL, OBSERVE_WRITE_OPS, OWNER_DECIDE_OPS, observeToolDefinition, validateObserveInput, type ObserveOp } from "./observe-tool";
 import { ACT_TOOL_DEFINITIONS, ACT_TOOL_NAMES, HISTORY_OUTCOMES, validateActInput, type ActToolName } from "@/lib/partner/act/mcp-tools";
 import { sha256Hex } from "./crypto";
 import { insufficientScopeResponse, type BearerResult, type HttpOut, type Principal } from "./oauth";
@@ -112,7 +112,11 @@ export interface McpActDeps {
 /** Sunny Brain (bound only where the observe switch is on): ONE typed op of the Brain writer (lib/writes/brain.ts). */
 export interface McpObserveDeps {
   limiter: SlidingWindowLimiter;
-  call(op: ObserveOp, input: Record<string, unknown>, actor: { userId: string; clientId: string }): Promise<Record<string, unknown>>;
+  /**
+   * actor.tokenId / actor.tokenHash are passed ONLY for present_request / decide_request (owner-decide switch on): the
+   * presentation is bound to the token, and the DB proves the Owner from the hash. Never logged, audited or returned.
+   */
+  call(op: ObserveOp, input: Record<string, unknown>, actor: { userId: string; clientId: string; tokenId?: string; tokenHash?: string }): Promise<Record<string, unknown>>;
 }
 
 export interface McpDeps {
@@ -225,7 +229,7 @@ export async function handleMcpHttp(req: McpHttpRequest, deps: McpDeps): Promise
     case "tools/list":
       // The answer tool is listed ONLY when the switch is on, it is bound, AND this token holds partner:answer.
       // The five action tools are listed ONLY when the act switch is on, it is bound, AND this token holds partner:act.
-      return finish(rpcResult(id, { tools: [...buildToolDefinitions(deps.gateway.capabilityIndex(), { answer: answerAvailable(deps) && hasAnswerScope(p.scope), knowledge: knowledgeAvailable(deps) && hasKnowledgeScope(p.scope) }), ...(observeAvailable(deps) && hasObserveScope(p.scope) ? [OBSERVE_TOOL_DEFINITION] : []), ...(actAvailable(deps) && hasActScope(p.scope) ? ACT_TOOL_DEFINITIONS : [])] }), {});
+      return finish(rpcResult(id, { tools: [...buildToolDefinitions(deps.gateway.capabilityIndex(), { answer: answerAvailable(deps) && hasAnswerScope(p.scope), knowledge: knowledgeAvailable(deps) && hasKnowledgeScope(p.scope) }), ...(observeAvailable(deps) && hasObserveScope(p.scope) ? [observeToolDefinition(deps.config.ownerDecideEnabled === true)] : []), ...(actAvailable(deps) && hasActScope(p.scope) ? ACT_TOOL_DEFINITIONS : [])] }), {});
     case "tools/call":
       return callTool(id, (m.params ?? {}) as Record<string, unknown>, p, audit, finish, deps);
     default:
@@ -476,6 +480,8 @@ async function callObserveTool(id: string | number, params: Record<string, unkno
   const v = validateObserveInput(params.arguments);
   const fp = sha256Hex(JSON.stringify(params.arguments ?? null));
   if (!v.ok) return finish(rpcError(id, -32602, `invalid arguments (${v.code})`), { tool: null, method: "observe/invalid", input_fingerprint: fp, input_key: null, status: "REJECTED", error_category: v.code });
+  const decideOp = OWNER_DECIDE_OPS.includes(v.op);
+  if (decideOp && deps.config.ownerDecideEnabled !== true) return finish(rpcError(id, -32602, "invalid arguments (UNKNOWN_OP)"), { tool: null, method: "observe/invalid", input_fingerprint: fp, input_key: null, status: "REJECTED", error_category: "UNKNOWN_OP" });
   const base: Partial<AuditRow> = { tool: null, method: `observe/${v.op}`, input_fingerprint: fp, input_key: null };
   if (!hasObserveScope(p.scope)) return finish(insufficientScopeResponse(deps.config), { ...base, status: "REJECTED", http_status: 403, error_category: "INSUFFICIENT_SCOPE" });
   const now = deps.nowMs();
@@ -488,7 +494,8 @@ async function callObserveTool(id: string | number, params: Record<string, unkno
   }
   let payload: Record<string, unknown>;
   try {
-    payload = await withTimeout(ob.call(v.op, v.input, { userId: p.userId, clientId: p.clientId }), deps.config.toolTimeoutMs);
+    const actor = decideOp ? { userId: p.userId, clientId: p.clientId, tokenId: p.tokenId, tokenHash: p.tokenHash } : { userId: p.userId, clientId: p.clientId };
+    payload = await withTimeout(ob.call(v.op, v.input, actor), deps.config.toolTimeoutMs);
   } catch (e) {
     const timeout = e instanceof TimeoutError;
     const write = (OBSERVE_WRITE_OPS as readonly string[]).includes(v.op) || v.op.startsWith("request_");

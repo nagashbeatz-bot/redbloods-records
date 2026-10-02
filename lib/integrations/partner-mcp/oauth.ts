@@ -237,7 +237,12 @@ export function insufficientScopeResponse(config: McpConfig): HttpOut {
   };
 }
 
-export interface Principal { tokenId: string; clientId: string; userId: string; scope: string }
+/**
+ * tokenHash = sha256 hex of the bearer this request carried. Used ONLY as the Owner proof the DATABASE checks itself
+ * (owner_approval_decide_mcp → partner_mcp_check_access) when the Owner decides a T2 request from the chat. Never
+ * logged, audited, returned or stored by the connector (the DB already holds only hashes).
+ */
+export interface Principal { tokenId: string; clientId: string; userId: string; scope: string; tokenHash?: string }
 export type BearerResult = { ok: true; principal: Principal } | { ok: false; status: 401 | 403; category: string; headers: Record<string, string>; body: string };
 
 export async function authenticateBearer(authorization: string | null, deps: OAuthDeps): Promise<BearerResult> {
@@ -250,10 +255,11 @@ export async function authenticateBearer(authorization: string | null, deps: OAu
   if (!authorization) return deny(401, "MISSING_TOKEN", null);
   const m = /^Bearer ([A-Za-z0-9_-]{20,200})$/.exec(authorization);
   if (!m || !m[1].startsWith(TOKEN_PREFIX.access)) return deny(401, "MALFORMED_TOKEN", "invalid_token");
-  const r = await deps.store.checkAccess(sha256Hex(m[1]));
+  const tokenHash = sha256Hex(m[1]);
+  const r = await deps.store.checkAccess(tokenHash);
   if (r.result === "NOT_FOUND") return deny(401, "UNKNOWN_TOKEN", "invalid_token");
   if (r.result !== "VALID") return deny(401, `TOKEN_${r.result}`, "invalid_token");
   if (canonicalUrl(r.resource) !== config.resource) return deny(401, "WRONG_AUDIENCE", "invalid_token");
   if (!r.scope.split(" ").includes(MCP_SCOPE)) return deny(403, "INSUFFICIENT_SCOPE", "insufficient_scope");
-  return { ok: true, principal: { tokenId: r.tokenId, clientId: r.clientId, userId: r.userId, scope: r.scope } };
+  return { ok: true, principal: { tokenId: r.tokenId, clientId: r.clientId, userId: r.userId, scope: r.scope, tokenHash } };
 }
