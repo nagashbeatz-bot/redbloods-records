@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.02-84";
+export const SYSTEM_BASELINE_VERSION = "2026.10.02-85";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -695,9 +695,10 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     canonicalSource: "Views over company state (no own data).",
     entityTypes: [],
     support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
-    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view", "needs_me"], learnKinds: [], proposableActions: [],
+    states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view", "needs_me", "coo"], learnKinds: [], proposableActions: [],
     approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
     rules: [
+      R("SUNNY_COO_V1", "OWNER_POLICY", "Sunny COO V1 (Owner mission 2026-10-02): capability coo — operational readiness (shoot / show / release / important session / meeting / client deadline; per dimension money, people, creative, logistics, equipment / assets, dependencies, after, owner decision → מוכן / דורש תשומת לב / חסום / לא ידוע, derived, never stored), project momentum (last recorded progress, next step, scheduled?, who holds it — no age threshold: nothing is 'stuck' because time passed), label-artist care (the canonical roster only; DJ / team never), schedule health (real conflicts + patterns; busy alone is never a finding; never moves or writes anything), money readiness (the ONE project money computation — no new formula; no cash balance claimed), executive priorities (≤5, a display limit; evidence, not age). CONFIRMED ≠ NOT_SEEN ('אני לא רואה', never 'אין') ≠ INSIGHT (hypothesis) ≠ RECOMMENDATION (executes nothing). Interaction time only: no cron, push, alert, task, calendar write or background analysis. Internal heuristics (INTERNAL_COO_HEURISTICS: 14-day horizon, 7-day week, an 8-hour 'full day', a 3-day stretch) are engineering windows, never Owner policy."),
       R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods)."),
       R("ONE_SUNNY", "CANONICAL_BUSINESS_RULE", "The company view composes every domain view; attention = every domain signal classified by nature + dimensions + whose move, deduplicated by concept — no score, no ranking; the order is a fixed presentation order."),
       R("DASHBOARD_V2_IS_MAIN", "OWNER_POLICY", "Owner decision 2026-10-01: /dashboard (the sidebar 'דשבורד', the Owner's landing, the app start URL) renders Dashboard V2. The previous dashboard is kept intact at /dashboard-legacy as a technical backup (not linked); /dashboard-v2 is a temporary alias of the same page; /dashboard-old is a different, older view and unchanged."),
@@ -705,7 +706,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("PROJECT_BALL_STATUS_VS_EVIDENCE", "CONFLICT", "project_view projects the engineer ball from the work STATUS (AT_ENGINEER when נשלח / בתהליך, ENGINEER_RETURNED_WORK when חזר) while engineerHandoff reads uploads vs feedback. needs_me uses the evidence ball (also for an interpretation's freshness); project_memory keeps canonicalBallOf over project_view. Reported, not unified — a separate task 'Canonical engineer ball consistency' (Owner decision 2026-10-01) will make one definition for Project View, Needs Me, Sunny and Project Memory."),
       R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
     ],
-    sideEffects: [], limitationsHe: ["'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
+    sideEffects: [], limitationsHe: ["סאני COO: מוכנות מבוססת רק על מה שרשום. מה שלא רשום (אישורי צוות, רשימת ציוד להפקה, יתרת מזומנים) היא אומרת 'לא רואה', לא 'אין'. אין ספי זמן כמדיניות ואין מכסת סשנים. היא לא מזיזה, לא יוצרת ולא שולחת כלום.", "'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
     surfaces: S(["/", "/dashboard", "/dashboard-legacy", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo"]),
   },
   {
@@ -1090,4 +1091,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.02-82", date: "2026-10-02", domain: "SUNNY_CORE", dimension: "read", from: "PARTIAL", to: "PARTIAL", noteHe: "מחקר דרך הדפדפן ובדיקות חוזרות: סאני בודקת עמודים ציבוריים רק כשביקשת או אישרת, שומרת מדידה רק תחת הרשאת מעקב פעילה, ויודעת לענות 'מתי בדקנו לאחרונה, מה היה אז, מה השתנה, והאם הנתון ישן' (brain mode research / series). כשזה חשוב עכשיו (ריליס קרוב, תובנה שנשענת על נתון ישן, אתה מדבר על האמן) היא מציעה 'רוצה שאבדוק שוב?' ומחכה לתשובה — בלי פוש, בלי תזכורת, בלי בדיקה ברקע. בלי API לפלטפורמות." },
   { version: "2026.10.02-83", date: "2026-10-02", domain: "SUNNY_CORE", dimension: "read", from: "PARTIAL", to: "PARTIAL", noteHe: "תיקון: אין מספרים קבועים כמדיניות. הצעת בדיקה חוזרת נשענת על ההקשר — הריליס התקדם אחרי הבדיקה האחרונה, תובנה פתוחה נשענת על הנתון, אתה מדבר על האמן — הצעה אחת לכל היותר, וסאני רואה אותה כבר בדף האמן / DJ / לקוח (partner_entity) בלי שתבקש research. נתון מוצג כ'היום' או 'בדיקה קודמת' עם התאריך." },
   { version: "2026.10.02-84", date: "2026-10-02", domain: "SUNNY_CORE", dimension: "learn", from: "PARTIAL", to: "PARTIAL", noteHe: "אישור מהצ'אט (בנוי, כבוי): תוכל לאשר / לדחות בקשה של סאני ישירות בשיחה — סאני מציגה בקשה אחת, אתה עונה 'מאשר' או 'לא מאשר', ומסד הנתונים מוודא בעצמו שזה החיבור הפעיל שלך (לא סאני ולא מפתח השירות). דורש את המיגרציה t2-chat (מוכנה, לא הורצה — מחכה לאישורך) והפעלת מתג. אישור חלקי נשאר במסך אישורים לסאני; שם גם מסומן מה הוחלט מהצ'אט." },
+  { version: "2026.10.02-85", date: "2026-10-02", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני כ-COO: 'מה הכי חשוב לסגור עכשיו?' (עד 5 דברים), 'אנחנו מוכנים לצילום?' (מאושר / לא רואה / פתוח / חסום לפי כסף, צוות, קריאייטיב, לוגיסטיקה, ציוד ותלויות), תנועה של פרויקטים ואמני לייבל (התקדמות אחרונה, צעד הבא, אצל מי), בריאות הלו״ז השבוע (חפיפות אמיתיות, לא 'עמוס'), ומוכנות כסף לפי החישוב הקנוני. קריאה בלבד — לא משנה יומן, לא יוצרת משימות, לא שולחת כלום." },
 ];

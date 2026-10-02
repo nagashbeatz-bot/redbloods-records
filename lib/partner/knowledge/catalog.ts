@@ -30,6 +30,7 @@ import { mixPortfolio, mixView } from "./capabilities/mix-deep";
 import { videoPortfolio, videoView } from "./capabilities/video-deep";
 import { companyView } from "./capabilities/company-view";
 import { needsMe } from "./capabilities/needs-me";
+import { coo } from "./capabilities/coo";
 import { sessionView, taskView, meetingView, albumView, deliveryView, socialView, storageView, reportsView, sunnySelf } from "./capabilities/full-brain";
 import { actionRegistryCap, actionTargetsCap, nextStepsCap } from "./capabilities/act";
 
@@ -68,7 +69,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   victorView, victorPortfolio,
   mixView, mixPortfolio,
   videoView, videoPortfolio,
-  companyView, needsMe,
+  companyView, needsMe, coo,
   sessionView, taskView, meetingView, albumView, deliveryView, socialView, storageView, reportsView, sunnySelf,
   actionRegistryCap, nextStepsCap, actionTargetsCap,
 ];
