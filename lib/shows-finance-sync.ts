@@ -528,7 +528,10 @@ export async function cancelShowFinance(show: Show): Promise<void> {
 export async function applyShowClosureStatuses(
   show: Show,
   t: { incomeReceived: boolean; djPaid: boolean },
-): Promise<void> {
+): Promise<string[]> {
+  // Owner decision 2026-10-03: a REAL DJ_FEE → שולם transition notifies the DJ (lib/dj-payment-notify — the one shared point).
+  // The returned strings are warnings about that side effect (a push that did not go out); the money is never touched by it.
+  const warnings: string[] = [];
   {
     if (t.incomeReceived) {
       const money = await showMoneyForShow(show);
@@ -540,13 +543,23 @@ export async function applyShowClosureStatuses(
       if (!id || !flag) continue;
       const row = await readFeeRow(id);
       const next = closureFeeStatus(row?.status, flag);
-      if (row && next !== null && next !== row.status) await patchTransaction(id, { payment_status: next });
+      if (row && next !== null && next !== row.status) {
+        await patchTransaction(id, { payment_status: next });
+        if (next === "שולם") {
+          // a notification problem (never a money write): a failed module load is only a warning in the log
+          const n = await import("@/lib/dj-payment-notify")
+            .then((m) => m.notifyDjFeePaid({ txId: id, before: row.status }))
+            .catch((err) => { console.warn("[dj-payment] notifier unavailable (the payment is unaffected):", err instanceof Error ? err.message : err); return null; });
+          if (n && n.kind === "attempted" && n.warning) warnings.push(n.warning);
+        }
+      }
     }
     if (t.incomeReceived) {
       const fresh = await showMoneyForShow(show);
       await updateShowRow(show.id, { payment_status: fresh.derivedPaymentStatus ?? show.payment_status, advance_payment: fresh.received }, "עדכון מצב התשלום בסגירה");
     }
   }
+  return warnings;
 }
 
 /**

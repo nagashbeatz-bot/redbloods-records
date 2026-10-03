@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.03-86";
+export const SYSTEM_BASELINE_VERSION = "2026.10.03-87";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1093,4 +1093,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.02-84", date: "2026-10-02", domain: "SUNNY_CORE", dimension: "learn", from: "PARTIAL", to: "PARTIAL", noteHe: "אישור מהצ'אט (בנוי, כבוי): תוכל לאשר / לדחות בקשה של סאני ישירות בשיחה — סאני מציגה בקשה אחת, אתה עונה 'מאשר' או 'לא מאשר', ומסד הנתונים מוודא בעצמו שזה החיבור הפעיל שלך (לא סאני ולא מפתח השירות). דורש את המיגרציה t2-chat (מוכנה, לא הורצה — מחכה לאישורך) והפעלת מתג. אישור חלקי נשאר במסך אישורים לסאני; שם גם מסומן מה הוחלט מהצ'אט." },
   { version: "2026.10.02-85", date: "2026-10-02", domain: "COMPANY_OVERVIEW", dimension: "read", from: "FULL", to: "FULL", noteHe: "סאני כ-COO: 'מה הכי חשוב לסגור עכשיו?' (עד 5 דברים), 'אנחנו מוכנים לצילום?' (מאושר / לא רואה / פתוח / חסום לפי כסף, צוות, קריאייטיב, לוגיסטיקה, ציוד ותלויות), תנועה של פרויקטים ואמני לייבל (התקדמות אחרונה, צעד הבא, אצל מי), בריאות הלו״ז השבוע (חפיפות אמיתיות, לא 'עמוס'), ומוכנות כסף לפי החישוב הקנוני. קריאה בלבד — לא משנה יומן, לא יוצרת משימות, לא שולחת כלום." },
   { version: "2026.10.03-86", date: "2026-10-03", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "סגירת הופעה ו-MARK_SHOW_FEE_PAID לא משלמים לאמן (ARTIST_PAYOUT_VIA_BALANCE): זכאות האמן נכנסת למאזן כשההופעה בוצעה, והתשלום לאמן נרשם רק במאזן האמן. CLOSE_SHOW בלי artistPaid / artistPaidDate; MARK_SHOW_FEE_PAID ל-DJ בלבד. הופעה בתשלום עם כסף פתוח לא עוברת ל'בוצע' בלי סגירה (409 CLOSE_REQUIRED) — גם ביצירה. אין capability חדשה ואין שינוי DB." },
+  { version: "2026.10.03-87", date: "2026-10-03", domain: "SHOWS", dimension: "execute", from: "PARTIAL", to: "PARTIAL", noteHe: "תשלום ל-DJ: מעבר אמיתי של DJ_FEE ל'שולם' (סגירת הופעה / MARK_SHOW_FEE_PAID ל-DJ / עריכה בכספים) שולח ל-CLEANTONE פוש 'התשלום הועבר' פעם אחת לכל תשלום, ורק אחרי שהפוש אליו הגיע — אישור לבעלים. כשל בפוש לא נוגע בכסף (אזהרה + log). חוזה חדש P_DJ_PAYMENT_PAID; בלי capability חדשה ובלי שינוי DB." },
 ];

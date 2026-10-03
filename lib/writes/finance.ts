@@ -113,6 +113,15 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
     const r = await supabase.from("transactions").update(patch).eq("id", id).select().single();
     if (r.error) throw new Error(r.error.message);
     data = r.data as Record<string, unknown>;
+    // Owner decision 2026-10-03: a Finance edit that moves an expense to שולם may be the DJ's payment (a show's DJ_FEE row) —
+    // the ONE shared notification point decides (a real not-paid → שולם transition of a DJ_FEE row only; never throws,
+    // never touches the money, a push problem is only logged).
+    if (patch.payment_status === "שולם" && String(curRow.payment_status ?? "") !== "שולם" && String(curRow.type ?? "") === "expense") {
+      try {
+        const { notifyDjFeePaid } = await import("@/lib/dj-payment-notify");
+        await notifyDjFeePaid({ txId: id, before: String(curRow.payment_status ?? "") });
+      } catch (e) { console.error("[finance] DJ payment notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
+    }
   }
   // business unit (task 4): an explicit choice is the Owner's decision; otherwise only a RULE / unclassified unit is
   // re-derived after a relevant field change — OWNER_DECISION / HISTORICAL_APPROVED are never overwritten

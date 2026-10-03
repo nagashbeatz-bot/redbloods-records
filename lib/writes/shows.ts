@@ -315,10 +315,12 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
         if (body.closeShow && typeof body.closeShow === "object") {
           const fresh = await getShow(id);
           if (fresh) {
-            await fin.applyShowClosureStatuses(fresh, {
+            const closureWarnings = await fin.applyShowClosureStatuses(fresh, {
               incomeReceived: !!body.closeShow.incomeReceived,
               djPaid:         !!body.closeShow.djPaid,
             });
+            // a DJ push that did not go out is surfaced (the DJ_FEE stays שולם; the money is never undone by it)
+            if (closureWarnings.length) financeWarning = [financeWarning, ...closureWarnings].filter(Boolean).join(" · ");
 
             // ── Artist balance ledger: realize income the moment the show is
             // actually performed and its split confirmed — independent of whether
@@ -639,7 +641,7 @@ export async function showFeeRows(show: Pick<Show, "id" | "linked_dj_expense_tra
 export type SetShowFeePaidResult =
   | { kind: "not_found" }
   | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB" | "NO_AGREEMENT" | "UNPAY_VIA_LEDGER" | "PAYMENT_INCOMPLETE" | "DUPLICATE" | "NOT_ILS" | "ARTIST_PAYOUT_VIA_BALANCE"; messageHe: string }
-  | { kind: "ok"; transactionId: string; before: string | null; after: string };
+  | { kind: "ok"; transactionId: string; before: string | null; after: string; pushWarning?: string };
 
 /**
  * The explicit "the DJ was paid" (or the explicit undo back to "צפוי") on the show's EXISTING DJ fee row (the artist is
@@ -676,5 +678,14 @@ export async function setShowFeePaid(showId: string, role: unknown, paid: unknow
   if (error) throw new Error(error.message);
   // Back to "צפוי": the row is unpaid again, so the show's own rule re-prices it (the sync never touches a paid row)
   if (!paid) { const { syncShowFinance } = await import("@/lib/shows-finance-sync"); await syncShowFinance(show); }
-  return { kind: "ok", transactionId: row.id, before: row.status, after: String(upd.payment_status) };
+  // Owner decision 2026-10-03: a REAL DJ_FEE → שולם transition notifies the DJ (the one shared point; never undoes the payment)
+  let pushWarning: string | undefined;
+  if (paid) {
+    try {
+      const { notifyDjFeePaid } = await import("@/lib/dj-payment-notify");
+      const n = await notifyDjFeePaid({ txId: row.id, before: row.status });
+      if (n.kind === "attempted" && n.warning) pushWarning = n.warning;
+    } catch (e) { console.error("[shows] DJ payment notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
+  }
+  return { kind: "ok", transactionId: row.id, before: row.status, after: String(upd.payment_status), ...(pushWarning ? { pushWarning } : {}) };
 }

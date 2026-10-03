@@ -159,7 +159,7 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
       { item: "calendar on that date", knownFrom: "LIVE_CALENDAR" },
     ],
     downstream: ["a confirmed show creates 3 finance rows in the show currency (expected balance, DJ fee, artist fee = half of net); money received = payment rows; DJ / artist fees are paid only explicitly", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע writes the artist ledger (frozen)"],
-    notifications: ["P_SHOW_TO_ARTIST — Owner presses 'שלח' to the artist (manual)", "P_SHOW_TO_DJ — Owner presses 'שלח' to the DJ (manual)", "P_DJ_CONFIRMED — when the DJ confirms (automatic, to the Owner)"],
+    notifications: ["P_SHOW_TO_ARTIST — Owner presses 'שלח' to the artist (manual)", "P_SHOW_TO_DJ — Owner presses 'שלח' to the DJ (manual)", "P_DJ_CONFIRMED — when the DJ confirms (automatic, to the Owner)", "P_DJ_PAYMENT_PAID — when the DJ_FEE becomes שולם (automatic, to the DJ; then a confirmation to the Owner only after the DJ was reached)"],
     actions: ["CREATE_SHOW — FUTURE_PRIMITIVE_REQUIRED (the Owner creates it in the dashboard today)", "UPDATE_SHOW_STATUS — FUTURE_PRIMITIVE_REQUIRED", "ASSIGN_SHOW_DJ — FUTURE_PRIMITIVE_REQUIRED", "NOTIFY_ARTIST_DJ — FUTURE_PRIMITIVE_REQUIRED (Sunny may ASK whether to send; never sends)", "CLOSE_SHOW — FUTURE_PRIMITIVE_REQUIRED (financial + strong confirmation)"] },
   { event: "NEW_PROJECT", titleHe: "פרויקט חדש", source: "SYSTEM_CONTRACT",
     required: [

@@ -95,7 +95,7 @@ export const DJ_MODEL = {
   default: "NO default DJ anywhere — never preselected; a PAID show saved without a DJ creates a 'close a DJ' task (the new-show form); an unpaid collaboration (deal type UNPAID_COLLAB) does not — it needs no DJ by default, and an explicitly chosen DJ is handled as for any show (Owner decision 2026-09-27)",
   otherDjs: "any crew client can be the DJ; only CLEANTONE has confirmation, a portal and push",
   confirmation: "becoming CLEANTONE → ממתין לאישור (null if done / cancelled); changing away → null; NOT reset by date / time / place change or cancellation",
-  fee: "dj_fee (default 500) → a DJ expense row, created even with no DJ chosen; DJ paid state = that row's status — set only explicitly (close flag / MARK_SHOW_FEE_PAID / Finance), never from the client payment (A1)",
+  fee: "dj_fee (default 500) → a DJ expense row, created even with no DJ chosen; DJ paid state = that row's status — set only explicitly (close flag / MARK_SHOW_FEE_PAID / Finance), never from the client payment (A1). A REAL DJ_FEE → שולם transition (the close dialog, MARK_SHOW_FEE_PAID DJ, or a Finance edit) pushes DJ CLEANTONE once per payment and, only after that push was delivered, confirms to the Owner (P_DJ_PAYMENT_PAID); a push failure never touches the money",
   portal: "CLEANTONE sees his non-cancelled shows with name / artist / date / time / place / DJ fee (with currency) / HIS OWN DJ-fee payment status / confirmation; can confirm / unconfirm; 'upcoming' has no date or status filter",
   portalBug: "FIXED (A1, 2026-09-27): the DJ portal's payment pill shows HIS OWN DJ_FEE row status (never the client's payment); djFee carries its currency",
   ownerKnowledge: "Owner: CLEANTONE is the label DJ and plays MOST label shows — a frequency, never an assignment rule",
@@ -247,7 +247,7 @@ export const SHOW_INTEGRITY = {
 /** Server-side show / DJ / ledger / notify files — a change must review this contract (internal). */
 export const SHOW_REVIEWED_FILES = [
   "lib/shows-store.ts", "lib/shows-types.ts", "lib/shows-finance-sync.ts", "lib/artist-balance-show-sync.ts", "lib/artist-balance-show-sync-pure.ts", "lib/artist-balance-show-close-sync.ts",
-  "lib/show-notify.ts", "lib/show-notify-pure.ts", "lib/dj-show-notify.ts", "lib/dj-confirm-notify.ts", "lib/show-quote-followup.ts", "lib/show-cancel-tasks.ts", "lib/red-artists/cleantone.ts",
+  "lib/show-notify.ts", "lib/show-notify-pure.ts", "lib/dj-show-notify.ts", "lib/dj-confirm-notify.ts", "lib/dj-payment-notify.ts", "lib/dj-payment-notify-pure.ts", "lib/show-quote-followup.ts", "lib/show-cancel-tasks.ts", "lib/red-artists/cleantone.ts",
   "app/api/shows/route.ts", "app/api/shows/[id]/route.ts",
 ] as const;
 export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
@@ -255,7 +255,7 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/shows-types.ts": "4ff774de1368126c2f9ad65dba06e417a341e452cc75c667a4edd162ab993aa3",
   // 2026-10-03 review (Phase 1, Owner decision): a show never pays the artist (ARTIST_PAYOUT_VIA_BALANCE; applyShowClosureStatuses has no artist flag); the PATCH / POST routes answer partial (502) and CLOSE_REQUIRED / ShowRefusedError (409)
   // 2026-09-29 review (Final Hardening A1–A9): failed money writes fail the operation; unknown rehearsal cost ≠ 0; realized entitlement follows the show; conversion exactly-once; no field / vocabulary / link semantics changed
-  "lib/shows-finance-sync.ts": "baa65cda88eeee8b3b88648ea09814b23eda70131df572515979e71037e7d06a",
+  "lib/shows-finance-sync.ts": "80cba1d248fd9f1f7f9dc2a4e8b8b210a28743e3d007cffb9f97ff9a80bd43f9",
   "lib/artist-balance-show-sync.ts": "578ae5accad84c65e945050a5b343398823751e96325f491a6ae9c906821584c",
   "lib/artist-balance-show-sync-pure.ts": "b695fd979b16ebfc38b97a05517fb34505b31db431dc8a3587bf7c11f712eba3",
   "lib/artist-balance-show-close-sync.ts": "bfd356bfcbd24fa65e7cba2c93603ed07d33e5380e966c87af7b6f4e3ebb433c",
@@ -263,6 +263,9 @@ export const SHOW_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/show-notify-pure.ts": "8cde3a74655cd7d93b2832c9a9fc50212861e8f9ebd7eeafb44881026eefb977",
   "lib/dj-show-notify.ts": "a6b2faf555de56bf78a5b1952ada1fdfe59784242045de62343ad7b2099e6a0c",
   "lib/dj-confirm-notify.ts": "6f2542f077f0ac2fc4ddf64ba068faac9564cfc10e87838cec51a135d8e6c0e6",
+  // 2026-10-03 review (DJ payment push, Owner decision): ONE shared notifier behind the three DJ_FEE → שולם writers; one delivery claim per payment
+  "lib/dj-payment-notify.ts": "c25b7a5c8c23fcf18ce3cde11f0e3712d60b5d64ba173e5c4ff3df68400649f2",
+  "lib/dj-payment-notify-pure.ts": "6727561f2ee958475f0cb7c1cace67572f534ce4c117ef2d319f4a438dbe3f03",
   "lib/show-quote-followup.ts": "4ab61b81333b94c00556e7d188a4adbf5949c4d5ddc7267f62dda697877c3b17",
   "lib/show-cancel-tasks.ts": "b182fd76f8826168b266b667c7b603c340ea7aaa542f048fa39d75a8619da891",
   "lib/red-artists/cleantone.ts": "24c56172b94900b3184debd5abf64576214a852a93e2fe4ff21354e6110902ad",

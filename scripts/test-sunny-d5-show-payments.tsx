@@ -57,7 +57,7 @@ const ML = Module as unknown as { _load(request: string, parent: unknown, isMain
 const orig = ML._load;
 ML._load = function (request: string, parent: unknown, isMain: boolean) {
   if (request === "server-only") return {};
-  if (/lib\/supabase$/.test(request)) return { supabase: { from } };
+  if (/(^|\/)supabase$/.test(request)) return { supabase: { from } };
   return orig.call(this, request, parent, isMain);
 };
 

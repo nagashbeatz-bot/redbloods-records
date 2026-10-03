@@ -494,6 +494,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -545,6 +546,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -594,6 +596,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2149,6 +2152,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2216,6 +2220,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2265,6 +2270,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2314,6 +2320,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2363,6 +2370,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2412,6 +2420,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2478,6 +2487,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": []
@@ -2495,6 +2505,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2561,6 +2572,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2610,6 +2622,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2660,6 +2673,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2710,6 +2724,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2760,6 +2775,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "GOOGLE_TASKS",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -2865,7 +2881,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "FINANCE",
    "LEDGER",
-   "PUSH"
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "addToCalendar",
@@ -2903,7 +2920,8 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "FINANCE",
    "LEDGER",
-   "PUSH"
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "addToCalendar",
@@ -3009,7 +3027,9 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
   "effects": [
    "DELETION",
    "FINANCE",
-   "LEDGER"
+   "LEDGER",
+   "PUSH",
+   "SETTINGS"
   ],
   "fields": [
    "amount",
@@ -3866,6 +3886,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "FINANCE",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -3910,6 +3931,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "FINANCE",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
@@ -3957,6 +3979,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "DELETION",
    "FINANCE",
    "LEDGER",
+   "PUSH",
    "SETTINGS"
   ],
   "fields": [
