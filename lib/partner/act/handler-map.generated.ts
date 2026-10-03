@@ -3039,7 +3039,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "advance_date",
    "advance_payment",
    "artist",
-   "artistPaidDate",
    "artist_client_id",
    "artist_fee",
    "booker_client_id",
@@ -3071,7 +3070,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "PATCH"
   ],
   "getWrites": false,
-  "sha256": "99028c8731059a62940ffccb4b54d965efda2e492adbae2d7122ba95585c7be0",
+  "sha256": "c0a869571a99fe4ce09a6f782b251a1f82e4df6c2f1e715a4ec8760a081a77ef",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -3086,7 +3085,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "advance_date",
    "advance_payment",
    "artist",
-   "artistPaidDate",
    "artist_client_id",
    "artist_fee",
    "booker_client_id",
@@ -3117,7 +3115,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "6b92b5d6c2884863a2ddaf4922f8d20935c63dd456077ebc50fd59b22e3d2b62",
+  "sha256": "eeed351424e3cb7210c6bdc3fbd44d8edb1e439b1afcfaa41b84b1b0e5d48db1",
   "effects": [
    "CALENDAR",
    "DELETION",
@@ -3132,7 +3130,6 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "advance_date",
    "advance_payment",
    "artist",
-   "artistPaidDate",
    "artist_client_id",
    "artist_fee",
    "booker_client_id",

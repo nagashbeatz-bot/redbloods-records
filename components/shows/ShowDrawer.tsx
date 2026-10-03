@@ -166,6 +166,8 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
   const [confirmDel, setConfirmDel] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
   const [calWarn,  setCalWarn]  = useState<string | null>(null);
+  // Phase 1 (B3): the server's financeWarning / feeConflicts — shown, never hidden
+  const [finWarn,  setFinWarn]  = useState<string | null>(null);
   const [addingCal,setAddingCal]= useState(false);
   const [newClientModal, setNewClientModal] = useState(false);
   const [rehearsalModal, setRehearsalModal] = useState(false);
@@ -193,7 +195,7 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
   const dirty = JSON.stringify(draft) !== JSON.stringify(show);
 
   async function save() {
-    setSaving(true); setError(null); setCalWarn(null);
+    setSaving(true); setError(null); setCalWarn(null); setFinWarn(null);
     try {
       const res = await fetch(`/api/shows/${show.id}`, {
         method: "PATCH",
@@ -218,9 +220,17 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
           notes:            draft.notes,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        // Phase 1 (B4): saved-but-not-synced → refresh the record and say so (never "nothing saved")
+        if (data.partial === true || res.status >= 500) {
+          if (data.show) { onUpdated(data.show as Show); setDraft(data.show as Show); }
+          throw new Error(`ההופעה נשמרה, אבל הסנכרון הכספי לא הושלם — ${String(data.error ?? "שגיאת שרת")}. אפשר לשמור שוב כדי להשלים (לא נוצרת כפילות).`);
+        }
+        throw new Error(String(data.error ?? "שגיאה בשמירה"));
+      }
       if (data.calendarWarning) setCalWarn(data.calendarWarning);
+      if (data.financeWarning) setFinWarn(String(data.financeWarning));
       onUpdated(data.show);
       setDraft(data.show);
     } catch (e) {
@@ -347,6 +357,11 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
               {calWarn}
             </div>
           )}
+          {finWarn && (
+            <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#F59E0B", borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12 }}>
+              ⚠️ אזהרת כספים: {finWarn}
+            </div>
+          )}
 
           {/* ── תקציר ── */}
           {tab === "תקציר" && (
@@ -404,11 +419,15 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
                   <div>
                     <div style={lbl}>סטטוס</div>
                     <select value={draft.status} onChange={e => set("status", e.target.value as ShowStatus)} style={{ ...inp, cursor: "pointer" }}>
-                      {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                      {/* Phase 1 (B5): "בוצע" for a PAID show is set only through the close flow (מסך ההופעות → סגירת הופעה) */}
+                      {SHOW_STATUSES.filter(s => s !== "בוצע" || show.status === "בוצע" || show.deal_type === "UNPAID_COLLAB").map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
+                    {show.status !== "בוצע" && show.deal_type !== "UNPAID_COLLAB" && (
+                      <div style={{ fontSize: 10, color: "#666", marginTop: 4 }}>לסגירת הופעה (בוצע) — מסך ההופעות ← בחירת "בוצע" פותחת סגירת הופעה.</div>
+                    )}
                   </div>
                   <div>
-                    <div style={lbl}>תשלום</div>
+                    <div style={lbl}>תשלום לקוח</div>
                     <select value={draft.payment_status} onChange={e => set("payment_status", e.target.value as PaymentStatus)} style={{ ...inp, cursor: "pointer" }}>
                       {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>

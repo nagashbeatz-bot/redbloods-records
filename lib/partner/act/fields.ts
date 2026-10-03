@@ -105,7 +105,6 @@ export const ACCEPTED_FIELD_CLASSES: Readonly<Record<string, { kind: AcceptedFie
   projectName: { kind: "DERIVED_INPUT", noteEn: "folder / project name used to build a path or the converted project" },
   newTitle: { kind: "DERIVED_INPUT", noteEn: "sketch → project link title" },
   anchorDate: { kind: "DERIVED_INPUT", noteEn: "balance-cycle anchor (stored in settings)" },
-  artistPaidDate: { kind: "DERIVED_INPUT", noteEn: "date written onto the artist expense transaction" },
   businessType: { kind: "DERIVED_INPUT", noteEn: "project business type (stored as business_type)" },
   paidAmount: { kind: "DERIVED_INPUT", noteEn: "split income: the received part" },
   actual: { kind: "DERIVED_INPUT", noteEn: "promotion actual spend (written to its expense)" },

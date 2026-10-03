@@ -106,13 +106,13 @@ const receivedTotal = (showId: string) => income(showId).filter((r) => r.show_mo
   const s2 = SHOW(); t("shows").push(s2); const id2 = String(s2.id);
   await fin.syncShowFinance(getShow(id2));
   await recordShowPayment(id2, { amount: 1000, date: "2026-09-27" });
-  await fin.applyShowClosureStatuses(getShow(id2), { incomeReceived: false, djPaid: false, artistPaid: false });
+  await fin.applyShowClosureStatuses(getShow(id2), { incomeReceived: false, djPaid: false });
   ok("11. close 'not received': the deposit stays; nothing downgraded", receivedTotal(id2) === 1000 && getShow(id2).payment_status === "מקדמה");
   await fin.syncShowFinance(getShow(id2), { markRemainderReceived: true });
   ok("12. 'שולם' intent (the client paid the rest): ONE payment for the remaining 2,000 — total received 3,000, never 4,000", receivedTotal(id2) === 3000 && income(id2).filter((r) => r.show_money_role === "SHOW_PAYMENT").length === 2);
   const s3 = SHOW(); t("shows").push(s3); const id3 = String(s3.id);
   await fin.syncShowFinance(getShow(id3));
-  await fin.applyShowClosureStatuses(getShow(id3), { incomeReceived: true, djPaid: true, artistPaid: false });
+  await fin.applyShowClosureStatuses(getShow(id3), { incomeReceived: true, djPaid: true });
   ok("13. close 'received' with no deposit: the expected row becomes the full payment (one row)", receivedTotal(id3) === 3000 && income(id3).length === 1 && getShow(id3).payment_status === "שולם");
   Object.assign(getShow(id3), { payment_status: "לא שולם" });
   await fin.syncShowFinance(getShow(id3));

@@ -34,9 +34,36 @@ const CALENDAR_SYNC_FIELDS = new Set([
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Body = Record<string, any>;
 
+/** Phase 1 (Owner decision 2026-10-03): a payout to the artist is NEVER part of a show — it is a payment in the artist's
+ *  balance (the one path: lib/writes/artist-payments via the balance tab / Sunny ADD_LEDGER_ENTRY). */
+export const ARTIST_PAYOUT_VIA_BALANCE_HE = "תשלום לאמן מתבצע רק דרך מאזן האמן (עמוד האמן ← מאזן) — לא בסגירת הופעה. אם המסך פתוח מגרסה ישנה, רענן אותו.";
+
+/** Phase 1: a PAID show moves to "בוצע" only through the close flow (closeShow) while money is still open. */
+export const CLOSE_REQUIRED_CODE = "CLOSE_REQUIRED";
+const closeRequiredHe = (open: string[]) => `אי אפשר לסמן הופעה בתשלום כ"בוצע" בלי סגירת הופעה — עדיין פתוח: ${open.join(" · ")}. סגור אותה דרך מסך ההופעות (בחירת "בוצע" פותחת את סגירת ההופעה).`;
+
+/** A typed refusal thrown by createShowRecord (the show was NOT created; no write happened). */
+export class ShowRefusedError extends Error {
+  code: string;
+  constructor(code: string, messageHe: string) { super(messageHe); this.name = "ShowRefusedError"; this.code = code; }
+}
+
+/** The close dialog's own payload: the Owner's explicit answer for the client money and the DJ. */
+function isValidCloseShow(cs: unknown): boolean {
+  return !!cs && typeof cs === "object" && typeof (cs as Record<string, unknown>).incomeReceived === "boolean" && typeof (cs as Record<string, unknown>).djPaid === "boolean";
+}
+
 /** POST /api/shows semantics (the caller validated the name). */
 export async function createShowRecord(body: Body): Promise<{ show: Show; calendarWarning?: string; paymentWarning?: string }> {
     if (body.currency !== undefined && !isMoneyCurrency(body.currency)) throw new Error("מטבע לא נתמך (₪ / $ / €)");
+    // Phase 1 (B5): a PAID show is never created straight as "בוצע" — it has money to close (the client balance, the DJ fee)
+    // and creation has no closeShow. Created as נסגר / אושרה, it is closed through the close flow.
+    if (body.status === "בוצע" && body.deal_type !== "UNPAID_COLLAB" && ((Number(body.show_price) || 0) > 0 || (body.dj_fee !== undefined ? Number(body.dj_fee) : 500) > 0)) {
+      const open: string[] = [];
+      if ((Number(body.show_price) || 0) > 0) open.push("תשלום הלקוח");
+      if ((body.dj_fee !== undefined ? Number(body.dj_fee) : 500) > 0) open.push("שכר הדיג׳יי");
+      throw new ShowRefusedError(CLOSE_REQUIRED_CODE, `אי אפשר ליצור הופעה בתשלום כ"בוצע" — עדיין פתוח: ${open.join(" · ")}. צור אותה כ"נסגר" או "אושרה" וסגור אותה דרך מסך ההופעות.`);
+    }
     if (body.deal_type !== undefined && !isShowDealType(body.deal_type)) throw new Error("סוג עסקה לא מוכר (PAID / UNPAID_COLLAB)");
     // Owner decision 2026-09-27: an unpaid collaboration carries NO money at all — any money in the request is refused
     // (never silently dropped); the show itself is created exactly like any other show.
@@ -126,12 +153,18 @@ export async function createShowRecord(body: Body): Promise<{ show: Show; calend
 
 export type UpdateShowResult =
   | { kind: "not_found" }
-  | { kind: "ok"; show: Show; calendarWarning?: string; paymentReversalNeeded?: { amount: number; entryDate: string }; financeWarning?: string }
+  | { kind: "ok"; show: Show; calendarWarning?: string; financeWarning?: string }
   | { kind: "balance_sync_failed"; show: Show; balanceSyncError: string }
-  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS" | "HAS_PAID_FEES" | "DEAL_TYPE" | "UNPAID_COLLAB" | "DEAL_SWITCH_BLOCKED" | "PRICE_REQUIRED"; messageHe: string };
+  | { kind: "refused"; code: "CURRENCY" | "CURRENCY_HAS_PAYMENTS" | "HAS_PAYMENTS" | "HAS_PAID_FEES" | "DEAL_TYPE" | "UNPAID_COLLAB" | "DEAL_SWITCH_BLOCKED" | "PRICE_REQUIRED" | "ARTIST_PAYOUT_VIA_BALANCE" | "CLOSE_REQUIRED"; messageHe: string };
 
 /** PATCH /api/shows/[id] semantics. */
 export async function updateShowRecord(id: string, body: Body): Promise<UpdateShowResult> {
+
+    // Phase 1 (Owner decision 2026-10-03): the artist is never paid from a show. An old client / API that still sends the
+    // field — even as false — is refused BEFORE any write (never silently ignored): the fields are no longer part of the contract.
+    if ((body.closeShow && typeof body.closeShow === "object" && ("artistPaid" in body.closeShow || "artistPaidDate" in body.closeShow)) || "artistPaidDate" in body || "artistPaid" in body) {
+      return { kind: "refused", code: "ARTIST_PAYOUT_VIA_BALANCE", messageHe: ARTIST_PAYOUT_VIA_BALANCE_HE };
+    }
 
     // ── Build DB patch ──────────────────────────────────────────────────────
     const patch: PatchShowInput = {};
@@ -192,7 +225,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     if (toCollab) {
       // an unpaid collaboration carries no money: money in the request is refused (never silently dropped)
       const cs = body.closeShow && typeof body.closeShow === "object" ? body.closeShow : null;
-      if (Number(body.show_price) > 0 || Number(body.dj_fee) > 0 || Number(body.artist_fee) > 0 || body.payment_status === "שולם" || (cs && (cs.incomeReceived || cs.djPaid || cs.artistPaid))) {
+      if (Number(body.show_price) > 0 || Number(body.dj_fee) > 0 || Number(body.artist_fee) > 0 || body.payment_status === "שולם" || (cs && (cs.incomeReceived || cs.djPaid))) {
         return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
       }
       delete patch.show_price; delete patch.dj_fee; delete patch.artist_fee;
@@ -212,6 +245,26 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
       if (body.dj_fee === undefined) patch.dj_fee = 0; // never an implicit 500 DJ fee on a converted show
     }
 
+    // Phase 1 (B5, Owner decision 2026-10-03): a PAID show moves to "בוצע" only through the close flow. With money still
+    // open (client balance / DJ fee) and no closeShow, the move is refused BEFORE any write (409 CLOSE_REQUIRED).
+    // Exempt: an unpaid collaboration, a show with nothing open, and any request carrying a valid closeShow.
+    if (patch.status === "בוצע" && existing.status !== "בוצע" && !toCollab && !isValidCloseShow(body.closeShow)) {
+      const open: string[] = [];
+      const price = patch.show_price ?? existing.show_price ?? 0;
+      if (price > 0) {
+        const { getShowMoneyMap } = await import("@/lib/shows-finance-sync");
+        const money = (await getShowMoneyMap([{ id: existing.id, show_price: price, currency: patch.currency ?? existing.currency }]))[existing.id];
+        const remaining = money ? money.remaining : price;
+        if (remaining > 0) open.push(`תשלום הלקוח (יתרה ${remaining} ${patch.currency ?? existing.currency ?? "₪"})`);
+      }
+      const djFee = patch.dj_fee ?? existing.dj_fee ?? 0;
+      if (djFee > 0) {
+        const djRow = (await showFeeRows(existing))[SHOW_MONEY_ROLES.DJ];
+        if (djRow?.status !== "שולם") open.push(`שכר הדיג׳יי (${djFee})`);
+      }
+      if (open.length) return { kind: "refused", code: "CLOSE_REQUIRED", messageHe: closeRequiredHe(open) };
+    }
+
     // an unpaid collaboration never records a payment intent and never stores a payment label
     const intent = toCollab ? {} : paymentIntentFromBody(body.payment_status, existing.payment_status);
     if (SHOW_NO_MONEY_LABELS.includes(body.payment_status) && received === 0 && !toCollab) patch.payment_status = body.payment_status as PaymentStatus;
@@ -229,9 +282,6 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
       if (c2.error) throw new ShowFinanceSyncError("העברת המטבע לשורות השכר", c2.error.message);
     }
     let financeWarning: string | undefined;
-    // Set when unchecking "שולם לאמן" would otherwise silently leave a stale
-    // payment record — surfaced to the client instead of ever auto-deleting it.
-    let paymentReversalNeeded: { amount: number; entryDate: string } | undefined;
     // Set when a balance-ledger write that SHOULD have happened (artist
     // resolved, fee > 0) actually failed. The whole request must then NOT be
     // reported as successful — see the final response below — even though the
@@ -268,7 +318,6 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
             await fin.applyShowClosureStatuses(fresh, {
               incomeReceived: !!body.closeShow.incomeReceived,
               djPaid:         !!body.closeShow.djPaid,
-              artistPaid:     !!body.closeShow.artistPaid,
             });
 
             // ── Artist balance ledger: realize income the moment the show is
@@ -282,10 +331,9 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
             if (fresh.status === "בוצע" && (fresh.currency || "₪") === "₪") {
               try {
                 const { showAgreementSplit } = await import("@/lib/label-agreements");
-                const { isValidYmd } = await import("@/lib/artist-balance-store");
                 const {
                   resolveShowArtistId, logArtistResolutionSkip,
-                  syncArtistIncomeFromClosedShow, findShowPaymentEntry,
+                  syncArtistIncomeFromClosedShow,
                 } = await import("@/lib/artist-balance-show-close-sync");
 
                 const resolution = await resolveShowArtistId(fresh.artist);
@@ -305,30 +353,8 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
                     // Income: realized the moment the show closes — one row per
                     // show, ever (never a duplicate expected+realized pair).
                     await syncArtistIncomeFromClosedShow({ artistId: payee, show: fresh, amount: artistFee });
-
-                    if (body.closeShow.artistPaid) {
-                      // Net model (Owner 2026-09-28): "אמן ✓" = a REAL payment to the artist — Finance (שכר אמן, שולם,
-                      // RECORDS) + the ledger payment, ONE writer, idempotent per show (a re-save never pays twice).
-                      const paymentDate =
-                        typeof body.artistPaidDate === "string" && isValidYmd(body.artistPaidDate)
-                          ? body.artistPaidDate
-                          : new Date().toISOString().slice(0, 10);
-                      const already = await findShowPaymentEntry(fresh.id);
-                      if (!already) {
-                        const { recordArtistPayment } = await import("@/lib/writes/artist-payments");
-                        const paid = await recordArtistPayment({ artistId: payee, amount: artistFee, date: paymentDate, showId: fresh.id, idempotencyKey: `show:${fresh.id}`, description: `תשלום — ${fresh.name}`, allowDuplicate: true });
-                        if (paid.kind !== "ok") balanceSyncError = paid.messageHe;
-                      }
-                    } else {
-                      // Unchecked (or never checked) — if a payment was already
-                      // recorded for this show, do NOT touch it silently. Tell
-                      // the client so the owner can make an explicit correction
-                      // in the artist's balance ledger instead.
-                      const existingPayment = await findShowPaymentEntry(fresh.id);
-                      if (existingPayment) {
-                        paymentReversalNeeded = { amount: existingPayment.amount, entryDate: existingPayment.entryDate };
-                      }
-                    }
+                    // Phase 1 (Owner decision 2026-10-03): the entitlement is the whole artist effect of closing a show.
+                    // A payout to the artist is a separate event — a payment in the artist's balance, never made here.
                   }
                 }
               } catch (balErr) {
@@ -466,7 +492,7 @@ export async function updateShowRecord(id: string, body: Body): Promise<UpdateSh
     }
 
     if (balanceSyncError) return { kind: "balance_sync_failed", show, balanceSyncError };
-    return { kind: "ok", show, calendarWarning, paymentReversalNeeded, financeWarning };
+    return { kind: "ok", show, calendarWarning, financeWarning };
 }
 
 /** DELETE /api/shows/[id] semantics: blocked while rehearsals exist; the show's finance rows are hard-deleted first. */
@@ -509,21 +535,17 @@ export async function deleteShowRecord(id: string): Promise<{ kind: "ok"; delete
 
 /** The close-show dialog, server-side (ShowsHubPreview CloseShowModal semantics): client payment → payment_status,
  *  optional → בוצע, DJ name, per-party closure flags, the artist payment date, and the same summary line in the notes. */
-export async function closeShowRecord(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; artistPaid: boolean; artistPaidDate?: string; djName?: string; note?: string }): Promise<UpdateShowResult> {
+export async function closeShowRecord(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; djName?: string; note?: string }): Promise<UpdateShowResult> {
   const show = await getShow(id);
   if (!show) return { kind: "not_found" };
   if (isUnpaidCollab(show)) {
     // an unpaid collaboration closes OPERATIONALLY only: no money flags, no payment, no ledger (Owner decision 2026-09-27)
-    if (c.incomeReceived || c.djPaid || c.artistPaid) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
+    if (c.incomeReceived || c.djPaid) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
     const stamp = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
     const summary = `סגירת הופעה ${stamp}: שת״פ ללא תשלום${c.note?.trim() ? ` — ${c.note.trim()}` : ""}`;
     return updateShowRecord(id, { ...(c.markDone ? { status: "בוצע" } : {}), notes: [show.notes?.trim(), summary].filter(Boolean).join("\n") });
   }
-  const { showAgreementSplit } = await import("@/lib/label-agreements");
-  const { getRehearsalCountedForShow } = await import("@/lib/shows-finance-sync");
-  const split = showAgreementSplit(show, await getRehearsalCountedForShow(id));
   const djRelevant = (show.dj_fee ?? 0) > 0;
-  const artRelevant = split.status === "DEFINED" && split.artistFee > 0;
   const body: Body = {};
   // D5: "received" records the REMAINING balance as a payment; "not received" leaves Finance as it is (a recorded
   // deposit is never downgraded) — the show's payment status is derived from Finance by the sync.
@@ -531,10 +553,9 @@ export async function closeShowRecord(id: string, c: { markDone: boolean; income
   if (c.markDone) body.status = "בוצע";
   const djName = (c.djName ?? show.dj_name ?? "").trim();
   if (djRelevant && djName && djName !== (show.dj_name ?? "")) body.dj_name = djName;
-  body.closeShow = { incomeReceived: c.incomeReceived, djPaid: djRelevant && c.djPaid, artistPaid: artRelevant && c.artistPaid };
-  if (artRelevant && c.artistPaid) body.artistPaidDate = c.artistPaidDate ?? new Date().toISOString().slice(0, 10);
+  body.closeShow = { incomeReceived: c.incomeReceived, djPaid: djRelevant && c.djPaid };
   const stamp = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
-  const parts = [`התקבל ${c.incomeReceived ? "✓" : "✗"}`, djRelevant ? `דיג׳יי${djName ? ` (${djName})` : ""} ${c.djPaid ? "✓" : "✗"}` : null, artRelevant ? `אמן ${c.artistPaid ? "✓" : "✗"}` : null].filter(Boolean).join(" · ");
+  const parts = [`התקבל ${c.incomeReceived ? "✓" : "✗"}`, djRelevant ? `דיג׳יי${djName ? ` (${djName})` : ""} ${c.djPaid ? "✓" : "✗"}` : null].filter(Boolean).join(" · ");
   const summary = `סגירת הופעה ${stamp}: ${parts}${c.note?.trim() ? ` — ${c.note.trim()}` : ""}`;
   body.notes = [show.notes?.trim(), summary].filter(Boolean).join("\n");
   return updateShowRecord(id, body);
@@ -617,11 +638,12 @@ export async function showFeeRows(show: Pick<Show, "id" | "linked_dj_expense_tra
 
 export type SetShowFeePaidResult =
   | { kind: "not_found" }
-  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB" | "NO_AGREEMENT" | "UNPAY_VIA_LEDGER" | "PAYMENT_INCOMPLETE" | "DUPLICATE" | "NOT_ILS"; messageHe: string }
+  | { kind: "refused"; code: "BAD_ROLE" | "BAD_ARGS" | "BAD_DATE" | "BAD_METHOD" | "NO_FEE_ROW" | "ALREADY_PAID" | "NOT_PAID" | "FEE_CANCELLED" | "UNPAID_COLLAB" | "NO_AGREEMENT" | "UNPAY_VIA_LEDGER" | "PAYMENT_INCOMPLETE" | "DUPLICATE" | "NOT_ILS" | "ARTIST_PAYOUT_VIA_BALANCE"; messageHe: string }
   | { kind: "ok"; transactionId: string; before: string | null; after: string };
 
 /**
- * The explicit "the DJ / the artist was paid" (or the explicit undo back to "צפוי") on the show's EXISTING fee row —
+ * The explicit "the DJ was paid" (or the explicit undo back to "צפוי") on the show's EXISTING DJ fee row (the artist is
+ * refused: ARTIST_PAYOUT_VIA_BALANCE) —
  * the one writer for it outside the close dialog (Sunny MARK_SHOW_FEE_PAID; the Finance page's own row edit stays a
  * valid path because the show sync never overwrites a fee status). Never creates a row, never touches the client
  * payment, the other fee, or the artist balance ledger.
@@ -629,6 +651,10 @@ export type SetShowFeePaidResult =
 export async function setShowFeePaid(showId: string, role: unknown, paid: unknown, opts: { date?: unknown; method?: unknown } = {}): Promise<SetShowFeePaidResult> {
   if (role !== SHOW_MONEY_ROLES.DJ && role !== SHOW_MONEY_ROLES.ARTIST) return { kind: "refused", code: "BAD_ROLE", messageHe: "DJ_FEE או ARTIST_FEE" };
   if (typeof paid !== "boolean") return { kind: "refused", code: "BAD_ARGS", messageHe: "שולם: כן / לא" };
+  // Phase 1 (Owner decision 2026-10-03): the artist is paid ONLY through the artist's balance — never from a show, never by
+  // marking a fee row. The artist's entitlement (the show share) is in the balance once the show is בוצע; the payout is
+  // a separate payment there. Nothing is written here for the artist.
+  if (role === SHOW_MONEY_ROLES.ARTIST) return { kind: "refused", code: "ARTIST_PAYOUT_VIA_BALANCE", messageHe: ARTIST_PAYOUT_VIA_BALANCE_HE };
   const date = opts.date === undefined || opts.date === null || opts.date === "" ? null : opts.date;
   if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))) return { kind: "refused", code: "BAD_DATE", messageHe: "תאריך לא תקין (YYYY-MM-DD)" };
   const method = opts.method === undefined || opts.method === null ? "" : opts.method;
@@ -637,29 +663,8 @@ export async function setShowFeePaid(showId: string, role: unknown, paid: unknow
   const show = await getShow(showId);
   if (!show) return { kind: "not_found" };
   if (isUnpaidCollab(show)) return { kind: "refused", code: "UNPAID_COLLAB", messageHe: UNPAID_COLLAB_NO_MONEY_HE };
-  // Net model (Owner 2026-09-28): the ARTIST is paid by a REAL payment (Finance + ledger, lib/writes/artist-payments) —
-  // never by marking an artist-fee row. The show share is the ONE rule (showAgreementSplit); a payment already recorded
-  // for the show (ledger payment of the show, or a legacy paid artist-fee row) is ALREADY_PAID. Un-paying is cancelling
-  // that payment in the artist's balance (its Finance row becomes בוטל) — never here.
-  if (role === SHOW_MONEY_ROLES.ARTIST) {
-    if (!paid) return { kind: "refused", code: "UNPAY_VIA_LEDGER", messageHe: "ביטול תשלום לאמן נעשה בעמוד האמן → מאזן → מחיקת התשלום (שורת הכספים תסומן 'בוטל', לא תימחק)" };
-    const { showAgreementSplit } = await import("@/lib/label-agreements");
-    const { getRehearsalCountedForShow, isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
-    if (show.status === "בוטל") return { kind: "refused", code: "FEE_CANCELLED", messageHe: "ההופעה בוטלה — אין זכאות לאמן; אם שולם בכל זאת, רושמים תשלום במאזן האמן" };
-    if (!isConfirmedShowStatus(show.status)) return { kind: "refused", code: "NO_FEE_ROW", messageHe: "ההופעה עדיין לא מאושרת — אין זכאות לאמן לשלם עליה" };
-    const rule = showAgreementSplit(show, await getRehearsalCountedForShow(show.id));
-    if (rule.status !== "DEFINED" || !(rule.artistFee > 0)) return { kind: "refused", code: "NO_AGREEMENT", messageHe: rule.status === "DEFINED" ? "אין שכר אמן בהופעה" : rule.reasonHe };
-    const legacy = (await showFeeRows(show))[role];
-    const { findShowPaymentEntry } = await import("@/lib/artist-balance-show-close-sync");
-    if ((legacy && legacy.status === "שולם") || (await findShowPaymentEntry(show.id))) return { kind: "refused", code: "ALREADY_PAID", messageHe: "כבר רשום תשלום לאמן על ההופעה הזו" };
-    const { recordArtistPayment } = await import("@/lib/writes/artist-payments");
-    const r = await recordArtistPayment({ artistId: rule.artist.id, amount: rule.artistFee, date: (date as string | null) ?? new Date().toISOString().slice(0, 10), method: method as string, showId: show.id, idempotencyKey: `show:${show.id}`, description: `תשלום — ${show.name}`, currency: show.currency || "₪", allowDuplicate: true });
-    if (r.kind === "partial") return { kind: "refused", code: "PAYMENT_INCOMPLETE", messageHe: r.messageHe };
-    if (r.kind === "refused") return { kind: "refused", code: r.code === "NOT_ILS" ? "NOT_ILS" : r.code === "DUPLICATE" ? "DUPLICATE" : "BAD_ARGS", messageHe: r.messageHe };
-    return { kind: "ok", transactionId: r.transactionId, before: null, after: "שולם" };
-  }
   const row = (await showFeeRows(show))[role];
-  const who = role === SHOW_MONEY_ROLES.DJ ? "ה-DJ" : "האמן";
+  const who = "ה-DJ";
   if (!row) return { kind: "refused", code: "NO_FEE_ROW", messageHe: `להופעה אין שורת שכר ${who} בפיננסים` };
   if (paid && row.status === "שולם") return { kind: "refused", code: "ALREADY_PAID", messageHe: `שכר ${who} כבר מסומן שולם` };
   if (paid && row.status === "בוטל") return { kind: "refused", code: "FEE_CANCELLED", messageHe: `שורת שכר ${who} מבוטלת (הופעה מבוטלת / שכר 0) — אם שולם בכל זאת, מתקנים בפיננסים` };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listShows } from "@/lib/shows-store";
-import { createShowRecord } from "@/lib/writes/shows";
+import { createShowRecord, ShowRefusedError } from "@/lib/writes/shows";
 
 export async function GET() {
   try {
@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(r.calendarWarning ? { show: r.show, calendarWarning: r.calendarWarning } : { show: r.show }, { status: 201 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    // Phase 1 (B5): a typed refusal (nothing was written) — 409 with its code, like the PATCH route
+    if (err instanceof ShowRefusedError) return NextResponse.json({ error: msg, code: err.code }, { status: 409 });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

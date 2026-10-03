@@ -293,11 +293,12 @@ function NewShowModal({ clients, onCreated, onClose, onClientAdded }: {
           <div>
             <div style={modalLbl}>סטטוס</div>
             <select value={form.status} onChange={e => set("status", e.target.value)} style={{ ...modalInp, cursor: "pointer" }}>
-              {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              {/* Phase 1 (B5): a new show is never created straight as "בוצע" — it is closed through the close flow (מסך ההופעות) */}
+              {SHOW_STATUSES.filter(s => s !== "בוצע").map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <div style={modalLbl}>תשלום</div>
+            <div style={modalLbl}>תשלום לקוח</div>
             <select value={form.payment_status} onChange={e => set("payment_status", e.target.value)} style={{ ...modalInp, cursor: "pointer" }}>
               {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -436,8 +437,8 @@ export default function ShowsPage() {
     ? "1.6fr 0.9fr 0.9fr 80px 70px 36px"
     : "2fr 1fr 1fr 1fr 1fr 1fr 90px 70px 36px";
   const headers = selected
-    ? ["שם ההופעה", "סטטוס", "תאריך", "סכום", "תשלום", ""]
-    : ["שם ההופעה", "אמן", "מזמין", "תאריך", "מקום", "סטטוס", "סכום", "תשלום", ""];
+    ? ["שם ההופעה", "סטטוס", "תאריך", "סכום", "תשלום לקוח", ""]
+    : ["שם ההופעה", "אמן", "מזמין", "תאריך", "מקום", "סטטוס", "סכום", "תשלום לקוח", ""];
 
   return (
     /* Outer: full height flex row — drawer on left, content on right */

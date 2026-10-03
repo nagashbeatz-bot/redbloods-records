@@ -527,7 +527,7 @@ export async function cancelShowFinance(show: Show): Promise<void> {
  */
 export async function applyShowClosureStatuses(
   show: Show,
-  t: { incomeReceived: boolean; djPaid: boolean; artistPaid: boolean },
+  t: { incomeReceived: boolean; djPaid: boolean },
 ): Promise<void> {
   {
     if (t.incomeReceived) {

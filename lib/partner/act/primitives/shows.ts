@@ -24,13 +24,13 @@ export interface ShowFamilyWriters {
   readShow(id: string): Promise<ShowView | null>;
   createShow(body: Record<string, unknown>): Promise<{ id: string; calendarWarning: string | null; paymentWarning?: string | null }>;
   updateShow(id: string, body: Record<string, unknown>): Promise<UpdateResult>;
-  closeShow(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; artistPaid: boolean; artistPaidDate?: string; djName?: string; note?: string }): Promise<UpdateResult>;
+  closeShow(id: string, c: { markDone: boolean; incomeReceived: boolean; djPaid: boolean; djName?: string; note?: string }): Promise<UpdateResult>;
   deleteShowCompletely(id: string): Promise<{ kind: "ok" | "has_rehearsals" | "has_payments" | "has_paid_fees" | "not_found" }>;
   recordShowPayment(id: string, p: { amount: number; date: string; currency: string; method: string; note: string }): Promise<{ kind: "ok" | "not_found" | "refused"; messageHe?: string; transactionId?: string }>;
   markShowQuoteSent(id: string): Promise<"ok" | "skipped" | "not_found">;
   notifyShowArtist(id: string): Promise<{ ok: boolean; reason?: string }>;
   notifyShowDj(id: string): Promise<{ ok: boolean; reason?: string }>;
-  /** A1: the explicit "DJ / artist fee paid" (or back to צפוי) on the show's existing fee row (setShowFeePaid). */
+  /** A1: the explicit "DJ fee paid" (or back to צפוי) on the show's existing DJ fee row (setShowFeePaid; the artist is refused — Phase 1). */
   setShowFeePaid(id: string, role: string, paid: boolean, o: { date?: string; method?: string }): Promise<{ kind: "ok" | "not_found" | "refused"; messageHe?: string }>;
   /** READ-ONLY: the canonical send state (the claim rows the senders mark "sent" only after a successful push). */
   showNotifyStates(id: string): Promise<{ artist: NotifyState; dj: NotifyState } | null>;
@@ -313,21 +313,22 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "CLOSE_SHOW", kinds: ["show"],
-    meta: meta("סגירת הופעה (בוצע + מי קיבל / שולם)", "Close a show exactly like the close dialog: client payment, DJ paid, artist paid (+ date) → finance statuses + the artist ledger income / payment", [K("show"), { name: "incomeReceived", kind: "boolean", required: true }, { name: "djPaid", kind: "boolean", required: true }, { name: "artistPaid", kind: "boolean", required: true }, { name: "artistPaidDate", kind: "ymd", required: false }, T("note")], ["status", "paymentStatus"], "closeShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL" }),
+    meta: meta("סגירת הופעה (בוצע + מי קיבל / שולם)", "Close a show exactly like the close dialog: client payment, DJ paid → finance statuses + the artist's entitlement in the balance (never a payout to the artist — that is a payment in the artist's balance)", [K("show"), { name: "incomeReceived", kind: "boolean", required: true }, { name: "djPaid", kind: "boolean", required: true }, T("note")], ["status", "paymentStatus"], "closeShowRecord (lib/writes/shows)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL" }),
     resolve: onShow, read: showFields,
     plan(a, cur) {
-      for (const k of ["incomeReceived", "djPaid", "artistPaid"]) if (typeof a[k] !== "boolean") return refuse("BAD_ARGS", `${k}: כן / לא`);
-      if (a.artistPaidDate !== undefined && !realYmd(a.artistPaidDate)) return refuse("BAD_DATE", "תאריך תשלום לאמן לא תקין");
+      // Phase 1 (Owner decision 2026-10-03): closing a show never pays the artist — the old arguments are refused, not ignored
+      if ("artistPaid" in a || "artistPaidDate" in a) return refuse("ARTIST_PAYOUT_VIA_BALANCE", "תשלום לאמן מתבצע רק דרך מאזן האמן (תשלומים במאזן) — לא בסגירת הופעה");
+      for (const k of ["incomeReceived", "djPaid"]) if (typeof a[k] !== "boolean") return refuse("BAD_ARGS", `${k}: כן / לא`);
       if (!CONFIRMED.includes(String(cur.status)) && cur.status !== "בוצע") return refuse("NOT_CONFIRMED", "רק הופעה מאושרת נסגרת");
       // an unpaid collaboration closes operationally only (בוצע) — no client payment / DJ / artist money exists
-      if (cur.dealType === "UNPAID_COLLAB") { if (a.incomeReceived === true || a.djPaid === true || a.artistPaid === true) return collabMoneyGate(cur)!; return { ok: true, after: { status: "בוצע", paymentStatus: String(cur.paymentStatus) } }; }
+      if (cur.dealType === "UNPAID_COLLAB") { if (a.incomeReceived === true || a.djPaid === true) return collabMoneyGate(cur)!; return { ok: true, after: { status: "בוצע", paymentStatus: String(cur.paymentStatus) } }; }
       return { ok: true, after: { status: "בוצע", paymentStatus: a.incomeReceived === true ? "שולם" : String(cur.paymentStatus) } };
     },
-    async apply(d, id, _a, args) { ok(await d.closeShow(id, { markDone: true, incomeReceived: args.incomeReceived === true, djPaid: args.djPaid === true, artistPaid: args.artistPaid === true, artistPaidDate: str(args.artistPaidDate), note: str(args.note) })); },
-    requiredValues: (a) => [`התקבל ${a.incomeReceived ? "✓" : "✗"}`, `DJ ${a.djPaid ? "✓" : "✗"}`, `אמן ${a.artistPaid ? "✓" : "✗"}`],
+    async apply(d, id, _a, args) { ok(await d.closeShow(id, { markDone: true, incomeReceived: args.incomeReceived === true, djPaid: args.djPaid === true, note: str(args.note) })); },
+    requiredValues: (a) => [`התקבל ${a.incomeReceived ? "✓" : "✗"}`, `DJ ${a.djPaid ? "✓" : "✗"}`],
     async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.status === "בוצע" && (after.paymentStatus !== "שולם" || s.remaining === 0); },
-    warnings: (c) => [`${c.name}: מחיר ${ils(Number(c.showPrice))}${Number(c.djFee) > 0 ? `, DJ ${ils(Number(c.djFee))}` : ""} — שכר האמן לפי הכלל (50/50 אחרי DJ וחזרות)`],
-    disclosuresHe: ["כמו דיאלוג הסגירה: סטטוס בוצע, סטטוסים לרשומות הכספים, ושורת סיכום בהערות", "'התקבל' = היתרה שנשארה נרשמת כתשלום אחד (מקדמה שכבר נרשמה לא נספרת שוב); 'לא התקבל' לא מוריד שום תשלום שנרשם", "'DJ שולם' / 'אמן שולם' מסמנים את שורת השכר שלו בפיננסים כשולם; סימון 'לא' לא משנה את השורה — שכר ששולם כבר נשאר שולם (ביטול סימון = MARK_SHOW_FEE_PAID, פעולה מפורשת)", "תשלום הלקוח לא משנה את סטטוס שכר ה-DJ / האמן, והפוך", "במאזן האמן (אמן לייבל יחיד): הכנסה אחת להופעה, ותשלום רק אם סימנת 'אמן שולם' — הפעלה חוזרת בטוחה, בלי כפילויות", "ביטול סימון 'אמן שולם' לא מוחק תשלום קיים (רק מזהיר)", "לא יישלח Push"],
+    warnings: (c) => [`${c.name}: מחיר ${ils(Number(c.showPrice))}${Number(c.djFee) > 0 ? `, DJ ${ils(Number(c.djFee))}` : ""} — זכאות האמן לפי הכלל (50/50 אחרי DJ וחזרות) נכנסת למאזן; התשלום לאמן נעשה רק דרך מאזן האמן`],
+    disclosuresHe: ["כמו דיאלוג הסגירה: סטטוס בוצע, סטטוסים לרשומות הכספים, ושורת סיכום בהערות", "'התקבל' = היתרה שנשארה נרשמת כתשלום אחד (מקדמה שכבר נרשמה לא נספרת שוב); 'לא התקבל' לא מוריד שום תשלום שנרשם", "'DJ שולם' מסמן את שורת שכר ה-DJ בפיננסים כשולם; סימון 'לא' לא משנה את השורה — שכר ששולם כבר נשאר שולם (ביטול סימון = MARK_SHOW_FEE_PAID, פעולה מפורשת)", "תשלום הלקוח לא משנה את סטטוס שכר ה-DJ, והפוך", "במאזן האמן (אמן לייבל יחיד): זכאות אחת להופעה נכנסת למאזן כשההופעה בוצעה — זה לא תשלום; תשלום לאמן נרשם רק במאזן האמן (ADD_LEDGER_ENTRY 'תשלומים')", "הפעלה חוזרת בטוחה, בלי כפילויות", "לא יישלח Push"],
   },
   {
     actionId: "SET_SHOW_CALENDAR", kinds: ["show"],
@@ -425,27 +426,20 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "MARK_SHOW_FEE_PAID", kinds: ["show"],
-    meta: meta("סימון שכר DJ / שכר אמן של הופעה כשולם (או ביטול הסימון)", "Mark a show's DJ fee or artist fee row in Finance paid (with the payment date / method), or explicitly back to expected — its own obligation, independent of the client payment (A1)", [K("show"), { name: "role", kind: "enum", required: true, values: SHOW_FEE_ROLES }, { name: "paid", kind: "boolean", required: true }, { name: "date", kind: "ymd", required: false }, { name: "paymentMethod", kind: "enum", required: false, values: SHOW_PAYMENT_METHODS }], ["djFeeStatus", "artistFeeStatus"], "setShowFeePaid (lib/writes/shows)", { effects: ["FINANCE", "LEDGER"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "DJ: the same action with paid = false; artist: cancel the payment in the artist's balance (a new approved plan)" }),
+    meta: meta("סימון שכר DJ של הופעה כשולם (או ביטול הסימון)", "Mark a show's DJ fee row in Finance paid (with the payment date / method), or explicitly back to expected — its own obligation, independent of the client payment (A1). The artist is refused (ARTIST_PAYOUT_VIA_BALANCE): artist payouts are payments in the artist's balance only", [K("show"), { name: "role", kind: "enum", required: true, values: SHOW_FEE_ROLES }, { name: "paid", kind: "boolean", required: true }, { name: "date", kind: "ymd", required: false }, { name: "paymentMethod", kind: "enum", required: false, values: SHOW_PAYMENT_METHODS }], ["djFeeStatus", "artistFeeStatus"], "setShowFeePaid (lib/writes/shows)", { effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", compensation: "the same action with paid = false" }),
     resolve: onShow, read: showFields,
     plan(a, cur) {
-      const collab = collabMoneyGate(cur); if (collab) return collab;
       if (!SHOW_FEE_ROLES.includes(String(a.role))) return refuse("BAD_ENUM", "DJ_FEE / ARTIST_FEE");
+      // Phase 1 (Owner decision 2026-10-03): the artist is paid ONLY through the artist's balance — never from a show
+      if (a.role === "ARTIST_FEE") return refuse("ARTIST_PAYOUT_VIA_BALANCE", "תשלום לאמן מתבצע רק דרך מאזן האמן (תשלומים במאזן, ADD_LEDGER_ENTRY) — לא מסימון שכר בהופעה");
+      const collab = collabMoneyGate(cur); if (collab) return collab;
       if (typeof a.paid !== "boolean") return refuse("BAD_ARGS", "paid: כן / לא");
       if (a.date !== undefined && !realYmd(a.date)) return refuse("BAD_DATE", "תאריך לא תקין");
       if (a.paymentMethod !== undefined && !SHOW_PAYMENT_METHODS.includes(String(a.paymentMethod))) return refuse("BAD_ENUM", "אמצעי תשלום לא מוכר");
       if (!a.paid && (a.date !== undefined || a.paymentMethod !== undefined)) return refuse("BAD_ARGS", "תאריך / אמצעי תשלום רק בסימון שולם");
-      const field = a.role === "DJ_FEE" ? "djFeeStatus" : "artistFeeStatus";
-      const who = a.role === "DJ_FEE" ? "ה-DJ" : "האמן";
+      const field = "djFeeStatus";
+      const who = "ה-DJ";
       const st = cur[field];
-      // net model (2026-09-28): the artist is paid by a REAL payment (Finance + ledger) of the show share — there is no
-      // artist-fee row to mark; un-paying is cancelling that payment in the artist's balance
-      if (a.role === "ARTIST_FEE") {
-        if (!a.paid) return refuse("UNPAY_VIA_LEDGER", "ביטול תשלום לאמן: בעמוד האמן → מאזן → מחיקת התשלום (שורת הכספים תסומן 'בוטל')");
-        if (st === "שולם") return refuse("ALREADY_PAID", "כבר רשום תשלום לאמן על ההופעה הזו");
-        if (cur.status === "בוטל") return refuse("FEE_CANCELLED", "ההופעה בוטלה — אין זכאות לאמן; אם שולם בכל זאת, רושמים תשלום במאזן האמן");
-        if (!(Number(cur.artistFeeAmount) > 0)) return refuse("NO_FEE_ROW", "אין לאמן זכאות בהופעה הזו (הופעה לא מאושרת / אין הסכם / חלק 0)");
-        return { ok: true, after: { artistFeeStatus: "שולם" } };
-      }
       if (st === null || st === undefined) return refuse("NO_FEE_ROW", `להופעה אין שורת שכר ${who} בפיננסים (הופעה לא מאושרת / שכר 0)`);
       if (a.paid && st === "שולם") return refuse("ALREADY_PAID", `שכר ${who} כבר מסומן שולם`);
       if (a.paid && st === "בוטל") return refuse("FEE_CANCELLED", `שורת שכר ${who} מבוטלת — אם שולם בכל זאת, מתקנים את השורה בפיננסים`);
@@ -453,9 +447,9 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
       return { ok: true, after: { [field]: a.paid ? "שולם" : "צפוי" } };
     },
     async apply(d, id, _after, a) { const r = await d.setShowFeePaid(id, String(a.role), a.paid === true, { date: str(a.date), method: str(a.paymentMethod) }); if (r.kind !== "ok") throw new Error(r.messageHe ?? r.kind); },
-    requiredValues: (a) => [`${a.role === "DJ_FEE" ? "DJ" : "אמן"} ${a.paid ? "שולם" : "צפוי"}`, ...(a.date !== undefined ? [String(a.date)] : [])],
-    warnings: (c, a) => { const dj = a?.role === "DJ_FEE"; const amt = dj ? c.djFeeAmount : c.artistFeeAmount; const st = dj ? c.djFeeStatus : c.artistFeeStatus; return [`שורת שכר ${dj ? `DJ${c.djName ? ` (${c.djName})` : ""}` : `אמן${c.artist ? ` (${c.artist})` : ""}`}: ${amt === null || amt === undefined ? "—" : cm(amt, c.currency)} · היום '${st ?? "אין שורה"}' → '${a?.paid ? "שולם" : "צפוי"}'`, `תשלום הלקוח (לא משתנה): התקבל ${cm(c.received, c.currency)}, יתרה ${cm(c.remaining, c.currency)}`]; },
-    disclosuresHe: ["DJ: רק שורת שכר ה-DJ בכספים משתנה (סטטוס, ותאריך + אמצעי בסימון שולם); ביטול הסימון מחזיר ל'צפוי'", "אמן (מודל נטו 28.9): נרשם תשלום אמיתי בגובה חלק האמן בהופעה — הוצאה ששולמה בכספים (Records) + תשלום במאזן האמן, מקושרים; זכאות האמן כבר במאזן ולא משתנה", "תשלום הלקוח לא משתנה", "לא יישלח Push"],
+    requiredValues: (a) => [`DJ ${a.paid ? "שולם" : "צפוי"}`, ...(a.date !== undefined ? [String(a.date)] : [])],
+    warnings: (c, a) => { const amt = c.djFeeAmount; const st = c.djFeeStatus; return [`שורת שכר DJ${c.djName ? ` (${c.djName})` : ""}: ${amt === null || amt === undefined ? "—" : cm(amt, c.currency)} · היום '${st ?? "אין שורה"}' → '${a?.paid ? "שולם" : "צפוי"}'`, `תשלום הלקוח (לא משתנה): התקבל ${cm(c.received, c.currency)}, יתרה ${cm(c.remaining, c.currency)}`]; },
+    disclosuresHe: ["DJ: רק שורת שכר ה-DJ בכספים משתנה (סטטוס, ותאריך + אמצעי בסימון שולם); ביטול הסימון מחזיר ל'צפוי'", "אמן: לא נתמך כאן — תשלום לאמן נרשם רק במאזן האמן; זכאות האמן במאזן ולא משתנה", "תשלום הלקוח לא משתנה", "לא יישלח Push"],
   },
   {
     actionId: "SET_SHOW_CURRENCY", kinds: ["show"],

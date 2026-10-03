@@ -55,7 +55,7 @@ function mk() {
       s.remaining = Math.max(0, s.showPrice - s.received); s.credit = Math.max(0, s.received - s.showPrice);
       return { kind: "ok" as const };
     },
-    async closeShow(id: string, c: { incomeReceived: boolean }) { calls.push("closeShow"); w.closed.push(id); w.shows[id].status = "בוצע"; if (c.incomeReceived) { w.shows[id].paymentStatus = "שולם"; w.shows[id].received = Math.max(w.shows[id].received, w.shows[id].showPrice); w.shows[id].remaining = 0; } return { kind: "ok" as const }; },
+    async closeShow(id: string, c: { incomeReceived: boolean; djPaid: boolean }) { calls.push("closeShow"); w.closed.push(id); w.shows[id].status = "בוצע"; if (c.incomeReceived) { w.shows[id].paymentStatus = "שולם"; w.shows[id].received = Math.max(w.shows[id].received, w.shows[id].showPrice); w.shows[id].remaining = 0; } return { kind: "ok" as const }; },
     async recordShowPayment(id: string, p: { amount: number; date: string }) { calls.push("recordShowPayment"); const s = w.shows[id]; if (!s) return { kind: "not_found" as const }; s.received += p.amount; s.remaining = Math.max(0, s.showPrice - s.received); s.credit = Math.max(0, s.received - s.showPrice); s.payments = [s.payments, `${p.amount}@${p.date}`].filter(Boolean).join(";"); s.paymentStatus = s.remaining === 0 ? "שולם" : "מקדמה"; return { kind: "ok" as const, transactionId: U(700) }; },
     async deleteShowCompletely(id: string) { calls.push("deleteShowCompletely"); if (Object.values(w.sessions).some((s) => s.showId === id)) return { kind: "has_rehearsals" as const }; delete w.shows[id]; return { kind: "ok" as const }; },
     async markShowQuoteSent(id: string) { calls.push("markShowQuoteSent"); w.quote.push(id); return "ok" as const; },
@@ -84,7 +84,7 @@ const CASES: FamilyCase<W>[] = [
   { id: "CONFIRM_SHOW", args: { show: S2, status: "אושרה" }, confirm: "כן בוס, אושרה", bad: { show: S2, status: "בוצע" }, missing: { show: `show:${U(9)}`, status: "אושרה" }, stale: (w) => { w.shows[U(2)].status = "צריך פולואפ"; }, check: (w) => w.shows[U(2)].status === "אושרה" },
   { id: "MOVE_SHOW_TO_PIPELINE", args: { show: S1, status: "ממתין לתשובה" }, confirm: "כן בוס, ממתין לתשובה מחיקה", bad: { show: S1, status: "בוטל" }, missing: { show: `show:${U(9)}`, status: "ליד חדש" }, stale: (w) => { w.shows[U(1)].financeRows = 2; }, check: (w) => w.shows[U(1)].status === "ממתין לתשובה" && w.shows[U(1)].financeRows === 0 },
   { id: "CANCEL_SHOW", args: { show: S1, removeFromCalendar: true }, confirm: "כן בוס, ביטול", bad: { show: "show:x" }, missing: { show: `show:${U(9)}` }, stale: (w) => { w.shows[U(1)].showPrice = 1; }, check: (w) => w.shows[U(1)].status === "בוטל" && !w.shows[U(1)].hasCalendarEvent },
-  { id: "CLOSE_SHOW", args: { show: S1, incomeReceived: true, djPaid: true, artistPaid: false }, confirm: "כן בוס, התקבל ✓ DJ ✓ אמן ✗", bad: { show: S1, incomeReceived: "כן", djPaid: true, artistPaid: true }, missing: { show: `show:${U(9)}`, incomeReceived: true, djPaid: true, artistPaid: true }, stale: (w) => { w.shows[U(1)].djFee = 900; }, check: (w, c) => w.shows[U(1)].status === "בוצע" && w.shows[U(1)].paymentStatus === "שולם" && c.join() === "closeShow" },
+  { id: "CLOSE_SHOW", args: { show: S1, incomeReceived: true, djPaid: true }, confirm: "כן בוס, התקבל ✓ DJ ✓", bad: { show: S1, incomeReceived: "כן", djPaid: true }, missing: { show: `show:${U(9)}`, incomeReceived: true, djPaid: true }, stale: (w) => { w.shows[U(1)].djFee = 900; }, check: (w, c) => w.shows[U(1)].status === "בוצע" && w.shows[U(1)].paymentStatus === "שולם" && c.join() === "closeShow" },
   { id: "SET_SHOW_CALENDAR", args: { show: S1, mode: "REMOVE" }, confirm: "כן בוס, הסרה מהיומן", bad: { show: S1, mode: "TOGGLE" }, missing: { show: `show:${U(9)}`, mode: "ADD" }, stale: (w) => { w.shows[U(1)].name = "x"; }, check: (w) => !w.shows[U(1)].hasCalendarEvent },
   { id: "MARK_SHOW_QUOTE_SENT", args: { show: S2 }, confirm: "כן בוס, פולואפ", bad: { show: "show:1" }, missing: { show: `show:${U(9)}` }, stale: (w) => { w.shows[U(2)].showPrice = 1; }, check: (w) => w.quote.includes(U(2)) },
   { id: "NOTIFY_SHOW_ARTIST", args: { show: S1 }, confirm: "כן בוס, שליו", bad: { show: "show:1" }, missing: { show: `show:${U(9)}` }, stale: (w) => { w.shows[U(1)].location = "x"; }, check: (w) => w.sent.join() === `artist:${U(1)}` },
@@ -130,7 +130,7 @@ const CASES: FamilyCase<W>[] = [
   const smj = JSON.stringify(sm);
   ok("A1. SET_SHOW_MONEY preview discloses the calendar update (price in the event) and that realized ledger income is not re-synced after the close", sm.status === "PREVIEW" && smj.includes("שינוי מחיר מעדכן אותו") && smj.includes("לא מסונכרנת מחדש אחרי הסגירה"));
   ok("A1. SET_SHOW_MONEY preview says received payments never change and DJ / artist fee statuses never change", smj.includes("תשלומים שהתקבלו לא משתנים") && smj.includes("סטטוס התשלום של שכר ה-DJ ושל שכר האמן לא משתנה") && smj.includes("שינוי מחיר לעולם לא רושם הכנסה"));
-  const cl = JSON.stringify(await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: false, artistPaid: false }));
+  const cl = JSON.stringify(await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: false }));
   ok("A1. CLOSE_SHOW preview: a flag left false never downgrades an already-paid fee", cl.includes("שכר ששולם כבר נשאר שולם"));
   { const h = mk(); h.w.shows[U(1)].djFeeStatus = "שולם";
     ok("A1. MARK_SHOW_FEE_PAID on an already-paid fee → ALREADY_PAID", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "ALREADY_PAID");
@@ -138,24 +138,26 @@ const CASES: FamilyCase<W>[] = [
     ok("A1. MARK_SHOW_FEE_PAID paid=false = the explicit undo (שולם → צפוי); nothing else changes", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.shows[U(1)].djFeeStatus === "צפוי" && h.calls.join() === "setShowFeePaid", r.e?.status); }
   { const h = mk(); h.w.shows[U(1)].djFeeStatus = null;
     ok("A1. MARK_SHOW_FEE_PAID DJ with no fee row → NO_FEE_ROW (never creates one)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "NO_FEE_ROW"); }
-  { const h = mk(); h.w.shows[U(1)].artistFeeStatus = null; h.w.shows[U(1)].artistFeeAmount = null;
-    ok("A1. MARK_SHOW_FEE_PAID artist with no entitlement (no agreement / not confirmed / share 0) → NO_FEE_ROW, nothing written", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "NO_FEE_ROW" && h.calls.length === 0); }
-  { const h = mk(); h.w.shows[U(1)].artistFeeStatus = null;
-    ok("A1. net model: MARK_SHOW_FEE_PAID artist with an entitlement and NO legacy fee row → previewed (a real payment is recorded)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h)).status === "PREVIEW");
-    ok("A1. net model: un-paying the artist → UNPAY_VIA_LEDGER (cancelled in the artist's balance)", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: false }, h)).status === "UNPAY_VIA_LEDGER"); }
+  // Phase 1 (2026-10-03): the artist role is refused with ARTIST_PAYOUT_VIA_BALANCE (paid true AND false), nothing written; artist payout only via the balance.
+  for (const [lbl, setup] of [["no entitlement", (h: ReturnType<typeof mk>) => { h.w.shows[U(1)].artistFeeStatus = null; h.w.shows[U(1)].artistFeeAmount = null; }], ["with an entitlement", (h: ReturnType<typeof mk>) => { h.w.shows[U(1)].artistFeeStatus = null; }]] as const) {
+    for (const paid of [true, false]) { const h = mk(); setup(h);
+      ok(`A1. Phase 1: MARK_SHOW_FEE_PAID artist (${lbl}, paid=${paid}) → ARTIST_PAYOUT_VIA_BALANCE, nothing written`, (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid }, h)).status === "ARTIST_PAYOUT_VIA_BALANCE" && h.calls.length === 0); }
+  }
+  { const h = mk(); const r = await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: false }, h); const r2 = await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaidDate: "2099-01-01" }, h);
+    ok("A1. Phase 1: CLOSE_SHOW no longer accepts artistPaid / artistPaidDate (refused, nothing written)", ["INVALID_INPUT", "ARTIST_PAYOUT_VIA_BALANCE"].includes(r.status) && ["INVALID_INPUT", "ARTIST_PAYOUT_VIA_BALANCE"].includes(r2.status) && h.calls.length === 0, r.status + "/" + r2.status); }
   { const h = mk(); h.w.shows[U(1)].djFeeStatus = "בוטל";
     ok("A1. MARK_SHOW_FEE_PAID on a cancelled fee row → FEE_CANCELLED", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "FEE_CANCELLED"); }
-  { const h = mk(); const p = await q("MARK_SHOW_FEE_PAID", { show: S1, role: "ARTIST_FEE", paid: true }, h);
+  { const h = mk(); const p = await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h);
     const pj = JSON.stringify(p);
-    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE + LEDGER (net model: an artist payment is Finance + the ledger), and the preview shows before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE", "LEDGER"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)") && pj.includes("מודל נטו"), pj.slice(0, 400)); }
+    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE only (Phase 1 2026-10-03: the artist payout is not here, so no LEDGER; DJ role previewed), and the preview shows before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)"), pj.slice(0, 400)); }
   const past = mk(); past.w.shows[U(1)].date = "2020-01-01";
   ok("notify only an upcoming show", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, past)).status === "NOT_UPCOMING");
   const other = mk(); other.w.shows[U(1)].artist = "אבי"; other.w.shows[U(1)].djClientId = U(61);
   ok("artist notify exists only for Shalev; DJ notify only for CLEANTONE", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, other)).status === "NOT_SHALEV" && (await q("NOTIFY_SHOW_DJ", { show: S1 }, other)).status === "NOT_CLEANTONE");
   ok("notify is EXTERNAL_COMMUNICATION with PUSH declared", ["NOTIFY_SHOW_ARTIST", "NOTIFY_SHOW_DJ"].every((id) => ACTION_REGISTRY.get(id)!.effects.includes("PUSH" as never) && ACTION_REGISTRY.get(id)!.riskClass === "EXTERNAL_COMMUNICATION"));
   ok("a show with rehearsals cannot be deleted", (await q("DELETE_SHOW", { show: S1 })).status === "HAS_REHEARSALS");
-  const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true, artistPaid: true }, "מאשר");
-  ok("closing: the preview lists the three party flags; a plain \"מאשר\" approves the exact plan (no repeated values)", JSON.stringify(rc.p).includes("requiredConfirmationValues") && rc.e?.status === "APPLIED_AS_EXPECTED" && c.calls.join() === "closeShow");
+  const c = mk(); const rc = await fullFlow(mkDeps(c.writers).d, "CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: true }, "מאשר");
+  ok("closing: the preview lists the two party flags (client + DJ; Phase 1 2026-10-03: no artist flag); a plain \"מאשר\" approves the exact plan (no repeated values)", JSON.stringify(rc.p).includes("requiredConfirmationValues") && rc.e?.status === "APPLIED_AS_EXPECTED" && c.calls.join() === "closeShow");
   ok("a regular studio session is not edited as a rehearsal", (await q("UPDATE_SHOW_REHEARSAL", { session: `session:${U(30)}`, status: "בוצע" }, (() => { const x = mk(); x.w.sessions[U(30)].sessionType = "סשן"; return x; })())).status === "WRONG_ENTITY_TYPE");
   ok("D5 is decided: recording show money is executable through RECORD_SHOW_PAYMENT", ACTION_REGISTRY.get("SHOW.RECORD_SHOW_ADVANCE")?.availabilityDetail === "EXECUTABLE");
 
@@ -219,7 +221,8 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nShared writers + hardening");
   ok("show routes use the shared writer (create / update / delete / quote)", /createShowRecord\(/.test(read("app/api/shows/route.ts")) && /updateShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /deleteShowRecord\(/.test(read("app/api/shows/[id]/route.ts")) && /markQuoteSent\(/.test(read("app/api/shows/[id]/quote-sent/route.ts")));
   const ws = read("lib/writes/shows.ts");
-  ok("show money reuses the app's own split (the agreement split = computeShowSplit + counted rehearsals, שליו / אבי only)", /showAgreementSplit\(show, await getRehearsalCountedForShow\(id\)\)/.test(ws) && /syncShowFinance/.test(ws) && /computeShowSplit\(/.test(read("lib/label-agreements.ts")));
+  // Phase 1 (2026-10-03): the writer now splits via showAgreementSplit(fresh, rehearsalCounted) inside the close flow.
+  ok("show money reuses the app's own split (the agreement split = computeShowSplit + counted rehearsals, שליו / אבי only)", /showAgreementSplit\(fresh, rehearsalCounted\)/.test(ws) && /getRehearsalCountedForShow\(fresh\.id\)/.test(ws) && /syncShowFinance/.test(ws) && /computeShowSplit\(/.test(read("lib/label-agreements.ts")));
   ok("HARDENED: the booking entitlement sync never adds an expected row next to a close-realized one (net model: lib/artist-entitlement-sync)", /if \(row && row\.entry_type === REALIZED\) \{/.test(read("lib/artist-entitlement-sync.ts")) && /if \(!i\.performed && !inactive\) return "REALIZED_UNTOUCHED";/.test(read("lib/artist-entitlement-sync.ts")) && /syncShowEntitlement\(/.test(read("lib/shows-finance-sync.ts")) && !/artist-balance-show-sync"/.test(read("lib/shows-finance-sync.ts")));
   ok("HARDENED: deleting a show rehearsal re-derives the show split", /rehearsal delete split re-sync/.test(read("lib/writes/sessions.ts")));
   ok("HARDENED: Sunny's show delete = the hub (calendar, tasks, finance, show) server-side", /removeFromCalendar: true/.test(ws) && /deleteTaskRecord\(t\)/.test(ws));

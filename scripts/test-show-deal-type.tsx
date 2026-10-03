@@ -114,11 +114,12 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   ok("B3. an 'אושרה' save with the old automatic 'צפוי' → no money and no payment label stored", conf2.kind === "ok" && txOf(lead.id).length === 0 && show(lead.id).payment_status === "לא שולם");
   const edit = await W.updateShowRecord(lead.id, { location: "חיפה", date: "2099-10-20", notes: "חימום" });
   ok("B4. operational edits (place / date / notes) save normally, no money", edit.kind === "ok" && show(lead.id).location === "חיפה" && txOf(lead.id).length === 0);
-  const close = await W.closeShowRecord(lead.id, { markDone: true, incomeReceived: false, djPaid: false, artistPaid: false, note: "היה מעולה" });
+  // Phase 1 (2026-10-03): artistPaid no longer exists in the close contract (closing never pays the artist) — the flag was dropped from these cases
+  const close = await W.closeShowRecord(lead.id, { markDone: true, incomeReceived: false, djPaid: false, note: "היה מעולה" });
   ok("B5. closing (→ בוצע) works operationally: status בוצע + a notes line, no money, no ledger", close.kind === "ok" && show(lead.id).status === "בוצע" && String(show(lead.id).notes).includes("שת״פ ללא תשלום") && txOf(lead.id).length === 0 && closeLedger.length === 0);
-  const closeMoney = await W.closeShowRecord(c1.id, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: false });
+  const closeMoney = await W.closeShowRecord(c1.id, { markDone: true, incomeReceived: true, djPaid: false });
   ok("B6. a close that claims money received is refused (no payment row)", closeMoney.kind === "refused" && (closeMoney as { code: string }).code === "UNPAID_COLLAB" && txOf(c1.id).length === 0);
-  const dlgMoney = await W.updateShowRecord(c1.id, { status: "בוצע", closeShow: { incomeReceived: false, djPaid: true, artistPaid: false } });
+  const dlgMoney = await W.updateShowRecord(c1.id, { status: "בוצע", closeShow: { incomeReceived: false, djPaid: true } });
   ok("B7. the close dialog with a 'DJ paid' flag is refused too", dlgMoney.kind === "refused" && show(c1.id).status === "אושרה");
   const cancel = await W.updateShowRecord(c1.id, { status: "בוטל" });
   const reopen = await W.updateShowRecord(c1.id, { status: "אושרה" });
@@ -244,8 +245,8 @@ const BASE = { name: "הופעה בתל אביב", artist: "שליו טסמה", 
   ok("H4. …a price with it is refused (UNPAID_COLLAB); a PAID create still requires the price", cpBad.ok === false && (cpBad as { code: string }).code === "UNPAID_COLLAB" && create.plan({ name: "x", status: "אושרה" }, {}).ok === false);
   const cur = { dealType: "UNPAID_COLLAB", status: "אושרה", received: 0, remaining: 0, currency: "₪", paymentStatus: "לא שולם", djFeeStatus: null, artistFeeStatus: null } as Row;
   const refusedBy = (id: string, a: Row) => { const r = SHOW_PRIMITIVES.find((p) => p.actionId === id)!.plan(a, cur as never); return r.ok === false ? (r as { code: string }).code : "PLANNED"; };
-  ok("H5. money actions on a collaboration are refused clearly (payment / fee paid / price / currency / close with money)", refusedBy("RECORD_SHOW_PAYMENT", { amount: 100, date: "2099-10-16" }) === "UNPAID_COLLAB" && refusedBy("MARK_SHOW_FEE_PAID", { role: "DJ_FEE", paid: true }) === "UNPAID_COLLAB" && refusedBy("SET_SHOW_MONEY", { showPrice: 100 }) === "UNPAID_COLLAB" && refusedBy("SET_SHOW_CURRENCY", { currency: "$" }) === "UNPAID_COLLAB" && refusedBy("CLOSE_SHOW", { incomeReceived: true, djPaid: false, artistPaid: false }) === "UNPAID_COLLAB");
-  ok("H6. …an operational close (no money flags) is planned", refusedBy("CLOSE_SHOW", { incomeReceived: false, djPaid: false, artistPaid: false }) === "PLANNED");
+  ok("H5. money actions on a collaboration are refused clearly (payment / fee paid / price / currency / close with money)", refusedBy("RECORD_SHOW_PAYMENT", { amount: 100, date: "2099-10-16" }) === "UNPAID_COLLAB" && refusedBy("MARK_SHOW_FEE_PAID", { role: "DJ_FEE", paid: true }) === "UNPAID_COLLAB" && refusedBy("SET_SHOW_MONEY", { showPrice: 100 }) === "UNPAID_COLLAB" && refusedBy("SET_SHOW_CURRENCY", { currency: "$" }) === "UNPAID_COLLAB" && refusedBy("CLOSE_SHOW", { incomeReceived: true, djPaid: false }) === "UNPAID_COLLAB");
+  ok("H6. …an operational close (no money flags) is planned", refusedBy("CLOSE_SHOW", { incomeReceived: false, djPaid: false }) === "PLANNED");
   const deal = SHOW_PRIMITIVES.find((p) => p.actionId === "SET_SHOW_DEAL_TYPE")!;
   const paidCur = { dealType: "PAID", received: 0, currency: "₪", djFeeStatus: "צפוי", artistFeeStatus: "צפוי", showPrice: 3000, djFee: 500 } as Row;
   ok("H7. SET_SHOW_DEAL_TYPE: PAID → collaboration planned when no money moved; refused with a received payment / a paid fee", deal.plan({ dealType: "UNPAID_COLLAB" }, paidCur as never).ok === true && (deal.plan({ dealType: "UNPAID_COLLAB" }, { ...paidCur, received: 500 } as never) as { code?: string }).code === "DEAL_SWITCH_BLOCKED" && (deal.plan({ dealType: "UNPAID_COLLAB" }, { ...paidCur, djFeeStatus: "שולם", djFeeAmount: 500 } as never) as { code?: string }).code === "DEAL_SWITCH_BLOCKED");

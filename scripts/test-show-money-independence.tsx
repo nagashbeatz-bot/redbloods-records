@@ -129,13 +129,18 @@ const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artist
 
   console.log("\nRehearsal create / edit / delete → no fee status change");
   const b = await newShow({ show_price: 5000, dj_fee: 1000 });
+  // Phase 1 (2026-10-03): setShowFeePaid ARTIST is ALWAYS refused (ARTIST_PAYOUT_VIA_BALANCE) — the artist is paid only through the balance
+  // (recordArtistPayment). The REAL payment for the later scenarios is therefore created directly, exactly as the balance tab does.
   const pb = await W.setShowFeePaid(b, "ARTIST_FEE", true, { date: "2026-10-16", method: "ביט" });
+  ok("10a. Phase 1 (2026-10-03): setShowFeePaid ARTIST paid=true → refused ARTIST_PAYOUT_VIA_BALANCE, nothing written (no Finance row, no ledger payment)", pb.kind === "refused" && pb.code === "ARTIST_PAYOUT_VIA_BALANCE" && artistPayTx(b).length === 0 && ledgerPays(b).length === 0, pb);
+  const { recordArtistPayment } = await import("../lib/writes/artist-payments");
+  const rp = await recordArtistPayment({ artistId: SHALEV, amount: 2000, date: "2026-10-16", method: "ביט", showId: b, idempotencyKey: `show:${b}`, description: "תשלום — הופעה בחיפה", allowDuplicate: true });
   const payTx = artistPayTx(b)[0];
-  ok("10b. setShowFeePaid ARTIST = a REAL payment: Finance שכר אמן 2,000 שולם RECORDS (not show-linked) + ONE ledger payment linked by source_tx_id", pb.kind === "ok" && artistPaid(b) && payTx.amount === 2000 && payTx.business_unit === "RECORDS" && payTx.business_unit_source === "RULE" && payTx.type === "expense" && payTx.show_id === null && payTx.currency === "₪" && payTx.date === "2026-10-16" && payTx.payment_method === "ביט" && ledgerPays(b)[0].amount === 2000 && ledgerPays(b)[0].artist_id === SHALEV && earning(b)?.entry_type === "הכנסות צפויות", { pb, payTx, led: ledgerPays(b) });
+  ok("10b. Phase 1 (2026-10-03): a REAL artist payment (recordArtistPayment, the balance path): Finance שכר אמן 2,000 שולם RECORDS (not show-linked) + ONE ledger payment linked by source_tx_id", rp.kind === "ok" && artistPaid(b) && payTx.amount === 2000 && payTx.business_unit === "RECORDS" && payTx.business_unit_source === "RULE" && payTx.type === "expense" && payTx.show_id === null && payTx.currency === "₪" && payTx.date === "2026-10-16" && payTx.payment_method === "ביט" && ledgerPays(b)[0].amount === 2000 && ledgerPays(b)[0].artist_id === SHALEV && earning(b)?.entry_type === "הכנסות צפויות", { rp, payTx, led: ledgerPays(b) });
   const again = await W.setShowFeePaid(b, "ARTIST_FEE", true, {});
-  ok("10c. paying the artist again for the same show → ALREADY_PAID, still ONE Finance row + ONE ledger payment", again.kind === "refused" && again.code === "ALREADY_PAID" && artistPaid(b), again);
+  ok("10c. Phase 1 (2026-10-03): paying the artist again for the same show from the show → refused ARTIST_PAYOUT_VIA_BALANCE, still ONE Finance row + ONE ledger payment", again.kind === "refused" && again.code === "ARTIST_PAYOUT_VIA_BALANCE" && artistPaid(b), again);
   const unpayA = await W.setShowFeePaid(b, "ARTIST_FEE", false, {});
-  ok("10d. un-paying the artist here → refused UNPAY_VIA_LEDGER (the payment is cancelled in the artist's balance), nothing changes", unpayA.kind === "refused" && unpayA.code === "UNPAY_VIA_LEDGER" && artistPaid(b));
+  ok("10d. Phase 1 (2026-10-03): un-paying the artist from the show → refused ARTIST_PAYOUT_VIA_BALANCE (the payment is cancelled only in the artist's balance), nothing changes", unpayA.kind === "refused" && unpayA.code === "ARTIST_PAYOUT_VIA_BALANCE" && artistPaid(b));
   const statusesB = () => `${fee(b, "DJ_FEE")?.payment_status}/${artistPaid(b) ? "שולם" : "—"}`;
   t("sessions").push({ id: "r1", show_id: b, session_type: "חזרה להופעה", status: "בוצע", cost: 400 });
   await fin.syncShowFinance(getShow(b)); // what lib/writes/sessions does after a rehearsal create / edit / delete
@@ -160,14 +165,16 @@ const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artist
   console.log("\nClosure flags write only what the Owner chose");
   const c = await newShow();
   await W.setShowFeePaid(c, "DJ_FEE", true, {});
-  const cl = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: false });
+  const cl = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false });
   ok("18. close with djPaid = false keeps an already-paid DJ שולם; the entitlement becomes REAL (הכנסות 1,250, the same row) with no payment; income = the remainder once", cl.kind === "ok" && getShow(c).status === "בוצע" && fee(c, "DJ_FEE")?.payment_status === "שולם" && earning(c)?.entry_type === "הכנסות" && earning(c)?.amount === 1250 && ledgerPays(c).length === 0 && artistPayTx(c).length === 0 && receivedTotal(c) === 3000 && paymentRows(c) === 1, { cl, e: earning(c) });
-  const cl2 = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: true });
-  ok("19. close again with 'אמן ✓' → ONE real payment (Finance שכר אמן 1,250 שולם + the ledger payment); no second income; the entitlement stays realized", cl2.kind === "ok" && artistPaid(c) && artistPayTx(c)[0].amount === 1250 && earning(c)?.entry_type === "הכנסות" && receivedTotal(c) === 3000 && paymentRows(c) === 1, { cl2, tx: artistPayTx(c), led: ledgerPays(c) });
-  const cl3 = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false, artistPaid: true });
-  ok("19b. re-saving the close with 'אמן ✓' again → no duplicate payment (Finance + ledger each ONE)", cl3.kind === "ok" && artistPaid(c));
+  // Phase 1 (2026-10-03): closing never pays the artist — a close writes NO Finance שכר אמן row and NO ledger payment (the entitlement is only realized)
+  const cl2 = await W.closeShowRecord(c, { markDone: true, incomeReceived: true, djPaid: false });
+  ok("19. Phase 1 (2026-10-03): closing again → NO artist payment is written (no Finance שכר אמן row, no ledger payment); no second income; the entitlement stays realized", cl2.kind === "ok" && artistPayTx(c).length === 0 && ledgerPays(c).length === 0 && earning(c)?.entry_type === "הכנסות" && earning(c)?.amount === 1250 && receivedTotal(c) === 3000 && paymentRows(c) === 1, { cl2, tx: artistPayTx(c), led: ledgerPays(c) });
+  const snapC = JSON.stringify(DB);
+  const clBad = await W.updateShowRecord(c, { closeShow: { markDone: true, incomeReceived: true, djPaid: false, artistPaid: true } } as never);
+  ok("19b. Phase 1 (2026-10-03): artistPaid in the close body → refused ARTIST_PAYOUT_VIA_BALANCE before any write (even false is refused)", clBad.kind === "refused" && (clBad as { code: string }).code === "ARTIST_PAYOUT_VIA_BALANCE" && JSON.stringify(DB) === snapC && ((await W.updateShowRecord(c, { closeShow: { markDone: true, incomeReceived: true, djPaid: false, artistPaid: false } } as never)) as { code?: string }).code === "ARTIST_PAYOUT_VIA_BALANCE" && ((await W.updateShowRecord(c, { artistPaidDate: "2026-10-16" } as never)) as { code?: string }).code === "ARTIST_PAYOUT_VIA_BALANCE" && JSON.stringify(DB) === snapC, clBad);
   const d = await newShow();
-  await W.closeShowRecord(d, { markDone: true, incomeReceived: false, djPaid: true, artistPaid: false });
+  await W.closeShowRecord(d, { markDone: true, incomeReceived: false, djPaid: true });
   ok("20. close 'not received' + DJ paid → the DJ row שולם, no income recorded, no artist payment (the entitlement realized, owed)", fee(d, "DJ_FEE")?.payment_status === "שולם" && receivedTotal(d) === 0 && ledgerPays(d).length === 0 && earning(d)?.entry_type === "הכנסות");
 
   console.log("\nExplicit fee writer (setShowFeePaid)");
@@ -176,7 +183,7 @@ const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artist
   ok("22. the explicit undo → צפוי, dated the show date again", un.kind === "ok" && fee(d, "DJ_FEE")?.payment_status === "צפוי" && fee(d, "DJ_FEE")?.date === getShow(d).date);
   const lead = SHOW({ status: "ליד חדש" }); t("shows").push(lead);
   const nr = await W.setShowFeePaid(String(lead.id), "ARTIST_FEE", true, {});
-  ok("23. a lead (not confirmed) → the artist cannot be paid for it: refused NO_FEE_ROW, nothing created", nr.kind === "refused" && nr.code === "NO_FEE_ROW" && txOf(String(lead.id)).length === 0 && artistPayTx(String(lead.id)).length === 0 && ledgerPays(String(lead.id)).length === 0);
+  ok("23. Phase 1 (2026-10-03): a lead (not confirmed) → the artist cannot be paid for it from the show: refused ARTIST_PAYOUT_VIA_BALANCE, nothing created", nr.kind === "refused" && nr.code === "ARTIST_PAYOUT_VIA_BALANCE" && txOf(String(lead.id)).length === 0 && artistPayTx(String(lead.id)).length === 0 && ledgerPays(String(lead.id)).length === 0);
   ok("24. a bad role / date / method → refused", (await W.setShowFeePaid(d, "HOST", true, {})).kind === "refused" && (await W.setShowFeePaid(d, "DJ_FEE", true, { date: "27/09" })).kind === "refused" && (await W.setShowFeePaid(d, "DJ_FEE", true, { method: "קריפטו" })).kind === "refused");
   ok("25. an unknown show → not_found", (await W.setShowFeePaid(randomUUID(), "DJ_FEE", true, {})).kind === "not_found");
 
@@ -219,8 +226,11 @@ const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artist
     return { s, calls, writers };
   };
   const h1 = mkSunny();
-  const r1 = await fullFlow(mkDeps(h1.writers).d, "MARK_SHOW_FEE_PAID", { show: `show:${U(1)}`, role: "ARTIST_FEE", paid: true, date: "2099-05-03" }, "מאשר");
-  ok("33. MARK_SHOW_FEE_PAID happy path → only the artist fee row is written; the client money and the DJ row untouched", r1.e?.status === "APPLIED_AS_EXPECTED" && h1.s.artistFeeStatus === "שולם" && h1.s.djFeeStatus === "צפוי" && h1.s.received === 3000 && h1.calls.join() === "fee:ARTIST_FEE:true", { e: r1.e?.status, calls: h1.calls });
+  // Phase 1 (2026-10-03): MARK_SHOW_FEE_PAID for the ARTIST is refused at planning (ARTIST_PAYOUT_VIA_BALANCE); the DJ row keeps the original flow
+  const p33 = await planAction({ intentHe: "x", actionId: "MARK_SHOW_FEE_PAID", args: { show: `show:${U(1)}`, role: "ARTIST_FEE", paid: true, date: "2099-05-03" } }, OWNER, mkDeps(h1.writers).d);
+  ok("33a. Phase 1 (2026-10-03): MARK_SHOW_FEE_PAID ARTIST_FEE → refused ARTIST_PAYOUT_VIA_BALANCE at planning, ZERO writes", p33.status !== "PREVIEW" && JSON.stringify(p33).includes("ARTIST_PAYOUT_VIA_BALANCE") && h1.calls.length === 0 && h1.s.artistFeeStatus === "צפוי", p33.status);
+  const r1 = await fullFlow(mkDeps(h1.writers).d, "MARK_SHOW_FEE_PAID", { show: `show:${U(1)}`, role: "DJ_FEE", paid: true, date: "2099-05-03" }, "מאשר");
+  ok("33. MARK_SHOW_FEE_PAID happy path (DJ row) → only the DJ fee row is written; the client money and the artist row untouched", r1.e?.status === "APPLIED_AS_EXPECTED" && h1.s.djFeeStatus === "שולם" && h1.s.artistFeeStatus === "צפוי" && h1.s.received === 3000 && h1.calls.join() === "fee:DJ_FEE:true", { e: r1.e?.status, calls: h1.calls });
   const h2 = mkSunny(); const d2 = mkDeps(h2.writers).d;
   const p2 = await planAction({ intentHe: "x", actionId: "MARK_SHOW_FEE_PAID", args: { show: `show:${U(1)}`, role: "DJ_FEE", paid: true } }, OWNER, d2);
   h2.s.djFeeStatus = "שולם"; // paid in Finance meanwhile
@@ -250,10 +260,11 @@ const artistPaid = (showId: string) => ledgerPays(showId).length === 1 && artist
   const dc = await W.deleteShowCompletely(g);
   ok("40. deleteShowCompletely (hub / Sunny) with a paid DJ fee → has_paid_fees before calendar / tasks / finance, ZERO writes", dc.kind === "has_paid_fees" && snap() === s38, dc);
   const gA = await newShow();
-  await W.setShowFeePaid(gA, "ARTIST_FEE", true, {});
+  // Phase 1 (2026-10-03): the paid artist fee exists only as a real balance payment (recordArtistPayment) — setShowFeePaid ARTIST is refused
+  await recordArtistPayment({ artistId: SHALEV, amount: 2000, date: "2026-10-16", showId: gA, idempotencyKey: `show:${gA}`, description: "תשלום — הופעה", allowDuplicate: true });
   const sA = snap();
   const rvA = await W.updateShowRecord(gA, { status: "ליד חדש" });
-  ok("41. a PAID artist fee refuses the revert the same way (ZERO writes)", rvA.kind === "refused" && (rvA as { code: string }).code === "HAS_PAID_FEES" && /אמן/.test((rvA as { messageHe: string }).messageHe) && snap() === sA);
+  ok("41. a PAID artist fee (a real balance payment linked to the show) refuses the revert the same way (ZERO writes)", rvA.kind === "refused" && (rvA as { code: string }).code === "HAS_PAID_FEES" && /אמן/.test((rvA as { messageHe: string }).messageHe) && snap() === sA, rvA);
   const gL = await newShow();
   const djRow = fee(gL, "DJ_FEE")!;
   Object.assign(djRow, { payment_status: "שולם", show_id: null, show_money_role: null }); // a legacy row, linked only by the show's stored id

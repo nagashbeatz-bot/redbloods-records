@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { deleteShowRecord, deleteShowCompletely, updateShowRecord } from "@/lib/writes/shows";
+import { ShowFinanceSyncError } from "@/lib/shows-finance-sync";
+import { getShow } from "@/lib/shows-store";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,11 +22,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({
         error: `ההופעה נשמרה, אך עדכון המאזן של האמן נכשל (${r.balanceSyncError}). ניתן לנסות לסגור את ההופעה שוב — הפעולה בטוחה לחזרה ולא תיצור כפילויות.`,
         show: r.show,
+        partial: true,
       }, { status: 502 });
     }
-    return NextResponse.json({ show: r.show, ...(r.calendarWarning ? { calendarWarning: r.calendarWarning } : {}), ...(r.paymentReversalNeeded ? { paymentReversalNeeded: r.paymentReversalNeeded } : {}), ...(r.financeWarning ? { financeWarning: r.financeWarning } : {}) });
+    return NextResponse.json({ show: r.show, ...(r.calendarWarning ? { calendarWarning: r.calendarWarning } : {}), ...(r.financeWarning ? { financeWarning: r.financeWarning } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    // Phase 1 (B4): the show row is saved BEFORE the finance sync — a failed sync means "saved, but the money sync did not
+    // finish". Answer with the saved show + partial so the screen refreshes and says so (never a plain "nothing saved").
+    if (err instanceof ShowFinanceSyncError) {
+      const { id } = await ctx.params;
+      const saved = await getShow(id).catch(() => null);
+      return NextResponse.json({ error: msg, partial: true, ...(saved ? { show: saved } : {}) }, { status: 502 });
+    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
