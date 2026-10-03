@@ -12,7 +12,7 @@
  */
 
 // owner-8 (2026-10-01, Owner decision): NEW_CLIP = a clip PROJECT with ONE agreedPrice (one clip model — no clip deal)
-export const OWNER_MODEL_VERSION = "2026.10.01-owner-8";
+export const OWNER_MODEL_VERSION = "2026.10.03-owner-9";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -96,9 +96,9 @@ export const OWNER_OPERATING_RULES: readonly OwnerRule[] = [
   { ...O("SHALEV_AVI_PROJECTS_ARE_LABEL", "LABEL", "A project that credits Shalev Tasama or Avi Molla (solo or in a collaboration) is a LABEL project.",
     ["Apply it when a project is created (the app's create writers do); show an existing stored לקוח that this rule would call לייבל as a mismatch for the Owner's explicit fix."],
     ["No 'every roster artist = label' rule — other roster artists are classified by the Owner case by case.", "An existing project is never reclassified automatically."]), confirmedAt: "2026-09-27" },
-  { ...O("CLIENT_PAID_IS_NOT_FEE_PAID", "PAYMENTS", "Client paid ≠ DJ paid ≠ artist paid: a show's DJ fee and artist fee are independent obligations.",
-    ["Mark a DJ / artist fee paid only when the Owner says so (the close-dialog flag, MARK_SHOW_FEE_PAID or a Finance edit).", "Undoing a payment is an explicit correction, never a side effect."],
-    ["The client paying in full never pays the DJ or the artist.", "A save never downgrades a paid fee."]), confirmedAt: "2026-09-27" },
+  { ...O("CLIENT_PAID_IS_NOT_FEE_PAID", "PAYMENTS", "Client paid ≠ DJ paid ≠ artist paid: the DJ fee is its own obligation; the artist's show share is an ENTITLEMENT in the artist's balance (never paid from a show).",
+    ["Mark the DJ fee paid only when the Owner says so (the close-dialog 'שולם ל-DJ', MARK_SHOW_FEE_PAID or a Finance edit) — a real DJ_FEE → שולם transition pushes CLEANTONE once, and only after that push was delivered the Owner gets a confirmation (Owner decision 2026-10-03). The artist is NEVER paid from a show: closing a show (בוצע) realizes the entitlement in the balance, and a payout to שליו / אבי is a payment in the artist's balance only (Phase 1, 2026-10-03; MARK_SHOW_FEE_PAID refuses the artist).", "Undoing a payment is an explicit correction, never a side effect."],
+    ["The client paying in full never pays the DJ or the artist.", "A save never downgrades a paid fee.", "The close dialog has no 'שולם לאמן'; closing never creates a payment or payout to the artist."]), confirmedAt: "2026-09-27" },
   { ...O("RECOUP_ONLY_PER_AGREEMENT", "LABEL", "Recoup exists only according to the specific artist agreement.",
     ["For שליו טסמה / אבי מולה there is NO recoup: their accounting is the bi-monthly cycle (SHALEV_AVI_AGREEMENT); for every other artist the clip recoup is NOT_DEFINED ('לא נקבע') — show the client clip price, planned budget, actual paid cost and Red Films payments per currency as information only."],
     ["Never half of the budget, never the budget, never the client clip price as a recoup.", "No recoup figure may be invented."]), confirmedAt: "2026-09-27" },
@@ -158,9 +158,9 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
       { item: "rehearsal", knownFrom: "CANONICAL_DATA", note: "rehearsal sessions store the show id" },
       { item: "calendar on that date", knownFrom: "LIVE_CALENDAR" },
     ],
-    downstream: ["a confirmed show creates 3 finance rows in the show currency (expected balance, DJ fee, artist fee = half of net); money received = payment rows; DJ / artist fees are paid only explicitly", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע writes the artist ledger (frozen)"],
+    downstream: ["a confirmed show creates 2 finance rows in the show currency (expected balance, DJ fee) — the artist's half of the net is an ENTITLEMENT in the artist's balance (expected at booking, realized when בוצע), not a Finance row; money received = payment rows; the DJ fee is paid only explicitly (a real DJ_FEE → שולם pushes CLEANTONE once, then confirms to the Owner after delivery); the artist is paid only by a payment in the artist's balance, never from the show", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע realizes the artist's entitlement in the balance (no payment, no payout)"],
     notifications: ["P_SHOW_TO_ARTIST — Owner presses 'שלח' to the artist (manual)", "P_SHOW_TO_DJ — Owner presses 'שלח' to the DJ (manual)", "P_DJ_CONFIRMED — when the DJ confirms (automatic, to the Owner)", "P_DJ_PAYMENT_PAID — when the DJ_FEE becomes שולם (automatic, to the DJ; then a confirmation to the Owner only after the DJ was reached)"],
-    actions: ["CREATE_SHOW — FUTURE_PRIMITIVE_REQUIRED (the Owner creates it in the dashboard today)", "UPDATE_SHOW_STATUS — FUTURE_PRIMITIVE_REQUIRED", "ASSIGN_SHOW_DJ — FUTURE_PRIMITIVE_REQUIRED", "NOTIFY_ARTIST_DJ — FUTURE_PRIMITIVE_REQUIRED (Sunny may ASK whether to send; never sends)", "CLOSE_SHOW — FUTURE_PRIMITIVE_REQUIRED (financial + strong confirmation)"] },
+    actions: ["CREATE_SHOW — FUTURE_PRIMITIVE_REQUIRED (the Owner creates it in the dashboard today)", "UPDATE_SHOW_STATUS — FUTURE_PRIMITIVE_REQUIRED", "ASSIGN_SHOW_DJ — FUTURE_PRIMITIVE_REQUIRED", "NOTIFY_ARTIST_DJ — FUTURE_PRIMITIVE_REQUIRED (Sunny may ASK whether to send; never sends)", "CLOSE_SHOW — executable after the Owner's approval (client + DJ ticks only; never pays the artist)"] },
   { event: "NEW_PROJECT", titleHe: "פרויקט חדש", source: "SYSTEM_CONTRACT",
     required: [
       { item: "client / artist", knownFrom: "CANONICAL_DATA", note: "artist text → client (TEXT_MATCH); label roster for label work" },

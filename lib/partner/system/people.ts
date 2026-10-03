@@ -176,7 +176,7 @@ export const USER_CONTRACTS: readonly UserContract[] = [
     receivesPush: ["P_SHOW_TO_DJ", "P_DJ_PAYMENT_PAID"],
     triggersPush: ["P_CLEANTONE_PRESENCE", "P_DJ_CONFIRMED"],
     securityGapIds: ["SG_DJ_PAYMENT_PILL", "SG_DJ_UNCONFIRM_SILENT", "SG_DIRECT_REST_RLS_UNKNOWN"],
-    limitationsHe: ["תג 'שולם' בפורטל של הדי-ג׳יי מראה אם הלקוח שילם — לא אם הדי-ג׳יי קיבל תשלום.", "לדי-ג׳יי אין פעמון התראות."],
+    limitationsHe: ["תג 'שולם' בפורטל של הדי-ג׳יי מראה אם שכר הדי-ג׳יי עצמו (שורת DJ_FEE) שולם — לא אם הלקוח שילם (תוקן; תשלום הלקוח לא משפיע עליו).", "כשהשכר שלו עובר ל'שולם' (סגירת הופעה עם 'שולם ל-DJ', סימון שכר DJ, או עריכה בכספים) הוא מקבל Push 'התשלום הועבר' פעם אחת לתשלום, והבעלים מקבל אישור רק אחרי שה-Push אליו הגיע; סגירת ההופעה עצמה לא שולחת Push תשלום.", "לדי-ג׳יי אין פעמון התראות."],
     internal: { role: "cleantone", allowedPaths: ["/dj-cleantone", "/api/red-artists/cleantone-summary", "/api/red-artists/cleantone/shows/x/confirm"], deniedPaths: ["/red-artists", "/api/red-artists/shalev-summary", "/api/beats", "/api/notifications", "/api/shows"] },
   },
   {

@@ -15,6 +15,8 @@ export const SHOW_SECTIONS = ["summary", "identity", "artist", "dj", "money", "l
 const COVERAGE = [
   partner("כסף ההופעה לפי הכללים של המערכת עצמה: נטו = מחיר − הוצאות ישירות (DJ + חזרות שנספרות); לשליו טסמה / אבי מולה — חצי מהנטו לאמן וחצי ללייבל (לא מהברוטו); לכל אמן אחר או לשיתוף — החלוקה לא מוגדרת. לכל הופעה מטבע אחד, בלי המרה."),
   partner("DJ לא משובץ אוטומטית: CLEANTONE מנגן ברוב ההופעות, לא בכולן. אישור קיים רק ל-CLEANTONE."),
+  partner("אין 'שולם לאמן' בסגירת הופעה: כשהופעה בוצעה זכאות האמן (חצי מהנטו לשליו / אבי) נכנסת למאזן כהכנסה — זו זכאות, לא תשלום. סגירה לא יוצרת תשלום ולא payout לאמן; התשלום בפועל לשליו / אבי נרשם רק במאזן האמן / מחזור ההתחשבנות. MARK_SHOW_FEE_PAID לאמן אינו מסלול תשלום (נדחה)."),
+  partner("ה-DJ נפרד: DJ_FEE הוא מקור האמת לתשלום שלו. כש-DJ_FEE עובר ל'שולם' (סימון 'שולם ל-DJ' בסגירה, MARK_SHOW_FEE_PAID ל-DJ, או עריכה בכספים) CLEANTONE מקבל Push פעם אחת, ורק אם הוא הגיע — הבעלים מקבל אישור. סגירת ההופעה עצמה לא שולחת Push תשלום; כשל ב-Push לא נוגע בכסף."),
   partner("אין 'מוכנות להופעה' במערכת — רק ראיות (DJ, אישור, הודעות, חזרות, יומן, תשלום, משימות)."),
   partner("קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם (פער), לא 'אין קבצים'."),
 ];
@@ -40,8 +42,8 @@ function rows(v: ShowView, s: string): Array<{ id: string; label: string; record
 
 export const showView: KnowledgeCapability = {
   id: "show_view", domain: "SHOWS", titleHe: "תמונת הופעה מחוברת",
-  descriptionForModel: "EVERYTHING Redbloods records about ONE show. Default summary (identity, money split, signals, questions). Sections: identity (+ booker), artist (client id canonical; roster by artist text = ledger rule; collaboration), dj (client, label DJ, CLEANTONE confirmation), money (price, advance, client payment, DJ fee, counted rehearsals, split artist / label by the app's own rule, the 3 linked finance rows with status + currency), ledger (artist ledger rows from booking / close), rehearsals (cost, counted or not + why), calendar (stored event + that day's Owner occupancy), tasks (no-DJ / quote follow-up), notifications (artist / DJ sent markers by the app's own read rule: SENT / SENT_PREVIOUS_VERSION / PROCESSING / FAILED / NOT_SENT), portal, signals, questions, history.",
-  examplesHe: ["מה קורה עם ההופעה הזו?", "ה-DJ אישר?", "האמן קיבל הודעה?", "כמה האמן מקבל מההופעה?", "יש חזרה?", "מה עוד חסר להופעה?"],
+  descriptionForModel: "EVERYTHING Redbloods records about ONE show. Default summary (identity, money split, signals, questions). Sections: identity (+ booker), artist (client id canonical; roster by artist text = ledger rule; collaboration), dj (client, label DJ, CLEANTONE confirmation), money (price, advance, client payment, DJ fee, counted rehearsals, split artist / label by the app's own rule, the linked finance rows: client income + DJ fee), ledger (the artist's ENTITLEMENT from booking / close — never a payout; the artist is paid only in the artist's balance), rehearsals (cost, counted or not + why), calendar (stored event + that day's Owner occupancy), tasks (no-DJ / quote follow-up), notifications (artist / DJ sent markers by the app's own read rule: SENT / SENT_PREVIOUS_VERSION / PROCESSING / FAILED / NOT_SENT), portal, signals, questions, history.",
+  examplesHe: ["מה קורה עם ההופעה הזו?", "ה-DJ אישר?", "האמן קיבל הודעה?", "כמה האמן מקבל מההופעה?", "יש חזרה?", "מה עוד חסר להופעה?", "האם סגירת הופעה משלמת לאמן?", "מתי משלמים לשליו על הופעה?", "ה-DJ קיבל Push על התשלום?"],
   modes: { view: { descriptionForModel: "One show (param show; optional section)" } }, defaultMode: "view",
   params: { show: { kind: "entityKey", types: ["show"], descriptionForModel: "The show (partner_resolve / show_portfolio)" }, section: { kind: "enum", values: [...SHOW_SECTIONS], descriptionForModel: "Which part (default summary)" } },
   entityScope: { types: ["show"], param: "show", mode: "view", limit: 1 },

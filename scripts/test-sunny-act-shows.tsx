@@ -129,7 +129,7 @@ const CASES: FamilyCase<W>[] = [
   const sm = await q("SET_SHOW_MONEY", { show: S1, showPrice: 9000 });
   const smj = JSON.stringify(sm);
   ok("A1. SET_SHOW_MONEY preview discloses the calendar update (price in the event) and that realized ledger income is not re-synced after the close", sm.status === "PREVIEW" && smj.includes("שינוי מחיר מעדכן אותו") && smj.includes("לא מסונכרנת מחדש אחרי הסגירה"));
-  ok("A1. SET_SHOW_MONEY preview says received payments never change and DJ / artist fee statuses never change", smj.includes("תשלומים שהתקבלו לא משתנים") && smj.includes("סטטוס התשלום של שכר ה-DJ ושל שכר האמן לא משתנה") && smj.includes("שינוי מחיר לעולם לא רושם הכנסה"));
+  ok("A1. SET_SHOW_MONEY preview says received payments never change and DJ / artist fee statuses never change", smj.includes("תשלומים שהתקבלו לא משתנים") && smj.includes("סטטוס התשלום של שכר ה-DJ לא משתנה") && smj.includes("חלקו הוא זכאות במאזן") && smj.includes("שינוי מחיר לעולם לא רושם הכנסה"));
   const cl = JSON.stringify(await q("CLOSE_SHOW", { show: S1, incomeReceived: true, djPaid: false }));
   ok("A1. CLOSE_SHOW preview: a flag left false never downgrades an already-paid fee", cl.includes("שכר ששולם כבר נשאר שולם"));
   { const h = mk(); h.w.shows[U(1)].djFeeStatus = "שולם";
@@ -149,7 +149,7 @@ const CASES: FamilyCase<W>[] = [
     ok("A1. MARK_SHOW_FEE_PAID on a cancelled fee row → FEE_CANCELLED", (await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h)).status === "FEE_CANCELLED"); }
   { const h = mk(); const p = await q("MARK_SHOW_FEE_PAID", { show: S1, role: "DJ_FEE", paid: true }, h);
     const pj = JSON.stringify(p);
-    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE only (Phase 1 2026-10-03: the artist payout is not here, so no LEDGER; DJ role previewed), and the preview shows before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)"), pj.slice(0, 400)); }
+    ok("A1. MARK_SHOW_FEE_PAID is FINANCIAL, declares FINANCE + PUSH (Phase 1 2026-10-03: the artist payout is not here, so no LEDGER; a real DJ_FEE → שולם pushes CLEANTONE; DJ role previewed), and the preview shows before → after", ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.riskClass === "FINANCIAL" && JSON.stringify(ACTION_REGISTRY.get("MARK_SHOW_FEE_PAID")!.effects) === JSON.stringify(["FINANCE", "PUSH"]) && pj.includes("'צפוי' → 'שולם'") && pj.includes("תשלום הלקוח (לא משתנה)"), pj.slice(0, 400)); }
   const past = mk(); past.w.shows[U(1)].date = "2020-01-01";
   ok("notify only an upcoming show", (await q("NOTIFY_SHOW_ARTIST", { show: S1 }, past)).status === "NOT_UPCOMING");
   const other = mk(); other.w.shows[U(1)].artist = "אבי"; other.w.shows[U(1)].djClientId = U(61);

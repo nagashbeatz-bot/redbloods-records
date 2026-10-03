@@ -143,9 +143,9 @@ function main() {
   ok("CLEANTONE is a frequency → confirm, never assumed", d.resolved && d.questions.some((x) => /never assume/.test(x.why)));
   ok("known: DJ fee default 500 + split (system contract)", d.resolved && d.known.some((k) => k.item === "DJ fee default" && k.value === 500 && k.source === "SYSTEM_CONTRACT"));
   ok("calendar on 15.10 shows the personal driving course (context, not a business fact)", d.resolved && !!d.calendarOnDate?.events?.some((e) => /קורס/.test(e.title ?? "")));
-  ok("downstream effects: finance triple, Shalev ledger, portals", d.resolved && d.downstream.some((x) => /3 finance rows/.test(x)) && d.downstream.some((x) => /Shalev/.test(x)));
+  ok("downstream effects: finance triple, Shalev ledger, portals", d.resolved && d.downstream.some((x) => /2 finance rows/.test(x) && /ENTITLEMENT/.test(x)) && d.downstream.some((x) => /Shalev/.test(x)));
   ok("notifications are proposals only (not applicable until registered)", d.resolved && d.notifications.every((n) => n.state === "NOT_APPLICABLE_YET"));
-  ok("actions are FUTURE_PRIMITIVE_REQUIRED", d.resolved && d.actions.every((x) => /FUTURE_PRIMITIVE_REQUIRED/.test(x)));
+  ok("actions are FUTURE_PRIMITIVE_REQUIRED", d.resolved && d.actions.every((x) => /FUTURE_PRIMITIVE_REQUIRED/.test(x) || /^CLOSE_SHOW — executable/.test(x)));
   const dd = q("show", { artist: `label-artist:${LA_SHALEV}`, date: "2026-10-15" });
   ok("capability show mode: items flagged sunnySends=false", served(dd) && itemsOf(dd).filter((i) => i.id.startsWith("notify:")).every((i) => i.fields.sunnySends === false));
   const ex = showWorkflow(sources(), `client:${C_SHALEV}`, "2026-08-06");

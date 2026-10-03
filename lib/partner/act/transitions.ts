@@ -54,7 +54,7 @@ export const LIFECYCLES: readonly Lifecycle[] = [
   L({ id: "SHOW_STATUS_LABEL", vocabulary: "LABEL.showStatuses", states: S(LABEL_VOCABULARIES.showStatuses), kind: "FREE", setBy: ["SHOW.EDIT_SHOW", "LABEL.SHOW_LIFECYCLE"], terminal: ["בוצע", "בוטל"], special: [] }),
   L({ id: "SHOW_STATUS", vocabulary: "SHOW.statuses", states: S(SHOW_VOCABULARIES.statuses), kind: "FREE", setBy: ["SHOW.EDIT_SHOW"], terminal: ["בוצע", "בוטל"],
     special: [
-      { to: "בוצע", via: "SHOW.CLOSE_SHOW", effectsHe: "סגירה + מי קיבל תשלום → כספים / מאזן אמן" },
+      { to: "בוצע", via: "SHOW.CLOSE_SHOW", effectsHe: "סגירה (הלקוח שילם? ה-DJ שולם?) → כספים + זכאות האמן נכנסת למאזן כהכנסה. אין תשלום לאמן בסגירה — התשלום לאמן נרשם רק במאזן האמן" },
       { to: "בוטל", via: "SHOW.CANCEL_SHOW", effectsHe: "ביטול שורות כספים / משימות" },
       { to: "ממתין לתשובה", via: "SHOW.CREATE_SHOW", effectsHe: "יצירה (ברירת מחדל)" },
     ] }),
