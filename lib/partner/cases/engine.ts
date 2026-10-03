@@ -18,7 +18,7 @@ import { detectReleaseTimingCases } from "./detectors/release";
 import { detectProjectDeadlineCases } from "./detectors/project";
 import { detectChangeDerivedCases } from "./detectors/changeDerived";
 import {
-  detectProposalFollowupCases, detectPaymentDueDateCases, detectShowClientPaymentCases,
+  detectProposalFollowupCases, detectPaymentDueDateCases, detectShowClientPaymentCases, detectPastShowNotClosedCases,
   detectTaskDueDateCases, detectStevenInternalDeadlineCases,
 } from "./detectors/risks";
 import type { PartnerChange } from "../changes/types";
@@ -49,6 +49,7 @@ export function buildPartnerCases(input: BuildPartnerCasesInput): PartnerCase[] 
     ...detectProposalFollowupCases(input.state, input.today),
     ...detectPaymentDueDateCases(input.state),
     ...detectShowClientPaymentCases(input.state),
+    ...detectPastShowNotClosedCases(input.state, input.today),
     ...detectTaskDueDateCases(input.state),
     ...detectStevenInternalDeadlineCases(input.state),
   ];

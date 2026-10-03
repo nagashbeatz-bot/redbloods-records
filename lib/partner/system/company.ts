@@ -133,7 +133,10 @@ export const ATTENTION_MAP: Readonly<Record<string, A>> = {
   // A1: a paid fee row that no longer matches its show — never overwritten, the Owner decides
   PAID_FEE_ROW_MISMATCH: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
   LEDGER_KEPT_AFTER_CANCEL: a("CONFLICT", "OWNER", "MONEY_RELEVANT", "DATA_CONFLICT"),
-  DATE_PASSED_NOT_CLOSED: a("NEEDS_ATTENTION", "OWNER", "DATA_CONFLICT"),
+  // Owner decision 2026-10-03: a past show that is still not closed is the Owner's move and time-sensitive (a scheduled event
+  // that already happened); open client money / DJ fee on it (PAST_SHOW_OPEN_MONEY) raises it — one event, not three facts
+  DATE_PASSED_NOT_CLOSED: a("NEEDS_ATTENTION", "OWNER", "TIME_SENSITIVE", "SCHEDULED_EVENT", "DATA_CONFLICT"),
+  PAST_SHOW_OPEN_MONEY: a("NEEDS_ATTENTION", "OWNER", "MONEY_RELEVANT", "TIME_SENSITIVE", "SCHEDULED_EVENT"),
   NO_DJ: a("NEEDS_ATTENTION", "OWNER", "SCHEDULED_EVENT"),
   DJ_AWAITING_CONFIRMATION: a("CONTEXT", "EXTERNAL", "EXTERNAL_PARTY_WAITING", "SCHEDULED_EVENT"),
   DJ_CONFIRMED: a("CONTEXT", "NONE", "SCHEDULED_EVENT"),

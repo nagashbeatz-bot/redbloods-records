@@ -183,6 +183,8 @@ export interface SessionsFact {
  */
 export interface ShowSummary {
   id: string; name: string; status: string; paymentStatus: string; dateYmd: string | null;
+  /** Owner decision 2026-10-03 — PAID / UNPAID_COLLAB (an unpaid collaboration has no money layer); optional for older fixtures */
+  dealType?: string | null;
   djClientId: string | null; djConfirmationStatus: string | null;
   /** Phase C.2 — already fetched by listShows()'s select("*"), previously dropped like djClientId once was. */
   artistClientId: string | null;
@@ -301,6 +303,7 @@ export interface RawLabelArtist { id: string; name: string; status: string; crea
 export interface RawClip { id: string; title: string; status: string; projectId: string | null; artistName: string; createdAt: string | null; updatedAt: string | null }
 export interface RawShowEyes {
   id: string; name: string; status: string; paymentStatus: string; date: string | null;
+  dealType?: string | null;
   djClientId: string | null; djConfirmationStatus: string | null; artistClientId: string | null; bookerClientId: string | null;
   /** Additive (Partner Phase E.2) — show_price, already fetched by listShows()'s select("*"), same as djClientId/artistClientId. Client's gross owed amount (see lib/shows-types.ts — separate from dj_fee/artist_fee, which stay unexposed to Partner). */
   price: number;

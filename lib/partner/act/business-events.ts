@@ -70,4 +70,5 @@ export const WORKFLOW_EVENT_MAP: Readonly<Record<string, EventMapping>> = {
   // one clip model (2026-10-01): a new clip = a clip PROJECT (+ its ONE agreed price) + its production + planning rows
   NEW_CLIP: { kind: "ACTIONS", actions: ["PROJECT.CREATE_PROJECT", "PROJECT.SET_PRICE", "RF.SEND_CLIP", "RF.CLIP_ROWS"] },
   NEW_TASK: { kind: "ACTIONS", actions: ["PROJECT.ADD_TASK"] },
+  PAST_SHOW_NOT_CLOSED: { kind: "ACTIONS", actions: ["CLOSE_SHOW"], noteHe: "רק אחרי שהבוס אמר שההופעה התקיימה — עבר הזמן ≠ בוצע; אם לא התקיימה — סטטוס מתאים, לא בוצע" },
 };

@@ -2042,10 +2042,21 @@ export default function ShowsHubPreview() {
     deepLinkedRef.current = true;
     const params  = new URLSearchParams(window.location.search);
     const quoteId = params.get("quote");
-    if (!quoteId) return;
-    const show = shows.find(s => s.id === quoteId);
-    if (show) { setSelected(null); setModal({ mode: "edit", show }); }
-    params.delete("quote");
+    // Owner decision 2026-10-03: /shows?close=<showId> (the dashboard's "סגור הופעה" on a past, still unclosed show) opens the
+    // EXISTING close-show dialog — nothing is closed or paid by opening it; the Owner decides what happened and what was paid.
+    // Not opened for a show that is already closed / cancelled / an unpaid collaboration (the normal status picker handles those).
+    const closeId = params.get("close");
+    if (!quoteId && !closeId) return;
+    if (quoteId) {
+      const show = shows.find(s => s.id === quoteId);
+      if (show) { setSelected(null); setModal({ mode: "edit", show }); }
+      params.delete("quote");
+    }
+    if (closeId) {
+      const show = shows.find(s => s.id === closeId);
+      if (show && (show.status === "נסגר" || show.status === "אושרה") && !isUnpaidCollab(show)) { setSelected(null); setCloseShow({ show, trigger: "done" }); }
+      params.delete("close");
+    }
     const qs = params.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
   }, [shows]);

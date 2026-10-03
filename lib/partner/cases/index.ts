@@ -12,6 +12,6 @@ export { detectReleaseTimingCases } from "./detectors/release";
 export { detectProjectDeadlineCases } from "./detectors/project";
 export { detectChangeDerivedCases } from "./detectors/changeDerived";
 export {
-  detectProposalFollowupCases, detectPaymentDueDateCases, detectShowClientPaymentCases,
+  detectProposalFollowupCases, detectPaymentDueDateCases, detectShowClientPaymentCases, detectPastShowNotClosedCases,
   detectTaskDueDateCases, detectStevenInternalDeadlineCases,
 } from "./detectors/risks";

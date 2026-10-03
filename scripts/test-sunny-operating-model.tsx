@@ -225,7 +225,7 @@ function main() {
   ok("repeated_questions mode served", served(q("repeated_questions", {}, sources({ integrity: reg }))));
 
   section("2. workflows — event → workflow");
-  check("workflow events", WORKFLOW_MODELS.map((w) => w.event), ["NEW_SHOW", "NEW_PROJECT", "NEW_CLIENT_OR_LEAD", "NEW_PAYMENT", "NEW_SESSION", "NEW_RELEASE", "NEW_CLIP", "NEW_TASK"]);
+  check("workflow events", WORKFLOW_MODELS.map((w) => w.event), ["NEW_SHOW", "PAST_SHOW_NOT_CLOSED", "NEW_PROJECT", "NEW_CLIENT_OR_LEAD", "NEW_PAYMENT", "NEW_SESSION", "NEW_RELEASE", "NEW_CLIP", "NEW_TASK"]);
   ok("every workflow lists required info with a source, downstream and actions", WORKFLOW_MODELS.every((w) => w.required.length > 0 && w.downstream.length > 0 && w.actions.length > 0));
   ok("no workflow action is executable by Sunny except the existing deadline primitive", WORKFLOW_MODELS.flatMap((w) => w.actions).every((x) => /FUTURE|PROPOSAL_CANDIDATE|NOT_YET_EXECUTABLE|UPDATE_PROJECT_DEADLINE|never/.test(x)));
   const wq = q("workflows", { event: "NEW_SHOW" });

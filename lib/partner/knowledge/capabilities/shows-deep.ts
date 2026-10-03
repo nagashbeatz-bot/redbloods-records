@@ -17,6 +17,7 @@ const COVERAGE = [
   partner("DJ לא משובץ אוטומטית: CLEANTONE מנגן ברוב ההופעות, לא בכולן. אישור קיים רק ל-CLEANTONE."),
   partner("אין 'שולם לאמן' בסגירת הופעה: כשהופעה בוצעה זכאות האמן (חצי מהנטו לשליו / אבי) נכנסת למאזן כהכנסה — זו זכאות, לא תשלום. סגירה לא יוצרת תשלום ולא payout לאמן; התשלום בפועל לשליו / אבי נרשם רק במאזן האמן / מחזור ההתחשבנות. MARK_SHOW_FEE_PAID לאמן אינו מסלול תשלום (נדחה)."),
   partner("ה-DJ נפרד: DJ_FEE הוא מקור האמת לתשלום שלו. כש-DJ_FEE עובר ל'שולם' (סימון 'שולם ל-DJ' בסגירה, MARK_SHOW_FEE_PAID ל-DJ, או עריכה בכספים) CLEANTONE מקבל Push פעם אחת, ורק אם הוא הגיע — הבעלים מקבל אישור. סגירת ההופעה עצמה לא שולחת Push תשלום; כשל ב-Push לא נוגע בכסף."),
+  partner("הופעה שעברה ועדיין לא נסגרה (PAST_SHOW_NOT_CLOSED) היא אירוע אחד: התאריך עבר + סטטוס נסגר / אושרה + כסף פתוח (לקוח / DJ) — הכדור אצל הבעלים; כסף פתוח מעלה את הדחיפות. עבר הזמן ≠ בוצע: לא מניחים שההופעה התקיימה רק כי התאריך עבר — מעדכנים מה קרה; אם התקיימה, סוגרים כבוצע ומתעדים תשלום לקוח ו-DJ (לקוח שלא שילם לא מונע בוצע — החוב נשאר פתוח); אם לא התקיימה — לא מסמנים בוצע. אין סגירה אוטומטית. זכאות האמן נשארת צפויה עד בוצע (בפרטים, לא בכותרת)."),
   partner("אין 'מוכנות להופעה' במערכת — רק ראיות (DJ, אישור, הודעות, חזרות, יומן, תשלום, משימות)."),
   partner("קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם (פער), לא 'אין קבצים'."),
 ];
@@ -64,7 +65,7 @@ export const showView: KnowledgeCapability = {
 export const showPortfolioCap: KnowledgeCapability = {
   id: "show_portfolio", domain: "SHOWS", titleHe: "הופעות — תמונת מצב",
   descriptionForModel: "Shows side by side with FACTS, never a ranking: date, status, artist, DJ + confirmation, price, client payment, artist fee / label profit (app split), rehearsals, artist / DJ sent markers, ledger rows, signals, open questions. Modes: upcoming (confirmed, future), all (newest first), signal (param signal), event ('נכנסה הופעה ל<artist> ב-<date>': params artist + date — existing show check, what is known, what to ask, downstream effects; nothing is created).",
-  examplesHe: ["אילו הופעות קרובות?", "אילו הופעות לא שולמו?", "באילו הופעות אין DJ?", "נכנסה הופעה לשליו ב-15.10"],
+  examplesHe: ["אילו הופעות קרובות?", "אילו הופעות לא שולמו?", "באילו הופעות אין DJ?", "נכנסה הופעה לשליו ב-15.10", "אילו הופעות עברו ועדיין לא נסגרו?", "מה עם ההופעה של אתמול?"],
   modes: { upcoming: { descriptionForModel: "Confirmed future shows" }, all: { descriptionForModel: "Every show" }, signal: { descriptionForModel: "Shows with param signal" }, event: { descriptionForModel: "New-show event (params artist + date)" } }, defaultMode: "upcoming",
   params: { signal: { kind: "enum", values: SHOW_SIGNAL_MODEL.map((x) => x.code), descriptionForModel: "signal code" }, artist: { kind: "entityKey", types: ["label-artist", "client"], descriptionForModel: "event: the artist" }, date: { kind: "ymd", descriptionForModel: "event: the show date" } },
   paging: { defaultLimit: 25, maxLimit: 50 }, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "SETTINGS"],

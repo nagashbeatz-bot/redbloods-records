@@ -14,6 +14,10 @@
  * (sunny_inbox_interpretations, HYPOTHESIS) only ENRICHES an item; it never sets the ball and never creates an item by
  * itself. A NEW (unprocessed) update never enters. A contradiction is SHOWN (records win), never hidden.
  *
+ * 2026-10-03 (Owner): a PAID show whose date passed and that is still נסגר / אושרה (PAST_SHOW_NOT_CLOSED, lib/partner/shows/
+ * past-unclosed — ONE derived rule) is the Owner's move: update what happened and, if it took place, close it (CloseShowModal via
+ * /shows?close=<id>). The time passing ≠ בוצע — nothing here closes or assumes. Open client money / DJ fee raises it (≤ 3 days → NEW_TODAY).
+ *
  * Owner rules (2026-10-01): Q1 an own task is "today" when due today or overdue ≤ 3 days, older = Backlog — unless the
  * ball is the Owner's and someone waits (the ball beats the age). Q2 integrity questions live on their own line (only a
  * question that blocks an action may enter — none does today). Q3 someone waiting on the Owner stays while the ball is
@@ -46,6 +50,8 @@ export const OWNER_TASK_GRACE_DAYS = 3;
 export const NEEDS_ME_MAX = 5;
 /** A scheduled event enters when it is today or tomorrow. */
 export const SCHEDULED_WINDOW_DAYS = 1;
+/** Closed past shows (בוצע / בוטל / שת״פ) of the last N days are recorded as "checked and left out" so Sunny can say why. */
+export const PAST_SHOW_EXCLUDED_DAYS = 14;
 
 /**
  * Owner decision 2026-10-01 (precedence, never a score shown to anyone): 1 NEW_TODAY — something new since yesterday
@@ -301,6 +307,44 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     });
     else excluded.push({ key: `show:${s.id}|SCHEDULED`, entityKey: `show:${s.id}`, title: s.name ?? "הופעה", reasonCode: "SCHEDULED_NOTHING_MISSING", reasonHe: `הופעה ${when} — לא חסר ממך שום דבר רשום`, ball: "NONE", party: null, date: s.date ?? null, open: { kind: "href", href: "/shows" } });
   }
+
+  // ── 4b. PAST_SHOW_NOT_CLOSED (Owner decision 2026-10-03) — a PAID show whose date passed and that is still נסגר / אושרה.
+  //    ONE derived rule (lib/partner/shows/past-unclosed, via the show view): the ball is the Owner's — update what happened;
+  //    if it took place, close it (the close records client / DJ payment; an unpaid client does not prevent בוצע). The time
+  //    passing ≠ בוצע: nothing here marks, closes or assumes anything. Open client money / DJ fee RAISES the group
+  //    (≤ 3 days + money → NEW_TODAY, otherwise YOUR_TASK); the item stays until the show is closed, with its age. ──
+  let pastFinanceMirror = false;
+  for (const s of (ld?.shows?.rows ?? []).filter((x) => isStrictYmd(x.date ?? "") && (x.date as string) < today)) {
+    const date = s.date as string;
+    const isOpenStatus = s.status === "נסגר" || s.status === "אושרה";
+    if (!isOpenStatus) {
+      if ((s.status === "בוצע" || s.status === "בוטל") && daysBetween(date, today) <= PAST_SHOW_EXCLUDED_DAYS) {
+        excluded.push({ key: `show:${s.id}|PAST`, entityKey: `show:${s.id}`, title: s.name ?? "הופעה", reasonCode: s.status === "בוצע" ? "SHOW_ALREADY_CLOSED" : "SHOW_CANCELLED", reasonHe: s.status === "בוצע" ? "ההופעה כבר נסגרה (בוצע) — אין מה לסגור" : "ההופעה בוטלה — אין מה לסגור", ball: "NONE", party: null, date, open: { kind: "href", href: "/shows" } });
+      }
+      continue;
+    }
+    checked++;
+    const v = buildShowView(src, s.id);
+    if (!v) continue;
+    const p = v.pastUnclosed;
+    if (!p) {
+      if (s.dealType === "UNPAID_COLLAB" && daysBetween(date, today) <= PAST_SHOW_EXCLUDED_DAYS) excluded.push({ key: `show:${s.id}|PAST`, entityKey: `show:${s.id}`, title: s.name ?? "הופעה", reasonCode: "PAST_SHOW_UNPAID_COLLAB", reasonHe: "שת״פ ללא תשלום — אין כסף פתוח; לא נכנס לרשימה (אפשר לסגור אותה בעמוד ההופעות)", ball: "NONE", party: null, date, open: { kind: "href", href: `/shows?close=${s.id}` } });
+      continue;
+    }
+    if (p.client.basis === "MIRROR") pastFinanceMirror = true;
+    const evidence: NeedsEvidence[] = [{ code: "DATE_PASSED_NOT_CLOSED", he: `ההופעה הייתה ב-${fmt(date)} וסטטוסה עדיין "${s.status}" — לא נסגרה (עבר הזמן ≠ בוצע: התאריך לא מוכיח שהיא התקיימה)`, source: "SHOWS", epistemic: "DERIVED", at: date }];
+    if (p.clientHe) evidence.push({ code: "PAST_SHOW_CLIENT_OPEN", he: p.clientHe, source: "SHOWS", epistemic: "DERIVED", at: date });
+    if (p.djHe) evidence.push({ code: "PAST_SHOW_DJ_OPEN", he: p.djHe, source: "SHOWS", epistemic: "DERIVED", at: date });
+    if (p.entitlementHe) evidence.push({ code: "ARTIST_ENTITLEMENT_STILL_EXPECTED", he: p.entitlementHe, source: "SHOWS", epistemic: "DERIVED", at: date });
+    items.push({
+      key: `show:${s.id}|PAST_NOT_CLOSED`, entityKey: `show:${s.id}`, projectId: null, group: p.group,
+      title: p.titleHe, whyToday: p.whyHe, waitingDays: p.ageDays,
+      ball: { holder: "OWNER", waitingParty: null, sinceAt: `${date}T00:00:00.000Z`, ruleHe: p.ruleHe },
+      evidence, nextAction: { he: p.nextActionHe, actionId: null },
+      fromInbox: null, date, open: { kind: "href", href: `/shows?close=${s.id}` },
+    });
+  }
+  if (pastFinanceMirror && !ok(src.finance)) unchecked.push({ source: "FINANCE", he: "הכסף הפתוח של הופעות שעברו לא נבדק מול הכספים — מוצג לפי סטטוס התשלום של ההופעה" });
 
   // ── 5. Proposal follow-ups (the app's own rule; Q1 grace) ──
   const proposals = st?.domains.proposalsFull.data?.items ?? null;

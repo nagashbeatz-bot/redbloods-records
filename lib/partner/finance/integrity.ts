@@ -251,14 +251,14 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       continue;
     }
     if (r.collection.state === "SETTLED" || r.collection.state === "NOT_COLLECTIBLE") continue;
-    const label = r.projectName ? `'${r.projectName}'` : "";
+    const label = r.projectName ? `'${r.projectName}'` : r.showName ? `הופעת '${r.showName}'` : r.showId ? "הופעה" : "";
     const rEv = r.evidence;
     if (r.source === "EXPECTED_TX" && r.dueDate && r.dueDate <= today && (r.collection.state === "DUE_TODAY" || r.collection.state === "OVERDUE")) {
       const replacement = txs.some((t) => t.type === "income" && t.received && !t.cancelled && t.row.projectId === r.projectId && t.currency === r.currency && t.amount >= r.amount && !!t.date && t.date >= addDays(r.dueDate!, -REPLACEMENT_WINDOW_DAYS) && !r.evidence.some((e) => e.sourceId === t.row.id));
       if (!replacement) {
         const post = periodOf(r.dueDate) === "POST_POLICY";
         add({
-          issueType: "INCOME_EXPECTED_BUT_NOT_RECORDED", severityBand: post ? "HIGH" : "MEDIUM", epistemicStatus: "DERIVED", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName,
+          issueType: "INCOME_EXPECTED_BUT_NOT_RECORDED", severityBand: post ? "HIGH" : "MEDIUM", epistemicStatus: "DERIVED", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName ?? r.showName ?? null,
           currency: r.currency, amount: r.amount, date: r.dueDate, period: post ? "POST_POLICY" : "HISTORICAL", reasonCodes: ["EXPECTED_INCOME_DUE", "NO_RECEIVED_RECORD", "NO_REPLACEMENT_RECORD"], evidence: rEv, recommendedOwnerQuestion: null,
         });
       }
@@ -266,9 +266,9 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
     if (r.collection.state === "OVERDUE") {
       overdueReasonGaps.push({ receivableId: r.id, reason: "OVERDUE_REASON_UNKNOWN" });
       add({
-        issueType: "OVERDUE_RECEIVABLE_REASON_UNKNOWN", severityBand: periodOf(r.dueDate) === "POST_POLICY" || r.collection.important ? "HIGH" : "MEDIUM", epistemicStatus: "UNKNOWN", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName,
+        issueType: "OVERDUE_RECEIVABLE_REASON_UNKNOWN", severityBand: periodOf(r.dueDate) === "POST_POLICY" || r.collection.important ? "HIGH" : "MEDIUM", epistemicStatus: "UNKNOWN", subjectType: "receivable", subjectId: r.id, subjectLabel: r.projectName ?? r.showName ?? null,
         currency: r.currency, amount: r.amount, date: r.dueDate, period: periodOf(r.dueDate), reasonCodes: ["OVERDUE", "OVERDUE_REASON_UNKNOWN"], evidence: rEv,
-        recommendedOwnerQuestion: question("FINANCE_OVERDUE_REASON", { type: "receivable", id: r.id, labelHe: r.projectName }, `התשלום של ${fmtMoney(r.amount, r.currency)}${label ? ` על ${label}` : ""} היה אמור להיכנס עד ${ddmm(r.dueDate!)}. למה הוא עדיין פתוח?`, "בלי סיבה ידועה Partner לא יכול לדעת אם לעקוב, לחכות או לשחרר.", rEv, 20),
+        recommendedOwnerQuestion: question("FINANCE_OVERDUE_REASON", { type: "receivable", id: r.id, labelHe: r.projectName ?? r.showName ?? null }, `התשלום של ${fmtMoney(r.amount, r.currency)}${label ? ` על ${label}` : ""} היה אמור להיכנס עד ${ddmm(r.dueDate!)}. למה הוא עדיין פתוח?`, "בלי סיבה ידועה Partner לא יכול לדעת אם לעקוב, לחכות או לשחרר.", rEv, 20),
       });
     }
     if (r.collection.state === "NO_DUE_DATE") {

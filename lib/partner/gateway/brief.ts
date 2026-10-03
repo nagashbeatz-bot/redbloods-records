@@ -23,7 +23,7 @@ const CASE_TYPE_HE: Record<string, string> = {
   FINANCE_CONFIGURATION_MISSING: "פרויקטים פעילים בלי הגדרת מחיר", PROJECT_DEADLINE_PASSED: "דדליינים של פרויקטים שעברו",
   PROJECT_PAYMENT_OUTSTANDING: "יתרות תשלום פתוחות", PROJECT_OVERPAYMENT: "תשלומי יתר", PAYMENT_DUE_DATE_PASSED: "מועדי תשלום שעברו",
   PROPOSAL_FOLLOWUP_DUE: "הצעות מחיר שצריך לחזור אליהן", RELEASE_TARGET_DATE_PASSED: "תאריכי יעד לשחרור שעברו",
-  SHOW_CLIENT_PAYMENT_OUTSTANDING: "הופעות שהלקוח עוד לא שילם", TASK_DUE_DATE_PASSED: "משימות שעבר מועדן", STEVEN_INTERNAL_DEADLINE_PASSED: "דדליינים פנימיים של Steven שעברו",
+  SHOW_CLIENT_PAYMENT_OUTSTANDING: "הופעות שהלקוח עוד לא שילם", SHOW_PASSED_NOT_CLOSED: "הופעות שעברו ועדיין לא נסגרו", TASK_DUE_DATE_PASSED: "משימות שעבר מועדן", STEVEN_INTERNAL_DEADLINE_PASSED: "דדליינים פנימיים של Steven שעברו",
 };
 const BALANCE_CASES = new Set(["PROJECT_PAYMENT_OUTSTANDING", "PAYMENT_DUE_DATE_PASSED"]);
 

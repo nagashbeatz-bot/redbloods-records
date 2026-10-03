@@ -176,6 +176,60 @@ export function detectShowClientPaymentCases(state: PartnerCompanyState): Partne
 }
 
 /**
+ * SHOW_PASSED_NOT_CLOSED (Owner decision 2026-10-03) — PAST_SHOW_NOT_CLOSED as ONE event: the show's own date is before
+ * today (Israel, the date only) while its status is still נסגר / אושרה (not בוצע / בוטל), and it is a PAID show (an unpaid
+ * collaboration has no money layer). The time passing ≠ בוצע: nothing here assumes the show took place or closes it — the
+ * Owner decides what happened; if it took place, the close records whether the client paid and whether the DJ was paid (an
+ * unpaid client does not prevent בוצע). Open client money raises the classification (RISK) — money is the multiplier, not the
+ * reason. The case carries the client price and the stored payment label; the DJ fee row and the artist's expected
+ * entitlement live in show_view (not exposed to the case state). The rule's wording: lib/partner/shows/past-unclosed.
+ */
+export function detectPastShowNotClosedCases(state: PartnerCompanyState, todayYmd: string): PartnerCase[] {
+  const domain = state.domains.shows;
+  if (domain.status !== "AVAILABLE" || !domain.data) return [];
+
+  const out: PartnerCase[] = [];
+  for (const s of domain.data.items) {
+    if (s.dealType === "UNPAID_COLLAB") continue;
+    if (s.status !== "נסגר" && s.status !== "אושרה") continue;
+    const d = s.dateYmd ? parseYmd(s.dateYmd) : null;
+    if (!s.dateYmd || !d || !(s.dateYmd < todayYmd)) continue;
+    const ageDays = diffDays(d, todayYmd);
+    const moneyMirrorOpen = s.price > 0 && s.paymentStatus !== "שולם" && s.paymentStatus !== "בוטל";
+    const dm = `${s.dateYmd.slice(8, 10)}.${s.dateYmd.slice(5, 7)}`;
+    out.push({
+      id: `show_passed_not_closed:${s.id}`,
+      caseType: "SHOW_PASSED_NOT_CLOSED",
+      subjectType: "show",
+      subjectId: s.id,
+      classification: moneyMirrorOpen ? "RISK" : "ATTENTION",
+      status: "OPEN",
+      createdFrom: "STATE",
+      schemaVersion: CASE_SCHEMA_VERSION,
+      facts: [
+        { domain: "shows", entityId: s.id, field: "status", value: s.status, label: "status" },
+        { domain: "shows", entityId: s.id, field: "date", value: s.dateYmd, label: "תאריך ההופעה" },
+        { domain: "shows", entityId: s.id, field: "paymentStatus", value: s.paymentStatus, label: "paymentStatus (תשלום הלקוח)" },
+        { domain: "shows", entityId: s.id, field: "price", value: s.price, label: "price (client-owed)" },
+      ],
+      derivedFacts: [{ id: "days_since_show", label: "ימים מאז ההופעה", value: ageDays, basis: `${todayYmd} − ${s.dateYmd}` }],
+      hypotheses: [],
+      ownerRulesApplied: [],
+      workingPrinciplesApplied: [],
+      unknowns: [
+        "האם ההופעה התקיימה בפועל — לא ידוע: עבר הזמן ≠ בוצע (תאריך שעבר לא מוכיח שהיא התקיימה).",
+        "מצב שכר ה-DJ וזכאות האמן — ב-show_view (לא חשופים ל-state של ה-cases).",
+      ],
+      dataQuality: { notes: ["paymentStatus הוא תשלום הלקוח בלבד (מראה של הכספים) — הסכום הפתוח המדויק ב-show_view / בקבלה ב-Finance."] },
+      interventionStyle: "GENTLE",
+      summaryHe: `הופעת ${s.name || "ההופעה"} הייתה אמורה להתקיים ב-${dm} (לפני ${ageDays} ימים) ועדיין לא נסגרה במערכת${moneyMirrorOpen ? `; מחיר ${s.price}, תשלום הלקוח: ${s.paymentStatus}` : ""}. צריך לעדכן מה קרה; אם היא התקיימה — לסגור אותה כבוצע ולתעד אם הלקוח שילם ואם ה-DJ שולם (חוב פתוח לא מונע סגירה).`,
+      changeContext: null,
+    });
+  }
+  return out;
+}
+
+/**
  * TASK_DUE_DATE_PASSED — an open task's own due_date has passed. Skips tasks
  * auto-created from a Victor internal deadline (`derivedFrom !== null`) —
  * that is the SAME underlying business fact MISSED_INTERNAL_DEADLINE already

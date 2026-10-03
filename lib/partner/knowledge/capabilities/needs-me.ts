@@ -29,7 +29,7 @@ const entryItem = (e: NeedsEntry, section: NeedsMeSection): KnowledgeItem => ite
 
 export const needsMe: KnowledgeCapability = {
   id: "needs_me", domain: "COMPANY", titleHe: "מה צריך ממני היום",
-  descriptionForModel: `What truly needs the Owner TODAY — Sunny-curated, the SAME list Dashboard V2 shows. ≤${NEEDS_ME_MAX} items, never filled. Enters only when the RECORDS put the ball with the Owner (Victor computeVictorBall, mix engineerHandoff, send log), a show today / tomorrow misses something of his, a partner action awaits him, or his own task / follow-up is due (overdue ≤${OWNER_TASK_GRACE_DAYS} days, else backlog; the Owner's ball beats age). A task inherits the ball of what it is linked to. Client-held money never enters. Processed Owner updates only enrich; records win; contradictions are shown. Order: new since yesterday → scheduled → waiting → own task; the aggregated Victor waits are ONE summary line (section summary), never a top-5 slot. Each item: whyToday, ball, evidence, nextAction. Modes: board, excluded (why X is not there), all.`,
+  descriptionForModel: `What truly needs the Owner TODAY — Sunny-curated, the SAME list Dashboard V2 shows. ≤${NEEDS_ME_MAX} items, never filled. Enters only when the RECORDS put the ball with the Owner (Victor computeVictorBall, mix engineerHandoff, send log), a show today / tomorrow misses something of his, a PAST show is still not closed (date passed, status נסגר / אושרה; open client money / DJ fee raises it; the date passing ≠ בוצע, nothing closes it), a partner action awaits him, or his own task is due (overdue ≤${OWNER_TASK_GRACE_DAYS} days, else backlog). Client-held money alone never enters. Owner updates only enrich; records win. Order: new since yesterday → scheduled → waiting → own task; Victor waits = ONE summary line. Each item: whyToday, ball, evidence, nextAction. Modes: board, excluded (why X is not there), all.`,
   examplesHe: ["מה צריך ממני היום?", "מה מחכה לי?", "למה המשימה של ויקטור לא מופיעה?", "מה בבקלוג?"],
   modes: {
     board: { descriptionForModel: "The Owner's list: today (≤5) + more_today + backlog + undecided + unchecked; integrity is a summary line" },
@@ -40,7 +40,8 @@ export const needsMe: KnowledgeCapability = {
   paging: { defaultLimit: 50, maxLimit: 50 }, recordTextLimit: 300,
   access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" },
   needs: ["STATE", "OPERATIONS", "PROJECT_DETAIL", "LABEL_DETAIL", "SETTINGS", "OWNER_INBOX", "ACTIONS", "INTEGRITY"],
-  optionalNeeds: ["OWNER_KNOWLEDGE"],
+  // FINANCE (optional): the open client money / DJ fee of a past unclosed show; unreadable → the stored payment label, said so
+  optionalNeeds: ["OWNER_KNOWLEDGE", "FINANCE"],
   read(src, q) {
     if (!ok(src.state)) return { ...result([], { completeness: "UNKNOWN" }), missing: [{ fact: "company state", whyNeeded: "without the records the ball cannot be checked — nothing here means \"nothing needs you\"" }] };
     const n = buildNeedsMe(src);

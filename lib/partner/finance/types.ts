@@ -36,7 +36,7 @@ export interface FinanceProjectRow { id: string; name: string; status: string; i
 export interface FinanceSettingRow { projectId: string; value: unknown }
 export interface EngineerWorkRow { id: string; projectId: string | null; engineerName: string | null; status: string | null; agreedPrice: unknown; amountPaid: unknown; currency: string | null; linkedTransactionId: string | null; paymentDate?: string | null }
 /** dealType: PAID / UNPAID_COLLAB (NOT a payment status) — an unpaid collaboration is never money (no price signal, no receivable). */
-export interface FinanceShowRow { id: string; date: string | null; status: string | null; dealType?: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
+export interface FinanceShowRow { id: string; /** the show's name (Owner decision 2026-10-03: a show's expected balance is labelled with its show) */ name?: string | null; date: string | null; status: string | null; dealType?: string | null; paymentStatus: string | null; price: unknown; incomeTxId: string | null; artistTxId: string | null; djTxId: string | null; currency?: string | null }
 export interface FinanceProposalRow { id: string; clientId: string | null; status: string | null; amount: unknown; currency: string | null; followupDate: string | null; linkedProjectId: string | null }
 export interface FinanceClientRow { id: string; name: string; status: string | null; type: string | null }
 export interface FinanceLabelArtistRow { id: string; name: string }
@@ -142,6 +142,10 @@ export interface Receivable {
   projectId: string | null;
   projectName: string | null;
   projectStatus: string | null;
+  /** Owner decision 2026-10-03: a SHOW_BALANCE_EXPECTED row (transactions.show_id + show_money_role) belongs to its SHOW — the
+   *  receivable carries the show, so the open money is never reported without the show it came from. Null otherwise. */
+  showId?: string | null;
+  showName?: string | null;
   amount: number;
   currency: string;
   dueDate: string | null;

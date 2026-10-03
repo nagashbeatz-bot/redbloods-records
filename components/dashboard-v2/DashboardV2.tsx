@@ -619,7 +619,7 @@ export function CuratedRow({ item, onOpen }: { item: CuratedItem; onOpen: () => 
           <div dir="auto" style={{ fontSize: 12, color: SUB, textAlign: "right", marginTop: 2, lineHeight: 1.45 }}>{item.whyToday}</div>
         </div>
         {canOpen && (
-          <button type="button" onClick={onOpen} style={{ flexShrink: 0, height: 32, padding: "0 16px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>פתח</button>
+          <button type="button" onClick={onOpen} style={{ flexShrink: 0, height: 32, padding: "0 16px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>{item.open.kind === "href" && item.open.href.startsWith("/shows?close=") ? "סגור הופעה" : "פתח"}</button>
         )}
       </div>
       <div style={{ paddingInlineStart: 20, marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>

@@ -279,7 +279,11 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
   for (const t of txs.filter(openIncome)) {
     if (handledIncomeTx.has(t.row.id)) continue;
     const p = t.row.projectId ? projectById.get(t.row.projectId) : null;
-    pushReceivable({ id: `EXPECTED_TX:${t.row.id}`, source: "EXPECTED_TX", priceKnown: false, projectId: p ? p.id : null, projectName: p?.name ?? null, projectStatus: p?.status ?? null, amount: t.amount, currency: t.currency, dueDate: t.date, createdAt: t.row.createdAt, evidence: [txEv(t, "EXPECTED_INCOME_RECORD")], notCollectible: p?.status === CANCELLED_PROJECT });
+    // Owner decision 2026-10-03: the show's expected balance (show_money_role SHOW_BALANCE_EXPECTED) is connected to ITS show
+    const showId = t.row.showMoneyRole === "SHOW_BALANCE_EXPECTED" && t.row.showId ? t.row.showId : null;
+    const showRow = showId ? raw.shows.find((x) => x.id === showId) ?? null : null;
+    pushReceivable({ id: `EXPECTED_TX:${t.row.id}`, source: "EXPECTED_TX", priceKnown: false, projectId: p ? p.id : null, projectName: p?.name ?? null, projectStatus: p?.status ?? null, showId, showName: showRow?.name ?? null, amount: t.amount, currency: t.currency, dueDate: t.date, createdAt: t.row.createdAt,
+      evidence: [txEv(t, "EXPECTED_INCOME_RECORD"), ...(showId ? [{ sourceType: "show" as const, sourceId: showId, currency: t.currency, date: showRow?.date ?? null, status: showRow?.status ?? null, reasonCode: "SHOW_BALANCE_EXPECTED" }] : [])], notCollectible: p?.status === CANCELLED_PROJECT });
   }
   receivables.sort((a, b) => (a.dueDate ?? "9999-99-99") < (b.dueDate ?? "9999-99-99") ? -1 : (a.dueDate ?? "9999-99-99") > (b.dueDate ?? "9999-99-99") ? 1 : a.id < b.id ? -1 : 1);
 

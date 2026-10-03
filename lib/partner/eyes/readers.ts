@@ -64,6 +64,7 @@ export async function readPartnerEyesRaw(): Promise<PartnerEyesRaw> {
     // additive (Phase C.2) — already fetched by listShows()'s select("*"), same as djClientId.
     track("shows_eyes", async () => (await listShows()).map((s) => ({
       id: s.id, name: s.name, status: s.status as string, paymentStatus: s.payment_status as string, date: s.date,
+      dealType: (s as { deal_type?: string | null }).deal_type ?? null,
       djClientId: s.dj_client_id ?? null, djConfirmationStatus: (s.dj_confirmation_status as string | null) ?? null,
       artistClientId: s.artist_client_id ?? null, bookerClientId: s.booker_client_id ?? null,
       price: s.show_price ?? 0,

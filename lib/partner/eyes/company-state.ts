@@ -226,7 +226,7 @@ function buildShows(raw: PartnerEyesRaw, coo: CooResult, asOf: string): PartnerD
     byStatus: raw.shows.reduce<Record<string, number>>((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {}),
     cooVisible: { upcoming: cooUpcoming, doneUnpaid: cooDoneUnpaid, note: "מה ש-lib/coo רואה בפועל (subset תפעולי) — cross-reference בלבד" },
     items: raw.shows.map((s) => ({
-      id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date,
+      id: s.id, name: s.name, status: s.status, paymentStatus: s.paymentStatus, dateYmd: s.date, dealType: s.dealType ?? null,
       djClientId: s.djClientId, djConfirmationStatus: s.djConfirmationStatus, artistClientId: s.artistClientId, bookerClientId: s.bookerClientId,
       price: s.price,
     })),

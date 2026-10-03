@@ -12,7 +12,7 @@
  */
 
 // owner-8 (2026-10-01, Owner decision): NEW_CLIP = a clip PROJECT with ONE agreedPrice (one clip model — no clip deal)
-export const OWNER_MODEL_VERSION = "2026.10.03-owner-9";
+export const OWNER_MODEL_VERSION = "2026.10.03-owner-10";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -161,6 +161,22 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
     downstream: ["a confirmed show creates 2 finance rows in the show currency (expected balance, DJ fee) — the artist's half of the net is an ENTITLEMENT in the artist's balance (expected at booking, realized when בוצע), not a Finance row; money received = payment rows; the DJ fee is paid only explicitly (a real DJ_FEE → שולם pushes CLEANTONE once, then confirms to the Owner after delivery); the artist is paid only by a payment in the artist's balance, never from the show", "a confirmed Shalev show adds an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by DJ id)", "assigning DJ CLEANTONE asks him to confirm (ממתין לאישור → אושר)", "optional calendar event with the show", "cancelling cancels its finance rows and open tasks", "closing as בוצע realizes the artist's entitlement in the balance (no payment, no payout)"],
     notifications: ["P_SHOW_TO_ARTIST — Owner presses 'שלח' to the artist (manual)", "P_SHOW_TO_DJ — Owner presses 'שלח' to the DJ (manual)", "P_DJ_CONFIRMED — when the DJ confirms (automatic, to the Owner)", "P_DJ_PAYMENT_PAID — when the DJ_FEE becomes שולם (automatic, to the DJ; then a confirmation to the Owner only after the DJ was reached)"],
     actions: ["CREATE_SHOW — FUTURE_PRIMITIVE_REQUIRED (the Owner creates it in the dashboard today)", "UPDATE_SHOW_STATUS — FUTURE_PRIMITIVE_REQUIRED", "ASSIGN_SHOW_DJ — FUTURE_PRIMITIVE_REQUIRED", "NOTIFY_ARTIST_DJ — FUTURE_PRIMITIVE_REQUIRED (Sunny may ASK whether to send; never sends)", "CLOSE_SHOW — executable after the Owner's approval (client + DJ ticks only; never pays the artist)"] },
+  { event: "PAST_SHOW_NOT_CLOSED", titleHe: "הופעה שעברה ועדיין לא נסגרה", source: "SYSTEM_CONTRACT",
+    required: [
+      { item: "the show's date and status", knownFrom: "CANONICAL_DATA", note: "Owner decision 2026-10-03: a PAID show whose date is before today (Israel, the date only) and whose status is still נסגר / אושרה — not בוצע / בוטל" },
+      { item: "did the show actually take place?", knownFrom: "ASK_OWNER", note: "the time passing ≠ בוצע — a past date does NOT prove the show took place and Sunny never assumes it; when the Owner already said it took place, Sunny says so and goes straight to the close" },
+      { item: "client money", knownFrom: "CANONICAL_DATA", note: "price − received (Finance showMoneyOf); SHOW_BALANCE_EXPECTED is THIS show's expected balance — never reported without the show" },
+      { item: "DJ fee", knownFrom: "CANONICAL_DATA", note: "the show's DJ_FEE row (שולם / צפוי)" },
+      { item: "artist entitlement", knownFrom: "CANONICAL_DATA", note: "still 'הכנסות צפויות' until the show is בוצע — details when asked, never the headline" },
+    ],
+    downstream: [
+      "ONE event, not three facts: a past, unclosed show + open client money + an open DJ fee; money raises the urgency, it is not the reason the show is listed",
+      "if it took place → close it as בוצע: the close records whether the client paid and whether the DJ was paid; an unpaid client does NOT prevent בוצע (the debt stays open); the artist's entitlement becomes 'הכנסות' in the balance; there is no payout to the artist from the close",
+      "if it did NOT take place → it must not be marked בוצע; the status is updated through the existing show flow",
+      "dashboard 'מה צריך ממני היום': ≤ 3 days since the show with open money → NEW_TODAY, otherwise YOUR_TASK, until it is closed (its age is shown); the card's 'סגור הופעה' opens the existing close dialog (/shows?close=<id>) — nothing is closed or paid automatically",
+    ],
+    notifications: ["no new push — the DJ push exists only when the DJ_FEE actually becomes שולם (P_DJ_PAYMENT_PAID)"],
+    actions: ["CLOSE_SHOW — executable only after the Owner's approval of the exact preview; Sunny never closes a show by herself and never assumes it took place"] },
   { event: "NEW_PROJECT", titleHe: "פרויקט חדש", source: "SYSTEM_CONTRACT",
     required: [
       { item: "client / artist", knownFrom: "CANONICAL_DATA", note: "artist text → client (TEXT_MATCH); label roster for label work" },
