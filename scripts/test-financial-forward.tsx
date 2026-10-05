@@ -262,6 +262,15 @@ async function main() {
   ok("86. finance_position wording: not a forecast, not a bank balance, excludes artist liabilities", read("lib/partner/knowledge/capabilities/finance.ts").includes("לא יתרת בנק; לא כולל חוב לאמנים"));
   ok("87. unit_balance wording: Cash = recorded flow, not a bank balance", read("lib/partner/knowledge/capabilities/finance.ts").includes("לא יתרת בנק; אין להסיק ממנו כיסוי"));
 
+  section("PASS 2.1 — STEVEN $750 stays HARD, undated, NEEDS_DECISION, visible");
+  const st2 = ob(F, "vendor-payable:Steven")!;
+  ok("88. Steven $750 remains HARD with NO date (KNOWN_AMOUNT_UNKNOWN_DATE)", st2.strength === "HARD" && st2.date === null && st2.timing === "KNOWN_AMOUNT_UNKNOWN_DATE");
+  ok("89. Steven $750 is never overdue (no invented due date)", st2.overdue === false && !/באיחור|overdue/i.test(`${st2.titleHe} ${st2.questionHe ?? ""}`));
+  ok("90. Steven stays NEEDS_DECISION (not PREPARED) while no payment plan exists", st2.preparedness === "NEEDS_DECISION");
+  const stMove = V.motion.all.find((i) => i.financial && /סטיבן|Steven/.test(i.titleHe + i.he));
+  ok("91. it never disappears: a SHOULD move in motion carrying the Owner's question", !!stMove && stMove.level === "SHOULD" && /מתי אתה רוצה לשלם את ה-\$750 לסטיבן/.test(stMove.he + stMove.reasonsHe.join(" ")), stMove);
+  ok("92. it stays in the forward view (surprises) even when dated items lead", F.surprises.some((o) => o.key === st2.key));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }

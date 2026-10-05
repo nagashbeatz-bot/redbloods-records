@@ -148,7 +148,7 @@ export interface BusinessMotion {
   label: MotionItem[];
   revenue: { state: "PIPELINE_EMPTY" | "PIPELINE_OPEN" | "UNKNOWN"; goalConflict: boolean; lineHe: string | null; unpricedActive: number };
   week: MotionWeek;
-  inbox: { read: boolean; lineHe: string | null; needsOwner: number; unread: number; closable: number };
+  inbox: { read: boolean; lineHe: string | null; needsOwner: number; unread: number; closable: number; absorbed: number };
   watch: MotionItem[];
   /** every item (WATCH / INFO included) — on request only, never in the greeting */
   all: MotionItem[];
@@ -429,9 +429,11 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
 
   // ── the Owner's own words: an exactly LINKED new update raises its record one level; "עוד 2 תיקונים" = near (hypothesis) ──
   const tri = inboxTriageOf(src);
+  const absorbed = new Set<string>(); // updates that already raised / created a move — the greeting never repeats them
   for (const { item, lifecycle } of tri.items) {
     if (lifecycle.entitySource !== "LINKED") continue;
     for (const k of lifecycle.entityKeys.filter((x) => x.startsWith("project:"))) {
+      if (map.has(k) || ALMOST_RE.test(item.body)) absorbed.add(item.id);
       const quote = `כתבת (${heDate(ymdOf(item.createdAt))}): «${item.body.slice(0, 70)}»`;
       if (ALMOST_RE.test(item.body)) mergeInto(map, { key: `near:${item.id}:${k}`, entity: k, level: "SHOULD", code: "OWNER_REPORTED_NEAR", titleHe: name(k.slice(8)), epistemic: "HYPOTHESIS",
         reasonHe: `${quote} — לפי מה שכתבת נשאר מעט (השערה, לא סטטוס)`, evidence: [{ source: "OWNER_INBOX", ref: `owner-inbox:${item.id}`, he: "OWNER_REPORTED", epistemic: "OWNER_REPORTED" }], move: null });
@@ -601,8 +603,12 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
       revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? (external === 1 ? "עבודה אחת אצל אחרים" : `${external} עבודות אצל אחרים`) : null].filter(Boolean).join(" · "),
   };
 
-  const inbox = { read: tri.read, needsOwner: tri.summary?.counts.NEEDS_OWNER ?? 0, unread: tri.summary?.counts.UNREAD ?? 0, closable: tri.summary?.closable ?? 0,
-    lineHe: !tri.read ? "לא קראתי את העדכונים שכתבת — לא אומרת שאין" : tri.items.length ? `${tri.items.length === 1 ? "עדכון אחד" : `${tri.items.length} עדכונים`} מהתיבה: ${[tri.summary?.counts.NEEDS_OWNER ? `${tri.summary.counts.NEEDS_OWNER} צריכים ממך הבהרה אחת` : null, tri.summary?.counts.UNREAD ? `${tri.summary.counts.UNREAD === 1 ? "אחד" : tri.summary.counts.UNREAD} אפשר לנתב / לסגור אחרי אישור שלך` : null, tri.summary?.closable ? `${tri.summary.closable} מוכנים לסגירה` : null].filter(Boolean).join(" · ")}` : null };
+  // Zero-Inbox curation (pass 2.1): the greeting never dumps the inbox — only the updates that still need the Owner
+  // (NEEDS_OWNER, the ONE lifecycle) and are not already a move; REFLECTED / OVERTAKEN / UNDERSTOOD_OPEN / UNREAD are not listed
+  const askOwner = tri.items.filter((x) => x.lifecycle.state === "NEEDS_OWNER" && !absorbed.has(x.item.id)).length;
+  const restReflected = tri.items.length - askOwner > 0;
+  const inbox = { read: tri.read, needsOwner: tri.summary?.counts.NEEDS_OWNER ?? 0, unread: tri.summary?.counts.UNREAD ?? 0, closable: tri.summary?.closable ?? 0, absorbed: absorbed.size,
+    lineHe: !tri.read ? "לא קראתי את העדכונים שכתבת — לא אומרת שאין" : askOwner ? `${askOwner === 1 ? "עדכון אחד מהתיבה עדיין צריך" : `${askOwner} עדכונים מהתיבה עדיין צריכים`} ממך הבהרה${restReflected ? "; שאר העדכונים כבר משוקפים בעבודה" : ""}` : null };
 
   let pats: DerivedPattern[] = [];
   try { pats = derivePatterns(src).filter((p) => p.showToOwner); } catch { pats = []; }

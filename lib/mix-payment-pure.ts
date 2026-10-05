@@ -18,6 +18,7 @@
 
 /** Code WORKING VALUE, NOT Owner policy: the ratio the retired Steven sync used ($ agreed → ₪ recorded). Today it only
  *  produces an ESTIMATE in the expense notes and lets Sunny explain historical ₪ rows. */
+import { normalizeCurrency } from "./finance/currency";
 export const APP_PAYMENT_RATIO = 3.25;
 /** Code WORKING VALUE, NOT Owner policy: PayPal gross estimate factor (note text only; no fee policy is stored). */
 export const PAYPAL_GROSS_FACTOR = 1.05;
@@ -219,3 +220,30 @@ export function unpayBlocked(p: { touchesPayment: boolean; projectedPaid: boolea
   return p.touchesPayment && !p.projectedPaid && isProtectedPaidExpense(p.linkedStatus);
 }
 export const UNPAY_BLOCKED_HE = "ההוצאה המקושרת בכספים כבר מסומנת 'שולם' — שורה ששולמה לא נמחקת ולא נדרסת. כדי לבטל את התשלום משנים קודם את השורה ב-Finance.";
+
+/**
+ * Financial COO 2.1 (2026-10-05) — a PLANNED mix expense the Owner already recorded for the same project (e.g. "מיקס —
+ * באם באם $210, צפוי") must never be duplicated by the writer's own INSERT. Exact candidates only: the same project
+ * (the query), an expense, scope or category "מיקס / מאסטר", the SAME currency, not paid / partial / received / cancelled,
+ * not linked to another work. Decision (never fuzzy, never destructive):
+ *   none                                    → NONE (the writer inserts as before)
+ *   exactly one, same amount, RPC-updatable → ADOPT (link it; the atomic function then updates the SAME row)
+ *   anything else (2+, amount differs, a row the atomic function cannot update) → NEEDS_OWNER (nothing written)
+ */
+export const MIX_SCOPE = "מיקס / מאסטר";
+export interface PlannedMixCandidate { id: string; type: string | null; amount: unknown; currency: string | null; paymentStatus: string | null; category: string | null; expenseScope: string | null; linkedByWork: boolean }
+export type PlannedMixPick = { kind: "NONE" } | { kind: "ADOPT"; txId: string } | { kind: "NEEDS_OWNER"; code: "AMBIGUOUS" | "AMOUNT_MISMATCH" | "NOT_ADOPTABLE"; txIds: string[]; reasonHe: string };
+const NOT_REUSABLE = new Set(["שולם", "חלקי", "התקבל", "בוטל"]);
+const curOf = (c: string | null | undefined) => normalizeCurrency(c);
+export function pickPlannedMixExpense(want: { amount: number; currency: string }, cands: readonly PlannedMixCandidate[]): PlannedMixPick {
+  const eligible = cands.filter((c) => c.type === "expense" && !c.linkedByWork && !NOT_REUSABLE.has(c.paymentStatus ?? "")
+    && ((c.expenseScope ?? "") === MIX_SCOPE || (c.category ?? "") === MIX_SCOPE) && curOf(c.currency) === curOf(want.currency));
+  if (!eligible.length) return { kind: "NONE" };
+  const ids = eligible.map((c) => c.id);
+  const money = (c: PlannedMixCandidate) => `${curOf(c.currency)}${Number(c.amount)}`;
+  if (eligible.length > 1) return { kind: "NEEDS_OWNER", code: "AMBIGUOUS", txIds: ids, reasonHe: `יש ${eligible.length} הוצאות מיקס מתוכננות לאותו פרויקט — לא יוצרת שורה נוספת ולא בוחרת לבד; צריך להחליט איזו מהן היא של העבודה` };
+  const c = eligible[0];
+  if (Math.abs(Number(c.amount) - want.amount) > 0.005) return { kind: "NEEDS_OWNER", code: "AMOUNT_MISMATCH", txIds: ids, reasonHe: `כבר רשומה הוצאת מיקס מתוכננת ${money(c)} לאותו פרויקט, והעבודה היא ${curOf(want.currency)}${want.amount} — לא יוצרת שורה שנייה; צריך לעדכן את השורה הקיימת (או לאשר שהיא נפרדת)` };
+  if ((c.category ?? "") !== MIX_SCOPE) return { kind: "NEEDS_OWNER", code: "NOT_ADOPTABLE", txIds: ids, reasonHe: `כבר רשומה הוצאת מיקס מתוכננת ${money(c)} לאותו פרויקט — לא יוצרת שורה שנייה; השורה הקיימת לא בפורמט שהכתיבה האטומית יכולה לאמץ, צריך להחליט עליה בכספים` };
+  return { kind: "ADOPT", txId: c.id };
+}

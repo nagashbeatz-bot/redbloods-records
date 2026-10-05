@@ -297,6 +297,21 @@ async function main() {
   section("14. COVERAGE TEXT");
   ok("90. no capability claims Partner cannot read Google Calendar any more", !/Partner לא קורא את Google Calendar|Sunny does NOT read or write the calendar|Google Calendar itself is not read by Sunny/.test(read("lib/partner/knowledge/capabilities/label.ts") + read("lib/partner/knowledge/capabilities/operations.ts") + read("lib/partner/knowledge/capabilities/work.ts")));
 
+  section("15. ZERO-INBOX GREETING (pass 2.1) — curated, never a dump");
+  const many = motionOf({ inbox: [
+    { id: U(80), body: "היום עם מאור היה סשן טוב אבל חייב להתקדם", at: `${D(-5)}T23:21:00Z`, link: K(P_MAOR) },
+    { id: U(83), body: "צריך לחשוב על זה שוב", at: `${D(-1)}T10:00:00Z` },
+    { id: U(84), body: "לא לשכוח את הדבר ההוא", at: `${D(-2)}T10:00:00Z` },
+  ] });
+  ok("91. the greeting never dumps the raw inbox (no 'N עדכונים מהתיבה:' list, no update text)", !/עדכונים מהתיבה:|אפשר לנתב|מוכנים לסגירה/.test(many.answerHe) && !/לחשוב על זה שוב|הדבר ההוא/.test(many.answerHe), many.answerHe);
+  ok("92. an update already reflected in a move (linked → raised Maor) is NOT counted again", many.inbox.absorbed >= 1 && /^2 עדכונים מהתיבה עדיין צריכים ממך הבהרה; שאר העדכונים כבר משוקפים בעבודה$/.test(many.inbox.lineHe ?? ""), many.inbox);
+  const one = motionOf({ inbox: [{ id: U(85), body: "צריך לחשוב על זה שוב", at: `${D(-1)}T10:00:00Z` }] });
+  ok("93. a NEEDS_OWNER update appears ONCE (a count line, exactly one mention)", one.inbox.lineHe === "עדכון אחד מהתיבה עדיין צריך ממך הבהרה" && (one.answerHe.match(/מהתיבה/g) ?? []).length === 1, one.inbox.lineHe);
+  const onlyReflected = motionOf();
+  ok("94. only reflected / absorbed updates → no inbox line at all", onlyReflected.inbox.lineHe === null && !/מהתיבה/.test(onlyReflected.answerHe), onlyReflected.inbox);
+  const mot = read("lib/partner/coo/motion.ts");
+  ok("95. no new lifecycle: motion reads the ONE triage (inboxTriageOf) and its NEEDS_OWNER state", mot.includes("inboxTriageOf(src)") && mot.includes('lifecycle.state === "NEEDS_OWNER"') && !mot.includes("decideInboxLifecycle"));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }

@@ -14,7 +14,7 @@
  */
 import { supabase } from "@/lib/supabase";
 import { inferBusinessUnit, unitColumns } from "@/lib/business-unit";
-import { applyEngineerPaymentArgs, decideEngineerExpense, engineerExpenseMode, type ExpenseFields, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
+import { applyEngineerPaymentArgs, decideEngineerExpense, engineerExpenseMode, pickPlannedMixExpense, type ExpenseFields, type PlannedMixPick, type ReconcileDecision, type ReconcileTx, type ReconcileWork } from "@/lib/mix-payment-pure";
 
 async function deleteDropboxPaths(paths: string[]): Promise<void> {
   if (!paths.length) return;
@@ -72,8 +72,8 @@ export interface EngineerPaymentChange { amountPaid: number; paymentDate: string
 
 /** The atomic write lost a race twice (the work, its link or its expense changed between the read and the write) — nothing was written. */
 export class EngineerPaymentConflictError extends Error {
-  readonly code = "PAYMENT_CONFLICT";
-  constructor() { super("העבודה השתנתה במקביל — לא נכתב כלום. נסה שוב."); }
+  readonly code: string;
+  constructor(code = "PAYMENT_CONFLICT", message = "העבודה השתנתה במקביל — לא נכתב כלום. נסה שוב.") { super(message); this.code = code; }
 }
 class StaleRaceError extends Error {}
 /** The function's own race codes: the work moved (STALE_WORK), its link moved (STALE_LINK) or the expense became paid (TX_NOT_UPDATABLE). */
@@ -110,7 +110,23 @@ export async function reconcileEngineerExpense(workId: string, opts: { reason: s
   throw new EngineerPaymentConflictError();
 }
 
-async function reconcileOnce(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean; payment?: EngineerPaymentChange }): Promise<EngineerExpenseOutcome> {
+/** The exact planned-mix candidates of a project (read-only) → the pure decision (lib/mix-payment-pure pickPlannedMixExpense). */
+async function plannedMixPick(projectId: string, workId: string, want: { amount: number; currency: string }): Promise<PlannedMixPick> {
+  const { data: txs, error } = await supabase.from("transactions").select("id, type, amount, currency, payment_status, category, expense_scope").eq("project_id", projectId).eq("type", "expense");
+  if (error) throw new Error(error.message); // fail closed: never insert blind when the duplicate check cannot run
+  const rows = (txs ?? []) as Array<Record<string, unknown>>;
+  const ids = rows.map((r) => String(r.id));
+  const linkedIds = new Set<string>();
+  if (ids.length) {
+    const { data: ws, error: wErr } = await supabase.from("sound_engineer_work").select("id, linked_transaction_id").in("linked_transaction_id", ids);
+    if (wErr) throw new Error(wErr.message);
+    for (const w of (ws ?? []) as Array<Record<string, unknown>>) if (String(w.id) !== workId && w.linked_transaction_id) linkedIds.add(String(w.linked_transaction_id));
+  }
+  return pickPlannedMixExpense(want, rows.map((r) => ({ id: String(r.id), type: (r.type as string | null) ?? null, amount: r.amount, currency: (r.currency as string | null) ?? null, paymentStatus: (r.payment_status as string | null) ?? null,
+    category: (r.category as string | null) ?? null, expenseScope: (r.expense_scope as string | null) ?? null, linkedByWork: linkedIds.has(String(r.id)) })));
+}
+
+async function reconcileOnce(workId: string, opts: { reason: string; force?: boolean; skipPriceSync?: boolean; payment?: EngineerPaymentChange; skipPlannedCheck?: boolean }): Promise<EngineerExpenseOutcome> {
   const { data: w, error: wErr } = await supabase
     .from("sound_engineer_work")
     .select("id, project_id, engineer_name, work_type, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id, status, updated_at")
@@ -194,6 +210,22 @@ async function reconcileOnce(workId: string, opts: { reason: string; force?: boo
       return { kind: d.kind, txId: id, conflictHe: null, messageHe: "ההוצאה המקושרת עודכנה (במטבע העבודה)", committed: true };
     }
     case "INSERT": {
+      // Financial COO 2.1: never a second Finance row for a mix the Owner already planned on this project
+      if (work.projectId && !opts.skipPlannedCheck) {
+        const pick = await plannedMixPick(work.projectId, workId, { amount: d.fields.amount, currency: d.fields.currency });
+        if (pick.kind === "NEEDS_OWNER") {
+          // a payment never half-lands (work paid, expense missing): refused, nothing written; a completion writes no row
+          if (opts.payment) throw new EngineerPaymentConflictError("PLANNED_EXPENSE_NEEDS_OWNER", pick.reasonHe);
+          return { kind: "REFUSED", txId: null, conflictHe: pick.reasonHe, messageHe: pick.reasonHe, committed: true };
+        }
+        if (pick.kind === "ADOPT") {
+          // compare-and-swap: link ONLY while the work is still unlinked; then the SAME atomic path updates that row
+          const { data: linkedRows, error: lkErr } = await supabase.from("sound_engineer_work").update({ linked_transaction_id: pick.txId }).eq("id", workId).is("linked_transaction_id", null).select("id");
+          if (lkErr) throw new Error(lkErr.message);
+          if (!linkedRows || linkedRows.length !== 1) throw new StaleRaceError();
+          return reconcileOnce(workId, { ...opts, skipPlannedCheck: true });
+        }
+      }
       const id = await applyAtomic("INSERT", null, d.fields);
       return { kind: d.kind, txId: id, conflictHe: null, messageHe: "נרשמה הוצאה מקושרת (במטבע העבודה)", committed: true };
     }

@@ -238,6 +238,50 @@ const PAY = { amountPaid: 200, paymentDate: "2026-10-01", skipFinanceSync: true 
   ok("the push module itself is unchanged (still claim-guarded, localhost-silenced, deliverOnce)", /pushAllowed\(\)/.test(read("lib/steven-payment-notify.ts")) && /deliverOnce\(/.test(read("lib/steven-payment-notify.ts")));
   ok("no page-load / refresh path calls the payment push (only updateSoundEngineerWork does)", !/notifyStevenPaymentPaid/.test(read("app/team/steven/page.tsx")) && !/notifyStevenPaymentPaid/.test(read("components/team/StevenProfilePage.tsx")) && (fs.readdirSync(path.resolve(__dirname, "../lib")).filter((n) => n.endsWith(".ts") && /notifyStevenPaymentPaid/.test(read(`lib/${n}`))).join() === "sound-engineer-store.ts,steven-payment-notify.ts"));
 
+  console.log("\n13 — Financial COO 2.1: a planned mix expense is reused, never duplicated (exact candidates only)");
+  const OTHER = "44444444-4444-4444-8444-444444444444";
+  const planned = (o: Row = {}): Row => ({ id: randomUUID(), project_id: PID, scope: "project", type: "expense", category: "מיקס / מאסטר", description: "מיקס (מתוכנן)", artist: "A", amount: 200, currency: "$", payment_status: "צפוי", payment_method: "", receipt_ref: "", notes: "owner plan", date: "2026-10-01", linked_session_id: "", business_unit: "STUDIO", business_unit_source: "OWNER_DECISION", expense_scope: "מיקס / מאסטר", ...o });
+  const unlinked = () => baseWork({ linked_transaction_id: null });
+  const withTx = (...rows: Row[]) => { reset(unlinked(), null); DB.transactions = rows; };
+
+  const p1 = planned(); withTx(p1);
+  const c1 = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+  ok("1. a matching planned row + the work's completion → NO second transaction", t("transactions").length === 1, t("transactions"));
+  ok("2. the writer REUSES / LINKS the exact candidate (the same row id, updated through the atomic function)", wk().linked_transaction_id === p1.id && c1.kind === "UPDATE" && c1.txId === p1.id && rpcCalls.some((x) => x.p_action === "UPDATE" && x.p_tx_id === p1.id));
+  await STORE.updateSoundEngineerWork(WID, PAY);
+  ok("2b. paying it afterwards turns the SAME row שולם (still one row)", t("transactions").length === 1 && t("transactions")[0].payment_status === "שולם" && t("transactions")[0].id === p1.id);
+
+  const a1 = planned(), a2 = planned({ amount: 200 }); withTx(a1, a2);
+  const c3 = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+  ok("3. two candidates → NO write (no insert, no link), the reason is returned", c3.kind === "REFUSED" && t("transactions").length === 2 && !wk().linked_transaction_id && /2 הוצאות מיקס מתוכננות/.test(c3.messageHe), c3);
+  const e3 = await threw(() => STORE.updateSoundEngineerWork(WID, PAY));
+  ok("3b. a payment in that state is refused (409 code), nothing written — the work is NOT paid", e3?.code === "PLANNED_EXPENSE_NEEDS_OWNER" && wk().amount_paid === 0 && t("transactions").length === 2, e3?.message);
+
+  for (const [name, row] of [
+    ["4. a CANCELLED candidate is never reused", planned({ payment_status: "בוטל" })],
+    ["5. a PAID candidate is never reused", planned({ payment_status: "שולם", date: "2026-09-01" })],
+    ["6. the same amount on ANOTHER project is never reused", planned({ project_id: OTHER })],
+    ["7. the same project in ANOTHER currency is never reused", planned({ currency: "₪" })],
+    ["8. the same project with ANOTHER expense scope is never reused", planned({ expense_scope: "קליפ", category: "" })],
+  ] as const) {
+    withTx(row as Row);
+    const r = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+    ok(name, r.kind === "INSERT" && t("transactions").length === 2 && wk().linked_transaction_id !== (row as Row).id, { kind: r.kind, n: t("transactions").length });
+  }
+
+  // the production shape (Owner's manual row: empty category, scope mix, $210 incl. a fee) → NEEDS_OWNER, never a duplicate
+  const prodRow = planned({ category: "", amount: 210 }); withTx(prodRow);
+  const c9 = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+  ok("9. the production-shaped planned row ($210, empty category) → NEEDS_OWNER: no second row, nothing changed", c9.kind === "REFUSED" && t("transactions").length === 1 && t("transactions")[0].amount === 210 && t("transactions")[0].notes === "owner plan" && !wk().linked_transaction_id, c9);
+  const sameAmountNotAdoptable = planned({ category: "" }); withTx(sameAmountNotAdoptable);
+  const c10 = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+  ok("10. same amount but a row the atomic function cannot update (empty category) → NEEDS_OWNER (no DB change made)", c10.kind === "REFUSED" && t("transactions").length === 1 && !wk().linked_transaction_id, c10);
+  withTx(planned({ id: TXID }));
+  t("sound_engineer_work").push(baseWork({ id: "55555555-5555-4555-8555-555555555555", linked_transaction_id: TXID }));
+  const c11 = await MIX.reconcileEngineerExpense(WID, { reason: "work completed" });
+  ok("11. a candidate already linked to ANOTHER work is never taken over", c11.kind === "INSERT" && t("transactions").length === 2);
+  ok("12. the writer still has no plain transactions INSERT / UPDATE (reuse = a link + the atomic function)", !/from\("transactions"\)\.insert\(/.test(read("lib/writes/mix.ts")) && !/from\("transactions"\)\.update\(/.test(read("lib/writes/mix.ts")));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
