@@ -273,8 +273,10 @@ export function clientWorkflow(src: GatewaySources, event: "NEW_CLIENT_REQUEST" 
   const client = byKey ?? (byName.length === 1 ? byName[0] : null);
   const known: Array<{ item: string; value: unknown; source: string }> = [];
   const ask: ClientQuestion[] = [];
-  const identity = client ? "EXISTING_CLIENT" : partial.length ? "SIMILAR_NAMES_AMBIGUOUS" : o.name ? "NEW_NAME" : "NOT_GIVEN";
+  // two (or more) clients with EXACTLY this name: ambiguous — never "a new name" and never merged (no merge primitive)
+  const identity = client ? "EXISTING_CLIENT" : byName.length > 1 ? "SAME_NAME_AMBIGUOUS" : partial.length ? "SIMILAR_NAMES_AMBIGUOUS" : o.name ? "NEW_NAME" : "NOT_GIVEN";
   if (!client && !o.name) ask.push({ kind: "IDENTITY", questionHe: "מה שם הלקוח?", why: "no client was named" });
+  if (!client && byName.length > 1) ask.push({ kind: "IDENTITY", questionHe: `יש ${byName.length} לקוחות בשם "${byName[0].name}" — לאיזה מהם התכוונת?`, why: `same exact name on ${byName.map((x) => `client:${x.id}`).join(" / ")} — never guessed, never merged` });
   if (!client && partial.length) ask.push({ kind: "IDENTITY", questionHe: `התכוונת ל${partial.map((p) => p.name).join(" / ")}, או לקוח חדש?`, why: "similar existing names — never guessed" });
   if (roster.length) known.push({ item: "label roster", value: roster.map((a) => `label-artist:${a.id}`), source: "CANONICAL_DATA (same name — label vs client work is an Owner classification)" });
   let view: ClientView | null = null;

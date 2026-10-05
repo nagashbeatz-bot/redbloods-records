@@ -1095,3 +1095,21 @@ export async function listCompletedGoogleTaskIds(): Promise<Set<string>> {
 
   return ids;
 }
+
+// ─── Main-calendar events of one Israel day (duplicate check before a create) ─────
+
+/**
+ * Events on the MAIN calendar (the one the typed create actions write to) whose start falls on this Israel date.
+ * Unlike fetchEventsInRange, an error is NOT swallowed: a failed read throws, so a caller can say "could not check" and
+ * never "no such event". start is the Israel-local "YYYY-MM-DDTHH:MM" (timed) or "YYYY-MM-DD" (all-day).
+ */
+export async function listMainCalendarEventsOnDay(dayYmd: string): Promise<Array<{ id: string; summary: string; start: string }>> {
+  const auth = await getAuthenticatedClient();
+  const calendar = google.calendar({ version: "v3", auth });
+  const d = new Date(`${dayYmd}T12:00:00Z`);
+  const res = await calendar.events.list({ calendarId: CALENDAR_ID, timeMin: new Date(d.getTime() - 36 * 3600_000).toISOString(), timeMax: new Date(d.getTime() + 36 * 3600_000).toISOString(), singleEvents: true, maxResults: 250 });
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const local = (iso: string) => { const p = Object.fromEntries(fmt.formatToParts(new Date(iso)).map((x) => [x.type, x.value])); return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`; };
+  return (res.data.items ?? []).filter((e) => e.status !== "cancelled").map((e) => ({ id: e.id ?? "", summary: e.summary ?? "", start: e.start?.dateTime ? local(e.start.dateTime) : (e.start?.date ?? "") }))
+    .filter((e) => e.id && e.start.slice(0, 10) === dayYmd);
+}

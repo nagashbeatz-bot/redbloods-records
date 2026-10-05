@@ -37,8 +37,11 @@ export interface CrmFamilyWriters {
   patchTask(id: string, patch: Record<string, unknown>): Promise<void>;
   deleteTask(id: string): Promise<"ok" | "not_found">;
   syncGoogleTasks(): Promise<{ synced: number }>;
-  countOpenTasksTitled(title: string): Promise<number>;
+  /** Open tasks with the same title after normalization (duplicate warning); throws when unreadable. */
+  openTasksLike(title: string): Promise<Array<{ id: string; title: string; dueDate: string | null; relatedType: string | null; relatedId: string | null }>>;
   calendarConnected(): Promise<boolean>;
+  /** Main-calendar events starting on this Israel day (duplicate warning); throws when unreadable. */
+  calendarEventsOnDay(dayYmd: string): Promise<Array<{ id: string; summary: string; start: string }>>;
   readCalendarEvent(eventId: string): Promise<GEvent | null>;
   addCalendarEvent(e: { summary: string; start: string; end: string; description?: string; allDay?: boolean; attendees?: string[] }): Promise<string>;
   editCalendarEvent(eventId: string, patch: { summary?: string; startIso?: string; endIso?: string; location?: string; description?: string }): Promise<void>;
@@ -73,6 +76,40 @@ const DT = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n: number, c: string) => `${c}${Number(n).toLocaleString("en-US")}`;
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+
+/*
+ * Create-duplicate context (Question memory stage 7, Owner-approved 2026-10-05): a WARNING only, never a block. A live
+ * lookup of what already exists; a failed lookup is "could not check" (dupCheck FAILED), never "no duplicate".
+ */
+const normTitle = (t: string) => t.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+async function taskDupContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> {
+  const t = typeof a.title === "string" ? a.title : "";
+  try {
+    const same = (await d.openTasksLike(t.trim())).filter((r) => normTitle(r.title) === normTitle(t));
+    const rel = typeof a.related === "string" ? a.related.slice(a.related.indexOf(":") + 1) : null;
+    return { dupCheck: "OK", sameTitleOpen: same.length, sameTitleSameDate: typeof a.dueDate === "string" ? same.filter((r) => r.dueDate === a.dueDate).length : 0, sameTitleSameRecord: rel ? same.filter((r) => r.relatedId === rel).length : 0 };
+  } catch { return { dupCheck: "FAILED" }; }
+}
+function taskDupWarnings(c: Fields): string[] {
+  if (c.dupCheck === "FAILED") return ["לא הצלחתי לבדוק אם כבר קיימת משימה כזאת — זה לא אומר שאין"];
+  const where = [Number(c.sameTitleSameDate) > 0 ? "באותו תאריך" : null, Number(c.sameTitleSameRecord) > 0 ? "על אותה רשומה" : null].filter(Boolean);
+  if (where.length) return [`כבר יש משימה פתוחה עם אותה כותרת ${where.join(" ו")} — ליצור עוד אחת?`];
+  return Number(c.sameTitleOpen) > 0 ? [`כבר יש ${c.sameTitleOpen} משימה פתוחה עם אותה כותרת`] : [];
+}
+async function eventDupContext(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<Fields> {
+  const connected = await d.calendarConnected();
+  const start = typeof a.start === "string" ? a.start : "";
+  if (!connected || !realYmd(start.slice(0, 10))) return { connected };
+  try {
+    const same = (await d.calendarEventsOnDay(start.slice(0, 10))).filter((e) => normTitle(e.summary) === normTitle(String(a.summary ?? "")));
+    return { connected, dupCheck: "OK", sameTitleSameDay: same.length, sameTitleSameStart: same.filter((e) => e.start === start).length };
+  } catch { return { connected, dupCheck: "FAILED" }; }
+}
+function eventDupWarnings(c: Fields): string[] {
+  if (c.dupCheck === "FAILED") return ["לא הצלחתי לבדוק ביומן אם כבר קיים אירוע כזה — זה לא אומר שאין"];
+  if (Number(c.sameTitleSameStart) > 0) return ["כבר יש ביומן אירוע עם אותה כותרת באותה שעה — ליצור עוד אחד?"];
+  return Number(c.sameTitleSameDay) > 0 ? ["כבר יש ביומן אירוע עם אותה כותרת באותו יום (בשעה אחרת)"] : [];
+}
 
 // ── readers / resolvers ─────────────────────────────────────────────────────────────────────────────────────────────
 const clientFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const c = await d.readClient(id); return c ? { ...c } : null; };
@@ -308,8 +345,8 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "CREATE_TASK", kinds: ["task"],
     meta: meta("TASKS", "יצירת משימה", "Create a task (optionally mirrored to Google Tasks)", [T("title"), T("notes", false), E("relatedType", REL, false), K("related", false), D("dueDate"), T("startTime", false), T("endTime", false), B("mirrorToGoogle")], ["title", "relatedType", "dueDate", "mirrorToGoogle"], "createTaskWithOptionalGoogle (lib/writes/tasks)", { effects: ["GOOGLE_TASKS"], riskClass: "EXTERNAL_SYSTEM_WRITE", reversible: "PARTIAL", compensation: "delete the task (separate approved action)" }),
-    createContext: async (d, a) => ({ sameTitleOpen: typeof a.title === "string" ? await d.countOpenTasksTitled(a.title.trim()) : 0 }),
-    async resolve(d, a) { const t = text(a.title, 300); if (t === null) return refuse("BAD_TEXT", "כותרת חובה"); return { key: "task:new", id: "new", label: t.trim(), fields: { sameTitleOpen: await d.countOpenTasksTitled(t.trim()) } }; },
+    createContext: taskDupContext,
+    async resolve(d, a) { const t = text(a.title, 300); if (t === null) return refuse("BAD_TEXT", "כותרת חובה"); return { key: "task:new", id: "new", label: t.trim(), fields: await taskDupContext(d, a) }; },
     read: taskFields,
     plan(a) {
       const t = text(a.title, 300); if (t === null) return refuse("BAD_TEXT", "כותרת חובה");
@@ -325,7 +362,7 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, a, args) { const rel = args.related ? String(args.related) : null; const r = await d.createTask({ title: String(a.title), notes: str(args.notes) ?? null, status: "פתוח", related_type: String(a.relatedType), related_id: rel ? rel.slice(rel.indexOf(":") + 1) : null, due_date: (a.dueDate as string | null) ?? null, start_time: str(args.startTime) ?? null, end_time: str(args.endTime) ?? null }, a.mirrorToGoogle === true); return { createdId: r.id, receipt: r.mirrored }; },
     async verify(d, id, after, out) { const t = await d.readTask(id); return !!t && t.title === after.title && (after.mirrorToGoogle !== true || out.receipt === true); },
     requiredValues: (_a, after) => (after.mirrorToGoogle ? [String(after.dueDate)] : []),
-    warnings: (c) => (Number(c.sameTitleOpen) > 0 ? [`כבר יש ${c.sameTitleOpen} משימה פתוחה עם אותה כותרת`] : []),
+    warnings: taskDupWarnings,
     disclosuresHe: ["נוצרת משימה פתוחה", "Google Task נוצר רק אם ביקשת שיקוף (ונשמר הקישור אליו)", "לא יישלח Push או הודעה"],
   },
   {
@@ -379,8 +416,8 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "CREATE_CALENDAR_EVENT", kinds: ["gcal-event"],
     meta: meta("CALENDAR", "יצירת אירוע ביומן (בלי מוזמנים)", "Create a Google Calendar event on the main calendar (no attendees)", [T("summary"), T("start"), T("end"), T("description", false), B("allDay")], ["summary", "start", "end"], "addCalendarEvent (lib/writes/calendar)", { effects: ["CALENDAR"], riskClass: "EXTERNAL_SYSTEM_WRITE", reversible: "PARTIAL", compensation: "delete the event (separate approved action)" }),
-    createContext: async (d) => ({ connected: await d.calendarConnected() }),
-    async resolve(d, a) { const s = text(a.summary, 200); if (s === null) return refuse("BAD_TEXT", "כותרת חסרה"); return { key: "gcal-event:new", id: "new", label: s.trim(), fields: { connected: await d.calendarConnected() } }; },
+    createContext: eventDupContext,
+    async resolve(d, a) { const s = text(a.summary, 200); if (s === null) return refuse("BAD_TEXT", "כותרת חסרה"); return { key: "gcal-event:new", id: "new", label: s.trim(), fields: await eventDupContext(d, a) }; },
     read: eventFields,
     plan(a, cur) {
       if (!cur.connected) return refuse("NOT_CONNECTED", "Google Calendar לא מחובר — צריך חיבור מחדש באפליקציה");
@@ -392,13 +429,14 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, a, args) { const allDay = args.allDay === true; return { createdId: await d.addCalendarEvent({ summary: String(a.summary), start: allDay ? String(a.start) : `${a.start}:00`, end: allDay ? String(a.end) : `${a.end}:00`, description: str(args.description), allDay }) }; },
     async verify(d, id, after) { const e = await d.readCalendarEvent(id); return !!e && e.summary === after.summary; },
     requiredValues: (_a, after) => [String(after.start)],
+    warnings: eventDupWarnings,
     disclosuresHe: ["האירוע נוצר ביומן הראשי שלך בלבד — בלי מוזמנים ובלי הזמנות", "הוא לא מקושר לרשומה ב-Redbloods (סשן / פגישה / הופעה נוצרים דרך הפעולות שלהם)"],
   },
   {
     actionId: "CREATE_CALENDAR_INVITE", kinds: ["gcal-event"],
     meta: meta("CALENDAR", "אירוע ביומן עם הזמנה למוזמנים", "Create a calendar event and INVITE attendees (Google emails them)", [T("summary"), T("start"), T("end"), T("description", false), T("attendees")], ["summary", "start", "end", "attendees"], "addCalendarEvent with attendees (lib/writes/calendar)", { effects: ["CALENDAR", "EMAIL"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
-    createContext: async (d) => ({ connected: await d.calendarConnected() }),
-    async resolve(d, a) { const s = text(a.summary, 200); if (s === null) return refuse("BAD_TEXT", "כותרת חסרה"); return { key: "gcal-event:new", id: "new", label: s.trim(), fields: { connected: await d.calendarConnected() } }; },
+    createContext: eventDupContext,
+    async resolve(d, a) { const s = text(a.summary, 200); if (s === null) return refuse("BAD_TEXT", "כותרת חסרה"); return { key: "gcal-event:new", id: "new", label: s.trim(), fields: await eventDupContext(d, a) }; },
     read: eventFields,
     plan(a, cur) {
       if (!cur.connected) return refuse("NOT_CONNECTED", "Google Calendar לא מחובר");
@@ -411,6 +449,7 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, a, args) { return { createdId: await d.addCalendarEvent({ summary: String(a.summary), start: `${a.start}:00`, end: `${a.end}:00`, description: str(args.description), attendees: String(a.attendees).split(", ") }) }; },
     async verify(d, id, after) { const e = await d.readCalendarEvent(id); return !!e && e.summary === after.summary; },
     requiredValues: (_a, after) => [String(after.start), ...String(after.attendees).split(", ")],
+    warnings: eventDupWarnings,
     disclosuresHe: ["Google שולח הזמנה במייל לכל מוזמן — זו תקשורת חיצונית", "לא נשלח Push; האירוע לא מקושר לרשומה ב-Redbloods"],
   },
   {
@@ -448,7 +487,8 @@ export const CRM_PRIMITIVES: readonly PrimitiveSpec[] = [
     async resolve(d, a) { const t = text(a.title, 200); if (t === null) return refuse("BAD_TEXT", "כותרת חסרה"); return { key: "gtask:new", id: "new", label: t.trim(), fields: { connected: await d.calendarConnected() } }; },
     read: async () => null,
     plan(a, cur) { if (!cur.connected) return refuse("NOT_CONNECTED", "Google לא מחובר"); const t = text(a.title, 200); if (t === null) return refuse("BAD_TEXT", "כותרת חסרה"); if (!realYmd(a.due)) return refuse("BAD_DATE", "תאריך לא תקין"); return { ok: true, after: { title: t.trim(), due: String(a.due) } }; },
-    async apply(d, _id, a, args) { return { receipt: await d.addGoogleTask(String(a.title), String(a.due), str(args.notes)) }; },
+    // the created Google Task id is returned (createdId → gtask:<id>) so the result names exactly what was made
+    async apply(d, _id, a, args) { const id = await d.addGoogleTask(String(a.title), String(a.due), str(args.notes)); return { receipt: id, createdId: id }; },
     verify: async (_d, _id, _a, out) => typeof out.receipt === "string" && out.receipt.length > 0,
     requiredValues: (_a, after) => [String(after.due)],
     disclosuresHe: ["נוצר Google Task בלבד — לא משימה ב-Redbloods (למשימה משוקפת יש פעולת 'יצירת משימה')", "לא יישלח Push"],

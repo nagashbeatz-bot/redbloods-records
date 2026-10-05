@@ -66,9 +66,18 @@ export async function syncCompletedGoogleTasks(): Promise<{ synced: number; skip
   return { synced: ids.length };
 }
 
-/** Open tasks with exactly this title (duplicate warning on create). */
-export async function countOpenTasksTitled(title: string): Promise<number> {
-  const { count, error } = await supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "פתוח").eq("title", title);
+/** Comparable task title: Unicode-normalized, trimmed, single spaces, lower case (duplicate warning only — never an identity). */
+export const normTaskTitle = (t: string) => t.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+
+/**
+ * Open tasks whose title equals this one after normalization (duplicate WARNING on create — never a block). A read error
+ * throws: the caller says "could not check", never "no duplicate".
+ */
+export async function openTasksLike(title: string): Promise<Array<{ id: string; title: string; dueDate: string | null; relatedType: string | null; relatedId: string | null }>> {
+  const { data, error } = await supabase.from("tasks").select("id, title, due_date, related_type, related_id").eq("status", "פתוח").limit(5000);
   if (error) throw new Error(error.message);
-  return count ?? 0;
+  const n = normTaskTitle(title);
+  return ((data ?? []) as Array<{ id: string; title: string | null; due_date: string | null; related_type: string | null; related_id: string | null }>)
+    .filter((r) => normTaskTitle(r.title ?? "") === n)
+    .map((r) => ({ id: r.id, title: r.title ?? "", dueDate: r.due_date, relatedType: r.related_type, relatedId: r.related_id }));
 }

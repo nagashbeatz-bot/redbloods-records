@@ -259,6 +259,7 @@ async function priorExecutionsOf(built: readonly BuiltStep[], c: Caller, d: ActS
   const out: Array<{ actionId: string; entity: string; at: string | null; outcome: string; verifyKind: string; warningHe: string }> = [];
   for (const b of built) {
     const vk = verifyKindOf(b.step.actionId, PRIMITIVES_BY_ID.get(b.step.actionId)?.kinds ?? []);
+    if (b.key.endsWith(":new") && CREATE_IDENTITY[b.step.actionId] && d.stores.plans.history) { out.push(...(await priorCreatesOf(b, c, d))); continue; }
     if (vk !== "RECEIPT" || b.key.endsWith(":new") || !d.stores.plans.history) continue;
     let page: Awaited<ReturnType<NonNullable<typeof d.stores.plans.history>>>;
     try { page = await d.stores.plans.history(c.ownerId, { limit: 5, before: null, since: null, actionId: b.step.actionId, entity: b.key }); }
@@ -274,6 +275,34 @@ async function priorExecutionsOf(built: readonly BuiltStep[], c: Caller, d: ActS
     }
   }
   return out;
+}
+
+/**
+ * Creates (Question memory stage 7, 2026-10-05): the identifying arguments of a create — the SAME action with the same
+ * normalized title and the same date / start that Sunny already executed (or may have: OUTCOME_UNKNOWN / MAY_HAVE_RUN) is a
+ * WARNING with the date; never a block. History unreadable → "could not check", never "not created before".
+ */
+const CREATE_IDENTITY: Record<string, readonly [string, string]> = {
+  CREATE_TASK: ["title", "dueDate"], CREATE_CALENDAR_EVENT: ["summary", "start"], CREATE_CALENDAR_INVITE: ["summary", "start"], CREATE_GOOGLE_TASK: ["title", "due"],
+};
+const normArg = (v: unknown) => (typeof v === "string" ? v.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase() : v ?? null);
+async function priorCreatesOf(b: BuiltStep, c: Caller, d: ActServiceDeps): Promise<Array<{ actionId: string; entity: string; at: string | null; outcome: string; verifyKind: string; warningHe: string }>> {
+  const [tk, dk] = CREATE_IDENTITY[b.step.actionId];
+  const same = (args: Readonly<Record<string, unknown>>) => normArg(args[tk]) === normArg(b.step.args[tk]) && normArg(args[dk]) === normArg(b.step.args[dk]);
+  const vk = verifyKindOf(b.step.actionId, PRIMITIVES_BY_ID.get(b.step.actionId)?.kinds ?? []);
+  let page: Awaited<ReturnType<NonNullable<typeof d.stores.plans.history>>>;
+  try { page = await d.stores.plans.history!(c.ownerId, { limit: 20, before: null, since: null, actionId: b.step.actionId, entity: null }); }
+  catch { return [{ actionId: b.step.actionId, entity: b.key, at: null, outcome: "UNKNOWN", verifyKind: vk, warningHe: `לא הצלחתי לבדוק אם כבר יצרתי "${b.label}" בעבר — זה לא אומר שלא` }]; }
+  for (const r of page.items) {
+    const idx = r.plan.steps.findIndex((s) => s.actionId === b.step.actionId && same(s.args));
+    if (idx < 0) continue;
+    const lc = lifecycleOf(r.plan, r.executions.map((x) => ({ actionId: "", outcome: null, ...x })), r.eventTypes, d.nowMs());
+    const st = lc.steps.find((x) => x.index === idx)?.status ?? null;
+    const when = r.executedAt ? `${r.executedAt.slice(8, 10)}.${r.executedAt.slice(5, 7)}.${r.executedAt.slice(0, 4)}` : null;
+    if (st === "APPLIED_AS_EXPECTED") return [{ actionId: b.step.actionId, entity: b.key, at: r.executedAt, outcome: "APPLIED_AS_EXPECTED", verifyKind: vk, warningHe: `כבר יצרתי "${b.label}" עם אותם פרטים${when ? ` ב-${when}` : ""} — ליצור שוב?` }];
+    if (st === "OUTCOME_UNKNOWN" || lc.outcome === "OUTCOME_UNKNOWN") return [{ actionId: b.step.actionId, entity: b.key, at: r.executedAt, outcome: "OUTCOME_UNKNOWN", verifyKind: vk, warningHe: `ייתכן שכבר נוצר "${b.label}" עם אותם פרטים${when ? ` (ניסיון מ-${when} שהתוצאה שלו לא אומתה)` : ""} — כדאי לבדוק לפני שיוצרים שוב` }];
+  }
+  return [];
 }
 
 /** Persist a server-built plan and return its preview (single action or workflow). */

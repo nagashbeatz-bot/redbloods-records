@@ -22,6 +22,11 @@ import { CASE_SCHEMA_VERSION, type PartnerCase } from "../lib/partner/cases/type
 import { entityForSubject } from "../lib/partner/memory/core";
 import { vendorWorkKnown, victorDeliveryQuestionId } from "../lib/partner/sunny/known-context";
 import { FakeOwnerContextDb } from "./fixtures/owner-context-fake";
+import { fullFlow, mkDeps, OWNER, U } from "./fixtures/act-harness";
+import { approveAction, planAction } from "../lib/partner/act/service";
+import { executionKey, planHash } from "../lib/partner/act/plan";
+import { ACT_TABLES } from "../lib/partner/act/store-supabase";
+import type { Plan } from "../lib/partner/act/types";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 700)}` : ""}`); } };
@@ -158,6 +163,53 @@ const code = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'
     ok("3u. Victor send log: a linked entry belongs to ITS work only; unlinked entries only in a single-work project", /a\.linkedWorkId \? a\.linkedWorkId === w\.id : victorWorksInProject === 1/.test(vc));
     ok("3v. computeVictorBall / send-log rules untouched (the view still calls the app's own functions)", /computeVictorBall\(/.test(vc) && /sendEntryCurrent\(/.test(vc) && /isOpenSendState\(/.test(vc));
     ok("3w. the question carries its questionRef + options only through the case bridge helper", /victorDeliveryQuestionRef\(w\.id, w\.handoff\.lastUploadAt/.test(vc));
+  }
+
+  console.log("\nQ4. Create duplicate warnings (stage 7) — warning only, live lookup, 'could not check' ≠ 'no duplicate'");
+  {
+    const prev = (p: Record<string, unknown>) => JSON.stringify(p.preview ?? {});
+    const taskW = (rows: () => Promise<Array<{ id: string; title: string; dueDate: string | null; relatedType: string | null; relatedId: string | null }>>) => mkDeps({ openTasksLike: rows, async createTask() { return { id: U(901), mirrored: false }; }, async readTask() { return null; } });
+    const targs = { title: "  להתקשר  לטל ", dueDate: "2026-10-09", relatedType: "general", mirrorToGoogle: false };
+    const t1 = await planAction({ intentHe: "משימה", actionId: "CREATE_TASK", args: targs }, OWNER, taskW(async () => [{ id: U(902), title: "להתקשר לטל", dueDate: "2026-10-09", relatedType: "general", relatedId: null }]).d);
+    ok("4a. CREATE_TASK: an open task with the same normalized title on the same date → warning (never a block)", t1.status === "PREVIEW" && /כבר יש משימה פתוחה עם אותה כותרת באותו תאריך/.test(prev(t1)), t1);
+    const t2 = await planAction({ intentHe: "משימה", actionId: "CREATE_TASK", args: targs }, OWNER, taskW(async () => { throw new Error("db down"); }).d);
+    ok("4b. CREATE_TASK: the lookup failed → 'לא הצלחתי לבדוק' (never 'אין כפילות'), still a preview", t2.status === "PREVIEW" && /לא הצלחתי לבדוק אם כבר קיימת משימה/.test(prev(t2)) && !/אין כפילות/.test(prev(t2)), t2);
+    const t3 = await planAction({ intentHe: "משימה", actionId: "CREATE_TASK", args: targs }, OWNER, taskW(async () => []).d);
+    ok("4c. CREATE_TASK: nothing similar → no duplicate warning", t3.status === "PREVIEW" && !/כבר יש משימה|לא הצלחתי לבדוק/.test(prev(t3)), t3);
+    const evW = (rows: () => Promise<Array<{ id: string; summary: string; start: string }>>) => mkDeps({ async calendarConnected() { return true; }, calendarEventsOnDay: rows });
+    const eargs = { summary: "חזרה להופעה", start: "2026-10-08T18:00", end: "2026-10-08T20:00" };
+    const e1 = await planAction({ intentHe: "אירוע", actionId: "CREATE_CALENDAR_EVENT", args: eargs }, OWNER, evW(async () => [{ id: "evA", summary: "חזרה  להופעה", start: "2026-10-08T18:00" }]).d);
+    ok("4d. CREATE_CALENDAR_EVENT: same title + same start on the main calendar → warning", e1.status === "PREVIEW" && /כבר יש ביומן אירוע עם אותה כותרת באותה שעה/.test(prev(e1)), e1);
+    const e2 = await planAction({ intentHe: "אירוע", actionId: "CREATE_CALENDAR_INVITE", args: { ...eargs, attendees: "a@b.co" } }, OWNER, evW(async () => { throw new Error("google down"); }).d);
+    ok("4e. CREATE_CALENDAR_INVITE: the calendar read failed → 'לא הצלחתי לבדוק ביומן' (never 'none')", e2.status === "PREVIEW" && /לא הצלחתי לבדוק ביומן/.test(prev(e2)), e2);
+    const e3 = await planAction({ intentHe: "אירוע", actionId: "CREATE_CALENDAR_EVENT", args: eargs }, OWNER, evW(async () => [{ id: "evB", summary: "אחר", start: "2026-10-08T18:00" }]).d);
+    ok("4f. a different event at the same time is not a duplicate", e3.status === "PREVIEW" && !/כבר יש ביומן/.test(prev(e3)), e3);
+    // CREATE_GOOGLE_TASK: the created id comes back; a second identical create warns with the date (prior execution, provenance only)
+    const g = mkDeps({ async calendarConnected() { return true; }, async addGoogleTask() { return "gtAbc12345"; } });
+    const gargs = { title: "לשלוח חוזה", due: "2026-10-10" };
+    const r1 = await fullFlow(g.d, "CREATE_GOOGLE_TASK", gargs, "מאשר 2026-10-10");
+    const steps = ((r1.e as { steps?: Array<{ createdKey?: string }> } | null)?.steps ?? []);
+    ok("4g. CREATE_GOOGLE_TASK returns the created id (createdKey gtask:<id>)", r1.e?.status === "APPLIED_AS_EXPECTED" && steps.some((s) => s.createdKey === "gtask:gtAbc12345"), r1.e);
+    const g2 = await planAction({ intentHe: "שוב", actionId: "CREATE_GOOGLE_TASK", args: { ...gargs, title: " לשלוח  חוזה" } }, OWNER, g.d);
+    const pg = (g2.priorExecution as Array<{ outcome: string; warningHe: string }> | undefined) ?? [];
+    ok("4h. the same create again (normalized title + same date) → 'כבר יצרתי … עם אותם פרטים' (warning only)", g2.status === "PREVIEW" && pg[0]?.outcome === "APPLIED_AS_EXPECTED" && /כבר יצרתי/.test(pg[0].warningHe), g2);
+    const g3 = await planAction({ intentHe: "אחר", actionId: "CREATE_GOOGLE_TASK", args: { ...gargs, due: "2026-10-11" } }, OWNER, g.d);
+    ok("4i. a different date is a different create → no prior-execution warning", g3.status === "PREVIEW" && !(g3.priorExecution as unknown[] | undefined)?.length, g3);
+    // an interrupted earlier create → "ייתכן שכבר נוצר"
+    const m3 = taskW(async () => []);
+    const q1 = await planAction({ intentHe: "משימה", actionId: "CREATE_TASK", args: targs }, OWNER, m3.d);
+    await approveAction({ planId: q1.planId, planHash: q1.planHash, confirmationText: "מאשר" }, OWNER, m3.d);
+    const plan1 = m3.db.rows(ACT_TABLES.plans).find((x) => x.plan_id === q1.planId)!.plan as Plan;
+    const old = new Date(m3.d.nowMs() - 3_600_000).toISOString();
+    m3.db.rows(ACT_TABLES.executions).push({ execution_key: executionKey(planHash(plan1), plan1.steps[0]), plan_id: q1.planId, step_index: 0, action_id: "CREATE_TASK", action_version: plan1.steps[0].actionVersion, status: "FAILED", outcome: { index: 0, actionId: "CREATE_TASK", status: "FAILED", detail: `${MAY_HAVE_RUN} interrupted`, replayed: false, at: old }, recorded_at: old });
+    const q2 = await planAction({ intentHe: "משימה", actionId: "CREATE_TASK", args: targs }, OWNER, m3.d);
+    const pu = (q2.priorExecution as Array<{ outcome: string; warningHe: string }> | undefined) ?? [];
+    ok("4j. an interrupted earlier create (MAY_HAVE_RUN) → 'ייתכן שכבר נוצר' — never 'created', never 'not created'", q2.status === "PREVIEW" && pu[0]?.outcome === "OUTCOME_UNKNOWN" && /ייתכן שכבר נוצר/.test(pu[0].warningHe), q2);
+    const core = read("lib/partner/act/primitives/core.ts");
+    ok("4k. this run's own created task / event never counts as an existing duplicate (withExcluded)", /k === "openTasksLike"/.test(core) && /k === "calendarEventsOnDay"/.test(core));
+    ok("5a. P1: the CLOSE question of an unpaid collaboration never asks to record client / DJ money", /unpaidCollab \? "ההופעה התקיימה\?[^"]*אין כסף לתעד/.test(read("lib/partner/shows/view.ts")));
+    ok("5b. P1: two clients with the exact same name → SAME_NAME_AMBIGUOUS (never a false 'new client'), no merge", /byName\.length > 1 \? "SAME_NAME_AMBIGUOUS"/.test(read("lib/partner/clients/view.ts")));
+    ok("4l. the main-calendar reader never swallows an error (a failed read is not 'none')", !/catch/.test(read("lib/google-calendar.ts").split("export async function listMainCalendarEventsOnDay")[1] ?? "catch"));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

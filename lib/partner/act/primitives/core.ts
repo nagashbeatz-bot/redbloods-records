@@ -326,6 +326,9 @@ export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
     get(t, k) {
       if (k === "similarRecords") return async (q: Parameters<WriterDeps["similarRecords"]>[0]) => (await t.similarRecords(q)).filter((r) => !r.id || !ex.has(String(r.id)));
       if (k === "albumTrackOrder") return async (pid: string) => (await t.albumTrackOrder(pid)).filter((r) => !ex.has(String(r.id)));
+      // create-duplicate readers (stage 7): this run's own created task / event never counts as "already exists"
+      if (k === "openTasksLike") return async (title: string) => (await t.openTasksLike(title)).filter((r) => !ex.has(String(r.id)));
+      if (k === "calendarEventsOnDay") return async (day: string) => (await t.calendarEventsOnDay(day)).filter((r) => !ex.has(String(r.id)));
       const v = Reflect.get(t, k);
       return typeof v === "function" ? v.bind(t) : v;
     },

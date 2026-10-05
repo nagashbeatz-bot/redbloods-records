@@ -191,6 +191,13 @@ function main() {
   const h = clientWorkflow(sources(), "NEW_CLIENT_REQUEST", { name: "כפול" });
   ok("no guessed identity — asks which one", h.identity === "SIMILAR_NAMES_AMBIGUOUS" && h.client === null && h.ask.some((x) => x.kind === "IDENTITY" && x.questionHe.includes("לקוח כפול")));
   ok("the two near-duplicate records stay separate clients", buildClientView(sources(), C_DUP2)!.proposals.length === 0);
+  // Question memory stage 8 (2026-10-05): two clients with EXACTLY the same name are ambiguous — never "a new name", never merged
+  const sSame = sources();
+  const items = (sSame.state as unknown as { value: { domains: { clients: { data: { items: Array<Record<string, unknown>> } } } } }).value.domains.clients.data.items;
+  const dupOf = items.find((x) => x.id === C_DUP1)!;
+  items.push({ ...dupOf, id: U(299) });
+  const hs = clientWorkflow(sSame, "NEW_CLIENT_REQUEST", { name: "לקוח כפול" });
+  ok("exact same name on two clients → SAME_NAME_AMBIGUOUS + asks which one (never NEW_NAME, never guessed)", hs.identity === "SAME_NAME_AMBIGUOUS" && hs.client === null && hs.ask.some((x) => x.kind === "IDENTITY" && /לאיזה מהם/.test(x.questionHe)));
 
   section("SCENARIO I — proposal closed without a project");
   const vi = buildClientView(sources(), C_AVI)!;
