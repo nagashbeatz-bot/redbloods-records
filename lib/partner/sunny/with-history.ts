@@ -11,7 +11,7 @@
 import { decideInboxLifecycle, inboxExecutiveSummary, type InboxLifecycle } from "./inbox-lifecycle";
 import { assessOutcomes } from "./learning";
 import type { ActionHistoryItem, SinceEvent } from "./since";
-import { learnItem, learningNote, motionAnswerHe, prioritiesAnswerHe, type LearnableItem, type MotionAnswerInput } from "../coo/motion";
+import { learnItem, learningNote, motionAnswerHe, motionInboxEntry, motionInboxOf, prioritiesAnswerHe, type LearnableItem, type MotionAnswerInput, type MotionInbox } from "../coo/motion";
 
 export type HistoryDerivation = "inbox" | "learning" | "motion";
 
@@ -31,6 +31,9 @@ function motionWithHistory(m: SlimMotion, history: readonly ActionHistoryItem[] 
   }
   const changed = new Set(MOTION_LISTS.flatMap((l) => ((out[l] as LearnableItem[] | undefined) ?? []).filter((i) => i.learning?.changed).map((i) => i.key))).size;
   out.learning = learningNote(changed);
+  // the inbox line: every update re-decided WITH the SAME history and the SAME decideInboxLifecycle owner_inbox uses
+  const ib = m.inbox as MotionInbox | undefined;
+  if (ib && Array.isArray(ib.entries)) out.inbox = motionInboxOf(ib.read, ib.entries.map((e) => motionInboxEntry(decideInboxLifecycle(e.lifecycle, history), e.absorbedBy)));
   out.answerHe = motionAnswerHe(out as unknown as MotionAnswerInput);
   return out;
 }

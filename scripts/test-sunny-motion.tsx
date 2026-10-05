@@ -297,20 +297,47 @@ async function main() {
   section("14. COVERAGE TEXT");
   ok("90. no capability claims Partner cannot read Google Calendar any more", !/Partner לא קורא את Google Calendar|Sunny does NOT read or write the calendar|Google Calendar itself is not read by Sunny/.test(read("lib/partner/knowledge/capabilities/label.ts") + read("lib/partner/knowledge/capabilities/operations.ts") + read("lib/partner/knowledge/capabilities/work.ts")));
 
-  section("15. ZERO-INBOX GREETING (pass 2.1) — curated, never a dump");
-  const many = motionOf({ inbox: [
-    { id: U(80), body: "היום עם מאור היה סשן טוב אבל חייב להתקדם", at: `${D(-5)}T23:21:00Z`, link: K(P_MAOR) },
-    { id: U(83), body: "צריך לחשוב על זה שוב", at: `${D(-1)}T10:00:00Z` },
-    { id: U(84), body: "לא לשכוח את הדבר ההוא", at: `${D(-2)}T10:00:00Z` },
-  ] });
-  ok("91. the greeting never dumps the raw inbox (no 'N עדכונים מהתיבה:' list, no update text)", !/עדכונים מהתיבה:|אפשר לנתב|מוכנים לסגירה/.test(many.answerHe) && !/לחשוב על זה שוב|הדבר ההוא/.test(many.answerHe), many.answerHe);
-  ok("92. an update already reflected in a move (linked → raised Maor) is NOT counted again", many.inbox.absorbed >= 1 && /^2 עדכונים מהתיבה עדיין צריכים ממך הבהרה; שאר העדכונים כבר משוקפים בעבודה$/.test(many.inbox.lineHe ?? ""), many.inbox);
-  const one = motionOf({ inbox: [{ id: U(85), body: "צריך לחשוב על זה שוב", at: `${D(-1)}T10:00:00Z` }] });
-  ok("93. a NEEDS_OWNER update appears ONCE (a count line, exactly one mention)", one.inbox.lineHe === "עדכון אחד מהתיבה עדיין צריך ממך הבהרה" && (one.answerHe.match(/מהתיבה/g) ?? []).length === 1, one.inbox.lineHe);
-  const onlyReflected = motionOf();
-  ok("94. only reflected / absorbed updates → no inbox line at all", onlyReflected.inbox.lineHe === null && !/מהתיבה/.test(onlyReflected.answerHe), onlyReflected.inbox);
-  const mot = read("lib/partner/coo/motion.ts");
-  ok("95. no new lifecycle: motion reads the ONE triage (inboxTriageOf) and its NEEDS_OWNER state", mot.includes("inboxTriageOf(src)") && mot.includes('lifecycle.state === "NEEDS_OWNER"') && !mot.includes("decideInboxLifecycle"));
+  section("15. ZERO INBOX = ROUTE, NOT HIDE (Owner decision 2026-10-05)");
+  const N = (id: number, body: string, d: number, link?: string) => ({ id: U(id), body, at: `${D(d)}T10:00:00Z`, ...(link ? { link } : {}) });
+  const MAOR = { id: U(80), body: "היום עם מאור היה סשן טוב אבל חייב להתקדם", at: `${D(-5)}T23:21:00Z`, link: K(P_MAOR) };
+  const YAH_MIX = N(101, "דחוף למקססס את יהלום", 0);
+  const YAH_CHORUS = N(102, "לשנות את העטיפה של יהלום", 0);
+  const TECH = N(103, "לתקן התראות של סטיבן", 0);
+  const ASK = N(104, "צריך לחשוב על זה שוב", -1);
+  const OLD_CLOSER = N(105, "צריך לבדוק את המיקס של קרוב אלייך", -6, K(P_CLOSER));
+  const mix = motionOf({ inbox: [MAOR, YAH_MIX, YAH_CHORUS, TECH, ASK, OLD_CLOSER] });
+  const entry = (m: BusinessMotion, id: string) => m.inbox.entries.find((e) => e.lifecycle.itemId === id);
+  const yMix = entry(mix, YAH_MIX.id)!, yCh = entry(mix, YAH_CHORUS.id)!;
+  ok("96. (1) a NEW unlinked update went through understand → lifecycle BEFORE curation (entity resolved, state decided)", !!yMix && yMix.lifecycle.entitySource === "LIKELY" && yMix.lifecycle.entityKeys.includes(K(P_YAHALOM)) && !!yMix.lifecycle.state, yMix?.lifecycle);
+  ok("97. (2) a meaningful UNREAD not covered by a move does NOT disappear — counted as 'צריך ניתוב'", yCh.lifecycle.state === "UNREAD" && !yCh.absorbedBy && mix.inbox.unrouted >= 1 && /צריך ניתוב|צריכים ניתוב/.test(mix.inbox.lineHe ?? ""), mix.inbox.lineHe);
+  ok("98. (3) LIKELY same project but the move does not cover its content (עטיפה ≠ open mix) → NOT absorbed", !yCh.absorbedBy);
+  const yItem = itemFor(mix, K(P_YAHALOM))!;
+  ok("99. (4) LIKELY same project + the proposed move covers it (מיקס ↔ CREATE_ENGINEER_WORK) → absorbed AS A HYPOTHESIS ('כנראה', evidence HYPOTHESIS, no link stored)", !!yMix.absorbedBy && yItem.reasonsHe.some((r) => r.startsWith("כנראה זה גם מה שכתבת")) && yItem.evidence.some((e) => e.ref === `owner-inbox:${YAH_MIX.id}` && e.epistemic === "HYPOTHESIS") && yMix.lifecycle.entitySource === "LIKELY", { absorbedBy: yMix.absorbedBy, reasons: yItem.reasonsHe });
+  const maorE = entry(mix, MAOR.id)!;
+  ok("100. (5) LINKED + reflected in a move → not duplicated in the greeting (absorbed, not counted, text not repeated)", !!maorE.absorbedBy && !/חייב להתקדם/.test(mix.inbox.lineHe ?? ""));
+  const tech = entry(mix, TECH.id)!;
+  ok("101. (6) a technical unresolved update is represented ('עדכון טכני אחד עדיין פתוח'), never silently dropped", tech.lifecycle.technical && (tech.lifecycle.state === "UNREAD" ? /עדכון טכני אחד עדיין פתוח/.test(mix.inbox.lineHe ?? "") : tech.lifecycle.state === "NEEDS_OWNER"), { state: tech.lifecycle.state, line: mix.inbox.lineHe });
+  const old = entry(mix, OLD_CLOSER.id)!;
+  ok("102. (7) OVERTAKEN → not shown (no count, no text)", old.lifecycle.state === "OVERTAKEN" && !/קרוב אלייך/.test(mix.inbox.lineHe ?? ""), old.lifecycle.state);
+  ok("103. (8) NEEDS_OWNER → appears once (one count, the inbox mentioned once in the answer, no raw text)", mix.inbox.needsOwner === 1 && /עדכון אחד צריך ממך הבהרה/.test(mix.inbox.lineHe ?? "") && (mix.answerHe.match(/מהתיבה/g) ?? []).length === 1 && !/לחשוב על זה שוב/.test(mix.answerHe), mix.inbox.lineHe);
+  // (9) + (10) — the SAME history through the SAME decideInboxLifecycle on both surfaces
+  const hist = [{ planId: "pl_deadline", at: `${D(0)}T12:00:00Z`, outcome: "EXECUTED", approvedBy: "OWNER_APPROVAL", steps: [{ actionId: "UPDATE_PROJECT_DEADLINE", entity: K(P_YAHALOM), outcome: "APPLIED_AS_EXPECTED" }] }];
+  const fx9 = { inbox: [MAOR, YAH_MIX, YAH_CHORUS, TECH, ASK, OLD_CLOSER] };
+  const ib = deriveWithActionHistory("inbox", queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "owner_inbox", mode: "understand" }, src(fx9) as never, OWNER) as never, hist, Date.parse(`${TODAY}T18:00:00Z`)) as { items: Array<{ fields: { lifecycle: { itemId: string; state: string } } }>; summary: Array<{ code: string; value: { counts: Record<string, number> } }> };
+  const brief9 = deriveWithActionHistory("motion", { motion: motionSummary(motionOf(fx9)) } as never, hist, Date.parse(`${TODAY}T18:00:00Z`)) as { motion: { inbox: { entries: Array<{ lifecycle: { itemId: string; state: string } }>; counts: Record<string, number>; needsOwner: number; unread: number; lineHe: string | null }; answerHe: string } };
+  const ibState = (id: string) => ib.items.find((i) => i.fields.lifecycle?.itemId === id)?.fields.lifecycle.state;
+  const mState = (id: string) => brief9.motion.inbox.entries.find((e) => e.lifecycle.itemId === id)?.lifecycle.state;
+  ok("104. (9) יהלום: owner_inbox lifecycle == motion lifecycle under the same history (both see the deadline plan)", ibState(YAH_MIX.id) === mState(YAH_MIX.id) && mState(YAH_MIX.id) === "UNDERSTOOD_OPEN", { inbox: ibState(YAH_MIX.id), motion: mState(YAH_MIX.id) });
+  const ibCounts = ib.summary.find((x) => x.code === "EXECUTIVE")!.value.counts;
+  ok("105. (10) every state count is identical in owner_inbox and motion (NEEDS_OWNER / UNREAD …)", JSON.stringify(ibCounts) === JSON.stringify(brief9.motion.inbox.counts) && brief9.motion.inbox.needsOwner === ibCounts.NEEDS_OWNER && brief9.motion.inbox.unread === ibCounts.UNREAD, { ibCounts, motion: brief9.motion.inbox.counts });
+  ok("105b. the re-derived line is inside the answer the greeting serves", brief9.motion.inbox.lineHe !== null && brief9.motion.answerHe.includes(brief9.motion.inbox.lineHe));
+  const onlyAsk = motionOf({ inbox: [ASK] });
+  const onlyUnrouted = motionOf({ inbox: [YAH_CHORUS] });
+  ok("106. (11) 'משוקפים' only when something really is reflected / absorbed / overtaken / understood", !/משוקפים/.test(onlyAsk.inbox.lineHe ?? "") && !/משוקפים/.test(onlyUnrouted.inbox.lineHe ?? "") && /משוקפים/.test(mix.inbox.lineHe ?? "") && motionOf().inbox.lineHe === null, { ask: onlyAsk.inbox.lineHe, unrouted: onlyUnrouted.inbox.lineHe, mix: mix.inbox.lineHe });
+  ok("106b. the greeting never dumps the update list", !/דחוף למקססס|העטיפה|התראות של סטיבן/.test(mix.inbox.lineHe ?? "") && !/עדכונים מהתיבה:/.test(mix.answerHe));
+  const mot = read("lib/partner/coo/motion.ts"), wh = read("lib/partner/sunny/with-history.ts");
+  ok("107. (12) no new lifecycle and no writes: motion uses inboxTriageOf; the re-decision is the ONE decideInboxLifecycle (with-history); no link / store / push", mot.includes("inboxTriageOf(src)") && !mot.includes("decideInboxLifecycle") && /motionInboxOf\(ib\.read, ib\.entries\.map\(\(e\) => motionInboxEntry\(decideInboxLifecycle\(e\.lifecycle, history\)/.test(wh) && !/LINK_INBOX_ENTITY|supabase|\.from\(|sendPush/.test(code(mot)));
+
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

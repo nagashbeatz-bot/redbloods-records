@@ -32,6 +32,7 @@ import { availability, dayList } from "../calendar/availability";
 import { engineerHandoff } from "../mix/handoff";
 import { buildNeedsMe } from "../needs-me/curate";
 import { inboxTriageOf } from "../sunny/inbox-lifecycle-base";
+import type { InboxDisplayState, InboxLifecycle } from "../sunny/inbox-lifecycle";
 import { ALMOST_RE, derivePatterns, type DerivedPattern } from "../sunny/patterns";
 import { projectProgressEvents, type SinceEvent } from "../sunny/since";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
@@ -148,7 +149,7 @@ export interface BusinessMotion {
   label: MotionItem[];
   revenue: { state: "PIPELINE_EMPTY" | "PIPELINE_OPEN" | "UNKNOWN"; goalConflict: boolean; lineHe: string | null; unpricedActive: number };
   week: MotionWeek;
-  inbox: { read: boolean; lineHe: string | null; needsOwner: number; unread: number; closable: number; absorbed: number };
+  inbox: MotionInbox;
   watch: MotionItem[];
   /** every item (WATCH / INFO included) — on request only, never in the greeting */
   all: MotionItem[];
@@ -181,6 +182,48 @@ const MOVES = {
   conflict: (): MotionMove => mv("להחליט מה מזיזים (אני לא משנה כלום ביומן לבד)", ["UPDATE_SESSION", "UPDATE_CALENDAR_EVENT"]),
   followUp: (): MotionMove => ({ he: "לחזור לזה עכשיו (מחוץ ל-Redbloods) — ולעדכן אותי מה נקבע", actionIds: [], canAct: false, approval: "OWNER_APPROVAL" }),
 };
+// ── Zero Inbox in motion (Owner decision 2026-10-05): ROUTE, never hide. An update is "absorbed" only when a move USES
+// it as evidence (A) or its PROPOSED MOVE covers every business topic the update names (B) — same project alone never is.
+export type UpdateTopic = "MIX" | "SESSION" | "FEEDBACK" | "DELIVERY";
+const TOPIC_RE: ReadonlyArray<[UpdateTopic, RegExp]> = [
+  ["MIX", /מיקס|למקס|מקסס|מאסטר|\bmix|\bmaster/i],
+  ["SESSION", /סשן|הקלט|להקליט|וורס|פזמון/],
+  ["FEEDBACK", /פידבק|הערות|גרסה|גירסה/],
+  ["DELIVERY", /מסירה|למסור|נמסר|הושלם/],
+];
+export const TOPIC_ACTIONS: Readonly<Record<UpdateTopic, readonly string[]>> = {
+  MIX: ["CREATE_ENGINEER_WORK", "SEND_MIX_NOTES", "SET_ENGINEER_WORK_STATUS"],
+  SESSION: ["SCHEDULE_SESSION"],
+  FEEDBACK: ["SEND_VICTOR_VERSION_NOTES", "SEND_MIX_NOTES"],
+  DELIVERY: ["UPDATE_PROJECT_STATUS", "SET_DELIVERY_STATUS"],
+};
+export function updateTopics(body: string): UpdateTopic[] { return TOPIC_RE.filter(([, re]) => re.test(body)).map(([t]) => t); }
+
+export interface MotionInboxEntry { lifecycle: InboxLifecycle; absorbedBy: string | null }
+export interface MotionInbox {
+  read: boolean; lineHe: string | null;
+  needsOwner: number; unread: number; unrouted: number; technicalOpen: number; absorbed: number; closable: number;
+  counts: Record<InboxDisplayState, number>;
+  entries: MotionInboxEntry[];
+}
+export function motionInboxEntry(lifecycle: InboxLifecycle, absorbedBy: string | null): MotionInboxEntry { return { lifecycle, absorbedBy }; }
+/** The ONE executive inbox line (motion + the connector's history re-derivation): counts only, never the update list. */
+export function motionInboxOf(read: boolean, entries: readonly MotionInboxEntry[]): MotionInbox {
+  const counts = { NEEDS_OWNER: 0, UNREAD: 0, UNDERSTOOD_OPEN: 0, REFLECTED: 0, OVERTAKEN: 0 } as Record<InboxDisplayState, number>;
+  for (const e of entries) counts[e.lifecycle.state]++;
+  const needsOwner = counts.NEEDS_OWNER;
+  const technicalOpen = entries.filter((e) => e.lifecycle.technical && e.lifecycle.state === "UNREAD" && !e.absorbedBy).length;
+  const unrouted = entries.filter((e) => !e.lifecycle.technical && e.lifecycle.state === "UNREAD" && !e.absorbedBy).length;
+  const rest = entries.length - needsOwner - technicalOpen - unrouted; // absorbed / UNDERSTOOD_OPEN / REFLECTED / OVERTAKEN
+  const parts = [
+    needsOwner ? (needsOwner === 1 ? "עדכון אחד צריך ממך הבהרה" : `${needsOwner} עדכונים צריכים ממך הבהרה`) : null,
+    unrouted ? (needsOwner ? (unrouted === 1 ? "ועוד אחד עדיין צריך ניתוב" : `ועוד ${unrouted} עדיין צריכים ניתוב`) : (unrouted === 1 ? "עדכון אחד עדיין צריך ניתוב" : `${unrouted} עדכונים עדיין צריכים ניתוב`)) : null,
+    technicalOpen ? (technicalOpen === 1 ? "עדכון טכני אחד עדיין פתוח" : `${technicalOpen} עדכונים טכניים עדיין פתוחים`) : null,
+  ].filter(Boolean);
+  return { read, needsOwner, unread: counts.UNREAD, unrouted, technicalOpen, absorbed: entries.filter((e) => e.absorbedBy).length, closable: entries.filter((e) => e.lifecycle.closable).length, counts, entries: [...entries],
+    lineHe: !read ? "לא קראתי את העדכונים שכתבת — לא אומרת שאין" : parts.length ? `מהתיבה: ${parts.join(", ")}${rest > 0 ? "; השאר כבר משוקפים בעבודה" : ""}` : null };
+}
+
 function mv(he: string, actionIds: MotionActionId[]): MotionMove { return { he, actionIds, canAct: actionIds.length > 0, approval: "OWNER_APPROVAL" }; }
 
 function mergeMoves(a: MotionMove | null, b: MotionMove | null): MotionMove | null {
@@ -429,22 +472,24 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
 
   // ── the Owner's own words: an exactly LINKED new update raises its record one level; "עוד 2 תיקונים" = near (hypothesis) ──
   const tri = inboxTriageOf(src);
-  const absorbed = new Set<string>(); // updates that already raised / created a move — the greeting never repeats them
+  // absorbed (rule A) = a move USES the update as evidence; same project alone is never enough (Owner, 2026-10-05)
+  const absorbed = new Map<string, string>(); // update id → the move key that carries it
   for (const { item, lifecycle } of tri.items) {
     if (lifecycle.entitySource !== "LINKED") continue;
     for (const k of lifecycle.entityKeys.filter((x) => x.startsWith("project:"))) {
-      if (map.has(k) || ALMOST_RE.test(item.body)) absorbed.add(item.id);
       const quote = `כתבת (${heDate(ymdOf(item.createdAt))}): «${item.body.slice(0, 70)}»`;
       if (ALMOST_RE.test(item.body)) mergeInto(map, { key: `near:${item.id}:${k}`, entity: k, level: "SHOULD", code: "OWNER_REPORTED_NEAR", titleHe: name(k.slice(8)), epistemic: "HYPOTHESIS",
         reasonHe: `${quote} — לפי מה שכתבת נשאר מעט (השערה, לא סטטוס)`, evidence: [{ source: "OWNER_INBOX", ref: `owner-inbox:${item.id}`, he: "OWNER_REPORTED", epistemic: "OWNER_REPORTED" }], move: null });
       const prev = map.get(k);
-      if (prev && !prev.codes.includes("OWNER_UPDATE_LINKED")) {
+      if (!prev) continue;
+      if (!prev.codes.includes("OWNER_UPDATE_LINKED")) {
         prev.level = raise(prev.level);
         prev.codes.push("OWNER_UPDATE_LINKED");
         prev.reasonsHe.push(quote);
-        prev.evidence.push({ source: "OWNER_INBOX", ref: `owner-inbox:${item.id}`, he: "an exactly linked NEW update — raises the record one level", epistemic: "OWNER_REPORTED" });
         prev.he = lineOf(prev);
       }
+      if (!prev.evidence.some((e) => e.ref === `owner-inbox:${item.id}`)) prev.evidence.push({ source: "OWNER_INBOX", ref: `owner-inbox:${item.id}`, he: "an exactly linked NEW update — raises the record one level", epistemic: "OWNER_REPORTED" });
+      absorbed.set(item.id, prev.key);
     }
   }
 
@@ -603,12 +648,24 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
       revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? (external === 1 ? "עבודה אחת אצל אחרים" : `${external} עבודות אצל אחרים`) : null].filter(Boolean).join(" · "),
   };
 
-  // Zero-Inbox curation (pass 2.1): the greeting never dumps the inbox — only the updates that still need the Owner
-  // (NEEDS_OWNER, the ONE lifecycle) and are not already a move; REFLECTED / OVERTAKEN / UNDERSTOOD_OPEN / UNREAD are not listed
-  const askOwner = tri.items.filter((x) => x.lifecycle.state === "NEEDS_OWNER" && !absorbed.has(x.item.id)).length;
-  const restReflected = tri.items.length - askOwner > 0;
-  const inbox = { read: tri.read, needsOwner: tri.summary?.counts.NEEDS_OWNER ?? 0, unread: tri.summary?.counts.UNREAD ?? 0, closable: tri.summary?.closable ?? 0, absorbed: absorbed.size,
-    lineHe: !tri.read ? "לא קראתי את העדכונים שכתבת — לא אומרת שאין" : askOwner ? `${askOwner === 1 ? "עדכון אחד מהתיבה עדיין צריך" : `${askOwner} עדכונים מהתיבה עדיין צריכים`} ממך הבהרה${restReflected ? "; שאר העדכונים כבר משוקפים בעבודה" : ""}` : null };
+  // absorbed (rule B) = a move on the update's exact entity whose PROPOSED MOVE covers every business topic the update
+  // names (mix / session / feedback / delivery). LIKELY stays a hypothesis: the move gets a "כנראה" reason, nothing is linked.
+  for (const { item, lifecycle } of tri.items) {
+    if (absorbed.has(item.id) || lifecycle.state === "NEEDS_OWNER" || lifecycle.entitySource === "NONE" || lifecycle.technical) continue;
+    const topics = updateTopics(item.body);
+    if (!topics.length) continue;
+    const it = [...map.values()].find((m) => m.move && lifecycle.entityKeys.some((k) => m.entity === k || m.entities.includes(k)) && topics.every((t) => m.move!.actionIds.some((a) => TOPIC_ACTIONS[t].includes(a))));
+    if (!it) continue;
+    const likely = lifecycle.entitySource !== "LINKED";
+    if (!it.evidence.some((e) => e.ref === `owner-inbox:${item.id}`)) {
+      it.evidence.push({ source: "OWNER_INBOX", ref: `owner-inbox:${item.id}`, he: likely ? "a LIKELY update (not linked) whose meaning this move covers — a hypothesis" : "a linked update whose meaning this move covers", epistemic: likely ? "HYPOTHESIS" : "OWNER_REPORTED" });
+      it.reasonsHe.splice(1, 0, `${likely ? "כנראה זה גם מה שכתבת" : "זה גם מה שכתבת"} (${heDate(ymdOf(item.createdAt))}): «${item.body.slice(0, 50)}»`);
+      it.he = lineOf(it);
+    }
+    absorbed.set(item.id, it.key);
+  }
+
+  const inbox = motionInboxOf(tri.read, tri.items.map(({ lifecycle }) => motionInboxEntry(lifecycle, absorbed.get(lifecycle.itemId) ?? null)));
 
   let pats: DerivedPattern[] = [];
   try { pats = derivePatterns(src).filter((p) => p.showToOwner); } catch { pats = []; }
