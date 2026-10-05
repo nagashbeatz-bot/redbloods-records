@@ -73,12 +73,12 @@ function cooRaw(o: Fx): CooRawInput {
   const proj = (id: string, name: string, status: string) => ({ id, name, artist: "לקוח", status, deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false });
   const on = o.exception ?? true;
   return structuredClone<CooRawInput>({
-    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases", "agent_alerts"].map(st),
+    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases"].map(st),
     projects: [proj(P_EXC, o.name ?? "הסיפור שלי", "הושלם"), proj(P_PLAIN, "שיר רגיל", "הושלם"), proj(P_PRICED, "פרויקט פתוח", "במיקס")],
     tasks: [], steven: [], victor: { stuckAfterDays: 5, works: [] }, proposals: [], shows: [], sessions: [],
     transactions: [],
     financeSettings: [{ projectId: P_EXC, agreedPrice: 0, currency: "₪", financeException: on }, { projectId: P_PRICED, agreedPrice: 4000, currency: "₪", financeException: false }],
-    orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] }, alerts: [],
+    orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] },
   });
 }
 

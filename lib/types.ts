@@ -781,28 +781,7 @@ export interface VictorSalaryMonth {
   conflict?: import("./victor-salary-format").SalaryConflict | null;
 }
 
-// ── Agent / Proactive intelligence types ──────────────────────────────────────
-
-export type AlertSeverity = "info" | "warning" | "important" | "urgent";
-export type AlertStatus   = "new" | "handled" | "dismissed" | "ignored";
-
-export interface AgentAlert {
-  id: string;
-  type: string;
-  severity: AlertSeverity;
-  title: string;
-  message: string;
-  relatedProjectId: string | null;
-  relatedClientId: string | null;
-  metadata: Record<string, unknown>;
-  suggestedActions: string[];
-  source: "scheduled" | "manual" | "chat";
-  status: AlertStatus;
-  sentNotification: boolean;
-  entityKey: string | null;   // e.g. "payment_overdue:tx-id", "overdue_deadline:proj-id"
-  createdAt: string;
-  updatedAt: string;
-}
+// ── Business goals (the Owner's KPIs; the Agent Alerts types were retired 2026-10-05) ──
 
 export interface BusinessGoals {
   monthlyRevenue:      { target: number; currency: string };
@@ -922,23 +901,6 @@ export interface SoundEngineerWork {
   finalFilesRequested?: boolean;
 }
 
-/** Input to create an alert (before DB insertion) */
-export interface AlertInput {
-  type: string;
-  severity: AlertSeverity;
-  title: string;
-  message: string;
-  relatedProjectId?: string | null;
-  relatedClientId?: string | null;
-  metadata?: Record<string, unknown>;
-  suggestedActions?: string[];
-  source?: "scheduled" | "manual" | "chat";
-  /** Unique key identifying the specific entity this alert is about.
-   *  Format: "<type>:<entity-id>", e.g. "payment_overdue:tx-abc123"
-   *  Used for auto-resolve: if the entity is no longer problematic,
-   *  the alert is automatically marked handled on the next agent/check run. */
-  entityKey?: string | null;
-}
 
 // ── Social / Marketing Center ──────────────────────────────────────────────────
 

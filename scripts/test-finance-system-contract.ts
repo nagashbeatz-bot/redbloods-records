@@ -49,8 +49,7 @@ const KNOWN_LOCALIZED_TYPE_COMPARISONS: Record<string, number> = {
  * F2.19 FIXED: agent/goals, reports/data, reports/templates. What remains is pinned:
  */
 const KNOWN_PARTIAL_AS_PAID: Record<string, number> = {
-  "app/api/agent/check/route.ts": 1,       // NOT CHANGED: agent ALERT pipeline (kill-switched) — alert lifecycle is out of scope
-  "lib/agent/rules.ts": 1,                 // NOT CHANGED: agent ALERT generation (kill-switched)
+  // app/api/agent/check/route.ts + lib/agent/rules.ts: REMOVED with Agent Alerts (Owner decision, 2026-10-05)
   "lib/finance/classify.ts": 1,            // documentation comment only (classify gives it NO special behaviour)
 };
 

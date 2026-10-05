@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, type Ref } from "react";
+import { useState, type Ref } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { useVictorT } from "@/lib/victor-i18n";
-import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 import { useIsClient } from "@/lib/use-is-client";
 
 const MOBILE_TABS = [
@@ -31,10 +30,9 @@ const MORE_ITEMS = [
   { href: "/push-test",     label: "🔔 התראות", icon: "🔔", iconColor: "#F59E0B" },
 ];
 
-function MoreSheet({ onClose, pathname, insightsBadge }: {
+function MoreSheet({ onClose, pathname }: {
   onClose: () => void;
   pathname: string;
-  insightsBadge?: number;
 }) {
   return createPortal(
     <div
@@ -62,7 +60,6 @@ function MoreSheet({ onClose, pathname, insightsBadge }: {
         <div style={{ padding: "4px 16px 8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
           {MORE_ITEMS.map(({ href, label, icon, iconColor }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
-            const badge = href === "/insights" ? (insightsBadge ?? 0) : 0;
             return (
               <Link
                 key={href}
@@ -80,15 +77,6 @@ function MoreSheet({ onClose, pathname, insightsBadge }: {
               >
                 <span style={{ fontSize: 20, ...(iconColor ? { color: iconColor } : {}) }}>{icon}</span>
                 <span style={{ flex: 1 }}>{label}</span>
-                {badge > 0 && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, color: "#141414",
-                    background: "#EF4444", borderRadius: 10,
-                    padding: "1px 6px", minWidth: 18, textAlign: "center",
-                  }}>
-                    {badge}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -142,7 +130,6 @@ export default function MobileNav({
   const role = useRole();
   const vt = useVictorT(); // Victor sees his language; owner keeps Hebrew via role gates
   const [moreOpen, setMoreOpen] = useState(false);
-  const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   // Role-gated nav — must mirror the desktop Sidebar so mobile never exposes more
   // than desktop. Owner → full nav; Victor → no tab at all (logout only, see
@@ -163,14 +150,6 @@ export default function MobileNav({
   // shalev AND victor have NO fixed bottom bar — their logout lives at the end of
   // their own page content instead (ArtistPortalPage / VictorProfilePage), so it
   // scrolls with the page rather than pinning a bar. owner/steven are unchanged.
-
-  useEffect(() => {
-    if (role !== "owner" || !AGENT_ALERT_RULES_ENABLED) return; // owner-only; skipped while the agent-alert rules are off
-    fetch("/api/agent/alerts?status=new&count=1")
-      .then((r) => r.json())
-      .then((d) => setUnreadAlerts(d.count ?? 0))
-      .catch(() => {});
-  }, [role]);
 
   // "more" sheet (extra sections) is owner-only.
   const moreActive = isOwner && MORE_ITEMS.some(
@@ -261,7 +240,6 @@ export default function MobileNav({
         <MoreSheet
           onClose={() => setMoreOpen(false)}
           pathname={pathname}
-          insightsBadge={unreadAlerts}
         />
       )}
     </>

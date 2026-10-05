@@ -57,7 +57,7 @@ export const SETTINGS_FAMILIES: readonly SettingsFamily[] = [
   F("ARTIST_WEEKLY_AVAILABILITY", A, "ARTIST_PORTALS", "An artist's weekly availability for sessions (Shalev and other portal artists)", "the artist in their portal", "SYSTEM_SETTINGS", "ARTIST", "^(shalev_weekly_availability$|weekly_availability_)", { like: "%weekly_availability%" }),
   // ── C: internal state with system meaning ──
   F("SUNNY_CHANGE_BASELINE", C, "SUNNY_CORE", "Sunny's last company snapshot used to detect what changed", "Partner change detection", "SYSTEM_SETTINGS", "NONE", "^partner_change_baseline$", { in: ["partner_change_baseline"] }),
-  F("AGENT_PUSH_COOLDOWN", C, "AGENT_ALERTS", "When the old agent last pushed a given alert type (cooldown)", "old agent", "SYSTEM_SETTINGS", "NONE", "^push_cooldown_", { like: "push_cooldown_" }),
+  F("AGENT_PUSH_COOLDOWN", C, "AGENT_ALERTS", "DORMANT (Agent Alerts retired 2026-10-05 (Owner decision)): when the old agent last pushed a given alert type — leftover rows, nothing reads or writes them", "old agent (retired)", "SYSTEM_SETTINGS", "NONE", "^push_cooldown_", { like: "push_cooldown_" }),
   F("LEGACY_PUSH_CHECK", C, "PUSH_NOTIFICATIONS", "When the legacy push check last ran", "legacy push check", "SYSTEM_SETTINGS", "NONE", "^push_last_check$", { in: ["push_last_check"] }),
   F("PROPOSAL_CONVERSION_CLAIM", C, "CLIENTS", "A proposal's conversion claim: the ONE project id reserved for it (A5, 2026-09-29) — the settings key makes the claim exactly-once; a retry / concurrent convert reuses the same project id", "proposal conversion (the convert flow)", "SYSTEM_SETTINGS", "PROJECT", "^proposal_conversion:", { like: "proposal_conversion:" }),
   F("SHOW_SENT_TO_ARTIST", C, "SHOWS", "A show was sent (pushed) to the artist — fingerprint + when (dedupe claim)", "show notify", "SYSTEM_SETTINGS", "SHOW", "^show_notify:", { like: "show_notify:" }),
@@ -93,7 +93,6 @@ export const PRODUCTION_SETTING_FAMILIES_20260925 = [
 
 /** Every repository file that touches the settings store — a NEW file forces a review of this registry. */
 export const SETTINGS_ACCESS_FILES = [
-  "app/api/agent/check/route.ts",
   "app/api/album-finance/route.ts",
   "app/api/album-prev-info/route.ts",
   "app/api/calendar/debug/route.ts",
@@ -104,8 +103,6 @@ export const SETTINGS_ACCESS_FILES = [
   "app/api/transactions/route.ts",
   "app/share/[token]/page.tsx",
   "lib/agent/goals.ts",
-  "lib/agent/notifications.ts",
-  "lib/agent/snapshot.ts",
   "lib/artist-balance-cycles-store.ts",
   "lib/clip-production.ts",
   "lib/label-clips.ts", // B3: reads finance_<clip project>.agreedPrice (A, the clip project's price) as information next to B / C — never recoup

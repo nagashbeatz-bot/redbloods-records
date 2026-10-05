@@ -44,7 +44,6 @@ function buildCooRaw(): CooRawInput {
       { source: "proposals", status: "ok", rowCount: 0 }, { source: "shows", status: "ok", rowCount: 0 },
       { source: "sessions", status: "ok", rowCount: 0 }, { source: "transactions", status: "ok", rowCount: 2 },
       { source: "finance_settings", status: "ok", rowCount: 2 }, { source: "releases", status: "ok", rowCount: 2 },
-      { source: "agent_alerts", status: "ok", rowCount: 0 },
     ],
     projects: [
       // p1: deadline passed, still open -> PROJECT_DEADLINE_PASSED
@@ -94,7 +93,6 @@ function buildCooRaw(): CooRawInput {
       labelProjectsTotal: 1,
       rows: [{ projectId: "p5", name: "פרויקט לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-09-01", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-08-01T10:00:00Z", labelArtistId: "la1" }],
     },
-    alerts: [],
   });
 }
 

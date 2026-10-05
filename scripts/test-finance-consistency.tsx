@@ -152,8 +152,6 @@ async function main() {
     const goals = await import("../lib/agent/goals");
     const gp = await goals.getGoalsProgress("2026-09");
     check("25/30/33. goals revenue = ₪ income received only (no paid expense, no $, no partial)", gp.monthlyRevenue.actual, 1500);
-    const snap = strip(rd("lib/agent/snapshot.ts"));
-    ok("25/26/33. snapshot: income vs expense by DB type, expense paid via the canonical helper, ₪ headline + other currencies", !/"הוצאה"/.test(snap) && /t\.type === "income" && isReceivedStatus/.test(snap) && /t\.type === "expense" && isExpenseFullyPaidStatus/.test(snap) && /revenueByCurrency\[DEFAULT_CURRENCY\]/.test(snap) && /otherCurrencies:/.test(snap));
     const weekly = strip(rd("lib/reports/weekly.ts"));
     ok("34. weekly report: DB types, canonical statuses, ₪ only; pending = income only", !/"הוצאה"/.test(weekly) && /t\.type === "expense" && isExpenseFullyPaidStatus\(t\.payment_status\) && ils\(t\)/.test(weekly) && /\.eq\("type", "income"\)/.test(weekly));
     const data = strip(rd("lib/reports/data.ts"));
@@ -166,10 +164,10 @@ async function main() {
     const dash = strip(rd("components/dashboard/DashboardDesignPreview.tsx")), proj = strip(rd("components/projects/ProjectsDesignPreview.tsx"));
     ok("30. Dashboard / Projects KPI: per-currency buckets, each currency shown apart (B1: no ₪-only headline, never a mixed sum)", /mergeCurrencyTotals\(expectedIncome\.byCurrency, showsExpected\)/.test(dash) && /formatTotalsInline\(pendingPayments/.test(dash) && /collectionTotalsByCurrency\(financeSummary, statusById\)/.test(proj) && /formatTotalsInline\(kpi\.expectedByCurrency/.test(proj));
     const partial = calcPeriodStats([{ type: "expense", payment_status: "חלקי", amount: 40, currency: "₪", scope: "general" } as StatsTx]);
-    ok("28. partial (חלקי) is never fully paid — stats + helper; no fixed consumer lists a partial status as paid", partial.expensesPaid === 0 && partial.expensesExpected === 40 && !isExpenseFullyPaidStatus("חלקי") && [snap, weekly, data, tpl, cd, al1, al2].every((src) => !/שולם חלקית/.test(src) && !/PAID[A-Z_]*\s*=\s*new Set\(\[[^\]]*"חלקי"/.test(src)));
+    ok("28. partial (חלקי) is never fully paid — stats + helper; no fixed consumer lists a partial status as paid", partial.expensesPaid === 0 && partial.expensesExpected === 40 && !isExpenseFullyPaidStatus("חלקי") && [weekly, data, tpl, cd, al1, al2].every((src) => !/שולם חלקית/.test(src) && !/PAID[A-Z_]*\s*=\s*new Set\(\[[^\]]*"חלקי"/.test(src)));
     ok("Victor salary reader: an expense is paid only when שולם (התקבל no longer counts)", /isExpenseFullyPaidStatus\(ps\) \? "שולם"/.test(rd("lib/victor-salary-format.ts")) && /resolveSalaryMonth\(/.test(rd("lib/vendor-store.ts")) && !/ps === "שולם" \|\| ps === "התקבל"/.test(rd("lib/vendor-store.ts")));
     ok("canonical consumers import the ONE expense helper (stats, COO, Partner, V2 drawer)", ["lib/finance/stats.ts", "lib/coo/facts.ts", "lib/partner/finance/core.ts", "components/ui/ProjectDrawerV2.tsx"].every((f) => /isExpenseFullyPaidStatus/.test(rd(f))));
-    ok("Push / alerts untouched (rules.ts, agent/check, push routes not in this change)", !/isExpenseFullyPaidStatus/.test(rd("lib/agent/rules.ts")) && !/isExpenseFullyPaidStatus/.test(rd("app/api/agent/check/route.ts")) && !/isExpenseFullyPaidStatus/.test(rd("app/api/push/cron/route.ts")));
+    ok("Push untouched (push routes not in this change; the agent rules / check were retired with Agent Alerts 2026-10-05)", !/isExpenseFullyPaidStatus/.test(rd("app/api/push/cron/route.ts")) && !fs.existsSync(path.join(ROOT, "lib/agent/rules.ts")));
   }
 
   console.log("Description consistency (Phase 13)");

@@ -12,7 +12,7 @@ import { COMMON_NO, finishPlan, parseKey, projectFields, realYmd, refuse, resolv
 export type ProjectDeleteImpactView = {
   finalFilesBlocking: number;
   sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; settingsKeys: number; coverCustomImage: number; proposalFollowUpTasks: number;
-  engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number; openAlerts: number;
+  engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number;
   transactionsUnlinked: number; sessionLinkedTransactions: number; proposalsReset: number; socialCampaignsUnlinked: number; finalFilesUnlinked: number;
   /** clip projects linked to this song (song_project_id) — kept; the database sets their link to NULL (2026-09-29) */
   clipProjectsUnlinked?: number;
@@ -89,7 +89,7 @@ export const PROJECT_PRIMITIVES: readonly PrimitiveSpec[] = [
     requiredValues: () => ["מחיקה"],
     warnings: (c) => [
       `נמחקים: ${c.sessions} סשנים (${c.calendarEvents} אירועי יומן), ${c.sendLog} רשומות שליחה, ${c.clipRows} שורות קליפ, ${c.victorWorks} עבודות ויקטור (+ המשימות שלהן), ${c.settingsKeys} הגדרות פרויקט${Number(c.coverCustomImage) > 0 ? ", קובץ תמונת הנושא" : ""}, ${c.proposalFollowUpTasks} משימות מעקב של הצעות`,
-      `נמחקים עם הפרויקט (מסד הנתונים): ${c.engineerWorks} עבודות מיקס (${c.mixVersions} גרסאות, ${c.mixComments} הערות, ${c.mixAttachments} צרופות — הקבצים עצמם נשארים באחסון), ${c.albumTracks} שירי אלבום, ${c.releaseDetails} רשומות ריליס; ${c.openAlerts} התראות פתוחות נסגרות`,
+      `נמחקים עם הפרויקט (מסד הנתונים): ${c.engineerWorks} עבודות מיקס (${c.mixVersions} גרסאות, ${c.mixComments} הערות, ${c.mixAttachments} צרופות — הקבצים עצמם נשארים באחסון), ${c.albumTracks} שירי אלבום, ${c.releaseDetails} רשומות ריליס`,
       `מתנתקים (לא נמחקים): ${c.transactionsUnlinked} רשומות כספים; ${c.sessionLinkedTransactions} רשומות כספים מקושרות לסשנים שנמחקים (הקישור לסשן לא יצביע על כלום); ${c.proposalsReset} הצעות חוזרות ל'לא נסגר'; ${c.socialCampaignsUnlinked} קמפייני סושיאל; ${c.finalFilesUnlinked} קבצים סופיים שמקושרים רק לפרויקט${Number(c.clipProjectsUnlinked ?? 0) > 0 ? `; ${c.clipProjectsUnlinked} פרויקטי קליפ שמקושרים לשיר הזה — הם נשארים, אבל הקישור שלהם לשיר נמחק` : ""}`,
       `נשארים כמו שהם: ${c.tasksKept} משימות, ${c.meetingsKept} פגישות, ${c.productionsKept} הפקות Red Films${Number(c.storageFolderKept) > 0 ? ", תיקיית הפרויקט באחסון" : ""}`,
     ],

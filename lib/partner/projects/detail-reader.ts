@@ -84,7 +84,7 @@ const PUBLIC_REFERENCE = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/
 
 export async function readProjectDetailRaw(client: OperationsReadClient): Promise<ProjectDetailRaw> {
   const r = (table: string, cols: string, f?: Parameters<typeof readSection>[3]) => readSection(client, table, cols, f);
-  const [prj, fin, deliv, acts, sess, meet, tasks, work, vers, comm, att, targ, tnotes, finals, vic, prods, budget, tracks, clip, props, rel, camps, content, sfiles, notif, psettings, txt, bpay, alerts, rfCrew, rfDocs, rfScenes, rfRefImages, rfRefLinks, rfEquip] = await Promise.all([
+  const [prj, fin, deliv, acts, sess, meet, tasks, work, vers, comm, att, targ, tnotes, finals, vic, prods, budget, tracks, clip, props, rel, camps, content, sfiles, notif, psettings, txt, bpay, rfCrew, rfDocs, rfScenes, rfRefImages, rfRefLinks, rfEquip] = await Promise.all([
     r("projects", "id, created_at, monday_id, notes, work_materials, dropbox_folder, files"),
     r("settings", "key, fnotes:value->>financialNotes, freason:value->>financeExceptionReason, fdate:value->>financeExceptionDate", (q) => q.like("key", "finance_%")),
     r("settings", "key, folder:value->>folderPath, status:value->>deliveryStatus, delivered:value->>deliveredAt, lastDelivered:value->>lastDeliveredAt, link:value->>deliveryLink", (q) => q.like("key", "delivery_%")),
@@ -113,7 +113,6 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     Promise.all(PROJECT_SETTING_FAMILIES.map((f) => r("settings", "key, value", (q) => q.like("key", `${f.prefix}%`)))),
     r("transactions", "id, project_id, type, date, description, notes, payment_method, artist, receipt_ref, created_at"),
     r("red_films_budget_payments", "id, production_id, budget_item_id, amount, currency, payment_date, payment_method, notes, receipt_file_name, receipt_mime_type, receipt_dropbox_path, receipt_dropbox_url, created_at, updated_at, linked_transaction_id"),
-    r("agent_alerts", "id, related_project_id, related_client_id, type, severity, title, message, metadata, suggested_actions, status, source, sent_notification, entity_key, created_at, updated_at"),
     // Red Films Deep Brain: the production satellites (metadata only — storage paths stay internal, public links → booleans).
     r("red_films_crew", "id, production_id, name, role, contact, arrival_time, confirmation_status, payment_amount, payment_status, notes, created_at, updated_at"),
     r("red_films_documents", "id, production_id, file_name, file_type, mime_type, dropbox_path, dropbox_url, notes, created_at, updated_at"),
@@ -204,7 +203,6 @@ export async function readProjectDetailRaw(client: OperationsReadClient): Promis
     },
     transactionsText: mapSection(txt, (x) => (s(x.id) && s(x.project_id) ? { id: String(x.id), projectId: String(x.project_id), type: s(x.type), date: s(x.date), description: t(x.description), notes: t(x.notes), paymentMethod: s(x.payment_method), artistText: s(x.artist), hasReceipt: has(x.receipt_ref), createdAt: s(x.created_at) } : null)),
     budgetPayments: mapSection(bpay, (x) => ({ id: s(x.id), productionId: s(x.production_id), budgetItemId: s(x.budget_item_id), amount: n(x.amount), currency: s(x.currency) ?? "₪", date: s(x.payment_date), method: s(x.payment_method), notes: t(x.notes), receiptFileName: s(x.receipt_file_name), receiptMime: s(x.receipt_mime_type), receiptPath: s(x.receipt_dropbox_path), hasReceiptLink: has(x.receipt_dropbox_url), createdAt: s(x.created_at), updatedAt: s(x.updated_at), linkedTransactionId: s(x.linked_transaction_id) })),
-    agentAlerts: mapSection(alerts, (x) => (s(x.id) ? { id: String(x.id), projectId: s(x.related_project_id), type: s(x.type), severity: s(x.severity), title: t(x.title), message: t(x.message), status: s(x.status), source: s(x.source), relatedClientId: s(x.related_client_id), metadata: scrubValue(x.metadata), suggestedActions: scrubValue(x.suggested_actions), sentNotification: x.sent_notification ?? null, entityKey: s(x.entity_key), createdAt: s(x.created_at), updatedAt: s(x.updated_at) } : null)),
     notifications: mapSection(notif, (x) => (s(x.project_id) ? { projectId: String(x.project_id), recipientRole: s(x.recipient_role), title: t(x.title), body: t(x.body), tag: s(x.tag), actorName: s(x.actor_name), entityType: s(x.entity_type), entityId: s(x.entity_id), eventKey: s(x.event_key), appPath: scrubSecrets(s(x.url)), recipientUserId: s(x.recipient_user_id), createdAt: s(x.created_at), readAt: s(x.read_at) } : null)),
   };
 }

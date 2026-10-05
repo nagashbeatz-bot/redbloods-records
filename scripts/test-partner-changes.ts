@@ -43,7 +43,6 @@ function buildCooRaw(now: string): CooRawInput {
       { source: "proposals", status: "ok", rowCount: 1 }, { source: "shows", status: "ok", rowCount: 1 },
       { source: "sessions", status: "ok", rowCount: 1 }, { source: "transactions", status: "ok", rowCount: 1 },
       { source: "finance_settings", status: "ok", rowCount: 1 }, { source: "releases", status: "ok", rowCount: 1 },
-      { source: "agent_alerts", status: "ok", rowCount: 0 },
     ],
     projects: [
       { id: "p1", name: "פרויקט א", artist: "אמן בדיקה", status: "בעבודה", deadline: "2026-10-01", projectType: "שיר", businessType: "לקוח", updatedAt: now, isHidden: false },
@@ -66,7 +65,6 @@ function buildCooRaw(now: string): CooRawInput {
     financeSettings: [{ projectId: "p1", agreedPrice: 2000, currency: "₪", financeException: false }],
     orphanFinanceKeyCount: 0,
     releases: { labelProjectsTotal: 1, rows: [{ projectId: "p2", name: "פרויקט לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-10-15", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: "la1" }] },
-    alerts: [],
   });
 }
 

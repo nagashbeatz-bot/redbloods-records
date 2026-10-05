@@ -72,6 +72,15 @@ export const PROJECT_COLUMNS_READ_ELSEWHERE: Readonly<Record<string, string>> = 
   vendor_project_work: "lib/vendor-store.ts",
 };
 
+/**
+ * DORMANT tables (Owner decision): they still exist in the production schema (so they stay pinned above, with their
+ * project link), but the subsystem that used them was RETIRED — nothing in the product reads or writes them, Sunny
+ * included. The coverage test requires such a table to be read by NO reader (never a silent skip of a live table).
+ */
+export const PROJECT_DORMANT_TABLES: Readonly<Record<string, string>> = {
+  agent_alerts: "Agent Alerts retired 2026-10-05 (Owner decision): engine, routes, UI, pushes, COO source, Sunny readers and the action removed; the 181 historical rows stay (FK CASCADE with the project); a DROP needs separate Owner-approved SQL",
+};
+
 /** Reader source files whose SELECTs together must cover every column above. */
 export const PROJECT_READER_FILES = [
   "lib/partner/projects/detail-reader.ts", "lib/partner/operations/readers.ts",

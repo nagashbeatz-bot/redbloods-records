@@ -71,7 +71,7 @@ const ROUTE_FAMILIES: Record<string, string[]> = {
 
 // ── fixture ──
 const sec = <T,>(rows: T[]) => ({ rows, capped: false });
-const EMPTY = Object.fromEntries(["projects", "financeNotes", "deliveries", "actions", "sessions", "meetings", "tasks", "engineerWork", "mixVersions", "mixComments", "commentAttachments", "mixTargets", "mixTargetNotes", "finalFiles", "victor", "productions", "budgetItems", "albumTracks", "clipItems", "proposals", "releases", "campaigns", "contentItems", "socialFiles", "projectSettings", "transactionsText", "budgetPayments", "agentAlerts", "notifications", "rfCrew", "rfDocuments", "rfScenes", "rfRefImages", "rfRefLinks", "rfEquipment"].map((k) => [k, { rows: [], capped: false }])) as unknown as ProjectDetailRaw;
+const EMPTY = Object.fromEntries(["projects", "financeNotes", "deliveries", "actions", "sessions", "meetings", "tasks", "engineerWork", "mixVersions", "mixComments", "commentAttachments", "mixTargets", "mixTargetNotes", "finalFiles", "victor", "productions", "budgetItems", "albumTracks", "clipItems", "proposals", "releases", "campaigns", "contentItems", "socialFiles", "projectSettings", "transactionsText", "budgetPayments", "notifications", "rfCrew", "rfDocuments", "rfScenes", "rfRefImages", "rfRefLinks", "rfEquipment"].map((k) => [k, { rows: [], capped: false }])) as unknown as ProjectDetailRaw;
 const sess = (n: number, o: Partial<DetailSession>): DetailSession => ({ id: U(n), projectId: P(2), showId: null, date: "2026-09-20", startTime: "10:00", endTime: "12:00", status: "מתוכנן", type: "סשן", title: null, notes: null, location: null, photographer: null, cost: null, hasCalendarEvent: true, createdAt: null, ...o });
 const task = (n: number, o: Partial<DetailTask>): DetailTask => ({ id: U(n), relatedType: "general", relatedId: null, title: "משימה", notes: null, status: "פתוח", dueDate: "2026-09-30", startTime: null, endTime: null, showId: null, hasGoogleTask: false, createdAt: null, updatedAt: null, ...o });
 const meet = (n: number, o: Partial<DetailMeeting>): DetailMeeting => ({ id: U(n), createdAt: null, projectId: null, clientId: null, clientName: null, date: "2026-09-10", time: "12:00", duration: 60, location: "זום", notes: null, status: "נקבעה", hasCalendarEvent: false, ...o });
@@ -236,7 +236,7 @@ function main() {
   ok("the stored schedule is read", RS.schedule?.morningTime === "08:30" && RS.schedule.stored);
   ok("no stored schedule → defaults, marked as defaults", buildReportsState(sources({ settings: false })).schedule?.morningTime === "07:00 (default)");
   ok("the created-at money semantics are a stated conflict", RS.model.moneySemantics.some((m) => /CONFLICT/.test(m.vsFinanceBrain)));
-  ok("every background job is classified", PD.BACKGROUND_JOBS.every((j) => j.classes.length > 0) && PD.ATTENTION_ENGINES.length === 5);
+  ok("every background job is classified", PD.BACKGROUND_JOBS.every((j) => j.classes.length > 0) && PD.ATTENTION_ENGINES.length === 4 /* the Agent Alerts engine was retired 2026-10-05 */ && !PD.ATTENTION_ENGINES.some((e) => /AGENT_ALERT/.test(e.id)) && !PD.BACKGROUND_JOBS.some((j) => /WEEK_STRENGTH|AGENT_CHECK|AGENT_SNAPSHOT/.test(j.id)));
   section("SUNNY CORE + CONNECTOR — what Sunny remembers and what it cannot");
   const SS = buildSunnySelfView(src);
   ok("taught knowledge incl. a withdrawal", SS.knowledge?.records === 2 && SS.knowledge.withdrawn === 1 && SS.knowledge.active === 0);

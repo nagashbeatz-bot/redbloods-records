@@ -39,7 +39,7 @@ const DAY = 86_400_000;
 const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export type CompanyDomain = "PROJECTS" | "CLIENTS" | "LABEL" | "SHOWS" | "VICTOR" | "MIX" | "VIDEO" | "FINANCE" | "AGENT_ALERTS" | "CALENDAR" | "SESSIONS" | "TASKS" | "MEETINGS" | "ALBUMS" | "DELIVERY" | "SOCIAL";
+export type CompanyDomain = "PROJECTS" | "CLIENTS" | "LABEL" | "SHOWS" | "VICTOR" | "MIX" | "VIDEO" | "FINANCE" | "CALENDAR" | "SESSIONS" | "TASKS" | "MEETINGS" | "ALBUMS" | "DELIVERY" | "SOCIAL";
 export interface CompanyObservation {
   code: string;
   concept: string;
@@ -73,16 +73,6 @@ const CONCEPT_ALIAS: Readonly<Record<string, string>> = {
   VICTOR_WAITING_OWNER: "WAITING_ON_OWNER", AT_VICTOR: "WAITING_ON_VICTOR", AT_ENGINEER: "WAITING_ON_ENGINEER", ENGINEER_RETURNED_WORK: "WAITING_ON_OWNER",
   DONE_UNPAID: "SHOW_DONE_UNPAID", NO_DJ: "SHOW_WITHOUT_DJ", UPCOMING: "UPCOMING_SHOW", COLLABORATION: "IDENTITY_COLLABORATION",
   COMPLETED_NO_DELIVERY_EVIDENCE: "COMPLETED_DELIVERY_OPEN", MEETING_PAST_STILL_SCHEDULED: "MEETING_STATUS_NOT_UPDATED", SESSION_UPCOMING: "UPCOMING_SESSION",
-};
-
-/** Company-level agent alert types → meaning. Owner policy: alerts are never canonical action truth → always CONTEXT (an observation of a parallel engine), never attention. */
-const ALERT_MEANING: Readonly<Record<string, { nature: AttentionNature; dims: AttentionDimension[]; side: AttentionSide }>> = {
-  goal_behind: { nature: "CONTEXT", dims: ["MONEY_RELEVANT"], side: "OWNER" },
-  week_understaffed: { nature: "CONTEXT", dims: ["SCHEDULED_EVENT"], side: "OWNER" },
-  upcoming_holiday: { nature: "CONTEXT", dims: ["SCHEDULED_EVENT"], side: "NONE" },
-  income: { nature: "CONTEXT", dims: ["MONEY_RELEVANT"], side: "NONE" },
-  inactivity: { nature: "CONTEXT", dims: [], side: "UNKNOWN" },
-  victor_below_pace: { nature: "CONTEXT", dims: ["EXTERNAL_PARTY_WAITING"], side: "EXTERNAL" },
 };
 
 interface Sources { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; today: string }
@@ -143,13 +133,6 @@ export function buildCompanyView(src: GatewaySources) {
   for (const s of mix?.signals ?? []) push("MIX", s.code, s.he, s.work ?? s.project ?? null, s.project ?? null, s.kind);
   for (const s of video?.signals ?? []) push("VIDEO", s.code, s.he, s.production ?? s.project ?? null, s.project ?? null, s.kind);
   for (const [dom, v] of Object.entries(work) as Array<[CompanyDomain, { signals: Array<{ code: string; he: string; kind: string; entity?: string; project?: string }> } | null]>) for (const s of v?.signals ?? []) push(dom, s.code, s.he, s.entity ?? null, s.project ?? null, s.kind);
-  // company-level agent alerts (no project) — the in-app alert engine's own observations
-  // open = "new" (the engine marks closed alerts "handled"); most alerts carry their project only in the entity key, not the project id
-  const companyAlerts = (c.det?.agentAlerts?.rows ?? []).filter((a) => !a.projectId && a.status === "new");
-  for (const a of companyAlerts) {
-    const m = ALERT_MEANING[a.type ?? ""] ?? { nature: "CONTEXT" as const, dims: [], side: "UNKNOWN" as const };
-    all.push({ code: `ALERT_${(a.type ?? "unknown").toUpperCase()}`, concept: `ALERT_${a.type}`, nature: m.nature, dims: [...m.dims], side: m.side, group: m.nature === "CONTEXT" ? "CONTEXT" : (ATTENTION_DIMENSIONS.find((d) => m.dims.includes(d)) ?? "CONTEXT"), domain: "AGENT_ALERTS", he: `התראת מערכת (${a.status ?? "?"}): ${a.title ?? a.type ?? ""}`, entity: a.entityKey ?? null, project: null, epistemic: "OBSERVATION", alsoSeenIn: [] });
-  }
 
   // dedupe: the same concept on the same entity / project is ONE observation (other domains recorded as alsoSeenIn)
   const seen = new Map<string, CompanyObservation>();
@@ -352,7 +335,7 @@ export function buildCompanyView(src: GatewaySources) {
     production: victor ? { counts: victor.counts } : null, mix: mix ? { counts: mix.counts, money: { owedByCurrency: mix.money.owedByCurrency, orphanExpenses: mix.money.orphanExpenses.length } } : null, video: video ? { counts: video.counts, money: video.money } : null,
     clientWork: { projects: (projects ?? []).filter((p) => p.v.identity?.businessType === "לקוח").map((p) => ({ project: `project:${p.id}`, name: p.v.identity?.name, status: p.v.identity?.status, deadline: p.v.identity?.deadline, verdict: p.v.money?.verdict ?? null, signals: p.v.signals.map((s) => s.code) })).sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999")), deadlines: operating?.deadlines ?? null },
     sales: { openProposals: (clients ?? []).flatMap((cl) => cl.proposals.filter((p) => p.open).map((p) => ({ client: cl.identity.name, key: p.key, title: (p as { title?: string | null }).title ?? null, amount: (p as { amount?: number | null }).amount ?? null, currency: (p as { currency?: string | null }).currency ?? null }))), followUpsDue: attention.filter((o) => o.code === "FOLLOW_UP_DUE" || o.code === "OPEN_PROPOSAL_NO_FOLLOW_UP").length, potentialNote: "proposal amounts are POTENTIAL money" },
-    team, calendar, delivery, decisions, conflicts, gaps, changes, outcomes, actionMap, security, friction, morningBrief, companyAlerts: companyAlerts.map((a) => ({ type: a.type, severity: a.severity, status: a.status, title: a.title, createdAt: a.createdAt })),
+    team, calendar, delivery, decisions, conflicts, gaps, changes, outcomes, actionMap, security, friction, morningBrief,
     sourceState, partial,
   };
 }

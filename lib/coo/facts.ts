@@ -14,7 +14,7 @@ import type {
   CompanyState, CooRawInput, CoverageEntry, DataQualityItem, ProjectFact, TaskFact, TasksFact,
   StevenFact, StevenWorkFact, VictorFact, VictorWorkFact, ProposalFact, ShowFact, ShowsFact,
   SessionFact, FinanceFact, MonthTotals, ExpectedIncomeFact, ReceivablesFact, ReceivableRow,
-  ReleasesFact, ReleaseFact, AlertsFact, AlertFact, RawFinanceSetting, RawStevenWork,
+  ReleasesFact, ReleaseFact, RawFinanceSetting, RawStevenWork,
 } from "./types";
 import { COO_TZ, addDays, daysSinceIso, diffDays, ilYmd, monthOf, parseYmd, prevMonth, weekdayHe } from "./dates";
 import { addToTotals, normalizeCurrency, partitionByCurrency, isReceivedStatus, isExpenseFullyPaidStatus, isCancelledStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "../finance";
@@ -357,25 +357,10 @@ export function buildCompanyState(raw: CooRawInput, now: Date, cfg: CooConfig): 
       "מוכנות ריליס ידועה רק לפרויקטים עם שורת release. אין מידע על קליפ/הפצה/קבצים."));
   } else unavailable("releases", "ריליסים");
 
-  // ── existing agent_alerts (secondary source; allowlisted + recent only) ────
-  let alerts: AlertsFact | null = null;
-  if (raw.alerts) {
-    const shown: AlertFact[] = [];
-    let ignored = 0;
-    for (const a of raw.alerts) {
-      const age = daysSinceIso(a.createdAt, now);
-      if (cfg.alerts.allowTypes.includes(a.type) && age !== null && age <= cfg.alerts.maxAgeDays) {
-        shown.push({ id: a.id, type: a.type, severity: a.severity, title: a.title, message: a.message, createdAt: a.createdAt, ageDays: age, relatedProjectId: a.relatedProjectId });
-      } else ignored++;
-    }
-    alerts = { shown, ignoredCount: ignored };
-    if (ignored) dq.push(dqi("alerts.ignored", "התראות agent_alerts פתוחות שלא מוצגות", ignored, "סוג שלא ב-allowlist או ישנות מדי. ה-COO לא סומך עליהן ולא משנה אותן."));
-    coverage.push(cov("alerts", "התראות קיימות (מקור משני)", raw.alerts.length, shown.length, "מוצגות רק סוגים ידועים ורק מהימים האחרונים. אינן מחליפות עובדה שה-COO יודע מהמקור."));
-  } else unavailable("alerts", "התראות קיימות");
 
   return {
     meta: { asOf: now.toISOString(), todayIL: today, timezone: COO_TZ, weekday: weekdayHe(today), schemaVersion: SCHEMA_VERSION, configVersion: cfg.version },
-    sources: raw.sources, coverage, projects, tasks, team: { steven, victor }, proposals, shows, sessions, finance, receivables, releases, alerts, dataQuality: dq,
+    sources: raw.sources, coverage, projects, tasks, team: { steven, victor }, proposals, shows, sessions, finance, receivables, releases, dataQuality: dq,
   };
 }
 

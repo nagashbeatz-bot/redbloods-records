@@ -8,7 +8,6 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { type ClientRole } from "@/lib/use-role";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import { useVictorT } from "@/lib/victor-i18n";
-import { AGENT_ALERT_RULES_ENABLED } from "@/lib/feature-flags";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -116,7 +115,6 @@ function NavLink({ href, label, icon, iconColor, pathname, badge, hoveredHref, o
 
 export default function Sidebar({ role }: { role: ClientRole }) {
   const pathname = usePathname();
-  const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
   const [privacyHidden, togglePrivacy] = usePrivacyMode();
   // Global maintenance lock (owner only) — DB-backed, read from the settings flag.
@@ -158,14 +156,6 @@ export default function Sidebar({ role }: { role: ClientRole }) {
     const stored = localStorage.getItem("rb_skin");
     document.documentElement.setAttribute("data-skin", stored === "premium" ? "premium" : "default");
   }, []);
-
-  useEffect(() => {
-    if (role !== "owner" || !AGENT_ALERT_RULES_ENABLED) return; // alerts owner-only; skipped while the agent-alert rules are off
-    fetch("/api/agent/alerts?status=new&count=1")
-      .then((r) => r.json())
-      .then((d) => setUnreadAlerts(d.count ?? 0))
-      .catch(() => {});
-  }, [role]);
 
   // Read the current maintenance state (owner only) so the lock + badge reflect
   // the global DB flag, not local guesswork.
@@ -243,7 +233,6 @@ export default function Sidebar({ role }: { role: ClientRole }) {
               icon={icon}
               iconColor={iconColor}
               pathname={pathname}
-              badge={href === "/insights" ? unreadAlerts : undefined}
               hoveredHref={hoveredHref}
               onMouseEnter={() => setHoveredHref(href)}
               onMouseLeave={() => setHoveredHref(null)}

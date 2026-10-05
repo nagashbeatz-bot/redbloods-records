@@ -159,19 +159,7 @@ async function main() {
     for (const row of r.rows) p(`  · ${row.projectName} [${row.projectStatus}] מחיר ${row.agreedPrice}${row.currency} התקבל ${row.received} יתרה ${row.balance}`);
   }
 
-  // ── 7. agent_alerts ──────────────────────────────────────────────────────
-  p(""); p("══ 7. agent_alerts (status=new) ══");
-  const all = raw.alerts;
-  if (all) {
-    const types: Record<string, number> = {};
-    for (const a of all) types[a.type] = (types[a.type] ?? 0) + 1;
-    p(`סה"כ new שנקראו: ${all.length}${all.length >= 200 ? " (הגענו ל-limit=200 — ייתכן שיש עוד)" : ""}; לפי סוג: ${Object.entries(types).map(([k, v]) => `${k}×${v}`).join(", ") || "—"}`);
-    p(`allowlist: ${COO_CONFIG.alerts.allowTypes.join(", ")}; גיל מקסימלי: ${COO_CONFIG.alerts.maxAgeDays} ימים`);
-    p(`עברו (${state.alerts?.shown.length ?? 0}): ${state.alerts?.shown.map((a) => `${a.type} "${a.title}" (גיל ${a.ageDays}ד׳)`).join(" ; ") || "אין"}`);
-    p(`נדחו: ${state.alerts?.ignoredCount ?? 0}`);
-    const ages = all.map((a) => Math.floor((now.getTime() - new Date(a.createdAt).getTime()) / 86400000)).sort((a, b) => a - b);
-    if (ages.length) p(`גילאי new: הצעיר ${ages[0]}ד׳, הוותיק ${ages[ages.length - 1]}ד׳`);
-  } else p("לא נטען");
+  // ── 7. agent_alerts — retired 2026-10-05 (Owner decision); the COO no longer reads them
 
   // ── focused views ─────────────────────────────────────────────────────────
   p(""); p("══ 9. Cases של Steven ══");

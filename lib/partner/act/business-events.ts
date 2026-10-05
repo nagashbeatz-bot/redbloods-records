@@ -53,7 +53,6 @@ export const BUSINESS_ACTION_MAP: Readonly<Record<string, EventMapping>> = {
   DROPBOX_WRITE: { kind: "ACTIONS", actions: ["PROJECT.UPLOAD_PROJECT_FILE", "PROJECT.DELETE_PROJECT_FILE", "FILES.FOLDER_LINK"] },
   SEND_PUSH: { kind: "ACTIONS", actions: ["MIX.SEND_TO_ENGINEER", "VICTOR.NOTIFY_WORK", "SHOW.NOTIFY_ARTIST"], noteHe: "Push רק כתוצאה של פעולה עסקית מאושרת — לעולם לא Push חופשי" },
   SEND_REPORT: { kind: "ACTIONS", actions: ["REPORTS.SEND"] },
-  AGENT_ALERTS_WRITE: { kind: "ACTIONS", actions: ["MARK_AGENT_ALERT_HANDLED"] },
   SETTINGS_AUTH_PEOPLE: { kind: "SECURITY_EXCLUDED", reason: "auth / roles / credentials stay with the Boss" },
   TEACH_KNOWLEDGE: { kind: "READ_OR_LEARN_ONLY", reason: "typed P2 knowledge (preview → confirm), not a business write" },
   ANSWER_QUESTION: { kind: "READ_OR_LEARN_ONLY", reason: "the P1 answer bridge; answers are knowledge, not business writes" },

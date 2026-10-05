@@ -180,23 +180,6 @@ export async function register() {
     }
   }, { timezone: TZ });
 
-  // ── Week-strength agent alert — creates "השבוע הבא עדיין לא סגור" in the
-  // Friday 10:00–10:15 Asia/Jerusalem window if next week isn't well-planned
-  // yet (≥3 significant activities across ≥2 days). Every tick ALSO
-  // re-checks any already-open alert and clears it the moment its week
-  // becomes closed — cheap no-op when nothing is open, so this isn't tied to
-  // next Friday. Same every-minute-tick pattern as the jobs above.
-  cron.schedule("* * * * *", async () => {
-    try {
-      const { isWeekStrengthCheckWindowOpen } = await import("@/lib/week-strength-pure");
-      const { checkWeekStrengthAndAlert, resolveWeekStrengthAlertsIfClosed } = await import("@/lib/week-strength-notify");
-      if (isWeekStrengthCheckWindowOpen(new Date())) await checkWeekStrengthAndAlert();
-      await resolveWeekStrengthAlertsIfClosed();
-    } catch (err) {
-      console.error("[week-strength] cron tick failed:", err);
-    }
-  }, { timezone: TZ });
-
   // ── Steven mix-notes reminder — every 5h after the owner clicks "Send
   // notes" (lib/steven-notes-notify.ts) until Steven uploads a new mix
   // version for that same work. Same every-minute-tick pattern as the jobs
@@ -230,7 +213,7 @@ export async function register() {
   // ── Owner weekly notification-bell reset — Friday 06:00–06:15 Asia/Jerusalem.
   // Deletes ONLY the Owner's rows in `notifications` (read + unread), so the
   // bell starts each week as a clean "what happened this week" feed. Never
-  // touches agent_alerts, push_subscriptions, or any other recipient's rows —
+  // touches push_subscriptions, or any other recipient's rows —
   // see lib/owner-notifications-cleanup.ts for the exact scope. A DELETE is
   // naturally idempotent, so (unlike the push-sending jobs above) no atomic
   // claim/dedup guard is needed — a repeat tick in the same window just

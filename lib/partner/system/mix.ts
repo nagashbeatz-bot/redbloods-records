@@ -273,7 +273,7 @@ export const MIX_PUSHES: readonly MixPush[] = [
 ];
 
 export const OTHER_CONSUMERS = {
-  agentAlerts: "no mix / engineer Agent Alert type exists (production: none). Project-level alerts (overdue deadline …) may fire on mix-stage projects.",
+  agentAlerts: "Agent Alerts retired 2026-10-05 — no alert of any type is raised (the table is dormant); there never was a mix / engineer alert type.",
   coo: "COO signals: Steven work deadline (open work, internal deadline near / passed; not counted as his delay when a version exists and the status cannot tell), Steven waiting on Owner (status חזר), Steven approved-unpaid, Steven open-work watch (≥ 3). Thresholds are COO configuration, not Owner policy.",
   cases: "Partner cases: a Steven internal deadline passed.",
   agentChat: "the AI chat context lists a project's engineer work and, for mix-stage projects, flags a missing engineer / an unrecorded balance.",
@@ -399,7 +399,7 @@ export const MIX_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/steven-completed-pure.ts": "8217c3251317c8f61be9059c8227548805577fbadd442fd7f8c231a40044f8d9",
   "lib/steven-mix-reminder-pure.ts": "c27e362804b40614a31a5eae112769419714615c86f6410862fa9ecc23c3af65",
   "lib/steven-mix-reminder-notify.ts": "45b9a2f3e4b4ddb111ff49fcdac63c36b8d42f8899e33ab1bef68f6c22ad38de",
-  "lib/steven-deadline-digest-pure.ts": "f0220ca36a509657dccfb6d95fb7a9ad70e07aa34560ae38fa5bde9f91cf3a0e",
+  "lib/steven-deadline-digest-pure.ts": "199ede86b280e17ab9416351a6358c92dfda03a279ea1b8921b8b1612e55b035",
   "lib/steven-payment-notify.ts": "9a9dfa50c1d518aa38a4a70a7cb972e9b0f9ceec1cf7b58e5682057d6a169467",
   "lib/steven-notes-notify.ts": "468635e8fd4f2b6bed6566f24e860ed70524b4aec81cec61c2b06a18d4f0d44b",
   "lib/steven-mix-ready-notify.ts": "81d57e9630eaf4dc7098e24ebc61be236298e1cbfdb66473a6ba5a1a3f6123b2",

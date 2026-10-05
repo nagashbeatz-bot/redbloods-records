@@ -197,7 +197,7 @@ ML._load = function (request: string, parent: unknown, isMain: boolean) {
   ok("SESSION_AUTO_MARK is an IN_PROCESS_SCHEDULE writer (server cron) — never PAGE_LOAD, never a push", (() => { const line = bg.split("\n").find((l) => l.includes('id: "SESSION_AUTO_MARK"')) ?? ""; return line.includes('trigger: "IN_PROCESS_SCHEDULE"') && line.includes("sendsPush: false"); })());
 
   console.log("\n6. Readers use the real vocabulary + the end rule");
-  for (const f of ["lib/reports/data.ts", "lib/reports/weekly.ts", "lib/agent/snapshot.ts", "lib/agent/rules.ts"]) {
+  for (const f of ["lib/reports/data.ts", "lib/reports/weekly.ts"]) { // the agent snapshot / rules were retired with Agent Alerts (2026-10-05)
     const src = read(f);
     ok(`${f}: no נקבע / הושלם session status; need-update uses sessionEndLocal on מתוכנן`, !/status\s*[!=]==\s*"נקבע"/.test(src) && !/"הושלם" \|\| s\.status/.test(src) && /sessionEndLocal\(/.test(src) && /"מתוכנן"/.test(src));
   }

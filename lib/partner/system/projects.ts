@@ -83,7 +83,7 @@ export const PROJECT_LINKS: readonly ProjectLink[] = [
   L("DROPBOX_FOLDER", "Dropbox project folder", "computed /Projects/<primary artist>/<name> or the frozen folder", "1:1", "DERIVED_RELATION", "COMPUTED", "artist change on an unfrozen project moves future writes (12 unfrozen projects); delete never removes folders", null, null),
   L("PARENT_PROJECT", "parent project", "parent stored as a project NAME", "N:1", "TEXT_MATCH", "TEXT", "renaming the parent orphans children", "project_view", null),
   L("NOTIFICATIONS", "owner bell notification", "notification project id copied from the push", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "not cleaned", null, "notifications"),
-  L("AGENT_ALERTS", "agent alert", "alert related project id + key '<rule>:<project id>'", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "deleted with the project by the database (the app first soft-closes 5 alert kinds)", null, "agent_alerts"),
+  L("AGENT_ALERTS", "agent alert (DORMANT)", "alert related project id + key '<rule>:<project id>'", "1:N", "CANONICAL_RELATION", "DB_FK_CASCADE", "DORMANT table (Agent Alerts retired 2026-10-05 (Owner decision)): no app reader or writer; the database still deletes its rows with the project", null, "agent_alerts"),
   L("PARTNER_ACTIONS", "Sunny deadline action / outcome", "action subject id", "1:N", "CANONICAL_RELATION", "ID_NO_FK", "append-only; outcome says target not found after delete", "project_view", null),
   L("OWNER_KNOWLEDGE", "Owner knowledge (P2)", "subject key project:<id>", "1:N", "OWNER_CONFIRMED_RELATION", "ID_NO_FK", "stays as history; live state wins", "project_view", null),
   L("PORTALS", "artist portal music / schedule / pushes", "artist text tokens → projects → sessions; sketch ↔ project file link", "N:M", "TEXT_MATCH", "TEXT", "artist text edits change who sees what", null, null),
@@ -183,7 +183,7 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "367952f3d58dd8514421fb6fc752f5e8fb0a27799511135f93fdee7bd5d6c3dc",
   // 2026-09-29 review (song ↔ clip P1): Project gained optional songProjectId (canonical clip → song link); parentProject documented as legacy / display — no vocabulary change
   // 2026-10-01 review (one clip model): no "שיר + קליפ" type; a clip is its own project; matchesTypeFilter = exact type
-  "lib/types.ts": "1c593ce7f14a22b92639a7ab62a473223d4c5d3823a32b8a5539c3540d3d31e3",
+  "lib/types.ts": "994ab4bb75524caa0efcfa1f9edc932070f71fa00c6ca15edf88f092875a68b2",
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",

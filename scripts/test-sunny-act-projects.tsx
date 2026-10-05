@@ -102,12 +102,12 @@ const CASES: FamilyCase<W>[] = [
   console.log("\nProject delete (hardened)");
   const pd = read("lib/writes/project-delete.ts");
   ok("the delete route uses the shared writer", /deleteProjectCompletely\(id\)/.test(read("app/api/projects/[id]/route.ts")) && !/cleanupBeforeDelete/.test(read("app/api/projects/[id]/route.ts")));
-  ok("every step is checked; the project row is deleted LAST", (pd.match(/ok\("/g) ?? []).length >= 7 && pd.lastIndexOf("deleteProject(projectId)") > pd.lastIndexOf('ok("agent_alerts")'));
+  ok("every step is checked; the project row is deleted LAST", (pd.match(/ok\("/g) ?? []).length >= 6 && pd.lastIndexOf("deleteProject(projectId)") > pd.lastIndexOf('ok("proposals")') && !pd.includes('ok("agent_alerts")'));
   ok("Victor works go through the shared writer (their follow-up task goes too)", /removeVictorWork\(w\)/.test(pd) && !/from\("vendor_project_work"\)\.delete\(\)/.test(pd));
   const body = pd.slice(pd.indexOf("export async function deleteProjectCompletely"));
   const firstWrite = Math.min(...[".delete()", ".update(", "removeVictorWork(", "deleteTask("].map((x) => body.indexOf(x)).filter((i) => i >= 0));
   ok("A5 order: preflight FIRST, blocked → throw BEFORE any write", body.indexOf("projectDeletePreflight(") >= 0 && body.indexOf("projectDeletePreflight(") < body.indexOf("ProjectDeleteBlockedError(pre.blockers)") && body.indexOf("ProjectDeleteBlockedError(pre.blockers)") < firstWrite);
-  ok("A5 order: a fresh blocker re-check sits immediately before the project row delete", body.lastIndexOf("blockingFinalFiles(projectId)") > body.lastIndexOf('ok("agent_alerts")') && body.lastIndexOf("blockingFinalFiles(projectId)") < body.indexOf("deleteProject(projectId)"));
+  ok("A5 order: a fresh blocker re-check sits immediately before the project row delete", body.lastIndexOf("blockingFinalFiles(projectId)") > body.lastIndexOf('ok("proposals")') && body.lastIndexOf("blockingFinalFiles(projectId)") < body.indexOf("deleteProject(projectId)"));
   ok("A5 order: Google Calendar / Google Tasks / cover file only AFTER the project row (DB commit) and reported", ["deleteCalendarEvent", "deleteGoogleTask", "deleteProjectCoverFile"].every((x) => body.indexOf(x) > body.indexOf("deleteProject(projectId)")) && /external\.push\(/.test(body));
   ok("A5: every per-project settings family is cleaned", ["finance_", "delivery_", "project_cover_", "session_limit_", "album_finance_", "album_prev_info_", "steven_final_files_requested_project:"].every((k) => pd.includes(`"${k}"`)) && pd.includes('"steven_final_files_requested:"'));
   ok("A5: the route answers a blocked delete with 409 + the blockers", /status: 409/.test(read("app/api/projects/[id]/route.ts")) && /ProjectDeleteBlockedError/.test(read("app/api/projects/[id]/route.ts")));

@@ -4,52 +4,6 @@
  */
 export interface HandlerEntry { methods: readonly string[]; getWrites: boolean; sha256: string; effects: readonly string[]; fields: readonly string[] }
 export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
- "app/api/agent/alerts/[id]/route.ts": {
-  "methods": [
-   "PATCH"
-  ],
-  "getWrites": false,
-  "sha256": "d2422fbd7f207e1905211c59e012f7d195b135d4157ac9389e1065a003a0bd11",
-  "effects": [
-   "DELETION",
-   "EMAIL",
-   "SETTINGS"
-  ],
-  "fields": [
-   "status"
-  ]
- },
- "app/api/agent/alerts/route.ts": {
-  "methods": [
-   "POST"
-  ],
-  "getWrites": false,
-  "sha256": "94f745a3fa31ee1cb1b95177ec50013be69e23841e1a00a5bf4ac868726a2394",
-  "effects": [],
-  "fields": [
-   "message",
-   "metadata",
-   "relatedClientId",
-   "relatedProjectId",
-   "severity",
-   "suggestedActions",
-   "title",
-   "type"
-  ]
- },
- "app/api/agent/check/route.ts": {
-  "methods": [],
-  "getWrites": true,
-  "sha256": "9fd25c6e93fe53181a9a0324c9f06eab5f0351a947db480bec89db9315c08f87",
-  "effects": [
-   "DELETION",
-   "PUSH",
-   "SETTINGS"
-  ],
-  "fields": [
-   "updated_at"
-  ]
- },
  "app/api/agent/goals/route.ts": {
   "methods": [
    "PATCH"

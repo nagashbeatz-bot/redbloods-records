@@ -40,14 +40,13 @@ export function cooRaw(o: Opts): CooRawInput {
   if (o.extraAviProject) projects.push(proj(P(8), "אבי 3", "אבי מולה", "בעבודה", "לקוח"));
   const old = o.noVictorStale ? "2026-09-10" : "2026-05-01";
   return structuredClone<CooRawInput>({
-    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases", "agent_alerts"].map(src),
+    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases"].map(src),
     projects,
     tasks: [],
     steven: [],
     victor: { stuckAfterDays: 5, works: [{ id: U(701), projectId: P(2), title: "Victor old work", status: "פעיל", workState: "נשלח לויקטור", sentDate: old, internalDeadline: null, daysSinceSent: 100, isStuck: true, uploads: [`${old}T10:00:00Z`], filesWithoutTimestamp: 0, reviews: [], linkedTaskId: null }] },
     proposals: [], shows: [], sessions: [], transactions: [], financeSettings: [], orphanFinanceKeyCount: 0,
     releases: { labelProjectsTotal: 1, rows: [{ projectId: P(1), name: "שיר לייבל", projectStatus: "בעבודה", stage: "רעיון", targetDate: "2026-10-05", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: LA_SHALEV }] },
-    alerts: [],
   });
 }
 

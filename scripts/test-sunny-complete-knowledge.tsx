@@ -15,7 +15,7 @@ import path from "node:path";
 import { FORBIDDEN_SERVED_TERMS, DOMAIN_CONTRACTS, validateSystemRegistry, SYSTEM_BASELINE_VERSION, CAPABILITY_CHANGES } from "../lib/partner/system";
 import { KNOWLEDGE_GAPS, DOMAIN_KNOWLEDGE_DEPTH, validateKnowledgeGaps } from "../lib/partner/system/gaps";
 import { PROJECT_ACTIONS, PROJECT_ACTION_EXCLUSIONS, ACTION_CONTRACT_FIELDS, APPROVAL_CLASSES } from "../lib/partner/system/project-actions";
-import { PROJECT_TABLE_COLUMNS, PROJECT_REDUCED_COLUMNS, PROJECT_READER_FILES, PROJECT_COLUMNS_READ_ELSEWHERE } from "../lib/partner/system/project-columns";
+import { PROJECT_TABLE_COLUMNS, PROJECT_REDUCED_COLUMNS, PROJECT_READER_FILES, PROJECT_COLUMNS_READ_ELSEWHERE, PROJECT_DORMANT_TABLES } from "../lib/partner/system/project-columns";
 import { PROJECT_SCHEMA_COLUMNS } from "../lib/partner/system/projects";
 import { PROJECT_DETAIL_SOURCES } from "../lib/partner/projects/detail-types";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
@@ -122,12 +122,14 @@ async function main() {
   for (const m of readerSrc.matchAll(/(?:readSection\(client, |\br\()"([a-z_]+)",\s*"([^"]+)"/g)) for (const c of m[2].split(",")) (selected[m[1]] ??= new Set()).add(c.trim().split(":").pop()!.split("->")[0].trim());
   const unread: string[] = [];
   for (const [t, cols] of Object.entries(PROJECT_TABLE_COLUMNS)) for (const c of cols) {
+    if (PROJECT_DORMANT_TABLES[t]) continue; // a RETIRED subsystem's table: proven unread below, never a silent skip
     if (selected[t]?.has(c)) continue;
     const elsewhere = PROJECT_COLUMNS_READ_ELSEWHERE[`${t}.${c}`] ?? PROJECT_COLUMNS_READ_ELSEWHERE[t];
     if (elsewhere && new RegExp(`\\b${c}\\b`).test(read(elsewhere))) continue;
     unread.push(`${t}.${c}`);
   }
   check("project-linked columns Sunny does not read", unread, []);
+  check("a DORMANT table is read by NO Sunny reader (retired, not skipped)", Object.keys(PROJECT_DORMANT_TABLES).filter((t) => !!selected[t] || new RegExp(`["']${t}["']`).test(readerSrc)), []);
   const totalCols = Object.values(PROJECT_TABLE_COLUMNS).flat().length;
   ok(`${Object.keys(PROJECT_TABLE_COLUMNS).length} tables / ${totalCols} columns pinned`, totalCols > 350);
   check("every project-referencing schema column's table is pinned", PROJECT_SCHEMA_COLUMNS.map((c) => c.split(".")[0]).filter((t) => !PROJECT_TABLE_COLUMNS[t]), []);
@@ -183,7 +185,7 @@ async function main() {
   const rf = q({ project: `project:${P(1)}`, section: "red_films" });
   check("Red Films crew = text identity, link exists", [rf.items[0].fields.relation, (rf.items[0].fields.crew as Record<string, unknown>).photographer, String((rf.items[0].fields.crew as Record<string, unknown>).identity).startsWith("CREW_IDENTITY_TEXT")], ["RED_FILMS_LINK_EXISTS", "דני לוי", true]);
   ok("release blocker / responsible readable", JSON.stringify(q({ project: `project:${P(1)}`, section: "release" })).includes("מחכים לעטיפה"));
-  ok("notifications + agent alerts readable", ["Steven העלה מיקס", "דדליין עבר"].every((t) => JSON.stringify(q({ project: P2, section: "notifications" })).includes(t)));
+  ok("notifications readable; Agent Alerts retired — never shown even though the dormant table still has a row", JSON.stringify(q({ project: P2, section: "notifications" })).includes("Steven העלה מיקס") && !JSON.stringify(q({ project: P2, section: "notifications" })).includes("דדליין עבר"));
 
   section("7. Traversal + relationship provenance");
   const graph = q({ project: P2, section: "graph" }, sources({ proposals: [{ linked: P(2), amount: 1000 }] }), OWNER, 50);

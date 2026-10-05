@@ -73,9 +73,9 @@ function main() {
   ok(`${senders.length} sending modules found, ${PUSH_CONTRACTS.length} push contracts`, senders.length >= 30 && PUSH_CONTRACTS.length >= 30);
   check("the web-push library is imported only by the push primitive", files.filter((f) => /from\s+["']web-push["']|require\(["']web-push["']\)/.test(code(fs.readFileSync(f, "utf8")))).map(rel), ["lib/push.ts"]);
   ok("every push contract: Sunny may NOT trigger it", PUSH_CONTRACTS.every((p) => p.sunnyMayTrigger === false));
-  ok("statuses are ACTIVE / DISABLED / LEGACY only; the agent sender is DISABLED and the push check is LEGACY", PUSH_CONTRACTS.find((p) => p.id === "P_AGENT_ALERTS")!.status === "DISABLED" && PUSH_CONTRACTS.find((p) => p.id === "P_PUSH_CHECK_LEGACY")!.status === "LEGACY");
-  check("senders WITHOUT a production-only guard are flagged (and match the code)", PUSH_CONTRACTS.filter((p) => !p.productionOnly).map((p) => p.id).sort(), ["P_AGENT_ALERTS", "P_CYCLE_REMIND", "P_SKETCH_NOTIFY_MANUAL"]);
-  ok("the flagged senders really have no production guard in code", ["lib/writes/label.ts", "lib/agent/notifications.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
+  ok("statuses are ACTIVE / DISABLED / LEGACY only; the Agent Alerts sender is retired (no contract, 2026-10-05) and the push check is LEGACY", !PUSH_CONTRACTS.some((p) => p.id === "P_AGENT_ALERTS") && PUSH_CONTRACTS.find((p) => p.id === "P_PUSH_CHECK_LEGACY")!.status === "LEGACY");
+  check("senders WITHOUT a production-only guard are flagged (and match the code)", PUSH_CONTRACTS.filter((p) => !p.productionOnly).map((p) => p.id).sort(), ["P_CYCLE_REMIND", "P_SKETCH_NOTIFY_MANUAL"]);
+  ok("the flagged senders really have no production guard in code", ["lib/writes/label.ts"].every((f) => !/pushAllowed|ALLOW_SERVER_PUSH/.test(code(read(f)))));
   ok("the push cron + legacy check send only through the production-guarded, per-day-claimed digest (2026-09-27)", ["app/api/push/cron/route.ts", "app/api/push/check/route.ts"].every((f) => /runOwnerDigest/.test(code(read(f)))) && /pushAllowed\(\)/.test(code(read("lib/push-digest.ts"))) && /pushCronClaimKey/.test(code(read("lib/push-digest.ts"))));
 
   section("F. Refresh never sends push for the Owner; page-load beacons are the non-owner roles' own opens");

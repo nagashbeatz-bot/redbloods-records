@@ -92,7 +92,6 @@ const addDays = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-").m
 async function main() {
   const PD = await import("../lib/project-deadline");
   const { buildOwnerDigest, NOT_DEADLINE_CANDIDATE_STATUSES } = await import("../lib/push-digest-pure");
-  const { checkOverdueProjects } = await import("../lib/agent/rules");
   const { COO_CONFIG } = await import("../lib/coo/config");
 
   // ═════ 1. overdue ═════
@@ -119,11 +118,6 @@ async function main() {
   const digest = buildOwnerDigest({ today: T, hour: 9, projects: matrix.map((m) => ({ id: m.id, name: m.id, status: m.status, deadline: m.deadline, is_hidden: m.hidden ?? false })), sessions: [], overdueIncome: [], withSummary: false });
   eq("push digest overdue = the same set", digest.overdue.map((p) => p.id).sort(), expected);
   ok("push digest: an unparseable / hidden / closed project is never due-soon either", !digest.soon.some((p) => ["unparseable", "hidden", "completed", "cancelled", "on-hold", "timestamp"].includes(p.id)));
-  const agentIds = (() => {
-    const alerts = checkOverdueProjects(matrix.filter((m) => !m.hidden).map((m) => ({ id: m.id, name: m.id, artist: "", status: m.status, deadline: m.deadline })));
-    return alerts.flatMap((a) => (a.relatedProjectId ? [a.relatedProjectId] : ((a.metadata as { projectIds?: string[] } | undefined)?.projectIds ?? []))).sort();
-  })();
-  eq("agent rules (hidden filtered by the caller) = the same set", agentIds, expected);
   eq("the push digest's closed set IS the shared set", [...NOT_DEADLINE_CANDIDATE_STATUSES], [...PD.NOT_OVERDUE_STATUSES]);
   eq("the COO inactive set IS the shared set", [...COO_CONFIG.inactiveProjectStatuses].sort(), [...PD.NOT_OVERDUE_STATUSES].sort());
   ok("parse issue surfaced for a non-date deadline (and not for a real one / empty)", PD.deadlineParseIssue("26/09/2026") && PD.deadlineParseIssue("2026-02-30") && !PD.deadlineParseIssue(Y) && !PD.deadlineParseIssue(null) && !PD.deadlineParseIssue(""));
@@ -146,14 +140,13 @@ async function main() {
     ["app/dashboard/DashboardContent.tsx", /isProjectOverdue\(p\)/],
     ["lib/reports/data.ts", /isOverdue: isProjectOverdue\(p, todayIL\)/],
     ["lib/reports/weekly.ts", /isProjectOverdue\(p\)/],
-    ["lib/agent/snapshot.ts", /isProjectOverdue\(p\)/],
     ["lib/health.ts", /isProjectOverdue\(p\)/],
     ["lib/push-digest-pure.ts", /isProjectOverdue\(\{ deadline: p\.deadline, status: p\.status, isHidden: p\.is_hidden \}, today\)/],
     ["lib/partner/projects/view.ts", /isProjectOverdue\(\{ deadline: identity\.deadline, status, isHidden: identity\.hidden \}, today\)/],
     ["lib/partner/sunny/operating.ts", /isProjectOverdue\(\{ deadline: dl, status: id\.status, isHidden: id\.hidden \}, today\)/],
   ];
   for (const [f, re] of readers) ok(`${f} uses THE rule`, re.test(read(f)));
-  const stale = ["components/projects/ProjectsTable.tsx", "components/dashboard/ProjectSection.tsx", "components/dashboard/DailyHeader.tsx", "components/projects/ProjectsDesignPreview.tsx", "components/dashboard/StatsGrid.tsx", "components/dashboard/DashboardDesignPreview.tsx", "app/dashboard/DashboardContent.tsx", "lib/reports/data.ts", "lib/reports/weekly.ts", "lib/agent/snapshot.ts", "components/insights/InsightsPage.tsx", "components/project/ProjectDetail.tsx"]
+  const stale = ["components/projects/ProjectsTable.tsx", "components/dashboard/ProjectSection.tsx", "components/dashboard/DailyHeader.tsx", "components/projects/ProjectsDesignPreview.tsx", "components/dashboard/StatsGrid.tsx", "components/dashboard/DashboardDesignPreview.tsx", "app/dashboard/DashboardContent.tsx", "lib/reports/data.ts", "lib/reports/weekly.ts", "components/insights/InsightsPage.tsx", "components/project/ProjectDetail.tsx"]
     .filter((f) => /\.isOverdue && \w+\.status !== "הושלם"/.test(read(f)));
   eq("no reader keeps the old 'isOverdue && status !== הושלם' rule", stale, []);
   ok("Sunny operating: on-hold / hidden / unparseable are their own classes (never PASSED_NEW_FAILURE)", /deadlineClass = "ON_HOLD"/.test(read("lib/partner/sunny/operating.ts")) && /deadlineClass = "HIDDEN"/.test(read("lib/partner/sunny/operating.ts")) && /deadlineClass = "UNPARSEABLE_DEADLINE"/.test(read("lib/partner/sunny/operating.ts")));
@@ -266,7 +259,6 @@ async function main() {
   const flags = (fileAt: string | null) => computeFinalFilesFlags([{ id: "project:P", projectId: "P" }], { finalRows: fileAt ? [{ project_id: "P", created_at: fileAt }] : [], requestRows: [{ key: "steven_final_files_requested_project:P", value: { at: "2026-09-20T10:00:00Z" } }] });
   const open = (f: ReturnType<typeof flags>) => f.finalFilesRequested.has("project:P") && !f.hasCurrentFinalFiles.has("project:P");
   eq("request open: no file / a file BEFORE the request → open; a file after → satisfied", [open(flags(null)), open(flags("2026-09-19T10:00:00Z")), open(flags("2026-09-21T10:00:00Z"))], [true, true, false]);
-  ok("agent completed_no_delivery reads the delivery record (not projects.files)", /deliveries: ReadonlyMap<string, \{ deliveryStatus\?: string; folderPath\?: string; lastDeliveredAt\?: string \}>/.test(read("lib/agent/rules.ts")) && /checkCompletedNoDelivery\(projects, deliveryMap\)/.test(read("app/api/agent/check/route.ts")));
 
   // ═════ 7. Victor salary ═════
   section("7. Victor salary — Finance precedence, Owner statement, duplicates");

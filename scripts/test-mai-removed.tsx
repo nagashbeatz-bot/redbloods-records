@@ -5,7 +5,8 @@
  *   - no code references the old kill switch, the prompt, the context builder, the provider router, the providers or
  *     the AI budget tracker; the model SDK dependency is gone;
  *   - no user-visible "מאי AI" / "סוכן AI" string, no chat panel, no chat entry in navigation;
- *   - the remaining switch only gates the rule-based agent-alert pipeline and stays OFF (behaviour unchanged);
+ *   - no switch remains: the neutral agent-alert rules switch was removed with Agent Alerts (2026-10-05) — see
+ *     scripts/test-agent-alerts-removed.tsx;
  *   - the reports keep their deterministic recommendations and make no model call;
  *   - Sunny (lib/partner, the connector) imports nothing of it;
  *   - the orphaned storage (memory table, AI budget / log keys) is only described, never read or written by code.
@@ -14,7 +15,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { AGENT_ALERT_RULES_ENABLED } from "../lib/feature-flags";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean) => { if (cond) { console.log(`  ✓ ${name}`); pass++; } else { console.log(`  ✗ ${name}`); fail++; } };
@@ -43,11 +43,9 @@ console.log("\n3. Nothing user-visible remains");
 check("no 'מאי AI' / 'סוכן AI' / 'סגור סוכן' / 'Mai AI' string in the product", refs(/מאי AI|סוכן AI|סגור סוכן|Mai AI/i), []);
 check("no word 'Mai' (the assistant) left in product code", refs(/\bMai\b/), []);
 
-console.log("\n4. The remaining switch is neutral and OFF (behaviour unchanged)");
-ok("the agent-alert rules switch stays off", AGENT_ALERT_RULES_ENABLED === false);
-ok("the flag file names no AI feature that it could enable", !/export const [A-Z_]*(AI|CHAT|ASSISTANT)[A-Z_]*\s*=/.test(read("lib/feature-flags.ts")));
-ok("the agent check still stops early while the switch is off (holiday alerts before it)", /if \(!AGENT_ALERT_RULES_ENABLED\) return NextResponse\.json\(\{ ok: true, disabled: true/.test(read("app/api/agent/check/route.ts")) && read("app/api/agent/check/route.ts").indexOf("runHolidayAlertCycle") < read("app/api/agent/check/route.ts").indexOf("if (!AGENT_ALERT_RULES_ENABLED)"));
-ok("the alerts API still exempts only the week-strength alert while off", /AGENT_ALERT_RULES_ENABLED/.test(read("app/api/agent/alerts/route.ts")) && /WEEK_STRENGTH_ALERT_TYPE/.test(read("app/api/agent/alerts/route.ts")));
+console.log("\n4. No switch can bring it back");
+ok("the flag file is gone (its last switch was removed with Agent Alerts, 2026-10-05)", !fs.existsSync(path.join(ROOT, "lib/feature-flags.ts")));
+check("no AI / chat / assistant switch anywhere", refs(/export const [A-Z_]*(AI|CHAT|ASSISTANT)[A-Z_]*_ENABLED\s*=/), []);
 
 console.log("\n5. Reports keep working without any model");
 ok("daily recommendations are the deterministic rules", /return genericRecommendations\(data, reportType\);/.test(read("lib/reports/ai.ts")) && !/fetch\(|openAI|Groq/i.test(read("lib/reports/ai.ts").replace(/\/\*[\s\S]*?\*\//g, "")));

@@ -10,7 +10,7 @@
  *   • `deleteProjectCompletely` calls the preflight FIRST and throws ProjectDeleteBlockedError with ZERO mutations.
  *   • Order: DB unlinks / row deletes (each error checked, abort on the first failure — every step is idempotent, a
  *     retry is safe) → a fresh blocker re-check immediately before the project row → the project row (DB cascades:
- *     release details, album tracks, engineer works + versions / comments / attachments, remaining alerts; SET NULL:
+ *     release details, album tracks, engineer works + versions / comments / attachments, the dormant agent_alerts rows; SET NULL:
  *     final files keyed only by project, proposals, social campaigns) → EXTERNAL effects best-effort AFTER the DB
  *     commit (Google Calendar events, Google Tasks of proposal follow-ups, the custom cover file), reported back.
  *   • Victor works still go through the shared Victor writer (their follow-up task + Google Task go with them).
@@ -28,7 +28,6 @@ export const PROJECT_DELETE_IO = {
   projects: () => import("@/lib/projects-store"),
 };
 const ok = (label: string) => ({ error }: { error: { message: string } | null }) => { if (error) throw new Error(`${label}: ${error.message}`); };
-const alertKeys = (projectId: string) => ["overdue_deadline", "deadline_approaching", "project_no_pricing", "completed_no_delivery", "stale_session"].map((t) => `${t}:${projectId}`);
 
 /** Every per-project settings key family the delete removes (A / C families keyed `<prefix><projectId>`). */
 export const PROJECT_SETTINGS_PREFIXES = ["finance_", "delivery_", "project_cover_", "session_limit_", "album_finance_", "album_prev_info_", "steven_final_files_requested_project:"] as const;
@@ -42,7 +41,7 @@ export interface ProjectDeleteImpact {
   // deleted by the app
   sessions: number; calendarEvents: number; sendLog: number; clipRows: number; victorWorks: number; settingsKeys: number; coverCustomImage: number; proposalFollowUpTasks: number;
   // cascaded by the database with the project row
-  engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number; openAlerts: number;
+  engineerWorks: number; mixVersions: number; mixComments: number; mixAttachments: number; albumTracks: number; releaseDetails: number;
   // unlinked (kept)
   transactionsUnlinked: number; sessionLinkedTransactions: number; proposalsReset: number; socialCampaignsUnlinked: number; finalFilesUnlinked: number;
   /** clip projects whose song_project_id points here — kept, but the database sets their song link to NULL (ON DELETE SET NULL) */
@@ -111,7 +110,6 @@ export async function projectDeletePreflight(projectId: string): Promise<Project
     engineerWorks: workIds.length, mixVersions: versionIds.length, mixComments: commentIds.length,
     mixAttachments: (await ids("mix_comment_attachments", "comment_id", commentIds)).length,
     albumTracks: await count("album_tracks", "project_id", projectId), releaseDetails: await count("project_release_details", "project_id", projectId),
-    openAlerts: await (async () => { const { count: n, error } = await supabase.from("agent_alerts").select("id", { count: "exact", head: true }).in("entity_key", alertKeys(projectId)).eq("status", "new"); if (error) throw new Error(`agent_alerts: ${error.message}`); return n ?? 0; })(),
     transactionsUnlinked: await count("transactions", "project_id", projectId),
     sessionLinkedTransactions: (await ids("transactions", "linked_session_id", sessionIds)).length,
     proposalsReset: (props ?? []).length, socialCampaignsUnlinked: await count("social_campaigns", "project_id", projectId),
@@ -174,8 +172,7 @@ export async function deleteProjectCompletely(projectId: string): Promise<Projec
     }
   }
   ok("proposals")(await supabase.from("proposals").update({ linked_project_id: null, status: "לא נסגר", updated_at: new Date().toISOString() }).eq("linked_project_id", projectId));
-  // 6. agent alerts keyed to the project — soft-closed
-  ok("agent_alerts")(await supabase.from("agent_alerts").update({ status: "handled", updated_at: new Date().toISOString() }).in("entity_key", alertKeys(projectId)).eq("status", "new"));
+  // (Agent Alerts retired 2026-10-05: nothing to soft-close — the dormant agent_alerts rows go with the project by FK CASCADE)
   // 7. RE-CHECK the blocker immediately before the project row (a final file may have been added meanwhile)
   const re = await blockingFinalFiles(projectId);
   if (re.blocking > 0) throw new ProjectDeleteBlockedError([{ code: "FINAL_FILES", count: re.blocking, messageHe: finalFilesBlockerHe(re.blocking) }], true);

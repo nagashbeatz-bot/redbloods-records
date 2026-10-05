@@ -110,7 +110,6 @@ const TEAM_VICTOR: EntityRef = { type: "team", id: "victor", name: "Victor" };
 const COMPANY_MONEY: EntityRef = { type: "company", id: "money", name: "כסף" };
 const COMPANY_TASKS: EntityRef = { type: "company", id: "tasks", name: "משימות" };
 const COMPANY_SHOWS: EntityRef = { type: "company", id: "shows", name: "הופעות" };
-const COMPANY_ALERTS: EntityRef = { type: "company", id: "alerts", name: "התראות קיימות" };
 const COMPANY_STALE: EntityRef = { type: "company", id: "stale_deadlines", name: "דדליינים ישנים" };
 const COMPANY_STALE_INTERNAL: EntityRef = { type: "company", id: "stale_internal", name: "דדליינים פנימיים ישנים" };
 
@@ -653,20 +652,6 @@ export function detectSignals(state: CompanyState, cfg: CooConfig): Signal[] {
     }
   }
 
-  // ── 11. existing agent_alerts (secondary source, notices only) ───────────────
-  for (const a of state.alerts?.shown ?? []) {
-    out.push(makeSignal(c, {
-      type: "EXTERNAL_ALERT", key: a.id, entity: COMPANY_ALERTS, role: "notice",
-      title: rich(a.title), short: rich(a.title),
-      evidence: [
-        ev(c, `${a.id}:atype`, "סוג התראה", a.type, a.type, "text", { table: "agent_alerts", id: a.id, field: "type" }),
-        ev(c, `${a.id}:aage`, "גיל (ימים)", a.ageDays, String(a.ageDays), "days", { table: "agent_alerts", id: a.id, field: "created_at" }),
-        ev(c, `${a.id}:amsg`, "הודעה", a.message, a.message, "text", { table: "agent_alerts", id: a.id, field: "message" }, { untrusted: true }),
-      ],
-      rules: [{ ruleId: "external.alert", description: "התראה קיימת מסוג מאושר וטרייה. מקור משני: לא נבדקה מול הנתונים", threshold: `allowTypes = ${cfg.alerts.allowTypes.join(", ")}`, observed: `גיל ${a.ageDays} ימים` }],
-      coverageKeys: ["alerts"], missing: ["מקור משני — ה-COO לא אימת אותה מול הנתונים ולא משנה אותה."], tierCtx: {}, sort: 0,
-    }));
-  }
 
   return out;
 }

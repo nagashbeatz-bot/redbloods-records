@@ -15,7 +15,6 @@ import { listSoundEngineerWork } from "@/lib/sound-engineer-store";
 import { getVictorSettings, getVictorWork } from "@/lib/vendor-store";
 import { listShows } from "@/lib/shows-store";
 import { listLabelReleases } from "@/lib/release-store";
-import { getAlerts } from "@/lib/agent/alerts-store";
 import type { CooConfig } from "./config";
 import { victorVersionKeyOf } from "./victor-ball";
 import type { CooRawInput, RawFinanceSetting, SourceStatus } from "./types";
@@ -49,7 +48,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
     catch (e) { results[name] = { ok: false, count: null, error: msg(e) }; return null; }
   };
 
-  const [projects, tasks, steven, victor, proposals, shows, sessions, transactions, releases, alerts, projectIds] = await Promise.all([
+  const [projects, tasks, steven, victor, proposals, shows, sessions, transactions, releases, projectIds] = await Promise.all([
     track("projects", async () => (await listProjects()).map((p) => ({
       id: p.id, name: p.name, artist: p.artist, status: p.status as string, deadline: p.deadline, projectType: p.projectType as string,
       businessType: p.businessType as string, updatedAt: p.updatedAt, isHidden: p.isHidden,
@@ -126,9 +125,6 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
         })),
       };
     }, (v) => v.rows.length),
-    track("agent_alerts", async () => (await getAlerts({ status: "new", limit: 200 })).map((a) => ({
-      id: a.id, type: a.type, severity: a.severity as string, title: a.title, message: a.message, createdAt: a.createdAt, relatedProjectId: a.relatedProjectId,
-    })), (v) => v.length),
     // all project ids (hidden included) — only to count finance_* rows whose project no longer exists
     track("project_ids", async () => (await selectAll<{ id: string }>("projects", "id")).map((r) => r.id), (v) => v.length),
   ]);
@@ -163,7 +159,7 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
     if (keys) { const ids = new Set(projectIds); orphanFinanceKeyCount = keys.filter((k) => !ids.has(k.slice("finance_".length))).length; }
   }
 
-  const order = ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases", "agent_alerts"];
+  const order = ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases"];
   const sources: SourceStatus[] = order.filter((n) => results[n]).map((n) => ({
     source: n, status: results[n].ok ? "ok" : "failed", rowCount: results[n].count, ...(results[n].error ? { error: results[n].error } : {}),
   }));
@@ -171,6 +167,6 @@ export async function readCooRaw(now: Date, cfg: CooConfig): Promise<CooRawInput
   return {
     sources,
     projects: projects, tasks, steven, victor, proposals, shows, sessions, transactions, financeSettings, orphanFinanceKeyCount,
-    releases, alerts,
+    releases,
   };
 }

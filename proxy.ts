@@ -12,8 +12,6 @@ import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowed
 const PUBLIC_BYPASS = [
   "/api/calendar/callback",
   "/api/dropbox/callback",
-  "/api/agent/check",
-  "/api/agent/snapshot",
   "/api/sessions/calendar-pull",
   "/api/push/cron",
   "/api/maintenance/status", // boolean lock state only — used by the owner Sidebar

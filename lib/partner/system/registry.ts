@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.05-90";
+export const SYSTEM_BASELINE_VERSION = "2026.10.05-91";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -41,7 +41,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("LABEL_CLASSIFICATION_ONE_FIELD", "CANONICAL_BUSINESS_RULE", "Whether a project is a LABEL project is ONE stored field (business type לקוח / לייבל) and one classifier used by every screen and by Sunny (2026-09-27). The Owner rule, applied only when a project is CREATED (UI, proposal conversion and Sunny alike), by roster id: NagashBeatz credited → לייבל; שליו טסמה / אבי מולה credited with nobody external (solo or both) → לייבל; a Records artist next to an external party (a guest at an external host, e.g. בלאגן) → no rule (לקוח default, the Owner decides) — Owner decision 2026-09-28; anything else is לקוח. There is no 'roster artist = label' rule (DJ CLEANTONE is not covered). A roster-name match, a release, a client status or a Red Films source is evidence only. An existing project is never reclassified automatically: a stored לקוח the Owner rule would call לייבל is the signal MISMATCH_OWNER_RULE, fixed only by the Owner's explicit classification.", ["LABEL_ARTISTS", "FINANCE", "RELEASES"]),
       R("PROJECT_DELETE_CASCADE", "IMPLEMENTATION_BEHAVIOR", "Deleting a project runs a READ-ONLY preflight first: final files on its mix works BLOCK the delete with zero writes (the Owner removes them first). Otherwise it hard-deletes its sessions, send-log, clip planning rows, Victor works (with their tasks) and every per-project setting (incl. album settings), checking every step and deleting the project row last (retry-safe); the database then removes engineer works, release details and album tracks. Transactions are unlinked (kept) and linked proposals revert to לא נסגר. Calendar events, proposal Google Tasks and the cover file are removed only after the database commit, and failures are reported. Still not one database transaction (2026-09-27).", ["SESSIONS", "FINANCE", "PROPOSALS"]),
       R("CANCEL_PROJECT_BALANCE_PROMPT", "POSSIBLE_BUG", "Cancelling a project offers to cancel its open expected income, but ignores partial rows and includes clip income (amounts are shown per currency since 2026-09-27)."),
-      R("PROJECT_DB_CASCADES", "IMPLEMENTATION_BEHAVIOR", "In the database, deleting a project cascades to engineer work, Victor work, project actions, clip planning rows, release details, album tracks and agent alerts, and nulls proposals, mix versions, final files and social campaigns; transactions, sessions, meetings, Red Films and social content have no database link.", ["FINANCE", "SESSIONS", "MIX_PIPELINE", "VICTOR", "RELEASES", "ALBUMS", "SOCIAL", "RED_FILMS"]),
+      R("PROJECT_DB_CASCADES", "IMPLEMENTATION_BEHAVIOR", "In the database, deleting a project cascades to engineer work, Victor work, project actions, clip planning rows, release details, album tracks and the dormant agent_alerts rows, and nulls proposals, mix versions, final files and social campaigns; transactions, sessions, meetings, Red Films and social content have no database link.", ["FINANCE", "SESSIONS", "MIX_PIPELINE", "VICTOR", "RELEASES", "ALBUMS", "SOCIAL", "RED_FILMS"]),
       R("PROJECT_ACTIVE_DEFINITION_CONFLICT", "CONFLICT", "'Active project' is defined differently on the dashboard, health checks, the projects KPI and the projects filter (the filter even includes cancelled)."),
       R("PROJECT_STATUS_NOT_VALIDATED", "POSSIBLE_BUG", "The server accepts any project status text (no vocabulary check)."),
       R("NO_PAGE_LOAD_PROJECT_WRITES", "CANONICAL_BUSINESS_RULE", "Opening a project (any drawer) never changes a session status or the project start date (retired 2026-09-27): a passed planned session is shown 'עבר — לא אושר' until the Owner records its outcome; the start date is set when a session is created."),
@@ -651,7 +651,6 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     sideEffects: [],
     notifications: [
       N("PUSH_CRON_OWNER", "External scheduler: overdue / due-soon projects, today's sessions, overdue expected income per currency, morning / evening summary (Victor stuck is computed but never pushed — Owner decision)", "Owner", "SCHEDULED", "production only; one claim per notification type per Israel day"),
-      N("AGENT_ALERT_PUSH", "Agent alerts (important / urgent)", "Owner", "AGENT_CHECK", "currently DISABLED (agent-alert rules switched off)"),
     ],
     limitationsHe: ["לסאני אין הרשאה לשלוח Push או התראות — אף פעם.", "סאני לא קורא את היסטוריית ההתראות — הוא מכיר את כל סוגי הפושים דרך system_awareness (מצב push)."],
     surfaces: S(["/push-test"], ["push", "notifications"]),
@@ -675,41 +674,41 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     surfaces: S(["/setup/reports"], ["reports"]),
   },
   {
-    id: "AGENT_ALERTS", group: "OPERATIONS", titleHe: "Agent Alerts",
-    purpose: "The older rule-based alert engine (its rule pipeline switched off) with the holiday and week-strength checks that still run.",
-    canonicalSource: "Agent alert records (entity keys per alert type) and goals.",
-    entityTypes: ["agent_alert"],
-    support: { read: "PARTIAL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
-    states: ["PARTIAL", "READ_ONLY"], readCapabilities: ["project_view", "system_settings", "company_view"], learnKinds: [], proposableActions: [],
-    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "NOT_APPLICABLE",
+    id: "AGENT_ALERTS", group: "OPERATIONS", titleHe: "Agent Alerts (הוסר)",
+    purpose: "RETIRED 2026-10-05 (Owner decision): the older rule-based alert engine — 13 rules, the holiday check, the Friday week-strength check, its pushes, routes, UI, the legacy COO source, Sunny's readers and the alert action — was removed from the product. Kept only as the history of a retired subsystem.",
+    canonicalSource: "None. The agent_alerts table stays DORMANT in the schema (181 historical rows, FK CASCADE with projects / clients): no reader, no writer.",
+    entityTypes: [],
+    support: { read: "MISSING", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    states: ["INTENTIONALLY_UNAVAILABLE"], readCapabilities: [], learnKinds: [], proposableActions: [],
+    approval: "NOT_EXECUTABLE_YET", freshness: "NOT_APPLICABLE",
     rules: [
-      R("ALERTS_NOT_TRUTH", "OWNER_POLICY", "Agent alerts are never canonical action truth for Sunny (Owner decision); Sunny's own Cases replace them."),
-      R("ALERT_RULES_OFF", "IMPLEMENTATION_BEHAVIOR", "The agent-alert rules switch is off: the 13 rules, their pushes and alert widgets are disabled; the holiday cycle and week-strength check still run."),
+      R("AGENT_ALERTS_RETIRED", "OWNER_POLICY", "Owner decision 2026-10-05: Agent Alerts are retired and removed — no alert engine, rule, holiday / week-strength check, alert push, alert UI, alert route or alert action exists. Never re-add one; a future reminder capability would be a separate Owner-approved Sunny mission. The agent_alerts table is DORMANT (no reader, no writer; a DROP needs separate Owner-approved SQL with a backup)."),
+      R("ALERTS_NOT_TRUTH", "OWNER_POLICY", "Historical Owner decision (2026-09-24): agent alerts were never canonical action truth for Sunny; Sunny's own views replace them."),
       R("IN_APP_AI_RETIRED", "OWNER_POLICY", "The older in-app AI assistant was retired and removed (2026-09-25); Sunny is the only AI / organizational partner."),
-      R("WEEK_STRENGTH", "IMPLEMENTATION_BEHAVIOR", "Every Friday 10:00 an alert is raised if next week has fewer than 3 significant activities or fewer than 2 active days."),
     ],
-    sideEffects: [], limitationsHe: ["סאני קורא Agent Alerts פתוחות כתצפית בלבד (לא אמת לפעולה); לא סוגר ולא יוצר אותן."],
-    surfaces: S([], ["agent", "ai"]),
+    sideEffects: [], limitationsHe: ["Agent Alerts הוסרו (2026-10-05, החלטת בעלים): אין מנוע התראות, אין 'השבוע הבא לא סגור', אין תזכורות חג, אין Push / מסך / פעולה שלהן. הטבלה agent_alerts נשארה רדומה — סאני לא קוראת אותה."],
+    surfaces: S([], ["ai"]),
   },
   {
     id: "COMPANY_OVERVIEW", group: "OPERATIONS", titleHe: "דשבורד ותמונת מצב",
     purpose: "The Owner's dashboard (receivables, releases, shows, 'סאני צריך ממך', pending approvals, recent outcomes) and the deterministic COO brief.",
     canonicalSource: "Views over company state (no own data).",
     entityTypes: [],
-    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "NOT_YET_EXECUTABLE" },
+    support: { read: "FULL", learn: "MISSING", propose: "MISSING", execute: "PARTIAL" },
     states: ["AVAILABLE"], readCapabilities: ["brief", "cases", "owner_needs", "company_view", "needs_me", "coo"], learnKinds: [], proposableActions: [],
-    approval: "NOT_EXECUTABLE_YET", freshness: "LIVE",
+    approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
+      R("BUSINESS_GOALS_KPI", "IMPLEMENTATION_BEHAVIOR", "Business goals (monthly revenue, weekly sessions, monthly Victor, monthly completions; settings goal_<name>, code defaults) are KPIs of the company overview: read by the weekly report and the Owner's goals endpoint, changed only by SET_BUSINESS_GOAL with the Owner's approval. Never a pay rule. Moved here from the retired AGENT_ALERTS domain (2026-10-05)."),
       R("SUNNY_COO_V1", "OWNER_POLICY", "Sunny COO V1 (Owner mission 2026-10-02): capability coo — operational readiness (shoot / show / release / important session / meeting / client deadline; per dimension money, people, creative, logistics, equipment / assets, dependencies, after, owner decision → מוכן / דורש תשומת לב / חסום / לא ידוע, derived, never stored), project momentum (last recorded progress, next step, scheduled?, who holds it — no age threshold: nothing is 'stuck' because time passed), label-artist care (the canonical roster only; DJ / team never), schedule health (real conflicts + patterns; busy alone is never a finding; never moves or writes anything), money readiness (the ONE project money computation — no new formula; no cash balance claimed), executive priorities (≤5, a display limit; evidence, not age). CONFIRMED ≠ NOT_SEEN ('אני לא רואה', never 'אין') ≠ INSIGHT (hypothesis) ≠ RECOMMENDATION (executes nothing). Interaction time only: no cron, push, alert, task, calendar write or background analysis. Internal heuristics (INTERNAL_COO_HEURISTICS: 14-day horizon, 7-day week, an 8-hour 'full day', a 3-day stretch) are engineering windows, never Owner policy."),
       R("DASHBOARD_IS_VIEW", "CANONICAL_BUSINESS_RULE", "The dashboard is an operational view; Claude is where the Owner talks to Sunny (no competing chat inside Redbloods)."),
       R("ONE_SUNNY", "CANONICAL_BUSINESS_RULE", "The company view composes every domain view; attention = every domain signal classified by nature + dimensions + whose move, deduplicated by concept — no score, no ranking; the order is a fixed presentation order."),
       R("DASHBOARD_V2_IS_MAIN", "OWNER_POLICY", "Owner decision 2026-10-01: /dashboard (the sidebar 'דשבורד', the Owner's landing, the app start URL) renders Dashboard V2. The previous dashboard is kept intact at /dashboard-legacy as a technical backup (not linked); /dashboard-v2 is a temporary alias of the same page; /dashboard-old is a different, older view and unchanged."),
       R("NEEDS_ME_CURATED", "OWNER_POLICY", "Owner decision 2026-10-01: Dashboard V2 'מה צריך ממני היום' = the needs_me capability, the SAME list Sunny reads. ≤5 items, never filled. The ball comes only from the records (computeVictorBall, engineerHandoff, the send log); a task inherits the ball of what it is linked to (an auto Victor task with the ball at Victor is out); own task / follow-up = today when due or overdue ≤3 days, else Backlog (the Owner's ball beats age); client-held money never enters; integrity questions are a separate line; a NEW update never enters, a processed interpretation only enriches and a contradiction is shown (records win). Unknown / conflicting = 'לא הוכרע', unreadable = 'לא נבדק'. Read-only. Precedence (Owner decision, never a shown score): NEW since yesterday (a version / received entry, or his processed update) → scheduled today / tomorrow → someone actively waiting (+ approvals) → own task → aggregated long-running waits; inside a group the most recent first. Several Victor works waiting on the Owner = ONE always-visible SUMMARY line under the five (count, oldest wait, updated in the last 7 days, open follow-ups, opens the list) — awareness, never a top-5 slot; a work with a version since yesterday is lifted out as NEW. Display only: no ball, task or work changes; no age rule (C not chosen)."),
       R("PROJECT_BALL_STATUS_VS_EVIDENCE", "CONFLICT", "project_view projects the engineer ball from the work STATUS (AT_ENGINEER when נשלח / בתהליך, ENGINEER_RETURNED_WORK when חזר) while engineerHandoff reads uploads vs feedback. needs_me uses the evidence ball (also for an interpretation's freshness); project_memory keeps canonicalBallOf over project_view. Reported, not unified — a separate task 'Canonical engineer ball consistency' (Owner decision 2026-10-01) will make one definition for Project View, Needs Me, Sunny and Project Memory."),
-      R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Three older attention engines exist beside Sunny: agent alerts, dashboard health rules and the COO brief (P0–P3 tiers). Their tiers are implementation, not Owner priority."),
+      R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Two older attention engines exist beside Sunny: dashboard health rules and the COO brief (P0–P3 tiers); the third, Agent Alerts, was retired on 2026-10-05. Their tiers are implementation, not Owner priority."),
     ],
     sideEffects: [], limitationsHe: ["סאני COO: מוכנות מבוססת רק על מה שרשום. מה שלא רשום (אישורי צוות, רשימת ציוד להפקה, יתרת מזומנים) היא אומרת 'לא רואה', לא 'אין'. אין ספי זמן כמדיניות ואין מכסת סשנים. היא לא מזיזה, לא יוצרת ולא שולחת כלום.", "'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
-    surfaces: S(["/", "/dashboard", "/dashboard-legacy", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo"]),
+    surfaces: S(["/", "/dashboard", "/dashboard-legacy", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo", "agent"]),
   },
   {
     id: "PLATFORM_ACCESS", group: "OPERATIONS", titleHe: "משתמשים, הרשאות ותחזוקה",
@@ -907,7 +906,6 @@ export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("DROPBOX_WRITE", "FILES_DROPBOX", "Upload / move / delete files, create share links", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "DROPBOX", "NOT_EXECUTABLE_YET", "Not executable today (Dropbox integration mission pending). Future primitives: external, possibly destructive, public links — external-effect + destructive confirmation."),
   A("SEND_PUSH", "PUSH_NOTIFICATIONS", "Send a push / notification", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "PUSH", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: external communication — preview of recipients and exact text; explicit Owner approval of each send."),
   A("SEND_REPORT", "REPORTS", "Send an email report", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "EMAIL", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: sends an email report — external-effect confirmation."),
-  A("AGENT_ALERTS_WRITE", "AGENT_ALERTS", "Create / close alerts", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "NONE", "NOT_EXECUTABLE_YET", "Not executable today (the alert system is off by Owner decision). Future primitive: Owner approval."),
   A("SETTINGS_AUTH_PEOPLE", "PLATFORM_ACCESS", "Roles, users, maintenance, integrations", "SECURITY_RESTRICTED", "NONE", "MULTIPLE", "NOT_EXECUTABLE_YET", "Security boundary: roles, users, credentials and integration secrets stay with the Owner (SECURITY_RESTRICTED). Non-secret settings are readable knowledge."),
   A("TEACH_KNOWLEDGE", "SUNNY_CORE", "Learn typed Owner knowledge", "LEARN_ONLY", "NONE", "NONE", "OWNER_CONFIRMATION_IN_CONVERSATION", "P2: preview → confirm → commit (not active yet)."),
   A("ANSWER_QUESTION", "SUNNY_CORE", "Answer a surfaced Sunny question", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_CONFIRMATION_IN_CONVERSATION", "P1 live: a closed answer code only."),
@@ -1101,4 +1099,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.05-90", date: "2026-10-05", domain: "SUNNY_CORE", dimension: "learn", from: "PARTIAL", to: "PARTIAL", noteHe: "זיכרון החלטות + חוזה אמת (מקרה 'מה באלי', אושר 2026-10-05): ידע (partner_propose_knowledge) ותשובה לשאלה לא משנים שום רשומה — התוצאה נושאת canonicalEffect NONE, מה ימשיך להופיע (stillSurfaced) והפעולה הקנונית שתסנכרן (canonicalPath); סאני לא אומרת 'הוצאתי מהמעקב / לא אשאל שוב' בלי פעולה מאומתת. BUSINESS_DECISION מקבל about = מפתח הרשומה (בלי שינוי subjectTypes); שם בטקסט לא מקשר כלום. סגירת עדכון לסאני כ-LEARNED_KNOWLEDGE רק עם ידע על הרשומות שהעדכון מקושר אליהן. קוראי P2 עוברים דרך activeKnowledge (ידע שבוטל / הוחלף לא קובע)." },
   { version: "2026.10.05-90", date: "2026-10-05", domain: "FINANCE", dimension: "learn", from: "PARTIAL", to: "PARTIAL", noteHe: "שער החלטות לשאלות כספים: תשובה שכבר נתת או ידע פעיל שמקושר לאותה רשומה הופכים שאלה חוזרת לסנכרון (KNOWN_DECISION_RECONCILE: 'כבר אמרת לי … — המערכת עדיין לא משקפת. לסנכרן?') עם הפעולה הקנונית — אף פעם לא שאלה מחדש, לא שתיקה ולא כסף; אין סנכרון אוטומטי. תשובות אמת חדשות: WRITTEN_OFF (היה מחיר, לא נגבה, ויתרת), BALANCE_WAIVED (העבודה בוצעה, ויתרת על היתרה); שאלת המחיר המוסכם ניתנת למענה (FINANCE_PROJECT_PRICE). טביעת אצבע v2 (עובדות בלבד) — עריכה / שינוי שם / ניסוח / אפשרות חדשה לא פותחים מחדש שאלה שנענתה; תשובות v1 עדיין תקפות." },
   { version: "2026.10.05-90", date: "2026-10-05", domain: "SUNNY_CORE", dimension: "execute", from: "FULL", to: "FULL", noteHe: "ניסוח הצלחה לפי מה שהאימות באמת מוכיח (verifyKind): FRESH_READ = 'בוצע — בדקתי מחדש'; PARTIAL = הרשומה הראשית נבדקה, השפעות נוספות לא; RECEIPT (Push / מייל / סנכרון / קבצים) = אישור של המערכת שביצעה, לא בדיקה מחדש. freshState של פעולת קבלה לא מוצג כרשומה; פעולת קבלה שנקטעה = OUTCOME_UNKNOWN (ייתכן שקרתה), לא 'לא בוצע'. בלי שינוי בהתנהגות הפעולות עצמן." },
+  { version: "2026.10.05-91", date: "2026-10-05", domain: "AGENT_ALERTS", dimension: "domain", from: "LEGACY_ALERT_ENGINE_PRESENT", to: "AGENT_ALERTS_REMOVED", noteHe: "Agent Alerts הוסרו (החלטת בעלים): המנוע, 13 הכללים, בדיקת החגים ו'השבוע הבא לא סגור', ה-Push שלהם, הראוטים /api/agent/alerts · check · snapshot, הבאדג' / הפאנלים / הכרטיס, המקור המשני ב-COO הישן, הקריאה של סאני (גם היסטוריה), ה-target והפעולה MARK_AGENT_ALERT_HANDLED. מחיקת פרויקט כבר לא תלויה בטבלה. agent_alerts נשארה רדומה ב-schema (בלי קורא ובלי כותב). היעדים העסקיים (goals) נשארו ועברו לדומיין COMPANY_OVERVIEW. בלי DB / DROP / ניקוי." },
 ];

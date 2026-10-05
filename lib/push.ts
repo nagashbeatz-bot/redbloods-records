@@ -168,7 +168,7 @@ export async function sendPushToRoles(roles: string[], payload: PushPayload) {
 
 /**
  * Owner devices only. Legacy name kept so existing callers (Steven activity,
- * Victor uploads, agent alerts, cron, push/check) stay owner-scoped without
+ * Victor uploads, cron, push/check) stay owner-scoped without
  * edits — a Steven ("steven") device NEVER receives these internal notices.
  * For explicit multi-audience sends use sendPushToRoles.
  */

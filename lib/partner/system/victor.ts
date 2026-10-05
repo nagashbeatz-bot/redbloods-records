@@ -56,8 +56,8 @@ export const VICTOR_SETTINGS: ReadonlyArray<{ key: string; classification: Field
   { key: "victor_visit_last", classification: "LEGACY", meaning: "pre-2026-09-27 presence-push cooldown {at} — no longer written and NOT a last-seen; Victor's presence is the shared portal presence model (portal last-seen + one visit push per real visit)", sunnyReads: "victor_view presence (legacy)" },
   { key: "victor_work_completed_pushed_<workId>", classification: "CANONICAL", meaning: "completion push DELIVERY CLAIM, versioned by the pre-transition row stamp: processing → sent only after Victor's push was delivered, else failed (2026-09-27); an older {fromUpdatedAt} marker is unverified", sunnyReads: "victor_view notifications" },
   { key: "victor_upload_pending_<workId>", classification: "CANONICAL", meaning: "upload push batching (1-minute window) — claimed before the send, removed only after delivery, a failure stays as a failed row; a new upload never joins a batch being sent", sunnyReads: "system_settings" },
-  { key: "push_cooldown_victor_stuck", classification: "LEGACY", meaning: "stuck-work push cooldown — the stuck PUSH is disabled by the Owner (Q3, 2026-09-27); the signal is still computed", sunnyReads: "system_settings" },
-  { key: "push_cooldown_victor_below_pace", classification: "CANONICAL", meaning: "agent below-pace push cooldown", sunnyReads: "system_settings" },
+  { key: "push_cooldown_victor_stuck", classification: "LEGACY", meaning: "DORMANT — the old agent's stuck-work push cooldown (Agent Alerts retired 2026-10-05 (Owner decision); the stuck PUSH was already disabled by the Owner, Q3 2026-09-27); the signal is still computed by victor_view", sunnyReads: "system_settings" },
+  { key: "push_cooldown_victor_below_pace", classification: "LEGACY", meaning: "DORMANT — the old agent's below-pace push cooldown (Agent Alerts retired 2026-10-05 (Owner decision))", sunnyReads: "system_settings" },
   { key: "victor_avatar", classification: "DISPLAY_ONLY", meaning: "avatar image choice (image at a fixed storage path)", sunnyReads: "not read (display only)" },
 ];
 
@@ -131,7 +131,6 @@ export const VICTOR_PUSHES = [
   { id: "WORK_COMPLETED", trigger: "status → הושלם (real transition)", recipients: "Victor, then Owner", guard: "production", deepLink: "?workId" },
   { id: "PRESENCE", trigger: "Victor opens his page, or returns after a 30-minute absence (ping + 5-minute heartbeat) — one push per real visit, atomic claim, sent only after delivery (Owner decision Q1)", recipients: "Owner", guard: "production", deepLink: "his portal" },
   { id: "STUCK_CRON", trigger: "DISABLED by the Owner (Q3, 2026-09-27): the push cron computes stuck works with the one rule + the ball holder and returns them, but never pushes", recipients: "none (was: Owner)", guard: "production", deepLink: "team" },
-  { id: "STUCK_AGENT", trigger: "agent check (switched off by the agent-alert rules switch)", recipients: "Owner (12-hour cooldown)", guard: "production", deepLink: "team" },
 ] as const;
 
 export interface VictorActionEntry { id: string; action: string; who: Who | "VICTOR_OR_OWNER"; enforcement: Enforcement; entryPoint: string; writes: string; files: string | null; project: string | null; finance: string | null; calendar: string | null; push: string | null; destructive: boolean; reversible: "YES" | "PARTIAL" | "NO"; approvalClass: ApprovalClass; sunnyToday: "SEE_ACTION_COVERAGE" | "EXECUTE_AFTER_DASHBOARD_APPROVAL"; futurePrimitive: string; internal: { routes: readonly string[] } }

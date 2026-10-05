@@ -19,7 +19,6 @@ import { calcPeriodTotals } from "../lib/finance/stats";
 import { isProjectIncome } from "../lib/clip-finance";
 import { buildProjectFinanceSummary, projectMoneyBadge, projectCollectible, collectionTotalsByCurrency, projectIncomeTotals } from "../lib/finance/project-summary";
 import { showExpectedIncome, mergeCurrencyTotals } from "../lib/finance/expected-income";
-import { checkOverduePayments, checkBalanceMissingDueDate } from "../lib/agent/rules";
 import { RECEIVED_STATUSES as SHOW_RECEIVED_STATUSES, showMoneyOf, SHOW_MONEY_ROLES } from "../lib/shows-types";
 import { mergeSettingsKey, SettingsMergeConflictError, type SettingsMergeClient, type SettingsValue } from "../lib/writes/settings-merge";
 
@@ -45,7 +44,7 @@ async function main() {
       [true, false, true, false, false, false]);
     ok("shows-types reuse the classify sets (no second literal)", SHOW_RECEIVED_STATUSES === RECEIVED_STATUSES);
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    const dupFree = ["lib/clip-finance.ts", "lib/shows-types.ts", "lib/partner/changes/compare.ts", "lib/health.ts", "lib/agent/rules.ts", "lib/agent/goals.ts", "lib/finance/stats.ts",
+    const dupFree = ["lib/clip-finance.ts", "lib/shows-types.ts", "lib/partner/changes/compare.ts", "lib/health.ts", "lib/agent/goals.ts", "lib/finance/stats.ts",
       "components/clients/ClientDrawer.tsx", "components/dashboard/DashboardDesignPreview.tsx", "components/projects/ProjectsDesignPreview.tsx", "components/projects/ProjectsTable.tsx",
       "components/insights/InsightsPage.tsx", "components/ui/ProjectDrawerV2.tsx", "components/album/AlbumOverviewTab.tsx"]
       .filter((f) => /\[\s*"(שולם|התקבל)"\s*,\s*"(שולם|התקבל)"\s*\]/.test(strip(rd(f))));
@@ -152,21 +151,7 @@ async function main() {
     check("sumByCurrency never mixes", sumByCurrency([{ currency: "₪", a: 1 }, { currency: "$", a: 2 }, { currency: null, a: 3 }], (x) => x.a), { "₪": 4, "$": 2 });
   }
 
-  console.log("7. Agent rules (disabled — read parity): per currency, real currency in the text, unknown price never 'paid'");
-  {
-    const fm = new Map([["p1", { agreedPrice: 1000, currency: "$" }], ["p2", { agreedPrice: 0 }], ["p3", { agreedPrice: 500, financeException: true }]]);
-    const overdue = checkOverduePayments([
-      { id: "t1", projectId: "p1", projectName: "A", amount: 300, currency: "$", date: "2026-01-01", type: "income", paymentStatus: "צפוי" },
-      { id: "t2", projectId: "p2", projectName: "B", amount: 200, currency: "₪", date: "2026-01-01", type: "income", paymentStatus: "צפוי" },
-      { id: "t3", projectId: "p1", projectName: "A", amount: 5000, currency: "₪", date: "2026-01-01", type: "income", paymentStatus: "התקבל" }, // ₪ income never pays a $ price
-      { id: "t4", projectId: "p3", projectName: "C", amount: 100, currency: "₪", date: "2026-01-01", type: "income", paymentStatus: "צפוי" },  // exception
-      { id: "t5", projectId: "p1", projectName: "A", amount: 70, currency: "₪", date: "2026-01-01", type: "expense", paymentStatus: "צפוי" },  // expense is never overdue income
-    ], fm);
-    check("overdue: 2 rows, totals per currency, text shows both", [overdue.length, (overdue[0]?.metadata as { totalsByCurrency?: unknown })?.totalsByCurrency, /300\$/.test(overdue[0]?.message ?? "") && /200₪/.test(overdue[0]?.message ?? "")], [1, { "$": 300, "₪": 200 }, true]);
-    const bal = checkBalanceMissingDueDate([{ id: "p1", name: "A", artist: "", status: "בעבודה" }], [{ projectId: "p1", amount: 400, type: "income", paymentStatus: "התקבל", date: null, currency: "$" }], fm);
-    check("balance alert in the project currency", [bal.length, (bal[0]?.metadata as { balance?: number })?.balance, /600\$/.test(bal[0]?.message ?? "")], [1, 600, true]);
-  }
-
+  console.log("7. Agent rules — retired with Agent Alerts (2026-10-05); nothing to compare");
   console.log("8. Shows: showMoneyOf still uses the one received rule");
   {
     const m = showMoneyOf({ show_price: 1000, currency: "$" }, [

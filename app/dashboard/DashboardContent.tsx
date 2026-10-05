@@ -7,7 +7,6 @@ import ProjectSection from "@/components/dashboard/ProjectSection";
 import DailyHeader from "@/components/dashboard/DailyHeader";
 import HealthAlert from "@/components/ui/HealthAlert";
 import CalendarWidget from "@/components/dashboard/CalendarWidget";
-import AgentSummaryCard from "@/components/dashboard/AgentSummaryCard";
 import { SkeletonSection } from "@/components/ui/Skeleton";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -150,10 +149,9 @@ export default function DashboardContent() {
         <StatsGrid projects={projects} />
       </div>
 
-      {/* Middle cards: Calendar (2fr) + AgentSummaryCard (1fr) — desktop side by side */}
-      <div className="mt-3 md:mt-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 md:gap-6">
+      {/* Middle card: Calendar (the Agent Alerts summary card was retired 2026-10-05) */}
+      <div className="mt-3 md:mt-6 grid grid-cols-1 gap-4 md:gap-6">
         <CalendarWidget />
-        <AgentSummaryCard />
       </div>
 
       {/* Project sections — full width, stacked */}

@@ -74,7 +74,6 @@ export const HARDENED: Readonly<Record<string, string>> = {
   "PROJECT.DELIVERY": "the status write changes ONLY deliveryStatus + deliveredAt (validated) merged into the record — the whole-body merge that could overwrite the folder / link is gone; create checks its settings write (lib/writes/delivery; the route uses it)",
   "PROJECT.SOCIAL": "campaign / content POST + PATCH accept only the fields the screens edit, validated against the app's vocabularies (lib/writes/social; the routes use it) — the whole-body writes are gone; a content delete reports storage failures instead of hiding them",
   "AGENT.UPDATE_GOALS": "only the four known goals with a validated shape are written, all checked before any write; a failed write is an error (lib/writes/system; the route uses it) — the route used to turn any body key into a goal_<key> settings row",
-  "AGENT.MARK_ALERT_HANDLED": "a failed alert-status write is an error (it used to be ignored); the kill-switch rule is reused unchanged",
   "SYSTEM.MAINTENANCE": "a failed maintenance write is an error (it used to be silently ignored)",
   "NOTIFY.MARK_READ": "a recipient-bound writer for the Owner's own rows (OWNER_EMAILS user ids, never the recipient_role echo)",
   "PROJECT.DELETE_PROJECT_FILE": "the delete route refuses a path that is not the project's own (listed file, inside the project folder, or a folder of listed files) and traversal (lib/writes/files deleteProjectFileByPath; the route uses it) — it used to delete any path",
@@ -198,10 +197,7 @@ const NEEDS_HARDENING_HE: Readonly<Record<string, string>> = {
 // ── supplementary contracts: every write route no domain inventory owns ─────────────────────────────────────────────
 type Supp = { id: string; domain: string; en: string; routes: readonly string[]; detail: AvailabilityDetail; reason: string; effects?: readonly EffectKey[]; approvalClass?: string; reversible?: "YES" | "PARTIAL" | "NO"; security?: boolean };
 const SUPPLEMENTARY: readonly Supp[] = [
-  // agent alerts / goals (context only; the Boss's own tools)
-  { id: "AGENT.MARK_ALERT_HANDLED", domain: "AGENT", en: "Mark an agent alert handled / dismissed", routes: ["app/api/agent/alerts/[id]/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "Wave 1 candidate MARK_AGENT_ALERT_HANDLED", reversible: "YES" },
-  { id: "AGENT.CREATE_ALERT", domain: "AGENT", en: "Create an agent alert (rule engine; rules are off)", routes: ["app/api/agent/alerts/route.ts"], detail: "SYSTEM_AUTOMATIC", reason: "written by the alert engine, never by a person (rules are disabled)" },
-  { id: "AGENT.RUN_CHECK", domain: "AGENT", en: "Run the agent check (GET that writes alerts / settings)", routes: ["app/api/agent/check/route.ts"], detail: "SYSTEM_AUTOMATIC", reason: "background check; context only" },
+  // business goals (the Boss's KPIs; Agent Alerts retired 2026-10-05 — its routes, check and action are gone)
   { id: "AGENT.UPDATE_GOALS", domain: "AGENT", en: "Edit the Boss's agent goals", routes: ["app/api/agent/goals/route.ts"], detail: "NEEDS_PRIMITIVE", reason: "needs a typed primitive (Owner goals are settings)", effects: ["SETTINGS"] },
   // calendar / Google Tasks
   { id: "CALENDAR.CONNECT", domain: "CALENDAR", en: "Connect Google Calendar (OAuth callback stores the token)", routes: ["app/api/calendar/callback/route.ts"], detail: "SECURITY_EXCLUDED", reason: "credentials — never Sunny", security: true },
@@ -306,7 +302,6 @@ export const WAVE1_CANDIDATES: readonly W1[] = [
   { id: "UPDATE_SOCIAL_CONTENT", domain: "SOCIAL", he: "עדכון תוכן סושיאל", en: "Update one social content item", covers: ["PROJECT.SOCIAL"], args: [], fields: [], status: "NEEDS_HARDENING", reason: "social writes are whole-body — never a Sunny primitive until a field-level writer exists", writer: null },
   { id: "UPDATE_CLIENT_CONTACT", domain: "CLIENT", he: "עדכון פרטי קשר של לקוח", en: "Update client contact fields", covers: ["CLIENT.UPDATE_CLIENT"], args: [], fields: [], status: "NEEDS_HARDENING", reason: "the client PATCH is a full replacement (omitted fields are blanked) — needs a field-level writer first", writer: null },
   { id: "UPDATE_MEETING", domain: "CLIENT", he: "עדכון פגישה", en: "Update a meeting", covers: ["PROJECT.EDIT_MEETING", "CLIENT.MEETING_HELD_OR_CANCELLED"], args: [], fields: [], status: "NEEDS_HARDENING", reason: "meeting edits never sync the calendar event — would create silent calendar divergence", writer: null },
-  { id: "MARK_AGENT_ALERT_HANDLED", domain: "AGENT", he: "סימון התראת סוכן כטופלה", en: "Mark an agent alert handled", covers: ["AGENT.MARK_ALERT_HANDLED"], args: [], fields: [], status: "BLOCKED", reason: "alert rules are off (only one exempt alert type is actionable) and Sunny cannot address alert ids — nothing safe to expose yet", writer: null },
   { id: "MARK_NOTIFICATIONS_READ", domain: "NOTIFY", he: "סימון התראה כנקראה", en: "Mark one notification read", covers: ["NOTIFY.MARK_READ"], args: [], fields: [], status: "NEEDS_HARDENING", reason: "the only writer is a session-scoped route (the bell); a recipient-bound shared writer is needed. Mark-all is BULK and never a Sunny primitive", writer: null },
 ];
 function fromW1(w: W1): ActionContract {

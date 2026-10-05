@@ -48,7 +48,7 @@ Also:
 - Add a `CAPABILITY_CHANGES` entry and bump `SYSTEM_BASELINE_VERSION` when Sunny's support changes.
 - A new page or API group that no domain owns fails the repository-wide awareness test. Either assign it to a domain, or add a `SURFACE_EXCLUSIONS` entry with an explicit `SUNNY IMPACT: NONE` reason.
 - Visual-only changes state `SUNNY IMPACT: NONE` in the commit message.
-- Sunny never inspects source code at runtime and never edits code. Push, Calendar writes, Agent Alerts and settings are reachable ONLY through typed, Owner-approved primitives (never a generic sender or settings writer; a push only when the app's own writer sends it). Auth, users, roles, passwords, tokens and device registration are never exposed to Sunny.
+- Sunny never inspects source code at runtime and never edits code. Push, Calendar writes and settings are reachable ONLY through typed, Owner-approved primitives (never a generic sender or settings writer; a push only when the app's own writer sends it). Auth, users, roles, passwords, tokens and device registration are never exposed to Sunny.
 
 ## Sunny Awareness Check: users, roles, portals, access and Push
 
@@ -215,7 +215,7 @@ It is read through `company_view` (`lib/partner/company/view.ts`), which compose
 - **A new knowledge gap** must resolve to a root cause through `gapRootOf`.
 - Attention ≠ problem. Label spend is INVESTMENT. Cashflow vs label is a tension for the Owner to decide.
 - The presentation order is fixed and is never a priority.
-- Agent alerts are context only; they are never action truth.
+- Agent Alerts are retired (2026-10-05): the company view reads no alert, ever.
 - Decisions are Owner-only. A known decision is re-evaluated against live state, never answered by Sunny.
 - "What changed" shows only recorded timestamps.
 - The morning brief is produced on request only: no Push, no Cron.
@@ -311,7 +311,7 @@ Owner knowledge (P2, `lib/partner/owner-knowledge`) is a typed model, not a grow
 
 The older in-app AI assistant was removed on 2026-09-25 by Owner decision. Sunny, through Claude, is the only AI / organizational partner.
 - Never re-add an in-app chat, prompt, context builder, model router or model SDK.
-- `lib/feature-flags.ts` `AGENT_ALERT_RULES_ENABLED` (off) gates only the rule-based agent-alert pipeline, never AI.
+- No switch remains: `lib/feature-flags.ts` was removed with Agent Alerts (2026-10-05).
 - The reports keep their deterministic recommendations.
 - Its storage was removed too (2026-09-25, Owner-approved SQL): the empty memory table and the six `ai_budget_*` / `ai_log_*` settings keys.
 - `scripts/test-mai-removed.tsx` must pass.
@@ -395,3 +395,12 @@ Every Redbloods write is a typed contract in ONE registry, `lib/partner/act/regi
 - **Bulk:** a bulk primitive fingerprints the exact set it will change (any change before execution is STALE); the preview states it is a bulk update ("עדכון גורף") and the exact set.
 - **Execution truth (2026-09-27):** a plan executes at most once (a replay returns the record; a new approval of an executed plan is `ALREADY_EXECUTED`, a running one `IN_PROGRESS`). A plan is EXECUTED only when every step applied / needed no change — otherwise `PARTIALLY_APPLIED` / `STALE` / `FAILED` / `IN_PROGRESS` / `OUTCOME_UNKNOWN`, with each step's own outcome. A step claimed by a crashed run is reconciled read-only after 5 minutes by its own verify. A money create that looks like an existing record needs the server-issued `duplicateAck` with the Boss's explicit "separate record" answer.
 - **One registry truth:** a census row whose whole outcome live primitives carry out (`COVERAGE_MAP` full) is EXECUTABLE in the registry itself; planning its id answers `USE_PRIMITIVES` with the primitives to plan.
+
+## Retired: Agent Alerts
+
+The rule-based Agent Alerts subsystem was removed on 2026-10-05 by Owner decision (week_understaffed and upcoming_holiday included, no replacement).
+- Gone: the alert routes (`/api/agent/alerts`, `/api/agent/alerts/[id]`, `/api/agent/check`, `/api/agent/snapshot`) and their PUBLIC_BYPASS entries, the engine / rules / notifications / holiday check / snapshot, the week-strength cron, `AGENT_ALERT_RULES_ENABLED`, every alert badge / panel / card, the COO alert source (EXTERNAL_ALERT), every Sunny / Partner read of alerts (history included), the agent-alert target, MARK_AGENT_ALERT_HANDLED and the alert-status writer. P_AGENT_ALERTS is no push contract any more. Never re-add an alert engine, an alert read for Sunny or an alert push.
+- **Dormant, not dropped:** the `agent_alerts` table (its historical rows) and the `push_cooldown_*` settings keys stay in the database untouched. They are declared DORMANT in the contracts (schema coverage only); no product code reads or writes them. Project delete no longer touches them (the rows go with the project by FK CASCADE). A DROP / DELETE / cleanup is a separate, Owner-approved SQL with a backup.
+- **Goals stay:** `lib/agent/goals.ts`, `/api/agent/goals`, SET_BUSINESS_GOAL and the weekly report's goals are the Owner's KPIs, owned by the COMPANY_OVERVIEW domain (never an alert, never a pay rule).
+- The shared Push infrastructure, Resend and the reports are unchanged.
+- `scripts/test-agent-alerts-removed.tsx` must pass.

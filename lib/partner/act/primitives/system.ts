@@ -1,7 +1,6 @@
 /**
  * SUNNY UNIVERSAL ACTION LAYER — the Owner's company-level operations: his notification bell, business goals (KPIs,
- * never a pay rule), agent-alert handling (context only; the kill-switch rule is reused), the report schedule and a
- * report sent now, the Dropbox disconnect and the maintenance lock. Writes go through lib/writes/system. No credential
+ * never a pay rule), the report schedule and a report sent now, the Dropbox disconnect and the maintenance lock. Writes go through lib/writes/system. No credential
  * ever reaches a plan; reconnecting an integration stays the Boss's own consent flow.
  */
 import type { ArgSpec } from "../types";
@@ -15,9 +14,6 @@ export interface SystemFamilyWriters {
   markAllOwnerNotificationsRead(): Promise<number>;
   readBusinessGoals(): Promise<Record<string, { target: number; currency?: string }>>;
   setBusinessGoal(name: string, value: { target: number; currency?: string }): Promise<void>;
-  readAlert(id: string): Promise<{ type: string; status: string; title: string } | null>;
-  alertActionable(type: string): Promise<boolean>;
-  setAlertStatus(id: string, status: string): Promise<void>;
   readReportSchedule(): Promise<{ morningTime: string | null; eveningTime: string | null }>;
   setReportSchedule(morningTime: string, eveningTime: string): Promise<void>;
   reportEmailConfigured(): Promise<boolean>;
@@ -27,9 +23,8 @@ export interface SystemFamilyWriters {
   readMaintenance(): Promise<boolean>;
   setMaintenance(enabled: boolean): Promise<void>;
 }
-/** Pinned to lib/writes/system + lib/agent/goals + the alert route by the family test. */
+/** Pinned to lib/writes/system + lib/agent/goals by the family test. */
 export const GOAL_NAME_VALUES: readonly string[] = ["monthlyRevenue", "weeklySessions", "monthlyVictor", "monthlyCompletions"];
-export const ALERT_STATUS_VALUES: readonly string[] = ["new", "handled", "dismissed", "ignored"];
 const REPORT_KINDS = ["morning", "evening", "weekly"] as const;
 const REPORT_HE: Record<string, string> = { morning: "דוח בוקר", evening: "דוח ערב", weekly: "דוח שבועי" };
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -44,11 +39,6 @@ async function onNotification(d: WriterDeps, a: Readonly<Record<string, unknown>
   const k = parseKey(a.notification, ["notification"]); if (!k) return refuse("BAD_ENTITY", `צריך התראה (notification:…)${await choices()}`);
   const n = await d.readOwnerNotification(k.id); if (!n) return refuse("ENTITY_NOT_FOUND", `לא מצאתי התראה שלך במזהה הזה${await choices()}`);
   return { key: `notification:${k.id}`, id: k.id, label: n.title ?? "התראה", fields: { read: !!n.readAt } };
-}
-async function onAlert(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
-  const k = parseKey(a.alert, ["agent-alert"]); if (!k) return refuse("BAD_ENTITY", "צריך התראת סוכן (agent-alert:…)");
-  const r = await d.readAlert(k.id); if (!r) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את ההתראה");
-  return { key: `agent-alert:${k.id}`, id: k.id, label: r.title || r.type, fields: { type: r.type, status: r.status, actionable: await d.alertActionable(r.type) } };
 }
 
 export const SYSTEM_PRIMITIVES: readonly PrimitiveSpec[] = [
@@ -84,14 +74,6 @@ export const SYSTEM_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     apply: (d, id, after) => d.setBusinessGoal(id.replace(/^goal-/, ""), { target: Number(after.target), ...(after.currency ? { currency: String(after.currency) } : {}) }),
     disclosuresHe: ["יעד = מדד, לא כלל תשלום ולא ציון", "הכנסות: $ ו-₪ לא מחוברים"],
-  },
-  {
-    actionId: "MARK_AGENT_ALERT_HANDLED", kinds: ["agent-alert"],
-    meta: meta("AGENT", "סימון התראת סוכן (טופלה / נדחתה / התעלם / חדשה)", "Set an agent alert's status — while alert rules are off only the exempt week-strength alert can be acted on (the route's rule, reused)", [K("alert"), { name: "status", kind: "enum", required: true, values: ALERT_STATUS_VALUES }], ["status"], "setAlertStatus (lib/writes/system)", {}),
-    resolve: onAlert, read: async (d, id) => { const r = await d.readAlert(id); return r ? { type: r.type, status: r.status, actionable: await d.alertActionable(r.type) } : null; },
-    plan: (a, cur) => (cur.actionable ? finishPlan(cur, { status: String(a.status) }) : refuse("FROZEN", "כללי התראות הסוכן כבויים — רק התראת 'שבוע חלש' ניתנת לסימון (הכלל של האפליקציה)")),
-    async apply(d, id, after) { const r = await d.readAlert(id); if (!r || !(await d.alertActionable(r.type))) throw new Error("alert frozen by the kill-switch"); await d.setAlertStatus(id, String(after.status)); },
-    disclosuresHe: ["התראות הסוכן הן הקשר בלבד — הסימון לא משנה שום רשומה עסקית", "כל עוד כללי ההתראות כבויים — רק התראת 'שבוע חלש' ניתנת לסימון"],
   },
   {
     actionId: "SET_REPORT_SCHEDULE", kinds: ["system"],

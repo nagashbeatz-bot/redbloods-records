@@ -16,7 +16,7 @@
  *
  * All calendar-day arithmetic is DST-safe: `ymdInTZ` reads wall-clock date via
  * Intl with an explicit timeZone (never a fixed UTC offset — see the bug found
- * in app/api/agent/check/route.ts's `(now.getUTCHours()+3)%24`, which this
+ * in the retired app/api/agent/check/route.ts's `(now.getUTCHours()+3)%24`, which this
  * deliberately does NOT copy), and `addDaysYMD` does pure UTC-anchored
  * calendar-day math on the resulting YYYY-MM-DD string (same pattern as
  * lib/shalev-weekly-pure.ts / lib/red-artists/week.ts).

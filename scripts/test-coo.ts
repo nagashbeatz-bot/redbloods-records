@@ -134,11 +134,6 @@ function buildRaw(): CooRawInput {
     ],
     orphanFinanceKeyCount: 9,
     releases: { labelProjectsTotal: 5, rows: [{ projectId: "p-d", name: "פרויקט ד (ריליס)", projectStatus: "בעבודה", stage: "הפקה", targetDate: day(10), nextAction: "", blocker: "מחכה לאישור עטיפה", responsible: "", stageEnteredAt: "2026-09-10T10:00:00Z" }] },
-    alerts: [
-      { id: "al1", type: "week_understaffed", severity: "info", title: "השבוע הבא עדיין לא סגור", message: "…", createdAt: "2026-09-20T08:00:00Z", relatedProjectId: null },
-      { id: "al2", type: "overdue_deadline", severity: "important", title: "דדליין עבר (ישן)", message: "…", createdAt: "2026-06-10T08:00:00Z", relatedProjectId: "p-b" },
-      { id: "al3", type: "upcoming_holiday", severity: "info", title: "חג (ישן)", message: "…", createdAt: "2026-08-20T08:00:00Z", relatedProjectId: null },
-    ],
   });
 }
 
@@ -214,11 +209,8 @@ ok("there is NO company-wide profit / net line", !brief.money.some((m) => /רו�
 ok("expected-but-overdue income keeps its currency", brief.money.some((m) => m.id === "expected_overdue" && richText(m.text).includes("₪2,000")));
 ok("receivables line states the coverage", richText(brief.money.find((m) => m.id === "receivables")!.text).includes("מתוך 4 פרויקטים עם מחיר מוסכם"));
 
-console.log("agent_alerts: secondary source only");
-check("only allowlisted + recent alert types are shown", state.alerts!.shown.map((a) => a.type), ["week_understaffed"]);
-check("the others are counted, not shown", state.alerts!.ignoredCount, 2);
-ok("no old-type alert becomes a signal", !signals.some((s) => s.type === "EXTERNAL_ALERT" && s.evidence.some((e) => e.value === "overdue_deadline")));
-ok("external alerts are notices, never cards", signals.filter((s) => s.type === "EXTERNAL_ALERT").every((s) => s.role === "notice"));
+console.log("Agent Alerts retired (2026-10-05): the COO has no alert source / EXTERNAL_ALERT signal");
+ok("no alert facts and no EXTERNAL_ALERT signal", !("alerts" in state) && !signals.some((s) => (s.type as string) === "EXTERNAL_ALERT"));
 
 console.log("evidence integrity + untrusted text");
 const allEv = [...signals.flatMap((s) => s.evidence), ...cases.flatMap((c) => c.contextFacts.flatMap((f) => f.evidence))];
@@ -409,7 +401,7 @@ ok("stale internal deadlines count in the headline together with stale projects"
 })());
 console.log("headline when P0 = 0");
 {
-  const base = (): CooRawInput => ({ sources: [], projects: [], tasks: null, steven: null, victor: null, proposals: null, shows: null, sessions: null, transactions: null, financeSettings: null, orphanFinanceKeyCount: null, releases: null, alerts: null });
+  const base = (): CooRawInput => ({ sources: [], projects: [], tasks: null, steven: null, victor: null, proposals: null, shows: null, sessions: null, transactions: null, financeSettings: null, orphanFinanceKeyCount: null, releases: null });
   const old = (id: string) => ({ id, name: id, artist: "א", status: "בעבודה", deadline: day(-90), projectType: "שיר", businessType: "לקוח", updatedAt: "2026-05-01T10:00:00Z", isHidden: false });
   const a = base(); a.projects = [old("x1"), old("x2")];
   const ha = richText(computeCoo(a, NOW).brief.headline);

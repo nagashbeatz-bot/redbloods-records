@@ -78,8 +78,7 @@ export type SignalType =
   | "PROPOSAL_FOLLOWUP_DUE"
   | "PROJECT_PAYMENT_BALANCE" | "BALANCE_NO_DUE_DATE" | "EXPECTED_INCOME_OVERDUE"
   | "SHOW_UNPAID_UPCOMING" | "SHOW_DONE_UNPAID" | "NO_UPCOMING_SHOWS"
-  | "RELEASE_TARGET_APPROACHING"
-  | "EXTERNAL_ALERT";
+  | "RELEASE_TARGET_APPROACHING";
 
 export interface Signal {
   id: string;
@@ -370,17 +369,6 @@ export interface ReleasesFact {
   rows: ReleaseFact[];          // active (not יצא / בהשהייה) rows only
 }
 
-export interface AlertFact {
-  id: string;
-  type: string;
-  severity: string;
-  title: string;
-  message: string;
-  createdAt: string;
-  ageDays: number;
-  relatedProjectId: string | null;
-}
-export interface AlertsFact { shown: AlertFact[]; ignoredCount: number }
 
 export interface DataQualityItem {
   id: string;
@@ -410,7 +398,6 @@ export interface CompanyState {
   finance: FinanceFact | null;
   receivables: ReceivablesFact | null;
   releases: ReleasesFact | null;
-  alerts: AlertsFact | null;
   dataQuality: DataQualityItem[];
 }
 
@@ -516,9 +503,6 @@ export interface RawRelease {
   /** Additive (Partner Phase B.2) — already fetched by listLabelReleases(), just not read by Phase 1a signals/cases. */
   labelArtistId?: string | null;
 }
-export interface RawAlert {
-  id: string; type: string; severity: string; title: string; message: string; createdAt: string; relatedProjectId: string | null;
-}
 
 export interface CooRawInput {
   sources: SourceStatus[];
@@ -533,5 +517,4 @@ export interface CooRawInput {
   financeSettings: RawFinanceSetting[] | null;
   orphanFinanceKeyCount: number | null;
   releases: { rows: RawRelease[]; labelProjectsTotal: number } | null;
-  alerts: RawAlert[] | null;
 }

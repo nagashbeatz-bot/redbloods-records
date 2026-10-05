@@ -199,13 +199,13 @@ export const FILES_MODEL = {
 export const OTHER_CONSUMERS = {
   finance: "Finance / Insights / project views separate clip income (expense scope קליפ) from the song's income; the expense scope list offers קליפ for manual entries.",
   label: "the label page shows clip money A / B / C per currency as information, and the clip cash out ≠ the label share ≠ the artist share funded by the label (agreement: שליו / אבי 50 / 50 of the actual paid cost); the label P&L counts the LABEL share (a cost with no agreement rule in full, shown apart), never the whole cash out as label share. The Red Films actual cost is a Finance dimension; the artist ledger (e.g. the clip expense the Owner recorded) is the accounting dimension — never merged.",
-  weekSummary: "the weekly week-strength summary counts production shoot dates (non-cancelled).",
+  weekSummary: "no weekly week-strength summary exists (the week-strength alert was retired with Agent Alerts, 2026-10-05).",
   agent: "the AI chat context lists a project's clip shoot days; agent rules read clip scope.",
   coo: "COO facts read clip money.",
   artistPortal: "the artist portal shows a 'נקבע צילום קליפ' update for a clip shoot session.",
   tasks: "production tasks are CANONICAL (related type red_film_production + the production id; optional Google Task); 2 in production.",
   pushes: "no Red Films / clip push exists; page loads write nothing video-related.",
-  agentAlerts: "no video alert type exists.",
+  agentAlerts: "Agent Alerts retired 2026-10-05 — no alert of any type is raised (the table is dormant).",
 } as const;
 
 /** Executability is NOT restated here (one fact, one source): it is served only by the action coverage matrix (capability action_registry, mode coverage — lib/partner/act/matrix.ts). */

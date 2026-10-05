@@ -70,25 +70,21 @@ export const BACKGROUND_JOBS: ReadonlyArray<{ id: string; trigger: string; does:
   { id: "SHALEV_WEEKLY_SUMMARY", trigger: "Sunday 10:00–10:15", does: "pushes Shalev his week's sessions", writes: "push + claim marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SHALEV_SESSION_REMINDER", trigger: "every minute (~3h before a session)", does: "pushes Shalev a session reminder", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "AVAILABILITY_REMINDER", trigger: "Thu 12:00 / Thu 18:00 / Fri 09:00", does: "asks the artist for weekly availability", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "WEEK_STRENGTH", trigger: "Friday 10:00–10:15 (+ resolve every tick)", does: "raises / resolves the 'week understaffed' agent alert", writes: "agent alert", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND", "OBSERVATION_SOURCE"] },
   { id: "STEVEN_MIX_REMINDER", trigger: "every 5h after notes", does: "reminds Steven about pending mix notes", writes: "push + state", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "STEVEN_DEADLINE_DIGEST", trigger: "09:00–09:15 New York time", does: "daily deadline digest to Steven", writes: "push + marker", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "OWNER_BELL_RESET", trigger: "Friday 06:00–06:15", does: "deletes the Owner's notification bell rows", writes: "deletes notifications", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "AGENT_CHECK_ROUTE", trigger: "external cron every 3h (cron secret)", does: "holiday alerts always; the rule-based alert pipeline + pushes + report triggers only when the agent-alert rules switch is on (it is off)", writes: "holiday agent alerts", classes: ["BACKGROUND", "DISABLED", "LEGACY"] },
   { id: "PUSH_CRON_ROUTE", trigger: "external cron (cron secret)", does: "Owner digest (production only): overdue / due-soon deadlines by the shared overdue rule, today's sessions, overdue expected income per currency, morning / evening summary — each type claimed once per Israel day; Victor stuck computed and returned, never pushed (Owner decision)", writes: "push + per-day claims", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
   { id: "SESSION_CALENDAR_PULL", trigger: "external cron (cron secret)", does: "copies moved Google event date / times into sessions — never a status (reports statusConflicts and calendarErrors apart from missing events)", writes: "sessions (date / time)", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"] },
-  { id: "AGENT_SNAPSHOT_READ", trigger: "external call (cron secret)", does: "returns a read-only business snapshot of the old agent", writes: "nothing", classes: ["BACKGROUND", "LEGACY"] },
   { id: "PUSH_STATUS_READ", trigger: "external call (cron secret)", does: "reports push delivery status", writes: "nothing", classes: ["BACKGROUND"] },
   { id: "PAGE_LOAD_WRITES", trigger: "the Owner opens the app / a page; a portal user opens their own portal", does: "tasks completion sync, push re-subscribe; portal presence (last-seen + at most one visit push per real visit). The session auto-mark is RETIRED (2026-09-27)", writes: "tasks / push subscriptions / portal presence records", classes: ["ACTIVE_OPERATIONAL"] },
 ];
 /** Internal (tests only, never served): which job each scheduler / secret route belongs to. */
 export const JOB_SOURCES_INTERNAL = {
-  inProcessSchedules: ["SESSION_AUTO_MARK", "REPORT_EMAILS", "UPLOAD_NOTICE_BATCHES", "SHALEV_WEEKLY_SUMMARY", "SHALEV_SESSION_REMINDER", "AVAILABILITY_REMINDER", "WEEK_STRENGTH", "STEVEN_MIX_REMINDER", "STEVEN_DEADLINE_DIGEST", "OWNER_BELL_RESET"],
-  secretRoutes: { "app/api/agent/check/route.ts": "AGENT_CHECK_ROUTE", "app/api/agent/snapshot/route.ts": "AGENT_SNAPSHOT_READ", "app/api/push/cron/route.ts": "PUSH_CRON_ROUTE", "app/api/push/status/route.ts": "PUSH_STATUS_READ", "app/api/sessions/calendar-pull/route.ts": "SESSION_CALENDAR_PULL" } as Record<string, string>,
+  inProcessSchedules: ["SESSION_AUTO_MARK", "REPORT_EMAILS", "UPLOAD_NOTICE_BATCHES", "SHALEV_WEEKLY_SUMMARY", "SHALEV_SESSION_REMINDER", "AVAILABILITY_REMINDER", "STEVEN_MIX_REMINDER", "STEVEN_DEADLINE_DIGEST", "OWNER_BELL_RESET"],
+  secretRoutes: { "app/api/push/cron/route.ts": "PUSH_CRON_ROUTE", "app/api/push/status/route.ts": "PUSH_STATUS_READ", "app/api/sessions/calendar-pull/route.ts": "SESSION_CALENDAR_PULL" } as Record<string, string>,
 } as const;
 export const ATTENTION_ENGINES: ReadonlyArray<{ id: string; what: string; classes: EngineClass[]; sunnyTreatment: string }> = [
   { id: "SUNNY_COMPANY_ATTENTION", what: "company_view: every domain signal by nature + dimensions + whose move; no score", classes: ["ACTIVE_OPERATIONAL"], sunnyTreatment: "Sunny's own reasoning (on request)" },
-  { id: "AGENT_ALERTS", what: "16 rule-based alert types in a table; only holiday + week-strength still run", classes: ["LEGACY", "OBSERVATION_SOURCE", "USER_VISIBLE", "BACKGROUND"], sunnyTreatment: "context observations — never action truth (Owner decision)" },
   { id: "DASHBOARD_HEALTH_RULES", what: "dashboard health (active without deadline, overdue in mix, finance health)", classes: ["USER_VISIBLE", "ACTIVE_OPERATIONAL"], sunnyTreatment: "equivalent facts via the project / finance views; the rules are implementation" },
   { id: "COO_BRIEF", what: "the older deterministic COO brief with P0–P3 tiers", classes: ["LEGACY", "OBSERVATION_SOURCE"], sunnyTreatment: "its tiers are implementation, never the Owner's priority; its company state feeds Sunny's readers" },
   { id: "REPORT_RECOMMENDATIONS", what: "static rule-based recommendations inside the report emails", classes: ["ACTIVE_OPERATIONAL", "BACKGROUND"], sunnyTreatment: "a separate product; can disagree with Sunny" },
@@ -97,7 +93,7 @@ export const ATTENTION_ENGINES: ReadonlyArray<{ id: string; what: string; classe
 export const CODE_BUSINESS_GOALS = {
   goals: { monthlyRevenueIls: 20000, weeklySessions: 8, monthlyVictor: 12, monthlyCompletions: 4 },
   semantics: "monthly revenue = GROSS income received in ₪ this month (never net); sessions = sessions done this week; completions = projects completed this month; Victor = his pace metric",
-  consumers: ["the 'goal behind' agent alerts (context only)", "the weekly report goal section", "the old agent snapshot"],
+  consumers: ["the weekly report goal section", "the Owner's goals route + SET_BUSINESS_GOAL (company overview)"],
   classification: "IMPLEMENTATION_BEHAVIOR — code defaults, not Owner policy",
   vsOwnerPolicy: "CONFLICT — the Owner's target is realized NET ₪20,000 floor / ₪30,000 preferred (received − paid); the code goal is ₪20,000 GROSS income. Victor 12 matches the Owner's stated target; 8 sessions / 4 completions were never confirmed by the Owner.",
   internal: { file: "lib/agent/goals.ts" },
@@ -105,7 +101,7 @@ export const CODE_BUSINESS_GOALS = {
 
 export const LEGACY_AI = {
   status: "RETIRED AND REMOVED (2026-09-25, Owner decision) — chat, prompt, context builder, provider router, AI budget tracking, memory route and context snapshot no longer exist; there is no flag that can bring it back",
-  flagAlsoGates: ["its old kill switch was replaced by a neutral agent-alert rules switch (still off) — it gates only the rule-based alert pipeline"],
+  flagAlsoGates: ["nothing — the neutral agent-alert rules switch that replaced its kill switch was itself removed with Agent Alerts on 2026-10-05"],
   sunnyDependsOnIt: false,
   memory: "REMOVED — the empty memory table was dropped and the six AI budget / log settings keys deleted on 2026-09-25 (Owner-approved; rollback backup kept)",
 } as const;

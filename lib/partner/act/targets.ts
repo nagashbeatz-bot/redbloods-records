@@ -41,7 +41,7 @@ export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {
   "label-artist": ["ledger-entry", "media-income"],
   client: ["proposal", "meeting", "task"],
   show: ["session", "task"],
-  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat", "agent-alert"],
+  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat"],
 };
 
 const rows = <T>(m: { rows: readonly T[] } | null | undefined): readonly T[] => (m && Array.isArray(m.rows) ? m.rows : []);
@@ -125,7 +125,6 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       for (const x of rows(d.sessions)) add("session", x.id, j(x.date, x.startTime, x.type, x.title, pname(x.projectId)), x.status);
       for (const x of rows(d.meetings)) add("meeting", x.id, j(x.date, x.time, x.clientName, pname(x.projectId)), x.status);
       for (const x of rows(d.tasks)) add("task", x.id, j(x.title, x.dueDate), x.status);
-      for (const x of rows(d.agentAlerts)) if (x.status === "new") add("agent-alert", x.id ?? null, j(x.type, x.title), x.status);
       for (const x of rows(d.rfEquipment)) if (!x.removedAt) add("rf-equipment", x.id, j(x.name, x.category, x.quantity), x.status);
       if (!lab) throw new Error("LABEL_DETAIL");
       for (const x of rows(lab.beats)) add("beat", x.id, j(x.name, x.genre, x.musicalKey), x.status);

@@ -49,7 +49,7 @@ const REG = PARTNER_KNOWLEDGE_REGISTRY;
 
 // ── fixture: one small company touching every domain ──
 const sec = <T,>(rows: T[]) => ({ rows, capped: false });
-const EMPTY = Object.fromEntries(["projects", "financeNotes", "deliveries", "actions", "sessions", "meetings", "tasks", "engineerWork", "mixVersions", "mixComments", "commentAttachments", "mixTargets", "mixTargetNotes", "finalFiles", "victor", "productions", "budgetItems", "albumTracks", "clipItems", "proposals", "releases", "campaigns", "contentItems", "socialFiles", "projectSettings", "transactionsText", "budgetPayments", "agentAlerts", "notifications", "rfCrew", "rfDocuments", "rfScenes", "rfRefImages", "rfRefLinks", "rfEquipment"].map((k) => [k, { rows: [], capped: false }])) as unknown as ProjectDetailRaw;
+const EMPTY = Object.fromEntries(["projects", "financeNotes", "deliveries", "actions", "sessions", "meetings", "tasks", "engineerWork", "mixVersions", "mixComments", "commentAttachments", "mixTargets", "mixTargetNotes", "finalFiles", "victor", "productions", "budgetItems", "albumTracks", "clipItems", "proposals", "releases", "campaigns", "contentItems", "socialFiles", "projectSettings", "transactionsText", "budgetPayments", "notifications", "rfCrew", "rfDocuments", "rfScenes", "rfRefImages", "rfRefLinks", "rfEquipment"].map((k) => [k, { rows: [], capped: false }])) as unknown as ProjectDetailRaw;
 const PR_MAIN = U(301);
 const prod = (id: string, o: Partial<OpsRedFilmsProduction>): OpsRedFilmsProduction => ({ id, title: "קליפ", productionType: "קליפ", status: "בתכנון", projectId: null, clientId: null, artistName: "אבי מולה", clientSource: "פנימי - לייבל", shootDate: null, publishDate: null, editStatus: "לא התחיל", collectionStatus: "לא רלוונטי", generalBudget: 5000, clientPrice: 0, advanceRequired: 0, advanceReceived: 0, ...o });
 const dprod = (id: string, o: Partial<DetailProduction> = {}): DetailProduction => ({ id, projectId: null, clientNameSnapshot: null, createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-09-10T10:00:00Z", photographer: "צלם א", director: null, editor: null, locations: null, conceptSummary: "קונספט", conceptVibe: null,
@@ -79,10 +79,6 @@ function sources(o: Opt = {}): GatewaySources {
     victor: sec([
       work(701, { projectId: P(2), title: "אבי 1", filesSent: [file("a V1.wav", "V1", "2026-09-10T10:00:00Z"), file("a V2.wav", "V2", "2026-09-15T10:00:00Z")], reviews: [review("V1", "2026-09-12T10:00:00Z")] }),
       work(702, { title: "ביט חדש" }),
-    ]),
-    agentAlerts: sec([
-      { projectId: null, type: "goal_behind", severity: "medium", title: "יעד חודשי בפיגור", message: "x", status: "new", source: "agent", relatedClientId: null, metadata: null, suggestedActions: null, sentNotification: false, entityKey: "goal_behind:2026-09", createdAt: "2026-09-20T10:00:00Z", updatedAt: null },
-      { projectId: P(2), type: "overdue_deadline", severity: "high", title: "דדליין עבר", message: "x", status: "new", source: "agent", relatedClientId: null, metadata: null, suggestedActions: null, sentNotification: false, entityKey: "overdue_deadline:x", createdAt: "2026-09-20T10:00:00Z", updatedAt: null },
     ]),
   };
   const raw: FinanceRaw = empty({ transactions: [
@@ -210,10 +206,8 @@ function main() {
   check("no duplicate question", qk.length - new Set(qk).size, 0);
   ok("the live Victor June question is folded into the known June decision (with its evidence)", !v.decisions.some((d) => d.origin === "LIVE_QUESTION" && d.domain === "VICTOR" && /2026-06/.test(d.questionHe)) && /2026-06/.test(dec("known:victor-june-500")?.evidenceHe ?? ""));
   ok("the live Red Films ledger question is folded into the known decision", !v.decisions.some((d) => d.origin === "LIVE_QUESTION" && d.domain === "VIDEO" && /פנקס נפרד/.test(d.questionHe)));
-  ok("only open (new) company-level alerts are read", v.companyAlerts.every((a) => a.status === "new"));
-  section("SCENARIO Q — agent alerts: company-level alerts read as CONTEXT (never canonical action truth)");
-  ok("goal_behind company alert is read", v.companyAlerts.some((a) => a.type === "goal_behind"));
-  ok("…as context, never attention", v.context.some((o) => o.code === "ALERT_GOAL_BEHIND" && o.epistemic === "OBSERVATION") && !v.attention.some((o) => o.domain === "AGENT_ALERTS"));
+  section("SCENARIO Q — Agent Alerts retired (2026-10-05): the company view reads no alert, ever");
+  ok("no companyAlerts field and no ALERT_* observation", !("companyAlerts" in v) && !v.context.some((o) => /^ALERT_/.test(o.code)) && !v.attention.some((o) => /^ALERT_/.test(o.code)));
   section("SCENARIO R — external party waiting is context, not the Owner's problem");
   ok("WAITING_ON_VICTOR (if any) is EXTERNAL context", v.context.filter((o) => o.concept === "WAITING_ON_VICTOR").every((o) => o.side === "EXTERNAL"));
   section("SCENARIO S — conflicts: data + registered + implementation-vs-policy");

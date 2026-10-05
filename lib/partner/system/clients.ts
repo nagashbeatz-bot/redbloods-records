@@ -99,7 +99,7 @@ export const CLIENT_LINKS: readonly ClientLink[] = [
   { id: "SHOW_DJ_CLIENT", from: "show", to: "client", method: "shows.dj_client_id", quality: "CANONICAL_RELATION", enforcement: "FK, SET NULL", breaks: "—", sunnyReads: "client_view roles" },
   { id: "SEND_LOG_RECIPIENT", from: "send-log entry", to: "client", method: "project_actions.recipient_client_id (chosen by exact-name match in the project drawer)", quality: "CANONICAL_RELATION", enforcement: "FK, SET NULL", breaks: "case differences at write time pick no client", sunnyReads: "client_view roles, project_view waiting" },
   { id: "RED_FILMS_CLIENT", from: "Red Films production", to: "client", method: "the Red Films production's client id (chosen by exact name at clip send) + a client-name snapshot", quality: "CANONICAL_RELATION", enforcement: "no FK; snapshot not updated on rename", breaks: "rename / deletion", sunnyReads: "red_films, client_view roles" },
-  { id: "ALERT_CLIENT", from: "agent alert", to: "client", method: "agent_alerts.related_client_id", quality: "CANONICAL_RELATION", enforcement: "FK, CASCADE", breaks: "—", sunnyReads: "never canonical action truth (Owner decision)" },
+  { id: "ALERT_CLIENT", from: "agent alert (DORMANT)", to: "client", method: "agent_alerts.related_client_id", quality: "CANONICAL_RELATION", enforcement: "FK, CASCADE", breaks: "—", sunnyReads: "never — Agent Alerts retired 2026-10-05 (Owner decision); the dormant rows are read by nothing" },
   { id: "TRANSACTION_CLIENT", from: "transaction", to: "client", method: "transactions.artist text (no client id); project-less income (e.g. show income) is attributable ONLY this way", quality: "TEXT_MATCH", enforcement: "none", breaks: "rename (not rewritten), spelling", sunnyReads: "client_view money (project-less rows, basis ARTIST_TEXT)" },
   { id: "LABEL_ARTIST_CLIENT", from: "label artist", to: "client", method: "same name (case-insensitive); DJ CLEANTONE by the app's fixed client id", quality: "TEXT_MATCH", enforcement: "none (CLEANTONE: app constant)", breaks: "name differences", sunnyReads: "client_view roles (person with two records — never merged)" },
   { id: "CALENDAR_CLIENT", from: "calendar event", to: "client", method: "meetings.calendar_event_id (canonical) / event title names the client (TEXT_MATCH)", quality: "CANONICAL_RELATION", enforcement: "stored event id", breaks: "meeting edits / deletes never update the Google event", sunnyReads: "client_view calendar, calendar context" },
@@ -135,7 +135,7 @@ export const FOLLOW_UP_MODEL = {
   created: "the create form defaults the date to today + 3; an edit silently fills today + 3 when the date is empty (so saving any edit adds a follow-up)",
   statusLabels: "צריך פולואפ / לחזור בעתיד are labels only — no code path branches on them; status changes never close the follow-up task",
   overdue: "computed separately by each consumer (UTC vs Israel dates) — there is no stored 'overdue' state",
-  alerts: "the proposal follow-up agent rule exists but the agent check is switched off (agent-alert rules switch); even when on, its severity is never pushed; no push, cron or email covers proposals",
+  alerts: "no alert of any kind covers proposals — the old agent-alert engine (its proposal follow-up rule included) was retired on 2026-10-05; no push, cron or email covers proposals (Sunny surfaces due follow-ups through client_view / needs_me)",
   contactLog: "NOT recorded — Redbloods has no record of calls / messages / replies; WhatsApp / phone / in-person are invisible",
   sunnyWording: "Sunny says 'I don't see a recorded follow-up' / 'the recorded follow-up date passed' — never 'you did not follow up'.",
 } as const;
@@ -332,7 +332,6 @@ export const CLIENT_ROUTE_INVENTORY: Readonly<Record<string, string>> = {
   "app/api/shows/route.ts": "reads client names for shows",
   "app/api/shows/[id]/route.ts": "reads client names for a show",
   "app/api/shows/[id]/quote-sent/route.ts": "reads the client name for a show quote",
-  "app/api/agent/check/route.ts": "proposal follow-up rule (switched off)",
   "app/api/label/artists/[id]/recoup/route.ts": "parses artist names (client-store name splitter) to match a label artist's projects",
   "app/api/label/artists/[id]/shows/route.ts": "parses artist names (client-store name splitter) for a label artist's shows",
 };

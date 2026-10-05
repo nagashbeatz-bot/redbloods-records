@@ -256,7 +256,6 @@ function historyOf(c: Ctx): SectionRow[] {
   if (rel?.stageEnteredAt) ev.push({ at: rel.stageEnteredAt, what: "נכנס לשלב הריליס הנוכחי", kind: "RELEASE_STAGE" });
   if (rel?.releasedAt) ev.push({ at: rel.releasedAt, what: "יצא לראשונה (ריליס)", kind: "RELEASED" });
   for (const n of rows(d?.notifications).filter((x) => x.projectId === id)) ev.push({ at: n.createdAt ?? "", what: n.title ?? "התראה", kind: "NOTIFICATION" });
-  for (const a of rows(d?.agentAlerts).filter((x) => x.projectId === id)) ev.push({ at: a.createdAt ?? "", what: `התראת סוכן: ${a.title ?? a.type ?? "?"} (${a.status ?? "?"})`, kind: "AGENT_ALERT" });
   for (const o of (ok(c.src.outcomes) ?? []).filter((x) => "projectId" in x && x.projectId === id)) ev.push({ at: (o as { executedAt: string }).executedAt, what: `פעולת סאני בוצעה: ${o.actionType}`, kind: "SUNNY_ACTION_OUTCOME" });
   const out = ev.filter((e) => e.at).sort((a, b) => b.at.localeCompare(a.at)).map((e, i) => R(`event:${i}`, e.what, "FACT", { at: e.at, kind: e.kind, historical: true, ...(e.fields ?? {}) }));
   out.push(R("not-recorded", "היסטוריית סטטוס / דדליין / מחיר / אמן לא נשמרת", "UNKNOWN", { kind: "HISTORY_NOT_RECORDED", fields: ["status", "deadline", "agreed price", "artist", "name", "notes"], current: { status: c.v.identity?.status ?? null, deadline: c.v.identity?.deadline ?? null, lastUpdatedDaysAgo: c.v.identity?.daysSinceUpdate ?? null }, note: "Redbloods overwrites these fields in place; only the current value and the last update time exist. Sunny deadline actions are the exception (append-only events)." }));
@@ -386,8 +385,7 @@ export function buildProjectSection(src: GatewaySources, projectId: string, sect
     case "delivery": { const del = rows(d?.deliveries).find((x) => x.projectId === id); return { ...base, rows: del ? one("delivery", { ...del }) : [], notes: ["רשימת הקבצים בתיקיית המסירה נמצאת בדרופבוקס ולא נקראת חי (פער יכולת)."] }; }
     case "notifications": return { ...base, rows: [
       ...rows(d?.notifications).filter((n) => n.projectId === id).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")).map((n, i) => R(`notification:${i}`, n.title ?? "התראה", "OBSERVATION", { kind: "BELL_NOTIFICATION", ...n, body: n.body ? { text: n.body, trust: "RECORD" } : null })),
-      ...rows(d?.agentAlerts).filter((a) => a.projectId === id).map((a, i) => R(`agent-alert:${i}`, a.title ?? "התראת סוכן", "OBSERVATION", { kind: "AGENT_ALERT", ...a, message: a.message ? { text: a.message, trust: "RECORD" } : null })),
-    ], notes: ["התראות הבעלים נמחקות כל שישי — רק מה שקיים עכשיו. התראות הסוכן (מערכת כבויה) נשמרות."] };
+    ], notes: ["התראות הבעלים נמחקות כל שישי — רק מה שקיים עכשיו."] };
     case "history": return { ...base, rows: historyOf(c) };
     case "owner_knowledge": return { ...base, rows: v.ownerKnowledge.map((k, i) => R(`knowledge:${i}`, k.meaningHe, "OWNER_REPORTED", { ...k, layer: "OWNER_ORGANIZATIONAL_KNOWLEDGE (P2) — separate from canonical state; live state wins" })) };
     case "actions_outcomes": {

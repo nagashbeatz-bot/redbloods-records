@@ -13,7 +13,7 @@ import { collectibleAmount } from "@/lib/payment-status";
 import { normalizeCurrency, addToTotals, formatTotalsInline, isExpectedStatus, DEFAULT_CURRENCY, type CurrencyTotals } from "@/lib/finance";
 import { buildProjectFinanceSummary } from "@/lib/finance/project-summary";
 import { showExpectedIncome, mergeCurrencyTotals } from "@/lib/finance/expected-income";
-import type { Project, AgentAlert, LabelRelease } from "@/lib/types";
+import type { Project, LabelRelease } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { COVER_CHANGED_EVENT } from "@/lib/project-cover";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
@@ -30,15 +30,6 @@ import { summarizeUpcomingReleases } from "@/lib/dashboard-releases";
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
 
-const ALERT_CATEGORIES = [
-  { key: "deadline", label: "דדליינים",    icon: "📅", types: ["overdue_deadline", "deadline_approaching"], color: "#EF4444", bg: "rgba(239,68,68,0.07)"  },
-  { key: "finance",  label: "כספים",       icon: "₪",  types: ["payment_overdue", "project_no_pricing", "balance_missing_due_date"],   color: "#F59E0B", bg: "rgba(245,158,11,0.07)" },
-  { key: "sessions", label: "סשנים",       icon: "🎵", types: ["session_needs_update", "stale_session"],   color: "#3B82F6", bg: "rgba(59,130,246,0.07)"  },
-  { key: "victor",   label: "ויקטור",      icon: "👤", types: ["victor_stuck", "victor_below_pace"],       color: "#A855F7", bg: "rgba(168,85,247,0.07)"  },
-  { key: "proposals", label: "הצעות",      icon: "📋", types: ["proposal_followup_due"],                   color: "#06B6D4", bg: "rgba(6,182,212,0.07)"  },
-  { key: "planning",  label: "תכנון שבועי", icon: "📆", types: ["week_understaffed"],                       color: "#EAB308", bg: "rgba(234,179,8,0.07)"  },
-] as const;
-
 const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
 
 const BRAND   = "#DC2626";
@@ -51,111 +42,6 @@ const TEXT    = "#F2F2F2";
 const SUB     = "#A0A0A0";
 const MUTED   = "#606060";
 const DIM     = "#404040";
-
-// ── "דורש טיפול" category detail modal ────────────────────────────────────────
-const SEV_HE:    Record<string, string> = { urgent: "דחוף", important: "חשוב", warning: "שים לב", info: "מידע" };
-const SEV_COLOR: Record<string, string> = { urgent: "#EF4444", important: "#F59E0B", warning: "#3B82F6", info: "#6B7280" };
-const ALERT_CATEGORY_EXPLAIN: Record<string, string> = {
-  deadline:  "פרויקטים שעברו את הדדליין או מתקרבים אליו ודורשים עדכון.",
-  finance:   "בעיות כספיות — תשלום בפיגור, יתרה ללא תאריך, או פרויקט ללא מחיר מוסכם.",
-  sessions:  "פרויקטים פעילים ללא סשן לאחרונה, או סשנים שעברו וטרם עודכנו.",
-  victor:    "פרויקטים תקועים אצל ויקטור או קצב עבודה מתחת ליעד החודשי.",
-  proposals: "הצעות מחיר פתוחות שהגיע תאריך המעקב שלהן — צריך לחזור ללקוח.",
-  planning:  "שבוע קרוב עם מעט מדי סשנים, הופעות או ימי צילום מתוכננים.",
-};
-
-function relTime(iso: string): string {
-  const ts = new Date(iso).getTime();
-  if (isNaN(ts)) return "";
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1)  return "כעת";
-  if (mins < 60) return `לפני ${mins} דק'`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)  return `לפני ${hrs} ש'`;
-  const days = Math.floor(hrs / 24);
-  return `לפני ${days} ${days === 1 ? "יום" : "ימים"}`;
-}
-
-function AlertCategoryModal({
-  category, alerts, projects, onClose,
-}: {
-  category: { key: string; label: string; icon: string; types: readonly string[]; color: string };
-  alerts: AgentAlert[];
-  projects: Project[];
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-
-  return createPortal(
-    <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)" }} />
-      <div dir="rtl" style={{
-        position: "relative", width: 520, maxWidth: "92vw", maxHeight: "84vh", overflowY: "auto",
-        borderRadius: 20, background: "linear-gradient(160deg, #15151B 0%, #0F0F14 100%)",
-        border: `1.5px solid ${category.color}40`, boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
-        padding: "22px 22px 18px", display: "flex", flexDirection: "column", gap: 14,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <span style={{ fontSize: 20 }}>{category.icon}</span>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>{category.label}</div>
-              <div style={{ fontSize: 11.5, color: SUB }}>{alerts.length} {alerts.length === 1 ? "בעיה פעילה" : "בעיות פעילות"}</div>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`, color: SUB, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
-        </div>
-
-        <div style={{ fontSize: 12, color: SUB, lineHeight: 1.5 }}>{ALERT_CATEGORY_EXPLAIN[category.key] ?? ""}</div>
-
-        {alerts.length === 0 ? (
-          <div style={{ fontSize: 13, color: MUTED, textAlign: "center", padding: "24px 0" }}>✅ אין בעיות פעילות בקטגוריה זו</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {alerts.map((a) => {
-              const sevColor = SEV_COLOR[a.severity] ?? "#6B7280";
-              const count    = typeof a.metadata?.count === "number" ? (a.metadata.count as number) : undefined;
-              const ids      = Array.isArray(a.metadata?.projectIds) ? (a.metadata.projectIds as string[]) : [];
-              const names    = ids.map(id => projects.find(p => p.id === id)?.name).filter(Boolean) as string[];
-              const shown    = names.slice(0, 8);
-              const more     = names.length - shown.length;
-              return (
-                <div key={a.id} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 13, padding: "13px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: sevColor, background: `${sevColor}1A`, border: `1px solid ${sevColor}3A`, borderRadius: 6, padding: "2px 8px" }}>{SEV_HE[a.severity] ?? a.severity}</span>
-                    <span style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{a.title}</span>
-                  </div>
-                  {a.message && <div style={{ fontSize: 12, color: "#C8C8C8", lineHeight: 1.5 }}>{a.message}</div>}
-                  <div style={{ fontSize: 11, color: MUTED }}>
-                    {relTime(a.createdAt)}{count != null ? ` · ${count} פרויקטים` : ""}
-                  </div>
-                  {a.suggestedActions?.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {a.suggestedActions.map((s, i) => (
-                        <span key={i} style={{ fontSize: 11, fontWeight: 600, color: category.color, background: `${category.color}14`, border: `1px solid ${category.color}30`, borderRadius: 8, padding: "3px 9px" }}>{s}</span>
-                      ))}
-                    </div>
-                  )}
-                  {shown.length > 0 && (
-                    <div style={{ fontSize: 11.5, color: SUB }}>
-                      <span style={{ color: MUTED }}>פרויקטים: </span>
-                      {shown.join(", ")}{more > 0 ? ` ועוד ${more}` : ""}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 const STATUS_COLORS: Record<string, string> = {
   "בעבודה":      "#3B82F6",
@@ -555,21 +441,8 @@ export default function DashboardDesignPreview() {
   const { projects, loading } = useProjects();
   const [privacyHidden] = usePrivacyMode();
 
-  // ── Live-2: real alerts, calendar, proposals ──────────────────────────
-  const [alerts, setAlerts]             = useState<AgentAlert[]>([]);
-  const [selectedAlertCategory, setSelectedAlertCategory] = useState<string | null>(null);
+  // ── Live-2: real calendar, proposals ──────────────────────────
   const [tasksAttentionOpen, setTasksAttentionOpen] = useState(false);
-  // Display-only dedupe (shared by the panel counts and the detail modal):
-  // one per entityKey, and one per type for bulk/no-key alerts.
-  const dedupedAlerts = useMemo(() => {
-    const seen = new Set<string>();
-    return alerts.filter(a => {
-      const key = a.entityKey ? `k:${a.entityKey}` : `t:${a.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [alerts]);
   // ── Label releases → "ריליסים קרובים" card + header chips (read-only) ──
   const [labelReleases, setLabelReleases] = useState<LabelRelease[] | null>(null);
   const [releasesError, setReleasesError] = useState(false);
@@ -640,16 +513,6 @@ export default function DashboardDesignPreview() {
     const snap = loadSnap();
     if (snap) { setCachedKpi(snap.kpi); setCachedPills(snap.pills); }
     setHasMounted(true);
-  }, []);
-
-  useEffect(() => {
-    // Always fetch — the route itself enforces the agent-alert rules switch,
-    // exposing only the exempted "week_understaffed" alert while it's off
-    // (see app/api/agent/alerts/route.ts), so no other gated alert leaks here.
-    fetch("/api/agent/alerts?status=new&limit=50")
-      .then(r => r.json())
-      .then(d => setAlerts(Array.isArray(d.alerts) ? d.alerts : []))
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -794,7 +657,7 @@ export default function DashboardDesignPreview() {
   const doneProjects    = projects.filter(p => p.status === "הושלם");
 
   // "מה קורה היום" — time-based / schedule items only (today & deadlines).
-  // Agent alerts are intentionally excluded here; they live in the "דורש טיפול" panel.
+  // (Agent Alerts were retired 2026-10-05 — nothing alert-based is shown here.)
   const todayFocusItems = useMemo(() => {
     type FocusItem = { icon: string; iconBg: string; iconColor: string; title: string; sub: string };
     const items: FocusItem[] = [];
@@ -1117,7 +980,7 @@ export default function DashboardDesignPreview() {
           {/* ── Middle 3 cards ── */}
           <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: isMobile ? 16 : 26 }}>
 
-            {/* "דורש טיפול" — agent alerts */}
+            {/* "דורש טיפול" — tasks due today / overdue (the agent-alert categories were retired 2026-10-05) */}
             <div style={{
               background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
               overflow: "hidden",
@@ -1126,21 +989,8 @@ export default function DashboardDesignPreview() {
             }}>
               <div style={{ height: 3, background: `linear-gradient(90deg, ${BRAND}, #F97316)` }} />
               {(() => {
-                const cats = ALERT_CATEGORIES.map(c => ({
-                  ...c,
-                  count: dedupedAlerts.filter(a => (c.types as readonly string[]).includes(a.type)).length,
-                })).filter(c => c.count > 0);
-                const urgentCount = dedupedAlerts.filter(a => a.severity === "urgent" || a.severity === "important").length;
                 return (
                   <>
-                    {selectedAlertCategory && (
-                      <AlertCategoryModal
-                        category={ALERT_CATEGORIES.find(c => c.key === selectedAlertCategory)!}
-                        alerts={dedupedAlerts.filter(a => (ALERT_CATEGORIES.find(c => c.key === selectedAlertCategory)!.types as readonly string[]).includes(a.type))}
-                        projects={projects}
-                        onClose={() => setSelectedAlertCategory(null)}
-                      />
-                    )}
                     {tasksAttentionOpen && (
                       <TasksAttentionModal
                         tasks={attentionTasks.map(t => ({ id: t.id, title: t.title, due_date: t.due_date ?? null }))}
@@ -1158,37 +1008,17 @@ export default function DashboardDesignPreview() {
                         <span style={{ fontSize: 16 }}>🔔</span>
                         <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>דורש טיפול</span>
                       </div>
-                      {dedupedAlerts.length > 0 ? (
+                      {attentionTasks.length > 0 ? (
                         <span style={{ fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 8px", boxShadow: "0 0 8px rgba(220,38,38,0.4)" }}>
-                          {dedupedAlerts.length}
+                          {attentionTasks.length}
                         </span>
                       ) : (
                         <span style={{ fontSize: 10, color: DIM }}>אין</span>
                       )}
                     </div>
                     <div style={{ padding: "12px 16px", flex: 1 }}>
-                      {(cats.length > 0 || attentionTasks.length > 0) ? (
+                      {attentionTasks.length > 0 ? (
                         <>
-                          {cats.map((a, i) => (
-                            <button key={i}
-                              onClick={() => setSelectedAlertCategory(a.key)}
-                              title="לחץ לפירוט"
-                              style={{
-                                width: "100%", textAlign: "right", fontFamily: "inherit", cursor: "pointer",
-                                display: "flex", justifyContent: "space-between", alignItems: "center",
-                                padding: "10px 12px", borderRadius: 11, marginBottom: 7,
-                                background: a.bg, border: `1px solid ${a.color}20`,
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.borderColor = `${a.color}55`)}
-                              onMouseLeave={e => (e.currentTarget.style.borderColor = `${a.color}20`)}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                                <span style={{ fontSize: 17 }}>{a.icon}</span>
-                                <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>{a.label}</span>
-                              </div>
-                              <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: a.color, lineHeight: 1 }}>{a.count}</span>
-                            </button>
-                          ))}
                           {attentionTasks.length > 0 && (
                             <button
                               onClick={() => setTasksAttentionOpen(true)}
@@ -1212,13 +1042,9 @@ export default function DashboardDesignPreview() {
                         </>
                       ) : (
                         <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 16 }}>
-                          {dedupedAlerts.length === 0 ? "✅ אין התראות פתוחות" : "טוען..."}
+                          ✅ אין משימות פתוחות
                         </div>
                       )}
-                    </div>
-                    <div style={{ padding: "10px 20px 14px", borderTop: `1px solid ${BORDER2}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 11, color: "#3B82F6" }}>הצג את כל ההתראות ←</span>
-                      {urgentCount > 0 && <span style={{ fontSize: 10, color: "#EF4444", fontWeight: 700 }}>{urgentCount} דחופות</span>}
                     </div>
                   </>
                 );

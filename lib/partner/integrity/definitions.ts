@@ -51,7 +51,7 @@ export const FINANCE_DEFINITION = {
     "צפוי / לא שולם / בוטל לא נספרים; חלקי אינו שולם במלואו; מטבעות נפרדים, בלי המרה שקטה.",
 };
 
-/** 4. Agent Alerts are not canonical company truth nor action logic. */
+/** 4. Agent Alerts are not canonical company truth nor action logic (a historical Owner decision — the subsystem itself was retired 2026-10-05). */
 export const AGENT_ALERTS_DEFINITION = {
   id: "AGENT_ALERTS_NOT_CANONICAL",
   decidedAt: "2026-09-24",
@@ -100,8 +100,6 @@ export const SESSION_STATUS_VOCABULARY: {
   },
   legacyReaders: [],
   alignedReaders: [
-    { file: "lib/agent/rules.ts", reads: ["מתוכנן"] },
-    { file: "lib/agent/snapshot.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },
     { file: "lib/agent/goals.ts", reads: ["התקיים", "בוצע"] },
     { file: "lib/reports/data.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },
     { file: "lib/reports/weekly.ts", reads: ["מתוכנן", "התקיים", "בוצע"] },

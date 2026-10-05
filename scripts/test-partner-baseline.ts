@@ -30,10 +30,10 @@ const ok = (name: string, cond: boolean) => { if (cond) { console.log(`  ✓ ${n
 
 function buildCooRaw(status: string, now: string): CooRawInput {
   return structuredClone<CooRawInput>({
-    sources: [{ source: "projects", status: "ok", rowCount: 1 }, { source: "tasks", status: "ok", rowCount: 0 }, { source: "steven", status: "ok", rowCount: 0 }, { source: "victor", status: "ok", rowCount: 0 }, { source: "proposals", status: "ok", rowCount: 0 }, { source: "shows", status: "ok", rowCount: 0 }, { source: "sessions", status: "ok", rowCount: 0 }, { source: "transactions", status: "ok", rowCount: 0 }, { source: "finance_settings", status: "ok", rowCount: 0 }, { source: "releases", status: "ok", rowCount: 0 }, { source: "agent_alerts", status: "ok", rowCount: 0 }],
+    sources: [{ source: "projects", status: "ok", rowCount: 1 }, { source: "tasks", status: "ok", rowCount: 0 }, { source: "steven", status: "ok", rowCount: 0 }, { source: "victor", status: "ok", rowCount: 0 }, { source: "proposals", status: "ok", rowCount: 0 }, { source: "shows", status: "ok", rowCount: 0 }, { source: "sessions", status: "ok", rowCount: 0 }, { source: "transactions", status: "ok", rowCount: 0 }, { source: "finance_settings", status: "ok", rowCount: 0 }, { source: "releases", status: "ok", rowCount: 0 }],
     projects: [{ id: "p1", name: "פרויקט", artist: "אמן", status, deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: now, isHidden: false }],
     tasks: [], steven: [], victor: { stuckAfterDays: 5, works: [] }, proposals: [], shows: [], sessions: [], transactions: [],
-    financeSettings: [], orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] }, alerts: [],
+    financeSettings: [], orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] },
   });
 }
 function buildEyesRaw(): PartnerEyesRaw {

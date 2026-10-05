@@ -141,7 +141,7 @@ export function buildTasksView(src: GatewaySources) {
   if (danglingVictor + danglingAction) signals.push({ code: "TASK_LINK_DANGLING", kind: "CANONICAL_FACT", he: `${danglingVictor + danglingAction} קישורי משימה (ויקטור / מעקב שליחה) מצביעים על משימה שלא קיימת` });
   return {
     counts: { total: tasks.length, byStatus: count(tasks.map((t) => t.status)), byRelatedType: count(tasks.map((t) => t.relatedType)), open: tasks.filter((t) => t.status === "פתוח").length, overdue: tasks.filter((t) => t.overdue).length, mirroredToGoogle: tasks.filter((t) => t.googleTask === "MIRRORED").length, byOrigin: count(tasks.map((t) => t.origin?.id ?? "DIRECT")), note: "no assignee / priority exists — none is invented" },
-    tasks, otherTaskLike: { projectActionFollowUps: (c.det?.actions?.rows ?? []).filter((a) => a.followupDate).length, proposalFollowUpDates: "proposal follow-up dates (client_view) + the proposal follow-up task", agentAlertFollowUps: "agent alert proposal_followup_due (context only)" },
+    tasks, otherTaskLike: { projectActionFollowUps: (c.det?.actions?.rows ?? []).filter((a) => a.followupDate).length, proposalFollowUpDates: "proposal follow-up dates (client_view) + the proposal follow-up task" },
     signals, unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (tasks) — unknown, not none"]), "Google Tasks themselves are not read (only the mirror id); completion in Google flows back only when the tasks page syncs"],
   };
 }

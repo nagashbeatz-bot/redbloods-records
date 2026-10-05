@@ -69,8 +69,6 @@ export interface DetailContentItem { id: string; projectId: string | null; campa
 export interface DetailSocialFile { id?: string | null; projectId: string | null; contentItemId: string | null; campaignId: string | null; dropboxFileId: string | null; updatedAt: string | null; fileName: string | null; fileType: string | null; fileSize: number | null; uploadedBy: string | null; createdAt: string | null; path: string | null; hasShareLink: boolean }
 export interface DetailTransactionText { id: string; projectId: string; type: string | null; date: string | null; description: string | null; notes: string | null; paymentMethod: string | null; artistText: string | null; hasReceipt: boolean; createdAt: string | null }
 export interface DetailBudgetPayment { currency?: string | null; id?: string | null; /** DB-1: the payment's ONE Finance expense (null = not in Finance yet) */ linkedTransactionId?: string | null; productionId: string | null; budgetItemId: string | null; amount: number | null; date: string | null; method: string | null; notes: string | null; receiptFileName: string | null; receiptMime: string | null; receiptPath: string | null; hasReceiptLink: boolean; createdAt: string | null; updatedAt: string | null }
-/** projectId null = a company-level alert (monthly goals, week understaffed, holiday) — read since Whole-System V1. */
-export interface DetailAgentAlert { id?: string | null; projectId: string | null; type: string | null; severity: string | null; title: string | null; message: string | null; status: string | null; source: string | null; relatedClientId: string | null; metadata: unknown; suggestedActions: unknown; sentNotification: unknown; entityKey: string | null; createdAt: string | null; updatedAt: string | null }
 export interface DetailProjectSetting { projectId: string; kind: string; value: unknown }
 export interface DetailNotification { projectId: string; recipientRole: string | null; title: string | null; body: string | null; tag: string | null; actorName: string | null; entityType: string | null; entityId: string | null; eventKey: string | null; appPath: string | null; recipientUserId: string | null; createdAt: string | null; readAt: string | null }
 
@@ -102,7 +100,6 @@ export interface ProjectDetailRaw {
   projectSettings: Maybe<DetailProjectSetting>;
   transactionsText: Maybe<DetailTransactionText>;
   budgetPayments: Maybe<DetailBudgetPayment>;
-  agentAlerts: Maybe<DetailAgentAlert>;
   notifications: Maybe<DetailNotification>;
   /** Red Films Deep Brain (optional so older fixtures stay valid). */
   rfCrew?: Maybe<DetailRfCrew>;
@@ -117,5 +114,5 @@ export interface ProjectDetailRaw {
 export const PROJECT_DETAIL_SOURCES = [
   "projects", "settings:finance_", "settings:delivery_", "project_actions", "sessions", "meetings", "tasks", "sound_engineer_work", "mix_versions", "mix_comments",
   "mix_comment_attachments", "mix_targets", "mix_target_notes", "final_files", "vendor_project_work", "red_films_productions", "red_films_budget_items", "album_tracks",
-  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "agent_alerts", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_", "settings:steven_final_files_requested_project:", "settings:steven_final_files_requested:", "red_films_crew", "red_films_documents", "red_films_scenes", "red_films_reference_images", "red_films_reference_links", "red_films_equipment",
+  "clip_items", "proposals", "project_release_details", "social_campaigns", "social_content_items", "social_content_files", "notifications", "transactions", "red_films_budget_payments", "settings:album_finance_", "settings:album_prev_info_", "settings:session_limit_", "settings:project_cover_", "settings:steven_final_files_requested_project:", "settings:steven_final_files_requested:", "red_films_crew", "red_films_documents", "red_films_scenes", "red_films_reference_images", "red_films_reference_links", "red_films_equipment",
 ] as const;

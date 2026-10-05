@@ -37,7 +37,6 @@ function buildCooRaw(): CooRawInput {
       { source: "proposals", status: "ok", rowCount: 2 }, { source: "shows", status: "ok", rowCount: 0 },
       { source: "sessions", status: "ok", rowCount: 3 }, { source: "transactions", status: "ok", rowCount: 1 },
       { source: "finance_settings", status: "ok", rowCount: 1 }, { source: "releases", status: "ok", rowCount: 2 },
-      { source: "agent_alerts", status: "ok", rowCount: 0 },
     ],
     projects: [
       { id: "p1", name: "פרויקט רגיל", artist: "אמן בדיקה", status: "בעבודה", deadline: "2026-10-01", projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
@@ -99,7 +98,6 @@ function buildCooRaw(): CooRawInput {
         { projectId: "p3", name: "פרויקט לייבל בקונפליקט", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-11-01", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: "la2" },
       ],
     },
-    alerts: [],
   });
 }
 

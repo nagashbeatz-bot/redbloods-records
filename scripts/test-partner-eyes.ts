@@ -33,7 +33,6 @@ function buildCooRaw(): CooRawInput {
       { source: "proposals", status: "ok", rowCount: 1 }, { source: "shows", status: "ok", rowCount: 1 },
       { source: "sessions", status: "ok", rowCount: 1 }, { source: "transactions", status: "ok", rowCount: 1 },
       { source: "finance_settings", status: "ok", rowCount: 1 }, { source: "releases", status: "ok", rowCount: 1 },
-      { source: "agent_alerts", status: "ok", rowCount: 1 },
     ],
     projects: [
       { id: "p1", name: "פרויקט א", artist: "אמן בדיקה", status: "בעבודה", deadline: "2026-10-01", projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false },
@@ -74,10 +73,6 @@ function buildCooRaw(): CooRawInput {
       labelProjectsTotal: 1,
       rows: [{ projectId: "p2", name: "פרויקט לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-10-15", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: "la1" }],
     },
-    // lib/coo's OWN raw input still models alerts (untouched, unrelated to Partner) — Partner never reads this.
-    alerts: [
-      { id: "al1", type: "week_understaffed", severity: "info", title: "השבוע", message: "…", createdAt: "2026-09-21T08:00:00Z", relatedProjectId: null },
-    ],
   });
 }
 

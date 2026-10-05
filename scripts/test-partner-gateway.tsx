@@ -59,7 +59,7 @@ function cooRaw(): CooRawInput {
   const proj = (id: string, name: string, artist: string, status: string, businessType: string, deadline: string | null = null) =>
     ({ id, name, artist, status, deadline, projectType: "שיר", businessType, updatedAt: "2026-09-20T10:00:00Z", isHidden: false });
   return structuredClone<CooRawInput>({
-    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases", "agent_alerts"].map((s) => ok(s, 1)),
+    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases"].map((s) => ok(s, 1)),
     projects: [
       proj(P_KAROV, "קרוב אלייך", "חיים באינסאי", "במיקס", "לקוח", "2026-10-07"),
       proj(P_MARAOT, "מראות", "אבוש רטה", "הושלם", "לקוח"),
@@ -78,7 +78,6 @@ function cooRaw(): CooRawInput {
     financeSettings: [{ projectId: P_MARAOT, agreedPrice: 3200, currency: "₪", financeException: false }],
     orphanFinanceKeyCount: 0,
     releases: { labelProjectsTotal: 2, rows: [{ projectId: P_LABEL, name: "שיר לייבל", projectStatus: "בעבודה", stage: "הפקה", targetDate: "2026-11-01", nextAction: "", blocker: "", responsible: "", stageEnteredAt: "2026-09-01T10:00:00Z", labelArtistId: LA_SHALEV }] },
-    alerts: [],
   });
 }
 

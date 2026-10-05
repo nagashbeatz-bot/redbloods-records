@@ -123,7 +123,6 @@ const mutations = () => log.filter((l) => l.startsWith("db:") || l.startsWith("e
     transactions: [{ id: "t1", project_id: P, linked_session_id: "s1" }, { id: "t2", project_id: "other" }],
     proposals: [{ id: "pr1", linked_project_id: P, client_id: "cl1" }],
     tasks: [{ id: "tk1", related_type: "client", related_id: "cl1", notes: "[proposal_id:pr1]", calendar_event_id: "gt1" }, { id: "tk2", related_type: "project", related_id: P }],
-    agent_alerts: [{ id: "al1", entity_key: `overdue_deadline:${P}`, status: "new" }],
     album_tracks: [], project_release_details: [], social_campaigns: [{ id: "sc1", project_id: P }], meetings: [], red_films_productions: [{ id: "rf1", project_id: P }],
   });
   reset(projectSeed(true));
@@ -141,7 +140,7 @@ const mutations = () => log.filter((l) => l.startsWith("db:") || l.startsWith("e
   const idx = (x: string) => L.indexOf(x);
   const lastDb = Math.max(...L.map((l, i) => (l.startsWith("db:") ? i : -1)));
   const firstExt = L.findIndex((l) => l.startsWith("ext:"));
-  ok("4. without blockers: ordered DB steps (sessions → send log → clip rows → Victor → settings → transactions → proposals → alerts) and the project row LAST in the DB", idx("db:delete:sessions") < idx("db:delete:project_actions") && idx("db:delete:project_actions") < idx("db:delete:clip_items") && idx("db:delete:clip_items") < idx("db:victor:v1") && idx("db:victor:v1") < idx("db:delete:settings") && idx("db:delete:settings") < idx("db:update:transactions") && idx("db:update:transactions") < idx("db:update:proposals") && idx("db:update:proposals") < idx("db:update:agent_alerts") && idx("db:delete:projects") === lastDb, L);
+  ok("4. without blockers: ordered DB steps (sessions → send log → clip rows → Victor → settings → transactions → proposals; Agent Alerts retired 2026-10-05 — nothing to soft-close) and the project row LAST in the DB", idx("db:delete:sessions") < idx("db:delete:project_actions") && idx("db:delete:project_actions") < idx("db:delete:clip_items") && idx("db:delete:clip_items") < idx("db:victor:v1") && idx("db:victor:v1") < idx("db:delete:settings") && idx("db:delete:settings") < idx("db:update:transactions") && idx("db:update:transactions") < idx("db:update:proposals") && idx("db:delete:projects") === lastDb && idx("db:update:agent_alerts") < 0, L);
   ok("5. external effects (calendar event, Google Task, cover file) only AFTER the DB commit, and reported", firstExt > lastDb && L.includes("ext:calendar:ev1") && L.includes("ext:gtask:gt1") && L.includes(`ext:cover:${P}`) && res.external.length === 3 && res.external.every((e) => e.failed === 0), { L, ext: res.external });
   ok("6. every per-project settings key (+ the work's final-files flag) removed; unrelated keys kept; money unlinked, never deleted", T("settings").map((s) => s.key).join() === "unrelated" && T("transactions").length === 2 && T("transactions").find((t) => t.id === "t1")!.project_id === null);
 

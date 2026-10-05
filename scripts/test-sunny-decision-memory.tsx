@@ -81,11 +81,11 @@ function cooRaw(o: Fx): CooRawInput {
   const proj = (id: string, name: string, status: string) => ({ id, name, artist: "יהב פלאח", status, deadline: null, projectType: "שיר", businessType: "לקוח", updatedAt: "2026-09-20T10:00:00Z", isHidden: false });
   const v = o.setting ?? null;
   return structuredClone<CooRawInput>({
-    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases", "agent_alerts"].map(st),
+    sources: ["projects", "tasks", "steven", "victor", "proposals", "shows", "sessions", "transactions", "finance_settings", "releases"].map(st),
     projects: [proj(P_MB, o.name ?? "מה באלי", "הושלם"), proj(P_MB2, "מה באלי (רמיקס)", "הושלם"), proj(P_OPEN, "פרויקט פתוח", "במיקס")],
     tasks: [], steven: [], victor: { stuckAfterDays: 5, works: [] }, proposals: [], shows: [], sessions: [], transactions: [],
     financeSettings: [...(v ? [{ projectId: P_MB, agreedPrice: Number(v.agreedPrice ?? 0), currency: "₪", financeException: !!v.financeException }] : []), { projectId: P_OPEN, agreedPrice: 4000, currency: "₪", financeException: false }],
-    orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] }, alerts: [],
+    orphanFinanceKeyCount: 0, releases: { labelProjectsTotal: 0, rows: [] },
   });
 }
 function eyesRaw(): PartnerEyesRaw {

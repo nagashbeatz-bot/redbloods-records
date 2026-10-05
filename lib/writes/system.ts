@@ -1,10 +1,9 @@
 /**
- * Shared writers for the Owner's company-level operations: his notification bell, business goals, agent-alert
- * handling, the report schedule / send-now, the Dropbox disconnect and the maintenance lock. Used by the routes and by
+ * Shared writers for the Owner's company-level operations: his notification bell, business goals, the report
+ * schedule / send-now, the Dropbox disconnect and the maintenance lock. Used by the routes and by
  * Sunny's typed primitives. HARDENED (2026-09-27, Universal Actions):
  *   • goals: only the four known goals, each with a validated shape, are written (the route used to turn ANY body key
  *     into a `goal_<key>` settings row) and a failed write is an error (it used to be ignored);
- *   • alert status: a failed write is an error (it used to be ignored); the kill-switch rule is unchanged;
  *   • notifications: a recipient-bound writer for the OWNER's own rows (resolved from OWNER_EMAILS, never the per-row
  *     recipient_role echo) — the bell's session-scoped routes are unchanged;
  *   • maintenance: a failed write is an error (it used to be ignored).
@@ -68,25 +67,6 @@ export async function setBusinessGoal(name: string, value: unknown): Promise<voi
   if (error) throw new Error(error.message);
 }
 export async function readBusinessGoals(): Promise<BusinessGoals> { const { getGoals } = await import("@/lib/agent/goals"); return getGoals(); }
-
-// ── agent alerts (context only; the kill-switch rule is the route's, reused) ──
-export const ALERT_STATUSES = ["new", "handled", "dismissed", "ignored"] as const;
-export async function readAlert(id: string): Promise<{ type: string; status: string; title: string } | null> {
-  const { getAlertById } = await import("@/lib/agent/alerts-store");
-  const a = await getAlertById(id);
-  return a ? { type: String(a.type), status: String(a.status), title: String(a.title ?? "") } : null;
-}
-/** Whether this alert may be acted on (AGENT_ALERT_RULES_ENABLED off → only the exempt week-strength type). */
-export async function alertActionable(type: string): Promise<boolean> {
-  const { AGENT_ALERT_RULES_ENABLED } = await import("@/lib/feature-flags");
-  const { WEEK_STRENGTH_ALERT_TYPE } = await import("@/lib/week-strength-pure");
-  return AGENT_ALERT_RULES_ENABLED || type === WEEK_STRENGTH_ALERT_TYPE;
-}
-export async function setAlertStatus(id: string, status: string): Promise<void> {
-  if (!(ALERT_STATUSES as readonly string[]).includes(status)) throw new SystemInputError("invalid status");
-  const { error } = await supabase.from("agent_alerts").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw new Error(error.message);
-}
 
 // ── reports ──
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;

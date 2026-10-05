@@ -85,12 +85,6 @@ export const COO_CONFIG = {
   // Steven statuses that say the work is still in his hands (used when an older mix version exists and we must decide if it was delivered).
   stevenBallWithHimStatuses: ["בתהליך"] as string[],
 
-  // ── existing agent_alerts: secondary source only ──
-  alerts: {
-    allowTypes: ["week_understaffed", "upcoming_holiday"] as string[],
-    maxAgeDays: 7,
-  },
-
   // ── tier rules per signal type — PROVISIONAL ──
   tiers: {
     // Overdue project deadline. Slope, not a cliff: 1–13 days live=P0 / not live=P1; 14–29 days one tier lower; 30+ days = STALE (no signal here).
@@ -124,7 +118,6 @@ export const COO_CONFIG = {
     NO_UPCOMING_SHOWS:          { base: "P3" },
     // A real release row with a target: priority follows proximity — it is NOT capped by the low global release coverage.
     RELEASE_TARGET_APPROACHING: { base: "P2", escalate: [{ when: { daysToLte: 14 }, to: "P1" }, { when: { blockerPresent: true }, to: "P1" }, { when: { daysToLte: 3 }, to: "P0" }, { when: { past: true }, to: "P0" }] },
-    EXTERNAL_ALERT:             { base: "P3" },
   } satisfies Record<string, TierRule>,
 
   // ── ordering INSIDE a tier: lower class first, then facts (never "oldest first" alone) ──
@@ -138,7 +131,7 @@ export const COO_CONFIG = {
     PROPOSAL_FOLLOWUP_DUE: "dependency",
     PROJECT_PAYMENT_BALANCE: "financial", BALANCE_NO_DUE_DATE: "financial", EXPECTED_INCOME_OVERDUE: "financial",
     SHOW_UNPAID_UPCOMING: "financial", SHOW_DONE_UNPAID: "financial", NO_UPCOMING_SHOWS: "other",
-    RELEASE_TARGET_APPROACHING: "release", EXTERNAL_ALERT: "other",
+    RELEASE_TARGET_APPROACHING: "release",
   } as Record<string, keyof typeof SORT_CLASS_KEYS>,
 
   // ── case-level promotion / demotion — PROVISIONAL ──
