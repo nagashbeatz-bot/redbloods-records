@@ -255,6 +255,9 @@ export interface TimelineItem {
   title: string;
   sub: string;
   open: OpenTarget;
+  /** The record's CANONICAL entity key from its own id / FK (project:<id>, show:<id>), or null. Sunny's motion enriches
+   *  a row only by this exact key — never by a name; a task or a calendar event (a text match) carries none. */
+  entity: string | null;
 }
 
 export interface CalendarEventIn { id: string; title: string; type?: string; startTime: string; isAllDay?: boolean; location?: string; matchedProjectId?: string; context?: string }
@@ -300,6 +303,7 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
       title: p ? [type, [p.artist, p.name].filter(Boolean).join(" — ")].join(" · ") : (s.title || type),
       sub: s.location || "",
       open: p ? { kind: "project", id: p.id } : s.show_id ? { kind: "href", href: "/shows" } : { kind: "href", href: "/tasks" },
+      entity: p ? `project:${p.id}` : s.show_id ? `show:${s.show_id}` : null,
     });
   }
   for (const sh of input.shows ?? []) {
@@ -308,14 +312,14 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
     items.push({
       key: `show:${sh.id}`, date: sh.date, time: sh.start_time ? sh.start_time.slice(0, 5) : null, kind: "show",
       title: `הופעה · ${sh.name || "הופעה"}`, sub: [sh.artist, sh.location].filter(Boolean).join(" · "),
-      open: { kind: "href", href: "/shows" },
+      open: { kind: "href", href: "/shows" }, entity: `show:${sh.id}`,
     });
   }
   for (const p of input.projects) {
     if (p.isHidden || NOT_OVERDUE_STATUSES.includes(p.status) || !inWindow(p.deadline)) continue;
     items.push({
       key: `deadline:${p.id}`, date: p.deadline, time: null, kind: "deadline",
-      title: `דדליין · ${p.name}`, sub: p.artist || "", open: { kind: "project", id: p.id },
+      title: `דדליין · ${p.name}`, sub: p.artist || "", open: { kind: "project", id: p.id }, entity: `project:${p.id}`,
     });
   }
   for (const t of input.tasks ?? []) {
@@ -323,7 +327,7 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
     items.push({
       key: `task:${t.id}`, date: t.due_date, time: t.start_time ? t.start_time.slice(0, 5) : null, kind: "task",
       title: t.title || "משימה", sub: "",
-      open: { kind: "task", id: t.id, title: t.title || "משימה", dueDate: t.due_date },
+      open: { kind: "task", id: t.id, title: t.title || "משימה", dueDate: t.due_date }, entity: null,
     });
   }
   for (const ev of input.calendar ?? []) {
@@ -334,7 +338,8 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
       key: `cal:${ev.id}`, date, time: ev.isAllDay || ev.startTime.length <= 10 ? null : ev.startTime.slice(11, 16),
       kind: CAL_KIND[ev.type ?? ""] ?? "event",
       title: ev.title, sub: ev.location || "Google Calendar",
-      open: ev.matchedProjectId ? { kind: "project", id: ev.matchedProjectId } : { kind: "none" },
+      // matchedProjectId is the calendar's TEXT match — it may open the drawer, never carry Sunny's reason
+      open: ev.matchedProjectId ? { kind: "project", id: ev.matchedProjectId } : { kind: "none" }, entity: null,
     });
   }
 

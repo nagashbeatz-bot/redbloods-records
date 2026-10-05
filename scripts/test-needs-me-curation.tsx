@@ -246,7 +246,8 @@ console.log("\nRead-only guards");
   const lib = read("lib/partner/needs-me/curate.ts") + read("lib/partner/knowledge/capabilities/needs-me.ts");
   ok("no write / push / fetch / task creation in the curation", !/\.insert\(|\.update\(|\.upsert\(|\.delete\(|\bfetch\(|sendPush|createTask|lib\/writes|\.rpc\(/.test(lib));
   const ui = read("components/dashboard-v2/DashboardV2.tsx");
-  ok("Dashboard V2 reads needs_me through the Owner-only knowledge route (GET)", /\/api\/partner\/knowledge\?capability=needs_me/.test(ui));
+  // Phase B (2026-10-05): the SAME needs_me answer now arrives inside the Owner-only executive read (GET), parsed by the same parseBoard
+  ok("Dashboard V2 reads needs_me through the Owner-only executive read (GET) with the same parser", /"\/api\/partner\/executive"/.test(ui) && /parseBoard\(exec\.needsMe\)/.test(ui) && /needsMe: \{ capability: "needs_me", mode: "board" \}/.test(read("lib/partner/gateway/executive.ts")));
   ok("Dashboard V2 no longer derives Needs-Me from the raw aggregation (only as the labelled fallback)", !/buildNeedsMe\(\{/.test(ui) || /לא מסונן/.test(ui));
   ok("the old /dashboard is untouched by this change (no needs_me there)", !/needs_me/.test(read("app/dashboard/page.tsx")));
 }

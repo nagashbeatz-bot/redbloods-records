@@ -24,6 +24,9 @@ import { INTERNAL_AUTH_HEADER } from "../lib/partner/calendar/internal-auth";
 import type { ActServiceDeps } from "../lib/partner/act/service";
 import type { Plan } from "../lib/partner/act/types";
 import type { GatewaySources } from "../lib/partner/gateway/core";
+import { parseExecutive, servedItems, indexByEntity, enrichmentFor, isCanonicalKey, openOfEntity, totalsHe, type ExecMotion, type ExecItem } from "../lib/dashboard-executive";
+import { buildTimeline } from "../lib/dashboard-v2";
+import { parseBoard } from "../components/dashboard-v2/DashboardV2";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 900)}` : ""}`); } };
@@ -177,6 +180,59 @@ async function main() {
   ok("6d. MAIN's history read = the SAME switch, service op, request and mapping", /env\[ACT_ENABLED_ENV\] !== "true"/.test(oh) && /planStatus\(\{ \.\.\.ACTION_HISTORY_REQUEST \}/.test(oh) && /actionHistoryItemsOf\(/.test(oh) && DASHBOARD_ACT_CLIENT_ID.length > 0);
   ok("6e. the route is GET-only, Owner-only, no-store; nothing written / pushed / cached", /export async function GET\(\)/.test(route) && !/export async function (POST|PUT|PATCH|DELETE)/.test(route) && /requireOwner\(\)/.test(route) && /no-store/.test(route) && !/\.from\(|sendPush|\.insert\(|\.from\([^)]*\)\.update\(|revalidate/.test(route + exe + oh));
   ok("6f. the history transform is a PURE function of (payload, history, now): the same input twice → the same output", same(deriveWithActionHistory("motion", cMotion, actionHistoryItemsOf({ status: "HISTORY", items: [] }), NOW.getTime()), deriveWithActionHistory("motion", cMotion, [], NOW.getTime())));
+
+  section("7. PHASE B — the dashboard SHOWS the executive read (parse only, Sunny's order, join by canonical key only)");
+  {
+    // the motion fixture's finance has no open-expense list (FF answers UNKNOWN) → first prove that is said, then read
+    // a finance state FF can read (₪ + $ realized this month)
+    const unknownEx = parseExecutive(JSON.parse(JSON.stringify(dash)));
+    ok("7-. FF UNKNOWN (finance not read) parses as read=false with its own sentence — never zeros / 'no movement'", !!unknownEx?.forward && unknownEx.forward.read === false && /לא קראתי את הכספים/.test(unknownEx.forward.answerHe ?? ""));
+    const FIN_SRC = (): GatewaySources => { const g = SRC() as unknown as { finance: { value: { state: Record<string, unknown> } } }; const st = g.finance.value.state;
+      g.finance.value.state = { ...st, openExpenses: { items: [] }, realized: { ...(st.realized as object), byCurrency: { "₪": { cashIn: 2000, cashOut: 500, net: 1500 }, "$": { cashIn: 0, cashOut: 200, net: -200 } } } }; return g as unknown as GatewaySources; };
+    const dashF = await dashboard({ sources: FIN_SRC });
+    const wire = JSON.parse(JSON.stringify(dashF)) as Record<string, unknown>;   // exactly what the browser receives
+    const ex = parseExecutive(wire);
+    const mFact = fact(dashF.motion, "MOTION") as unknown as { greeting: Array<{ key: string }>; todayItems: Array<{ key: string }>; closeLoops: Array<{ key: string }>; label: Array<{ key: string }>; more: number; week: { lineHe: string | null }; inbox: { lineHe: string | null }; financial: { decided: string[] } | null };
+    const keys = (a: Array<{ key: string }>) => a.map((i) => i.key);
+    ok("7a. the executive read parses (motion, forward and needs_me all present)", !!ex && !!ex.motion && !!ex.forward && !!ex.needsMe, ex && { m: !!ex.motion, f: !!ex.forward, n: !!ex.needsMe });
+    const m = ex!.motion!, f = ex!.forward!;
+    ok("7b. B1 greeting = motion.greeting exactly (same keys, same order, ≤3)", same(keys(m.greeting), keys(mFact.greeting)) && m.greeting.length <= 3 && m.greeting.length > 0, keys(m.greeting));
+    ok("7c. todayItems / closeLoops / label keep Sunny's order (no re-sort)", same(keys(m.todayItems), keys(mFact.todayItems)) && same(keys(m.closeLoops), keys(mFact.closeLoops)) && same(keys(m.label), keys(mFact.label)) && m.more === mFact.more);
+    ok("7d. B2 state line = Sunny's own week / inbox lines", m.weekLineHe === mFact.week.lineHe && m.inboxLineHe === mFact.inbox.lineHe);
+    const fw = fact(dashF.forward, "WINDOWS") as unknown as Array<Record<string, unknown>>;
+    ok("7e0. FF reads this finance", f.read === true);
+    ok("7e. B5 'בפועל החודש' = FINANCIAL_FORWARD ACTUAL_MONTH; 7 days = its first window; per currency", same(f.actualMonth, fact(dashF.forward, "ACTUAL_MONTH")) && same(f.week?.hardOutflow, fw[0].hardOutflow) && same(f.week?.expectedInflow, fw[0].expectedInflow) && Object.keys(f.actualMonth).every((c) => ["₪", "$", "€", "£"].includes(c)), { a: f.actualMonth, w: f.week });
+    ok("7f. B5 answer / decisions come from FF / motion (never a second money rule)", f.answerHe === String(fact(dashF.forward, "ANSWER")) && same(m.money?.decided ?? [], mFact.financial?.decided ?? []));
+    ok("7g. the coverage sentence is the 'לפי התזרים הרשום' one (no bank balance claimed)", !!f.coverageHe && f.coverageHe.startsWith("לפי התזרים הרשום") && !/יש מספיק כסף|העסק יציב|(^|[.·—] )יש כיסוי/.test(JSON.stringify({ ...f, coverageHe: null })));
+    const nb = parseBoard(ex!.needsMe!), nbDirect = parseBoard(JSON.parse(JSON.stringify(dashF.needsMe)) as Record<string, unknown>);
+    ok("7h. B3 'מחכה לך' = the SAME needs_me board through the SAME parser", !!nb && same(nb, nbDirect) && nb.today.length > 0);
+    ok("7i. a part that is not OK parses as null (never an empty list)", (() => { const e = parseExecutive({ ...wire, motion: { status: "UNAVAILABLE" }, forward: { status: "UNAVAILABLE" }, needsMe: { status: "FORBIDDEN" } }); return !!e && e.motion === null && e.forward === null && e.needsMe === null; })() && parseExecutive({ error: "x" }) === null && parseExecutive(null) === null);
+    ok("7j. history NOT_READ is carried through (said, never 'nothing was done')", parseExecutive({ ...wire, history: { status: "NOT_READ", reasonHe: "x" } })!.history.status === "NOT_READ");
+
+    // the join: exact canonical keys only
+    const idx = indexByEntity(m);
+    ok("7k. the index holds only canonical keys, each from a served item (first served wins)", [...idx.keys()].every((k) => isCanonicalKey(k)) && [...idx.entries()].every(([k, i]) => servedItems(m).find((x) => x.entity === k || x.entities.includes(k))?.key === i.key) && idx.size > 0, [...idx.keys()]);
+    const it = (o: Partial<ExecItem>): ExecItem => ({ key: "k", entity: null, entities: [], level: "SHOULD", codes: ["X"], titleHe: "יהלום", reasonsHe: ["r"], move: null, epistemic: "DERIVED", ...o });
+    const fake = { ...m, todayItems: [it({ key: "a", entity: K(P_YAHALOM) }), it({ key: "b", entity: K(P_YAHALOM), level: "MUST" }), it({ key: "c", entity: null, titleHe: "מאור" })], atRisk: [], closeLoops: [], label: [], watch: [] } as ExecMotion;
+    const fi = indexByEntity(fake);
+    ok("7l. the first served item for a key wins (no level ranking of our own)", fi.get(K(P_YAHALOM))?.key === "a");
+    ok("7m. never by a name: a key-less item named like a row enriches nothing; a non-canonical key enriches nothing", enrichmentFor(fi, "מאור") === null && enrichmentFor(fi, null) === null && enrichmentFor(fi, "project:yahalom") === null && enrichmentFor(fi, `project:${P_MAOR}`) === null && fi.size === 1);
+    const PID = "aaaaaaaa-1111-2222-3333-444444444444", SID = "bbbbbbbb-1111-2222-3333-444444444444";
+    const tl = buildTimeline({ today: TODAY, projects: [{ id: PID, name: "יהלום", status: "בעבודה", deadline: TODAY }], shows: [{ id: SID, name: "הופעה", date: TODAY, status: "נסגר" }],
+      sessions: [{ id: "s1", project_id: PID, date: TODAY, status: "מתוכנן" }, { id: "s2", show_id: SID, date: TODAY, status: "מתוכנן", session_type: "חזרה" }, { id: "s3", date: TODAY, status: "מתוכנן", title: "יהלום" }],
+      tasks: [{ id: "t1", title: "יהלום", due_date: TODAY, status: "פתוח" }], calendar: [{ id: "e1", title: "סשן יהלום", startTime: `${TODAY}T10:00:00`, matchedProjectId: PID }] });
+    const ent = Object.fromEntries(tl.map((t) => [t.key, t.entity]));
+    ok("7n. timeline rows carry a key ONLY from their own id / FK: deadline + project session → project, show + show rehearsal → show; task, key-less session and a calendar text match → none",
+      ent[`deadline:${PID}`] === `project:${PID}` && ent["session:s1"] === `project:${PID}` && ent[`show:${SID}`] === `show:${SID}` && ent["session:s2"] === `show:${SID}` && ent["session:s3"] === null && ent["task:t1"] === null && ent["cal:e1"] === null, ent);
+    ok("7o. opens only existing drawers / pages", same(openOfEntity(`project:${PID}`), { kind: "project", id: PID }) && same(openOfEntity(`label-artist:${PID}`), { kind: "href", href: "/label" }) && openOfEntity("client:x").kind === "none" && openOfEntity(null).kind === "none");
+    ok("7p. money per currency, never summed", totalsHe({ "$": 750, "₪": 2213 }) === "$750 + ₪2,213" && totalsHe({}) === "0");
+
+    const ui = code(read("components/dashboard-v2/DashboardV2.tsx")), lib = code(read("lib/dashboard-executive.ts"));
+    ok("7q. the dashboard reads ONE executive endpoint; no /api/coo/brief, no /api/transactions, no direct needs_me fetch, no financeMonth", ui.includes('"/api/partner/executive"') && !ui.includes("/api/coo/brief") && !ui.includes("/api/transactions") && !ui.includes("capability=needs_me") && !ui.includes("financeMonth"));
+    ok("7r. no ranking on the page or in the mapper (no sort / score / level comparison)", !/\.sort\(|score|level ===|\.level >|\.level </.test(lib) && !/\.sort\(|score/.test(ui));
+    ok("7s. enrichment is called only with a canonical key (the row's entity or project:<release projectId>), never a title / name", [...ui.matchAll(/enrichmentFor\(([^)]*)\)/g)].every((x) => /^sunnyIdx, `project:\$\{r\.item\.projectId\}`$|^sunny, it\.entity$/.test(x[1])) && [...ui.matchAll(/enrichmentFor\(/g)].length === 2);
+    ok("7t. the 'לא מסונן' fallback stays, the page writes only 'עדכון לסאני', and nothing pushes / writes the calendar", /לא מסונן/.test(ui) && /buildNeedsMe\(\{/.test(ui) && [...ui.matchAll(/method:\s*"(POST|PATCH|PUT|DELETE)"/g)].length === 1 && !/\/api\/push|create-event|create-task/.test(ui));
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
