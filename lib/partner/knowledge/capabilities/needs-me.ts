@@ -20,6 +20,8 @@ const todayItem = (n: NeedsItem, section: NeedsMeSection): KnowledgeItem => item
     nextAction: { he: n.fromInbox?.nextStep && n.nextAction.he.includes(n.fromInbox.nextStep) ? record(n.nextAction.he) : partner(n.nextAction.he), actionId: n.nextAction.actionId },
     fromInbox: n.fromInbox ? { ...n.fromInbox, whatHappened: record(n.fromInbox.whatHappened), nextStep: n.fromInbox.nextStep ? record(n.fromInbox.nextStep) : null, conflictHe: n.fromInbox.conflictHe ? partner(n.fromInbox.conflictHe) : null, epistemic: "HYPOTHESIS" } : null,
     date: n.date, open: n.open,
+    // D1: the Owner's own statements about this item (known context, never the ball)
+    known: (n.known ?? []).map((k) => ({ ...k, textHe: record(k.textHe), knownHe: record(k.knownHe), canonicalHe: partner(k.canonicalHe) })),
   },
 });
 const entryItem = (e: NeedsEntry, section: NeedsMeSection): KnowledgeItem => item({
@@ -65,6 +67,7 @@ export const needsMe: KnowledgeCapability = {
         sfact("CHECKED", "נבדקו", n.checked, "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("INTEGRITY", "שאלות סאני (שורה נפרדת)", { count: n.integrity.count, blocking: n.integrity.blocking }, "DERIVED", "INTEGRITY"),
         sfact("INBOX", "עדכונים שעובדו (הבנות)", n.inbox, "HYPOTHESIS", "OWNER_INBOX"),
+        sfact("KNOWLEDGE", "מה שסיפרת לסאני (העשרה בלבד)", n.knowledge, "OWNER_REPORTED", "OWNER_KNOWLEDGE"),
         sfact("TODAY_YMD", "היום (שעון ישראל)", n.today, "FACT", "PARTNER_KNOWLEDGE"),
       ],
       completeness: n.unchecked.length ? "PARTIAL" : "COMPLETE",

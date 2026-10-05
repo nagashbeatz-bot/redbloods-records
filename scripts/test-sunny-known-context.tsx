@@ -18,7 +18,11 @@ import { matchReportedPayment } from "../lib/partner/finance/payment-match";
 import type { FinanceTxRow } from "../lib/partner/finance/types";
 import { financeKnowledgeContextOf, reconcileForKnowledge } from "../lib/partner/finance/decision-gate";
 import { canonicalEffectOf } from "../lib/partner/owner-knowledge/propose";
-import type { OwnerKnowledgeRecord } from "../lib/partner/owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../lib/partner/owner-knowledge/store";
+import { knowledgeKind } from "../lib/partner/owner-knowledge/kinds";
+import { followUpKnowledgeFor, followUpKnown } from "../lib/partner/sunny/known-context";
+import { buildNeedsMe } from "../lib/partner/needs-me/curate";
+import { buildClientView } from "../lib/partner/clients/view";
 import type { Plan } from "../lib/partner/act/types";
 
 let pass = 0, fail = 0;
@@ -134,6 +138,96 @@ const tx = (o: Partial<FinanceTxRow> & { id: string }): FinanceTxRow => ({ proje
     ok("4l. a WITHDRAW preview is not presented as the assertion (no reconcile, no canonical path)", effW.canonicalPath.length === 0 && effW.stillSurfaced.every((x) => x.willAppearAs !== "RECONCILIATION"), effW);
     const om = read("lib/partner/system/owner-model.ts");
     ok("4m. the payment workflow names the existing primitives (no stale FUTURE_PRIMITIVE_REQUIRED)", !/RECORD_RECEIVED_INCOME — FUTURE_PRIMITIVE_REQUIRED/.test(om) && /SET_TRANSACTION_STATUS \(צפוי → התקבל\)/.test(om));
+  }
+
+  console.log("\nS5. Stage 3 — FOLLOW_UP_EXPECTATION: known context per proposal, canonical SET_PROPOSAL_FOLLOWUP, never cross-proposal");
+  {
+    const T = "2026-10-05";
+    const PR1 = `proposal:${U(301)}`, PR2 = `proposal:${U(302)}`, CL = `client:${U(201)}`;
+    const fu = (o: Partial<OwnerKnowledgeRecord> & { id: string; value: Record<string, unknown> }) => ({ createdAt: "2026-10-04T10:00:00Z", kind: "FOLLOW_UP_EXPECTATION", subjectKey: CL, identityKeys: [CL], slotKey: `${o.id}-s`, epistemic: "OWNER_REPORTED", meaningHe: "אתה חוזר לנוי עד 2026-10-20.", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-20", expiresAt: null, ...o } as OwnerKnowledgeRecord);
+    const onPr1 = fu({ id: "f1", value: { who: "OWNER_WILL_CONTACT", when: "2026-10-20", proposal: PR1 } });
+    ok("5a. an expectation naming proposal 1 applies to proposal 1 only — never to proposal 2 of the same client", followUpKnowledgeFor([onPr1], PR1, CL, 2)?.id === "f1" && followUpKnowledgeFor([onPr1], PR2, CL, 2) === null);
+    const clientLevel = fu({ id: "f2", value: { who: "OWNER_WILL_CONTACT", when: "2026-10-20" } });
+    ok("5b. a client-level expectation (no proposal named) applies only when the client has exactly ONE open proposal", followUpKnowledgeFor([clientLevel], PR1, CL, 1)?.id === "f2" && followUpKnowledgeFor([clientLevel], PR1, CL, 2) === null);
+    const k1 = followUpKnown(onPr1, PR1, "4 שירים", "2026-10-01", T);
+    ok("5c. 'לחזור ב-20.10' → known line + SET_PROPOSAL_FOLLOWUP 2026-10-20 (a proposal — knowledge alone changes nothing)", k1.state === "KNOWN_CONTEXT_RECONCILE" && k1.actions.length === 1 && k1.actions[0].actionId === "SET_PROPOSAL_FOLLOWUP" && k1.actions[0].args.followupDate === "2026-10-20" && k1.actions[0].args.proposal === PR1 && /כבר אמרת לי/.test(k1.textHe) && /לסנכרן\?/.test(k1.textHe), k1);
+    const k1done = followUpKnown(onPr1, PR1, "4 שירים", "2026-10-20", T);
+    ok("5d. after the canonical write (follow-up = 20.10, read back) → KNOWN_MATCHES, no action, no question", k1done.state === "KNOWN_MATCHES" && k1done.actions.length === 0, k1done);
+    const notNow = followUpKnown(fu({ id: "f3", value: { who: "OWNER_WILL_CONTACT", whenRelative: "NOT_NOW", proposal: PR1 }, reviewAt: "2026-11-04" }), PR1, null, "2026-10-01", T);
+    ok("5e. 'לא לחזור כרגע' (NOT_NOW) → clear the follow-up (SET_PROPOSAL_FOLLOWUP clear) — not a repeated question", notNow.actions[0]?.actionId === "SET_PROPOSAL_FOLLOWUP" && notNow.actions[0].args.clear === true && notNow.state !== "STILL_TRUE_CHECK", notNow);
+    const rel = followUpKnown(fu({ id: "f4", value: { who: "OWNER_WILL_CONTACT", whenRelative: "AFTER_HOLIDAYS", proposal: PR1 }, reviewAt: "2026-11-01" }), PR1, null, "2026-10-01", T);
+    ok("5f. 'אחרי החגים' → the date is MISSING (asked), never invented", rel.actions[0]?.missing.join() === "followupDate" && !("followupDate" in rel.actions[0].args), rel.actions);
+    const due = followUpKnown(fu({ id: "f5", value: { who: "OWNER_WILL_CONTACT", when: "2026-10-03", proposal: PR1 }, reviewAt: "2026-10-03" }), PR1, null, "2026-10-01", T);
+    ok("5g. reviewAt passed → 'זה עדיין נכון?' (STILL_TRUE_CHECK, no action) — not expiry, not the bare original question", due.state === "STILL_TRUE_CHECK" && due.actions.length === 0 && /עדיין נכון\?/.test(due.textHe) && /אמרת לי/.test(due.textHe), due);
+    const wd = [onPr1, { ...onPr1, id: "f1w", operation: "WITHDRAW", supersedesId: "f1", createdAt: "2026-10-05T08:00:00Z" } as OwnerKnowledgeRecord];
+    ok("5h. a withdrawn expectation stops applying (activeKnowledge → the question returns)", followUpKnowledgeFor(activeKnowledge(wd, T), PR1, CL, 1) === null);
+    // the kind itself: per-proposal slot, NOT_NOW, ownership check, VENDOR_COMMITMENT due optional + work, communication ≠ commitment
+    const FK = knowledgeKind("FOLLOW_UP_EXPECTATION")!;
+    ok("5i. two proposals of one client never supersede each other (slot per proposal); without a proposal the old slot is unchanged", FK.slot({ who: "OWNER_WILL_CONTACT", proposal: PR1 }) !== FK.slot({ who: "OWNER_WILL_CONTACT", proposal: PR2 }) && FK.slot({ who: "OWNER_WILL_CONTACT" }) === "followup:OWNER_WILL_CONTACT");
+    const live = (owner: { clientKey: string | null; projectKey: string | null; vendorKey: string | null } | null) => ({ todayIL: T, projectStatus: () => null, financeMatch: () => null, refOwner: () => owner });
+    ok("5j. a proposal of ANOTHER client is refused (REF_NOT_OF_SUBJECT, blocking) — never linked across entities", FK.conflicts(CL, { who: "OWNER_WILL_CONTACT", proposal: PR1 }, live({ clientKey: `client:${U(299)}`, projectKey: null, vendorKey: null })).some((c) => c.code === "REF_NOT_OF_SUBJECT" && c.severity === "BLOCKING")
+      && FK.conflicts(CL, { who: "OWNER_WILL_CONTACT", proposal: PR1 }, live({ clientKey: CL, projectKey: null, vendorKey: null })).length === 0);
+    ok("5k. NOT_NOW is a registered whenRelative value (no new kind)", (FK.fields.whenRelative as { values: readonly string[] }).values.includes("NOT_NOW"));
+    const VC = knowledgeKind("VENDOR_COMMITMENT")!;
+    ok("5l. VENDOR_COMMITMENT: due optional, work is a typed reference, per-work slot", !(VC.fields.due as { required: boolean }).required && VC.fields.work?.type === "ref" && VC.slot({ commitment: "SEND_REVISION", work: `victor-work:${U(1)}` }) !== VC.slot({ commitment: "SEND_REVISION", work: `victor-work:${U(2)}` }));
+    ok("5m. a Victor work belongs to vendor:VICTOR only (Steven's commitment cannot point at it)", VC.conflicts("vendor:STEVEN", { commitment: "SEND_REVISION", work: `victor-work:${U(1)}` }, live({ clientKey: null, projectKey: null, vendorKey: "vendor:VICTOR" })).some((c) => c.code === "REF_NOT_OF_SUBJECT"));
+    ok("5n. the model is told: outside communication ('דיברתי איתו / שלחתי לו / עברנו על זה') is NEVER a commitment", /NOT a commitment/.test(VC.descriptionForModel) && /NEVER a commitment/.test(read("lib/integrations/partner-mcp/tools.ts")));
+  }
+
+  console.log("\nS6. needs_me — known context ENRICHES (D1): the record item stays, the Owner's statement is shown, records win");
+  {
+    const TODAY = "2026-10-05";
+    const PM = U(12), PO = U(13);
+    const kb = (o: Partial<OwnerKnowledgeRecord> & { id: string; value: Record<string, unknown> }) => ({ createdAt: "2026-09-27T20:47:00Z", kind: "PROJECT_BLOCKER", subjectKey: `project:${PM}`, identityKeys: [`project:${PM}`], slotKey: `${o.id}-s`, epistemic: "OWNER_REPORTED", meaningHe: "דאנסהול סקול תקוע: מחכים לאמן (אברהם איילאו) — מחכים לפידבק של איילו על המיקס", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-11", expiresAt: null, ...o } as OwnerKnowledgeRecord);
+    const nsrc = (o: { versionAt: string; knowledge: OwnerKnowledgeRecord[] | null; proposals?: unknown[] }) => {
+      const steven = { id: U(70), projectId: PM, engineerName: "Steven", workTitle: null, workType: "מיקס + מאסטר", status: "בתהליך", agreedPrice: 200, currency: "$", amountPaid: 0, sentDate: "2026-09-10", internalDeadline: null, linkedTransactionId: null, paymentDate: null, notes: null, hasFilesLink: false, sortOrder: 0, createdAt: null, updatedAt: null };
+      const ver = { id: U(80), workId: U(70), projectId: PM, label: "v2", fileName: "v2.wav", status: null, uploadedBy: "steven", durationSeconds: null, uploadedAt: o.versionAt, targetId: null, path: null, size: null, type: null, createdAt: o.versionAt, updatedAt: null };
+      const index = { [PM]: { name: "דאנסהול סקול", status: "במיקס", artistText: "נגש ביטס", businessType: "לייבל" }, [PO]: { name: "אחר", status: "במיקס", artistText: "X", businessType: "לקוח" } };
+      const state = { todayIL: TODAY, domains: { projects: { data: { index, open: [] } }, clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: [] } }, sessions: { data: { items: [] } }, releasesFull: { data: { items: [] } }, proposalsFull: { data: { items: o.proposals ?? [] } }, tasksFull: { data: { items: [] } } } };
+      const det = { victor: { rows: [], capped: false }, engineerWork: { rows: [steven], capped: false }, mixVersions: { rows: [ver], capped: false }, mixComments: { rows: [], capped: false }, mixTargets: { rows: [], capped: false }, mixTargetNotes: { rows: [], capped: false }, finalFiles: { rows: [], capped: false }, projectSettings: { rows: [], capped: false }, tasks: { rows: [], capped: false }, actions: { rows: [], capped: false } };
+      const ops = { engineerWork: { rows: [steven], capped: false }, mixVersions: { rows: [ver], capped: false }, projectsMeta: { rows: [], capped: false }, projectActions: { rows: [], capped: false } };
+      return {
+        now: new Date(`${TODAY}T09:00:00Z`), identities: { cleantone: null }, state: { status: "OK", value: state }, operations: { status: "OK", value: ops }, projectDetail: { status: "OK", value: det },
+        labelDetail: { status: "OK", value: { shows: { rows: [], capped: false }, artists: { rows: [], capped: false } } }, settings: { status: "OK", value: { families: {} } }, actions: { status: "OK", value: [] },
+        integrity: { status: "OK", value: { questions: [] } }, ownerInbox: { status: "OK", value: [] }, inboxMemory: { status: "OK", value: { links: [], interpretations: [] } },
+        ownerKnowledge: o.knowledge === null ? { status: "UNAVAILABLE", detail: "x" } : { status: "OK", value: o.knowledge }, audience: { channel: "INTERNAL", ownerAuthorized: true },
+      } as never;
+    };
+    const n = buildNeedsMe(nsrc({ versionAt: "2026-09-21T00:04:38Z", knowledge: [kb({ id: "b1", value: { reason: "WAITING_FOR_ARTIST", waitingOn: `client:${U(5)}` } })] }));
+    const it = n.items.find((i) => i.entityKey === `mix-work:${U(70)}`);
+    ok("6a. the record item STAYS (the ball is the Owner's by engineerHandoff) — knowledge never removes it", !!it && it.ball.holder === "OWNER", n.items.map((i) => i.entityKey));
+    ok("6b. the Owner's blocker is shown as known context with the contradiction (records win, nothing changed)", !!it?.known?.length && /כבר אמרת לי/.test(it.known[0].textHe) && /הרשומות קובעות/.test(it.known[0].textHe) && it.evidence.some((e) => e.code === "OWNER_KNOWLEDGE_VS_RECORDS") && n.knowledge.conflicts === 1, it?.known);
+    const newer = buildNeedsMe(nsrc({ versionAt: "2026-09-30T10:00:00Z", knowledge: [kb({ id: "b1", value: { reason: "WAITING_FOR_ARTIST" } })] }));
+    ok("6c. D3: a version uploaded AFTER the statement → newer canonical evidence wins; the old blocker is not shown as still true", !newer.items.find((i) => i.entityKey === `mix-work:${U(70)}`)?.known?.length, newer.items.find((i) => i.entityKey === `mix-work:${U(70)}`)?.known);
+    const other = buildNeedsMe(nsrc({ versionAt: "2026-09-21T00:04:38Z", knowledge: [kb({ id: "b2", subjectKey: `project:${PO}`, identityKeys: [`project:${PO}`], value: { reason: "WAITING_FOR_ARTIST" } })] }));
+    ok("6d. cross-entity: a blocker on ANOTHER project never enriches this one", !other.items.find((i) => i.entityKey === `mix-work:${U(70)}`)?.known?.length);
+    const review = buildNeedsMe(nsrc({ versionAt: "2026-09-21T00:04:38Z", knowledge: [kb({ id: "b1", value: { reason: "WAITING_FOR_ARTIST" }, reviewAt: "2026-10-01" })] }));
+    const rk = review.items.find((i) => i.entityKey === `mix-work:${U(70)}`)?.known?.[0];
+    ok("6e. reviewAt passed → 'זה עדיין נכון?' (STILL_TRUE_CHECK), not silently true", rk?.state === "STILL_TRUE_CHECK" && /עדיין נכון\?/.test(rk.textHe), rk);
+    const un = buildNeedsMe(nsrc({ versionAt: "2026-09-21T00:04:38Z", knowledge: null }));
+    ok("6f. knowledge unreadable → 'לא נבדק' (unknown), never 'nothing was said'", un.unchecked.some((u) => u.source === "OWNER_KNOWLEDGE") && !un.knowledge.read);
+    // the proposal follow-up item stays and carries the canonical path
+    const prop = { id: U(301), clientId: U(201), clientName: "נוי", linkedProjectId: null, title: "4 שירים", amount: 2700, currency: "₪", status: "הצעה נשלחה", followupYmd: "2026-10-04", sentYmd: "2026-09-20", createdAt: null, updatedAt: null };
+    const fuK = { createdAt: "2026-10-04T12:00:00Z", kind: "FOLLOW_UP_EXPECTATION", subjectKey: `client:${U(201)}`, identityKeys: [`client:${U(201)}`], slotKey: "fu-s", epistemic: "OWNER_REPORTED", meaningHe: "אתה חוזר לנוי עד 2026-10-20.", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-20", expiresAt: null, value: { who: "OWNER_WILL_CONTACT", when: "2026-10-20", proposal: `proposal:${U(301)}` } } as unknown as OwnerKnowledgeRecord;
+    const pn = buildNeedsMe(nsrc({ versionAt: "2026-09-21T00:04:38Z", knowledge: [fuK], proposals: [prop] }));
+    const pit = [...pn.items, ...pn.moreToday].find((i) => i.entityKey === `proposal:${U(301)}`);
+    ok("6g. the due proposal follow-up STAYS (records) and carries 'כבר אמרת לי … לסנכרן?' + SET_PROPOSAL_FOLLOWUP 20.10", !!pit && pit.known?.[0]?.actions[0]?.actionId === "SET_PROPOSAL_FOLLOWUP" && pit.known[0].actions[0].args.followupDate === "2026-10-20", pit?.known);
+  }
+
+  console.log("\nS7. client_view — a due proposal follow-up the Owner already spoke about is a known line, not a repeated question");
+  {
+    const TODAY = "2026-10-05", CID = U(201);
+    const prop = (id: number, follow: string) => ({ id: U(id), clientId: CID, clientName: "נוי", linkedProjectId: null, title: `הצעה ${id}`, amount: 2700, currency: "₪", status: "הצעה נשלחה", followupYmd: follow, sentYmd: "2026-09-20", createdAt: "2026-09-20T10:00:00Z", updatedAt: null });
+    const fuOn = (pid: number) => ({ id: `fu${pid}`, createdAt: "2026-10-04T12:00:00Z", kind: "FOLLOW_UP_EXPECTATION", subjectKey: `client:${CID}`, identityKeys: [`client:${CID}`], slotKey: `fu${pid}`, epistemic: "OWNER_REPORTED", meaningHe: "אתה חוזר לנוי עד 2026-10-20.", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-20", expiresAt: null, value: { who: "OWNER_WILL_CONTACT", when: "2026-10-20", proposal: `proposal:${U(pid)}` } });
+    const csrc = (knowledge: unknown[]) => ({
+      now: new Date(`${TODAY}T09:00:00Z`), identities: { cleantone: null },
+      state: { status: "OK", value: { todayIL: TODAY, domains: { projects: { data: { index: {}, open: [] } }, clients: { data: { items: [{ id: CID, name: "נוי", type: "אמן", status: "חדש", createdAt: null }] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: [] } }, sessions: { data: { items: [] } }, releasesFull: { data: { items: [] } }, proposalsFull: { data: { items: [prop(301, "2026-10-03"), prop(302, "2026-10-03")] } }, tasksFull: { data: { items: [] } }, shows: { data: { items: [] } } } } },
+      ownerKnowledge: { status: "OK", value: knowledge }, audience: { channel: "INTERNAL", ownerAuthorized: true },
+    } as never);
+    const v = buildClientView(csrc([fuOn(301)]), CID)!;
+    ok("7a. proposal 301 (the Owner said 'לחזור ב-20.10') → a known line with SET_PROPOSAL_FOLLOWUP, NOT a FOLLOW_UP question", v.known.some((k) => k.entityKey === `proposal:${U(301)}` && k.actions[0]?.actionId === "SET_PROPOSAL_FOLLOWUP") && !v.questions.some((q) => q.kind === "FOLLOW_UP" && q.questionHe.includes("הצעה 301")), { known: v.known, q: v.questions });
+    ok("7b. proposal 302 of the SAME client (nothing said about it) is still asked — no cross-proposal suppression", v.questions.some((q) => q.kind === "FOLLOW_UP" && q.questionHe.includes("הצעה 302")), v.questions);
+    ok("7c. the record signal FOLLOW_UP_DUE stays for both proposals (D1: knowledge never removes a record signal)", v.signals.filter((s) => s.code === "FOLLOW_UP_DUE").length === 2);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

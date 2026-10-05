@@ -77,6 +77,8 @@ function src(o: Opts = {}): GatewaySources {
     integrity: o.integrityQs === null ? { status: "UNAVAILABLE", detail: "x" } as never : { status: "OK", value: { questions: o.integrityQs ?? [] } } as never,
     ownerInbox: { status: "OK", value: [{ id: U(950), createdAt: "2026-10-01T07:00:00Z", body: "קרוב אלייך — עדכון חדש שעוד לא עובד", author: "OWNER", epistemic: "OWNER_REPORTED", source: "DASHBOARD_V2", status: "NEW", processedAt: null, processedVia: null, outcome: null, outcomeRef: null }] } as never,
     inboxMemory: o.memory === null ? { status: "UNAVAILABLE", detail: "x" } as never : { status: "OK", value: o.memory ?? { links: [], interpretations: [] } } as never,
+    // D1 (2026-10-05): the Owner's P2 knowledge is an optional enrichment source — read here (empty) like production
+    ownerKnowledge: { status: "OK", value: [] } as never,
     audience: { channel: "INTERNAL", ownerAuthorized: true },
   } as GatewaySources;
 }

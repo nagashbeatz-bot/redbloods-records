@@ -24,7 +24,13 @@ export type FieldSpec =
   | { type: "text"; maxLength: number; required: boolean }
   | { type: "ymd"; required: boolean }
   | { type: "amount"; required: boolean }
-  | { type: "entity"; subjectTypes: readonly KnowledgeSubjectType[]; required: boolean };
+  | { type: "entity"; subjectTypes: readonly KnowledgeSubjectType[]; required: boolean }
+  /** A typed reference to a record that is not a knowledge subject (a proposal / a Victor work / a mix work) — exact key only. */
+  | { type: "ref"; refKinds: readonly KnowledgeRefKind[]; required: boolean };
+/** Records a value may point at without being a subject (2026-10-05): the most specific identity of a follow-up / commitment. */
+export type KnowledgeRefKind = "proposal" | "victor-work" | "mix-work";
+/** Who a referenced record belongs to (for the ownership check) — client / project / vendor keys, null = unknown. */
+export interface KnowledgeRefOwner { clientKey: string | null; projectKey: string | null; vendorKey: string | null }
 
 export type KnowledgeValue = Record<string, string | number>;
 
@@ -34,6 +40,8 @@ export interface KnowledgeLiveFacts {
   projectStatus(projectId: string): string | null;
   /** Finance: is there already a canonical paid / received record matching this report? null = cannot tell. */
   financeMatch(i: { subjectKey: string; direction: string; amount: number; currency: string }): boolean | null;
+  /** The owner of a referenced record (proposal → its client / linked project; work → its project + vendor). Optional: absent = not checked. */
+  refOwner?(refKey: string): KnowledgeRefOwner | null;
 }
 
 export interface KnowledgeConflict { code: string; severity: "BLOCKING" | "NOTE"; messageHe: string }
@@ -85,8 +93,17 @@ export const ROLE_HE: Record<string, string> = {
 };
 const FREQ_HE: Record<string, string> = { ALWAYS: "תמיד", MOST: "ברוב", SOMETIMES: "לפעמים", RARELY: "לעיתים רחוקות" };
 const BLOCKER_HE: Record<string, string> = { WAITING_FOR_ARTIST: "מחכים לאמן", WAITING_FOR_CLIENT: "מחכים ללקוח", WAITING_FOR_PAYMENT: "מחכים לתשלום", WAITING_FOR_VENDOR: "מחכים לספק / איש צוות", WAITING_FOR_OWNER: "מחכה לבעלים", EXTERNAL_DEPENDENCY: "תלות חיצונית" };
-const WHEN_HE: Record<string, string> = { AFTER_HOLIDAYS: "אחרי החגים", NEXT_WEEK: "בשבוע הבא", NEXT_MONTH: "בחודש הבא", UNSPECIFIED: "בלי מועד מוגדר" };
-const RELATIVE_DAYS: Record<string, number> = { AFTER_HOLIDAYS: 30, NEXT_WEEK: 7, NEXT_MONTH: 30, UNSPECIFIED: 14 };
+const WHEN_HE: Record<string, string> = { AFTER_HOLIDAYS: "אחרי החגים", NEXT_WEEK: "בשבוע הבא", NEXT_MONTH: "בחודש הבא", UNSPECIFIED: "בלי מועד מוגדר", NOT_NOW: "לא כרגע" };
+const RELATIVE_DAYS: Record<string, number> = { AFTER_HOLIDAYS: 30, NEXT_WEEK: 7, NEXT_MONTH: 30, UNSPECIFIED: 14, NOT_NOW: 30 };
+/** A referenced record must belong to the subject (a proposal of THIS client / project; a work of THIS vendor) — never cross-entity. */
+const refBelongs = (field: string, subjectKey: string, v: KnowledgeValue, live: KnowledgeLiveFacts): KnowledgeConflict[] => {
+  const ref = typeof v[field] === "string" ? String(v[field]) : "";
+  if (!ref || !live.refOwner) return [];
+  const o = live.refOwner(ref);
+  if (!o) return [{ code: "REF_NOT_FOUND", severity: "BLOCKING", messageHe: "הרשומה שהפנית אליה לא נמצאה." }];
+  const ok = subjectKey.startsWith("vendor:") ? o.vendorKey === subjectKey : o.clientKey === subjectKey || o.projectKey === subjectKey;
+  return ok ? [] : [{ code: "REF_NOT_OF_SUBJECT", severity: "BLOCKING", messageHe: "הרשומה שהפנית אליה לא שייכת לישות הזאת — לא אקשר ביניהן." }];
+};
 const CLOSED_PROJECT = new Set(["הושלם", "בוטל"]);
 const ENTITY_TYPES_ALL: readonly KnowledgeSubjectType[] = ["label-artist", "dj", "client", "project", "show", "release", "vendor"];
 /** Subjects / objects of the generic model: every canonical entity, the company, and a declared KNOWN_ENTITY. */
@@ -188,21 +205,23 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   },
   {
     kind: "FOLLOW_UP_EXPECTATION", family: "WORK_OPERATIONS", titleHe: "מתי חוזרים", subjectTypes: ["client", "project"],
-    descriptionForModel: "Who is expected to get back to whom and when (e.g. the client will call after the holidays). The review date is when Sunny re-checks.",
-    fields: { who: { type: "enum", values: ["COUNTERPART_WILL_CONTACT", "OWNER_WILL_CONTACT"], required: true }, when: { type: "ymd", required: false }, whenRelative: { type: "enum", values: Object.keys(WHEN_HE), required: false, labelsHe: WHEN_HE } },
-    epistemic: "OWNER_REPORTED", slot: (v) => `followup:${s(v.who)}`,
+    descriptionForModel: "Who is expected to get back to whom and when (e.g. the client will call after the holidays; NOT_NOW = do not follow up now). When it is about ONE proposal, give proposal (its proposal:<id> key) — a decision about one proposal never applies to another. The review date is when Sunny re-checks.",
+    fields: { who: { type: "enum", values: ["COUNTERPART_WILL_CONTACT", "OWNER_WILL_CONTACT"], required: true }, when: { type: "ymd", required: false }, whenRelative: { type: "enum", values: Object.keys(WHEN_HE), required: false, labelsHe: WHEN_HE }, proposal: { type: "ref", refKinds: ["proposal"], required: false } },
+    // one current expectation per subject + who — and per proposal when one is named (two proposals never supersede each other)
+    epistemic: "OWNER_REPORTED", slot: (v) => (v.proposal ? `followup:${s(v.who)}:${s(v.proposal)}` : `followup:${s(v.who)}`),
     reviewAt: (v, t) => (v.when ? s(v.when) : addDays(t, RELATIVE_DAYS[s(v.whenRelative) || "UNSPECIFIED"] ?? 14)), expiresAt: () => null,
-    readBackHe: (l, v) => `${s(v.who) === "OWNER_WILL_CONTACT" ? `אתה חוזר ל${l}` : `${l} יחזור אליך`} ${v.when ? `עד ${s(v.when)}` : WHEN_HE[s(v.whenRelative) || "UNSPECIFIED"]}.`,
-    conflicts: (_k, v, live) => (v.when && s(v.when) < live.todayIL ? [{ code: "DATE_IN_PAST", severity: "BLOCKING", messageHe: "התאריך כבר עבר." }] : []),
+    readBackHe: (l, v) => `${s(v.who) === "OWNER_WILL_CONTACT" ? `אתה חוזר ל${l}` : `${l} יחזור אליך`}${v.proposalLabel ? ` (הצעה: ${s(v.proposalLabel)})` : ""} ${v.when ? `עד ${s(v.when)}` : WHEN_HE[s(v.whenRelative) || "UNSPECIFIED"]}.`,
+    conflicts: (k, v, live) => [...(v.when && s(v.when) < live.todayIL ? [{ code: "DATE_IN_PAST", severity: "BLOCKING" as const, messageHe: "התאריך כבר עבר." }] : []), ...refBelongs("proposal", k, v, live)],
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, notesHe: [],
   },
   {
     kind: "VENDOR_COMMITMENT", family: "WORK_OPERATIONS", titleHe: "התחייבות של איש צוות / ספק", subjectTypes: ["vendor"],
-    descriptionForModel: "What a vendor (Victor / Steven) committed to deliver and by when (e.g. \"Victor will finish the beat tomorrow\"). It is his commitment as reported by the Owner, not a delivery.",
-    fields: { commitment: { type: "enum", values: ["DELIVER_WORK", "SEND_REVISION", "SEND_FILES"], required: true }, due: { type: "ymd", required: true }, project: { type: "entity", subjectTypes: ["project"], required: false } },
-    epistemic: "OWNER_REPORTED", slot: (v) => `commit:${s(v.commitment)}:${s(v.project) || "-"}`, reviewAt: (v) => addDays(s(v.due), 1), expiresAt: (v) => addDays(s(v.due), 30),
-    readBackHe: (l, v) => `${l} התחייב ל${s(v.commitment) === "SEND_REVISION" ? "שלוח תיקון" : s(v.commitment) === "SEND_FILES" ? "שלוח קבצים" : "מסור עבודה"}${v.projectLabel ? ` של ${s(v.projectLabel)}` : ""} עד ${s(v.due)}.`,
-    conflicts: (_k, v, live) => (s(v.due) < live.todayIL ? [{ code: "DATE_IN_PAST", severity: "BLOCKING", messageHe: "המועד כבר עבר." }] : []),
+    descriptionForModel: "What a vendor (Victor / Steven) COMMITTED to do (e.g. \"Victor will finish the beat tomorrow\", \"הוא על זה\", \"הוא אמר שיעשה\"). Only an explicit commitment — \"I talked to him / sent him / we went over it\" is outside communication, NOT a commitment: never record it here. Give work (victor-work:<id> / mix-work:<id>) when it is about ONE work; due is optional (\"הוא על זה\" has no date). It is his commitment as reported by the Owner, not a delivery.",
+    fields: { commitment: { type: "enum", values: ["DELIVER_WORK", "SEND_REVISION", "SEND_FILES"], required: true }, due: { type: "ymd", required: false }, project: { type: "entity", subjectTypes: ["project"], required: false }, work: { type: "ref", refKinds: ["victor-work", "mix-work"], required: false } },
+    epistemic: "OWNER_REPORTED", slot: (v) => (v.work ? `commit:${s(v.commitment)}:work:${s(v.work)}` : `commit:${s(v.commitment)}:${s(v.project) || "-"}`),
+    reviewAt: (v, t) => (v.due ? addDays(s(v.due), 1) : addDays(t, 14)), expiresAt: (v) => (v.due ? addDays(s(v.due), 30) : null),
+    readBackHe: (l, v) => `${l} התחייב ל${s(v.commitment) === "SEND_REVISION" ? "שלוח תיקון" : s(v.commitment) === "SEND_FILES" ? "שלוח קבצים" : "מסור עבודה"}${v.workLabel ? ` של ${s(v.workLabel)}` : v.projectLabel ? ` של ${s(v.projectLabel)}` : ""}${v.due ? ` עד ${s(v.due)}` : " (בלי מועד)"}.`,
+    conflicts: (k, v, live) => [...(v.due && s(v.due) < live.todayIL ? [{ code: "DATE_IN_PAST", severity: "BLOCKING" as const, messageHe: "המועד כבר עבר." }] : []), ...refBelongs("work", k, v, live)],
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, notesHe: [],
   },
   {

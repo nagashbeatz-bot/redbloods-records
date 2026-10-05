@@ -21,7 +21,7 @@ import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { resolvePartnerEntityCore } from "../gateway/resolve";
 import { parseEntityKey } from "../gateway/keys";
 import type { GatewaySources } from "../gateway/core";
-import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
+import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeRefKind, type KnowledgeRefOwner, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
 import { assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
 import { isAuthoritative, withProvenanceDefaults } from "./provenance";
 import { ownerApprovalVerdict } from "../owner-approval";
@@ -187,9 +187,30 @@ function validField(name: string, spec: FieldSpec, raw: unknown, src: GatewaySou
   if (spec.type === "text") { const t = typeof raw === "string" ? raw.normalize("NFKC").trim().replace(/\s+/g, " ") : ""; if (!t || t.length > spec.maxLength || CONTROL.test(t)) errors.push(`${name}: 1–${spec.maxLength} printable characters`); else value[name] = t; return; }
   if (spec.type === "ymd") { const t = String(raw); const d = new Date(`${t}T12:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t) errors.push(`${name}: YYYY-MM-DD`); else value[name] = t; return; }
   if (spec.type === "amount") { const n = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, "")); if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) errors.push(`${name}: a positive amount`); else value[name] = Math.round(n * 100) / 100; return; }
+  if (spec.type === "ref") { const r = resolveRef(src, raw, spec.refKinds, name); if (!r.ok) errors.push(r.error); else { value[name] = r.key; value[`${name}Label`] = r.label; } return; }
   const r = resolveEntity(src, raw, spec.subjectTypes, name, known);
   if (!r.ok) { if ("clarify" in r) clarify.v = r; else errors.push(r.error); return; }
   value[name] = r.key; value[`${name}Label`] = r.label;
+}
+
+const REF_RE = /^(proposal|victor-work|mix-work):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+/** The records a typed reference may point at, from the company state already loaded (exact key only — never a name). */
+export function refRecordOf(src: GatewaySources, key: string): { label: string; owner: KnowledgeRefOwner } | null {
+  const m = REF_RE.exec(key);
+  const st = src.state?.status === "OK" ? src.state.value : null;
+  if (!m || !st) return null;
+  const [, kind, id] = m;
+  if (kind === "proposal") { const p = st.domains.proposalsFull.data?.items.find((x) => x.id === id); return p ? { label: p.title || p.clientName, owner: { clientKey: p.clientId ? `client:${p.clientId}` : null, projectKey: p.linkedProjectId ? `project:${p.linkedProjectId}` : null, vendorKey: null } } : null; }
+  if (kind === "victor-work") { const w = st.domains.victor.data?.active.find((x) => x.id === id); return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:VICTOR" } } : null; }
+  const w = st.domains.steven.data?.open.find((x) => x.id === id);
+  return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:STEVEN" } } : null;
+}
+function resolveRef(src: GatewaySources, raw: unknown, kinds: readonly KnowledgeRefKind[], what: string): { ok: true; key: string; label: string } | { ok: false; error: string } {
+  const key = typeof raw === "string" ? raw.trim() : typeof (raw as { key?: unknown } | null)?.key === "string" ? String((raw as { key: string }).key).trim() : "";
+  const m = REF_RE.exec(key);
+  if (!m || !kinds.includes(m[1] as KnowledgeRefKind)) return { ok: false, error: `${what}: an exact key (${kinds.map((k) => `${k}:<id>`).join(" / ")}) — a name is not enough here` };
+  const r = refRecordOf(src, key);
+  return r ? { ok: true, key, label: r.label } : { ok: false, error: `${what}: ${key} does not exist (or is no longer active)` };
 }
 
 /**

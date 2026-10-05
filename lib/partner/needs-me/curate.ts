@@ -41,6 +41,9 @@ import { isClosedStatus } from "../../steven-mix-reminder-pure";
 import { checkProposalFollowUps } from "../../proposal-followups";
 import { isStrictYmd } from "../../project-deadline";
 import { BALL_WITH_HE, freshnessOf, FRESHNESS_HE, headOf, type BallWith, type Freshness, type InboxMemory } from "../../inbox-memory";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { CLOSED_PROPOSAL } from "../clients/view";
+import { followUpKnowledgeFor, followUpKnown, freshnessOf as knownFreshnessOf, knownAtOf, knownItem, ownerSaidBallOf, projectKnowledgeFor, type KnownContextItem } from "../sunny/known-context";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 
@@ -92,6 +95,8 @@ export interface NeedsItem {
   whyToday: string; waitingDays: number | null; ball: NeedsBall; evidence: NeedsEvidence[];
   nextAction: { he: string; actionId: string | null };
   fromInbox: NeedsInbox | null; date: string | null; open: NeedsOpen;
+  /** D1 (2026-10-05): what the Owner already told Sunny about this item (P2 knowledge) — enrichment only; the records keep the ball. */
+  known?: KnownContextItem[];
 }
 export type EntryBall = "OWNER" | "EXTERNAL" | "UNKNOWN" | "NONE";
 export interface NeedsEntry { key: string; entityKey: string; title: string; reasonCode: string; reasonHe: string; ball: EntryBall; party: string | null; date: string | null; open: NeedsOpen }
@@ -115,6 +120,8 @@ export interface NeedsMe {
   integrity: { count: number | null; blocking: number; questions: Array<{ questionId: string; subject: string; textHe: string }>; ruleHe: string };
   checked: number;
   inbox: { read: boolean; interpretations: number; enriched: number; conflicts: number };
+  /** D1: the Owner's P2 knowledge used as enrichment (never the ball, never a new item). */
+  knowledge: { read: boolean; enriched: number; conflicts: number };
 }
 
 // ── helpers ──
@@ -477,6 +484,40 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
       reasonHe: `לפי מה שכתבת הכדור אצלך${h.inferredNextStep && freshness === "CURRENT" ? ` (${h.inferredNextStep})` : ""} — אבל אין ברשומות ראיה לכך, ולכן זה לא נכנס לבד`, ball: "NONE", party: null, date: null, open: projectOpen(pid) });
   }
 
+  // ── 8b. What the Owner already TOLD Sunny (P2 knowledge — Owner decision D1, 2026-10-05): enrich only. The item stays
+  //    (the records put the ball with him); the knowledge is shown as "כבר אמרת לי … — לפי הרשומות …", a contradiction is
+  //    shown (records win), newer canonical evidence than the statement wins (D3), a passed review asks "still true?". ──
+  const knRaw = ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null;
+  const kn = knRaw ? activeKnowledge(knRaw, today) : [];
+  if (!knRaw) unchecked.push({ source: "OWNER_KNOWLEDGE", he: "מה שסיפרת לסאני (ידע) לא נקרא — ההעשרה ממנו חסרה" });
+  let knEnriched = 0, knConflicts = 0;
+  const attach = (it: NeedsItem, k: KnownContextItem, contradiction: boolean) => {
+    (it.known ??= []).push(k);
+    it.evidence.push({ code: contradiction ? "OWNER_KNOWLEDGE_VS_RECORDS" : "OWNER_KNOWLEDGE", he: k.textHe, source: "OWNER_KNOWLEDGE", epistemic: "OWNER_REPORTED", at: k.knownAt });
+    knEnriched++; if (contradiction) knConflicts++;
+  };
+  const proposalsAll = st?.domains.proposalsFull.data?.items ?? [];
+  const openOfClient = (cid: string | null) => (cid ? proposalsAll.filter((x) => x.clientId === cid && !CLOSED_PROPOSAL.has(x.status)).length : 0);
+  for (const it of [...items]) {
+    if (it.entityKey.startsWith("proposal:")) {
+      const p = proposalsAll.find((x) => `proposal:${x.id}` === it.entityKey);
+      const fk = followUpKnowledgeFor(kn, it.entityKey, p?.clientId ? `client:${p.clientId}` : null, openOfClient(p?.clientId ?? null));
+      if (fk) attach(it, followUpKnown(fk, it.entityKey, p?.title ?? null, p?.followupYmd ?? it.date, today), false);
+      continue;
+    }
+    if (!it.projectId) continue;
+    // project-level statements (blocker / follow-up) — the event that put the ball here is the canonical evidence (D3)
+    const evDay = it.ball.sinceAt && Number.isFinite(Date.parse(it.ball.sinceAt)) ? ilYmd(new Date(it.ball.sinceAt)) : null;
+    for (const k of projectKnowledgeFor(kn, `project:${it.projectId}`)) {
+      const fr = knownFreshnessOf(k, today, evDay);
+      if (fr === "SUPERSEDED_BY_EVIDENCE") continue; // the records moved on after he said it — the old statement no longer counts
+      const said = ownerSaidBallOf(k);
+      const contradiction = it.ball.holder === "OWNER" && said === "OTHER";
+      attach(it, knownItem({ questionKind: "PROJECT_STATE", entityKey: `project:${it.projectId}`, label: null, meaningHe: k.meaningHe, knownAt: knownAtOf(k), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: k.id, knowledgeKind: k.kind }, freshness: fr,
+        canonicalHe: contradiction ? `${it.whyToday} — הרשומות קובעות; לא שיניתי כלום` : it.whyToday }), contradiction && fr === "CURRENT");
+    }
+  }
+
   // ── 9. Integrity questions: their own line (Q2). No question type today blocks an action. ──
   const qs = integrity?.questions ?? null;
   const integrityOut = {
@@ -538,5 +579,6 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     today, items: sorted.slice(0, NEEDS_ME_MAX), moreToday: sorted.slice(NEEDS_ME_MAX), summaries,
     backlog: backlog.sort(byDate), undecided, unchecked, excluded: excluded.sort(byDate), integrity: integrityOut, checked,
     inbox: { read: !!mem, interpretations, enriched, conflicts },
+    knowledge: { read: !!knRaw, enriched: knEnriched, conflicts: knConflicts },
   };
 }

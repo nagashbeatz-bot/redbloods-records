@@ -17,7 +17,7 @@ import { createCompanyReadContext } from "../company/read-context";
 import { APP_IDENTITIES } from "../gateway/read-context";
 import type { GatewaySources } from "../gateway/core";
 import type { KnowledgeLiveFacts } from "./kinds";
-import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, type KnowledgeActor, type KnowledgeProposeDeps } from "./propose";
+import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, refRecordOf, type KnowledgeActor, type KnowledgeProposeDeps } from "./propose";
 import { createOwnerKnowledgeStore, type OwnerKnowledgeTableClient } from "./store";
 import { matchReportedPayment } from "../finance/payment-match";
 
@@ -36,6 +36,7 @@ function liveFacts(src: GatewaySources, todayIL: string): KnowledgeLiveFacts {
       const m = matchReportedPayment({ subjectKey, direction, amount, currency }, fin ? fin.raw.transactions : null);
       return m.kind === "UNKNOWN" ? null : m.kind === "RECORDED";
     },
+    refOwner: (refKey) => refRecordOf(src, refKey)?.owner ?? null,
   };
 }
 

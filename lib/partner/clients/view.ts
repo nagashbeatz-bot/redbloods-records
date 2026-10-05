@@ -18,6 +18,7 @@ import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import type { ClientDetailRaw } from "./detail-types";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { followUpKnowledgeFor, followUpKnown, type KnownContextItem } from "../sunny/known-context";
 import type { CalendarWindowResult } from "../calendar/types";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import { validateTx } from "../finance/core";
@@ -32,7 +33,8 @@ const low = (x: string | null | undefined) => (x ?? "").normalize("NFKC").trim()
 const tokens = (x: string | null | undefined) => (x ?? "").split(/[,،;]/).map((t) => t.trim()).filter(Boolean);
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const addTo = (m: Record<string, number>, cur: string, n: number) => { m[cur] = r2((m[cur] ?? 0) + n); };
-const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
+/** The ONE open-proposal rule (also used by needs_me for the follow-up identity). */
+export const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
 const CLOSED_PROJECT = new Set(["הושלם", "בוטל"]);
 const KNOWN_PROPOSAL = new Set<string>(CLIENT_VOCABULARIES.proposalStatuses);
 const ACTIVITY_DAYS = 90;
@@ -200,12 +202,18 @@ export function buildClientView(src: GatewaySources, clientId: string) {
   // ── signals + questions ──
   const signals: ClientSignal[] = [];
   const questions: ClientQuestion[] = [];
+  // Owner decision D1 (2026-10-05): what the Owner already told Sunny about a proposal turns its question into a known-context
+  // line (with the canonical SET_PROPOSAL_FOLLOWUP path) — the record signal stays.
+  const known: KnownContextItem[] = [];
+  const openProposals = proposals.filter((x) => x.open).length;
   for (const p of proposals) {
     if (p.open) signals.push({ code: "OPEN_PROPOSAL", kind: "CANONICAL_FACT", he: `הצעה פתוחה: ${p.title} (${p.status})`, entity: p.key });
     if (!p.statusKnown) signals.push({ code: "UNKNOWN_PROPOSAL_STATUS", kind: "UNKNOWN", he: `סטטוס לא מוכר: ${p.status}`, entity: p.key });
     if (p.followUpState === "RECORDED_FOLLOW_UP_PASSED" || p.followUpState === "RECORDED_FOLLOW_UP_TODAY") {
       signals.push({ code: "FOLLOW_UP_DUE", kind: "DERIVED_SIGNAL", he: `תאריך הפולואפ הרשום (${p.followUp}) הגיע — לא רואה ב-Redbloods פעילות שנרשמה אחריו.`, entity: p.key });
-      questions.push({ kind: "FOLLOW_UP", questionHe: `ההצעה "${p.title}" — היה קשר עם הלקוח מחוץ למערכת? מה המצב שלה?`, why: "recorded follow-up date passed; WhatsApp / phone contact is invisible to Redbloods" });
+      const fk = followUpKnowledgeFor(c.kn, p.key, key, openProposals);
+      if (fk) known.push(followUpKnown(fk, p.key, p.title, p.followUp, c.today));
+      else questions.push({ kind: "FOLLOW_UP", questionHe: `ההצעה "${p.title}" — היה קשר עם הלקוח מחוץ למערכת? מה המצב שלה?`, why: "recorded follow-up date passed; WhatsApp / phone contact is invisible to Redbloods" });
     }
     if (p.open && !p.followUp) signals.push({ code: "OPEN_PROPOSAL_NO_FOLLOW_UP", kind: "CANONICAL_FACT", he: `להצעה "${p.title}" אין תאריך פולואפ.`, entity: p.key });
     if (p.status === "לחזור בעתיד") signals.push({ code: "RETURN_LATER", kind: "CANONICAL_FACT", he: `"${p.title}" מסומנת 'לחזור בעתיד'.`, entity: p.key });
@@ -234,7 +242,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
     identity: { id: client.id, name: client.name, type: client.type, status: client.status, statusMeaning: "one field mixing lifecycle / tier / role (חדש is also the auto-create default)", createdAt: client.createdAt },
     contact: stored ? { phone: stored.phone, email: stored.email, hasPhone: !!stored.phone, hasEmail: !!stored.email } : null,
     roles, proposals, projects, money: fin ? { realized, expected, collectible, potential, labelWorkMoney, rows: moneyRows, rule: "REALIZED = received rows; EXPECTED = open (not received, not cancelled) rows; POTENTIAL = open proposal amounts — never added together; per currency. Label work of the same person is kept apart (labelWorkMoney)." } : null,
-    meetings, calendar, sessions, tasks, deliveries, notes, history, lastRecordedActivity: lastActivity, ownerKnowledge: knowledge, signals, questions, unavailable,
+    meetings, calendar, sessions, tasks, deliveries, notes, history, lastRecordedActivity: lastActivity, ownerKnowledge: knowledge, signals, questions, known, unavailable,
   };
 }
 

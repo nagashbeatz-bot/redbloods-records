@@ -9,7 +9,7 @@ import { byCount, idOf, item, partner, record, result, sfact, unavailable } from
 
 const OWNER_FIN = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" } as const;
 const NEEDS = ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "INTEGRITY", "CASES", "ACTIONS", "OUTCOMES", "PROJECT_DETAIL", "CLIENT_DETAIL"] as const;
-export const CLIENT_SECTIONS = ["summary", "identity", "contact", "roles", "proposals", "projects", "money", "meetings", "calendar", "sessions", "tasks", "notes", "history", "delivery", "owner_knowledge", "signals", "questions"] as const;
+export const CLIENT_SECTIONS = ["summary", "identity", "contact", "roles", "proposals", "projects", "money", "meetings", "calendar", "sessions", "tasks", "notes", "history", "delivery", "owner_knowledge", "signals", "questions", "known"] as const;
 const COVERAGE = [
   partner("פרויקט מקושר ללקוח דרך הצעה = קישור קנוני; לפי שם האמן = TEXT_MATCH (שיתופים מסומנים)."),
   partner("כסף: התקבל / צפוי / פוטנציאל (הצעות פתוחות) — לעולם לא מחוברים יחד; לכל מטבע בנפרד."),
@@ -35,6 +35,8 @@ function sectionRows(v: ClientView, section: string): Array<{ id: string; label:
     case "owner_knowledge": return v.ownerKnowledge.map((k, i) => ({ id: `k:${i}`, label: k.meaning, recordText: true, epistemic: "OWNER_REPORTED", fields: { ...k } }));
     case "signals": return v.signals.map((s, i) => ({ id: `${s.code}:${i}`, label: s.he, recordText: true, epistemic: s.kind === "UNKNOWN" ? "UNKNOWN" : s.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", fields: { code: s.code, kind: s.kind, entity: s.entity ?? null } }));
     case "questions": return v.questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, epistemic: "UNKNOWN", fields: { kind: q.kind, why: q.why } }));
+    // what the Owner already told Sunny — a known-context line (never a new question; records unchanged)
+    case "known": return v.known.map((k, i) => ({ id: `known:${i}`, label: k.textHe, recordText: true, epistemic: k.epistemic, fields: { questionKind: k.questionKind, entity: k.entityKey, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: k.canonicalHe, actions: k.actions } }));
     default: return [];
   }
 }
@@ -60,7 +62,7 @@ export const clientView: KnowledgeCapability = {
       sfact("COUNTS", "כמויות", { proposals: v.proposals.length, openProposals: v.proposals.filter((p) => p.open).length, projects: v.projects.length, openProjects: v.projects.filter((p) => p.open).length, meetings: v.meetings.length, tasks: v.tasks.length, notes: v.notes.length }, "FACT", "CLIENTS"),
       sfact("MONEY", "כסף (לפי סוג)", v.money ? { realized: v.money.realized, expected: v.money.expected, collectible: v.money.collectible, potential: v.money.potential } : "UNKNOWN", "DERIVED", "FINANCE"),
       sfact("SIGNALS", "אותות", byCount(v.signals.map((s) => s.code)), "DERIVED", "CLIENTS"), sfact("LAST_RECORDED_ACTIVITY", "פעילות רשומה אחרונה", v.lastRecordedActivity, "DERIVED", "CLIENTS")];
-    const rows = section === "summary" ? [...sectionRows(v, "signals"), ...sectionRows(v, "questions"), { id: "sections", label: "חלקים זמינים", epistemic: "FACT" as const, fields: { sections: CLIENT_SECTIONS.filter((s) => s !== "summary") } }] : sectionRows(v, section);
+    const rows = section === "summary" ? [...sectionRows(v, "signals"), ...sectionRows(v, "questions"), ...sectionRows(v, "known"), { id: "sections", label: "חלקים זמינים", epistemic: "FACT" as const, fields: { sections: CLIENT_SECTIONS.filter((s) => s !== "summary") } }] : sectionRows(v, section);
     return result(rows.map((r) => item({ id: `${section}:${r.id}`, entity: v.key, label: r.recordText ? record(r.label) : partner(r.label), epistemic: r.epistemic, source: "CLIENTS", fields: { section, ...r.fields } })),
       { summary, completeness: v.unavailable.length ? "PARTIAL" : "COMPLETE", coverage: [...COVERAGE, ...v.unavailable.map((u) => partner(u))], missing: !rows.length ? [{ fact: section, whyNeeded: "Redbloods holds nothing for this client in this section" }] : [] });
   },
