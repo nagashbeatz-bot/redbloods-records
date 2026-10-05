@@ -108,8 +108,8 @@ export const sessions: KnowledgeCapability = {
     const items: KnowledgeItem[] = rows.map((x) => item({ id: x.id, entity: `session:${x.id}`, label: partner(`סשן ${x.dateYmd}`), epistemic: "FACT", source: "SESSIONS",
       fields: { date: x.dateYmd, status: x.status, type: x.sessionType, project: x.projectId ? { key: `project:${x.projectId}`, name: record(projectName(src, x.projectId)), link: "ID" } : null, show: x.showId ? { key: `show:${x.showId}`, link: "ID" } : null } }));
     const scheduleNote = partner(future === 0
-      ? "אין סשנים עתידיים רשומים כרגע ברשומות הסשנים. זה לא אומר שהיומן ריק — Google Calendar הוא מקור האמת ליומן ו־Partner עוד לא קורא אותו."
-      : `רשומים ${future} סשנים עתידיים, אבל Google Calendar (מקור האמת ליומן) לא נקרא — התמונה העתידית חלקית.`);
+      ? "אין סשנים עתידיים רשומים כרגע ברשומות הסשנים. זה לא אומר שהיומן ריק — Google Calendar הוא מקור האמת ליומן — סאני קוראת אותו בנפרד (capability calendar / coo schedule)."
+      : `רשומים ${future} סשנים עתידיים, אבל Google Calendar (מקור האמת ליומן) נקרא בנפרד (capability calendar) — כאן רק הרשומות.`);
     return result(items, {
       summary: [sfact("TOTAL", "רשומות סשן", s.total, "FACT", "SESSIONS"), sfact("BY_STATUS", "לפי סטטוס", s.byStatus, "FACT", "SESSIONS"), sfact("FUTURE_RECORDED", "סשנים עתידיים רשומים (לא היומן)", future, "FACT", "SESSIONS")],
       completeness: q.mode === "recent" ? "COMPLETE" : "PARTIAL", coverage: [scheduleNote],

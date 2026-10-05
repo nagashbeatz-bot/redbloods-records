@@ -4,16 +4,56 @@
  * (deps.gateway.withActionHistory) — so the connector imports no Sunny module and holds no rule of its own.
  *   inbox     owner_inbox understand / deep: every update's lifecycle re-decided WITH the actions (decideInboxLifecycle)
  *   learning  coo mode learning: the later evidence per record + the history → assessOutcomes
+ *   motion    BUSINESS_MOTION (coo priorities / motion, partner_brief): a planning move that already ran and did not move
+ *             the work is not proposed again by default (learnItem) — derived only, never policy
  * history null = not readable here → said so (never "nothing was done" / "nothing worked"). No write, no store.
  */
 import { decideInboxLifecycle, inboxExecutiveSummary, type InboxLifecycle } from "./inbox-lifecycle";
 import { assessOutcomes } from "./learning";
 import type { ActionHistoryItem, SinceEvent } from "./since";
+import { learnItem, learningNote, motionAnswerHe, prioritiesAnswerHe, type LearnableItem, type MotionAnswerInput } from "../coo/motion";
 
-export type HistoryDerivation = "inbox" | "learning";
+export type HistoryDerivation = "inbox" | "learning" | "motion";
+
+type SlimMotion = Record<string, unknown> & { progress?: Record<string, SinceEvent[]>; more?: number; answerHe?: string };
+const MOTION_LISTS = ["greeting", "todayItems", "atRisk", "closeLoops", "label", "watch"] as const;
+
+/** BUSINESS_MOTION (2026-10-05 Phase 2): the SAME learnItem over the compact motion partner_brief / coo carry. */
+function motionWithHistory(m: SlimMotion, history: readonly ActionHistoryItem[] | null, nowMs: number): SlimMotion {
+  const { progress, ...rest } = m;
+  if (!history) return { ...rest, learning: { status: "NOT_READ", changed: 0, noteHe: "לא קראתי את היסטוריית הפעולות — ההמלצות לא נבדקו מול מה שכבר נוסה (זה לא אומר שכלום לא נוסה)" } };
+  const { assessments } = assessOutcomes(history, progress ?? {}, nowMs);
+  const out: SlimMotion = { ...rest };
+  for (const l of MOTION_LISTS) {
+    const xs = Array.isArray(m[l]) ? (m[l] as LearnableItem[]) : null;
+    if (!xs) continue;
+    out[l] = xs.map((i) => learnItem(i, assessments));
+  }
+  const changed = new Set(MOTION_LISTS.flatMap((l) => ((out[l] as LearnableItem[] | undefined) ?? []).filter((i) => i.learning?.changed).map((i) => i.key))).size;
+  out.learning = learningNote(changed);
+  out.answerHe = motionAnswerHe(out as unknown as MotionAnswerInput);
+  return out;
+}
 
 export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record<string, unknown>, history: readonly ActionHistoryItem[] | null, nowMs: number): Record<string, unknown> {
   const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
+  if (kind === "motion") {
+    // partner_brief carries motion at the top level; coo priorities / motion in the MOTION summary fact
+    if (payload.motion && typeof payload.motion === "object" && (payload.motion as { status?: string }).status !== "UNAVAILABLE") return { ...payload, motion: motionWithHistory(payload.motion as SlimMotion, history, nowMs) };
+    const fact = summary.find((x) => x.code === "MOTION");
+    if (!fact || !fact.value || typeof fact.value !== "object") return payload;
+    const m = motionWithHistory(fact.value as SlimMotion, history, nowMs);
+    const today = (m.todayItems as LearnableItem[] | undefined) ?? [];
+    const byKey = new Map([...MOTION_LISTS.flatMap((l) => ((m[l] as LearnableItem[] | undefined) ?? []))].map((i) => [i.key, i]));
+    const items = Array.isArray(payload.items) ? (payload.items as Array<{ label?: unknown; fields?: Record<string, unknown> }>).map((it) => {
+      const k = it.fields?.key as string | undefined; const n = k ? byKey.get(k) : undefined;
+      if (!n || !n.learning?.changed) return it;
+      return { ...it, label: { text: n.he, trust: "PARTNER" }, fields: { ...it.fields, move: n.move ? { ...n.move, he: { text: n.move.he, trust: "PARTNER" } } : null, reasons: n.reasonsHe.map((r) => ({ text: r, trust: "PARTNER" })), learning: n.learning } };
+    }) : payload.items;
+    const answer = summary.find((x) => x.code === "ANSWER");
+    const isPriorities = typeof answer?.value === "string" && /דברים שהייתי סוגרת עכשיו|דבר אחד שהייתי סוגרת עכשיו/.test(answer.value);
+    return { ...payload, items, summary: summary.map((x) => (x.code === "MOTION" ? { ...x, value: m } : x.code === "ANSWER" ? { ...x, value: isPriorities ? prioritiesAnswerHe(today, Number(m.more ?? 0)) : m.answerHe } : x)) };
+  }
   if (kind === "learning") {
     const progress = ((summary.find((x) => x.code === "PROGRESS_BY_ENTITY")?.value as { progress?: Record<string, SinceEvent[]> } | undefined)?.progress) ?? {};
     const rest = summary.filter((x) => x.code !== "PROGRESS_BY_ENTITY" && (!history || x.code !== "LEARNING_STATUS"));

@@ -119,7 +119,7 @@ export const clipPlanning: KnowledgeCapability = {
 // ── MEETINGS ──
 export const meetings: KnowledgeCapability = {
   id: "meetings", domain: "CLIENTS", titleHe: "פגישות",
-  descriptionForModel: "Meetings (date, time, status נקבעה / התקיימה / בוטלה, linked client and project by ID, whether a Google Calendar event was created at booking). NOTE: changing or cancelling a meeting in Redbloods does not update its Google event; Google Calendar itself is not read by Sunny.",
+  descriptionForModel: "Meetings (date, time, status נקבעה / התקיימה / בוטלה, linked client and project by ID, whether a Google Calendar event was created at booking). NOTE: changing or cancelling a meeting in Redbloods does not update its Google event; the live Google Calendar is read separately (capability calendar).",
   examplesHe: ["איזה פגישות יש השבוע?", "מתי נפגשנו עם הלקוח?"],
   modes: { upcoming: { descriptionForModel: "Today and later, not cancelled" }, recent: { descriptionForModel: "Before today" }, all: { descriptionForModel: "Every meeting" } }, defaultMode: "upcoming",
   params: { about: { kind: "entityKey", types: ["project", "client"], descriptionForModel: "Only meetings linked to this project / client" } },
@@ -135,7 +135,7 @@ export const meetings: KnowledgeCapability = {
       .sort((a, b) => (q.mode === "recent" ? (b.date ?? "").localeCompare(a.date ?? "") : (a.date ?? "").localeCompare(b.date ?? "")) || (a.time ?? "").localeCompare(b.time ?? ""));
     return result(rows.map((m) => item({ id: m.id, entity: m.clientId ? `client:${m.clientId}` : m.projectId ? `project:${m.projectId}` : null, label: partner(`פגישה ${m.date ?? ""} ${m.time ?? ""}`.trim()), epistemic: "FACT", source: "MEETINGS", relationQuality: m.clientId || m.projectId ? "ID" : undefined,
       fields: { date: m.date, time: m.time, status: m.status, client: m.clientId && clientName(src, m.clientId) ? record(clientName(src, m.clientId)!) : null, project: m.projectId && projectName(src, m.projectId) ? record(projectName(src, m.projectId)!) : null, calendarEventAtBooking: m.hasCalendarEvent } })),
-      { summary: [sfact("BY_STATUS", "פגישות לפי סטטוס", byCount(o.meetings.rows.map((m) => m.status ?? "—")), "FACT", "MEETINGS")], coverage: [partner("הערות ומיקום הפגישה לא נקראים. היומן של Google לא נקרא."), ...cappedNote(o.meetings)] });
+      { summary: [sfact("BY_STATUS", "פגישות לפי סטטוס", byCount(o.meetings.rows.map((m) => m.status ?? "—")), "FACT", "MEETINGS")], coverage: [partner("הערות ומיקום הפגישה לא נקראים. היומן של Google נקרא בנפרד (capability calendar)."), ...cappedNote(o.meetings)] });
   },
 };
 
@@ -303,7 +303,7 @@ export const deliveries: KnowledgeCapability = {
 // ── INTEGRATIONS (is Google Calendar / Dropbox connected — never the credentials) ──
 export const integrations: KnowledgeCapability = {
   id: "integrations", domain: "COMPANY", titleHe: "חיבורים חיצוניים",
-  descriptionForModel: "Whether Redbloods' external integrations are connected: Google Calendar (sessions / shows / meetings create events; Sunny does NOT read or write the calendar) and Dropbox (all project audio, mixes, finals, portals and Red Films files live there; Sunny reads file METADATA counts only, never contents or links). 'Connected' = a stored credential exists; it does not prove the token is still valid.",
+  descriptionForModel: "Whether Redbloods' external integrations are connected: Google Calendar (sessions / shows / meetings create events; Sunny reads the live calendar through capability calendar and writes only through typed actions the Boss approves) and Dropbox (all project audio, mixes, finals, portals and Red Films files live there; Sunny reads file METADATA counts only, never contents or links). 'Connected' = a stored credential exists; it does not prove the token is still valid.",
   examplesHe: ["יש לך גישה ליומן?", "היומן מחובר?", "הדרופבוקס מחובר?"],
   modes: { current: { descriptionForModel: "Current connection state" } }, defaultMode: "current",
   params: {}, paging: { defaultLimit: 5, maxLimit: 5 }, access: STD, needs: ["OPERATIONS"],

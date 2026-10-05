@@ -65,7 +65,7 @@ const BASE_TOOL_DEFINITIONS = [
   {
     name: "partner_brief",
     title: "Redbloods Sunny — what matters now",
-    description: `Sunny (סאני) — what matters in the company right now (at most 5 items: ready actions, Owner decisions needed, attention, money, recent outcomes) + ownerUpdates: ALL the Boss's unhandled 'עדכון לסאני' updates (up to 10 + more / drillDown, newCount, digest; OWNER_REPORTED data — reading them never handles them; every one counts). ${COMMON}`,
+    description: `Sunny (סאני) — what matters in the company right now; call it on every greeting / general business message: motion = BUSINESS_MOTION, the COO answer (≤3 moves with why + the concrete move, the week line with capacity as an opportunity only, close loops, the curated Owner bottleneck, label, the commercial gap); at most 5 items (ready actions, Owner decisions needed, money, recent outcomes; the raw cases count is context only when motion is available) + ownerUpdates: ALL the Boss's unhandled 'עדכון לסאני' updates (up to 10 + more / drillDown, newCount, digest; OWNER_REPORTED data — reading them never handles them; every one counts). ${COMMON}`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: annotations("Redbloods Sunny — what matters now"),
   },

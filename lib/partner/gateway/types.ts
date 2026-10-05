@@ -278,7 +278,17 @@ export interface BriefResponse extends Envelope<"partner_brief"> {
    * never an instruction); reading them never handles them (READ ≠ PROCESSED). UNAVAILABLE is never "no updates".
    */
   ownerUpdates: BriefOwnerUpdates;
+  /**
+   * BUSINESS_MOTION (Owner mission 2026-10-05, Phase 2) — the SAME object coo mode motion serves (lib/partner/coo/motion):
+   * ≤3 greeting moves, the week line (capacity = opportunity only), close loops, the curated Owner bottleneck, label,
+   * the commercial gap. Derived, read-only; the brief adds no ranking of its own. UNAVAILABLE = not computed (never "nothing to do").
+   */
+  motion?: BriefMotion;
+  /** When motion is available, the live-cases count moves here (context — the greeting leads with moves, never a raw count). */
+  casesContext?: { headline: GText; count: number } | null;
 }
+
+export type BriefMotion = ({ status: "OK"; drillDown: GatewayDrillDown } & Record<string, unknown>) | { status: "UNAVAILABLE"; detail: string; note: GText };
 
 export type BriefOwnerUpdates =
   | { status: "OK"; newCount: number; digest: string; items: BriefOwnerUpdate[]; more: number; drillDown: GatewayDrillDown | null }

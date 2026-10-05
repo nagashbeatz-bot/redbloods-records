@@ -11,7 +11,7 @@ import { cooCtx } from "../lib/partner/coo/context";
 import { readinessBoard, readinessOf, songOfClip } from "../lib/partner/coo/readiness";
 import { artistCare, projectMomentum, rosterCare } from "../lib/partner/coo/momentum";
 import { moneyReadiness } from "../lib/partner/coo/money";
-import { buildCooView, prioritize, prioritiesHe, type CooPriority } from "../lib/partner/coo/priorities";
+import { buildCooView, prioritiesHe } from "../lib/partner/coo/priorities";
 import { scheduleHealth } from "../lib/partner/coo/schedule";
 import { deriveReadiness, check, INTERNAL_COO_HEURISTICS, COO_MAX_PRIORITIES, READINESS_HE } from "../lib/partner/coo/model";
 import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
@@ -221,11 +221,11 @@ async function main() {
   ok("capability: completeness PARTIAL / UNKNOWN when a source failed (never COMPLETE)", capL.status === "OK" && (capL.completeness === "PARTIAL" || capL.completeness === "UNKNOWN"), capL.completeness);
 
   section("M. EXECUTIVE PRIORITY — 10 candidates → only 3–5");
-  const many: CooPriority[] = Array.from({ length: 10 }, (_, i) => ({ key: `k${i}`, tier: (i % 3 + 1) as 1 | 2 | 3, kind: "READINESS", he: `פריט ${i}`, why: [], entity: `project:${U(100 + i)}`, daysTo: i, labelWork: false, recommendationHe: null, epistemic: "DERIVED" }));
-  const pr = prioritize(many);
-  ok(`≤ ${COO_MAX_PRIORITIES} returned, the rest counted (never silently dropped)`, pr.top.length === 5 && pr.more === 5, pr);
-  ok("order = tier, then the nearest date (never age)", pr.top.map((p) => p.tier).join() === "1,1,1,1,2" && pr.top[0].daysTo === 0);
-  ok("the same entity twice → ONE item with merged reasons", prioritize([{ ...many[0], why: ["א"] }, { ...many[0], key: "x", tier: 2, why: ["ב"] }]).top.length === 1);
+  // Phase 2 (2026-10-05): ONE ranking — BUSINESS_MOTION; priorities = motion.todayItems (scripts/test-sunny-motion covers the rules)
+  const mvw = buildCooView(S);
+  ok(`≤ ${COO_MAX_PRIORITIES} returned, the rest counted (never silently dropped)`, mvw.priorities.length <= COO_MAX_PRIORITIES && mvw.more === Math.max(0, mvw.motion.all.filter((i) => i.level === "MUST" || i.level === "SHOULD").length - mvw.priorities.length));
+  ok("order = level (MUST before SHOULD), then the nearest date (never age)", mvw.priorities.every((p, i, a) => i === 0 || a[i - 1].tier <= p.tier));
+  ok("one entity → ONE item (several gaps merge into one move)", new Set(mvw.motion.all.filter((i) => i.entity).map((i) => i.entity)).size === mvw.motion.all.filter((i) => i.entity).length);
   const mv = buildCooView(S);
   ok("live view: 1–5 priorities from readiness / momentum / schedule", mv.priorities.length >= 1 && mv.priorities.length <= 5, mv.priorities.map((p) => p.he));
   ok("the short answer reads 'דברים שהייתי סוגרת עכשיו'", /דברים שהייתי סוגרת עכשיו|דבר אחד שהייתי סוגרת עכשיו/.test(prioritiesHe(mv)), prioritiesHe(mv));

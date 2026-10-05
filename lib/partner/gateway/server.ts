@@ -72,7 +72,8 @@ export async function loadGatewaySources(needs: readonly KnowledgeSourceNeed[], 
 }
 
 export async function getPartnerBrief(ctx: AnyCtx = createCompanyReadContext(), audience: KnowledgeAudience = RESTRICTIVE_AUDIENCE): Promise<BriefResponse> {
-  return getPartnerBriefCore(await loadSources(ctx, ["FINANCE", "CASES", "ACTIONS", "OUTCOMES", "MEMORY", "INTEGRITY", "OWNER_INBOX"], audience));
+  // BUSINESS_MOTION (2026-10-05 Phase 2) needs the COO sources too — the SAME set coo reads
+  return getPartnerBriefCore(await loadSources(ctx, ["FINANCE", "CASES", "ACTIONS", "OUTCOMES", "MEMORY", "INTEGRITY", "OWNER_INBOX", "STATE", "OPERATIONS", "PROJECT_DETAIL", "LABEL_DETAIL", "SETTINGS", "CALENDAR", "OWNER_KNOWLEDGE"], audience, defaultCalendarWindow(ctx.now)));
 }
 
 export async function resolvePartnerEntity(query: string, ctx: AnyCtx = createCompanyReadContext()): Promise<ResolveResponse> {

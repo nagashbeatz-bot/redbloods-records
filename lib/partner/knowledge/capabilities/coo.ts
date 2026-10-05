@@ -7,6 +7,7 @@
 import type { KnowledgeCapability, KnowledgeItem } from "../types";
 import { item, partner, record, result, sfact } from "./common";
 import { buildCooView, prioritiesHe } from "../../coo/priorities";
+import { MOTION_HEURISTICS, MOTION_LEVEL_HE, motionSummary, type MotionItem } from "../../coo/motion";
 import { cooCtx } from "../../coo/context";
 import { readinessOf } from "../../coo/readiness";
 import { artistCare, projectMomentum } from "../../coo/momentum";
@@ -31,12 +32,20 @@ const readinessItem = (r: Readiness, i: number): KnowledgeItem => item({
     checks: r.checks.map((c) => ({ dimension: c.dimension, label: partner(c.labelHe), state: c.state, required: c.required, he: partner(c.he), evidence: c.evidence.map((e) => ({ source: e.source, ref: e.ref, basis: e.he })) })), project: r.project, sources: r.sources },
 });
 
+/** One motion item as a knowledge item (the move names only registered actions; every one runs only after his approval). */
+const motionItem = (i: MotionItem, k: number): KnowledgeItem => item({
+  id: `${k + 1}:${i.key}`, entity: i.entity && /^(project|show|session|release|label-artist|client):/.test(i.entity) ? i.entity : null, label: partner(i.he), epistemic: i.epistemic, source: "PARTNER_KNOWLEDGE",
+  fields: { key: i.key, rank: k + 1, level: i.level, levelHe: partner(MOTION_LEVEL_HE[i.level]), codes: i.codes, sections: i.sections, title: record(i.titleHe), reasons: i.reasonsHe.map(partner),
+    move: i.move ? { he: partner(i.move.he), actionIds: i.move.actionIds, canAct: i.move.canAct, approval: i.move.approval } : null, entities: i.entities, daysTo: i.daysTo,
+    labelWork: i.labelWork, labelProtected: i.labelProtected, heuristic: i.heuristic, learning: i.learning ?? null, evidence: i.evidence.map((e) => ({ ...e, he: e.epistemic === "OWNER_REPORTED" ? record(e.he) : partner(e.he) })) },
+});
 export const coo: KnowledgeCapability = {
   id: "coo", domain: "COMPANY", titleHe: "סאני COO — מוכנות, תנועה, לו״ז, כסף",
-  descriptionForModel: "Sunny as COO (Owner-only, read-only, interaction time). Modes: priorities (DEFAULT: what needs the Owner now, ≤5 — a display limit), readiness (events in the next 14 days: shoot / show / release / important session / meeting / client deadline; per dimension confirmed / not seen / open / blocked; param entity or production), momentum (active projects: last recorded progress, next step, scheduled?, who holds it, risk), artists (label roster care; DJ / team never), schedule (this week: real conflicts + patterns; busy alone is never a problem), money (param entity = project), entity. RULES: short, grounded, actionable; ✓ confirmed / ? 'אני לא רואה …' (never 'אין …') / → recommendation; inference is inference; no invented threshold, quota, cash balance or song↔clip link; never move / create / schedule / send / approve anything.",
-  examplesHe: ["מה הכי חשוב לי לסגור עכשיו?", "אנחנו מוכנים לצילום ביום ראשון?", "מה קורה עם אמני הלייבל?", "הלו״ז שלי השבוע נראה טוב?", "יש משהו שאני מפספס?", "הפרויקט של אבי מתקדם?"],
+  descriptionForModel: "Sunny as COO (Owner-only, read-only, interaction time). Modes: priorities (DEFAULT = BUSINESS_MOTION today, ≤5 moves), motion (the full BUSINESS_MOTION: greeting ≤3 moves, week / capacity opportunity, close loops, curated Owner bottleneck, label, commercial gap), readiness (next 14 days events: confirmed / not seen / open / blocked), momentum (last progress, next step, who holds it), artists (label roster; DJ / team never), schedule (this week), money (param entity = project), entity, patterns, learning. RULES: short, grounded, actionable; ✓ confirmed / ? 'אני לא רואה …' (never 'אין …') / → recommendation; inference is inference; no invented threshold, quota, cash balance or song↔clip link; never move / create / schedule / send / approve anything.",
+  examplesHe: ["מה הכי חשוב לי לסגור עכשיו?", "אנחנו מוכנים לצילום ביום ראשון?", "מה קורה עם אמני הלייבל?", "הלו״ז שלי השבוע נראה טוב?", "יש משהו שאני מפספס?", "הפרויקט של אבי מתקדם?", "מה לעשות השבוע?", "מה תקוע?", "מה הכי כדאי לסגור היום?"],
   modes: {
-    priorities: { descriptionForModel: "≤5 executive items + more count. Answer like: 'שלושה דברים שהייתי סוגרת עכשיו: 1. … 2. … 3. …' — concise first, details only when asked. After an outcome is discussed you may ask 'רוצה שנשמור מזה לקח עסקי?' (BUSINESS_LEARNING only via partner_propose_knowledge + his approval)." },
+    priorities: { descriptionForModel: "= BUSINESS_MOTION today (the ONE ranking): ≤5 MUST / SHOULD moves + more count, each with level, reasons, a concrete move and the registered actionIds (each runs only after his approval). Answer like: 'שלושה דברים שהייתי סוגרת עכשיו: 1. … 2. … 3. …' — concise first, details only when asked. After an outcome is discussed you may ask 'רוצה שנשמור מזה לקח עסקי?' (BUSINESS_LEARNING only via partner_propose_knowledge + his approval)." },
+    motion: { descriptionForModel: "BUSINESS_MOTION in full (the SAME object partner_brief carries): greeting (≤3 moves), today, atRisk, closeLoops (done-but-not-recorded / one move to the mix / a mix version only he opens / his own 'almost done' note — never a status change), ownerBottleneck (Victor waits curated: extracted ones + ONE line for the rest), label (protected Shalev / Avi — promoted one level only; no cadence), revenue (commercial gap; conflicting goals are never a driver), week (capacity = an OPPORTUNITY only — never work hours, never scheduling; unreadable calendar = UNKNOWN), inbox line, watch. Use for 'מה לעשות השבוע' / 'מה תקוע' / 'מה הכי כדאי לסגור היום' / 'מה עם האמנים' and every greeting." },
     readiness: { descriptionForModel: "Readiness board (or one entity / production). Speak per event: '✓ … / ? אני לא רואה … / → הייתי סוגרת …'. A data source that was not read = לא ידוע, never 'not ready'." },
     momentum: { descriptionForModel: "Active projects' momentum (param entity = one project)" },
     artists: { descriptionForModel: "Label artist care (param artist = one roster artist)" },
@@ -54,7 +63,7 @@ export const coo: KnowledgeCapability = {
   entityScope: { types: ["project", "label-artist", "show", "session", "release"], param: "entity", mode: "entity", limit: 6 },
   paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1200, access: OWNER_FIN,
   needs: ["STATE", "FINANCE", "OPERATIONS", "PROJECT_DETAIL"],
-  optionalNeeds: ["LABEL_DETAIL", "SETTINGS", "CALENDAR", "BRAIN", "OWNER_KNOWLEDGE", "INTEGRITY", "MEMORY", "OWNER_INBOX"],
+  optionalNeeds: ["LABEL_DETAIL", "SETTINGS", "CALENDAR", "BRAIN", "OWNER_KNOWLEDGE", "INTEGRITY", "MEMORY", "OWNER_INBOX", "ACTIONS"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return result([], { completeness: "UNKNOWN", coverage: COVERAGE, missing: [{ fact: "company state", whyNeeded: "without the records nothing can be checked — unknown, never 'all fine'" }] });
     const c = cooCtx(src);
@@ -114,10 +123,19 @@ export const coo: KnowledgeCapability = {
       const m = moneyReadiness(c.project(pid), { labelWork: c.isLabel(pid), financeReadable: c.financeReadable });
       return result(m.checks.map((x) => item({ id: x.id, entity, label: partner(x.labelHe), epistemic: "DERIVED", source: "FINANCE", fields: { state: x.state, he: partner(x.he), evidence: x.evidence } })), { ...base, summary: [sfact("VERDICT", "מצב הכסף (החישוב הקנוני)", m.verdict, "DERIVED", "FINANCE"), sfact("FACTS", "עובדות", m.facts, "DERIVED", "FINANCE"), sfact("RISK", "סיכון כספי שיכול לעכב", m.risk, "DERIVED", "FINANCE")] });
     }
-    // priorities (default)
+    // priorities (default) = BUSINESS_MOTION today (the ONE ranking); motion = every section of the same object
     const v = buildCooView(src);
-    return result(v.priorities.map((p, i) => item({ id: `${i + 1}:${p.key}`, entity: p.entity && /^(project|show|session|release|label-artist|client):/.test(p.entity) ? p.entity : null, label: partner(p.he), epistemic: "DERIVED", source: "PARTNER_KNOWLEDGE", fields: { rank: i + 1, tier: p.tier, kind: p.kind, why: p.why.map(partner), daysTo: p.daysTo, labelWork: p.labelWork, recommendation: p.recommendationHe ? partner(p.recommendationHe) : null } })),
-      { ...base, coverage: [...COVERAGE, ...v.unchecked.map(partner)], summary: [sfact("ANSWER", "תשובה קצרה", prioritiesHe(v), "DERIVED", "PARTNER_KNOWLEDGE"), sfact("MORE", "עוד פריטים (לפירוט לפי בקשה)", v.more, "DERIVED", "PARTNER_KNOWLEDGE"),
-        sfact("CHECKED", "נבדקו", { events: v.readiness.events.length, activeProjects: v.momentum.length, artists: v.artists.length, scheduleDays: v.schedule.days.length }, "DERIVED", "PARTNER_KNOWLEDGE"), sfact("LIMIT", "מגבלת הצגה (לא כלל עסקי)", 5, "DERIVED", "PARTNER_KNOWLEDGE"), heur] });
+    const m = v.motion;
+    const list = q.mode === "motion" ? m.all.filter((i) => i.level !== "INFO") : m.todayItems;
+    return result(list.map((i, k) => motionItem(i, k)), {
+      ...base, coverage: [...COVERAGE, ...v.unchecked.map(partner)],
+      summary: [
+        sfact("ANSWER", "תשובה קצרה", q.mode === "motion" ? m.answerHe : prioritiesHe(v), "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("MORE", "עוד מהלכים (לפירוט לפי בקשה)", m.more, "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("MOTION", "BUSINESS_MOTION — מהלכים, שבוע, לולאות, צוואר בקבוק, כסף (נגזר, לא נשמר)", motionSummary(m), "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("CHECKED", "נבדקו", { events: v.readiness.events.length, activeProjects: v.momentum.length, artists: v.artists.length, scheduleDays: v.schedule.days.length }, "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("LIMIT", "מגבלת הצגה (לא כלל עסקי)", { today: MOTION_HEURISTICS.todayMax, greeting: MOTION_HEURISTICS.greetingMoves }, "DERIVED", "PARTNER_KNOWLEDGE"), heur,
+        sfact("MOTION_HEURISTICS", "חלונות פנימיים של המהלכים (לא מדיניות שלך)", MOTION_HEURISTICS, "DERIVED", "PARTNER_KNOWLEDGE"),
+      ] });
   },
 };

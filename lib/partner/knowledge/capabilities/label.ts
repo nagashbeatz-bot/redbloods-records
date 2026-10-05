@@ -114,7 +114,7 @@ export const shows: KnowledgeCapability = {
         sfact("BY_PAYMENT_STATUS", "לפי סטטוס תשלום", byCount(s.items.map((x) => x.paymentStatus || "—")), "FACT", "SHOWS"),
         sfact("UPCOMING_RECORDED", upcoming === 0 ? "אין שורות הופעה עתידיות ברשומות ההופעות" : "הופעות עתידיות ברשומות", upcoming, "FACT", "SHOWS"),
       ],
-      coverage: [partner("המידע הוא מרשומות ההופעות במערכת. Partner לא קורא את Google Calendar.")],
+      coverage: [partner("המידע הוא מרשומות ההופעות במערכת. היומן עצמו נקרא בנפרד (capability calendar).")],
     });
   },
 };

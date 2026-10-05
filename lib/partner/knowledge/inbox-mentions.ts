@@ -112,7 +112,9 @@ export function findPartialMentions(text: string, index: readonly MentionEntry[]
     const forms = [w, ...(HEBREW.test(w) && w.length >= 4 && HE_PREFIXES.has(w[0]) ? [w.slice(1)] : [])];
     for (const f of forms) {
       if (isWeakName(f)) continue;
-      const es = index.filter((e) => !covered.has(e.norm) && e.norm.includes(" ") && e.norm.split(" ").includes(f));
+      // transliteration (2026-10-05): a geresh letter (ג׳ / ז׳ / צ׳) is often typed without it ("גרמי" for "ג'רמי") — the
+      // geresh-less form of a name token matches too; still PARTIAL_NAME → AMBIGUOUS (a candidate, never a link)
+      const es = index.filter((e) => !covered.has(e.norm) && e.norm.includes(" ") && e.norm.split(" ").some((t) => t === f || (t.includes("'") && t.replace(/'/g, "") === f)));
       if (!es.length) continue;
       const keys = [...new Set(es.map((e) => e.key))].sort();
       out.push({ name: f, quality: "AMBIGUOUS", keys, types: [...new Set(es.map((e) => e.type))], reason: "PARTIAL_NAME", persons: [...new Set(es.filter((e) => e.type !== "project").map((e) => e.group))].sort() });

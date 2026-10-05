@@ -14,6 +14,10 @@ import { calendarFor, hmOf } from "./context";
 import { moneyReadiness, type ProductionMoneyInput } from "./money";
 import { check, daysBetween, ev, finishReadiness, has, INTERNAL_COO_HEURISTICS, isYmd, type Check, type Readiness } from "./model";
 import type { VideoProduction } from "../redfilms/view";
+import { completionEvidence, stageBehind, STAGE_UNCERTAINTY_HE } from "./stage";
+
+/** a deadline this close makes a stage that is still before the mix an OPEN readiness item (internal window, not policy) */
+export const MOTION_STAGE_DAYS = 7;
 
 const SHOOT_SESSION = "צילום קליפ";
 /** Production statuses at or after the shoot (the app's own list, as in lib/partner/redfilms/view.ts). */
@@ -257,7 +261,14 @@ export function deadlineReadiness(c: CooCtx, projectId: string): Readiness | nul
   if (v.work.victor?.some((w) => w.ball === "victor")) checks.push(check("deps.victor", "DEPENDENCIES", "עבודה אצל ויקטור", "OPEN", "הכדור אצל ויקטור.", [ev("TEAM_VICTOR", pk, "computeVictorBall")]));
   if (v.work.victor?.some((w) => w.ball === "owner") || v.signals.some((s) => s.code === "OWNER_FEEDBACK_DUE" || s.code === "ENGINEER_RETURNED_WORK")) checks.push(check("deps.owner", "OWNER_DECISION", "משהו מחכה לך", "OPEN", "לפי הרשומות יש כאן משהו שמחכה לתגובה שלך.", [ev("PROJECTS", pk, "ball OWNER")]));
   if (v.work.tasksOverdue) checks.push(check("deps.tasks", "DEPENDENCIES", "משימות שעבר מועדן", "OPEN", `${v.work.tasksOverdue} משימות של הפרויקט עבר מועדן.`, [ev("TASKS", pk, "tasks overdue")], false));
-  if (!openEng.length && !v.work.victor?.length && (v.work.sessions?.upcoming ?? 0) === 0) checks.push(check("deps.next", "DEPENDENCIES", "עבודה מתוכננת עד הדדליין", "NOT_SEEN", "אני לא רואה עבודה פתוחה או סשן מתוכנן עד הדדליין — אם הפרויקט כמעט גמור, אולי זה בסדר.", [ev("PROJECTS", pk, "no open work / upcoming session")], false));
+  // the ONE stage rule (lib/partner/coo/stage): done-but-not-recorded is said as such; a stage materially behind a near
+  // deadline is OPEN (required) — never an invented claim of what the deadline includes
+  const comp = completionEvidence(c, projectId);
+  const stage = stageBehind(c, projectId);
+  const dTo = daysBetween(c.today, dl);
+  if (comp?.complete) checks.push(check("deps.completion", "DEPENDENCIES", "העבודה עצמה", "CONFIRMED", `${comp.he} — נראה שהעבודה הסתיימה; לסמן הושלם / למסור ללקוח זו החלטה שלך.`, [ev("MIX", pk, "engineer work אושר + final files")], false));
+  else if (stage.behind && dTo <= MOTION_STAGE_DAYS) checks.push(check("deps.stage", "DEPENDENCIES", "שלב העבודה מול הדדליין", "OPEN", `${stage.he} — השלב לא נראה מתקדם מספיק ביחס לדדליין (${STAGE_UNCERTAINTY_HE}).`, [ev("PROJECTS", pk, "stage vs deadline (lib/partner/coo/stage)")]));
+  if (!comp?.complete && !openEng.length && !v.work.victor?.length && (v.work.sessions?.upcoming ?? 0) === 0) checks.push(check("deps.next", "DEPENDENCIES", "עבודה מתוכננת עד הדדליין", "NOT_SEEN", "אני לא רואה עבודה פתוחה או סשן מתוכנן עד הדדליין — אם הפרויקט כמעט גמור, אולי זה בסדר.", [ev("PROJECTS", pk, "no open work / upcoming session")], false));
   const m = moneyReadiness(v, { labelWork: c.isLabel(projectId), financeReadable: c.financeReadable });
   // a delivery deadline is not blocked by the company's own unpaid vendor expenses — those are facts, not readiness gaps
   const moneyChecks = m.checks.filter((x) => x.id !== "money.expenses" && !x.id.startsWith("money.engineer."));

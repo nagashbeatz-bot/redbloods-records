@@ -45,7 +45,7 @@ export function patternLevel(o: { occurrences: readonly Occurrence[]; nowMs: num
 }
 
 const PUSH_RE = /(צריך לקדם|לקדם את|חייב להתקדם|חייבים להתקדם|תקוע|דחוף)/;
-const ALMOST_RE = /(כמעט|עוד (\d+|שני|שתי|איזה)|נשאר(ו)? (רק )?|תיקונים|תיקון אחרון)/;
+export const ALMOST_RE = /(כמעט|עוד (\d+|שני|שתי|איזה)|נשאר(ו)? (רק )?|תיקונים|תיקון אחרון)/;
 
 /** Every derived pattern the records support today (bounded; no ML, no store, no cron). */
 export function derivePatterns(src: GatewaySources): DerivedPattern[] {

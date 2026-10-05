@@ -265,10 +265,10 @@ export function detectFutureScheduleGap(input: IntegrityInput): FindingDraft[] {
       { source: "Owner definition FUTURE_SCHEDULE_TRUTH", fact: "future schedule truth", value: "Google Calendar" },
       { source: "Partner", fact: "Google Calendar read", value: SCHEDULE_DEFINITION.googleCalendarReadApproved ? "approved" : "not approved yet — not read" },
     ],
-    canonical: ["Google Calendar (not read by Partner yet)"], conflicting: [],
+    canonical: ["Google Calendar (read live through capability calendar — not by this table check)"], conflicting: [],
     he: future === 0
-      ? "אין סשנים עתידיים רשומים כרגע בטבלת הסשנים. זה לא אומר שהיומן ריק — Google Calendar הוא מקור האמת ו־Partner עוד לא קורא אותו. היומן העתידי: לא ידוע."
-      : `רשומים ${future ?? "?"} סשנים עתידיים בטבלה, אבל Google Calendar (מקור האמת ליומן) עוד לא נקרא — התמונה העתידית חלקית.`,
+      ? "אין סשנים עתידיים רשומים כרגע בטבלת הסשנים. זה לא אומר שהיומן ריק — Google Calendar הוא מקור האמת ליומן (סאני קוראת אותו בנפרד — capability calendar); הבדיקה הזו רואה רק את הטבלה, ומהטבלה לבד היומן העתידי לא ידוע."
+      : `רשומים ${future ?? "?"} סשנים עתידיים בטבלה, ו-Google Calendar (מקור האמת ליומן) נקרא בנפרד (capability calendar) — הבדיקה הזו רואה רק את הטבלה.`,
   })];
 }
 

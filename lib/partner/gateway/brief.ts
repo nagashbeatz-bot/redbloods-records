@@ -1,7 +1,8 @@
 /**
  * Redbloods Partner — Gateway V1: "what matters now?" (partner_brief). Pure, deterministic.
  *
- * Not a second COO brain: it only SELECTS from what Partner already produced — the Owner Action surface,
+ * Not a second COO brain: it carries BUSINESS_MOTION (lib/partner/coo/motion — the ONE ranking, Phase 2 2026-10-05) as
+ * computed, and otherwise only SELECTS from what Partner already produced — the Owner Action surface,
  * the Finance brief (its ≤2 Owner questions are already memory-preflighted), live Partner Cases, the
  * Finance month line and recent Outcomes — and says little (≤5 items). Everything known but not shown is
  * counted in `omitted`, never silently dropped.
@@ -12,7 +13,9 @@
  */
 import { caseSubjectKey, eventFreshness, envelope, gatewayKeyForSubject, ok, partner, partnerRecord, record, toPatterns, type GatewaySources } from "./core";
 import { ownerClosedProjects } from "./entity-common";
-import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefResponse, type GatewayDrillDown, type GatewaySourceName } from "./types";
+import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefMotion, type BriefResponse, type GatewayDrillDown, type GatewaySourceName } from "./types";
+import { buildCooView } from "../coo/priorities";
+import { motionSummary } from "../coo/motion";
 
 const CLASS_ORDER = ["RISK", "ATTENTION", "OPPORTUNITY", "INFORMATION"];
 const PER_CATEGORY: Record<BriefCategory, number> = { ACTION_READY: 2, OWNER_DECISION_NEEDED: 2, KNOWN_DECISION_RECONCILE: 2, ATTENTION: 1, MONEY: 1, RECENT_OUTCOME: 1 };
@@ -84,6 +87,11 @@ export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
   }
   if (!ok(src.cases)) missing.push({ fact: "cases", whyNeeded: "the company state could not be read" });
 
+  // BUSINESS_MOTION — the moves (the SAME object coo mode motion serves); with it, the raw cases count is context only
+  const motion = motionOf(src);
+  let casesContext: BriefResponse["casesContext"] = null;
+  if (motion.status === "OK" && byCat.ATTENTION.length) { casesContext = { headline: byCat.ATTENTION[0].headline, count: cases.length }; byCat.ATTENTION = []; }
+
   // MONEY — the Finance brief's month line (coverage-qualified)
   if (f?.brief) {
     const b = f.brief;
@@ -111,7 +119,18 @@ export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
     conflictsCount: memory ? memory.entities.reduce((n, m) => n + m.conflicts.length, 0) : 0,
     missing,
     ownerUpdates: ownerUpdatesOf(src),
+    motion, casesContext,
   };
+}
+
+/** BUSINESS_MOTION for the brief — computed by the ONE module; a failure / missing state is UNAVAILABLE, never "nothing to do". */
+export function motionOf(src: GatewaySources): BriefMotion {
+  if (!ok(src.state)) return { status: "UNAVAILABLE", detail: src.state ? "company state unreadable" : "not loaded", note: partner("לא חישבתי את המהלכים (מצב החברה לא נקרא) — זה לא אומר שאין מה לקדם.") };
+  try {
+    return { status: "OK", ...motionSummary(buildCooView(src).motion), drillDown: { tool: "partner_query", args: { capability: "coo", mode: "motion" }, label: partner("כל המהלכים, השבוע, לולאות וצוואר הבקבוק") } };
+  } catch {
+    return { status: "UNAVAILABLE", detail: "motion failed", note: partner("לא הצלחתי לחשב את המהלכים כרגע — זה לא אומר שאין מה לקדם.") };
+  }
 }
 
 /** A stable digest of the NEW set (same ids = same digest), so a conversation can tell "nothing new since". */

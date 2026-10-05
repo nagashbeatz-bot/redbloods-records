@@ -12,7 +12,7 @@
  */
 
 // owner-8 (2026-10-01, Owner decision): NEW_CLIP = a clip PROJECT with ONE agreedPrice (one clip model — no clip deal)
-export const OWNER_MODEL_VERSION = "2026.10.05-owner-12";
+export const OWNER_MODEL_VERSION = "2026.10.05-owner-13";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -67,7 +67,8 @@ export const OWNER_OPERATING_RULES: readonly OwnerRule[] = [
     ["No rigid universal priority score (not approved).", "Not permanently opposing goals."]),
   O("NO_FIXED_WORK_HOURS", "TIME", "The Owner has no standing working-hours rule; he works when necessary. Results, progress and synchronization come first.",
     ["Calendar occupancy still matters.", "The 08:00–22:00 availability window and the 30-minute block are a VISUALIZATION default only."],
-    ["Outside the displayed window ≠ unavailable.", "Free calendar time ≠ good work time.", "No capacity rule may be assumed until the Owner defines one."]),
+    ["Outside the displayed window ≠ unavailable.", "Free calendar time ≠ good work time.", "No capacity rule may be assumed until the Owner defines one.",
+      "Owner decision 2026-10-05 (BUSINESS_MOTION): a relatively open week MAY be said as an OPPORTUNITY together with the work that needs it (\"השבוע יחסית פתוח, ובמקביל X / Y צריכים תנועה — הייתי מנצלת חלון ל-X\") — never as an obligation, never fixed hours, never 'all free time is work time', never a session / calendar event without his approval; an unreadable calendar is UNKNOWN, never free."]),
   O("PERSONAL_CONTEXT_IS_REAL_SCHEDULE", "PERSONAL_CONTEXT", "Personal life and the company share one real-world schedule. Personal calendar items participate in understanding today, availability, capacity, conflicts and timing.",
     ["Use personal events for time / capacity reasoning.", "Keep their source and privacy."],
     ["A personal event never becomes a business fact.", "Never attached to a project without evidence.", "Never ignored merely because it is personal.", "No access to a personal source that is not connected and approved."]),
