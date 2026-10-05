@@ -127,7 +127,17 @@ export interface NeedsMe {
     lifecycle: { read: boolean; counts: Record<InboxDisplayState, number> | null; enrichedItems: number; needsOwnerLine: number } };
   /** D1: the Owner's P2 knowledge used as enrichment (never the ball, never a new item). */
   knowledge: { read: boolean; enriched: number; conflicts: number };
+  /** The RECORDED ball per project id, from the SAME evidence marks the board is built from (computeVictorBall,
+   *  engineerHandoff, the send log through project_view's signals). The ONE project-ball rule momentum / readiness /
+   *  BUSINESS_MOTION read (Owner decision 2026-10-05): an Owner statement never sets it. ownerWait = a recorded wait on
+   *  the Owner that this board lists as its own item (a work / the send log); undecided = no such wait and a recorded
+   *  but unresolved ball (conflicting / unknown / a mixed send log). A project with no recorded ball evidence is absent. */
+  projectBalls: Record<string, ProjectRecordedBall>;
 }
+
+export interface ProjectRecordedBall { ball: RecordedProjectBall; ownerWait: boolean; undecided: boolean }
+
+export type RecordedProjectBall = "OWNER" | "VICTOR" | "ENGINEER" | "EXTERNAL" | "MIXED" | "NONE";
 
 // ── helpers ──
 const ilYmd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -148,7 +158,7 @@ interface ProjectBall { owner: string[]; external: string[]; unknown: string[]; 
 /** The evidence ball of a project in canonicalBallOf's vocabulary (for freshnessOf). project_view's own projection reads
  *  the engineer STATUS (AT_ENGINEER / ENGINEER_RETURNED_WORK); the evidence rules (engineerHandoff / computeVictorBall)
  *  read uploads vs feedback — when they disagree the evidence wins here (registered conflict, lib/partner/system). */
-function evidenceBallOf(b: ProjectBall | undefined): "OWNER" | "VICTOR" | "ENGINEER" | "EXTERNAL" | "MIXED" | "NONE" {
+function evidenceBallOf(b: ProjectBall | undefined): RecordedProjectBall {
   if (!b) return "NONE";
   if (b.owner.length && (b.external.length || b.unknown.length)) return "MIXED";
   if (b.owner.length) return "OWNER";
@@ -625,5 +635,6 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     backlog: backlog.sort(byDate), undecided, unchecked, excluded: excluded.sort(byDate), integrity: integrityOut, checked,
     inbox: { read: !!mem, interpretations, enriched, conflicts, lifecycle: { read: tri.read, counts: tri.summary?.counts ?? null, enrichedItems: lifeEnriched, needsOwnerLine: needsOwner.length ? 1 : 0 } },
     knowledge: { read: !!knRaw, enriched: knEnriched, conflicts: knConflicts },
+    projectBalls: Object.fromEntries([...balls.entries()].map(([pid, b]) => [pid, { ball: evidenceBallOf(b), ownerWait: b.owner.length > 0, undecided: b.owner.length === 0 && b.unknown.length > 0 }])),
   };
 }

@@ -17,6 +17,7 @@ import { buildShowView, type ShowView } from "../shows/view";
 import { projectOperating } from "../sunny/operating";
 import { buildCalendarLinkIndex, linkCalendarEvent, type LinkedCalendarEvent } from "../calendar/links";
 import { isLabelProject } from "../../project-classification";
+import { buildNeedsMe, type NeedsMe, type ProjectRecordedBall } from "../needs-me/curate";
 
 export interface CooCtx {
   src: GatewaySources;
@@ -36,6 +37,11 @@ export interface CooCtx {
   production(id: string): VideoProduction | null;
   show(id: string): ShowView | null;
   operating(id: string): ReturnType<typeof projectOperating> | null;
+  /** needs_me, built ONCE per request (null = not readable). The SAME board the dashboard and Sunny read. */
+  needsMe(): NeedsMe | null;
+  /** The ONE recorded project-ball rule (needs_me's projectBalls, Owner decision 2026-10-05). "UNREAD" = needs_me could
+   *  not be built (never "not the Owner's"); absent evidence = NONE. An Owner statement never sets it. */
+  recordedBall(projectId: string): ProjectRecordedBall | "UNREAD";
   isLabel(id: string): boolean;
   projectName(id: string | null): string | null;
   linked(): LinkedCalendarEvent[];
@@ -61,6 +67,9 @@ export function cooCtx(src: GatewaySources): CooCtx {
     .filter((a) => !retired.has(a.key) && (!teamName || a.name.trim().toLowerCase() !== teamName));
   const pv = new Map<string, ProjectView>(), pr = new Map<string, VideoProduction | null>(), sv = new Map<string, ShowView | null>(), po = new Map<string, ReturnType<typeof projectOperating> | null>();
   let linkedCache: LinkedCalendarEvent[] | null = null;
+  let nmCache: NeedsMe | null | undefined;
+  const needsMe = () => { if (nmCache === undefined) { try { nmCache = buildNeedsMe(src); } catch { nmCache = null; } } return nmCache; };
+  const NO_BALL: ProjectRecordedBall = { ball: "NONE", ownerWait: false, undecided: false };
   const idx = st?.domains.projects.data?.index ?? {};
   const meta = new Map((ops?.projectsMeta?.rows ?? []).map((p) => [p.id, p]));
   const c: CooCtx = {
@@ -73,6 +82,8 @@ export function cooCtx(src: GatewaySources): CooCtx {
     },
     show: (id) => { if (!sv.has(id)) { let v: ShowView | null = null; try { v = buildShowView(src, id); } catch { v = null; } sv.set(id, v); } return sv.get(id)!; },
     operating: (id) => { if (!po.has(id)) { let v: ReturnType<typeof projectOperating> | null = null; try { v = projectOperating(src, id); } catch { v = null; } po.set(id, v); } return po.get(id)!; },
+    needsMe,
+    recordedBall: (id) => { const nm = needsMe(); return nm ? nm.projectBalls[id] ?? NO_BALL : "UNREAD"; },
     isLabel: (id) => { const p = idx[id] ?? meta.get(id); return !!p && isLabelProject(p as Parameters<typeof isLabelProject>[0]); },
     projectName: (id) => (id ? idx[id]?.name ?? meta.get(id)?.name ?? null : null),
     linked: () => {
