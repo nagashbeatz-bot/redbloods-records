@@ -8,6 +8,7 @@
  * tasks, sent markers (the app's own fingerprint), portal visibility. Evidence only — no readiness score.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions } from "../sunny/known-context";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
@@ -35,7 +36,7 @@ const PORTAL_VISIBLE = new Set(["אושרה", "נסגר", "בוצע"]);
 const SHALEV = "שליו טסמה";
 
 export interface ShowSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string }
-export interface ShowQuestion { questionHe: string; why: string; kind: string }
+export interface ShowQuestion { questionHe: string; why: string; kind: string; entity?: string }
 
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; ld: LabelDetailRaw | null; settings: SettingsState | null; kn: OwnerKnowledgeRecord[]; cal: CalendarWindowResult | null; today: string; cleantone: string | null }
 function ctxOf(src: GatewaySources): Ctx {
@@ -233,7 +234,7 @@ export function buildShowView(src: GatewaySources, showId: string) {
 
   return { key, found: true as const, identity: { name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, dealType: money.dealType, contact: s.contactPerson, hasPhone: s.hasPhone, notes: s.notes },
     artist, booker, dj, money, ledger, rehearsals, calendar, tasks, notifications, portal, performanceFiles: "per-artist audio files in the artist's storage folder — Sunny cannot list them (CAPABILITY_GAP), never 'no files'",
-    pastUnclosed, signals, questions, history, unavailable };
+    pastUnclosed, signals, ...showQuestionsOf(questions, `show:${s.id}`, c), history, unavailable };
 }
 export type ShowView = NonNullable<ReturnType<typeof buildShowView>>;
 
@@ -245,4 +246,10 @@ export function showPortfolio(src: GatewaySources) {
     artistNotified: (v.notifications.artist as { state: string }).state, djNotified: (v.notifications.dj as { state: string }).state, ledgerRows: v.ledger.length, signals: [...new Set(v.signals.map((x) => x.code))], openQuestions: v.questions.length,
     pastUnclosed: v.pastUnclosed ? { ageDays: v.pastUnclosed.ageDays, urgency: v.pastUnclosed.urgency, clientOpen: v.pastUnclosed.client.open ? v.pastUnclosed.client.amount : null, djOpen: v.pastUnclosed.dj.open ? v.pastUnclosed.dj.amount : null, entitlementStillExpected: v.pastUnclosed.entitlementExpected?.amount ?? null, summaryHe: v.pastUnclosed.sunnyHe } : null,
   })).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+}
+
+/** Question memory (2026-10-05): every show question belongs to THIS show; the Owner's exact-show answer is used (one resolver). */
+function showQuestionsOf(questions: ShowQuestion[], key: string, c: { kn: import("../owner-knowledge/store").OwnerKnowledgeRecord[]; today: string }) {
+  const r = resolveQuestions(questions.map((q) => ({ ...q, entity: q.entity ?? key })), c.kn, c.today);
+  return { questions: r.asked, known: r.known };
 }

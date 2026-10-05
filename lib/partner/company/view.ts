@@ -233,14 +233,17 @@ export function buildCompanyView(src: GatewaySources) {
   const decisions: CompanyDecision[] = [];
   const normQ = (t: string) => t.replace(/["'״׳]/g, "").replace(/\s+/g, " ").trim();
   const qSeen = new Set<string>();
-  const addQ = (d: Omit<CompanyDecision, "answerable">) => { const k = `${d.kind}|${normQ(d.questionHe)}`; if (qSeen.has(k)) return; qSeen.add(k); decisions.push({ ...d, answerable: "OWNER_ONLY" }); };
+  // Question memory (2026-10-05): dedup by the question IDENTITY (kind + exact entity), never by text — the same question
+  // from two subsystems is ONE decision; the same text on two entities is two. Questions without an identity keep the text key.
+  const addQ = (d: Omit<CompanyDecision, "answerable">, identity?: string | null) => { const k = identity ?? `${d.kind}|${normQ(d.questionHe)}`; if (qSeen.has(k)) return; qSeen.add(k); decisions.push({ ...d, answerable: "OWNER_ONLY" }); };
+  const qid = (dom: string, q: { identity?: string | null }, i: number) => (q.identity ? `${dom}:${q.identity}` : `${dom}:${i}`);
   const integ = ok(src.integrity) as CompanyIntegrityRegister | null;
   for (const q of integ?.questions ?? []) addQ({ id: `integrity:${q.questionId}`, questionHe: q.textHe, why: q.whyHe, kind: q.questionType, domain: "INTEGRITY", origin: "LIVE_QUESTION" });
   for (const q of fin?.brief?.rehab.questions ?? []) addQ({ id: `finance:${q.questionType}`, questionHe: q.textHe, why: q.whyHe, kind: q.questionType, domain: "FINANCE", origin: "LIVE_QUESTION" });
-  for (const [dom, qs] of [["VICTOR", victor?.questions ?? []], ["MIX", mix?.questions ?? []], ["VIDEO", video?.questions ?? []]] as const) qs.forEach((q, i) => addQ({ id: `${dom.toLowerCase()}:${i}`, questionHe: q.questionHe, why: q.why, kind: q.kind, domain: dom, origin: "LIVE_QUESTION" }));
-  for (const a of artists ?? []) a.questions.forEach((q, i) => addQ({ id: `${a.key}:q${i}`, questionHe: `${a.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "LABEL", origin: "LIVE_QUESTION" }));
-  for (const s of (shows ?? []).filter((x) => x.identity.date && x.identity.date >= addDays(c.today, -30))) s.questions.forEach((q, i) => addQ({ id: `${s.key}:q${i}`, questionHe: `הופעה ${s.identity.date}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "SHOWS", origin: "LIVE_QUESTION" }));
-  for (const cl of clients ?? []) cl.questions.forEach((q, i) => addQ({ id: `${cl.key}:q${i}`, questionHe: `${cl.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "CLIENTS", origin: "LIVE_QUESTION" }));
+  for (const [dom, qs] of [["VICTOR", victor?.questions ?? []], ["MIX", mix?.questions ?? []], ["VIDEO", video?.questions ?? []]] as const) qs.forEach((q, i) => addQ({ id: qid(dom.toLowerCase(), q as { identity?: string }, i), questionHe: q.questionHe, why: q.why, kind: q.kind, domain: dom, origin: "LIVE_QUESTION" }, (q as { identity?: string }).identity));
+  for (const a of artists ?? []) a.questions.forEach((q, i) => addQ({ id: qid("label", q, i), questionHe: `${a.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "LABEL", origin: "LIVE_QUESTION" }, q.identity));
+  for (const s of (shows ?? []).filter((x) => x.identity.date && x.identity.date >= addDays(c.today, -30))) s.questions.forEach((q, i) => addQ({ id: qid("shows", q, i), questionHe: `הופעה ${s.identity.date}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "SHOWS", origin: "LIVE_QUESTION" }, q.identity));
+  for (const cl of clients ?? []) cl.questions.forEach((q, i) => addQ({ id: qid("clients", q, i), questionHe: `${cl.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "CLIENTS", origin: "LIVE_QUESTION" }, q.identity));
   // O1 (2026-10-05): only knowledge IN USE (activeKnowledge — the one rule): an ASSERT later withdrawn / superseded / expired decides nothing.
   const kn = activeKnowledge((ok(src.ownerKnowledge) ?? []) as OwnerKnowledgeRecord[], c.today);
   const decided = (subject: string) => kn.some((k) => k.subjectKey === subject);

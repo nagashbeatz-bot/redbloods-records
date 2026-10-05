@@ -34,7 +34,7 @@ function sectionRows(v: ClientView, section: string): Array<{ id: string; label:
     case "delivery": return v.deliveries.map((d, i) => ({ id: `d:${i}`, label: `מסירה ${d.project}`, epistemic: "FACT", fields: { ...d } }));
     case "owner_knowledge": return v.ownerKnowledge.map((k, i) => ({ id: `k:${i}`, label: k.meaning, recordText: true, epistemic: "OWNER_REPORTED", fields: { ...k } }));
     case "signals": return v.signals.map((s, i) => ({ id: `${s.code}:${i}`, label: s.he, recordText: true, epistemic: s.kind === "UNKNOWN" ? "UNKNOWN" : s.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", fields: { code: s.code, kind: s.kind, entity: s.entity ?? null } }));
-    case "questions": return v.questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, epistemic: "UNKNOWN", fields: { kind: q.kind, why: q.why } }));
+    case "questions": return v.questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, epistemic: "UNKNOWN", fields: { kind: q.kind, why: q.why, entity: q.entity, state: q.state, identity: q.identity, answerAs: q.answerAs } }));
     // what the Owner already told Sunny — a known-context line (never a new question; records unchanged)
     case "known": return v.known.map((k, i) => ({ id: `known:${i}`, label: k.textHe, recordText: true, epistemic: k.epistemic, fields: { questionKind: k.questionKind, entity: k.entityKey, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: k.canonicalHe, actions: k.actions } }));
     default: return [];

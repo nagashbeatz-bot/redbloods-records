@@ -20,6 +20,8 @@
  * No score, no readiness verdict, no invented policy (a release never requires a video).
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions } from "../sunny/known-context";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw, OpsRedFilmsProduction } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
@@ -41,7 +43,7 @@ const SHOT_OR_LATER = new Set(["צולם", "חומרי גלם הועלו", "בע
 const addByCurrency = (acc: Record<string, number>, cur: string, amt: number) => { acc[cur] = round2((acc[cur] ?? 0) + amt); };
 
 export interface VideoSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string; production?: string; project?: string }
-export interface VideoQuestion { questionHe: string; why: string; kind: string; ref?: string }
+export interface VideoQuestion { questionHe: string; why: string; kind: string; ref?: string; entity?: string }
 
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; fin: FinanceRaw | null; today: string }
 function ctxOf(src: GatewaySources): Ctx {
@@ -150,7 +152,7 @@ export function buildProjectVideo(src: GatewaySources, projectId: string) {
     labelWork: op?.label.labelWork ?? null, clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the client / project commitment — not a video deadline" } : null,
     money: { where: "the project's own agreedPrice / received / balance — project_view (ONE clip model: no clip price, no clip deal)", projectType: (c.ops?.projectsMeta?.rows ?? []).find((x) => x.id === projectId)?.projectType ?? null },
     planning: { rows: rows.map((r) => { const tx = r.linkedTransactionId ? (c.fin?.transactions ?? []).find((t) => t.id === r.linkedTransactionId) ?? null : null; const txAmt = tx ? validateTx(tx)?.amount ?? null : null;
-      return { category: r.category, description: r.description, amount: r.amount, currency: r.currency, status: r.status, transferred: !!r.linkedTransactionId, promoted: isClipItemPromoted(r), transactionExists: r.linkedTransactionId ? (c.fin ? txIds.has(r.linkedTransactionId) : null) : null,
+      return { id: r.id, category: r.category, description: r.description, amount: r.amount, currency: r.currency, status: r.status, transferred: !!r.linkedTransactionId, promoted: isClipItemPromoted(r), transactionExists: r.linkedTransactionId ? (c.fin ? txIds.has(r.linkedTransactionId) : null) : null,
         expenseDiffers: tx ? (txAmt !== r.amount || (tx.currency ?? "₪") !== (r.currency ?? "₪") ? { planned: r.amount, plannedCurrency: r.currency, expense: txAmt, expenseCurrency: tx.currency } : null) : null }; }), plannedByCurrency: planned, note: "PLANNED (B) — never money spent. 'העבר לכספים' keeps the row, marks it הועבר לכספים and links it to its Finance expense (B3 provenance; rows promoted before B3 were deleted); a promoted row is never counted as planned" },
     expenses: expenseLayer(txs),
     shoots: sessions.map((s) => ({ date: s.date, start: s.startTime, end: s.endTime, status: s.status, photographer: s.photographer, location: s.location, datePassed: !!s.date && s.date < c.today, happened: s.status === "התקיים", happenedBasis: s.status === "התקיים" ? ({ AUTO_MARK: "AUTO_MARK — the end passed and nobody cancelled it (not proof the shoot happened)", LEGACY_POSSIBLY_AUTO: "LEGACY — possibly auto-marked by the retired page-load writer (not proof the shoot happened)", MANUAL: "EXPLICIT — recorded by the Owner", MANUAL_A3_ERA: "EXPLICIT — recorded by the Owner" } as const)[heldMeaning({ status: s.status, status_source: s.statusSource ?? null, date: s.date, start_time: s.startTime, end_time: s.endTime }) ?? "MANUAL"] : s.status === "מתוכנן" && !!s.date && s.date < c.today ? "PASSED_NOT_CONFIRMED — עבר — לא אושר (a passed date never proves a shoot)" : null,
@@ -203,9 +205,10 @@ export function buildVideoView(src: GatewaySources) {
     if (pv.release) S("RELEASE_CONTEXT", "CANONICAL_FACT", `${name}: ריליס בשלב ${pv.release.stage}${pv.release.target ? `, יעד ${pv.release.target}` : ""} — הקשר בלבד, ריליס לא מחייב קליפ`);
   }
   const active = prods.filter((p) => p.active);
-  if (active.some((p) => p.shoot.datePassed && !p.shoot.statusSaysShot)) questions.push({ kind: "STATUS", questionHe: `${active.filter((p) => p.shoot.datePassed && !p.shoot.statusSaysShot).map((p) => `${p.title} (סטטוס: '${p.status}')`).join(", ")} — תאריך הצילום עבר והסטטוס עדיין לפני 'צולם'. הקליפ צולם? איפה הוא עומד?`, why: "the status is manual; outside progress is invisible" });
-  if (projects.some((pv) => pv.planning.rows.some((r) => r.transferred && r.transactionExists === false))) questions.push({ kind: "FINANCE", questionHe: "שורת תכנון קליפ מסומנת 'הועבר לכספים' אבל ההוצאה לא קיימת בכספים — נמחקה בכוונה?", why: "a transferred plan without its expense" });
-  if (active.some((p) => anyAmount(p.money.paidOutsideFinance) && p.money.financeScope.scope && p.project)) questions.push({ kind: "FINANCE", questionHe: "יש תשלומי Red Films של קליפ שעוד לא מקושרים לכספים — לקשר אותם עכשיו (כל תשלום = הוצאה אחת בכספים)?", why: "DB-1: each payment → ONE Finance expense; historical payments are linked by the Owner's typed action" });
+  // Question memory (2026-10-05): ONE question per production (its action key) — an answer on A never covers B
+  for (const p of active.filter((x) => x.shoot.datePassed && !x.shoot.statusSaysShot)) questions.push({ kind: "STATUS", entity: `rf-production:${p.id}`, questionHe: `${p.title} (סטטוס: '${p.status}') — תאריך הצילום עבר והסטטוס עדיין לפני 'צולם'. הקליפ צולם? איפה הוא עומד?`, why: "the status is manual; outside progress is invisible" });
+  for (const pv of projects) for (const r of pv.planning.rows.filter((x) => x.transferred && x.transactionExists === false)) questions.push({ kind: "FINANCE", entity: `clip-row:${r.id}`, questionHe: "שורת תכנון קליפ מסומנת 'הועבר לכספים' אבל ההוצאה לא קיימת בכספים — נמחקה בכוונה?", why: "a transferred plan without its expense" });
+  for (const p of active.filter((x) => anyAmount(x.money.paidOutsideFinance) && x.money.financeScope.scope && x.project)) questions.push({ kind: "FINANCE", entity: `rf-production:${p.id}`, questionHe: `${p.title}: ${"יש תשלומי Red Films של קליפ שעוד לא מקושרים לכספים — לקשר אותם עכשיו (כל תשלום = הוצאה אחת בכספים)?"}`, why: "DB-1: each payment → ONE Finance expense; historical payments are linked by the Owner's typed action" });
   const sumCur = (pick: (p: VideoProduction) => Record<string, number>) => { const m: Record<string, number> = {}; for (const p of active) for (const [c, a] of Object.entries(pick(p))) m[c] = round2((m[c] ?? 0) + a); return m; };
   const totals = { plannedBudget: sumCur((p) => ({ [p.money.currency]: p.money.budget ?? 0 })), plannedLines: sumCur((p) => p.money.plannedLines), paidRedFilmsLedger: sumCur((p) => p.money.paidRedFilmsLedger), paidLinkedInFinance: sumCur((p) => p.money.paidLinkedInFinance), paidOutsideFinance: sumCur((p) => p.money.paidOutsideFinance), currency: "PER CURRENCY — never added across currencies; paidLinkedInFinance is already inside actualClipExpenses (never add the two)" };
   const expenses: Record<string, Record<string, number>> = { total: {}, paid: {}, unpaid: {} };
@@ -219,7 +222,7 @@ export function buildVideoView(src: GatewaySources) {
     money: { redFilms: totals, clipPlanningByCurrency: clipPlanned, actualClipExpenses: expenses,
       rule: "A the project's agreedPrice / income (a clip is its own project — its money is the project's own) ≠ B planned (budget, lines, clip rows) ≠ C actual cost (Finance expenses with scope קליפ; paid only when שולם) ≠ D recoupable (NOT_DEFINED — none: for שליו / אבי the artist's 50 % of C is an artist expense in the bi-monthly cycle, never repaid by a specific income — media is separate 50 / 50 income; any other artist has no agreement). Red Films payments are real company money: DB-1 links each one to exactly ONE Finance expense — a linked payment is inside C (never added again), only paidOutsideFinance is not in Finance yet; a non-clip production's payment has no canonical Finance scope (SCOPE_REQUIRED). Layers are never added; currencies never added",
       clipRecoup: clipRecoupContribution(`${AGREEMENT_CYCLE_ACCOUNTING_HE} (שליו / אבי); לכל אמן אחר — אין הסכם.`) },
-    productions: prods, projects, signals, questions,
+    productions: prods, projects, signals, ...(() => { const r = resolveQuestions(questions.map((q) => ({ ...q, entity: q.entity ?? "video:unknown" })), activeKnowledge((src.ownerKnowledge?.status === "OK" ? src.ownerKnowledge.value : []) as OwnerKnowledgeRecord[], c.today), c.today); return { questions: r.asked, known: r.known }; })(),
     unavailable: [...(c.ops ? [] : ["OPERATIONS (productions) — unknown, not none"]), ...(c.det ? [] : ["PROJECT_DETAIL (production detail, budget lines, documents, sessions, clip rows)"]), ...(c.fin ? [] : ["FINANCE (expenses)"]), "storage itself is not listed — 'no link' ≠ 'no footage'", "calendar event details are read live by the calendar capability"],
   };
 }

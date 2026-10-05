@@ -78,7 +78,7 @@ export const mixView: KnowledgeCapability = {
           sfact("SCOPE", "ייחודי לסטיבן מול כללי", "portal, completion flow, reminders, digest, presence and upload pushes are Steven-only; work / versions / comments / final files / price sync are generic; the payment push, the ₪ payment sync and the notes / send pushes apply Steven assumptions to any engineer (see system_awareness mix_model)", "FACT", "SYSTEM_CONTRACTS")] });
     }
     return result([...v.signals.map((x, i) => item({ id: `${x.code}:${i}`, entity: x.project ?? null, label: record(x.he), epistemic: x.kind === "UNKNOWN" ? "UNKNOWN" : x.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", source: "TEAM_STEVEN", fields: { code: x.code, work: x.work ?? null } })),
-      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_STEVEN", fields: { kind: x.kind, why: x.why, work: x.work ?? null } })),
+      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_STEVEN", fields: { kind: x.kind, why: x.why, work: x.work ?? null, entity: x.entity, state: x.state, identity: x.identity, answerAs: x.answerAs } })),
       ...v.known.map((k, i) => item({ id: `known:${i}`, label: record(k.textHe), epistemic: k.epistemic, source: "TEAM_STEVEN", fields: { questionKind: k.questionKind, work: k.entityKey, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: partner(k.canonicalHe), actions: k.actions } })),
     ],
       { ...base, summary: [sfact("COUNTS", "ספירות רשומות", v.counts, "DERIVED", "TEAM_STEVEN"), sfact("STEVEN", "סטיבן", v.steven, "FACT", "TEAM_STEVEN"), sfact("SIGNALS", "אותות", byCount(v.signals.map((x) => x.code)), "DERIVED", "TEAM_STEVEN")] });

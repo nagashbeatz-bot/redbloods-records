@@ -10,6 +10,7 @@
  * completion, approval, final files and payment stay four separate facts. No score, no ranking, no invented policy.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions as resolveQ } from "../sunny/known-context";
 import { vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { PartnerCompanyState } from "../eyes/types";
@@ -227,8 +228,9 @@ export function buildMixView(src: GatewaySources) {
   for (const v of victorDoneNoMix) signals.push({ code: "PRODUCTION_DONE_NO_MIX", kind: "DERIVED_SIGNAL", he: `${v.name ?? "פרויקט"}: ההפקה אצל ויקטור הושלמה ואין עבודת מיקס — מעבר למיקס לא רשום`, project: v.key });
   for (const t of orphanExpenses) signals.push({ code: "ORPHAN_MIX_EXPENSE", kind: "CANONICAL_FACT", he: `הוצאת מיקס ${t.currency ?? ""}${t.amount ?? "?"} (${t.status ?? "—"}) לא מקושרת לשום עבודה`, project: t.project ?? undefined });
   const unpaidDone = works.filter((w) => w.status === COMPLETED_STATUS && w.money.priceRecorded && !w.money.paid);
-  if (unpaidDone.length) questions.push({ kind: "PAYMENT", questionHe: `${unpaidDone.length} עבודות מיקס שהושלמו לא סומנו כשולמו (${unpaidDone.map((w) => `${w.title} ${w.money.currency}${w.money.agreed}`).join(", ")}) — שולמו מחוץ למערכת?`, why: "completed + priced + not paid; no expense recorded" });
-  if (orphanExpenses.length) questions.push({ kind: "FINANCE", questionHe: `${orphanExpenses.length} הוצאות מיקס לא מקושרות לשום עבודה — לשייך או שהן שאריות?`, why: "never fuzzy-linked by Sunny" });
+  // Question memory (2026-10-05): ONE question per work (an answer on work A never covers work B; the display may group them)
+  for (const w of unpaidDone) questions.push({ kind: "PAYMENT", work: w.key, questionHe: `עבודת המיקס "${w.title}" (${w.money.currency}${w.money.agreed}) הושלמה ולא סומנה כשולמה — שולמה מחוץ למערכת?`, why: "completed + priced + not paid; no expense recorded" });
+  for (const t of orphanExpenses) questions.push({ kind: "FINANCE", work: `transaction:${t.id}`, questionHe: `הוצאת מיקס ${t.currency ?? ""}${t.amount ?? "?"} (${t.date ?? "—"}) לא מקושרת לשום עבודה — לשייך או שהיא שארית?`, why: "never fuzzy-linked by Sunny (no link primitive exists — a link is not claimed)" });
   const presence = famRows(c, "PORTAL_PRESENCE");
   const pres = presenceFactsOf(presence, "steven");
   const legacyVisit = presence.find((r) => r.key === "steven_visit_last")?.value as { at?: string } | undefined;
@@ -250,7 +252,7 @@ export function buildMixView(src: GatewaySources) {
       note: "recorded counts — no capacity limit, no ranking, no performance score" },
     money: { paidByCurrency, owedByCurrency, orphanExpenses, rule: "paid = agreed > 0 AND paid ≥ agreed AND a payment date (the app's rule); currencies never added", ratio: `historical only: the retired Steven sync recorded $ × ${APP_PAYMENT_RATIO} in ₪ (working value, not Owner policy); new expenses are in the work currency, the ₪ figure is a notes estimate`, paypal: "the ×1.05 PayPal gross is a note only; no fee policy is stored" },
     steven: { works: steven.length, open: steven.filter((w) => !isClosedStatus(w.status)).length, presence: { lastVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity only — not work done, not a mix heard, not a comment handled. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" }, digestsSent: { count: digests.length, last: digests.at(-1) ?? null } },
-    works, mixStageNoEngineer, victorDoneNoMix, signals, questions, known,
+    works, mixStageNoEngineer, victorDoneNoMix, signals, ...(() => { const r = resolveQ(questions.map((q) => ({ ...q, entity: q.work ?? "mix:unknown" })), knRecs, c.today, (q) => { const w = works.find((x) => x.key === q.entity); return w?.handoff.lastUploadAt ? w.handoff.lastUploadAt.slice(0, 10) : null; }); return { questions: r.asked, known: [...known, ...r.known] }; })(),
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (engineer works, versions, comments, final files) was not read — unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (notes-sent cycles, markers, presence)"]), ...(c.txs ? [] : ["FINANCE (expenses)"]), "storage itself is not listed — a missing file record ≠ a missing file"],
   };
 }

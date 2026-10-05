@@ -17,8 +17,9 @@
  */
 import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { ReconcileAction } from "../finance/decision-gate";
+import { topicSlug } from "../owner-knowledge/kinds";
 
-export type KnownQuestionKind = "PROJECT_STATE" | "PAYMENT_EVIDENCE" | "DEADLINE_REALITY" | "FOLLOW_UP" | "OUTSIDE_COMMUNICATION";
+export type KnownQuestionKind = "PROJECT_STATE" | "PAYMENT_EVIDENCE" | "DEADLINE_REALITY" | "FOLLOW_UP" | "OUTSIDE_COMMUNICATION" | (string & {});
 /** CURRENT = the statement still stands; REVIEW_DUE = its review date passed → "still true?"; SUPERSEDED_BY_EVIDENCE = newer canonical evidence wins. */
 export type KnownFreshness = "CURRENT" | "REVIEW_DUE" | "SUPERSEDED_BY_EVIDENCE";
 export type KnownContextState = "KNOWN_MATCHES" | "KNOWN_CONTEXT_RECONCILE" | "KNOWN_DECISION_RECONCILE" | "STILL_TRUE_CHECK";
@@ -197,4 +198,94 @@ export function vendorKnownInputs(src: { memory?: { status: string; value?: unkn
     return rows.filter((x) => !superseded.has(x.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
   };
   return { answers, projectUpdate };
+}
+
+// ══ QUESTION MEMORY (Owner-approved 2026-10-05, Q1–Q4): ONE map + ONE resolver for every remaining Owner question ══
+/**
+ * Every question Sunny shows ends in ONE of four states:
+ *   ASK — nothing known, no canonical state decides it;
+ *   KNOWN — the Owner already answered (an exact-entity BUSINESS_DECISION, topic q-<kind>) and it still holds → not asked;
+ *   RECONCILE — he answered and the records do not reflect it yet → "כבר אמרת לי X — לפי הרשומות Y — לסנכרן?" + a proposal;
+ *   REOPENED_BECAUSE_EVIDENCE_CHANGED — he answered, then a REAL canonical event changed the question → asked again WITH the
+ *     earlier answer as context. Never reopened by wording / title / updatedAt / refresh / build / another subsystem.
+ * A question the canonical state decides is never generated at all (the field is set → it is gone): no store for it.
+ */
+export type QuestionContractState = "ASK" | "KNOWN" | "RECONCILE" | "REOPENED_BECAUSE_EVIDENCE_CHANGED";
+export interface EntityQuestion { kind: string; questionHe: string; why: string; entity: string }
+type Home = { home: "CANONICAL" | "CANONICAL_AND_CONTEXT"; identity: string; reconcile?: (entity: string) => ReconcileAction[]; answerHe: string };
+/** question kind → its home. `identity` = the canonical question identity (two subsystems asking the same thing share it). */
+export const QUESTION_HOMES: Readonly<Record<string, Home>> = {
+  // shows (show:<id>)
+  DJ: { home: "CANONICAL_AND_CONTEXT", identity: "DJ", answerHe: "ASSIGN_SHOW_DJ / SET_SHOW_DEAL_TYPE; 'אין צורך ב-DJ' = הקשר" },
+  SHOW_DJ: { home: "CANONICAL_AND_CONTEXT", identity: "DJ", answerHe: "כמו DJ (אותה שאלה מתמונת האמן)" },
+  DJ_CONFIRM: { home: "CANONICAL_AND_CONTEXT", identity: "DJ_CONFIRM", answerHe: "רק CLEANTONE מאשר בפורטל; 'אישר בטלפון' = הקשר (אין פעולת אישור לבעלים)" },
+  PRICE: { home: "CANONICAL_AND_CONTEXT", identity: "PRICE", answerHe: "SET_SHOW_MONEY / SET_SHOW_DEAL_TYPE; 'עוד לא סוכם' = הקשר" },
+  CLOSE: { home: "CANONICAL_AND_CONTEXT", identity: "CLOSE", answerHe: "CLOSE_SHOW / CANCEL_SHOW / UPDATE_SHOW_DETAILS; 'התקיימה, אסגור אחר כך' = הקשר + סנכרון", reconcile: (e) => [{ actionId: "CLOSE_SHOW", args: { show: e }, missing: ["paymentStatus", "incomeReceived", "djPaid"], required: true, noteHe: "סגירה כבוצע דרך תהליך הסגירה — מה קרה עם תשלום הלקוח וה-DJ נשאל, לא מנוחש." }] },
+  PLACE: { home: "CANONICAL_AND_CONTEXT", identity: "PLACE", answerHe: "UPDATE_SHOW_DETAILS (location); 'עוד לא נקבע' = הקשר" },
+  TIME: { home: "CANONICAL_AND_CONTEXT", identity: "TIME", answerHe: "UPDATE_SHOW_DETAILS (startTime); 'עוד לא נקבעה' = הקשר" },
+  // label
+  RELEASE: { home: "CANONICAL_AND_CONTEXT", identity: "RELEASE", answerHe: "UPDATE_RELEASE_DETAILS (nextAction / blocker / target) / CHANGE_RELEASE_STAGE; 'עוד אין תאריך' / 'לא דחוף' = הקשר" },
+  ARTIST_PLAN: { home: "CANONICAL_AND_CONTEXT", identity: "ARTIST_PLAN", answerHe: "פרויקט / סשן / ריליס עתידי; 'בהפסקה' / 'התוכנית מחוץ למערכת' = הקשר" },
+  // sessions — canonical only (the status is the answer; no parallel store)
+  SESSION_STATE: { home: "CANONICAL", identity: "SESSION_STATE", answerHe: "UPDATE_SESSION (סשן) / UPDATE_SHOW_REHEARSAL (חזרה להופעה)" },
+  // Red Films
+  STATUS: { home: "CANONICAL_AND_CONTEXT", identity: "STATUS", answerHe: "UPDATE_PRODUCTION_DETAILS (status / shootDate) / CANCEL_PRODUCTION; 'צולם, אעדכן' = הקשר + סנכרון", reconcile: (e) => [{ actionId: "UPDATE_PRODUCTION_DETAILS", args: { production: e }, missing: ["status"], required: true, noteHe: "הסטטוס נרשם רק בפעולה — איזה שלב (צולם / חומרי גלם הועלו / …) נשאל, לא מנוחש." }] },
+  // Red Films FINANCE / mix FINANCE — the ONE Finance truth (no parallel subsystem)
+  FINANCE: { home: "CANONICAL_AND_CONTEXT", identity: "FINANCE", answerHe: "Finance הקנוני (LINK_RF_PAYMENT_TO_FINANCE / DELETE_CLIP_ROW / SET_TRANSACTION_STATUS); אין פעולה לקישור הוצאת מיקס יתומה — 'שארית' = הקשר" },
+  // mix / Victor
+  HANDOFF: { home: "CANONICAL_AND_CONTEXT", identity: "HANDOFF", answerHe: "SET_ENGINEER_WORK_STATUS / UPDATE_SEND_LOG_ENTRY (לעולם לא DELETE_SEND_LOG_ENTRY — מוחק בשרשור); 'אצלו' = הקשר" },
+  PAYMENT: { home: "CANONICAL_AND_CONTEXT", identity: "PAYMENT", answerHe: "RECORD_ENGINEER_PAYMENT (שולח Push לסטיבן — רק באישורך) / Finance; 'שולם מחוץ למערכת' = הקשר" },
+  // clients
+  CONVERSION: { home: "CANONICAL_AND_CONTEXT", identity: "CONVERSION", answerHe: "CONVERT_PROPOSAL / LINK_PROPOSAL_TO_PROJECT; 'לא צריך פרויקט' = הקשר" },
+};
+/** The BUSINESS_DECISION topic that answers a question kind (the same for two subsystems asking the same thing). */
+export const answerTopicOf = (kind: string) => `q-${topicSlug((QUESTION_HOMES[kind]?.identity ?? kind).replace(/_/g, "-"))}`;
+/** What Sunny records when the Owner answers with context (served with every question — exact entity, never the company). */
+export function answerAsOf(q: EntityQuestion) {
+  const h = QUESTION_HOMES[q.kind];
+  if (!h) return null;
+  if (h.home === "CANONICAL") return { canonicalHe: h.answerHe, contextKind: null };
+  // only an entity a context answer can be pinned to EXACTLY (BUSINESS_DECISION about / ref) gets a context path
+  const field = /^(proposal|victor-work|mix-work|transaction|rf-production):/.test(q.entity) ? "ref" : /^(project|client|show|release|label-artist|dj):/.test(q.entity) ? "about" : null;
+  if (!field) return { canonicalHe: h.answerHe, contextKind: null, noteHe: "לשאלה הזאת אין בית להקשר — רק הפעולה הקנונית עונה עליה" };
+  return { canonicalHe: h.answerHe, contextKind: "BUSINESS_DECISION", [field]: q.entity, topic: answerTopicOf(q.kind) };
+}
+/** The exact-entity decision that answers THIS question (company-level decisions never match). */
+export function questionAnswerOf(records: readonly OwnerKnowledgeRecord[], q: EntityQuestion): OwnerKnowledgeRecord | null {
+  const topic = answerTopicOf(q.kind);
+  const v = (k: OwnerKnowledgeRecord) => k.value as Record<string, unknown>;
+  return records.filter((k) => k.kind === "BUSINESS_DECISION" && topicSlug(String(v(k).topic ?? "")) === topic && (v(k).about === q.entity || v(k).ref === q.entity))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+}
+export type ResolvedQuestion<Q> = Q & { state: QuestionContractState; answerAs: ReturnType<typeof answerAsOf>; identity: string };
+export type ResolvedKnown = KnownContextItem & { contractState: QuestionContractState; identity: string };
+/**
+ * THE resolver. Input: the questions a view generated (each with its exact entity) + ACTIVE knowledge + the canonical
+ * evidence day per question (a real event on that entity; null when the view has none). Output: what to ASK (incl.
+ * REOPENED with the earlier answer) and the known lines (KNOWN / RECONCILE / "זה עדיין נכון?"). One identity per
+ * (identity kind, entity): the same question from two subsystems is ONE question; the same text on two entities is two.
+ */
+export function resolveQuestions<Q extends EntityQuestion>(questions: readonly Q[], records: readonly OwnerKnowledgeRecord[], todayIL: string, evidenceOf: (q: Q) => string | null = () => null): { asked: Array<ResolvedQuestion<Q>>; known: ResolvedKnown[] } {
+  const asked: Array<ResolvedQuestion<Q>> = [];
+  const known: ResolvedKnown[] = [];
+  const seen = new Set<string>();
+  for (const q of questions) {
+    const identity = `${QUESTION_HOMES[q.kind]?.identity ?? q.kind}|${q.entity}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    const h = QUESTION_HOMES[q.kind];
+    const k = h && h.home !== "CANONICAL" ? questionAnswerOf(records, q) : null;
+    if (!k || !h) { asked.push({ ...q, state: "ASK", answerAs: answerAsOf(q), identity }); continue; }
+    const said = String((k.value as Record<string, unknown>).decisionHe ?? k.meaningHe);
+    const fr = freshnessOf(k, todayIL, evidenceOf(q));
+    if (fr === "SUPERSEDED_BY_EVIDENCE") {
+      asked.push({ ...q, questionHe: `${q.questionHe} (קודם אמרת לי ב-${ddmm(knownAtOf(k))}: ${clip(said, 120)} — מאז נרשם אירוע חדש)`, state: "REOPENED_BECAUSE_EVIDENCE_CHANGED", answerAs: answerAsOf(q), identity });
+      continue;
+    }
+    const actions = fr === "REVIEW_DUE" ? [] : h.reconcile?.(q.entity) ?? [];
+    const item = knownItem({ questionKind: q.kind, entityKey: q.entity, label: null, meaningHe: said, knownAt: knownAtOf(k), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: k.id, knowledgeKind: k.kind }, freshness: fr,
+      canonicalHe: actions.length ? "הרשומה עדיין לא משקפת את זה" : "אין שדה ברשומה שמחזיק את זה — נשמר כהקשר, לא כמצב", actions, epistemic: "OWNER_DECISION" });
+    known.push({ ...item, contractState: actions.length ? "RECONCILE" : "KNOWN", identity });
+  }
+  return { asked, known };
 }

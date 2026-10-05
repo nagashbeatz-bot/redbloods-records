@@ -13,6 +13,7 @@
  * apart. Signals are derived facts, never a score; stale is not urgent; outside communication is invisible.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions as resolveQ } from "../sunny/known-context";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
@@ -42,7 +43,7 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00
 
 export type ProjectBasis = "PROPOSAL_CHAIN" | "NAME_EXACT" | "NAME_COLLABORATION";
 export interface ClientSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string; entity?: string }
-export interface ClientQuestion { questionHe: string; why: string; kind: string }
+export interface ClientQuestion { questionHe: string; why: string; kind: string; entity?: string }
 
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; cdet: ClientDetailRaw | null; kn: OwnerKnowledgeRecord[]; cal: CalendarWindowResult | null; integrity: CompanyIntegrityRegister | null; today: string }
 function ctxOf(src: GatewaySources): Ctx {
@@ -213,12 +214,12 @@ export function buildClientView(src: GatewaySources, clientId: string) {
       signals.push({ code: "FOLLOW_UP_DUE", kind: "DERIVED_SIGNAL", he: `תאריך הפולואפ הרשום (${p.followUp}) הגיע — לא רואה ב-Redbloods פעילות שנרשמה אחריו.`, entity: p.key });
       const fk = followUpKnowledgeFor(c.kn, p.key, key, openProposals);
       if (fk) known.push(followUpKnown(fk, p.key, p.title, p.followUp, c.today));
-      else questions.push({ kind: "FOLLOW_UP", questionHe: `ההצעה "${p.title}" — היה קשר עם הלקוח מחוץ למערכת? מה המצב שלה?`, why: "recorded follow-up date passed; WhatsApp / phone contact is invisible to Redbloods" });
+      else questions.push({ kind: "FOLLOW_UP", entity: p.key, questionHe: `ההצעה "${p.title}" — היה קשר עם הלקוח מחוץ למערכת? מה המצב שלה?`, why: "recorded follow-up date passed; WhatsApp / phone contact is invisible to Redbloods" });
     }
     if (p.open && !p.followUp) signals.push({ code: "OPEN_PROPOSAL_NO_FOLLOW_UP", kind: "CANONICAL_FACT", he: `להצעה "${p.title}" אין תאריך פולואפ.`, entity: p.key });
     if (p.status === "לחזור בעתיד") signals.push({ code: "RETURN_LATER", kind: "CANONICAL_FACT", he: `"${p.title}" מסומנת 'לחזור בעתיד'.`, entity: p.key });
     if (p.linkedProject) signals.push({ code: "PROPOSAL_CONVERTED", kind: "CANONICAL_FACT", he: `"${p.title}" הפכה לפרויקט.`, entity: p.key });
-    if (p.status === "נסגר" && !p.linkedProject) { signals.push({ code: "PROPOSAL_CLOSED_WITHOUT_PROJECT", kind: "CANONICAL_FACT", he: `"${p.title}" סומנה נסגר בלי פרויקט מקושר.`, entity: p.key }); questions.push({ kind: "CONVERSION", questionHe: `ההצעה "${p.title}" סגורה בלי פרויקט — לפתוח פרויקט, או שהעבודה רשומה במקום אחר?`, why: "closed status without conversion evidence" }); }
+    if (p.status === "נסגר" && !p.linkedProject) { signals.push({ code: "PROPOSAL_CLOSED_WITHOUT_PROJECT", kind: "CANONICAL_FACT", he: `"${p.title}" סומנה נסגר בלי פרויקט מקושר.`, entity: p.key }); questions.push({ kind: "CONVERSION", entity: p.key, questionHe: `ההצעה "${p.title}" סגורה בלי פרויקט — לפתוח פרויקט, או שהעבודה רשומה במקום אחר?`, why: "closed status without conversion evidence" }); }
     if (p.amountDiffersFromPrice) signals.push({ code: "PROPOSAL_AMOUNT_DIFFERS_FROM_PRICE", kind: "CANONICAL_FACT", he: `סכום ההצעה (${p.amount}) שונה מהמחיר המוסכם בפרויקט (${p.agreedPriceOnProject}) — הסיבה לא רשומה.`, entity: p.key });
   }
   for (const m of meetings) {
@@ -229,7 +230,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
     if (p.open) signals.push({ code: "ACTIVE_CLIENT_PROJECT", kind: "CANONICAL_FACT", he: `פרויקט פתוח: ${p.name} (${p.status}; קישור ${p.basis})`, entity: p.key });
     if (p.open && (p.deadlineClass === "APPROACHING" || p.deadlineClass === "AT_RISK")) signals.push({ code: "CLIENT_DEADLINE_APPROACHING", kind: "DERIVED_SIGNAL", he: `${p.name}: ${p.deadlineClass} (${p.deadline})`, entity: p.key });
     if (p.open && p.deadlineClass === "HISTORICAL_OPERATIONAL_DEBT") signals.push({ code: "HISTORICAL_DEADLINE_DEBT", kind: "DERIVED_SIGNAL", he: `${p.name}: דדליין ישן (${p.deadline}) — חוב תפעולי היסטורי, לא חירום חדש.`, entity: p.key });
-    if (p.open && p.advance === "ADVANCE_EVIDENCE_MISSING") { signals.push({ code: "PAYMENT_EVIDENCE_MISSING", kind: "DERIVED_SIGNAL", he: `${p.name}: העבודה התקדמה ואין תשלום שהתקבל רשום.`, entity: p.key }); if (p.paymentKnown) known.push(p.paymentKnown); else questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${p.name}" התקדם ואין מקדמה רשומה — התקבלה מקדמה?`, why: "Owner pattern: advance at the start; nothing recorded (no amount assumed)" }); }
+    if (p.open && p.advance === "ADVANCE_EVIDENCE_MISSING") { signals.push({ code: "PAYMENT_EVIDENCE_MISSING", kind: "DERIVED_SIGNAL", he: `${p.name}: העבודה התקדמה ואין תשלום שהתקבל רשום.`, entity: p.key }); if (p.paymentKnown) known.push(p.paymentKnown); else questions.push({ kind: "PAYMENT_EVIDENCE", entity: p.key, questionHe: `"${p.name}" התקדם ואין מקדמה רשומה — התקבלה מקדמה?`, why: "Owner pattern: advance at the start; nothing recorded (no amount assumed)" }); }
     if (p.basis === "NAME_COLLABORATION") signals.push({ code: "IDENTITY_COLLABORATION", kind: "DERIVED_SIGNAL", he: `${p.name}: שיתוף עם ${p.otherArtists.join(", ")} — הקישור לפי שם.`, entity: p.key });
   }
   if (Object.values(collectible).some((v) => v > 0)) signals.push({ code: "RECEIVABLE_EXISTS", kind: "DERIVED_SIGNAL", he: `יתרה לגבייה לפי מחיר מוסכם: ${Object.entries(collectible).map(([k, v]) => `${v} ${k}`).join(", ")}` });
@@ -242,7 +243,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
     identity: { id: client.id, name: client.name, type: client.type, status: client.status, statusMeaning: "one field mixing lifecycle / tier / role (חדש is also the auto-create default)", createdAt: client.createdAt },
     contact: stored ? { phone: stored.phone, email: stored.email, hasPhone: !!stored.phone, hasEmail: !!stored.email } : null,
     roles, proposals, projects, money: fin ? { realized, expected, collectible, potential, labelWorkMoney, rows: moneyRows, rule: "REALIZED = received rows; EXPECTED = open (not received, not cancelled) rows; POTENTIAL = open proposal amounts — never added together; per currency. Label work of the same person is kept apart (labelWorkMoney)." } : null,
-    meetings, calendar, sessions, tasks, deliveries, notes, history, lastRecordedActivity: lastActivity, ownerKnowledge: knowledge, signals, questions, known, unavailable,
+    meetings, calendar, sessions, tasks, deliveries, notes, history, lastRecordedActivity: lastActivity, ownerKnowledge: knowledge, signals, ...(() => { const r = resolveQ(questions.map((q) => ({ ...q, entity: q.entity ?? key })), c.kn, c.today); return { questions: r.asked, known: [...known, ...r.known] }; })(), unavailable,
   };
 }
 

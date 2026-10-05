@@ -27,7 +27,7 @@ export type DecisionGateState = "ASK" | "KNOWN_MATCHES" | "KNOWN_DECISION_RECONC
 export type ReconcileState = "KNOWN_DECISION_RECONCILE" | "KNOWN_CONTEXT_RECONCILE";
 
 /** The canonical actions a known decision can be synchronized with — existing Act primitives only. */
-export type ReconcileActionId = "SET_FINANCE_EXCEPTION" | "SET_AGREED_PRICE" | "SET_TRANSACTION_STATUS" | "ADD_TRANSACTION" | "SET_PROPOSAL_FOLLOWUP" | "UPDATE_PROJECT_DEADLINE";
+export type ReconcileActionId = "SET_FINANCE_EXCEPTION" | "SET_AGREED_PRICE" | "SET_TRANSACTION_STATUS" | "ADD_TRANSACTION" | "SET_PROPOSAL_FOLLOWUP" | "UPDATE_PROJECT_DEADLINE" | "CLOSE_SHOW" | "UPDATE_PRODUCTION_DETAILS";
 export interface ReconcileAction {
   actionId: ReconcileActionId;
   /** Typed arguments already known from the records / the answer (entity keys, booleans, dates, reasons). */

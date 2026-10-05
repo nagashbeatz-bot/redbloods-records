@@ -10,6 +10,7 @@
  * automatically (its id and description arrive through the capability index / the "catalog" capability).
  */
 import { parseEntityKey } from "../../partner/gateway/entity";
+import { MAX_FIELDS } from "../../partner/owner-knowledge/kinds";
 
 export const TOOL_NAMES = ["partner_brief", "partner_resolve", "partner_entity", "partner_query", "partner_answer_question", "partner_propose_knowledge"] as const;
 export const ANSWER_TOOL = "partner_answer_question";
@@ -131,7 +132,7 @@ export const KNOWLEDGE_TOOL_DEFINITION = {
     "VENDOR_COMMITMENT {commitment: DELIVER_WORK|SEND_REVISION|SEND_FILES, due?: YYYY-MM-DD, project?, work?: victor-work:<id> | mix-work:<id>} — ONLY an explicit commitment (\"הוא על זה\" / \"הוא אמר שיעשה\"); \"דיברתי איתו / שלחתי לו / עברנו על זה\" is outside communication, NEVER a commitment. RELEASE_PRIORITY {priority: URGENT|NORMAL|NOT_URGENT}, " +
     "PAYMENT_REPORTED_BY_OWNER {direction: RECEIVED|PAID, amount, currency: ₪|$|€, date?} (Owner-reported only — NEVER a Finance record), " +
     "PROCESS_FRICTION {area, frictionHe} and WORKING_POLICY_CANDIDATE {area, policyHe, appliesWhenHe?, status?, validFrom?, validUntil?} (subject \"Redbloods\"; area: PROJECTS|SHOWS|FINANCE|RELEASES|TEAM|CLIENTS|SOCIAL|MARKETING|CONTENT|OPERATIONS; a policy stays a candidate; SOCIAL / MARKETING / CONTENT / OPERATIONS are knowledge areas only — they do not mean a Social module exists). To move a policy saved under the wrong area: nothing is matched or superseded automatically — a different area (or wording) is a NEW item; WITHDRAW the old one (same area + same text) and ASSERT the new one under the right area, each with the Owner's confirmation. " +
-    "BUSINESS_DECISION {area, topic (short Latin slug, e.g. clip-pricing), decisionHe, about?: the key of the ONE record it is about (project:/client:/show:/release:/label-artist:/dj:), rationaleHe?, alternativesHe?, revisitWhenHe?, decidedOn?, reviewAt?: YYYY-MM-DD, status?, validFrom?, validUntil?} — a decision the Owner MADE and states (decision memory; one current per area + topic, a newer one supersedes). " +
+    "BUSINESS_DECISION {area, topic (short Latin slug, e.g. clip-pricing), decisionHe, about?: the key of the ONE record it is about (project:/client:/show:/release:/label-artist:/dj:), ref?: the ONE non-subject record (proposal:/victor-work:/mix-work:/transaction:/rf-production:), rationaleHe?, alternativesHe?, revisitWhenHe?, decidedOn?, reviewAt?: YYYY-MM-DD, status?, validFrom?, validUntil?} — a decision the Owner MADE and states (decision memory; one current per area + topic, a newer one supersedes). " +
     "BUSINESS_LEARNING {area, topic, statementHe, appliesWhenHe?, basisHe?, reviewAt?, sourceType?: OWNER_STATEMENT|SYSTEM_RECORD, sourceRef? (e.g. insight:<uuid>)} — ONLY what the Owner confirms Redbloods learned; NEVER turn your own insight into a learning silently (INFERRED is refused). Both subject \"Redbloods\"; reviewAt is read-only context (no automatic review / expiry / reminder); neither changes anything in Redbloods. " +
     "Requests to CHANGE something (a deadline, a payment record, a task) are actions, not knowledge — do not use this tool for them. " +
     "Flow: stage \"preview\" with up to 3 items → show the Owner readBackHe → ONLY after the Owner explicitly confirms, stage \"commit\" with the SAME items, the confirmationToken and confirmationText = the Owner's exact words of approval (verbatim — never written by you). The server refuses words that are not an approval or that change something (NOT_AN_APPROVAL / APPROVAL_WITH_CHANGES / APPROVAL_MISSING): ask again, or preview the changed version. " +
@@ -149,7 +150,7 @@ export const KNOWLEDGE_TOOL_DEFINITION = {
           properties: {
             kind: { type: "string", enum: [...KNOWLEDGE_KINDS_FOR_TOOL] },
             subject: { type: "string", minLength: 1, maxLength: 120, description: "Who / what the knowledge is about: a name as the Owner said it, or an entity key from partner_resolve (\"Redbloods\" for company-wide kinds)" },
-            fields: { type: "object", additionalProperties: { type: ["string", "number"] }, maxProperties: 12, description: "The kind's fields (see the list above)" },
+            fields: { type: "object", additionalProperties: { type: ["string", "number"] }, maxProperties: MAX_FIELDS, description: "The kind's fields (see the list above)" },
             operation: { type: "string", enum: ["ASSERT", "WITHDRAW"], description: "WITHDRAW = the Owner says it is no longer true (default ASSERT)" },
           },
           required: ["kind", "subject"],
@@ -228,7 +229,7 @@ function validateKnowledgeArgs(args: Record<string, unknown>): ArgsValidation {
     if (typeof it.subject !== "string" || !it.subject.trim() || it.subject.length > 120 || CONTROL.test(it.subject)) return bad("subject must be 1–120 printable characters");
     const out: KnowledgeItemArgs = { kind: it.kind, subject: it.subject.trim() };
     if (it.fields !== undefined) {
-      if (!isObj(it.fields) || Object.keys(it.fields).length > 12) return bad("fields must be an object with at most 12 fields");
+      if (!isObj(it.fields) || Object.keys(it.fields).length > MAX_FIELDS) return bad(`fields must be an object with at most ${MAX_FIELDS} fields`);
       const f: Record<string, string | number> = {};
       for (const [k, v] of Object.entries(it.fields)) {
         if (!/^[a-zA-Z]{1,30}$/.test(k)) return bad("field names are the kind's field names");

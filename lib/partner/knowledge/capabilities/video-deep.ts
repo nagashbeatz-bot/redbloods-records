@@ -64,7 +64,8 @@ export const videoView: KnowledgeCapability = {
         { ...base, summary: [sfact("MONEY", "שכבות כסף", v.money, "DERIVED", "FINANCE")] });
     }
     return result([...v.signals.map((x, i) => item({ id: `${x.code}:${i}`, entity: x.project ?? null, label: record(x.he), epistemic: x.kind === "UNKNOWN" ? "UNKNOWN" : x.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", source: "PROJECTS", fields: { code: x.code, production: x.production ?? null } })),
-      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "PROJECTS", fields: { kind: x.kind, why: x.why } }))],
+      ...v.questions.map((q, i) => item({ id: `q:${i}`, label: partner(q.questionHe), epistemic: "UNKNOWN", source: "PROJECTS", fields: { kind: q.kind, why: q.why, entity: q.entity ?? null, state: q.state ?? "ASK", identity: q.identity ?? null, answerAs: q.answerAs ?? null } })),
+      ...v.known.map((k, i) => item({ id: `known:${i}`, label: record(k.textHe), epistemic: k.epistemic, source: "PROJECTS", fields: { questionKind: k.questionKind, entity: k.entityKey, state: k.contractState, knownAt: k.knownAt, basis: k.basis, canonicalHe: partner(k.canonicalHe), actions: k.actions } }))],
       { ...base, summary: [sfact("COUNTS", "ספירות רשומות", v.counts, "DERIVED", "PROJECTS"), sfact("MONEY", "שכבות כסף", v.money, "DERIVED", "FINANCE"), sfact("SIGNALS", "אותות", byCount(v.signals.map((x) => x.code)), "DERIVED", "PROJECTS")] });
   },
 };

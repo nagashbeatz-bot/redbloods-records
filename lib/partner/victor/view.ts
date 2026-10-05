@@ -10,6 +10,7 @@
  * No workload score, no capacity limit, no performance judgement.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions as resolveQ } from "../sunny/known-context";
 import { vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
@@ -188,7 +189,7 @@ export function buildVictorView(src: GatewaySources) {
     if (w.release) signals.push({ code: "RELEASE_CONTEXT", kind: "CANONICAL_FACT", he: `${w.title}: ריליס בשלב ${w.release.stage}${w.release.target ? `, יעד ${w.release.target}` : ""}`, work: w.key });
   }
   for (const w of works.filter((x) => x.status === "הושלם" && x.project && !x.engineers.length && !CLOSED_PROJECT.has(x.project.status ?? ""))) signals.push({ code: "COMPLETED_NO_MIX_EVIDENCE", kind: "DERIVED_SIGNAL", he: `${w.title}: הושלם אצל ויקטור, אין עבודת מיקס רשומה בפרויקט`, work: w.key });
-  for (const m of money.months.filter((x) => x.conflicts.length)) questions.push({ kind: "PAYMENT", questionHe: `משכורת ויקטור ${m.month}: ${m.conflicts.join("; ")} — מה נכון?`, why: "salary sources disagree; Finance is the canonical money record" });
+  for (const m of money.months.filter((x) => x.conflicts.length)) questions.push({ kind: "PAYMENT", work: `recurring:VICTOR_SALARY:${m.month}`, questionHe: `משכורת ויקטור ${m.month}: ${m.conflicts.join("; ")} — מה נכון?`, why: "salary sources disagree; Finance is the canonical money record" });
   return {
     identity: { key: "vendor:VICTOR", role: "external producer (login role victor)", portal: "his own page (works, versions, notes)", hardcoded: ["role by account email", "stuck days 5 in cron / agent", "salary due the 10th"] },
     counts: { works: works.length, open: open.length, completed: works.filter((w) => w.status === "הושלם").length, cancelled: works.filter((w) => w.status === "בוטל").length, withoutProject: works.filter((w) => !w.project).length,
@@ -196,7 +197,7 @@ export function buildVictorView(src: GatewaySources) {
       internalDeadlinesPassed: open.filter((w) => w.internalDeadline?.passed).length, labelWork: open.filter((w) => w.labelWork).length, clientWork: open.filter((w) => w.labelWork === false).length, note: "recorded counts — no capacity limit, no workload score" },
     works, money, presence: { lastPortalVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity evidence only — not work done, not 'saw a message'. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" },
     stuck: { rule: "status פעיל AND more than stuckAfterDays whole days since sent (the app's own rule)", stuckAfterDays, count: open.filter((w) => isVictorWorkStuck(w.status, w.daysSinceSent, stuckAfterDays)).length, pushEnabled: VICTOR_STUCK_PUSH_ENABLED, pushNote: "Owner decision Q3 (2026-09-27): the Victor-stuck push is disabled; the signal is computed only" },
-    ownerKnowledge: kn, signals, questions, known,
+    ownerKnowledge: kn, signals, ...(() => { const r = resolveQ(questions.map((q) => ({ ...q, entity: q.work ?? "vendor:VICTOR" })), c.kn, c.today, (q) => { const w = works.find((x) => x.key === q.entity); return w?.handoff.lastUploadAt ? w.handoff.lastUploadAt.slice(0, 10) : null; }); return { questions: r.asked, known: [...known, ...r.known] }; })(),
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (Victor works) was not read — works unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (salary settings, presence, markers)"]), ...money.unavailable.map((u) => `${u} (money)`)],
   };
 }

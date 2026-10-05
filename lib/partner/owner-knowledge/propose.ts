@@ -193,7 +193,7 @@ function validField(name: string, spec: FieldSpec, raw: unknown, src: GatewaySou
   value[name] = r.key; value[`${name}Label`] = r.label;
 }
 
-const REF_RE = /^(proposal|victor-work|mix-work):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const REF_RE = /^(proposal|victor-work|mix-work|transaction|rf-production):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 /** The records a typed reference may point at, from the company state already loaded (exact key only — never a name). */
 export function refRecordOf(src: GatewaySources, key: string): { label: string; owner: KnowledgeRefOwner } | null {
   const m = REF_RE.exec(key);
@@ -201,6 +201,8 @@ export function refRecordOf(src: GatewaySources, key: string): { label: string; 
   if (!m || !st) return null;
   const [, kind, id] = m;
   if (kind === "proposal") { const p = st.domains.proposalsFull.data?.items.find((x) => x.id === id); return p ? { label: p.title || p.clientName, owner: { clientKey: p.clientId ? `client:${p.clientId}` : null, projectKey: p.linkedProjectId ? `project:${p.linkedProjectId}` : null, vendorKey: null } } : null; }
+  if (kind === "transaction") { const fin = src.finance?.status === "OK" ? src.finance.value : null; const t = fin?.raw.transactions.find((x) => x.id === id); return t ? { label: `${t.type === "income" ? "הכנסה" : "הוצאה"} ${t.currency ?? ""}${String(t.amount ?? "")} ${t.date ?? ""}`.trim(), owner: { clientKey: null, projectKey: t.projectId ? `project:${t.projectId}` : null, vendorKey: null } } : null; }
+  if (kind === "rf-production") { const ops = src.operations?.status === "OK" ? src.operations.value : null; const p = ops?.redFilms?.rows.find((x) => x.id === id); return p ? { label: p.title ?? "הפקה", owner: { clientKey: null, projectKey: p.projectId ? `project:${p.projectId}` : null, vendorKey: null } } : null; }
   if (kind === "victor-work") { const w = st.domains.victor.data?.active.find((x) => x.id === id); return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:VICTOR" } } : null; }
   const w = st.domains.steven.data?.open.find((x) => x.id === id);
   return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:STEVEN" } } : null;

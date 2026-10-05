@@ -12,6 +12,7 @@
  * operating model — no second rule. No score, no cadence target, no activity threshold: evidence + dates only.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions } from "../sunny/known-context";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
@@ -45,7 +46,7 @@ const SHOW_ACTIVE = new Set(["נסגר", "אושרה", "בוצע"]);
 const LOGIN_ROLE: Record<string, string> = { "shalev-tasama": "shalev", "avi-molla": "avi", "dj-cleantone": "cleantone" };
 
 export interface ArtistSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string; entity?: string }
-export interface ArtistQuestion { questionHe: string; why: string; kind: string }
+export interface ArtistQuestion { questionHe: string; why: string; kind: string; entity?: string }
 
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; ld: LabelDetailRaw | null; settings: SettingsState | null; kn: OwnerKnowledgeRecord[]; cal: CalendarWindowResult | null; integrity: CompanyIntegrityRegister | null; today: string; cleantoneClientId: string | null }
 function ctxOf(src: GatewaySources): Ctx {
@@ -375,7 +376,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     if (eng.length) { signals.push({ code: "WAITING_MIX", kind: "DERIVED_SIGNAL", he: `${p.name}: אצל ${eng.map((e) => e.engineer).join(", ")} (${eng.reduce((s, e) => s + e.openComments, 0)} הערות פתוחות)`, entity: p.key }); nextSteps.push({ step: `${p.name}: מיקס`, evidence: eng.map((e) => `${e.engineer} ${e.status} · ${e.versions} גרסאות · ${e.openComments} הערות פתוחות`).join("; "), entity: p.key }); }
     for (const i of p.internalDeadlines.filter((x) => x.passed)) signals.push({ code: "INTERNAL_DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `${p.name}: הדדליין הפנימי של ${i.who} (${i.date}) עבר — ציפייה פנימית, לא התחייבות ללקוח.`, entity: p.key });
     if (p.labelWork && !releaseRows.some((r) => r.project === p.key)) signals.push({ code: "LABEL_PROJECT_WITHOUT_RELEASE", kind: "DERIVED_SIGNAL", he: `${p.name}: עבודת לייבל בלי שורת ריליס.`, entity: p.key });
-    if (!p.victor?.length && !eng.length && !p.ballEvidence.length) questions.push({ kind: "PROJECT_STATE", questionHe: `"${p.name}" — מה המצב ועל מי הוא מחכה?`, why: "no Victor / engineer / send-log / blocker evidence recorded" });
+    if (!p.victor?.length && !eng.length && !p.ballEvidence.length) questions.push({ kind: "PROJECT_STATE", entity: p.key, questionHe: `"${p.name}" — מה המצב ועל מי הוא מחכה?`, why: "no Victor / engineer / send-log / blocker evidence recorded" });
   }
   for (const r of releaseRows) {
     if (r.active && r.targetDate) signals.push({ code: "RELEASE_PLANNED", kind: "CANONICAL_FACT", he: `ריליס "${r.projectName}" — ${r.stage}, יעד ${r.targetDate}`, entity: r.key });
@@ -384,20 +385,20 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     if (r.stage === "מוכן ליציאה") signals.push({ code: "READY_FOR_RELEASE", kind: "CANONICAL_FACT", he: `"${r.projectName}" מסומן מוכן ליציאה.`, entity: r.key });
     if (r.stage === "יצא") signals.push({ code: "RELEASED", kind: "CANONICAL_FACT", he: `"${r.projectName}" יצא${r.releasedAt ? ` (${r.releasedAt.slice(0, 10)})` : " (UNKNOWN_DATE — אין תאריך יציאה רשום)"}.`, entity: r.key });
     if (r.active) nextSteps.push({ step: `ריליס "${r.projectName}": ${r.stage}`, evidence: [r.nextAction && `הצעד הבא: ${r.nextAction}`, r.blocker && `חסם: ${r.blocker}`, r.responsible && `אחראי: ${r.responsible}`, r.targetDate && `יעד: ${r.targetDate}`].filter(Boolean).join(" · ") || "אין צעד הבא / חסם / אחראי רשומים", entity: r.key });
-    if (r.active && relRead && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
+    if (r.active && relRead && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", entity: r.key, questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
   }
   if (releaseRows.length === 0) signals.push({ code: "NO_RELEASE_RECORDED", kind: "CANONICAL_FACT", he: "אין שורת ריליס רשומה לאמן." });
   const futureSessions = sessions.filter((s) => s.date && s.date >= c.today && s.status !== "בוטל");
   for (const s of futureSessions) signals.push({ code: "UPCOMING_SESSION", kind: "CANONICAL_FACT", he: `${s.type ?? "סשן"} ב-${s.date}${s.start ? ` ${s.start}` : ""}`, entity: s.project ?? s.show ?? undefined });
   for (const s of shows) {
     if (s.upcoming && s.status !== "בוטל") { signals.push({ code: "UPCOMING_SHOW", kind: "CANONICAL_FACT", he: `הופעה ${s.name ?? ""} ב-${s.date} (${s.status})`, entity: s.key }); nextSteps.push({ step: `הופעה ${s.date}`, evidence: `DJ: ${s.dj ? `${s.dj.name ?? "?"} (${s.dj.confirmation})` : "לא רשום"} · חזרות: ${s.rehearsals.length} · נשלח לאמן: ${s.sentToArtist}`, entity: s.key }); }
-    if (s.role === "ARTIST" && !s.dj && s.dealType !== "UNPAID_COLLAB" && s.status !== "בוטל" && SHOW_ACTIVE.has(s.status ?? "") && s.upcoming) { signals.push({ code: "SHOW_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `להופעה ב-${s.date} אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן: לאשר.`, entity: s.key }); questions.push({ kind: "SHOW_DJ", questionHe: `מי ה-DJ בהופעה ב-${s.date}?`, why: "no DJ recorded; never auto-assigned" }); }
+    if (s.role === "ARTIST" && !s.dj && s.dealType !== "UNPAID_COLLAB" && s.status !== "בוטל" && SHOW_ACTIVE.has(s.status ?? "") && s.upcoming) { signals.push({ code: "SHOW_WITHOUT_DJ", kind: "CANONICAL_FACT", he: `להופעה ב-${s.date} אין DJ רשום — CLEANTONE מנגן ברוב ההופעות, לא בכולן: לאשר.`, entity: s.key }); questions.push({ kind: "SHOW_DJ", entity: s.key, questionHe: `מי ה-DJ בהופעה ב-${s.date}?`, why: "no DJ recorded; never auto-assigned" }); }
     if (s.dealType !== "UNPAID_COLLAB" && s.status === "בוצע" && s.paymentStatus !== "שולם" && s.paymentStatus !== "בוטל") signals.push({ code: "SHOW_DONE_UNPAID", kind: "CANONICAL_FACT", he: `הופעה ${s.date} בוצעה, תשלום לקוח: ${s.paymentStatus}`, entity: s.key });
   }
   const moving = projects.some((p) => p.open && ((p.victor?.length ?? 0) > 0 || (p.engineers ?? []).some((e) => !["אושר", "בוטל"].includes(e.status ?? "")) || (p.sessions?.upcoming ?? 0) > 0));
   if (!moving && futureSessions.length === 0 && !releaseRows.some((r) => r.active && r.targetDate && r.targetDate >= c.today)) {
     signals.push({ code: "NO_UPCOMING_RECORDED_WORK", kind: "DERIVED_SIGNAL", he: "אין עבודה בתנועה, סשן עתידי או ריליס מתוכנן שרשומים ב-Redbloods — עובדה על הנתונים, לא שיפוט של האמן." });
-    questions.push({ kind: "ARTIST_PLAN", questionHe: `מה התוכנית הבאה עם ${name}? (לא רשום שיר בתנועה, סשן או ריליס מתוכנן)`, why: "no recorded next work — the Owner's plan may live outside Redbloods" });
+    questions.push({ kind: "ARTIST_PLAN", entity: `label-artist:${artistId}`, questionHe: `מה התוכנית הבאה עם ${name}? (לא רשום שיר בתנועה, סשן או ריליס מתוכנן)`, why: "no recorded next work — the Owner's plan may live outside Redbloods" });
   }
   // media allocation model — reconciliation (facts on the records; never fixed automatically)
   for (const m of modelRows) {
@@ -427,7 +428,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   return { key, found: true as const, identity, projects, releases: releaseRows, nextRelease, cadence: { releasedDates, releasedCount: releasedRows.length, releasedUnknownDate, planned: releaseRows.filter((r) => r.active && r.targetDate).map((r) => r.targetDate), note: "evidence only — Redbloods has no cadence target" },
     beats, shows, money, sessions, calendar, tasks, meetings, redFilms, social, availability, presence, notifications: { availabilityRemindersClaimed: reminderRows, pushes: "see system_awareness artist_model pushes; Sunny never sends" },
     portal: { slug, loginRole: identity.portal.loginRole, storedOutsideDb: "sketches, ratings, next-work, press kit, performance files, profile image live in the artist's storage folder — not readable by Sunny" },
-    ownerKnowledge: knowledge, signals, nextSteps, questions, history, lastRecordedActivity: lastRecorded, unavailable };
+    ownerKnowledge: knowledge, signals, nextSteps, ...(() => { const r = resolveQuestions(questions.map((q) => ({ ...q, entity: q.entity ?? `label-artist:${artistId}` })), c.kn, c.today); return { questions: r.asked, known: r.known }; })(), history, lastRecordedActivity: lastRecorded, unavailable };
 }
 export type ArtistView = NonNullable<ReturnType<typeof buildArtistView>>;
 

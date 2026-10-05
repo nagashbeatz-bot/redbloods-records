@@ -13,6 +13,7 @@
  *   - social readiness = the app's own checker (implementation behaviour), never a release verdict.
  */
 import type { GatewaySources } from "../gateway/core";
+import { resolveQuestions } from "../sunny/known-context";
 import { ok } from "../gateway/core";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
@@ -83,7 +84,10 @@ export function buildSessionsView(src: GatewaySources) {
     const S = (code: string, kind: WorkSignal["kind"], he: string) => signals.push({ code, kind, he, entity: s.key, project: s.project?.key });
     const label = `${s.type ?? "סשן"} ${s.date ?? ""}${s.project?.name ? ` (${s.project.name})` : s.title ? ` (${s.title})` : ""}`;
     if (s.kind === "UNKNOWN_TYPE") S("SESSION_TYPE_UNKNOWN", "CANONICAL_FACT", `${label}: סוג סשן לא מוכר לאפליקציה`);
-    if (s.endPassed && s.status === "מתוכנן") { S("SESSION_PASSED_STILL_PLANNED", "DERIVED_SIGNAL", `${label}: עבר — לא אושר (הסשן הסתיים והסטטוס עדיין 'מתוכנן') — לא ידוע אם התקיים`); questions.push({ kind: "SESSION_STATE", questionHe: `${label} — התקיים?`, why: "end passed; status not updated (passed ≠ happened)", entity: s.key }); }
+    if (s.endPassed && s.status === "מתוכנן") { S("SESSION_PASSED_STILL_PLANNED", "DERIVED_SIGNAL", `${label}: עבר — לא אושר (הסשן הסתיים והסטטוס עדיין 'מתוכנן') — לא ידוע אם התקיים`); questions.push(s.kind === "SHOW_REHEARSAL"
+      // a show rehearsal speaks בוצע / בוטל (D6) and is answered with UPDATE_SHOW_REHEARSAL — UPDATE_SESSION refuses it
+      ? { kind: "SESSION_STATE", questionHe: `${label} — החזרה בוצעה? (או בוטלה)`, why: "end passed; a show rehearsal is מתוכנן / בוצע / בוטל — answered with UPDATE_SHOW_REHEARSAL (only בוצע counts in the split)", entity: s.key }
+      : { kind: "SESSION_STATE", questionHe: `${label} — התקיים?`, why: "end passed; status not updated (passed ≠ happened) — answered with UPDATE_SESSION", entity: s.key }); }
     if (!s.endPassed && s.status === "מתוכנן") S("SESSION_UPCOMING", "CANONICAL_FACT", `${label}${s.start ? ` ${s.start.slice(0, 5)}` : ""}`);
     if (!s.endPassed && s.status === "מתוכנן" && s.calendar === "NO_EVENT") S("SESSION_NO_CALENDAR_EVENT", "CANONICAL_FACT", `${label}: אין אירוע יומן שמור`);
     if (s.status === "בוטל" && s.calendar === "EVENT_ID_STORED") S("SESSION_CANCELLED_EVENT_KEPT", "DERIVED_SIGNAL", `${label}: בוטל אבל אירוע היומן נשאר (שינוי סטטוס לא מוחק אירוע)`);
@@ -95,7 +99,7 @@ export function buildSessionsView(src: GatewaySources) {
   const limits = (c.det?.projectSettings?.rows ?? []).filter((r) => r.kind === "SESSION_LIMIT").map((r) => ({ project: `project:${r.projectId}`, name: projectName(c, r.projectId), limit: Number((r.value as { limit?: unknown } | null)?.limit ?? NaN) || null, studioSessions: sessions.filter((s) => s.project?.key === `project:${r.projectId}` && s.type === "סשן").length }));
   return {
     counts: { total: sessions.length, byType: count(sessions.map((s) => s.type)), byStatus: count(sessions.map((s) => s.status)), upcoming: sessions.filter((s) => !s.endPassed && s.status === "מתוכנן").length, passedNotConfirmed: sessions.filter((s) => s.endPassed && s.status === "מתוכנן").length, withCalendarEvent: sessions.filter((s) => s.calendar === "EVENT_ID_STORED").length, withoutProject: sessions.filter((s) => !s.project).length, showRehearsals: sessions.filter((s) => s.kind === "SHOW_REHEARSAL").length, clipShoots: sessions.filter((s) => s.kind === "CLIP_SHOOT").length, note: "recorded counts; happened ≠ time passed (a passed מתוכנן is 'עבר — לא אושר', never counted as held)" },
-    sessions, limits, orphanTransactions: orphanTx, signals, questions,
+    sessions, limits, orphanTransactions: orphanTx, signals, questions: resolveQuestions(questions.map((q) => ({ ...q, entity: q.entity ?? "session:unknown" })), [], c.today).asked,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (sessions) — unknown, not none"]), ...(c.fin ? [] : ["FINANCE (session expenses)"]), "Google event details are read live by the calendar capability"],
   };
 }

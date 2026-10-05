@@ -28,7 +28,7 @@ export type FieldSpec =
   /** A typed reference to a record that is not a knowledge subject (a proposal / a Victor work / a mix work) — exact key only. */
   | { type: "ref"; refKinds: readonly KnowledgeRefKind[]; required: boolean };
 /** Records a value may point at without being a subject (2026-10-05): the most specific identity of a follow-up / commitment. */
-export type KnowledgeRefKind = "proposal" | "victor-work" | "mix-work";
+export type KnowledgeRefKind = "proposal" | "victor-work" | "mix-work" | "transaction" | "rf-production";
 /** Who a referenced record belongs to (for the ownership check) — client / project / vendor keys, null = unknown. */
 export interface KnowledgeRefOwner { clientKey: string | null; projectKey: string | null; vendorKey: string | null }
 
@@ -275,6 +275,9 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
       // 2026-10-05 (decision memory): the ONE record the decision is about — a canonical key, never a name in the text. The subject
       // stays the company (no subjectTypes change); the finance decision gate reads this key (lib/partner/finance/decision-gate.ts).
       about: { type: "entity", subjectTypes: ["project", "client", "show", "release", "label-artist", "dj"], required: false },
+      // Question memory (2026-10-05, Q2): the EXACT non-subject record a context answer is about (a proposal / a Victor or mix
+      // work / an orphan Finance row / a Red Films production) — the same exact-entity rule as about; never company-wide.
+      ref: { type: "ref", refKinds: ["proposal", "victor-work", "mix-work", "transaction", "rf-production"], required: false },
       topic: { type: "text", maxLength: 40, required: true },
       decisionHe: { type: "text", maxLength: 200, required: true },
       rationaleHe: { type: "text", maxLength: 200, required: false },
@@ -284,7 +287,7 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
       reviewAt: { type: "ymd", required: false },
       ...TIME_FIELDS,
     },
-    epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}${v.about ? `:${s(v.about)}` : ""}`,
+    epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}${v.about ? `:${s(v.about)}` : ""}${v.ref ? `:${s(v.ref)}` : ""}`,
     reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
     readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
     check: (v) => {
@@ -324,7 +327,7 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   },
 ];
 
-export const MAX_FIELDS = 12;
+export const MAX_FIELDS = 13; // 13 since 2026-10-05: BUSINESS_DECISION.ref (question memory — the exact non-subject record)
 const BY_KIND = new Map(KNOWLEDGE_KINDS.map((k) => [k.kind, k]));
 export const knowledgeKind = (kind: unknown): KnowledgeKind | null => (typeof kind === "string" && BY_KIND.has(kind) ? BY_KIND.get(kind)! : null);
 

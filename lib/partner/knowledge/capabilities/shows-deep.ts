@@ -35,7 +35,7 @@ function rows(v: ShowView, s: string): Array<{ id: string; label: string; record
     case "notifications": return [{ id: "notifications", label: "הודעות לאמן / ל-DJ", epistemic: "FACT", fields: { ...v.notifications } }];
     case "portal": return [{ id: "portal", label: "פורטלים", epistemic: "FACT", fields: { ...v.portal, performanceFiles: v.performanceFiles } }];
     case "signals": return v.signals.map((x, i) => ({ id: `${x.code}:${i}`, label: x.he, recordText: true, epistemic: x.kind === "UNKNOWN" ? "UNKNOWN" : x.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", fields: { code: x.code, kind: x.kind } }));
-    case "questions": return v.questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, epistemic: "UNKNOWN" as const, fields: { kind: q.kind, why: q.why } }));
+    case "questions": return [...v.questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, epistemic: "UNKNOWN" as const, fields: { kind: q.kind, why: q.why, entity: q.entity ?? null, state: q.state ?? "ASK", identity: q.identity ?? null, answerAs: q.answerAs ?? null } })), ...(v.known ?? []).map((k: { textHe: string; epistemic: string; questionKind: string; entityKey: string; state: string; contractState?: string; knownAt: string | null; basis: unknown; canonicalHe: string; actions: unknown }, i: number) => ({ id: `known:${i}`, label: k.textHe, recordText: true, epistemic: k.epistemic as "OWNER_DECISION", fields: { questionKind: k.questionKind, entity: k.entityKey, state: k.contractState ?? k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: k.canonicalHe, actions: k.actions } }))];
     case "history": return v.history.map((h, i) => ({ id: `h:${i}`, label: h.event, epistemic: "FACT" as const, fields: { at: h.at, kind: h.kind } }));
     default: return [];
   }

@@ -14,7 +14,7 @@ const OWNER = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" } 
 type Row = { id: string; label: string; recordText?: boolean; epistemic: KnowledgeItem["epistemic"]; entity?: string | null; fields: Record<string, unknown> };
 const sigItems = (signals: WorkSignal[], questions: WorkQuestion[] = []): Row[] => [
   ...signals.map((s, i) => ({ id: `${s.code}:${i}`, label: s.he, recordText: true, epistemic: (s.kind === "UNKNOWN" ? "UNKNOWN" : s.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED") as KnowledgeItem["epistemic"], entity: s.entity ?? null, fields: { code: s.code, project: s.project ?? null } })),
-  ...questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, recordText: true, epistemic: "UNKNOWN" as const, entity: q.entity ?? null, fields: { kind: q.kind, why: q.why } })),
+  ...questions.map((q, i) => ({ id: `q:${i}`, label: q.questionHe, recordText: true, epistemic: "UNKNOWN" as const, entity: q.entity ?? null, fields: { kind: q.kind, why: q.why, state: (q as { state?: string }).state ?? "ASK", identity: (q as { identity?: string }).identity ?? null, answerAs: (q as { answerAs?: unknown }).answerAs ?? null } })),
 ];
 const contractRows = (id: string): Row[] => {
   const d = WORK_DOMAINS.find((x) => x.id === id)!;
