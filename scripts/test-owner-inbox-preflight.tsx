@@ -155,7 +155,7 @@ ok("instructions: link rules kept (resolver unique; ambiguous only after his ans
 ok("instructions: canonical wins — OUTDATED / BALL_CONFLICT never current; no rules about people", I.includes("OUTDATED_BY_CANONICAL or BALL_CONFLICT the records lead") && I.includes("never present it as current") && I.includes("Never infer rules about people"));
 
 console.log("\nowner_inbox mode understand / deep (step 2, only when new has items)");
-ok("modes: new (fast) / understand / deep / all; understand loads STATE + OPERATIONS + OWNER_KNOWLEDGE, deep adds PROJECT_DETAIL, new loads no company state", Object.keys(ownerInbox.modes).join() === "new,understand,deep,all" && ownerInbox.needs.join() === "OWNER_INBOX" && (ownerInbox.modeNeeds?.understand ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE" && (ownerInbox.modeNeeds?.deep ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE,PROJECT_DETAIL" && !ownerInbox.optionalNeeds?.length);
+ok("modes: new (fast) / understand / deep / all; understand loads STATE + OPERATIONS + OWNER_KNOWLEDGE + FINANCE (a money note the records already answer), deep adds PROJECT_DETAIL, new loads no company state", Object.keys(ownerInbox.modes).join() === "new,understand,deep,all" && ownerInbox.needs.join() === "OWNER_INBOX" && (ownerInbox.modeNeeds?.understand ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE,FINANCE" && (ownerInbox.modeNeeds?.deep ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE,FINANCE,PROJECT_DETAIL" && !ownerInbox.optionalNeeds?.length);
 ok("the Gateway loads mode-specific sources only for that mode", read("lib/partner/gateway/server.ts").includes("...(v.value.cap.modeNeeds?.[v.value.mode] ?? [])"));
 {
   const empty = { data: { items: [] } };

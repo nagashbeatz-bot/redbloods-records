@@ -542,7 +542,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   for (const o of ff?.obligations ?? []) {
     if (o.level !== "MUST" && o.level !== "SHOULD") continue;
     const key = `fin:${o.key}`;
-    map.set(key, { ...toItem({ key, entity: o.entity, level: o.level, code: "FIN_OBLIGATION", titleHe: o.titleHe, reasonHe: o.he.slice(o.titleHe.length + 2), daysTo: o.daysTo, heuristic: false,
+    map.set(key, { ...toItem({ key, entity: o.entity, level: o.level, code: "FIN_OBLIGATION", titleHe: o.titleHe, reasonHe: o.he.slice(o.titleHe.length + 2).replace(/ → [^→]*$/, ""), daysTo: o.daysTo, heuristic: false,
       evidence: [{ source: "FINANCE", ref: o.key, he: `${o.strength} · ${o.timing} · ${o.provenance}`, epistemic: o.dynamic ? "DERIVED" : "FACT" }], move: finMove(o), labelProtected: false }), financial: true });
   }
   for (const d of ff?.duplicates ?? []) mergeInto(map, { key: `fin-dup:${d.key}`, entity: d.canonical.startsWith("project:") ? d.canonical : null, level: "WATCH", code: "FIN_DUPLICATE", titleHe: "רשומה כפולה אפשרית", reasonHe: d.he, move: null });

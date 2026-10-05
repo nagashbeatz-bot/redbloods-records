@@ -218,7 +218,7 @@ export const ownerInbox: KnowledgeCapability = {
   params: { entity: { kind: "entityKey", types: INBOX_ENTITY_TYPES, descriptionForModel: "Only updates whose text names this entity as whole words (TEXT_MATCH; for a project also its artist's name)" } },
   entityScope: { types: INBOX_ENRICH_TYPES, param: "entity", mode: "new", limit: 3 },
   paging: { defaultLimit: 20, maxLimit: 50 }, recordTextLimit: 1000,
-  access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" }, needs: ["OWNER_INBOX"], modeNeeds: { understand: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE"], deep: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE", "PROJECT_DETAIL"] },
+  access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" }, needs: ["OWNER_INBOX"], modeNeeds: { understand: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE", "FINANCE"], deep: ["STATE", "OPERATIONS", "OWNER_KNOWLEDGE", "FINANCE", "PROJECT_DETAIL"] },
   read(src, q) {
     const all = ok(src.ownerInbox);
     if (!all) return unavailable("עדכונים לסאני");

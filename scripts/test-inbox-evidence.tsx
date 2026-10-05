@@ -161,7 +161,7 @@ ok("both have an active mix at Steven; only קרוב אלייך has a recent ver
 console.log("\nPayload — compact, processed evidence");
 ok("chosen + at most 2 alternatives; every evidence has code / he / quality / source", [a, b, c, d, i, k].every((r) => r.resolution.alternatives.length <= 2) && (a.resolution.chosen?.evidence ?? []).every((x) => x.code && x.he && x.quality && x.source));
 ok("one update ≤ 3 KB of JSON", [a, b, c, d, e, h].every((r) => JSON.stringify(r).length <= 3000), [a, b, c, d, e, h].map((r) => JSON.stringify(r).length));
-ok("owner_inbox: understand adds OWNER_KNOWLEDGE; deep alone adds PROJECT_DETAIL; new stays without company state", (ownerInbox.modeNeeds?.understand ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE" && (ownerInbox.modeNeeds?.deep ?? []).includes("PROJECT_DETAIL") && ownerInbox.needs.join() === "OWNER_INBOX" && !(ownerInbox.modeNeeds?.new));
+ok("owner_inbox: understand adds OWNER_KNOWLEDGE + FINANCE; deep alone adds PROJECT_DETAIL; new stays without company state", (ownerInbox.modeNeeds?.understand ?? []).join() === "STATE,OPERATIONS,OWNER_KNOWLEDGE,FINANCE" && (ownerInbox.modeNeeds?.deep ?? []).includes("PROJECT_DETAIL") && ownerInbox.needs.join() === "OWNER_INBOX" && !(ownerInbox.modeNeeds?.new));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

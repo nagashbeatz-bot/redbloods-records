@@ -101,6 +101,8 @@ function candidatesOf(item: OwnerInboxItem, g: Graph): { cands: Candidate[]; nam
     const isPartial = partial.includes(m as never);
     for (const k of m.keys) {
       // a project named in full is a strong signal (even closed → it may contradict); a first-name hit on a project title is weak
+      // a generic word that happens to be a project title ("כסף", "תשלום" …) is never enough to link that project (2026-10-05)
+      if (k.startsWith("project:") && m.quality === "AMBIGUOUS" && (m as { reason?: string }).reason === "SHORT_OR_GENERIC_NAME") continue;
       if (k.startsWith("project:")) { if (pName.has(k) && (!isPartial || OPEN(k))) add({ projectKey: k, projectName: pName.get(k)!.name, personKey: null, personName: null, via: isPartial ? "PARTIAL_PROJECT_NAME" : "NAMED_PROJECT" }); continue; }
       for (const pp of personProjects(k)) add({ projectKey: pp.key, projectName: pName.get(pp.key)!.name, personKey: k, personName: nameOf.get(k) ?? k, via: pp.via });
     }

@@ -255,7 +255,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
     .sort((a, b) => rank(a) - rank(b) || (a.daysTo ?? 999) - (b.daysTo ?? 999)).slice(0, 3);
 
   const units = new Map<string, string[]>();
-  for (const o of obligations.filter((x) => x.countsIn !== "NONE" && x.businessUnit)) units.set(o.businessUnit!, [...(units.get(o.businessUnit!) ?? []), fmtMoney(o.amount, o.currency)]);
+  for (const o of obligations.filter((x) => (x.countsIn === "OUTFLOW" || x.countsIn === "DYNAMIC") && x.businessUnit)) units.set(o.businessUnit!, [...(units.get(o.businessUnit!) ?? []), fmtMoney(o.amount, o.currency)]);
   const unitsHe = units.size ? `${[...units.entries()].map(([u, xs]) => `${u}: ${xs.join(", ")}`).join(" · ")} (כל יחידה בנפרד — לא מסיקה שיחידה אחת מכסה אחרת)` : null;
 
   const w7 = windows[0];
