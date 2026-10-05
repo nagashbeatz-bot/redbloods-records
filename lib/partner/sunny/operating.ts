@@ -25,6 +25,8 @@ import { paymentPathOf } from "../finance/decision-gate";
 import { ANSWER_OPTIONS } from "../investigation/questions";
 import { agreementArtistOf } from "../../label-agreements";
 import type { PartnerMemory } from "../memory/types";
+import { freshnessOf as inboxFreshnessOf, headOf, type InboxMemory } from "../../inbox-memory";
+import { projectBasisOf } from "../projects/memory";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -116,6 +118,17 @@ export function projectOperating(src: GatewaySources, projectId: string) {
       : { holder: ownerSaidBallOf(k) === "OWNER" ? "OWNER" : "COUNTERPART", basis: "the Owner said so (P2 follow-up expectation)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false });
     known.push(knownItem({ questionKind: "PROJECT_STATE", entityKey: projKey, label: null, meaningHe: k.meaningHe, knownAt: knownAtOf(k), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: k.id, knowledgeKind: k.kind }, freshness: fr,
       canonicalHe: lastEvidence ? `הפעילות הרשומה האחרונה ב-${lastEvidence}, ואין רשומה שמראה אצל מי הפרויקט` : "אין רשומה שמראה אצל מי הפרויקט" }));
+  }
+
+  // One Brain (2026-10-05): what the Boss already wrote about THIS project, as Sunny's recorded understanding (HYPOTHESIS),
+  // answers PROJECT_STATE while it is CURRENT — a newer recorded event / status change makes it history (canonical wins)
+  const imem = ok(src.inboxMemory) as InboxMemory | null;
+  const head = imem ? headOf(imem.interpretations, projKey) : null;
+  if (head && inboxFreshnessOf(head, projectBasisOf(src, projectId)) === "CURRENT") {
+    ball.push({ holder: head.ballWith, basis: "the Boss's update (Sunny's recorded understanding — HYPOTHESIS)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false });
+    known.push(knownItem({ questionKind: "PROJECT_STATE", entityKey: projKey, label: null, meaningHe: `${head.whatHappened}${head.inferredNextStep ? ` — הצעד הבא: ${head.inferredNextStep}` : ""}`, knownAt: head.createdAt.slice(0, 10),
+      basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: head.id, knowledgeKind: "INBOX_INTERPRETATION" }, freshness: "CURRENT",
+      canonicalHe: lastEvidence ? `הפעילות הרשומה האחרונה ב-${lastEvidence}; לפי ההבנה מהעדכון שלך — לא נרשם מאז אירוע חדש` : "לפי ההבנה מהעדכון שלך — לא נרשם מאז אירוע חדש" }));
   }
 
   // ── internal deadlines (team expectations, distinct from the client commitment) ──

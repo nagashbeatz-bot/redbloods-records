@@ -11,6 +11,7 @@
  */
 import { buildResolveIndex, KNOWN_DISPLAY_NAMES, normalizeName } from "../gateway/resolve";
 import type { GatewaySources } from "../gateway/core";
+import { TEAM_NAMES } from "./inbox-signals";
 import type { GatewayEntityType } from "../gateway/types";
 
 export type MentionQuality = "TEXT_MATCH" | "AMBIGUOUS";
@@ -63,7 +64,9 @@ export function buildMentionIndex(src: GatewaySources): MentionEntry[] {
   const idx = buildResolveIndex(src);
   const out: MentionEntry[] = idx.map((e) => ({ key: e.key, type: e.type, name: e.name, norm: e.norm, group: e.group.id }));
   for (const d of KNOWN_DISPLAY_NAMES) {
-    if (d.confidence !== "HIGH") continue;
+    // HIGH display names, plus the team names the inbox signal lexicon already reads as that exact team member
+    // (TEAM_NAMES: "סטיבן" → STEVEN) — one identity, never a guess (One Brain stage 2, 2026-10-05)
+    if (d.confidence !== "HIGH" && TEAM_NAMES[normalizeName(d.name)] !== d.target) continue;
     const target = d.target === "VICTOR" ? idx.find((e) => e.key === "vendor:VICTOR") : d.target === "STEVEN" ? idx.find((e) => e.key === "vendor:STEVEN") : idx.find((e) => e.group.id === "app:cleantone" && e.type === "dj");
     if (target) out.push({ key: target.key, type: target.type, name: d.name, norm: normalizeName(d.name), group: target.group.id });
   }

@@ -23,9 +23,10 @@ let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); } };
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
-interface Item { body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null }
+interface Item { body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null; createdAt?: string }
 interface W { items: Record<string, Item>; knowledge: number; actions: number; plans: Record<string, "EXECUTED" | "NOT_EXECUTED" | "HOUSEKEEPING_ONLY">; knowledgeIds: string[]; knowledgeKeys: Record<string, string[]>; links: Record<string, string[]> }
 const PLAN = "pl_AbCdEfGhIjKlMnOpQrStUvWx";
+const PLAN_OTHER = "pl_OtherEntityAbcdefghijklm", PLAN_EARLY = "pl_RanBeforeTheNoteAbcdefgh";
 const KNOW = U(77);
 const KNOW_P = U(79); // O2: knowledge ABOUT project P (e.g. BUSINESS_DECISION.about)
 const PROJ_P = `project:${U(50)}`;
@@ -36,12 +37,14 @@ const world = (): W => ({
     [U(3)]: { body: "להזכיר לי לשלם גז", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
     [U(4)]: { body: "כבר טופל", status: "PROCESSED", outcome: "DISMISSED", outcomeRef: null, processedVia: "DASHBOARD" },
     [U(6)]: { body: "לגבי הפרויקט — לא לרדוף אחרי הכסף", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
+    // Zero Inbox (2026-10-05): NO_ACTION_NEEDED / ACTION_PLANNED need an exact link — U(7) is linked to project P
+    [U(7)]: { body: "נפגשתי היום עם אמן חדש מבאר שבע — לפרויקט P", status: "NEW", outcome: null, outcomeRef: null, processedVia: null, createdAt: "2026-10-05T10:00:00Z" },
   },
   knowledge: 27, actions: 0,
-  plans: { [PLAN]: "EXECUTED", pl_NotRunYetAbcdefghijklmnop: "NOT_EXECUTED", pl_OnlyHousekeepingAbcdefghij: "HOUSEKEEPING_ONLY" },
+  plans: { [PLAN]: "EXECUTED", [PLAN_OTHER]: "EXECUTED", [PLAN_EARLY]: "EXECUTED", pl_NotRunYetAbcdefghijklmnop: "NOT_EXECUTED", pl_OnlyHousekeepingAbcdefghij: "HOUSEKEEPING_ONLY" },
   knowledgeIds: [KNOW, KNOW_P],
   knowledgeKeys: { [KNOW]: [], [KNOW_P]: [PROJ_P] },
-  links: { [U(6)]: [PROJ_P] },
+  links: { [U(6)]: [PROJ_P], [U(7)]: [PROJ_P], [U(2)]: [PROJ_P], [U(3)]: [PROJ_P] },
 });
 function mk() {
   const w = world(); const calls: string[] = [];
@@ -50,6 +53,7 @@ function mk() {
     async listOwnerInboxNew() { return Object.entries(w.items).filter(([, x]) => x.status === "NEW").map(([id, x]) => ({ id, body: x.body })); },
     // behaves like the shared writer + the RPC: validates the ref, NEW only, via stored
     async readActionPlanState(planId: string) { return w.plans[planId] ?? "NOT_FOUND"; },
+    async readActionPlanScope(planId: string) { return planId === PLAN ? { entities: [PROJ_P], executedAt: "2026-10-05T12:00:00Z" } : planId === PLAN_OTHER ? { entities: [`project:${U(51)}`], executedAt: "2026-10-05T12:00:00Z" } : planId === PLAN_EARLY ? { entities: [PROJ_P], executedAt: "2026-10-05T09:00:00Z" } : null; },
     async ownerKnowledgeExists(id: string) { return w.knowledgeIds.includes(id); },
     async ownerKnowledgeEntityKeys(id: string) { return w.knowledgeIds.includes(id) ? [...(w.knowledgeKeys[id] ?? [])] : null; },
     async inboxItemEntityKeys(itemId: string) { return [...(w.links[itemId] ?? [])]; },
@@ -63,17 +67,18 @@ function mk() {
   };
   return { w, calls, writers };
 }
+const I7 = `owner-inbox:${U(7)}`;
 const I1 = `owner-inbox:${U(1)}`, I2 = `owner-inbox:${U(2)}`, I3 = `owner-inbox:${U(3)}`, I4 = `owner-inbox:${U(4)}`;
 const done = (x: Item, outcome: string, ref: string | null) => x.status === "PROCESSED" && x.outcome === outcome && x.outcomeRef === ref && x.processedVia === "SUNNY";
 
 const CASES: FamilyCase<W>[] = [
   {
-    id: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "NO_ACTION_NEEDED" },
-    bad: { item: I1, outcome: "MADE_IT_A_FACT" },
+    id: "MARK_OWNER_INBOX_ITEM", args: { item: I7, outcome: "NO_ACTION_NEEDED" },
+    bad: { item: I7, outcome: "MADE_IT_A_FACT" },
     missing: { item: `owner-inbox:${U(9)}`, outcome: "NO_ACTION_NEEDED" },
     wrongKind: { item: `notification:${U(1)}`, outcome: "NO_ACTION_NEEDED" },
-    stale: (w) => { Object.assign(w.items[U(1)], { status: "PROCESSED", outcome: "DISMISSED", processedVia: "DASHBOARD" }); },
-    check: (w, calls) => done(w.items[U(1)], "NO_ACTION_NEEDED", null) && w.items[U(2)].status === "NEW" && calls.join() === "markOwnerInboxItem",
+    stale: (w) => { Object.assign(w.items[U(7)], { status: "PROCESSED", outcome: "DISMISSED", processedVia: "DASHBOARD" }); },
+    check: (w, calls) => done(w.items[U(7)], "NO_ACTION_NEEDED", null) && w.items[U(2)].status === "NEW" && calls.join() === "markOwnerInboxItem",
   },
 ];
 
@@ -92,8 +97,9 @@ const CASES: FamilyCase<W>[] = [
   ok("LEARNED_KNOWLEDGE without a ref → refused", (await q({ item: I1, outcome: "LEARNED_KNOWLEDGE" })).status === "REF_REQUIRED");
   ok("LEARNED_KNOWLEDGE with a non-uuid ref → refused", (await q({ item: I1, outcome: "LEARNED_KNOWLEDGE", outcomeRef: "knowledge-1" })).status === "BAD_KNOWLEDGE_REF");
   for (const [outcome, ref] of [["ACTION_PLANNED", PLAN], ["LEARNED_KNOWLEDGE", KNOW], ["DISMISSED", null]] as const) {
-    const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "MARK_OWNER_INBOX_ITEM", { item: I1, outcome, ...(ref ? { outcomeRef: ref } : {}) }, "מאשר");
-    ok(`${outcome}: executes and verifies exactly (via SUNNY, ref ${ref ?? "null"})`, r.e?.status === "APPLIED_AS_EXPECTED" && done(h.w.items[U(1)], outcome, ref), { e: r.e?.status, item: h.w.items[U(1)] });
+    const it = outcome === "ACTION_PLANNED" ? U(7) : U(1);
+    const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "MARK_OWNER_INBOX_ITEM", { item: `owner-inbox:${it}`, outcome, ...(ref ? { outcomeRef: ref } : {}) }, "מאשר");
+    ok(`${outcome}: executes and verifies exactly (via SUNNY, ref ${ref ?? "null"})`, r.e?.status === "APPLIED_AS_EXPECTED" && done(h.w.items[it], outcome, ref), { e: r.e?.status, item: h.w.items[it] });
   }
 
   console.log("\nThe reference must be REAL (server-checked)");
@@ -124,7 +130,7 @@ const CASES: FamilyCase<W>[] = [
   }
   {
     const h = mk(); const d = mkDeps(h.writers);
-    const p = await planAction({ intentHe: "x", actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I1, outcome: "NO_ACTION_NEEDED" } }, OWNER, d.d);
+    const p = await planAction({ intentHe: "x", actionId: "MARK_OWNER_INBOX_ITEM", args: { item: I7, outcome: "NO_ACTION_NEEDED" } }, OWNER, d.d);
     const a = await approveAction({ planId: p.planId, planHash: p.planHash, confirmationText: "מאשר" }, OWNER, d.d);
     const e = await executeAction({ planId: p.planId, approvalToken: a.approvalToken, confirmationText: "מאשר" }, OWNER, d.d);
     const st = await planStatus({ planId: p.planId }, OWNER, d.d);
@@ -161,11 +167,25 @@ const CASES: FamilyCase<W>[] = [
     ok("a STANDING token on a business plan is refused by the engine (STANDING_NOT_ELIGIBLE), nothing written", e.status !== "APPLIED_AS_EXPECTED" && String(e.refusal ?? "").includes("STANDING_NOT_ELIGIBLE"), e);
   }
 
+  console.log("\nZero Inbox closure guards (One Brain stage 5, 2026-10-05)");
+  {
+    // an unlinked update may still be linked by an EARLIER step of the same plan, so planning passes — execution decides
+    const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "MARK_OWNER_INBOX_ITEM", { item: I1, outcome: "NO_ACTION_NEEDED" }, "מאשר");
+    ok("NO_ACTION_NEEDED on an update that is still unlinked at its turn → the step FAILS (NO_EXACT_HOME), the update stays NEW", r.e?.status !== "APPLIED_AS_EXPECTED" && JSON.stringify(r.e).includes("NO_EXACT_HOME") && h.w.items[U(1)].status === "NEW", r.e);
+    const h2 = mk(); const r2 = await fullFlow(mkDeps(h2.writers).d, "MARK_OWNER_INBOX_ITEM", { item: I1, outcome: "ACTION_PLANNED", outcomeRef: PLAN }, "מאשר");
+    ok("ACTION_PLANNED on an update still unlinked at its turn → FAILS (LINK_FIRST), nothing closed", r2.e?.status !== "APPLIED_AS_EXPECTED" && JSON.stringify(r2.e).includes("LINK_FIRST") && h2.w.items[U(1)].status === "NEW", r2.e);
+    const h3 = mk(); const r3 = await fullFlow(mkDeps(h3.writers).d, "MARK_OWNER_INBOX_ITEM", { item: I1, outcome: "DISMISSED" }, "מאשר");
+    ok("DISMISSED stays the Boss's way out for an update with no record", r3.e?.status === "APPLIED_AS_EXPECTED" && h3.w.items[U(1)].status === "PROCESSED");
+  }
+  ok("ACTION_PLANNED with a plan on ANOTHER entity → REF_PLAN_UNRELATED (an action elsewhere never handles this note)", (await q({ item: I7, outcome: "ACTION_PLANNED", outcomeRef: PLAN_OTHER })).status === "REF_PLAN_UNRELATED");
+  ok("ACTION_PLANNED with a plan that ran BEFORE the note → REF_PLAN_BEFORE_NOTE", (await q({ item: I7, outcome: "ACTION_PLANNED", outcomeRef: PLAN_EARLY })).status === "REF_PLAN_BEFORE_NOTE");
+  ok("ACTION_PLANNED with a plan on the exact entity AFTER the note → previewable", (await q({ item: I7, outcome: "ACTION_PLANNED", outcomeRef: PLAN })).status === "PREVIEW");
+
   console.log("\nPreview names the linked object");
   const text = (p: Record<string, unknown>) => JSON.stringify(p.preview ?? p);
-  const pa = await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: PLAN });
+  const pa = await q({ item: I7, outcome: "ACTION_PLANNED", outcomeRef: PLAN });
   const pk = await q({ item: I1, outcome: "LEARNED_KNOWLEDGE", outcomeRef: KNOW });
-  const pn = await q({ item: I1, outcome: "NO_ACTION_NEEDED" });
+  const pn = await q({ item: I7, outcome: "NO_ACTION_NEEDED" });
   ok("ACTION_PLANNED → 'מקושר ל-plan: pl_…'", pa.status === "PREVIEW" && text(pa).includes(`מקושר ל-plan: ${PLAN}`), text(pa).slice(0, 600));
   ok("LEARNED_KNOWLEDGE → 'מקושר לידע שנלמד: <id>'", pk.status === "PREVIEW" && text(pk).includes(`מקושר לידע שנלמד: ${KNOW}`));
   ok("NO_ACTION_NEEDED → 'ללא אובייקט מקושר'", pn.status === "PREVIEW" && text(pn).includes("ללא אובייקט מקושר"));
@@ -209,7 +229,7 @@ const CASES: FamilyCase<W>[] = [
     ok("LEARNED_KNOWLEDGE only records the link: no knowledge / action writer is called", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.knowledge === 27 && h.w.actions === 0 && h.calls.join() === "markOwnerInboxItem");
     const src = read("lib/partner/act/primitives/owner-inbox.ts");
     ok("the primitive has no knowledge / plan / push / finance / calendar path", !/propose|commitKnowledge|planAction|sendPush|transactions|google-calendar|owner-knowledge\/store/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")));
-    ok("its only WRITE is markOwnerInboxItem; every other dep it calls is a read-only reader", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem(", "d.readActionPlanState(", "d.ownerKnowledgeExists(", "d.inboxItemEntityKeys(", "d.ownerKnowledgeEntityKeys("].includes(m)) && (src.match(/d\.markOwnerInboxItem\(/g) ?? []).length === 1);
+    ok("its only WRITE is markOwnerInboxItem; every other dep it calls is a read-only reader", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem(", "d.readActionPlanState(", "d.ownerKnowledgeExists(", "d.inboxItemEntityKeys(", "d.ownerKnowledgeEntityKeys(", "d.readActionPlanScope("].includes(m)) && (src.match(/d\.markOwnerInboxItem\(/g) ?? []).length === 1);
   }
 
   console.log("\nWiring");

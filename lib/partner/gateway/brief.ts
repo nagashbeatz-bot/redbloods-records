@@ -137,6 +137,8 @@ export function ownerUpdatesOf(src: GatewaySources): BriefResponse["ownerUpdates
     status: "OK", newCount: fresh.length, digest: inboxDigest(fresh.map((i) => i.id)),
     items: fresh.slice(0, n).map((i) => ({ id: i.id, writtenAt: i.createdAt, text: record(i.body.length > max ? `${i.body.slice(0, max - 1)}…` : i.body), epistemic: "OWNER_REPORTED" as const, status: "NEW" as const })),
     more: Math.max(0, fresh.length - n),
-    drillDown: fresh.length ? { tool: "partner_query", args: { capability: "owner_inbox", mode: "new" }, label: partner("כל העדכונים שלא טופלו") } : null,
+    // One Brain (2026-10-05): the brief does not read the company state — the per-update lifecycle (what happened since, its
+    // home, NEEDS_OWNER / OVERTAKEN / closable) and the executive line come from owner_inbox mode understand
+    drillDown: fresh.length ? { tool: "partner_query", args: { capability: "owner_inbox", mode: "understand" }, label: partner("מה קרה מאז כל עדכון ואיפה הבית שלו") } : null,
   };
 }

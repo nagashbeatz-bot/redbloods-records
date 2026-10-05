@@ -5,13 +5,15 @@
  */
 import { normalizeName } from "../gateway/resolve";
 
-export type WorkKind = "MIX" | "SESSION" | "VIDEO" | "WRITING";
+export type WorkKind = "MIX" | "SESSION" | "VIDEO" | "WRITING" | "SYSTEM";
 /** Fixed lexicon (normalized forms). One Hebrew prefix letter is allowed on a word ("למיקס" → מיקס). */
 export const WORK_LEXICON: Readonly<Record<WorkKind, readonly string[]>> = {
   MIX: ["מיקס", "מיקסים", "מאסטר", "מאסטרינג", "תיקון", "תיקונים", "גרסה", "גרסאות", "mix", "master"],
   SESSION: ["סשן", "סשנים", "הקלטה", "הקלטות", "הקלטנו", "הקליט", "הקליטה", "אולפן"],
   VIDEO: ["קליפ", "צילום", "צילומים", "צילמנו"],
   WRITING: ["ורס", "פזמון", "כתיבה", "מילים", "בריף"],
+  // the Redbloods app itself (a technical / system item — never project progress; One Brain stage 2, 2026-10-05)
+  SYSTEM: ["התראה", "התראות", "פוש", "push", "באג", "תקלה", "מערכת", "אפליקציה", "דשבורד", "פורטל", "נוטיפיקציה", "נוטיפיקציות"],
 };
 /** Team members the Owner names (display names) → the engineer / vendor identity the records use. */
 export const TEAM_NAMES: Readonly<Record<string, "STEVEN" | "VICTOR">> = { "סטיבן": "STEVEN", steven: "STEVEN", "ויקטור": "VICTOR", victor: "VICTOR" };

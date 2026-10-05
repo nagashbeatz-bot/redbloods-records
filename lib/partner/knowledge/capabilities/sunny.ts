@@ -19,6 +19,8 @@ import { buildMentionIndex, findMentions, isWeakName, mentionsEntity } from "../
 import { normalizeName } from "../../gateway/resolve";
 import { activeLinksOf, headOf, type InboxMemory } from "../../../inbox-memory";
 import { understandUpdates } from "../inbox-understand";
+import { decideInboxLifecycle, inboxExecutiveSummary } from "../../sunny/inbox-lifecycle";
+import { inboxLifecycleBaseOf } from "../../sunny/inbox-lifecycle-base";
 
 const ENTITY_TYPES: readonly GatewayEntityType[] = ["project", "client", "label-artist", "vendor", "dj", "show", "release"];
 const NOT_ACTIVE: KnowledgeReadResult = {
@@ -222,15 +224,22 @@ export const ownerInbox: KnowledgeCapability = {
       const fresh = all.filter((i) => i.status === "NEW").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
       const u = new Map(understandUpdates(src, fresh, q.mode === "deep").map((x) => [x.itemId, x]));
       const stateRead = !!ok(src.state);
+      // One Brain (2026-10-05): every update's derived lifecycle — what happened since, its home, its display state.
+      // The Action Layer history is added by the connector (same decideInboxLifecycle); here actions are "not read".
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(src.now);
+      const life = new Map(fresh.map((i) => [i.id, decideInboxLifecycle(inboxLifecycleBaseOf(src, i, u.get(i.id) ?? null, today))]));
+      const exec = inboxExecutiveSummary([...life.values()]);
       return result(fresh.map((i) => item({
         id: i.id, entity: null, label: record(i.body), epistemic: "OWNER_REPORTED", source: "OWNER_INBOX", freshness: "LIVE",
         fields: {
           writtenAt: i.createdAt, status: i.status, canonical: false,
           signals: u.get(i.id)?.signals ?? null, resolution: u.get(i.id)?.resolution ?? null, context: u.get(i.id)?.context ?? null,
+          lifecycle: life.get(i.id) ?? null,
           howToThinkHe: partner("אל תקריא. LIKELY = הצע את ההנחה + למה (הראיות) + 'נכון?'. AMBIGUOUS = שאל עם האפשרויות והראיות. UNRESOLVED = אמור מה חיפשת ושאל מי זה (או נסה mode deep). NONE = אל תנחש. recordVsReport = 'אמרת … — ברשומה …'. הסקה ≠ עובדה עד שהבוס מאשר."),
         },
       })), {
-        summary: [sfact("NEW_COUNT", "עדכונים שלא טופלו", fresh.length, "OWNER_REPORTED", "OWNER_INBOX")],
+        summary: [sfact("NEW_COUNT", "עדכונים שלא טופלו", fresh.length, "OWNER_REPORTED", "OWNER_INBOX"),
+          sfact("EXECUTIVE", "תמונת העדכונים (נגזר, לא נשמר)", { ...exec, howHe: "ZERO INBOX: פתק יוצא מהתיבה כשלמידע שלו יש בית (הבנה / ידע / פעולה שבוצעה על אותה רשומה אחרי הפתק) — העבודה עצמה ממשיכה ברשומות. גיל לבד לא סוגר כלום; טכני נסגר רק כשהבוס אומר שזה עובד; סגירה רק באישור על הרשימה המדויקת." }, "DERIVED", "OWNER_INBOX")],
         completeness: stateRead ? "COMPLETE" : "PARTIAL",
         coverage: stateRead ? [] : [partner("מצב החברה לא נקרא — אין שמות / הקשר לעדכונים; הטקסטים עצמם כן נקראו.")],
       });

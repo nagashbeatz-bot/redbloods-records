@@ -6,6 +6,8 @@
 import type { KnowledgeCapability, KnowledgeItem } from "../types";
 import { buildCompanyView, type CompanyObservation, type CompanyView } from "../../company/view";
 import * as CO from "../../system/company";
+import { inboxTriageOf } from "../../sunny/inbox-lifecycle-base";
+import { derivePatterns } from "../../sunny/patterns";
 import { byCount, item, partner, record, result, sfact } from "./common";
 
 const OWNER_FIN = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" } as const;
@@ -91,7 +93,7 @@ export const companyView: KnowledgeCapability = {
     group: { kind: "enum", values: [...GROUPS], descriptionForModel: "attention: one presentation group (a dimension)" },
     side: { kind: "enum", values: ["OWNER", "EXTERNAL", "NONE", "UNKNOWN"], descriptionForModel: "attention: whose recorded move it appears to be" },
   },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1200, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR"],
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1200, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "OWNER_INBOX"],
   read(src, q) {
     if (q.mode === "model") {
       const t = q.params.topic && MODEL_TOPICS.has(q.params.topic) ? q.params.topic : "rules";
@@ -100,7 +102,11 @@ export const companyView: KnowledgeCapability = {
     if (!src.state || src.state.status !== "OK") return result([], { completeness: "UNKNOWN", coverage: COVERAGE, missing: [{ fact: "company state", whyNeeded: "the company picture cannot be composed without it — unknown, not empty" }] });
     const v = buildCompanyView(src);
     const base = { coverage: [...COVERAGE, ...v.partial.map((p) => partner(p))], completeness: (v.partial.length ? "PARTIAL" : "COMPLETE") as "PARTIAL" | "COMPLETE" };
-    const summary = [sfact("EXECUTIVE", "מצב החברה", { ...v.executive, headline: v.executive.headline.length }, "DERIVED", "PROJECTS"), sfact("SOURCES", "מקורות", v.sourceState, "FACT", "PROJECTS")];
+    // One Brain (2026-10-05): the Boss's open updates, by their derived lifecycle — the SAME helper owner_inbox uses
+    const tri = inboxTriageOf(src);
+    const summary = [sfact("EXECUTIVE", "מצב החברה", { ...v.executive, headline: v.executive.headline.length }, "DERIVED", "PROJECTS"), sfact("SOURCES", "מקורות", v.sourceState, "FACT", "PROJECTS"),
+      sfact("OWNER_UPDATES", "העדכונים שכתבת לסאני (נגזר)", tri.read ? { ...tri.summary, detail: "partner_query owner_inbox mode understand" } : { status: "NOT_READ", noteHe: "העדכונים לא נקראו כאן — זה לא אומר שאין" }, "DERIVED", "OWNER_INBOX"),
+      sfact("PATTERNS", "דפוסים שחוזרים (השערות, נגזר)", (() => { const pats = derivePatterns(src).filter((x) => x.showToOwner); return { shown: pats.map((x) => ({ code: x.code, level: x.level, he: x.hypothesisHe, entities: x.entities.length })), rule: "רק REPEATED / STRONG; WEAK נשאר פנימי — partner_query coo mode patterns לפירוט" }; })(), "DERIVED", "PARTNER_KNOWLEDGE")];
     const emit = (rows: Row[], extra: ReturnType<typeof sfact>[] = []) => result(rows.map((r) => item({ id: r.id, entity: r.entity ?? null, label: r.recordText ? record(r.label) : partner(r.label), epistemic: r.epistemic, source: r.source ?? "PROJECTS", fields: r.fields })), { ...base, summary: [...summary, ...extra] });
     if (q.mode === "attention") return emit(topicRows(v, "attention", q.params.group, q.params.side), [sfact("BY_GROUP", "לפי קבוצה (סדר הצגה, לא עדיפות)", v.executive.attentionByGroup, "DERIVED", "PROJECTS")]);
     if (q.mode === "review") return emit(topicRows(v, q.params.topic && !MODEL_TOPICS.has(q.params.topic) ? q.params.topic : "executive"));

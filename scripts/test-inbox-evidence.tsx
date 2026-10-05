@@ -90,7 +90,7 @@ ok("LIKELY with HIGH confidence", a.resolution.status === "LIKELY" && a.resoluti
 ok("the chain reaches חיים באינסאי → קרוב אלייך → the song → the mix + master at Steven", JSON.stringify(chain(a)) === JSON.stringify(["PERSON:חיים באינסאי", "PROJECT:קרוב אלייך", "SONG:קרוב אלייך", "WORK:מיקס + מאסטר אצל Steven (בתהליך)"]), chain(a));
 ok("evidence: MIX_ACTIVE (22 versions) + STATUS_MATCH + OPEN_REVISIONS + ACTIVE_ENGINEER_MATCH + DEADLINE_SOON", ["MIX_ACTIVE", "STATUS_MATCH", "OPEN_REVISIONS", "ACTIVE_ENGINEER_MATCH", "DEADLINE_SOON"].every((c) => codes(a).includes(c)) && (a.resolution.chosen?.evidence.find((e) => e.code === "MIX_ACTIVE")?.he ?? "").includes("22 גרסאות"), codes(a));
 ok("NOT ENGINEER_NAMED — the Boss did not write Steven", !codes(a).includes("ENGINEER_NAMED"));
-ok("the other חיים is an alternative with the business contradiction (no mix work)", a.resolution.alternatives.some((x) => x.project === "פשע" && x.evidence.includes("NO_MIX_WORK!")), a.resolution.alternatives);
+ok("the other חיים is an alternative with only weak evidence — no engineer work is NOT a contradiction (the Boss may mix himself; One Brain 2026-10-05)", a.resolution.alternatives.some((x) => x.project === "פשע" && x.evidence.includes("NO_ENGINEER_WORK") && !x.evidence.some((e) => e.endsWith("!"))), a.resolution.alternatives);
 ok("context: status, deadline 2026-10-07, and the Owner's blocker (waiting for Steven's fixes since 27.09)", a.context?.status === "במיקס" && a.context.deadline === "2026-10-07" && (a.context.blocker ?? "").includes("27.09"), a.context);
 
 console.log("\nB — two חיים, both with an active (recent) mix → ask");
@@ -130,7 +130,9 @@ ok("NONE — never 'the only active mix in the company'", f.resolution.status ==
 
 console.log("\nG — the name matches, the business contradicts");
 const g = run({ ...haim, works: [], versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
-ok("not chosen by name: UNRESOLVED with NO_MIX_WORK contradictions", g.resolution.status === "UNRESOLVED" && g.resolution.chosen === null && g.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g.resolution);
+ok("not chosen by name: two weak candidates (no engineer work anywhere) stay AMBIGUOUS — never a pick, never a contradiction", g.resolution.status === "AMBIGUOUS" && g.resolution.chosen === null && !g.resolution.contradictions.length, g.resolution);
+const g2 = run({ ...haim, works: (haim.works ?? []).map((w) => ({ ...w, status: "בוטל" })), versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
+ok("a CLOSED engineer work still contradicts \"we are mixing\" (NO_MIX_WORK)", g2.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g2.resolution);
 
 console.log("\nH — an album: no invented song");
 const P_ALB = U(60);

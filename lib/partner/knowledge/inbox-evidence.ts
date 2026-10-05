@@ -32,7 +32,7 @@ const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a &&
 export type EvidenceQuality = "VERY_STRONG" | "STRONG" | "WEAK" | "CONTRADICTION" | "INFO";
 export interface Evidence { code: string; he: string; quality: EvidenceQuality; source: string }
 export type ResolutionStatus = "LIKELY" | "AMBIGUOUS" | "UNRESOLVED" | "NONE";
-export interface ChainLink { level: "PERSON" | "PROJECT" | "SONG" | "TRACK" | "WORK" | "SESSION"; key: string | null; name: string; quality: "CANONICAL" | "TEXT_MATCH" | "OWNER_ALIAS" | "DERIVED" }
+export interface ChainLink { level: "PERSON" | "PROJECT" | "SONG" | "TRACK" | "WORK" | "SESSION" | "VENDOR"; key: string | null; name: string; quality: "CANONICAL" | "TEXT_MATCH" | "OWNER_ALIAS" | "DERIVED" }
 export interface Candidate { projectKey: string; projectName: string; personKey: string | null; personName: string | null; via: "NAMED_PROJECT" | "CREDIT" | "RELEASE_LINK" | "ALIAS" | "PARTIAL_PROJECT_NAME"; evidence: Evidence[] }
 export interface Resolution {
   status: ResolutionStatus;
@@ -144,7 +144,10 @@ function evidenceFor(c: Candidate, sig: UpdateSignals, writtenYmd: string, g: Gr
   const engineers = [...new Set(active.map((w) => w.engineerName))];
   if (sig.work.includes("MIX")) {
     if (active.length) ev.push(V("MIX_ACTIVE", `עבודת ${active[0].workType ?? "מיקס"} פעילה (${active[0].status ?? "?"}) אצל ${active[0].engineerName}${vers.length ? ` · ${vers.length} גרסאות` : ""}`, "ENGINEER_WORK"));
-    else ev.push(X("NO_MIX_WORK", "העדכון מדבר על מיקס — ואין לפרויקט עבודת מיקס / מאסטר פעילה", "ENGINEER_WORK"));
+    // no engineer work EVER recorded: the Owner may mix it himself — weak, never a contradiction (One Brain stage 2);
+    // an engineer work that exists but is closed still contradicts "we are mixing"
+    else if (!works.length) ev.push(W("NO_ENGINEER_WORK", "אין עבודת מהנדס רשומה בפרויקט — ייתכן שהמיקס אצלך (לא סותר)", "ENGINEER_WORK"));
+    else ev.push(X("NO_MIX_WORK", "העדכון מדבר על מיקס — ועבודת המיקס / מאסטר של הפרויקט סגורה", "ENGINEER_WORK"));
     if (p.status && MIX_STATUSES.has(p.status)) ev.push(S("STATUS_MATCH", `סטטוס הפרויקט "${p.status}" מתאים למיקס`, "PROJECTS"));
     if (openComments > 0) ev.push(S("OPEN_REVISIONS", `${openComments} הערות פתוחות על הגרסה`, "MIX_COMMENTS"));
     if (lastVersion && Math.abs(days(writtenYmd, lastVersion)) <= 14) ev.push(S("RECENT_VERSION", `גרסה אחרונה הועלתה ב-${fmt(lastVersion.slice(0, 10))}`, "MIX_VERSIONS"));
@@ -289,6 +292,13 @@ export function resolveUpdate(item: OwnerInboxItem, g: Graph, deep = false): Und
   for (const c of cands) if (!c.evidence.some((e) => e.code === "NOTES_MENTION")) evidenceFor(c, sig, writtenYmd, g);
   const out = (resolution: Resolution, context: ChosenContext | null = null): UnderstoodUpdateV2 => ({ itemId: item.id, signals: { ...sig, names }, resolution, context });
   if (!cands.length) {
+    // a team member named alone ("לתקן התראות של סטיבן") → that exact vendor identity (never a project guess)
+    const vendors = [...new Set(findMentions(item.body, g.index).flatMap((m) => m.keys).filter((k) => k.startsWith("vendor:")))];
+    if (vendors.length === 1 && !unknownNames.length) {
+      const key = vendors[0], name = key === "vendor:STEVEN" ? "Steven" : key === "vendor:VICTOR" ? "Victor" : key;
+      const ev = [S("TEAM_NAMED", `${name} נכתב בעדכון (איש צוות)`, "TEAM"), ...(sig.work.includes("SYSTEM") ? [S("SYSTEM_ITEM", "העדכון מדבר על המערכת עצמה (התראות / תקלה) — עניין טכני, לא התקדמות בפרויקט", "SIGNALS")] : [])];
+      return out({ status: "LIKELY", confidence: "MEDIUM", chosen: { chain: [{ level: "VENDOR", key, name, quality: "CANONICAL" }], evidence: ev, recordVsReport: [] }, contradictions: [], alternatives: [], searched, missing: [] });
+    }
     if (unknownNames.length) return out({ status: "UNRESOLVED", confidence: null, chosen: null, contradictions: [], alternatives: [], searched, missing: [`לא מצאתי ברשומות את: ${unknownNames.join(", ")}${deep ? "" : " (אפשר לחפש גם בהערות — mode deep)"}`] });
     return out({ status: "NONE", confidence: null, chosen: null, contradictions: [], alternatives: [], searched, missing: names.length ? ["השם לא מוביל לאף פרויקט פתוח"] : ["אין בעדכון שם / פרויקט — לא מנחשת לאיזה פרויקט הוא שייך"] });
   }

@@ -527,7 +527,7 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
     async readOwnerInboxItem(id) {
       const r = await store.get(id);
       if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`);
-      return r.item ? { body: r.item.body, status: r.item.status, outcome: r.item.outcome, outcomeRef: r.item.outcomeRef, processedVia: r.item.processedVia } : null;
+      return r.item ? { body: r.item.body, status: r.item.status, outcome: r.item.outcome, outcomeRef: r.item.outcomeRef, processedVia: r.item.processedVia, createdAt: r.item.createdAt } : null;
     },
     async listOwnerInboxNew() {
       const r = await store.list(200);
@@ -537,6 +537,13 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
     async markOwnerInboxItem(id, outcome, outcomeRef) {
       const r = await markOwnerInboxItemProcessed(store, "SUNNY", { id, outcome, outcomeRef });
       if (r.status !== "PROCESSED") throw new Error(`owner inbox mark refused: ${r.status} ${r.messageHe}`);
+    },
+    async readActionPlanScope(planId) {
+      const plans = supabaseActStores(supabase).plans;
+      const plan = await plans.load(planId);
+      if (!plan) return null;
+      const at = (await plans.executions(planId)).map((x) => x.outcome?.at ?? null).filter((x): x is string => !!x).sort();
+      return { entities: [...new Set(plan.steps.flatMap((s) => [...s.entities]))], executedAt: at.length ? at[at.length - 1] : null };
     },
     async readActionPlanState(planId) {
       const plans = supabaseActStores(supabase).plans;

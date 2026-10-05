@@ -56,6 +56,8 @@ function mk(seed?: (db: FakeInboxMemoryDb) => void) {
     async readOwnerInboxItem(id: string) { return id === ITEM ? { ...w.item } : null; },
     async listOwnerInboxNew() { return w.item.status === "NEW" ? [{ id: ITEM, body: w.item.body }] : []; },
     async readActionPlanState() { return "NOT_FOUND" as const; },
+    async readActionPlanScope() { return null; },
+    async inboxItemEntityKeys(itemId: string) { const m = await deps.readMemory(); return [...new Set(m.links.filter((l) => l.itemId === itemId && !l.retractedAt).map((l) => l.entityKey))]; },
     async ownerKnowledgeExists() { return false; },
     async markOwnerInboxItem(id: string, outcome: string, ref: string | null) {
       calls.push("markOwnerInboxItem");

@@ -11,6 +11,9 @@ import { cooCtx } from "../../coo/context";
 import { readinessOf } from "../../coo/readiness";
 import { artistCare, projectMomentum } from "../../coo/momentum";
 import { moneyReadiness } from "../../coo/money";
+import { derivePatterns, PATTERN_WINDOWS } from "../../sunny/patterns";
+import { projectProgressEvents } from "../../sunny/since";
+import { LEARNING_HEURISTICS } from "../../sunny/learning";
 import { INTERNAL_COO_HEURISTICS, type Readiness } from "../../coo/model";
 
 const COVERAGE = [
@@ -40,6 +43,8 @@ export const coo: KnowledgeCapability = {
     schedule: { descriptionForModel: "This week's schedule health (analysis only)" },
     money: { descriptionForModel: "Money readiness of one project (param entity)" },
     entity: { descriptionForModel: "Enrichment for partner_entity (project / label-artist / show / session / release)" },
+    patterns: { descriptionForModel: "Derived operational PATTERNS (HYPOTHESES, never facts / policy): repeated 'צריך לקדם' without progress, 'almost done' that repeats, sessions on a 'לא התחיל' project, the Owner as the feedback bottleneck, progress without a price. Levels OBSERVATION / WEAK (internal only) / REPEATED / STRONG (may be raised) — say 'אני רואה דפוס אפשרי…', never 'X תמיד…'." },
+    learning: { descriptionForModel: "Closed-loop outcome learning: each action Sunny executed (after the Boss's approval) vs the LATER recorded evidence on the same record — CORRELATED / LIKELY_HELPFUL / INSUFFICIENT_EVIDENCE / DID_NOT_RESOLVE / CONTRADICTED (never causal by default) + lessons and Owner-preference signals as HYPOTHESES. A lesson becomes a rule ONLY if the Boss confirms it (partner_propose_knowledge BUSINESS_LEARNING). The connector adds the action history; without it nothing is assessed." },
   }, defaultMode: "priorities",
   params: {
     entity: { kind: "entityKey", types: ["project", "show", "session", "release", "label-artist"], descriptionForModel: "readiness / momentum / money / entity: one entity" },
@@ -66,6 +71,20 @@ export const coo: KnowledgeCapability = {
         items.push(item({ id: `momentum:${entity}`, entity, label: partner(m.stateHe), epistemic: "DERIVED", source: "PARTNER_KNOWLEDGE", fields: { section: "momentum", he: partner(m.he), lastProgress: m.lastProgress, nextSteps: m.nextSteps.map((n) => ({ ...n, he: partner(n.he) })), scheduledNext: m.scheduledNext, waitingOn: m.waitingOn, risks: m.risks.map(partner) } }));
       }
       return result(items, { ...base, summary: [sfact("EVENTS", "אירועים שנבדקו", list.length, "DERIVED", "PARTNER_KNOWLEDGE"), sfact("BY_STATE", "לפי מצב", list.reduce<Record<string, number>>((m, r) => ({ ...m, [r.stateHe]: (m[r.stateHe] ?? 0) + 1 }), {}), "DERIVED", "PARTNER_KNOWLEDGE"), heur] });
+    }
+    if (q.mode === "patterns") {
+      const pats = derivePatterns(src);
+      return result(pats.map((p) => item({ id: p.code + ":" + p.entities.join(","), label: partner(p.hypothesisHe), epistemic: "HYPOTHESIS", source: "PARTNER_KNOWLEDGE", fields: { ...p } })), { ...base,
+        summary: [sfact("PATTERN_LEVELS", "דפוסים לפי רמה (נגזר, לא נשמר)", { byLevel: pats.reduce<Record<string, number>>((m, p) => ((m[p.level] = (m[p.level] ?? 0) + 1), m), {}), showToOwner: pats.filter((p) => p.showToOwner).length, windows: PATTERN_WINDOWS, rule: "WEAK / OBSERVATION never in the executive answer; a pattern is a hypothesis with its evidence" }, "DERIVED", "PARTNER_KNOWLEDGE")] });
+    }
+    if (q.mode === "learning") {
+      // the capability supplies the LATER evidence per record (the ONE since rule); the connector adds the Action Layer
+      // history and runs assessOutcomes — without that history nothing is assessed (never "nothing worked")
+      const progress: Record<string, unknown[]> = {};
+      for (const p of c.st?.domains.projects.data?.open ?? []) progress[`project:${p.id}`] = projectProgressEvents(src, p.id);
+      for (const w of c.st?.domains.victor.data?.active ?? []) progress[`victor-work:${w.id}`] = [...(w.uploads ?? [])].filter(Boolean).map((at) => ({ at, kind: "VICTOR_UPLOAD", meaning: "PROGRESS", he: "ויקטור העלה גרסה", entity: `victor-work:${w.id}`, source: "TEAM_VICTOR" }));
+      return result([], { ...base, summary: [sfact("PROGRESS_BY_ENTITY", "ראיות מאוחרות לכל רשומה (לבדיקת תוצאות)", { progress, heuristics: LEARNING_HEURISTICS }, "DERIVED", "PARTNER_KNOWLEDGE"),
+        sfact("LEARNING_STATUS", "מצב הלמידה", { status: "NEEDS_ACTION_HISTORY", noteHe: "בדיקת התוצאות דורשת את היסטוריית הפעולות (מתווספת בחיבור); בלעדיה — לא נבדק, לא 'כלום לא עבד'" }, "DERIVED", "PARTNER_KNOWLEDGE")] });
     }
     if (q.mode === "momentum") {
       const list = entity?.startsWith("project:") ? [projectMomentum(c, entity.slice(8))] : buildCooView(src).momentum;

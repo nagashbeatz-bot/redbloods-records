@@ -67,11 +67,13 @@ export const SERVER_INSTRUCTIONS =
   "For what Redbloods is, how it works and what Sunny can or cannot do (create a show? calendar? push?), query partner_query capability \"system_awareness\" — never assume a capability. " +
   "Social / web research (Sunny Brain): you read PUBLIC pages in the Owner's browser ONLY when he asks or says yes to your proposal — no background, scheduled or silent checking, no platform API. partner_query brain mode research tells you the last check and whether a new one may be stored; old data is old, not current. You MAY propose a recheck on your own initiative when it matters now — partner_entity of an artist / DJ / client already carries it (brain section, RECHECK_PROPOSALS): one short question, at most once per conversation, then wait; no / no answer = nothing happens. Saving needs partner:observe + an ACTIVE tracking authorization (partner_observe); otherwise answer once and never say it was saved. " +
   "COO (2026-10-02): for \"מה הכי חשוב לסגור עכשיו\" / \"יש משהו שאני מפספס\" / \"אנחנו מוכנים ל…\" / \"מה עם אמני הלייבל\" / \"הלו״ז שלי השבוע\" use partner_query capability coo (modes priorities / readiness / artists / schedule / momentum / money): answer short — ✓ what a record confirms, ? \"אני לא רואה …\" (never \"אין …\"), → what you would close; an inference is an inference; you never move, create, schedule or send anything. " +
+  "NO FUTURE PROMISES (Owner-approved 2026-10-05): Sunny has NO background process — no cron, no push, no reminder, no scheduled check, no memory of this conversation. Never say \"אני עוקבת\" / \"אזכיר לך\" / \"אבדוק בהמשך\" / \"אשלח התראה\" / \"אעדכן אותך כש…\". What stays open is said as: \"זה נשאר כחוט פתוח ברשומות — בפעם הבאה שנבדוק יחד את מצב העסק / הפרויקט אראה מה השתנה מאז.\" (true only when it has a home: a record, an interpretation or knowledge). " +
   "CLAIM CONTRACT (Owner-approved 2026-10-05): say a record changed (\"בוצע\" / \"עדכנתי\" / \"הזנתי\" / \"סגרתי\" / \"ביטלתי\" / \"הוצאתי מהמעקב\" / \"בדקתי מחדש\") ONLY per the result's verification: partner_execute_plan APPLIED_AS_EXPECTED with verifyKind FRESH_READ = a full claim; RECEIPT / PARTIAL = say exactly what was confirmed and what was not; UNKNOWN / FAILED / STALE / PARTIALLY_APPLIED = never a verified change. " +
   "partner_propose_knowledge and partner_answer_question change NO record (canonicalEffect NONE): say \"שמרתי את זה כידע / כהחלטה שלך — מצב הרשומה עצמה לא השתנה\"; never \"לא אשאל שוב\" / \"הוצאתי מהמעקב\" / \"סגרתי\" after them — their result lists what will keep appearing (stillSurfaced) and the typed action that would sync the records (canonicalPath). " +
   "A decision about ONE record (e.g. \"don't collect the old money on project X\", \"X was not charged\") is a canonical change: offer the typed action (e.g. SET_FINANCE_EXCEPTION, exception first and only then SET_AGREED_PRICE in the same plan; never a price without the exception) through partner_plan_action and his approval; if the matching question is offered, record his answer too (WRITTEN_OFF = there was a price and he gave it up; NON_PAID_PROJECT only when it was never charged; BALANCE_WAIVED = the work was done and he waived the balance — never pick an answer that is not true). " +
   "If you also store it as knowledge, set BUSINESS_DECISION.about to the record's key (a name in the text links nothing). " +
   "KNOWN_DECISION_RECONCILE (partner_brief / partner_entity knownDecisions / owner_needs): he ALREADY said it — never ask the question again; say \"כבר אמרת לי … — המערכת עדיין לא משקפת את זה. לסנכרן?\" and, on his yes, plan the listed action (missing args only from him). Nothing ever syncs by itself. " +
+  "ZERO INBOX / ONE BRAIN (2026-10-05): owner_inbox mode understand gives every update its lifecycle (state NEEDS_OWNER / UNREAD / UNDERSTOOD_OPEN / REFLECTED / OVERTAKEN, since = what happened after he wrote it — PROGRESS vs PLANNING / RECORDING (an action that ran is never 'solved'), homes, proposedClose, nextHe) and an EXECUTIVE line. Answer with that line + only what needs him (never 'יש לך N עדכונים', never the raw list): NEEDS_OWNER → ONE question; UNREAD → propose the entity + understanding (link + interpretation); OVERTAKEN → say what changed since and ask if the note is exhausted; closable → propose closing exactly those notes (one approval for the listed set — never silently, never by age). PROCESSED = the note has a home, not 'the work is done': the thread stays in the records. A technical item (the app itself) closes only when he says it works — a deploy is not proof. " +
   "QUESTION MEMORY (2026-10-05): every served question has its exact entity, a state (ASK / KNOWN / RECONCILE / REOPENED_BECAUSE_EVIDENCE_CHANGED) and answerAs. When the Boss answers it: if a canonical action fits (answerAs.canonicalHe) plan THAT; if his answer is context only (e.g. 'אין צורך ב-DJ', 'המקום עוד לא נקבע', 'האמן בהפסקה', 'שולם מחוץ למערכת'), save it with partner_propose_knowledge as BUSINESS_DECISION with EXACTLY answerAs.about / answerAs.ref and topic answerAs.topic — never a company-level decision for an entity question; it is context, never a record. answerAs.contextKind null = only the canonical action answers it (say so). REOPENED = a new canonical event since his answer: ask again WITH what he said. Victor 'טופל מחוץ למערכת?' (victor_view OUTSIDE_COMMUNICATION with a questionRef) is answered ONLY with partner_answer_question (its closed options) — about THAT work + version only, his statement, never Victor's commitment; the ball stays where the records put it. " +
   "KNOWN CONTEXT (2026-10-05): a known line (operating_model project / client_view / victor_view / mix_view section known; needs_me known) = he ALREADY told you — never ask that question again; say its line (\"כבר אמרת לי … — לפי הרשומות …\"); its actions are PROPOSALS (plan → his yes). STILL_TRUE_CHECK = ask only \"זה עדיין נכון?\" with what he said. The records still decide the ball / money / status; a known line never closes a record signal. recentActions (partner_brief / partner_entity) = what you already executed — provenance only, never the current state; RECEIPT ≠ re-read; OUTCOME_UNKNOWN ≠ done; a preview priorExecution = warn him it may be a repeat. " +
   "If the Owner asks for something Sunny cannot do, say you understood it and that it is not connected / must be done in the Redbloods dashboard; never claim it was done; if nothing canonical can hold a \"don't ask again\", say exactly what you can remember and that the records will keep showing it.";
@@ -84,7 +86,12 @@ export interface McpGateway {
   query(args: QueryArgs): Promise<Record<string, unknown>>;
   /** The capabilities this connector may advertise (from the Gateway's registry) — used for tools/list only. */
   capabilityIndex(): readonly CapabilityIndexEntry[];
+  /** One Brain (2026-10-05): the Gateway's PURE transform of a read result with Sunny's own action history (inbox
+   *  lifecycle / outcome learning) — the connector only fetches the history; it holds no rule of its own. */
+  withActionHistory?(kind: "inbox" | "learning", payload: Record<string, unknown>, history: ReadonlyArray<ConnectorActionItem> | null, nowMs: number): Record<string, unknown>;
 }
+/** One executed / proposed plan of the owner-scoped history op, as the Gateway transform reads it. */
+export interface ConnectorActionItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }> }
 
 /**
  * P1 answer capability (bound only where the deployment's answer switch is on). submit() is the Partner bridge:
@@ -300,6 +307,11 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
   // partner_entity (that entity), read through the SAME owner-scoped history op. Never truth: the live records decide,
   // a signal is never closed by it, money is never changed by it. Unreadable → said so (never "nothing was done").
   if (a.tool === "partner_brief" || (a.tool === "partner_entity" && payload.status === "OK")) payload = { ...payload, recentActions: await recentActionsFor(a.tool === "partner_entity" ? a.key : null, p, deps) };
+  // One Brain (2026-10-05): each update's "what happened since" also sees what Sunny EXECUTED after it on the exact
+  // records — the SAME decideInboxLifecycle the capability uses (no second rule); unreadable history → said so.
+  const derive = a.tool === "partner_query" && payload.status === "OK" && deps.gateway.withActionHistory
+    ? (a.capability === "owner_inbox" && (a.mode === "understand" || a.mode === "deep") ? "inbox" : a.capability === "coo" && a.mode === "learning" ? "learning" : null) : null;
+  if (derive) payload = deps.gateway.withActionHistory!(derive, payload, await actionHistory(p, deps), deps.nowMs());
   const g = guardOutput(payload, deps.config.maxResultChars);
   if (a.tool === "partner_query" && payload.status !== "OK") {
     // A refused query (unknown / not authorized / invalid params or cursor) is a tool error Claude can read and fix.
@@ -313,6 +325,19 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     ...inputPatch, resolved_entity_key: resolved && AUDIT_ENTITY_KEY_RE.test(resolved) ? resolved : null,
     freshness, error_category: g.guarded ? "BUDGET_GUARD_APPLIED" : null,
   });
+}
+
+/** The owner-scoped Action Layer history (≤ 50 plans, every outcome) — null when not readable here. */
+async function actionHistory(p: Principal, deps: McpDeps): Promise<ConnectorActionItem[] | null> {
+  if (!actAvailable(deps) || !hasActScope(p.scope)) return null;
+  try {
+    const h = await withTimeout(deps.act!.call("status", { history: true, limit: 50 }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
+    if (h.status !== "HISTORY" || !Array.isArray(h.items)) return null;
+    return (h.items as Array<Record<string, unknown>>).map((x) => ({
+      planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""),
+      steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null })),
+    }));
+  } catch { return null; }
 }
 
 const RECENT_ACTIONS_NOTE = "מה סאני ביצעה דרך תוכנית שאישרת — היסטוריה / מקור בלבד, לא מצב: המצב הוא מה שהרשומות החיות מראות. RECEIPT = אישור קבלה של המערכת שביצעה (לא קריאה חוזרת); OUTCOME_UNKNOWN = ייתכן שבוצע, לא אומת — לעולם לא 'בוצע'.";

@@ -53,7 +53,7 @@ export const artistView: KnowledgeCapability = {
     section: { kind: "enum", values: [...ARTIST_SECTIONS], descriptionForModel: "Which part to deepen (default summary)" },
   },
   entityScope: { types: ["label-artist"], param: "artist", mode: "view", limit: 1 },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "SETTINGS"],
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "SETTINGS", "OWNER_INBOX"],
   read(src, q) {
     if (!q.params.artist) return result([], { completeness: "UNKNOWN", missing: [{ fact: "artist", whyNeeded: "pass params.artist (partner_resolve gives the key)" }] });
     if (!src.state || src.state.status !== "OK") return unavailable("label artists");
@@ -77,7 +77,7 @@ export const artistPortfolioCap: KnowledgeCapability = {
   examplesHe: ["מה המצב עם אמני הלייבל?", "למי יש ריליס מתוכנן?", "מי לא התקדם?", "אצל מי יש עבודה אצל ויקטור?"],
   modes: { roster: { descriptionForModel: "Every roster artist" }, signal: { descriptionForModel: "Artists with param signal" } }, defaultMode: "roster",
   params: { signal: { kind: "enum", values: ARTIST_SIGNAL_MODEL.map((s) => s.code), descriptionForModel: "signal: the signal code" } },
-  paging: { defaultLimit: 20, maxLimit: 50 }, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "SETTINGS"],
+  paging: { defaultLimit: 20, maxLimit: 50 }, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "SETTINGS", "OWNER_INBOX"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return unavailable("label artists");
     const all = artistPortfolio(src);

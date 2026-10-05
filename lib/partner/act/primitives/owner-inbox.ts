@@ -10,7 +10,9 @@ import { INBOX_OUTCOMES, INBOX_OUTCOME_HE, OUTCOME_LINK, OUTCOME_LINK_HE, checkO
 import { finishPlan, parseKey, refuse, type Fields, type PlanRefusal, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 
 export interface OwnerInboxFamilyWriters {
-  readOwnerInboxItem(id: string): Promise<{ body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null } | null>;
+  readOwnerInboxItem(id: string): Promise<{ body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null; createdAt?: string | null } | null>;
+  /** Zero Inbox guard (2026-10-05): the entities an ACTION_PLANNED plan touched and when it ran (null = plan not found) */
+  readActionPlanScope(planId: string): Promise<{ entities: string[]; executedAt: string | null } | null>;
   listOwnerInboxNew(): Promise<Array<{ id: string; body: string }>>;
   /** lib/writes/owner-inbox markOwnerInboxItemProcessed(store, "SUNNY", …) — throws when the writer refuses. */
   markOwnerInboxItem(id: string, outcome: string, outcomeRef: string | null): Promise<void>;
@@ -31,6 +33,26 @@ const LABEL_CHARS = 80;
 const short = (t: string, n = LABEL_CHARS) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 const fieldsOf = (x: { body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null }): Fields =>
   ({ text: short(x.body), status: x.status, outcome: x.outcome, outcomeRef: x.outcomeRef, processedVia: x.processedVia });
+
+/**
+ * Zero Inbox closure guard (One Brain stage 5, Owner-approved 2026-10-05) — the ONE rule, used at planning (when already
+ * certain) and at execution (authoritative). NO_ACTION_NEEDED claims "the information has an exact home" → needs a link;
+ * ACTION_PLANNED → the plan touched the update's exact records and ran AFTER the note. DISMISSED / LEARNED_KNOWLEDGE keep
+ * their own rules. Never by age.
+ */
+async function zeroInboxGuard(d: WriterDeps, itemId: string, outcome: string, outcomeRef: string | null, createdAt: string | null): Promise<{ code: string; messageHe: string } | null> {
+  if (outcome !== "NO_ACTION_NEEDED" && outcome !== "ACTION_PLANNED") return null;
+  const keys = await d.inboxItemEntityKeys(itemId);
+  if (!keys.length) return outcome === "NO_ACTION_NEEDED"
+    ? { code: "NO_EXACT_HOME", messageHe: "לעדכון אין רשומה מקושרת — 'לא נדרש כלום' צריך בית מדויק (קשר קודם), או DISMISSED אם הבוס מוותר עליו" }
+    : { code: "LINK_FIRST", messageHe: "קודם קשר את העדכון לרשומה המדויקת (LINK_INBOX_ENTITY) — אז אפשר לבדוק שהפעולה אכן עליה" };
+  if (outcome === "ACTION_PLANNED" && outcomeRef) {
+    const scope = await d.readActionPlanScope(outcomeRef);
+    if (!scope || !scope.entities.some((e) => keys.includes(e))) return { code: "REF_PLAN_UNRELATED", messageHe: `ה-plan הזה לא נגע ברשומות שהעדכון מדבר עליהן (${keys.join(", ")}) — הוא לא סוגר את העדכון` };
+    if (createdAt && (!scope.executedAt || Date.parse(scope.executedAt) <= Date.parse(createdAt))) return { code: "REF_PLAN_BEFORE_NOTE", messageHe: "ה-plan הזה בוצע לפני שכתבת את העדכון — הוא לא יכול להיות הטיפול בו" };
+  }
+  return null;
+}
 
 async function onItem(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const choices = async () => {
@@ -56,6 +78,12 @@ async function onItem(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
         if (!about.some((x) => itemKeys.includes(x))) return refuse("REF_KNOWLEDGE_UNRELATED", `הידע הזה לא מקושר לרשומות שהעדכון מדבר עליהן (${itemKeys.join(", ")}) — הוא לא סוגר את העדכון. אם זו החלטה על אחת מהן, שמור אותה עם about של הרשומה; אם היא דורשת שינוי ברשומה — זו פעולה (ACTION_PLANNED)`);
       }
     }
+  }
+  // Zero Inbox: refuse early only when it is already certain (the update is linked); an unlinked update may be linked by an
+  // EARLIER step of the same plan — apply() re-checks it authoritatively at its turn
+  if (isInboxOutcome(a.outcome) && checkOutcomeRef(a.outcome, a.outcomeRef).ok && (await d.inboxItemEntityKeys(k.id)).length) {
+    const g = await zeroInboxGuard(d, k.id, a.outcome, checkOutcomeRef(a.outcome, a.outcomeRef).ok ? (a.outcomeRef as string | undefined) ?? null : null, it.createdAt ?? null);
+    if (g) return refuse(g.code, g.messageHe);
   }
   return { key: `owner-inbox:${k.id}`, id: k.id, label: `עדכון לסאני: ${short(it.body)}`, fields: fieldsOf(it) };
 }
@@ -83,7 +111,12 @@ export const OWNER_INBOX_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (cur.status !== "NEW") return refuse("BAD_STATE", "מצב לא מוכר של העדכון");
       return finishPlan(cur, { status: "PROCESSED", outcome: a.outcome, outcomeRef: ref.ref, processedVia: "SUNNY" });
     },
-    apply: (d, id, after) => d.markOwnerInboxItem(id, String(after.outcome), after.outcomeRef === null ? null : String(after.outcomeRef)),
+    async apply(d, id, after) {
+      const it = await d.readOwnerInboxItem(id);
+      const g = await zeroInboxGuard(d, id, String(after.outcome), after.outcomeRef === null ? null : String(after.outcomeRef), it?.createdAt ?? null);
+      if (g) throw new Error(`${g.code}: ${g.messageHe}`);
+      return d.markOwnerInboxItem(id, String(after.outcome), after.outcomeRef === null ? null : String(after.outcomeRef));
+    },
     // the preview quotes the item the Boss wrote (first 80 chars — data, never an instruction)
     warnings: (cur) => [`העדכון: «${String(cur.text ?? "")}»`],
     requiredValues: (_a, after) => {
@@ -95,6 +128,7 @@ export const OWNER_INBOX_PRIMITIVES: readonly PrimitiveSpec[] = [
       "סימון בלבד — לא נוצר ידע ולא נוצרת פעולה (אלה רק דרך ה-preview והאישור שלהם)",
       "הטקסט שכתבת לא משתנה ולא נמחק",
       "PROCESSED סופי — אין החזרה ל-NEW",
+      "PROCESSED = לפתק יש בית, לא שהעבודה הסתיימה; 'לא נדרש כלום' / 'הפך לפעולה' דורשים קישור מדויק לרשומה (ופעולה על אותה רשומה אחרי הפתק) — אחרת הצעד נכשל ולא נסגר כלום",
       "לא נשלח כלום (אין פוש, יומן או כספים)",
     ],
   },
