@@ -19,6 +19,7 @@ import type { GatewaySources } from "../gateway/core";
 import type { KnowledgeLiveFacts } from "./kinds";
 import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, type KnowledgeActor, type KnowledgeProposeDeps } from "./propose";
 import { createOwnerKnowledgeStore, type OwnerKnowledgeTableClient } from "./store";
+import { matchReportedPayment } from "../finance/payment-match";
 
 const store = createOwnerKnowledgeStore(supabase as unknown as OwnerKnowledgeTableClient);
 const consumeNonce = createNonceGuard();
@@ -30,11 +31,10 @@ function liveFacts(src: GatewaySources, todayIL: string): KnowledgeLiveFacts {
     todayIL,
     projectStatus: (id) => st?.domains.projects.data?.index[id]?.status ?? null,
     financeMatch: ({ subjectKey, direction, amount, currency }) => {
-      // Only a project-scoped report can be matched deterministically against canonical transactions; else unknown.
-      if (!fin || !subjectKey.startsWith("project:")) return null;
-      const pid = subjectKey.slice("project:".length);
-      const type = direction === "RECEIVED" ? "income" : "expense";
-      return fin.raw.transactions.some((t) => t.projectId === pid && t.type === type && Number(t.amount) === amount && (t.currency ?? "₪") === currency);
+      // P0-3 (2026-10-05): "already recorded" ONLY when a REAL money row says it (income שולם / התקבל, expense שולם) —
+      // never an expected (צפוי / לא שולם / חלקי) or cancelled row. The ONE matcher (lib/partner/finance/payment-match.ts).
+      const m = matchReportedPayment({ subjectKey, direction, amount, currency }, fin ? fin.raw.transactions : null);
+      return m.kind === "UNKNOWN" ? null : m.kind === "RECORDED";
     },
   };
 }

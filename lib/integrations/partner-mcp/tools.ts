@@ -288,9 +288,12 @@ function validateQueryArgs(args: Record<string, unknown>): ArgsValidation {
  * exactly what it trimmed — Owner decisions, conflicts, actions, suggested actions, missing[] and drillDown are
  * never trimmed. If it still does not fit, only the envelope + those protected sections are returned.
  */
-const TRIMMABLE = ["relationships", "facts", "openIssues", "observations", "recentOutcomes", "candidates", "openQuestions", "items", "resolutions", "knowledge", "summary"];
+const TRIMMABLE = ["relationships", "facts", "openIssues", "observations", "recentOutcomes", "candidates", "openQuestions", "items", "resolutions", "knowledge", "summary", "freshStates", "events"];
 const PROTECTED = ["schemaVersion", "knowledgeSchemaVersion", "tool", "query", "asOf", "freshness", "sources", "textPolicy", "status", "entity", "ownerDecisions", "conflicts", "actionHistory", "suggestedActions", "missing", "drillDown", "patterns", "truncated", "omitted",
-  "capability", "mode", "params", "completeness", "coverage", "page", "error"];
+  "capability", "mode", "params", "completeness", "coverage", "page", "error",
+  // Claim contract (P0-1, 2026-10-05): an action result never loses what its verification proves — a trimmed result must
+  // never read as a bare APPLIED_AS_EXPECTED (= "re-read and in place") when the proof was a RECEIPT / PARTIAL / unknown.
+  "planId", "planStatus", "refusal", "canonicalEffect", "verification", "verifyKind", "outcomeUnknown", "partial", "messageHe", "ownerMessageHe", "steps", "created"];
 
 export function guardOutput(payload: Record<string, unknown>, maxChars: number): { payload: Record<string, unknown>; text: string; guarded: boolean } {
   let text = JSON.stringify(payload);

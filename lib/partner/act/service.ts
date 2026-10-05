@@ -431,7 +431,7 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
       const agg = aggregateOf(plan, rows, [], d.nowMs());
       return agg.outcome === "IN_PROGRESS"
         ? refused("IN_PROGRESS", "בוס, הביצוע של התוכנית הזאת עדיין רץ — לא מריץ שוב. אבדוק את הסטטוס עוד רגע", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps })
-        : refused("ALREADY_EXECUTED", "בוס, התוכנית הזאת כבר בוצעה — היא לא רצה פעמיים. זה מה שנרשם", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps });
+        : refused("ALREADY_EXECUTED", agg.outcome === "OUTCOME_UNKNOWN" ? UNKNOWN_RAN_HE : "בוס, התוכנית הזאת כבר בוצעה — היא לא רצה פעמיים. זה מה שנרשם", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps, ...(agg.outcome === "OUTCOME_UNKNOWN" ? { outcomeUnknown: true } : {}) });
     }
   }
   if (out.steps.some((x) => x.status === "CONFLICT")) {
@@ -514,6 +514,17 @@ function nextStepFor(actionId: string, now: Fields | null) {
 type ExRow = { stepIndex: number; actionId: string; status: string; outcome?: StepOutcome | null };
 type HistoryOutcome = (typeof HISTORY_OUTCOMES)[number];
 const APPLIED = new Set(["APPLIED_AS_EXPECTED", "NO_CHANGE"]);
+/**
+ * P0-2 (2026-10-05): an interrupted RECEIPT step (push / email / sync / file) MAY have run — its effect cannot be read back.
+ * Stored as a FAILED row (the executions status vocabulary is unchanged) whose detail carries this marker; every reader
+ * presents it as OUTCOME_UNKNOWN — never FAILED ("not sent") and never applied ("sent"). Rows written before the marker
+ * carry the older "it may have happened" wording and are read the same way.
+ */
+export const MAY_HAVE_RUN = "OUTCOME_UNKNOWN(MAY_HAVE_RUN):";
+export function mayHaveRun(r: { status: string; outcome?: { detail?: string } | null }): boolean {
+  const det = String(r.outcome?.detail ?? "");
+  return r.status === "FAILED" && (det.startsWith(MAY_HAVE_RUN) || (det.startsWith("OUTCOME_UNKNOWN") && /it may have happened/.test(det)));
+}
 const STOPS = new Set(["FAILED", "STALE", "CONFLICT", "NOT_RUN"]);
 const atOf = (r: ExRow) => { const t = Date.parse(String((r.outcome as { at?: unknown } | null | undefined)?.at ?? "")); return Number.isFinite(t) ? t : null; };
 /**
@@ -534,13 +545,13 @@ function aggregateOf(p: Plan, rows: readonly ExRow[], eventTypes: readonly strin
   const began = rows.length > 0 || legacyStale;
   const steps = began ? p.steps.map((s) => {
     const r = byIdx.get(s.index);
-    if (r) return { index: s.index, actionId: s.actionId, status: r.status, outcome: r.status === "CLAIMED" ? null : r.outcome ?? null, ...(r.outcome?.createdKey ? { createdKey: r.outcome.createdKey } : {}) };
+    if (r) return { index: s.index, actionId: s.actionId, status: mayHaveRun(r) ? "OUTCOME_UNKNOWN" : r.status, outcome: r.status === "CLAIMED" ? null : r.outcome ?? null, ...(r.outcome?.createdKey ? { createdKey: r.outcome.createdKey } : {}) };
     return { index: s.index, actionId: s.actionId, status: running ? "PENDING" : "NOT_RUN", outcome: null, derived: true };
   }) : [];
   let outcome: HistoryOutcome;
   if (!began) outcome = nowMs > Date.parse(p.expiresAt) ? "EXPIRED_NOT_EXECUTED" : "NOT_EXECUTED";
   else if (running) outcome = "IN_PROGRESS";
-  else if (claimed.length) outcome = "OUTCOME_UNKNOWN";
+  else if (claimed.length || rows.some(mayHaveRun)) outcome = "OUTCOME_UNKNOWN";
   else {
     const applied = steps.filter((s) => APPLIED.has(s.status)).length;
     outcome = applied === p.steps.length ? "EXECUTED" : applied > 0 ? "PARTIALLY_APPLIED" : legacyStale || steps.some((s) => s.status === "STALE") ? "STALE" : "FAILED";
@@ -548,6 +559,7 @@ function aggregateOf(p: Plan, rows: readonly ExRow[], eventTypes: readonly strin
   return { outcome, steps, began };
 }
 const PLACEHOLDER = /^\[טקסט · \d+ תווים\]$/;
+const UNKNOWN_RAN_HE = "בוס, התוכנית הזאת כבר הורצה ולא תרוץ שוב — אבל התוצאה של שלב בה לא אומתה: ייתכן שבוצע וייתכן שלא. לא אומר שבוצע ולא שנכשל — צריך לבדוק במקור לפני שחוזרים על זה";
 /**
  * An interrupted step (CLAIMED, never recorded): READ-ONLY verification against the planned after-values — never a
  * second execution. Live = preview state → not applied; live = planned result (the step's own verify) → applied;
@@ -564,7 +576,7 @@ async function verifyInterrupted(plan: Plan, s0: PlanStep, d: ActServiceDeps, cr
   const s = res.step;
   if (stepTargetId(s) === "new") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; a created record cannot be verified without its id — check the live records before planning it again (never re-executed)");
   // A RECEIPT step (push / email / sync / file move) cannot be re-verified from records: it MAY have run — never "not applied".
-  if (verifyKindOf(spec.actionId, spec.kinds) === "RECEIPT") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; this step's effect (a push / email / sync / file) cannot be checked from the records — it may have happened. Check before repeating it (never re-executed)");
+  if (verifyKindOf(spec.actionId, spec.kinds) === "RECEIPT") return out("FAILED", `${MAY_HAVE_RUN} the execution was interrupted; this step's effect (a push / email / sync / file) cannot be checked from the records — it may have happened. Check before repeating it (never re-executed)`);
   try {
     const ex = executorFor(spec, d.writers);
     if (s !== s0) {
@@ -622,7 +634,7 @@ async function executedState(plan: Plan, d: ActServiceDeps): Promise<ActResult |
   const agg = aggregateOf(plan, rows, [], d.nowMs());
   return agg.outcome === "IN_PROGRESS"
     ? refused("IN_PROGRESS", "בוס, התוכנית הזאת כבר בביצוע — לא מאשר אותה שוב. אבדוק את הסטטוס", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps })
-    : refused("ALREADY_EXECUTED", agg.outcome === "EXECUTED" ? "בוס, התוכנית הזאת כבר בוצעה — היא לא רצה פעמיים. לשינוי נוסף צריך תוכנית חדשה" : "בוס, התוכנית הזאת כבר הורצה (היא לא רצה פעמיים) — זה מה שנרשם. למה שלא בוצע צריך תוכנית חדשה", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps });
+    : refused("ALREADY_EXECUTED", agg.outcome === "EXECUTED" ? "בוס, התוכנית הזאת כבר בוצעה — היא לא רצה פעמיים. לשינוי נוסף צריך תוכנית חדשה" : agg.outcome === "OUTCOME_UNKNOWN" ? UNKNOWN_RAN_HE : "בוס, התוכנית הזאת כבר הורצה (היא לא רצה פעמיים) — זה מה שנרשם. למה שלא בוצע צריך תוכנית חדשה", { planId: plan.planId, planStatus: agg.outcome, steps: agg.steps, ...(agg.outcome === "OUTCOME_UNKNOWN" ? { outcomeUnknown: true } : {}) });
 }
 
 // ── status ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -637,7 +649,7 @@ export async function planStatus(input: Record<string, unknown>, c: Caller, d: A
   return {
     status: agg.outcome === "EXPIRED_NOT_EXECUTED" ? "EXPIRED" : agg.outcome,
     planId: plan.planId, planHash: planHash(plan), steps: agg.steps, events: ev,
-    ...(agg.outcome === "IN_PROGRESS" ? { messageHe: "הביצוע עדיין רץ — לבדוק שוב עוד רגע; לא להריץ שוב" } : agg.outcome === "OUTCOME_UNKNOWN" ? { messageHe: "תוצאת שלב לא ידועה עדיין — לא לדווח כבוצע" } : {}),
+    ...(agg.outcome === "IN_PROGRESS" ? { messageHe: "הביצוע עדיין רץ — לבדוק שוב עוד רגע; לא להריץ שוב" } : agg.outcome === "OUTCOME_UNKNOWN" ? { messageHe: "תוצאת שלב לא ידועה — ייתכן שבוצע וייתכן שלא; לא לדווח כבוצע ולא כנכשל, ולא להריץ שוב", outcomeUnknown: true } : {}),
     detail: { intentHe: { text: plan.intentHe, trust: "OWNER_REQUEST" }, createdAt: plan.createdAt, expiresAt: plan.expiresAt, riskClass: plan.riskClass, approved: ev.some((e) => e.type === "APPROVED"), approvedBy: approvedByOf(ev.find((e) => e.type === "APPROVED")?.detail), plannedSteps: plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], changes: s.changes, dependsOn: s.dependsOn })) },
   };
 }
