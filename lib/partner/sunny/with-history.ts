@@ -16,7 +16,7 @@ export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record
   const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
   if (kind === "learning") {
     const progress = ((summary.find((x) => x.code === "PROGRESS_BY_ENTITY")?.value as { progress?: Record<string, SinceEvent[]> } | undefined)?.progress) ?? {};
-    const rest = summary.filter((x) => x.code !== "PROGRESS_BY_ENTITY");
+    const rest = summary.filter((x) => x.code !== "PROGRESS_BY_ENTITY" && (!history || x.code !== "LEARNING_STATUS"));
     if (!history) return { ...payload, summary: rest, learning: { status: "NOT_READ", noteHe: "לא קראתי את היסטוריית הפעולות — לא נבדק (זה לא אומר שכלום לא עבד)" } };
     const r = assessOutcomes(history, progress, nowMs);
     return { ...payload, summary: rest,
