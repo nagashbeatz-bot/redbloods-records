@@ -67,6 +67,8 @@ export const operatingModel: KnowledgeCapability = {
         item({ id: "label", entity: a.project.key, label: partner("לייבל"), epistemic: "DERIVED", source: "PROJECTS", fields: a.label }),
         ...(a.occupancyUntilDeadline ? [item({ id: "occupancy", entity: a.project.key, label: partner("עומס ביומן עד הדדליין"), epistemic: "DERIVED", source: "CALENDAR", fields: a.occupancyUntilDeadline })] : []),
         ...a.questions.map((x, n) => item({ id: `question:${n}`, entity: a.project.key, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "PROJECTS", fields: { kind: x.kind, why: x.why } })),
+        // D1 (2026-10-05): what the Owner already told Sunny — a known line ("כבר אמרת לי … — לפי הרשומות …"), never the question again
+        ...a.known.map((k, n) => item({ id: `known:${n}`, entity: a.project.key, label: record(k.textHe), epistemic: k.epistemic, source: k.basis.kind === "OWNER_ANSWER" ? "PROJECTS" : "OWNER_KNOWLEDGE", fields: { questionKind: k.questionKind, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: partner(k.canonicalHe), actions: k.actions } })),
       ];
       return result(items, { summary: [version, sfact("PROJECT", "פרויקט", a.project, "FACT", "PROJECTS")], completeness: src.finance?.status === "OK" && src.operations?.status === "OK" ? "COMPLETE" : "PARTIAL", coverage: COVERAGE });
     }

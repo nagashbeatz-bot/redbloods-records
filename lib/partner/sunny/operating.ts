@@ -20,6 +20,10 @@ import { sendEntryCurrent, evidenceFor } from "../work/send-log";
 import { HISTORICAL_DEBT_CUTOFF, QUESTION_TYPE_TO_MISSING_CONCEPT, WORKFLOW_MODELS } from "../system/owner-model";
 import type { LabelDetailRaw } from "../label/detail-types";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
+import { freshnessOf as knownFreshnessOf, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, type KnownContextItem } from "./known-context";
+import { paymentPathOf } from "../finance/decision-gate";
+import { ANSWER_OPTIONS } from "../investigation/questions";
+import type { PartnerMemory } from "../memory/types";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -85,8 +89,27 @@ export function projectOperating(src: GatewaySources, projectId: string) {
     ball.push(a.status === "got_notes" ? { holder: "OWNER", basis: `send log: notes received (${a.contentType ?? "?"})`, confidence: "RECORDED", outsideCommunicationPossible: true }
       : a.status === "pending_feedback" && a.actionType === "received" ? { holder: "OWNER", basis: `send log: a version was received (${a.contentType ?? "?"}, ${a.actionDate ?? "?"}) — the Owner's feedback is due`, confidence: "RECORDED", outsideCommunicationPossible: true }
       : { holder: (a.recipientRole ?? "UNKNOWN").toUpperCase(), basis: `send log: ${a.status} (${a.contentType ?? "?"}, sent ${a.actionDate ?? "?"})`, confidence: "RECORDED", outsideCommunicationPossible: true });
-  for (const k of kn.filter((x) => x.kind === "PROJECT_BLOCKER" && (x.subjectKey === `project:${projectId}` || x.identityKeys.includes(`project:${projectId}`))))
-    ball.push({ holder: String((k.value as Record<string, unknown>).reason ?? "UNKNOWN"), basis: "the Owner said so (P2 blocker)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false });
+  // ── what the Owner already TOLD Sunny (P2) — D1 / D3 (Owner decision 2026-10-05) ──
+  // The latest REAL work event of this project (session held, send-log entry, mix version, Victor upload / sent notes) —
+  // never updatedAt / wording. A statement older than it no longer counts (newer canonical evidence wins).
+  const projKey = `project:${projectId}`;
+  const evDays = [
+    ...(ops?.projectActions?.rows ?? []).filter((x) => x.projectId === projectId).map((x) => x.actionDate),
+    ...sendEvidence.mixVersionCreatedAt, ...sendEvidence.victorUploads, ...sendEvidence.victorNotesSentAt,
+    ...(st?.domains.sessions.data?.items ?? []).filter((x) => x.projectId === projectId && x.status === "התקיים" && x.statusSource !== "AUTO_MARK").map((x) => x.dateYmd),
+  ].map((d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : null)).filter((d): d is string => !!d && d <= today).sort();
+  const lastEvidence = evDays.length ? evDays[evDays.length - 1] : null;
+  const known: KnownContextItem[] = [];
+  for (const k of projectKnowledgeFor(kn, projKey)) {
+    const fr = knownFreshnessOf(k, today, lastEvidence);
+    if (fr === "SUPERSEDED_BY_EVIDENCE") continue; // the records moved on after he said it
+    const v = k.value as Record<string, unknown>;
+    ball.push(k.kind === "PROJECT_BLOCKER"
+      ? { holder: String(v.reason ?? "UNKNOWN"), basis: "the Owner said so (P2 blocker)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false }
+      : { holder: ownerSaidBallOf(k) === "OWNER" ? "OWNER" : "COUNTERPART", basis: "the Owner said so (P2 follow-up expectation)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false });
+    known.push(knownItem({ questionKind: "PROJECT_STATE", entityKey: projKey, label: null, meaningHe: k.meaningHe, knownAt: knownAtOf(k), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: k.id, knowledgeKind: k.kind }, freshness: fr,
+      canonicalHe: lastEvidence ? `הפעילות הרשומה האחרונה ב-${lastEvidence}, ואין רשומה שמראה אצל מי הפרויקט` : "אין רשומה שמראה אצל מי הפרויקט" }));
+  }
 
   // ── internal deadlines (team expectations, distinct from the client commitment) ──
   const internal = [
@@ -140,10 +163,31 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   // ── questions (only what evidence cannot answer) ──
   const questions: OwnerQuestion[] = [];
   const holders = [...new Set(ball.map((b) => b.holder))];
+  // PAYMENT_EVIDENCE: a payment the Owner REPORTED (P2, received, THIS project) → the ONE canonical path, never the question again
+  const payKnown = !closed && advance.state === "ADVANCE_EVIDENCE_MISSING"
+    ? knowledgeAbout(kn, ["PAYMENT_REPORTED_BY_OWNER"], projKey).filter((k) => (k.value as Record<string, unknown>).direction === "RECEIVED")[0] ?? null : null;
+  if (payKnown) {
+    const v = payKnown.value as Record<string, unknown>;
+    const fr = knownFreshnessOf(payKnown, today, null);
+    const path = paymentPathOf(projKey, { direction: "RECEIVED", amount: Number(v.amount), currency: String(v.currency), date: typeof v.date === "string" ? v.date : null }, fin ? fin.raw.transactions : null);
+    known.push(knownItem({ questionKind: "PAYMENT_EVIDENCE", entityKey: projKey, label: id.name, meaningHe: payKnown.meaningHe, knownAt: knownAtOf(payKnown), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: payKnown.id, knowledgeKind: payKnown.kind }, freshness: fr === "SUPERSEDED_BY_EVIDENCE" ? "CURRENT" : fr, canonicalHe: path.canonicalHe, actions: fr === "REVIEW_DUE" ? [] : path.actions }));
+  }
+  // DEADLINE_REALITY: the Owner's ACTIVE Owner Context answer about this project's deadline (investigation) — never asked again as new
+  const mem = ok(src.memory) as PartnerMemory | null;
+  const deadlineAnswers = (mem?.entities ?? []).flatMap((e) => e.ownerDecisions).filter((d) => d.entity === projKey && d.status === "ACTIVE" && (d.questionType === "WHY_DEADLINE_STILL_ACTIVE" || d.questionType === "WHAT_IS_NEW_PROJECT_DEADLINE"))
+    .sort((a, b) => b.answeredAt.localeCompare(a.answeredAt));
+  const dlAnswer = deadlineClass === "HISTORICAL_OPERATIONAL_DEBT" ? deadlineAnswers[0] ?? null : null;
+  if (dlAnswer) {
+    const label = ANSWER_OPTIONS[dlAnswer.questionType as keyof typeof ANSWER_OPTIONS]?.find((o) => o.code === dlAnswer.answerCode)?.labelHe ?? dlAnswer.answerCode;
+    const newDate = dlAnswer.questionType === "WHAT_IS_NEW_PROJECT_DEADLINE" && dlAnswer.answerValueYmd && isStrictYmd(dlAnswer.answerValueYmd) ? dlAnswer.answerValueYmd : null;
+    known.push(knownItem({ questionKind: "DEADLINE_REALITY", entityKey: projKey, label: id.name, meaningHe: `${dlAnswer.questionType === "WHAT_IS_NEW_PROJECT_DEADLINE" ? "הדדליין החדש" : "למה הדדליין עדיין פעיל"}: ${label}${newDate ? ` (${newDate})` : ""}`, knownAt: dlAnswer.answeredAt.slice(0, 10),
+      basis: { kind: "OWNER_ANSWER", contextId: dlAnswer.contextId, questionType: dlAnswer.questionType, answerCode: dlAnswer.answerCode }, freshness: "CURRENT",
+      canonicalHe: `הדדליין הרשום עדיין ${dl}`, actions: newDate && newDate !== dl ? [{ actionId: "UPDATE_PROJECT_DEADLINE", args: { project: projKey, deadline: newDate }, missing: [], required: true, noteHe: "מעדכן את הדדליין הרשום לתאריך שאמרת — רק באישורך." }] : [] }));
+  }
   if (!closed && ball.length === 0) questions.push({ kind: "PROJECT_STATE", questionHe: `מה המצב של "${id.name}" ועל מי הוא מחכה עכשיו?`, why: "no send log, engineer, Victor or blocker evidence — Redbloods does not record who the project waits on" });
   if (!closed && ball.some((b) => b.holder === "OWNER" && b.confidence === "IN_APP_TIMESTAMPS")) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `ב-"${id.name}" נראה שהכדור אצלך לפי המערכת — טופל משהו מחוץ ל-Redbloods (וואטסאפ/טלפון)?`, why: "in-app timestamps only; outside communication is common" });
-  if (!closed && advance.state === "ADVANCE_EVIDENCE_MISSING") questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${id.name}" התקדם אבל לא רשומה מקדמה/תשלום — התקבלה מקדמה?`, why: "Owner pattern: most client projects start with an advance; nothing is recorded (no amount is assumed)" });
-  if (deadlineClass === "HISTORICAL_OPERATIONAL_DEBT") questions.push({ kind: "DEADLINE_REALITY", questionHe: `"${id.name}" — הדדליין (${dl}) ישן. מה המצב האמיתי ומה הצעד הבא לשיקום?`, why: "historical operational debt — understand before acting (not an emergency)" });
+  if (!closed && advance.state === "ADVANCE_EVIDENCE_MISSING" && !payKnown) questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${id.name}" התקדם אבל לא רשומה מקדמה/תשלום — התקבלה מקדמה?`, why: "Owner pattern: most client projects start with an advance; nothing is recorded (no amount is assumed)" });
+  if (deadlineClass === "HISTORICAL_OPERATIONAL_DEBT" && !dlAnswer) questions.push({ kind: "DEADLINE_REALITY", questionHe: `"${id.name}" — הדדליין (${dl}) ישן. מה המצב האמיתי ומה הצעד הבא לשיקום?`, why: "historical operational debt — understand before acting (not an emergency)" });
 
   return {
     project: { key: `project:${projectId}`, name: id.name, status: id.status, businessType: id.businessType },
@@ -154,6 +198,8 @@ export function projectOperating(src: GatewaySources, projectId: string) {
     label: { labelWork, labelEvidence, labelArtistInvolved, protected: labelArtistInvolved, continuity: labelWork && (id.daysSinceUpdate ?? 0) >= 30 ? "ATTENTION_NO_RECENT_ACTIVITY" : labelWork ? "ACTIVE" : "NOT_LABEL" },
     occupancyUntilDeadline: occupancy,
     questions,
+    /** D1 (2026-10-05): what the Owner already told Sunny — known-context lines (never a repeated question; records unchanged). */
+    known,
     epistemic: "DERIVED",
   };
 }

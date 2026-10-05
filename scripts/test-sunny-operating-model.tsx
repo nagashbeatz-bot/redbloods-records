@@ -198,6 +198,39 @@ function main() {
   const f6 = projectOperating(sources(), P(6))!;
   ok("no evidence at all → UNKNOWN + ask (never inferred from age)", f6.ballHolder.certainty === "UNKNOWN" && f6.questions.some((x) => x.kind === "PROJECT_STATE"));
 
+  section("SCENARIO K — known context (Owner decisions D1 / D3 / D4, 2026-10-05): what the Owner told Sunny is never asked again as new");
+  {
+    const KK = (id: string, kind: string, pid: string, value: Record<string, unknown>, meaningHe: string, o: Partial<OwnerKnowledgeRecord> = {}): OwnerKnowledgeRecord => ({ id, createdAt: "2026-09-23T10:00:00Z", kind, subjectKey: `project:${pid}`, identityKeys: [`project:${pid}`], slotKey: id, value: value as OwnerKnowledgeRecord["value"], epistemic: "OWNER_REPORTED", meaningHe, operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, ...o } as OwnerKnowledgeRecord);
+    const pay = KK("k-pay", "PAYMENT_REPORTED_BY_OWNER", P(4), { direction: "RECEIVED", amount: 1000, currency: "₪", date: "2026-09-20" }, "הבוס דיווח: התקבל ₪1,000");
+    const k1 = projectOperating(sources({ incomeFor: [P(2)], knowledge: [pay] }), P(4))!;
+    ok("K1. a RECEIVED payment the Owner reported on THIS project → no PAYMENT_EVIDENCE question; a known line with the canonical path (ADD_TRANSACTION prefilled)", !k1.questions.some((x) => x.kind === "PAYMENT_EVIDENCE") && k1.known.some((k) => k.questionKind === "PAYMENT_EVIDENCE" && k.actions[0]?.actionId === "ADD_TRANSACTION" && k.actions[0].args.amount === 1000));
+    ok("K1b. …the advance evidence itself is unchanged (knowledge never changes the money)", k1.advance.state === "ADVANCE_EVIDENCE_MISSING");
+    const paidOut = KK("k-paid", "PAYMENT_REPORTED_BY_OWNER", P(4), { direction: "PAID", amount: 1000, currency: "₪" }, "שילמתי");
+    ok("K2. 'שילמתי' (PAID) never answers 'was an advance received?' — the question stays", projectOperating(sources({ incomeFor: [P(2)], knowledge: [paidOut] }), P(4))!.questions.some((x) => x.kind === "PAYMENT_EVIDENCE"));
+    const payOther = { ...pay, id: "k-pay2", subjectKey: `project:${P(2)}`, identityKeys: [`project:${P(2)}`] };
+    ok("K3. cross-entity: a payment reported on another project never answers this one", projectOperating(sources({ incomeFor: [P(2)], knowledge: [payOther] }), P(4))!.questions.some((x) => x.kind === "PAYMENT_EVIDENCE"));
+    const fu = KK("k-fu", "FOLLOW_UP_EXPECTATION", P(6), { who: "OWNER_WILL_CONTACT", whenRelative: "NEXT_WEEK" }, "אתה חוזר לפרויקט בשבוע הבא.", { reviewAt: "2026-10-01" });
+    const k4 = projectOperating(sources({ knowledge: [fu] }), P(6))!;
+    ok("K4. PROJECT_STATE answered once (a project follow-up expectation) → no PROJECT_STATE question; the ball is OWNER_REPORTED; a known line", !k4.questions.some((x) => x.kind === "PROJECT_STATE") && k4.ballHolder.evidence.some((b) => b.holder === "OWNER" && b.confidence === "OWNER_REPORTED") && k4.known.some((k) => k.questionKind === "PROJECT_STATE" && k.state === "KNOWN_MATCHES"));
+    const due = KK("k-bl", "PROJECT_BLOCKER", P(6), { reason: "WAITING_FOR_ARTIST" }, "מחכים לאמן", { reviewAt: "2026-09-20" });
+    const k5 = projectOperating(sources({ knowledge: [due] }), P(6))!;
+    ok("K5. D3: a blocker whose reviewAt passed → 'זה עדיין נכון?' (STILL_TRUE_CHECK) — not silence, not the bare original question", k5.known.some((k) => k.state === "STILL_TRUE_CHECK" && /עדיין נכון\?/.test(k.textHe)) && !k5.questions.some((x) => x.kind === "PROJECT_STATE"));
+    const old = KK("k-old", "PROJECT_BLOCKER", P(2), { reason: "WAITING_FOR_OWNER" }, "מחכה לבעלים", { createdAt: "2026-09-10T10:00:00Z" });
+    const k6 = projectOperating(sources({ knowledge: [old] }), P(2))!;
+    ok("K6. D3: a send-log entry (15.09) NEWER than the blocker (10.09) → the old blocker is not treated as still true (no ball entry, no known line)", !k6.ballHolder.evidence.some((b) => b.confidence === "OWNER_REPORTED") && !k6.known.some((k) => k.basis.kind === "OWNER_KNOWLEDGE" && (k.basis as { knowledgeId: string }).knowledgeId === "k-old"));
+    const fresh = KK("k-new", "PROJECT_BLOCKER", P(2), { reason: "WAITING_FOR_OWNER" }, "מחכה לבעלים", { createdAt: "2026-09-20T10:00:00Z" });
+    ok("K6b. …the same blocker said AFTER the evidence stands", projectOperating(sources({ knowledge: [fresh] }), P(2))!.ballHolder.evidence.some((b) => b.confidence === "OWNER_REPORTED"));
+    const withMem = (d: Record<string, unknown>) => ({ ...sources({ deadlines: { [P(2)]: "2026-05-01" } }), memory: { status: "OK" as const, value: { entities: [{ ownerDecisions: [{ entity: `project:${P(2)}`, contextId: "ctx-1", questionId: "q", answerValueYmd: null, answeredAt: "2026-09-22T10:00:00Z", status: "ACTIVE", supersedesId: null, ...d }] }] } as never } });
+    const k7 = projectOperating(withMem({ questionType: "WHAT_IS_NEW_PROJECT_DEADLINE", answerCode: "SPECIFIC_DATE", answerValueYmd: "2026-10-20" }), P(2))!;
+    ok("K7. DEADLINE_REALITY answered (Owner Context: new deadline 20.10) → no DEADLINE_REALITY question; known line + UPDATE_PROJECT_DEADLINE 2026-10-20 (a proposal)", !k7.questions.some((x) => x.kind === "DEADLINE_REALITY") && k7.known.some((k) => k.questionKind === "DEADLINE_REALITY" && k.state === "KNOWN_DECISION_RECONCILE" && k.actions[0]?.actionId === "UPDATE_PROJECT_DEADLINE" && k.actions[0].args.deadline === "2026-10-20"));
+    const k8 = projectOperating(withMem({ questionType: "WHY_DEADLINE_STILL_ACTIVE", answerCode: "CLIENT_DELAY" }), P(2))!;
+    ok("K8. 'why is the deadline still active' answered (עיכוב מצד הלקוח) → known line, no action invented, no repeated question", !k8.questions.some((x) => x.kind === "DEADLINE_REALITY") && k8.known.some((k) => k.questionKind === "DEADLINE_REALITY" && k.actions.length === 0 && /עיכוב מצד הלקוח/.test(k.textHe)));
+    const k9 = projectOperating(withMem({ questionType: "WHY_DEADLINE_STILL_ACTIVE", answerCode: "CLIENT_DELAY", status: "SUPERSEDED" }), P(2))!;
+    ok("K9. a superseded answer does not count → the question is asked", k9.questions.some((x) => x.kind === "DEADLINE_REALITY"));
+    const cap = q("project", { project: `project:${P(4)}` }, sources({ incomeFor: [P(2)], knowledge: [pay] }));
+    ok("K10. the capability serves the known lines (record text, the basis, the canonical path)", served(cap) && itemsOf(cap).some((i) => i.id.startsWith("known:") && (i.fields as { questionKind?: string }).questionKind === "PAYMENT_EVIDENCE"));
+  }
+
   section("SCENARIO G — personal calendar context stays personal");
   const stG = sources().state;
   const idx = buildCalendarLinkIndex(OPS, stG && stG.status === "OK" ? stG.value : null);

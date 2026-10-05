@@ -125,7 +125,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
   const links = clientProjectLinks(src, clientId);
   const projects = links.map((l) => {
     const a = projectOperating(src, l.projectId);
-    return { ...l, key: `project:${l.projectId}`, open: !CLOSED_PROJECT.has(l.status), deadline: a?.clientDeadline.date ?? null, deadlineClass: a?.clientDeadline.class ?? null, advance: a?.advance.state ?? null, ballHolders: a?.ballHolder.holders ?? [], labelWork: a?.label.labelWork ?? null };
+    return { ...l, key: `project:${l.projectId}`, open: !CLOSED_PROJECT.has(l.status), deadline: a?.clientDeadline.date ?? null, deadlineClass: a?.clientDeadline.class ?? null, advance: a?.advance.state ?? null, ballHolders: a?.ballHolder.holders ?? [], labelWork: a?.label.labelWork ?? null, paymentKnown: a?.known.find((k) => k.questionKind === "PAYMENT_EVIDENCE") ?? null };
   });
 
   // ── money: REALIZED / EXPECTED / POTENTIAL, per currency, never merged ──
@@ -229,7 +229,7 @@ export function buildClientView(src: GatewaySources, clientId: string) {
     if (p.open) signals.push({ code: "ACTIVE_CLIENT_PROJECT", kind: "CANONICAL_FACT", he: `פרויקט פתוח: ${p.name} (${p.status}; קישור ${p.basis})`, entity: p.key });
     if (p.open && (p.deadlineClass === "APPROACHING" || p.deadlineClass === "AT_RISK")) signals.push({ code: "CLIENT_DEADLINE_APPROACHING", kind: "DERIVED_SIGNAL", he: `${p.name}: ${p.deadlineClass} (${p.deadline})`, entity: p.key });
     if (p.open && p.deadlineClass === "HISTORICAL_OPERATIONAL_DEBT") signals.push({ code: "HISTORICAL_DEADLINE_DEBT", kind: "DERIVED_SIGNAL", he: `${p.name}: דדליין ישן (${p.deadline}) — חוב תפעולי היסטורי, לא חירום חדש.`, entity: p.key });
-    if (p.open && p.advance === "ADVANCE_EVIDENCE_MISSING") { signals.push({ code: "PAYMENT_EVIDENCE_MISSING", kind: "DERIVED_SIGNAL", he: `${p.name}: העבודה התקדמה ואין תשלום שהתקבל רשום.`, entity: p.key }); questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${p.name}" התקדם ואין מקדמה רשומה — התקבלה מקדמה?`, why: "Owner pattern: advance at the start; nothing recorded (no amount assumed)" }); }
+    if (p.open && p.advance === "ADVANCE_EVIDENCE_MISSING") { signals.push({ code: "PAYMENT_EVIDENCE_MISSING", kind: "DERIVED_SIGNAL", he: `${p.name}: העבודה התקדמה ואין תשלום שהתקבל רשום.`, entity: p.key }); if (p.paymentKnown) known.push(p.paymentKnown); else questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${p.name}" התקדם ואין מקדמה רשומה — התקבלה מקדמה?`, why: "Owner pattern: advance at the start; nothing recorded (no amount assumed)" }); }
     if (p.basis === "NAME_COLLABORATION") signals.push({ code: "IDENTITY_COLLABORATION", kind: "DERIVED_SIGNAL", he: `${p.name}: שיתוף עם ${p.otherArtists.join(", ")} — הקישור לפי שם.`, entity: p.key });
   }
   if (Object.values(collectible).some((v) => v > 0)) signals.push({ code: "RECEIVABLE_EXISTS", kind: "DERIVED_SIGNAL", he: `יתרה לגבייה לפי מחיר מוסכם: ${Object.entries(collectible).map(([k, v]) => `${v} ${k}`).join(", ")}` });
