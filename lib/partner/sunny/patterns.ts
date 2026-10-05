@@ -88,7 +88,8 @@ export function derivePatterns(src: GatewaySources): DerivedPattern[] {
   // A — sessions held while the project still says "לא התחיל" (activity without recorded status movement)
   const notStarted = (st.domains.projects.data?.open ?? []).filter((p) => p.status === "לא התחיל");
   const occA: Occurrence[] = [];
-  for (const p of notStarted) for (const s of st.domains.sessions.data?.items ?? []) if (s.projectId === p.id && s.status === "התקיים" && s.dateYmd) occA.push({ sourceId: `session:${s.id}`, at: `${s.dateYmd}T12:00:00Z`, entity: `project:${p.id}`, he: `סשן ${s.dateYmd} ב"${p.name}" שעדיין "לא התחיל"` });
+  for (const p of notStarted) // an AUTO_MARK held session is a clock tick, never proof of activity (2026-10-01) — only sessions the Boss recorded
+  for (const s of st.domains.sessions.data?.items ?? []) if (s.projectId === p.id && s.status === "התקיים" && s.statusSource !== "AUTO_MARK" && s.dateYmd) occA.push({ sourceId: `session:${s.id}`, at: `${s.dateYmd}T12:00:00Z`, entity: `project:${p.id}`, he: `סשן ${s.dateYmd} ב"${p.name}" שעדיין "לא התחיל"` });
   push("ACTIVITY_WITHOUT_STATUS", occA, [], null, "סשנים מתקיימים בפרויקטים שעדיין רשומים 'לא התחיל' — הסטטוס כנראה לא מתעדכן, או שההתקדמות לא נרשמת (השערה)");
 
   // J — the Owner as the bottleneck: several works whose recorded ball is his (the app's own computeVictorBall)
@@ -96,7 +97,8 @@ export function derivePatterns(src: GatewaySources): DerivedPattern[] {
   const recentNotes = (st.domains.victor.data?.active ?? []).filter((w) => w.lastNotesSentAt && nowMs - Date.parse(w.lastNotesSentAt) <= 7 * DAY).length;
   const passed = victorOwner.filter((w) => w.projectId && (st.domains.projects.data?.open ?? []).some((p) => p.id === w.projectId && p.deadline.daysTo !== null && p.deadline.daysTo < 0));
   push("OWNER_FEEDBACK_BOTTLENECK", victorOwner.map((w) => ({ sourceId: `victor-work:${w.id}`, at: w.lastUploadAt!, entity: `victor-work:${w.id}`, he: `${w.title} — ממתין לפידבק שלך` })),
-    recentNotes ? [`שלחת הערות ל-${recentNotes} עבודות בשבוע האחרון`] : [], passed.length ? `${passed.length} מהעבודות שמחכות לך בפרויקטים שהדדליין שלהם עבר` : null,
+    // contradicting progress only when the Boss is clearly working through them (notes to ≥ max(2, ¼ of the waiting works) this week)
+    recentNotes >= Math.max(2, Math.ceil(victorOwner.length / 4)) ? [`שלחת הערות ל-${recentNotes} עבודות בשבוע האחרון`] : [], passed.length ? `${passed.length} מהעבודות שמחכות לך בפרויקטים שהדדליין שלהם עבר` : null,
     `${victorOwner.length} עבודות של ויקטור מחכות לפידבק שלך לפי הרשומות — ייתכן שהצוואר הוא אצלך ולא אצלו (השערה)`);
 
   // H — work moves but the project has no financial setup (price) recorded

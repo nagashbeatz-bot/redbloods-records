@@ -175,6 +175,7 @@ const hist = (planId: string, at: string, actionId: string, entity: string, outc
     ok("8i. a WEAK pattern is hidden from the executive answer (company_view shows only showToOwner)", weak?.level === "WEAK" && !weak.showToOwner && /filter\(\(x\) => x\.showToOwner\)/.test(read("lib/partner/knowledge/capabilities/company-view.ts")));
     const ob = derivePatterns(src({ victorOwner: 4 })).find((p) => p.code === "OWNER_FEEDBACK_BOTTLENECK");
     ok("8j. several works waiting on the Boss → an Owner-bottleneck HYPOTHESIS (never 'Victor is late')", ob?.level === "REPEATED" && !/ויקטור מעכב|תמיד/.test(ob.hypothesisHe), ob);
+    ok("8k2. an AUTO_MARK held session is never 'activity' for the pattern", !derivePatterns(src({ status: "לא התחיל", sessions: [{ id: U(92), date: "2026-09-30", source: "AUTO_MARK" }] })).some((p) => p.code === "ACTIVITY_WITHOUT_STATUS"));
     ok("8k. sessions on a 'לא התחיל' project → activity-without-status observation", derivePatterns(src({ status: "לא התחיל", sessions: [{ id: U(91), date: "2026-09-30" }] })).some((p) => p.code === "ACTIVITY_WITHOUT_STATUS"));
   }
 
@@ -194,10 +195,13 @@ const hist = (planId: string, at: string, actionId: string, entity: string, outc
     ok("9e. the same re-planning again with nothing in between → CONTRADICTED", r5.assessments.some((a) => a.planId === "pl_5" && a.level === "CONTRADICTED"));
     const lesson = r5.lessons.find((l) => l.code === "NO_MOVEMENT_AFTER_UPDATE_PROJECT_DEADLINE");
     ok("9f. a lesson appears as a HYPOTHESIS ('לבדוק blocker / צעד הבא') — routed to existing knowledge only with the Boss's approval", !!lesson && lesson.epistemic === "HYPOTHESIS" && /blocker/.test(lesson.he) && /partner_propose_knowledge/.test(lesson.toKnowledgeHe), r5.lessons);
-    const declined = [1, 2, 3].map((n) => hist(`pl_n${n}`, `2026-09-2${n}T10:00:00Z`, "CREATE_TASK", `task:new`, "NOT_EXECUTED", null));
-    const pref = assessOutcomes(declined, {}, now).preferences.find((p) => p.code === "OWNER_DOES_NOT_APPROVE_CREATE_TASK");
-    ok("9g. the Boss repeatedly not approving the same proposal → an Owner-PREFERENCE hypothesis (asked, never a rule)", pref?.level === "REPEATED" && /להפוך לכלל עבודה/.test(pref.toKnowledgeHe), pref);
-    ok("9h. two declines → WEAK, hidden", assessOutcomes(declined.slice(0, 2), {}, now).preferences.every((p) => !p.showToOwner));
+    const declined = [1, 2, 3].map((n) => hist(`pl_n${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", `project:${U(300 + n)}`, "NOT_EXECUTED", null));
+    const pref = assessOutcomes(declined, {}, now).preferences.find((p) => p.code === "OWNER_DOES_NOT_APPROVE_SET_FINANCE_EXCEPTION");
+    ok("9g. the same proposal not carried out on 3 different records → an Owner-PREFERENCE hypothesis (asked, never a rule; 'not necessarily a refusal')", pref?.level === "REPEATED" && /להפוך לכלל עבודה/.test(pref.toKnowledgeHe) && /לא בהכרח סירוב/.test(pref.he), pref);
+    ok("9h. on one record only (a re-plan loop) → not REPEATED / hidden", assessOutcomes([1, 2].map((n) => hist(`pl_m${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", KEY, "NOT_EXECUTED", null)), {}, now).preferences.every((p) => !p.showToOwner));
+    const superseded = [...declined, hist("pl_ok", "2026-09-29T10:00:00Z", "SET_FINANCE_EXCEPTION", `project:${U(301)}`)];
+    ok("9h2. a plan later re-planned and EXECUTED on the same record is not a 'not approved' signal", (assessOutcomes(superseded, {}, now).preferences.find((p) => p.code === "OWNER_DOES_NOT_APPROVE_SET_FINANCE_EXCEPTION")?.cases.length ?? 0) === 2);
+    ok("9h3. creations (':new') and inbox housekeeping are never a preference signal", assessOutcomes([1, 2, 3].flatMap((n) => [hist(`pl_t${n}`, `2026-09-2${n}T10:00:00Z`, "CREATE_TASK", "task:new", "NOT_EXECUTED", null), hist(`pl_h${n}`, `2026-09-2${n}T10:00:00Z`, "LINK_INBOX_ENTITY", `project:${U(400 + n)}`, "NOT_EXECUTED", null)]), {}, now).preferences.length === 0);
     ok("9i. record-keeping actions are not judged as recommendations", assessOutcomes([hist("pl_8", "2026-09-10T10:00:00Z", "SET_AGREED_PRICE", KEY)], { [KEY]: [] }, now).assessments.length === 0);
   }
 

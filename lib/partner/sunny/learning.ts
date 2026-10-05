@@ -18,6 +18,7 @@ import { ACTION_MEANING, type ActionHistoryItem, type SinceEvent } from "./since
 import { patternLevel, type Occurrence, type PatternLevel } from "./patterns";
 
 const DAY = 86_400_000;
+const HOUSEKEEPING = new Set(["MARK_OWNER_INBOX_ITEM", "LINK_INBOX_ENTITY", "RECORD_INBOX_INTERPRETATION", "RETRACT_INBOX_LINK", "RETRACT_INBOX_INTERPRETATION"]);
 export const LEARNING_HEURISTICS = { windowDays: 14, note: "engineering window only — never Owner policy" } as const;
 export type OutcomeLevel = "CORRELATED" | "LIKELY_HELPFUL" | "INSUFFICIENT_EVIDENCE" | "DID_NOT_RESOLVE" | "CONTRADICTED";
 /** the progress kinds an action directly enables (semantic link) — anything else is at most CORRELATED */
@@ -74,12 +75,18 @@ export function assessOutcomes(history: readonly ActionHistoryItem[], progressBy
   // OWNER PREFERENCE: plans Sunny proposed that the Boss never approved, by action (history records NOT_EXECUTED plans)
   const preferences: Lesson[] = [];
   const declined = new Map<string, Occurrence[]>();
-  for (const h of history) if (h.outcome === "NOT_EXECUTED" || h.outcome === "EXPIRED_NOT_EXECUTED") for (const s of h.steps) if (s.entity) declined.set(s.actionId, [...(declined.get(s.actionId) ?? []), { sourceId: `${h.planId}:${s.entity}`, at: h.at ?? new Date(nowMs).toISOString(), entity: s.entity, he: "הוצע ולא אושר" }]);
+  // a plan that never ran is NOT proof the Boss refused it: it may have been re-planned (a later EXECUTED plan of the same
+  // action on the same record supersedes it) — and inbox housekeeping / creations ("…:new") are never a preference signal
+  const executedLater = (actionId: string, entity: string, at: string | null) => history.some((x) => x.outcome !== "NOT_EXECUTED" && x.outcome !== "EXPIRED_NOT_EXECUTED" && x.steps.some((st) => st.actionId === actionId && st.entity === entity) && (!at || !x.at || Date.parse(x.at) >= Date.parse(at)));
+  for (const h of history) if (h.outcome === "NOT_EXECUTED" || h.outcome === "EXPIRED_NOT_EXECUTED") for (const s of h.steps) {
+    if (!s.entity || s.entity.endsWith(":new") || HOUSEKEEPING.has(s.actionId) || executedLater(s.actionId, s.entity, h.at)) continue;
+    declined.set(s.actionId, [...(declined.get(s.actionId) ?? []), { sourceId: `${s.actionId}:${s.entity}`, at: h.at ?? new Date(nowMs).toISOString(), entity: s.entity, he: "הוצע ולא בוצע (לא אושר / נזנח)" }]);
+  }
   for (const [actionId, occ] of declined) {
     const lv = patternLevel({ occurrences: occ, nowMs, contradicting: 0, consequence: false });
     if (!lv || lv.level === "OBSERVATION") continue;
     preferences.push({ code: `OWNER_DOES_NOT_APPROVE_${actionId}`, level: lv.level, epistemic: "HYPOTHESIS", cases: lv.counted.map((o) => o.entity),
-      he: `ב-${lv.counted.length} מקרים הצעתי ${actionId} והבוס לא אישר — אולי כדאי להציע אחרת (השערה, לא כלל)`,
+      he: `ב-${lv.counted.length} רשומות שונות הצעתי ${actionId} וזה לא בוצע (לא אושר / נזנח — לא בהכרח סירוב) — אולי כדאי לשאול אחרת (השערה, לא כלל)`,
       toKnowledgeHe: "לפני שזה משנה משהו: לשאול את הבוס 'שמתי לב ש… — להפוך לכלל עבודה?' ורק באישורו דרך partner_propose_knowledge",
       showToOwner: lv.level === "REPEATED" || lv.level === "STRONG" });
   }
