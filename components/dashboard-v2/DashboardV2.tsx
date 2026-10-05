@@ -5,10 +5,14 @@
 // It reads existing endpoints and opens existing drawers / modals / pages. Its own single write is "עדכון לסאני"
 // (POST /api/sunny/inbox → sunny_owner_inbox, OWNER_REPORTED evidence). Other writes are the
 // ones the reused components already make (TasksAttentionModal, the Partner sections, EditReleaseModal).
-// All derivations live in lib/dashboard-v2.ts (pure). No page-load write, no push, no calendar write.
-// "מה צריך ממני היום" is Sunny-curated (Owner decision 2026-10-01): the needs_me capability, read through the Owner-only
-// GET /api/partner/knowledge — the SAME list Sunny reads. The raw aggregation (buildNeedsMe) is only the labelled
-// "לא מסונן" fallback when needs_me cannot be read (partner actions + tasks due today, nothing else).
+// All derivations live in lib/dashboard-v2.ts / lib/dashboard-executive.ts (pure). No page-load write, no push, no
+// calendar write.
+// Sunny's executive surface (Owner decision 2026-10-05, direction B, Phase B): the moves, the state line, "סוגרים
+// לולאות", the label, "כסף קדימה" and "מחכה לך" all come from ONE Owner-only read, GET /api/partner/executive —
+// BUSINESS_MOTION + FINANCIAL_FORWARD + needs_me, the SAME answers the chat gets, with the same action history. The page
+// adds no ranking, score or rule and keeps Sunny's order. The timeline / releases are enriched with Sunny's reason ONLY
+// by an exact canonical entity key (never a name). The raw aggregation (buildNeedsMe) is only the labelled "לא מסונן"
+// fallback when needs_me cannot be read (partner actions + tasks due today, nothing else).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -27,11 +31,15 @@ import { summarizeUpcomingReleases, releaseShortDate } from "@/lib/dashboard-rel
 import { israelTodayYmd } from "@/lib/project-deadline";
 import type { LabelRelease } from "@/lib/types";
 import {
-  buildNeedsMe, buildTimeline, financeMonth, releaseBadge, dayLabel, NEEDS_ME_VISIBLE,
+  buildNeedsMe, buildTimeline, releaseBadge, dayLabel, NEEDS_ME_VISIBLE,
   type NeedItem, type NeedBadge, type OpenTarget, type RichPart, type TimelineItem, type TimelineKind,
-  type CooCaseIn, type PartnerActionIn, type IntegrityQuestionIn, type TaskIn,
-  type CalendarEventIn, type SessionIn, type ShowIn, type FinanceTxIn,
+  type PartnerActionIn, type IntegrityQuestionIn, type TaskIn,
+  type CalendarEventIn, type SessionIn, type ShowIn,
 } from "@/lib/dashboard-v2";
+import {
+  parseExecutive, indexByEntity, enrichmentFor, openOfEntity, totalsHe, LEVEL_HE,
+  type Executive, type ExecItem, type ExecLevel, type ExecForward,
+} from "@/lib/dashboard-executive";
 
 // ── Tokens: the same as the current dashboard (DashboardDesignPreview) ────────
 const BRAND = "#DC2626";
@@ -61,6 +69,7 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   session: "סשן", shoot: "צילום", rehearsal: "חזרה", show: "הופעה", meeting: "פגישה", deadline: "דדליין", task: "משימה", event: "יומן",
 };
 const TIMELINE_VISIBLE = 6;
+const LEVEL_COLOR: Record<ExecLevel, string> = { MUST: RED, SHOULD: AMBER, WATCH: BLUE, INFO: "#9CA3AF" };
 
 async function getJson(url: string): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const res = await fetch(url, { cache: "no-store" });
@@ -140,7 +149,6 @@ export default function DashboardV2() {
   const today = israelTodayYmd();
 
   // ── Sources (all existing, read-only) ──────────────────────────────────────
-  const [coo, setCoo] = useState<Load<{ headline: RichPart[]; headlineLevel: string; p0: number; cases: CooCaseIn[] }>>(undefined);
   const [actions, setActions] = useState<Load<PartnerActionIn[]>>(undefined);
   const [integrity, setIntegrity] = useState<Load<IntegrityQuestionIn[]>>(undefined);
   const [tasks, setTasks] = useState<Load<TaskIn[]>>(undefined);
@@ -148,32 +156,30 @@ export default function DashboardV2() {
   const [shows, setShows] = useState<Load<ShowIn[]>>(undefined);
   const [calendar, setCalendar] = useState<Load<CalendarEventIn[]>>(undefined);
   const [calendarState, setCalendarState] = useState<"loading" | "ok" | "not_connected" | "error">("loading");
-  const [finance, setFinance] = useState<Load<FinanceTxIn[]>>(undefined);
   const [releases, setReleases] = useState<Load<LabelRelease[]>>(undefined);
-  const [board, setBoard] = useState<Load<NeedsBoard>>(undefined);
+  const [exec, setExec] = useState<Load<Executive>>(undefined);
 
-  // Sunny-curated Needs-Me (read-only capability). A non-OK answer = not checked, never "nothing needs you".
-  // Also re-run after a task action so a card that no longer applies does not stay stale.
-  const loadBoard = useCallback(() =>
-    getJson("/api/partner/knowledge?capability=needs_me&mode=board&limit=50")
-      .then((r) => setBoard(r.ok ? parseBoard(r.body) ?? null : null))
-      .catch(() => setBoard(null)), []);
+  // Sunny's executive read (motion + forward + needs_me, one Owner-only GET). A failed read / part = not read, never
+  // "nothing needs you". Also re-run after a task action so a card that no longer applies does not stay stale.
+  const loadExecutive = useCallback(() =>
+    getJson("/api/partner/executive")
+      .then((r) => setExec(r.ok ? parseExecutive(r.body) ?? null : null))
+      .catch(() => setExec(null)), []);
+  // needs_me exactly as before (the same parser), now from the executive read
+  const board: Load<NeedsBoard> = exec === undefined ? undefined : exec?.needsMe ? parseBoard(exec.needsMe) ?? null : null;
+  const motion = exec === undefined ? undefined : exec?.motion ?? null;
+  const forward = exec === undefined ? undefined : exec?.forward ?? null;
 
   useEffect(() => {
     const run = <T,>(url: string, pick: (b: Record<string, unknown>) => T, set: (v: T | null) => void) =>
       getJson(url).then((r) => set(r.ok ? pick(r.body) : null)).catch(() => set(null));
 
-    run("/api/coo/brief", (b) => {
-      const brief = (b.brief ?? {}) as { headline?: RichPart[]; headlineLevel?: string; tierCounts?: Record<string, number>; cases?: CooCaseIn[] };
-      return { headline: brief.headline ?? [], headlineLevel: brief.headlineLevel ?? "calm", p0: brief.tierCounts?.P0 ?? 0, cases: brief.cases ?? [] };
-    }, setCoo);
     run("/api/partner/actions", (b) => (Array.isArray(b.items) ? b.items as PartnerActionIn[] : []), setActions);
     run("/api/partner/integrity", (b) => (Array.isArray(b.questions) ? b.questions as IntegrityQuestionIn[] : []), setIntegrity);
     run("/api/tasks?status=פתוח", (b) => (Array.isArray(b.tasks) ? b.tasks as TaskIn[] : []), setTasks);
     run("/api/sessions?all=1", (b) => (Array.isArray(b.sessions) ? b.sessions as SessionIn[] : []), setSessions);
     run("/api/shows", (b) => (Array.isArray(b.shows) ? b.shows as ShowIn[] : []), setShows);
-    run("/api/transactions?all=1", (b) => (Array.isArray(b.transactions) ? b.transactions as FinanceTxIn[] : []), setFinance);
-    loadBoard();
+    loadExecutive();
 
     // Calendar: the existing read-only week route (today + 7 days). A read failure is NEVER an empty calendar.
     getJson(`/api/calendar/week?weekStart=${israelTodayYmd()}&days=8`).then((r) => {
@@ -182,7 +188,7 @@ export default function DashboardV2() {
       setCalendar(Array.isArray(r.body.events) ? r.body.events as CalendarEventIn[] : []);
       setCalendarState("ok");
     }).catch(() => { setCalendar(null); setCalendarState("error"); });
-  }, []);
+  }, [loadExecutive]);
 
   const loadReleases = useCallback(() =>
     fetch("/api/label/releases", { cache: "no-store" })
@@ -207,9 +213,8 @@ export default function DashboardV2() {
   }), [today, calendar, sessions, shows, projects, projectsLoading, tasks]);
   const timelineLoading = projectsLoading || calendarState === "loading" || sessions === undefined || shows === undefined || tasks === undefined;
   const timelineFailed = [sessions === null && "סשנים", shows === null && "הופעות", tasks === null && "משימות"].filter(Boolean) as string[];
-  const todayCount = timeline.filter((t) => t.date === today).length;
-
-  const financeLines = useMemo(() => (finance ? financeMonth(finance) : null), [finance]);
+  // Sunny's reason per canonical key — exact key only, Sunny's own order (the first served item wins)
+  const sunnyIdx = useMemo(() => indexByEntity(motion ?? null), [motion]);
   const releaseRows = useMemo(() => (releases ? summarizeUpcomingReleases(releases, today).rows.slice(0, 3) : []), [releases, today]);
 
   // ── Open handlers (existing drawers / modals / pages only) ─────────────────
@@ -239,12 +244,16 @@ export default function DashboardV2() {
   const onTaskDone = (id: string) => {
     setTasks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
     leaveModal(id);
-    loadBoard();
+    loadExecutive();
   };
   const onTaskDefer = (id: string, d: string) => {
     setTasks((prev) => (prev ? prev.map((t) => (t.id === id ? { ...t, due_date: d } : t)) : prev));
     leaveModal(id);
-    loadBoard();
+    loadExecutive();
+  };
+  const openEntity = (entity: string | null) => {
+    const t = openOfEntity(entity);
+    if (t.kind === "project") openProject(t.id); else if (t.kind === "href") router.push(t.href);
   };
 
   // ── Sunny update: POST /api/sunny/inbox (sunny_owner_inbox, OWNER_REPORTED evidence; idempotent by requestKey) ──
@@ -291,12 +300,11 @@ export default function DashboardV2() {
     <div className="rb-dv2" dir="rtl" style={{ background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", minHeight: "100%" }}>
       <style>{`
         .rb-dv2 { padding: 28px 32px; }
-        .rb-dv2-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
         .rb-dv2-main { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 16px; align-items: start; margin-bottom: 14px; }
         .rb-dv2-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
         .rb-dv2-rel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
         .rb-dv2-sunny { display: flex; align-items: center; gap: 14px; }
-        .rb-dv2-fin { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+        .rb-dv2-fin { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
         .rb-dv2-need:hover { border-color: rgba(255,255,255,0.14) !important; }
         @media (max-width: 1100px) {
           .rb-dv2-main { grid-template-columns: minmax(0, 1fr); }
@@ -304,7 +312,6 @@ export default function DashboardV2() {
         }
         @media (max-width: 767px) {
           .rb-dv2 { padding: 16px 14px; }
-          .rb-dv2-cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
           .rb-dv2-sunny { flex-wrap: wrap; gap: 10px; }
           .rb-dv2-sunny-title { width: 100%; }
           .rb-dv2-rel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -322,31 +329,11 @@ export default function DashboardV2() {
         </p>
       </div>
 
-      {/* ── B. Three summary cards ── */}
-      <div className="rb-dv2-cards">
-        <SummaryCard
-          title="דורש ממני" sub={board === null ? "לא מסונן — סאני לא בדקה את הכדור" : "רק מה שהכדור בו אצלך היום"}
-          color={BRAND} icon={IC.check} value={needsLoading ? "…" : String(needsCount)}
-        />
-        <SummaryCard
-          title="היום / השבוע" sub={timelineLoading ? "טוען…" : `${todayCount} היום · עד 7 ימים קדימה`}
-          color={PURPLE} icon={IC.calendar} value={timelineLoading ? "…" : String(timeline.length)}
-        />
-        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, boxShadow: SHADOW, padding: "16px 18px", display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
-          <IconBox color={BLUE} icon={IC.target} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 800 }}>פוקוס</span>
-              {coo && coo.p0 > 0 && (
-                <span title="מקרים ברמה P0 בסיכום ה-COO" style={{ fontSize: 10.5, fontWeight: 800, color: RED, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 99, padding: "1px 8px" }}>{coo.p0} דחופים</span>
-              )}
-            </div>
-            <div style={{ fontSize: 13, color: coo === null ? MUTED : "#D6D6D6", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {coo === undefined ? "טוען…" : coo === null ? "סיכום ה-COO לא נטען" : coo.headline.length ? <Rich parts={coo.headline} hidden={privacyHidden} /> : "אין מוקד מיוחד היום"}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* ── B1. Sunny: today's moves (BUSINESS_MOTION greeting, ≤3, Sunny's order) ── */}
+      <SunnyMoves motion={motion} onOpen={openEntity} />
+
+      {/* ── B2. The state line (week · inbox · bottleneck), exactly as Sunny says it ── */}
+      <StateLine motion={motion} history={exec?.history ?? null} />
 
       {/* ── C. Update Sunny (quick inbox row) ── */}
       <div className="rb-dv2-sunny" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, boxShadow: SHADOW, padding: "12px 16px", marginBottom: sunnyNotice ? 6 : 16 }}>
@@ -377,7 +364,7 @@ export default function DashboardV2() {
           <Panel title="היום והימים הקרובים" icon={IC.calendar} iconColor={PURPLE}>
             <div style={{ padding: "8px 14px 12px" }}>
               {timelineLoading ? <Note>טוען…</Note> : timeline.length === 0 ? <Note>אין אירועים ב-7 הימים הקרובים</Note> : (
-                <TimelineList items={visibleTimeline} today={today} onOpen={open} />
+                <TimelineList items={visibleTimeline} today={today} onOpen={open} sunny={sunnyIdx} />
               )}
               {!timelineLoading && timeline.length > TIMELINE_VISIBLE && (
                 <MoreButton open={showAllTimeline} more={timeline.length - TIMELINE_VISIBLE} onClick={() => setShowAllTimeline((v) => !v)} />
@@ -417,16 +404,27 @@ export default function DashboardV2() {
                         <Pill color={r.item.projectType === "אלבום" ? PURPLE : r.item.projectType === "EP" ? BLUE : BRAND}>{releaseBadge(r.item.projectType)}</Pill>
                         <span style={{ fontSize: 11.5, fontWeight: 700, color: r.overdue ? RED : SUB }}>{releaseShortDate(r.item.release.releaseTargetDate!)}</span>
                       </div>
+                      <SunnyReason item={enrichmentFor(sunnyIdx, `project:${r.item.projectId}`)} clamp />
                     </button>
                   ))}
                 </div>
               )}
             </div>
           </Panel>
+
+          {/* ── B4. The label, as Sunny serves it (motion.label) ── */}
+          {motion && motion.label.length > 0 && (
+            <Panel title="לייבל — לפי סאני" icon={IC.music} iconColor={PURPLE}>
+              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {motion.label.map((i) => <MoveRow key={i.key} item={i} onOpen={openEntity} compact />)}
+              </div>
+            </Panel>
+          )}
         </div>
 
-        {/* ── D. What's needed from me today (the main area) ── */}
-        <Panel className="rb-dv2-needs" title="מה צריך ממני היום" icon={IC.list} iconColor={BRAND} style={{ minHeight: 360 }}
+        <div className="rb-dv2-side rb-dv2-needs">
+        {/* ── B3. Waiting on you (needs_me board, unchanged) ── */}
+        <Panel title="מחכה לך" icon={IC.list} iconColor={BRAND} style={{ minHeight: 300 }}
           right={!needsLoading && needsCount > 0 ? <span style={{ fontSize: 11, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 9px" }}>{needsCount}</span> : undefined}>
           <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
             {needsLoading ? <Note>סאני בודקת אצל מי הכדור…</Note> : board ? (
@@ -459,23 +457,21 @@ export default function DashboardV2() {
             )}
           </div>
         </Panel>
+
+        {/* ── B3. Closing loops (motion.closeLoops, Sunny's order) ── */}
+        <Panel title="סוגרים לולאות" icon={IC.check} iconColor={GREEN}>
+          <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {motion === undefined ? <Note>טוען…</Note> : motion === null ? <Note>סאני לא נקראה כרגע — הלולאות לא נבדקו (זה לא &quot;אין&quot;)</Note>
+              : motion.closeLoops.length === 0 ? <Note>אין כרגע לולאה שסאני מציעה לסגור</Note>
+              : motion.closeLoops.map((i) => <MoveRow key={i.key} item={i} onOpen={openEntity} compact />)}
+          </div>
+        </Panel>
+        </div>
       </div>
 
-      {/* ── G. Finance strip (this month, the /finance formula) ── */}
-      <div className="rb-dv2-fin" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, boxShadow: SHADOW, padding: "12px 18px" }}>
-        <Link href="/finance" style={{ display: "flex", alignItems: "center", gap: 8, color: SUB, textDecoration: "none", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
-          <Icon d={IC.wallet} size={16} /> {new Date().toLocaleDateString("he-IL", { month: "long" })} · כספים
-        </Link>
-        {finance === undefined ? <span style={{ fontSize: 12, color: MUTED }}>טוען…</span> : finance === null || !financeLines ? (
-          <span style={{ fontSize: 12, color: AMBER }}>נתוני הכספים לא נטענו</span>
-        ) : financeLines.map((l) => (
-          <div key={l.currency} style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-            <FinFigure label="התקבל" color={GREEN} value={l.received} currency={l.currency} />
-            <FinFigure label="צפוי" color={BLUE} value={l.expected} currency={l.currency} />
-            <FinFigure label="לתשלום" color={RED} value={l.payable} currency={l.currency} />
-          </div>
-        ))}
-      </div>
+      {/* ── B5. Money ahead (FINANCIAL_FORWARD; "בפועל החודש" = its ACTUAL_MONTH) ── */}
+      <MoneyForward forward={forward} motion={motion} />
+
 
       {/* ── Reused modals ── */}
       {modal === "partner-actions" && (
@@ -504,24 +500,136 @@ function ModalHint() {
 }
 
 // ── Pieces ─────────────────────────────────────────────────────────────────────
-function IconBox({ color, icon }: { color: string; icon: string }) {
+// ── Sunny's executive pieces (display only: Sunny's text, Sunny's order, no rule of our own) ──────────────
+/** B1: the greeting moves (≤3); "עוד" shows the rest of today's items in Sunny's order. */
+function SunnyMoves({ motion, onOpen }: { motion: Load<Executive["motion"]>; onOpen: (entity: string | null) => void }) {
+  const [more, setMore] = useState(false);
+  const greetKeys = new Set((motion?.greeting ?? []).map((i) => i.key));
+  const rest = (motion?.todayItems ?? []).filter((i) => !greetKeys.has(i.key));
   return (
-    <span style={{ width: 50, height: 50, borderRadius: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color, background: `${color}1F`, border: `1px solid ${color}33` }}>
-      <Icon d={icon} size={22} />
-    </span>
+    <section style={{ background: "linear-gradient(160deg, #1B1416 0%, #161616 100%)", border: "1px solid rgba(220,38,38,0.22)", borderRadius: 18, boxShadow: SHADOW, padding: "14px 16px", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+        <span style={{ fontSize: 18, lineHeight: 1, color: BRAND }}>✦</span>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>סאני: המהלכים להיום</h2>
+      </div>
+      {motion === undefined ? <Note>סאני חושבת…</Note> : motion === null ? (
+        <div style={{ fontSize: 12.5, color: AMBER, padding: "4px 2px", lineHeight: 1.5 }}>סאני לא נקראה כרגע — המהלכים לא נבדקו (זה לא &quot;אין מה לעשות&quot;). &quot;מחכה לך&quot; ושאר הדשבורד ממשיכים לעבוד.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {motion.greeting.length === 0 ? <Note>{motion.unchecked.length ? "סאני לא מצאה מהלך במה שנבדק — חלק מהמקורות לא נבדקו" : "סאני לא מציעה מהלך מיוחד כרגע"}</Note>
+            : motion.greeting.map((i) => <MoveRow key={i.key} item={i} onOpen={onOpen} />)}
+          {more && rest.map((i) => <MoveRow key={i.key} item={i} onOpen={onOpen} compact />)}
+          {rest.length > 0 && <MoreButton open={more} more={rest.length} onClick={() => setMore((v) => !v)} />}
+          {motion.unchecked.length > 0 && <div style={{ fontSize: 11, color: AMBER, padding: "0 4px", lineHeight: 1.5 }}>לא נבדק: {motion.unchecked.join(" · ")}</div>}
+        </div>
+      )}
+    </section>
   );
 }
 
-function SummaryCard({ title, sub, color, icon, value }: { title: string; sub: string; color: string; icon: string; value: string }) {
+/** One motion item: Sunny's level, title, reason and move — opens the existing drawer / page of its entity. */
+function MoveRow({ item, onOpen, compact }: { item: ExecItem; onOpen: (entity: string | null) => void; compact?: boolean }) {
+  const color = LEVEL_COLOR[item.level];
+  const canOpen = openOfEntity(item.entity).kind !== "none";
   return (
-    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, boxShadow: SHADOW, padding: "16px 18px", display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
-      <IconBox color={color} icon={icon} />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 3 }}>{title}</div>
-        <div style={{ fontSize: 12, color: SUB, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+    <div className="rb-dv2-need" style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 13, padding: compact ? "9px 12px" : "11px 14px", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <Pill color={color}>{LEVEL_HE[item.level]}</Pill>
+        <div dir="auto" style={{ flex: 1, minWidth: 0, fontSize: compact ? 13 : 14, fontWeight: 800, color: "#EDEDED", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.titleHe}</div>
+        {canOpen && (
+          <button type="button" onClick={() => onOpen(item.entity)} style={{ flexShrink: 0, height: 30, padding: "0 14px", borderRadius: 10, fontFamily: "inherit", fontSize: 12, fontWeight: 800, color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, cursor: "pointer" }}>פתח</button>
+        )}
       </div>
-      <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: TEXT, flexShrink: 0 }}>{value}</span>
+      <div style={{ paddingInlineStart: 18, marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>
+        {item.reasonsHe.slice(0, compact ? 1 : 2).map((r, k) => <div key={k} dir="auto" style={{ fontSize: 12, color: SUB, textAlign: "right", lineHeight: 1.45 }}><SensitiveValue mask="••••">{r}</SensitiveValue></div>)}
+        {item.move && <div dir="auto" style={{ fontSize: 12.5, color: "#D6D6D6", textAlign: "right" }}><span style={{ color: MUTED }}>המהלך: </span>{item.move.he}</div>}
+        {item.epistemic === "HYPOTHESIS" && <div style={{ fontSize: 11, color: MUTED }}>ההבנה של סאני — לא רשומה</div>}
+      </div>
     </div>
+  );
+}
+
+/** B4: Sunny's reason on a timeline / release row — only when the row's canonical key matched exactly. */
+function SunnyReason({ item, clamp }: { item: ExecItem | null; clamp?: boolean }) {
+  if (!item) return null;
+  const color = LEVEL_COLOR[item.level];
+  return (
+    <div dir="auto" title={item.reasonsHe.join(" · ")} style={{ fontSize: 11, color, textAlign: "right", lineHeight: 1.4, marginTop: 2, ...(clamp ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden", padding: "0 2px" } : { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }) }}>
+      ✦ סאני: {item.move?.he ?? item.reasonsHe[0] ?? item.titleHe}
+    </div>
+  );
+}
+
+/** B2: week · inbox · bottleneck, in Sunny's words; an unread action history is said, never hidden. */
+function StateLine({ motion, history }: { motion: Load<Executive["motion"]>; history: Executive["history"] | null }) {
+  if (!motion) return null;
+  const lines = [motion.weekLineHe, motion.inboxLineHe, motion.bottleneckLineHe].filter((l): l is string => !!l);
+  const historyUnread = history?.status === "NOT_READ";
+  if (!lines.length && !historyUnread) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "2px 8px 12px" }}>
+      {lines.map((l, k) => <div key={k} dir="auto" style={{ fontSize: 12.5, color: SUB, textAlign: "right", lineHeight: 1.5 }}>{l}</div>)}
+      {historyUnread && <div style={{ fontSize: 11, color: AMBER, lineHeight: 1.5 }}>היסטוריית הפעולות לא נקראה — הלמידה מפעולות קודמות לא הוחלה (זה לא &quot;לא בוצע כלום&quot;).</div>}
+    </div>
+  );
+}
+
+/** B5: money ahead — FINANCIAL_FORWARD only: the actual month (ACTUAL_MONTH), the 7-day window, decisions, surprises,
+ *  the coverage sentence. Per currency, never summed; expected ≠ received; no bank balance claimed. */
+function MoneyForward({ forward, motion }: { forward: Load<ExecForward>; motion: Load<Executive["motion"]> }) {
+  const decided = motion?.money?.decided ?? [];
+  const w = forward?.week ?? null;
+  const months = forward ? Object.entries(forward.actualMonth) : [];
+  const coverage = forward?.coverageHe ?? motion?.money?.coverageHe ?? null;
+  return (
+    <section style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, boxShadow: SHADOW, padding: "12px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <Link href="/finance" style={{ display: "flex", alignItems: "center", gap: 8, color: SUB, textDecoration: "none", fontSize: 13, fontWeight: 800 }}>
+        <Icon d={IC.wallet} size={16} /> כסף קדימה · לפי סאני
+      </Link>
+      {forward === undefined ? <span style={{ fontSize: 12, color: MUTED }}>טוען…</span> : forward === null ? (
+        <span style={{ fontSize: 12, color: AMBER }}>כסף קדימה לא נקרא כרגע — זה לא אפס.</span>
+      ) : !forward.read ? (
+        <span dir="auto" style={{ fontSize: 12, color: AMBER }}>{forward.answerHe ?? "סאני לא קראה את הכספים — זה לא אפס."}</span>
+      ) : (
+        <>
+          <div className="rb-dv2-fin">
+            <span style={{ fontSize: 12, color: SUB, fontWeight: 700 }}>בפועל החודש</span>
+            {months.length === 0 ? <span style={{ fontSize: 12, color: MUTED }}>אין תנועה רשומה החודש</span> : months.map(([cur, v]) => (
+              <span key={cur} style={{ display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
+                <MoneyFigure label="נכנס" color={GREEN} value={{ [cur]: v.in }} />
+                <MoneyFigure label="יצא" color={RED} value={{ [cur]: v.out }} />
+                <MoneyFigure label="נטו" color={TEXT} value={{ [cur]: v.net }} signed />
+              </span>
+            ))}
+          </div>
+          {w && (
+            <div className="rb-dv2-fin">
+              <span style={{ fontSize: 12, color: SUB, fontWeight: 700 }}>7 ימים קדימה</span>
+              <MoneyFigure label="יוצא בוודאות" color={RED} value={w.hardOutflow} />
+              {Object.keys(w.dynamicExposure).length > 0 && <MoneyFigure label="התחשבנות דינמית" color={AMBER} value={w.dynamicExposure} />}
+              <MoneyFigure label="נכנס צפוי" color={BLUE} value={w.expectedInflow} />
+              {Object.keys(w.undatedHard).length > 0 && <MoneyFigure label="בלי תאריך" color={PURPLE} value={w.undatedHard} />}
+            </div>
+          )}
+          {decided.slice(0, 3).map((d, k) => <div key={`d${k}`} dir="auto" style={{ fontSize: 12, color: "#D6D6D6", lineHeight: 1.5 }}><span style={{ color: GREEN }}>כבר החלטת: </span><SensitiveValue>{d}</SensitiveValue></div>)}
+          {forward.surprises.slice(0, 3).map((t, k) => <div key={`s${k}`} dir="auto" style={{ fontSize: 12, color: SUB, lineHeight: 1.5 }}><span style={{ color: AMBER }}>עלול להפתיע: </span><SensitiveValue>{t}</SensitiveValue></div>)}
+          {coverage && <div dir="auto" style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{coverage}</div>}
+        </>
+      )}
+    </section>
+  );
+}
+
+function MoneyFigure({ label, color, value, signed }: { label: string; color: string; value: Record<string, number>; signed?: boolean }) {
+  const neg = signed && Object.values(value).some((v) => v < 0);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+      <span style={{ fontSize: 11.5, color: MUTED, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 16, fontWeight: 900, color, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }} dir="ltr">
+        <SensitiveValue>{`${neg ? "−" : ""}${totalsHe(value)}`}</SensitiveValue>
+      </span>
+    </span>
   );
 }
 
@@ -678,7 +786,7 @@ export function EntryList({ entries, onOpen }: { entries: CuratedEntry[]; onOpen
   );
 }
 
-function TimelineList({ items, today, onOpen }: { items: TimelineItem[]; today: string; onOpen: (t: OpenTarget) => void }) {
+function TimelineList({ items, today, onOpen, sunny }: { items: TimelineItem[]; today: string; onOpen: (t: OpenTarget) => void; sunny: Map<string, ExecItem> }) {
   let lastDate = "";
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -699,6 +807,7 @@ function TimelineList({ items, today, onOpen }: { items: TimelineItem[]; today: 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div dir="auto" style={{ fontSize: 13, fontWeight: 700, color: "#E6E6E6", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
                 {it.sub && <div dir="auto" style={{ fontSize: 11, color: MUTED, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.sub}</div>}
+                <SunnyReason item={enrichmentFor(sunny, it.entity)} />
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 700, color, flexShrink: 0 }}>{KIND_LABEL[it.kind]}</span>
             </button>
@@ -714,16 +823,5 @@ function MoreButton({ open, more, onClick }: { open: boolean; more: number; onCl
     <button type="button" onClick={onClick} style={{ alignSelf: "center", marginTop: 4, background: "none", border: "none", color: BLUE, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
       {open ? "הצג פחות" : `עוד ${more}`}
     </button>
-  );
-}
-
-function FinFigure({ label, color, value, currency }: { label: string; color: string; value: number; currency: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}>
-      <span style={{ fontSize: 12, color: SUB, fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 19, fontWeight: 900, color, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }} dir="ltr">
-        <SensitiveValue>{`${currency}${Math.round(value).toLocaleString()}`}</SensitiveValue>
-      </span>
-    </span>
   );
 }
