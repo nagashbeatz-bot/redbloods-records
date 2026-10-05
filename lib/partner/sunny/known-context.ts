@@ -251,6 +251,11 @@ export const QUESTION_HOMES: Readonly<Record<string, Home>> = {
   OUTSIDE_COMMUNICATION: { home: "CANONICAL_AND_CONTEXT", identity: "OUTSIDE_COMMUNICATION", answerHe: "שליחת הערות / גרסה במערכת; ויקטור: לענות עם ה-questionRef של השאלה (partner_answer_question); מהנדס מיקס: 'דיברנו / נתתי פידבק בחוץ' = הקשר על העבודה" },
   // label project with no recorded ball evidence: a blocker / follow-up the Owner states is context on THAT project
   PROJECT_STATE: { home: "CANONICAL_AND_CONTEXT", identity: "PROJECT_STATE", answerHe: "עבודת ויקטור / מיקס / משימה / סטטוס פרויקט; 'מחכה לאמן' / 'בהקפאה' = הקשר על הפרויקט (PROJECT_BLOCKER או BUSINESS_DECISION about)" },
+  // money ahead (Financial Forward, Owner decision 2026-10-06 — Decision Persistence C): WHEN an obligation is paid / settled is
+  // the Owner's decision (BUSINESS_DECISION with timing / conditionHe on the exact work / artist), never a Finance row and never
+  // money; the payment itself stays the canonical action. A completed unpaid engineer work = ONE question per work (ref
+  // mix-work:<id>) — a new work never inherits an old decision; a settlement = the artist's CURRENT cycle only.
+  OBLIGATION_TIMING: { home: "CANONICAL_AND_CONTEXT", identity: "OBLIGATION_TIMING", answerHe: "התשלום עצמו = RECORD_ENGINEER_PAYMENT / ADD_LEDGER_ENTRY / CLOSE_BALANCE_CYCLE (באישורך); מתי ובאיזה תנאי = החלטה (BUSINESS_DECISION: timing + conditionHe במילים שלך) — לא שורה בכספים ולא תאריך מומצא" },
   // clients
   CONVERSION: { home: "CANONICAL_AND_CONTEXT", identity: "CONVERSION", answerHe: "CONVERT_PROPOSAL / LINK_PROPOSAL_TO_PROJECT; 'לא צריך פרויקט' = הקשר" },
 };

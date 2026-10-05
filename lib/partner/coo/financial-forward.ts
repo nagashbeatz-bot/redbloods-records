@@ -33,6 +33,9 @@ import { addDaysYmd, daysBetween, heDate, isYmd } from "./model";
 import type { PartnerFinanceState, OpenExpense, FinanceRaw } from "../finance/types";
 import { isMixExpenseRow } from "../finance/core";
 import { buildArtistView } from "../label/view";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { resolveQuestions, answerAsOf, type EntityQuestion } from "../sunny/known-context";
+import { decisionMonthOf, decisionTimingHe } from "../owner-knowledge/decision-timing";
 
 /** INTERNAL readiness windows (Owner-approved 2026-10-05 as a reasoning rule — never a reminder schedule). */
 export const FINANCIAL_FORWARD_WINDOWS = { mustDays: 3, shouldDays: 7, windows: [7, 14, 30] as const, note: "derived readiness only — no reminder, no cron, no push" } as const;
@@ -40,7 +43,20 @@ export const FINANCIAL_FORWARD_WINDOWS = { mustDays: 3, shouldDays: 7, windows: 
 export type ObligationKind = "VENDOR_PAYABLE" | "RECURRING" | "SETTLEMENT" | "EXPECTED_EXPENSE" | "SHOW_PAYOUT" | "CONDITIONAL_COST";
 export type Strength = "HARD" | "LIKELY" | "DISCRETIONARY" | "DYNAMIC" | "CONDITIONAL" | "UNKNOWN";
 export type Timing = "FIXED_KNOWN" | "KNOWN_AMOUNT_UNKNOWN_DATE" | "KNOWN_DATE_DYNAMIC_AMOUNT" | "CONDITIONAL" | "FORECAST_ONLY" | "UNKNOWN";
-export type Preparedness = "PREPARED" | "NEEDS_PREPARATION" | "NEEDS_DECISION" | "UNCERTAIN" | "WATCH";
+export type Preparedness = "PREPARED" | "NEEDS_PREPARATION" | "NEEDS_DECISION" | "UNCERTAIN" | "WATCH" | "DECIDED";
+
+/** The Owner's decision about WHEN (Decision Persistence C, Owner decision 2026-10-06) — kept apart from the money truth:
+ *  it never changes the amount, the strength, the paid status, the date or the windows. */
+export type DecisionState = "NEEDS_DECISION" | "DECIDED_UNDATED" | "DECIDED_CONDITIONAL" | "DECIDED_DATED" | "REVIEW_DUE" | "SCHEDULED";
+export interface ObligationDecisionMember { entity: string; labelHe: string; state: "ASK" | "KNOWN" | "REOPENED_BECAUSE_EVIDENCE_CHANGED" | "REVIEW_DUE"; knowledgeId: string | null; decisionHe: string | null; timing: string | null; timingHe: string | null; conditionHe: string | null; decidedOn: string | null; answerAs: unknown; questionHe: string }
+export interface ObligationDecision {
+  state: DecisionState;
+  he: string;
+  /** one per exact entity the question is about (a completed engineer work = one member; a settlement = the artist) */
+  members: ObligationDecisionMember[];
+  /** "the Owner's words — evidence only, never evaluated" */
+  conditionNoteHe: string | null;
+}
 export type Confidence = "CONFIRMED" | "DYNAMIC" | "EXPECTED" | "CONDITIONAL" | "UNKNOWN";
 export type FinLevel = "MUST" | "SHOULD" | "WATCH" | "INFO";
 export type Totals = Record<string, number>;
@@ -76,6 +92,8 @@ export interface Obligation {
   /** where it counts: hard outflow / dynamic exposure / conditional / nothing (a duplicate counted elsewhere) */
   countsIn: "OUTFLOW" | "DYNAMIC" | "CONDITIONAL" | "NONE";
   overdue: boolean;
+  /** the Owner's decision about when (never money) — null when the obligation asks no question */
+  decision?: ObligationDecision | null;
   he: string;
 }
 
@@ -110,6 +128,8 @@ const LEVEL_ORDER: FinLevel[] = ["MUST", "SHOULD", "WATCH", "INFO"];
 export function readinessOf(o: Pick<Obligation, "preparedness" | "daysTo" | "strength" | "overdue" | "timing">): FinLevel {
   const W = FINANCIAL_FORWARD_WINDOWS;
   if (o.preparedness === "PREPARED") return o.overdue ? "WATCH" : "INFO";
+  // decided by the Owner (when / on what condition): context, never a surprise or a repeated question
+  if (o.preparedness === "DECIDED") return "WATCH";
   if (o.preparedness === "WATCH") return "WATCH";
   if (o.preparedness === "UNCERTAIN") return "WATCH";
   // NEEDS_DECISION / NEEDS_PREPARATION
@@ -123,8 +143,61 @@ export function readinessOf(o: Pick<Obligation, "preparedness" | "daysTo" | "str
 function finish(o: Omit<Obligation, "level" | "he">): Obligation {
   const level = readinessOf(o);
   const when = o.date ? (o.daysTo === 0 ? "היום" : o.daysTo === 1 ? "מחר" : o.daysTo !== null && o.daysTo < 0 ? `עבר ${heDate(o.date)}` : `${heDate(o.date)} (בעוד ${o.daysTo} ימים)`) : "בלי תאריך";
-  const he = `${o.titleHe}: ${fmtMoney(o.amount, o.currency)}${o.kind === "SETTLEMENT" ? ` ${o.directionHe}` : ""} · ${when}${o.dynamic ? " · עדיין משתנה" : ""}${o.questionHe ? ` → ${o.questionHe}` : ""}`;
+  const decided = o.decision && o.decision.state !== "NEEDS_DECISION" && o.decision.state !== "REVIEW_DUE" ? ` · ${o.decision.he}` : "";
+  const he = `${o.titleHe}: ${fmtMoney(o.amount, o.currency)}${o.kind === "SETTLEMENT" ? ` ${o.directionHe}` : ""} · ${when}${o.dynamic ? " · עדיין משתנה" : ""}${decided}${o.questionHe ? ` → ${o.questionHe}` : ""}`;
   return { ...o, level, he };
+}
+
+// ── the Owner's decision about WHEN (Decision Persistence C) — the SAME question memory every view uses ──
+const DECIDED_STATES = new Set<DecisionState>(["DECIDED_UNDATED", "DECIDED_CONDITIONAL", "DECIDED_DATED"]);
+export const isDecided = (d: ObligationDecision | null | undefined) => !!d && DECIDED_STATES.has(d.state);
+const ddmmOf = (ymd: string | null) => (ymd && ymd.length >= 10 ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}` : null);
+type TimingQuestion = EntityQuestion & { labelHe: string };
+
+/**
+ * One decision state for an obligation from its exact-entity questions (one per member). A member is decided ONLY by an
+ * active BUSINESS_DECISION on exactly its entity (topic q-obligation-timing, resolveQuestions); the obligation is decided
+ * ONLY when EVERY member is (a new completed work never inherits an older decision). THIS_MONTH is anchored to decidedOn's
+ * month: once that month ended the decision is asked again ("זה עדיין נכון?"), never silently moved to the next month.
+ * The condition is the Owner's evidence — shown verbatim, never evaluated. Nothing here changes money, dates or windows.
+ */
+export function decideObligation(qs: readonly TimingQuestion[], kn: readonly OwnerKnowledgeRecord[] | null, today: string, evidenceOf: (q: TimingQuestion) => string | null, dateFromRecords: boolean): ObligationDecision {
+  const ask = (q: TimingQuestion, state: ObligationDecisionMember["state"] = "ASK", questionHe = q.questionHe): ObligationDecisionMember =>
+    ({ entity: q.entity, labelHe: q.labelHe, state, knowledgeId: null, decisionHe: null, timing: null, timingHe: null, conditionHe: null, decidedOn: null, answerAs: answerAsOf(q), questionHe });
+  if (!kn) return { state: "NEEDS_DECISION", he: "ההחלטות שלך לא נקראו — לא ידוע אם כבר החלטת", members: qs.map((q) => ask(q)), conditionNoteHe: null };
+  const r = resolveQuestions(qs, kn, today, evidenceOf);
+  const byId = new Map(kn.map((k) => [k.id, k]));
+  const members = qs.map((q): ObligationDecisionMember => {
+    const a = r.asked.find((x) => x.entity === q.entity);
+    if (a) return ask(q, a.state === "REOPENED_BECAUSE_EVIDENCE_CHANGED" ? "REOPENED_BECAUSE_EVIDENCE_CHANGED" : "ASK", a.questionHe);
+    const k = r.known.find((x) => x.entityKey === q.entity);
+    const rec = k && k.basis.kind === "OWNER_KNOWLEDGE" ? byId.get(k.basis.knowledgeId) : undefined;
+    if (!k || !rec) return ask(q);
+    const v = rec.value as Record<string, unknown>;
+    const timingHe = decisionTimingHe(v);
+    const month = v.timing === "THIS_MONTH" ? decisionMonthOf(v.decidedOn) : null;
+    const review = k.state === "STILL_TRUE_CHECK" || (!!month && today > month.last);
+    const decidedOn = typeof v.decidedOn === "string" ? v.decidedOn : null;
+    return { entity: q.entity, labelHe: q.labelHe, state: review ? "REVIEW_DUE" : "KNOWN", knowledgeId: rec.id, decisionHe: String(v.decisionHe ?? rec.meaningHe), timing: typeof v.timing === "string" ? v.timing : null, timingHe,
+      conditionHe: typeof v.conditionHe === "string" && v.conditionHe ? v.conditionHe : null, decidedOn, answerAs: answerAsOf(q),
+      questionHe: review ? `החלטת${decidedOn ? ` (${ddmmOf(decidedOn)})` : ""}: ${String(v.decisionHe ?? rec.meaningHe)}${timingHe ? ` — ${timingHe}` : ""} — זה עדיין נכון?` : q.questionHe };
+  });
+  const known = members.filter((m) => m.state === "KNOWN");
+  const reviews = members.filter((m) => m.state === "REVIEW_DUE");
+  const open = members.filter((m) => m.state === "ASK" || m.state === "REOPENED_BECAUSE_EVIDENCE_CHANGED");
+  const conditionNoteHe = members.some((m) => m.conditionHe) ? "התנאי הוא המילים שלך — אני לא בודקת לבד אם הוא התקיים" : null;
+  if (!open.length && !reviews.length && known.length) {
+    const kindOf = (m: ObligationDecisionMember): DecisionState => (m.conditionHe || m.timing === "ON_CONDITION" ? "DECIDED_CONDITIONAL" : m.timing === "BY_DATE" || (m.timing === "AT_CYCLE_CLOSE" && dateFromRecords) ? "DECIDED_DATED" : "DECIDED_UNDATED");
+    const kinds = known.map(kindOf);
+    const state: DecisionState = kinds.includes("DECIDED_CONDITIONAL") ? "DECIDED_CONDITIONAL" : kinds.includes("DECIDED_UNDATED") ? "DECIDED_UNDATED" : "DECIDED_DATED";
+    const same = known.every((m) => m.decisionHe === known[0].decisionHe && m.timingHe === known[0].timingHe && m.decidedOn === known[0].decidedOn);
+    const lineOf = (m: ObligationDecisionMember) => `${m.decisionHe}${m.timingHe ? ` — ${m.timingHe}` : ""}`;
+    const body = same ? lineOf(known[0]) : known.map((m) => `${m.labelHe}: ${lineOf(m)}`).join("; ");
+    const when = same && known[0].decidedOn ? ` (${ddmmOf(known[0].decidedOn)})` : "";
+    return { state, he: `הוחלט${when}: ${body}${state === "DECIDED_DATED" ? "" : " · אין תאריך מדויק"}${known.length > 1 ? ` (על ${known.length} עבודות: ${known.map((m) => m.labelHe).join(", ")})` : ""}`, members, conditionNoteHe };
+  }
+  if (!open.length && reviews.length) return { state: "REVIEW_DUE", he: reviews.map((m) => m.questionHe).join(" · "), members, conditionNoteHe };
+  return { state: "NEEDS_DECISION", he: known.length ? `הוחלט על ${known.length} מתוך ${members.length} (${known.map((m) => m.labelHe).join(", ")}); עוד לא הוחלט על: ${open.map((m) => m.labelHe).join(", ")}` : "עוד לא הוחלט מתי", members, conditionNoteHe };
 }
 
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -147,6 +220,10 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   const projName = (pid: string | null) => (pid ? c.projectName(pid) ?? "פרויקט" : null);
   const projectsWithWork = new Set(raw.engineerWorks.filter((w) => (w.status ?? "") !== "בוטל" && w.projectId).map((w) => w.projectId as string));
   const obligations: Obligation[] = [];
+  // the Owner's decisions (BUSINESS_DECISION) — unreadable = unknown, never "not decided"
+  const knRaw = ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null;
+  const kn = knRaw ? activeKnowledge(knRaw, today) : null;
+  if (!knRaw) unchecked.push("ההחלטות שלך (מתי משלמים) לא נקראו — שאלות כאלה עלולות לחזור");
 
   // ── engineer works (the Brain's ENGINEER_WORK items): completed unpaid = HARD undated; open = conditional on completion ──
   const hardByEngineer = new Map<string, OpenExpense[]>();
@@ -162,12 +239,20 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   }
   for (const [k, es] of hardByEngineer) {
     const [name, cur] = k.split("|");
+    const who = name === "Steven" ? "סטיבן" : name;
     const amount = Math.round(es.reduce((s, e) => s + e.amount, 0) * 100) / 100;
+    // WHEN = the Owner's decision per work (ref mix-work:<id>) — never a vendor-wide identity, never inherited by a new work
+    const qs: TimingQuestion[] = es.map((e) => { const label = `${projName(e.projectId) ?? "עבודה"} (${fmtMoney(e.amount, e.currency)})`;
+      return { kind: "OBLIGATION_TIMING", entity: `mix-work:${e.id.replace(/^ENGINEER_WORK:/, "")}`, labelHe: label, questionHe: `מתי אתה רוצה לשלם ל${who} על ${label}?`, why: "a completed engineer work is a hard payable with no due date" }; });
+    const decision = decideObligation(qs, kn, today, () => null, false);
+    const openLabels = decision.members.filter((m) => m.state === "ASK" || m.state === "REOPENED_BECAUSE_EVIDENCE_CHANGED").map((m) => m.labelHe);
+    const questionHe = isDecided(decision) ? null : decision.state === "REVIEW_DUE" ? decision.he
+      : openLabels.length === decision.members.length ? `מתי אתה רוצה לשלם את ה-${fmtMoney(amount, cur)} ל${who}?` : `${decision.he} — מתי אתה רוצה לשלם ל${who} על ${openLabels.join(", ")}?`;
     obligations.push(finish({ key: `vendor-payable:${name}:${cur}`, kind: "VENDOR_PAYABLE", entity: name === "Steven" ? "vendor:STEVEN" : null,
-      titleHe: `${name === "Steven" ? "סטיבן" : name} — ${es.length === 1 ? "עבודה שהושלמה ולא שולמה" : `${es.length} עבודות שהושלמו ולא שולמו`}`, amount, currency: cur, currencyNote: null,
+      titleHe: `${who} — ${es.length === 1 ? "עבודה שהושלמה ולא שולמה" : `${es.length} עבודות שהושלמו ולא שולמו`}`, amount, currency: cur, currencyNote: null,
       date: null, daysTo: null, strength: "HARD", timing: "KNOWN_AMOUNT_UNKNOWN_DATE", dynamic: false, direction: "OUT", directionHe: "יוצא", changeDriversHe: [],
-      plan: false, preparedness: "NEEDS_DECISION", questionHe: `מתי אתה רוצה לשלם את ה-${fmtMoney(amount, cur)} ל${name === "Steven" ? "סטיבן" : name}?`, confidence: "CONFIRMED",
-      provenance: `engineer works (agreed price − paid): ${es.map((e) => e.id.replace(/^ENGINEER_WORK:/, "mix-work:")).join(", ")}`, businessUnit: null, countsIn: "OUTFLOW", overdue: false }));
+      plan: false, preparedness: isDecided(decision) ? "DECIDED" : "NEEDS_DECISION", questionHe, confidence: "CONFIRMED",
+      provenance: `engineer works (agreed price − paid): ${es.map((e) => e.id.replace(/^ENGINEER_WORK:/, "mix-work:")).join(", ")}`, businessUnit: null, countsIn: "OUTFLOW", overdue: false, decision }));
   }
 
   // ── Finance expected expenses (the Brain's TRANSACTION / SHOW_PAYOUT items, already deduped) ──
@@ -206,7 +291,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
 
   // ── settlements: the open cycle of every roster artist (the app's own computation); 0 = nothing to raise ──
   for (const a of c.roster) {
-    type Cur = { endExclusive: string; daysUntilClose: number; closingBalance: number; result: string; resultHe: string };
+    type Cur = { start: string | null; endExclusive: string; daysUntilClose: number; closingBalance: number; result: string; resultHe: string };
     let found: Cur | null = null;
     try {
       const v = buildArtistView(src, a.id) as unknown as { money?: { cycles?: { current?: Cur | null } } } | null;
@@ -218,12 +303,16 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
     const amount = Math.abs(cur.closingBalance);
     const daysTo = dTo(cur.endExclusive);
     const late = daysTo !== null && daysTo < 0;
+    const baseQ = owes ? `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): משלמים ל${a.name} או מעבירים למחזור הבא?` : `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): גובים מ${a.name} או מעבירים למחזור הבא?`;
+    // the decision is for THIS cycle only: a decision recorded before the cycle started never carries over (the cycle start
+    // is the canonical event that reopens it); validUntil (the cycle's close) ends it in the store as well
+    const decision = decideObligation([{ kind: "OBLIGATION_TIMING", entity: a.key, labelHe: a.name, questionHe: baseQ, why: "a cycle close is a settlement review the Owner decides" }], kn, today, () => (isYmd(cur.start) ? cur.start : null), true);
     obligations.push(finish({ key: `settlement:${a.key}`, kind: "SETTLEMENT", entity: a.key, titleHe: `התחשבנות ${a.name}${late ? " (המחזור היה אמור להיסגר)" : ""}`,
       amount, currency: "₪", currencyNote: "המאזן לא שומר מטבע — המסכים מציגים ₪", date: cur.endExclusive, daysTo, strength: "DYNAMIC", timing: "KNOWN_DATE_DYNAMIC_AMOUNT", dynamic: true,
       direction: owes ? "RECORDS_OWES_ARTIST" : "ARTIST_OWES_RECORDS", directionHe: owes ? `לטובת ${a.name}` : "לטובת הלייבל",
       changeDriversHe: ["הוצאת Records משותפת ששולמה", "הופעה שתבוצע", "הכנסות מדיה", "תשלום / תיקון ידני במאזן"],
-      plan: false, preparedness: "NEEDS_DECISION", questionHe: owes ? `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): משלמים ל${a.name} או מעבירים למחזור הבא?` : `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): גובים מ${a.name} או מעבירים למחזור הבא?`,
-      confidence: "DYNAMIC", provenance: "artist ledger — open cycle (computeOpenCycle); a close is a review, never a payment", businessUnit: "RECORDS", countsIn: "DYNAMIC", overdue: late }));
+      plan: false, preparedness: isDecided(decision) ? "DECIDED" : "NEEDS_DECISION", questionHe: isDecided(decision) ? null : decision.state === "REVIEW_DUE" ? decision.he : decision.members[0].questionHe,
+      confidence: "DYNAMIC", provenance: "artist ledger — open cycle (computeOpenCycle); a close is a review, never a payment", businessUnit: "RECORDS", countsIn: "DYNAMIC", overdue: late, decision }));
   }
 
   // ── inflow (expected is never cash; a proposal is never cash) ──
@@ -251,7 +340,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   for (const [cur, f] of Object.entries(state.realized?.byCurrency ?? {})) actualMonth[cur] = { in: f.cashIn, out: f.cashOut, net: f.net };
   const commercialGap = collectible.length === 0 && proposals === 0 && shows14 === 0;
   const rank = (o: Obligation) => LEVEL_ORDER.indexOf(o.level);
-  const surprises = obligations.filter((o) => o.preparedness !== "PREPARED" && (o.level === "MUST" || o.level === "SHOULD"))
+  const surprises = obligations.filter((o) => o.preparedness !== "PREPARED" && o.preparedness !== "DECIDED" && (o.level === "MUST" || o.level === "SHOULD"))
     .sort((a, b) => rank(a) - rank(b) || (a.daysTo ?? 999) - (b.daysTo ?? 999)).slice(0, 3);
 
   const units = new Map<string, string[]>();
@@ -259,10 +348,15 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   const unitsHe = units.size ? `${[...units.entries()].map(([u, xs]) => `${u}: ${xs.join(", ")}`).join(" · ")} (כל יחידה בנפרד — לא מסיקה שיחידה אחת מכסה אחרת)` : null;
 
   const w7 = windows[0];
+  // undated hard money: the SAME totals as the windows; only the wording knows which part the Owner already decided
+  const undatedOpen: Totals = {};
+  for (const o of obligations) if (o.countsIn === "OUTFLOW" && o.date === null && o.preparedness !== "DECIDED") add(undatedOpen, o.currency, o.amount);
+  const decidedLines = obligations.filter((o) => o.preparedness === "DECIDED" && o.decision).map((o) => `${o.titleHe} ${fmtMoney(o.amount, o.currency)} — ${o.decision!.he}`);
   const lineHe = [
     `כסף עם תאריך, 7 ימים: יוצא בוודאות ${totalsHe(w7.hardOutflow)}${Object.keys(w7.dynamicExposure).length ? ` · התחשבנות דינמית ${totalsHe(w7.dynamicExposure)}` : ""}`,
     `נכנס צפוי ${totalsHe(w7.expectedInflow)}${commercialGap ? " (אין גבייה, הצעות או הופעות קרובות)" : ""}`,
-    Object.keys(w7.undatedHard).length ? `בלי תאריך (לא בתוך ה-7 ימים): חוב פתוח ${totalsHe(w7.undatedHard)} — מחכה להחלטה שלך מתי לשלם` : null,
+    Object.keys(undatedOpen).length ? `בלי תאריך (לא בתוך ה-7 ימים): חוב פתוח ${totalsHe(undatedOpen)} — מחכה להחלטה שלך מתי לשלם` : null,
+    decidedLines.length ? `כבר החלטת: ${decidedLines.join(" | ")}` : null,
     coverageHe,
   ].filter(Boolean).join(" · ");
   return { status: "OK", today, coverage: "UNKNOWN", coverageHe, actualMonth, obligations, windows, settlements: obligations.filter((o) => o.kind === "SETTLEMENT"),

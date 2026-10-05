@@ -25,6 +25,8 @@ import { queryKnowledgeCore } from "../lib/partner/knowledge/query";
 import { SERVER_INSTRUCTIONS } from "../lib/integrations/partner-mcp/mcp";
 import { SHALEV_ARTIST_ID } from "../lib/red-artists/portal-registry";
 import { AVI_ARTIST_ID } from "../lib/roles";
+import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
+import { answerTopicOf } from "../lib/partner/sunny/known-context";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 900)}` : ""}`); } };
@@ -40,10 +42,11 @@ const A_NAGASH = U(3);
 const P_BAM = U(10), P_YAH = U(11), P_TZO = U(12), P_DH = U(13), P_X = U(14), P_CL = U(15), P_CANC = U(16);
 const S1 = U(20), DANIEL = U(21), SHALEV_CLIENT = U(22);
 
-interface Fx { shalevBalance?: number; aviBalance?: number; anchor?: string; victorStatus?: string; victorTx?: boolean; victorDue?: string; dhStatus?: string; dhLinkedTx?: boolean; extraTx?: unknown[]; noFinance?: boolean; proposals?: unknown[]; receivables?: boolean; shows?: unknown[]; noLedger?: boolean }
+interface Fx { shalevBalance?: number; aviBalance?: number; anchor?: string; victorStatus?: string; victorTx?: boolean; victorDue?: string; dhStatus?: string; dhLinkedTx?: boolean; extraTx?: unknown[]; noFinance?: boolean; proposals?: unknown[]; receivables?: boolean; shows?: unknown[]; noLedger?: boolean; knowledge?: unknown[]; today?: string; extraWorks?: unknown[]; noKnowledge?: boolean }
 
 const tx = (id: string, o: Record<string, unknown>) => ({ id, projectId: null, type: "expense", date: D(0), amount: 0, currency: "₪", status: "צפוי", category: null, scope: null, expenseScope: null, linkedSessionId: null, showId: null, showMoneyRole: null, createdAt: `${D(-6)}T10:00:00Z`, description: null, businessUnit: "STUDIO", businessUnitSource: "RULE", ...o });
 
+const nowOf = (fx: Fx) => (fx.today ? new Date(`${fx.today}T08:00:00Z`) : NOW);
 function rawOf(fx: Fx): FinanceRaw {
   const transactions = [
     tx("fest", { type: "income", amount: 2500, status: "התקבל", date: D(-3), showId: S1, showMoneyRole: "SHOW_PAYMENT", businessUnit: "RECORDS" }),
@@ -67,6 +70,7 @@ function rawOf(fx: Fx): FinanceRaw {
       { id: "w-dh", projectId: P_DH, engineerName: "Steven", status: fx.dhStatus ?? "נשלח", agreedPrice: 400, amountPaid: 0, currency: "$", linkedTransactionId: fx.dhLinkedTx ? "dh-linked" : null, paymentDate: null },
       { id: "w-paid", projectId: P_CL, engineerName: "Steven", status: "אושר", agreedPrice: 200, amountPaid: 200, currency: "$", linkedTransactionId: null, paymentDate: D(-3) },
       { id: "w-canc", projectId: P_CANC, engineerName: "Steven", status: "בוטל", agreedPrice: 300, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
+      ...((fx.extraWorks ?? []) as never[]),
     ],
     shows: [{ id: S1, name: "פסטידאנס", date: D(-3), status: "בוצע", dealType: "PAID", paymentStatus: "שולם", price: 2500, incomeTxId: "fest", artistTxId: null, djTxId: "dj", currency: "₪" }],
     proposals: (fx.proposals ?? []) as never, clients: [], labelArtists: [], ledger: [], mediaIncome: [], redFilmsPayments: [],
@@ -76,7 +80,7 @@ function rawOf(fx: Fx): FinanceRaw {
 
 function src(fx: Fx = {}): GatewaySources {
   const raw = rawOf(fx);
-  const brain = buildFinanceBrain(raw, NOW);
+  const brain = buildFinanceBrain(raw, nowOf(fx));
   const projects: Array<[string, Record<string, unknown>]> = [
     [P_BAM, { name: "באם באם", status: "מחכה למיקס", artistText: "ג'רמי קול חבש", businessType: "לקוח" }],
     [P_YAH, { name: "יהלום", status: "בעבודה", artistText: "רוני נגה", businessType: "לקוח" }],
@@ -96,7 +100,7 @@ function src(fx: Fx = {}): GatewaySources {
   const anchor = fx.anchor ?? "2026-08-10";
   const settings = { families: { ARTIST_BALANCE_CYCLE_ANCHOR: { rows: roster.map((a) => ({ key: `balance_cycle_anchor:${a.id}`, value: { anchorDate: anchor }, updatedAt: null })) } } };
   const state = {
-    todayIL: TODAY,
+    todayIL: fx.today ?? TODAY,
     domains: {
       projects: { data: { index, open } },
       clients: { data: { items: [{ id: DANIEL, name: "דניאל צגאי", type: "לקוח", status: "פעיל", createdAt: null }, { id: SHALEV_CLIENT, name: "שליו טסמה", type: "אמן לייבל", status: "פעיל", createdAt: null }] } },
@@ -112,13 +116,13 @@ function src(fx: Fx = {}): GatewaySources {
     tasks: { rows: [], capped: false }, sessions: { rows: [], capped: false }, meetings: { rows: [], capped: false }, releases: { rows: [], capped: false }, mixVersions: { rows: [], capped: false }, mixComments: { rows: [], capped: false }, mixTargets: { rows: [], capped: false }, mixTargetNotes: { rows: [], capped: false }, actions: { rows: [], capped: false } };
   const labelDetail = { artists: { rows: roster.map((a) => ({ id: a.id, name: a.name, status: "פעיל", hasImage: false, notes: null, createdAt: null, updatedAt: null })), capped: false }, ledger: { rows: ledger, capped: false }, cycles: { rows: [], capped: false }, mediaIncome: { rows: [], capped: false }, mediaAllocations: { rows: [], capped: false }, beats: { rows: [], capped: false }, shows: { rows: [], capped: false } };
   return {
-    now: NOW, identities: { cleantone: null },
+    now: nowOf(fx), identities: { cleantone: null },
     state: { status: "OK", value: state } as never,
     finance: fx.noFinance ? { status: "UNAVAILABLE", detail: "x" } as never : { status: "OK", value: { raw, state: brain, integrity: { top: { reconcile: [] }, questions: [] }, actions: [], brief: null, answersAvailable: true } } as never,
     operations: { status: "OK", value: ops } as never, projectDetail: { status: "OK", value: det } as never, labelDetail: { status: "OK", value: labelDetail } as never,
     settings: { status: "OK", value: settings } as never,
     calendar: { status: "OK", value: { status: "CALENDAR_DATA_AVAILABLE", window: { start: D(-7), end: D(30), days: 37 }, fetchedAt: `${TODAY}T08:00:00Z`, cache: "NONE", calendars: [], events: [], truncated: false, reasons: [] } } as never,
-    ownerInbox: { status: "OK", value: [] } as never, inboxMemory: { status: "OK", value: { links: [], interpretations: [] } } as never, ownerKnowledge: { status: "OK", value: [] } as never,
+    ownerInbox: { status: "OK", value: [] } as never, inboxMemory: { status: "OK", value: { links: [], interpretations: [] } } as never, ownerKnowledge: fx.noKnowledge ? { status: "UNAVAILABLE", detail: "x" } as never : { status: "OK", value: fx.knowledge ?? [] } as never,
     audience: OWNER,
   } as GatewaySources;
 }
@@ -256,7 +260,9 @@ async function main() {
   ok("82. brief / motion summary carries the financial block", !!V.motion.financial && V.motion.financial.coverageHe.includes("אין לי יתרת בנק"));
 
   section("SAFETY");
-  ok("83. financial-forward is pure (no server-only, no store, no fetch)", !/server-only|supabase|fetch\(|from ".*store"/.test(read("lib/partner/coo/financial-forward.ts")));
+  // 2026-10-06 (decision persistence): the ONE active-knowledge reader (activeKnowledge, a pure function of the loaded rows — the
+  // same import every pure view uses) is allowed; any other store, DB client or fetch is not
+  ok("83. financial-forward is pure (no server-only, no I/O store, no fetch; only the pure activeKnowledge reader)", !/server-only|supabase|fetch\(/.test(read("lib/partner/coo/financial-forward.ts")) && !/from "(?!\.\.\/owner-knowledge\/store")[^"]*store"/.test(read("lib/partner/coo/financial-forward.ts")) && /import \{ activeKnowledge, type OwnerKnowledgeRecord \} from "\.\.\/owner-knowledge\/store"/.test(read("lib/partner/coo/financial-forward.ts")) && !/supabase|fetch\(|server-only/.test(read("lib/partner/owner-knowledge/store.ts").replace(/OwnerKnowledgeTableClient[^\n]*/g, "")));
   ok("84. no cron / push / interval", !/setInterval|setTimeout|sendPush|schedule\(|cron\(/.test(code(read("lib/partner/coo/financial-forward.ts"))));
   ok("85. instructions: no solvency words, settlement = review, ask when to pay, OVERTAKEN money note", SERVER_INSTRUCTIONS.includes("NEVER \\\"יש כיסוי\\\"".replace(/\\\\/g, "\\").replace(/\\"/g, "\"")) && SERVER_INSTRUCTIONS.includes("settlement REVIEW") && SERVER_INSTRUCTIONS.includes("ask when to pay") && SERVER_INSTRUCTIONS.includes("OVERTAKEN"));
   ok("86. finance_position wording: not a forecast, not a bank balance, excludes artist liabilities", read("lib/partner/knowledge/capabilities/finance.ts").includes("לא יתרת בנק; לא כולל חוב לאמנים"));
@@ -280,6 +286,75 @@ async function main() {
   const fb = read("lib/partner/finance/brief.ts");
   ok("94. the monthly target is a registered conflict → the money line never states a canonical floor / preferred gap while it is open", /RP_FINANCE_TARGETS_CONFLICT/.test(fb) && /עוד לא נקבע יעד חודשי אחד/.test(fb));
 
+
+  section("DECISION PERSISTENCE C (Owner decisions 2026-10-06) — WHEN is his decision, never money");
+  const BD = KNOWLEDGE_KINDS.find((k) => k.kind === "BUSINESS_DECISION")!;
+  const TOPIC = answerTopicOf("OBLIGATION_TIMING");
+  let seq = 0;
+  const decision = (target: string, v: Record<string, unknown>, o: { createdAt?: string; id?: string; supersedesId?: string | null } = {}) => {
+    const value = { area: "FINANCE", topic: TOPIC, decisionHe: "לשלם", ...(target.startsWith("mix-work:") ? { ref: target } : target ? { about: target } : {}), ...v } as Record<string, string>;
+    return { id: o.id ?? `k${++seq}`, createdAt: o.createdAt ?? `${TODAY}T20:00:00Z`, kind: "BUSINESS_DECISION", subjectKey: "company:REDBLOODS", identityKeys: ["company:REDBLOODS"], slotKey: BD.slot(value as never), value,
+      epistemic: "OWNER_DECISION", meaningHe: String(value.decisionHe), operation: "ASSERT", supersedesId: o.supersedesId ?? null, reviewAt: null, expiresAt: null,
+      provenance: { source: "owner_via_sunny", channel: "mcp", client_id: "c", token_id: "t", attempt_audit_id: "a", operation: "LEARN_KNOWLEDGE" }, confirmationId: `n${seq}`, itemIndex: 0 };
+  };
+  const COND = "כשייכנס עוד קצת כסף ללייבל";
+  const stevenOct = (ref: string, o: Record<string, unknown> = {}) => decision(ref, { decisionHe: "לשלם לסטיבן במהלך החודש", timing: "THIS_MONTH", decidedOn: "2026-10-05", conditionHe: COND, ...o });
+  const both = [stevenOct("mix-work:w-ep"), stevenOct("mix-work:w-200")];
+  const SH = `label-artist:${SHALEV_ARTIST_ID}`;
+  const shalevNow = decision(SH, { decisionHe: "משלמים לשליו בסוף המחזור לפי היתרה המדויקת שתהיה אז", timing: "AT_CYCLE_CLOSE", decidedOn: "2026-10-05", validUntil: "2026-10-10" });
+
+  const F0 = ff();
+  const s0 = ob(F0, "vendor-payable:Steven")!;
+  ok("D1. no decision → NEEDS_DECISION; the question is per WORK (mix-work refs, topic q-obligation-timing) — never a vendor-wide identity", s0.decision?.state === "NEEDS_DECISION" && s0.preparedness === "NEEDS_DECISION" && s0.questionHe === "מתי אתה רוצה לשלם את ה-$750 לסטיבן?"
+    && s0.decision!.members.map((m) => m.entity).sort().join() === "mix-work:w-200,mix-work:w-ep" && s0.decision!.members.every((m) => (m.answerAs as { ref?: string; topic?: string }).ref === m.entity && (m.answerAs as { topic?: string }).topic === TOPIC), s0.decision);
+  const F2 = ff({ knowledge: both });
+  const s2 = ob(F2, "vendor-payable:Steven")!;
+  ok("D2. both works decided THIS_MONTH + his condition → DECIDED_CONDITIONAL, no question, not a surprise, level WATCH", s2.decision?.state === "DECIDED_CONDITIONAL" && s2.preparedness === "DECIDED" && s2.questionHe === null && s2.level === "WATCH" && !F2.surprises.some((o) => o.key === s2.key), { d: s2.decision?.state, q: s2.questionHe, lvl: s2.level });
+  ok("D3. the decision is said with the ANCHORED month (October 2026), his condition VERBATIM and 'no exact date'", /אוקטובר 2026/.test(s2.decision!.he) && s2.decision!.he.includes(`«${COND}»`) && /אין תאריך מדויק/.test(s2.decision!.he) && /\(05\.10\)/.test(s2.decision!.he), s2.decision!.he);
+  const moneyOf = (o: typeof s0) => [o.amount, o.currency, o.strength, o.timing, o.date, o.daysTo, o.countsIn, o.overdue, o.dynamic, o.direction];
+  ok("D4. the decision never changes money: amount / strength / date / countsIn / windows identical; no Finance row created", JSON.stringify(moneyOf(s0)) === JSON.stringify(moneyOf(s2)) && JSON.stringify(F0.windows) === JSON.stringify(F2.windows) && F0.obligations.length === F2.obligations.length && s2.date === null);
+  ok("D5. the money line says what he decided (never 'מחכה להחלטה שלך' for it) and keeps 'לפי התזרים הרשום'", /כבר החלטת: סטיבן/.test(F2.lineHe) && !/מחכה להחלטה שלך מתי לשלם/.test(F2.lineHe) && /לפי התזרים הרשום במערכת/.test(F2.lineHe) && /מחכה להחלטה שלך מתי לשלם/.test(F0.lineHe), F2.lineHe);
+  const s3 = ob(ff({ knowledge: [both[0]] }), "vendor-payable:Steven")!;
+  ok("D6. ONE of two works decided → still NEEDS_DECISION, says 1 of 2 and asks ONLY about the uncovered work (never 'decided')", s3.decision?.state === "NEEDS_DECISION" && s3.preparedness === "NEEDS_DECISION" && /הוחלט על 1 מתוך 2/.test(s3.decision!.he) && /פרויקט X/.test(s3.questionHe ?? "") && !/עבודה \(\$550\)\?/.test(s3.questionHe ?? ""), { he: s3.decision?.he, q: s3.questionHe });
+  const s4 = ob(ff({ knowledge: both, extraWorks: [{ id: "w-new", projectId: P_YAH, engineerName: "Steven", status: "אושר", agreedPrice: 210, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null }] }), "vendor-payable:Steven")!;
+  ok("D7. a NEW completed work never inherits the old decision → NEEDS_DECISION asking about the new work only", s4.decision?.state === "NEEDS_DECISION" && s4.decision!.members.find((m) => m.entity === "mix-work:w-new")?.state === "ASK" && s4.decision!.members.filter((m) => m.state === "KNOWN").length === 2 && /יהלום/.test(s4.questionHe ?? ""), { he: s4.decision?.he, q: s4.questionHe });
+  const s5 = ob(ff({ knowledge: both, today: "2026-11-02" }), "vendor-payable:Steven")!;
+  ok("D8. THIS_MONTH is anchored to decidedOn: in November it is NOT 'this month' → REVIEW_DUE 'זה עדיין נכון?' naming October", s5.decision?.state === "REVIEW_DUE" && s5.preparedness === "NEEDS_DECISION" && /זה עדיין נכון\?/.test(s5.questionHe ?? "") && /אוקטובר 2026/.test(s5.questionHe ?? "") && !/נובמבר/.test(s5.questionHe ?? ""), s5.questionHe);
+  const s6 = ob(ff({ knowledge: both, today: "2026-10-31" }), "vendor-payable:Steven")!;
+  ok("D9. the last day of the month is still inside the decision (no review before the month ends)", s6.decision?.state === "DECIDED_CONDITIONAL");
+  ok("D10. his condition is never evaluated: recorded label income does not change the state or the wording", ob(ff({ knowledge: both, extraTx: [tx("rec-in", { type: "income", amount: 9000, status: "התקבל", date: D(0), businessUnit: "RECORDS" })] }), "vendor-payable:Steven")?.decision?.state === "DECIDED_CONDITIONAL");
+  const s7 = ob(ff({ knowledge: [both[0], both[1], decision("mix-work:w-ep", { decisionHe: "לשלם לסטיבן עד 20.10", timing: "BY_DATE", timingDate: "2026-10-20", decidedOn: "2026-10-05" }, { createdAt: `${TODAY}T21:00:00Z`, supersedesId: "k-none" })] }), "vendor-payable:Steven")!;
+  ok("D11. a newer decision on the same work supersedes the old one (the slot's latest wins; history kept in the store)", s7.decision!.members.find((m) => m.entity === "mix-work:w-ep")?.timing === "BY_DATE" && /עד 20\.10/.test(s7.decision!.he), s7.decision?.he);
+  const sCompany = ob(ff({ knowledge: [decision("", { decisionHe: "משלמים לספקים בסוף החודש", timing: "THIS_MONTH", decidedOn: "2026-10-05" })] }), "vendor-payable:Steven")!;
+  ok("D12. a company-level decision never decides an exact obligation (exact entity only)", sCompany.decision?.state === "NEEDS_DECISION");
+  const sNoKn = ob(ff({ noKnowledge: true }), "vendor-payable:Steven")!;
+  ok("D13. decisions unreadable → NEEDS_DECISION 'לא נקראו' (never 'not decided'), said in unchecked", sNoKn.decision?.state === "NEEDS_DECISION" && /לא נקראו/.test(sNoKn.decision!.he) && ff({ noKnowledge: true }).unchecked.some((u) => /ההחלטות שלך/.test(u)));
+
+  const FS = ff({ knowledge: [shalevNow] });
+  const shD = ob(FS, `settlement:${SH}`)!, sh0 = ob(F0, `settlement:${SH}`)!;
+  ok("D14. Shalev, this cycle: AT_CYCLE_CLOSE → DECIDED_DATED (the close date is the records'), no question, not a surprise", shD.decision?.state === "DECIDED_DATED" && shD.preparedness === "DECIDED" && shD.questionHe === null && !FS.surprises.some((o) => o.key === shD.key) && /בסגירת המחזור/.test(shD.decision!.he), { d: shD.decision, q: shD.questionHe });
+  ok("D15. the settlement money is untouched: same dynamic balance, direction, date, exposure", JSON.stringify(moneyOf(shD)) === JSON.stringify(moneyOf(sh0)) && JSON.stringify(FS.windows) === JSON.stringify(F0.windows));
+  const shOld = ob(ff({ knowledge: [decision(SH, { decisionHe: "משלמים בסוף המחזור", timing: "AT_CYCLE_CLOSE", decidedOn: "2026-08-01" }, { createdAt: "2026-08-01T10:00:00Z" })] }), `settlement:${SH}`)!;
+  ok("D16. a decision from BEFORE the current cycle started never carries over → asked again WITH the earlier answer (REOPENED)", shOld.decision?.state === "NEEDS_DECISION" && shOld.decision!.members[0].state === "REOPENED_BECAUSE_EVIDENCE_CHANGED" && /קודם אמרת לי/.test(shOld.questionHe ?? ""), shOld.questionHe);
+  const shExpired = ob(ff({ knowledge: [decision(SH, { decisionHe: "משלמים בסוף המחזור", timing: "AT_CYCLE_CLOSE", decidedOn: "2026-10-05", validUntil: "2026-10-08" })], today: "2026-10-09" }), `settlement:${SH}`)!;
+  const shValid = ob(ff({ knowledge: [shalevNow], today: "2026-10-09" }), `settlement:${SH}`)!;
+  ok("D17. validUntil ends the decision (the store's own time rule): the day after it, the same cycle asks again; before it, decided", shExpired.decision?.state === "NEEDS_DECISION" && shExpired.decision!.members[0].state === "ASK" && shValid.decision?.state === "DECIDED_DATED", { expired: shExpired.decision?.state, valid: shValid.decision?.state });
+  ok("D18. a decision about ANOTHER artist never decides Shalev", ob(ff({ knowledge: [decision(`label-artist:${AVI_ARTIST_ID}`, { decisionHe: "x", timing: "AT_CYCLE_CLOSE", decidedOn: "2026-10-05" })] }), `settlement:${SH}`)?.decision?.state === "NEEDS_DECISION");
+
+  section("DECISION PERSISTENCE — kind rules, serving, motion, no hardcode");
+  const chk = (v: Record<string, unknown>) => BD.check!({ area: "FINANCE", topic: TOPIC, decisionHe: "x", ...v } as never);
+  ok("D19. THIS_MONTH needs decidedOn (the anchor is never 'now')", chk({ timing: "THIS_MONTH" }).some((e) => /decidedOn/.test(e)) && chk({ timing: "THIS_MONTH", decidedOn: "2026-10-05" }).length === 0);
+  ok("D20. BY_DATE needs timingDate; a timingDate without BY_DATE is refused (no invented due date)", chk({ timing: "BY_DATE" }).some((e) => /timingDate/.test(e)) && chk({ timing: "THIS_MONTH", decidedOn: "2026-10-05", timingDate: "2026-10-20" }).some((e) => /only with timing BY_DATE/.test(e)) && chk({ timingDate: "2026-10-20" }).some((e) => /only with timing BY_DATE/.test(e)));
+  ok("D21. the read-back shows WHEN + his condition verbatim", BD.readBackHe(null as never, { area: "FINANCE", topic: TOPIC, decisionHe: "לשלם לסטיבן", timing: "THIS_MONTH", decidedOn: "2026-10-05", conditionHe: COND } as never).includes(`במהלך אוקטובר 2026 — בתנאי שלך: «${COND}»`));
+  const served = queryKnowledgeCore(PARTNER_KNOWLEDGE_REGISTRY, { capability: "coo", mode: "forward" }, src({ knowledge: both }), OWNER) as unknown as { items: Array<{ fields: { key: string; decision: { state: string; members: Array<{ entity: string; answerAs: { ref?: string; topic?: string }; condition: { text: string } | null }> } | null } }> };
+  const sv = served.items.find((i) => i.fields.key.startsWith("vendor-payable:Steven"))!.fields.decision!;
+  ok("D22. coo forward serves the decision state + every member's exact entity, answerAs and his condition (record text)", sv.state === "DECIDED_CONDITIONAL" && sv.members.length === 2 && sv.members.every((m) => m.entity.startsWith("mix-work:") && m.answerAs.ref === m.entity && m.condition?.text === COND));
+  const M2 = buildCooView(src({ knowledge: both })).motion;
+  ok("D23. motion: a decided obligation is no move and no question; the greeting money line says 'כבר החלטת'", !M2.all.some((i) => i.key === "fin:vendor-payable:Steven:$") && !!M2.financial && M2.financial.decided.some((d) => /סטיבן/.test(d) && d.includes(COND)) && /כבר החלטת/.test(M2.answerHe), M2.financial?.decided);
+  const ffSrc = code(read("lib/partner/coo/financial-forward.ts"));
+  ok("D24. no hardcode: the WHEN questions are per mix-work / per artist key and go through the ONE resolver (resolveQuestions) — no vendor identity in the decision path", /entity: `mix-work:\$\{e\.id\.replace/.test(ffSrc) && /resolveQuestions\(qs, kn, today, evidenceOf\)/.test(ffSrc) && !/vendor:STEVEN[^\n]*decideObligation|decideObligation[^\n]*vendor:STEVEN/.test(ffSrc) && !/Steven|Shalev|שליו/.test(ffSrc.slice(ffSrc.indexOf("export function decideObligation"), ffSrc.indexOf("const ilToday"))));
+  ok("D25. no Finance writer, no DB: Financial Forward still writes nothing", !/\.insert\(|\.update\(|\.upsert\(|\.rpc\(|ADD_TRANSACTION/.test(ffSrc));
+  ok("D26. the connector instructions: per-member answerAs, ONE preview listing the works, THIS_MONTH = the month of decidedOn, never a Finance row / invented date, never judge his condition, REVIEW_DUE = 'זה עדיין נכון?'", /MONEY DECISIONS — WHEN/.test(SERVER_INSTRUCTIONS) && /ONE preview for a payable of several works/.test(SERVER_INSTRUCTIONS) && /THIS_MONTH = the month of decidedOn/.test(SERVER_INSTRUCTIONS) && /Never a Finance row/.test(SERVER_INSTRUCTIONS) && /never judge whether his condition happened/.test(SERVER_INSTRUCTIONS));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

@@ -159,7 +159,7 @@ export interface BusinessMotion {
   unchecked: string[];
   heuristics: typeof MOTION_HEURISTICS;
   /** FINANCIAL_FORWARD (an input — never a second engine): the compact money picture */
-  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; datedSurprises: string[]; undatedSurprises: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
+  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; datedSurprises: string[]; undatedSurprises: string[]; decided: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
   answerHe: string;
 }
 
@@ -696,7 +696,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const m: BusinessMotion = {
     today, todayItems, greeting, more: Math.max(0, act.length - todayItems.length), atRisk, closeLoops, ownerBottleneck, label: labelItems, revenue, week, inbox, watch, all,
     patterns: pats.map((p) => ({ code: p.code, level: p.level, he: p.hypothesisHe })), progress,
-    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), datedSurprises: ff.surprises.filter((o) => o.date).map((o) => o.he), undatedSurprises: ff.surprises.filter((o) => !o.date).map((o) => o.he), duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
+    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), datedSurprises: ff.surprises.filter((o) => o.date).map((o) => o.he), undatedSurprises: ff.surprises.filter((o) => !o.date).map((o) => o.he), decided: ff.obligations.filter((o) => o.preparedness === "DECIDED" && o.decision).map((o) => `${o.titleHe} ${o.he.slice(o.titleHe.length + 2).split(" · ")[0]} — ${o.decision!.he}`), duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
     learning: { status: "NOT_READ", changed: 0, noteHe: "היסטוריית הפעולות לא נקראה כאן — ההמלצות לא נבדקו מול מה שכבר נוסה (זה לא אומר שכלום לא נוסה)" },
     unchecked: [...new Set(unchecked)], heuristics: MOTION_HEURISTICS, answerHe: "",
   };
@@ -713,12 +713,13 @@ function lastShowOf(c: CooCtx, artistName: string): string | null {
 
 /** The executive Hebrew answer: ≤3 moves + the week line + the inbox line — never a dump, never "במה נתחיל?". */
 export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
-  financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; coverageHe: string } | null }
+  financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; coverageHe: string } | null }
 
 /** Money in the greeting: dated and undated are never under one heading (an undated payable is never "due" on a date). */
-function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; coverageHe: string }): string {
-  const dated = f.datedSurprises ?? f.surprises, undated = f.undatedSurprises ?? [];
-  const parts = [dated.length ? `עם תאריך: ${dated.slice(0, 2).join(" · ")}` : null, undated.length ? `בלי תאריך: ${undated.slice(0, 1).join(" · ")}` : null].filter(Boolean);
+function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; coverageHe: string }): string {
+  const dated = f.datedSurprises ?? f.surprises, undated = f.undatedSurprises ?? [], decided = f.decided ?? [];
+  // what he already decided is said as his decision (when / on what condition) — never asked again
+  const parts = [dated.length ? `עם תאריך: ${dated.slice(0, 2).join(" · ")}` : null, undated.length ? `בלי תאריך: ${undated.slice(0, 1).join(" · ")}` : null, decided.length ? `כבר החלטת: ${decided.slice(0, 2).join(" · ")}` : null].filter(Boolean);
   return `מבחינת כסף — ${parts.join(" | ")} (${f.coverageHe})`;
 }
 
@@ -735,7 +736,7 @@ export function motionAnswerHe(m: MotionAnswerInput): string {
   const extra = [
     `השבוע: ${m.week.lineHe}`,
     // ONE money line — only what could surprise him (MUST / SHOULD, not prepared); never an accounting dump
-    m.financial && m.financial.surprises.length ? moneyLineHe(m.financial) : null,
+    m.financial && (m.financial.surprises.length || m.financial.decided?.length) ? moneyLineHe(m.financial) : null,
     m.week.opportunity ? m.week.opportunity.he : null,
     m.ownerBottleneck.lineHe,
     m.inbox.lineHe,

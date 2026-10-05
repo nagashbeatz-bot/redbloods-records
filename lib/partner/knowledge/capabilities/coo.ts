@@ -130,7 +130,11 @@ export const coo: KnowledgeCapability = {
       const ff = buildFinancialForward(src, c);
       return result(ff.obligations.map((o, k) => item({ id: `${k + 1}:${o.key}`, entity: o.entity && /^(project|show|session|release|label-artist|client):/.test(o.entity) ? o.entity : null, label: partner(o.he), epistemic: o.dynamic ? "DERIVED" : "FACT", source: "FINANCE",
         fields: { key: o.key, kind: o.kind, level: o.level, preparedness: o.preparedness, strength: o.strength, timing: o.timing, amount: o.amount, currency: o.currency, currencyNote: o.currencyNote, date: o.date, daysTo: o.daysTo, dynamic: o.dynamic, direction: o.direction, directionHe: partner(o.directionHe),
-          changeDrivers: o.changeDriversHe.map(partner), question: o.questionHe ? partner(o.questionHe) : null, confidence: o.confidence, provenance: o.provenance, businessUnit: o.businessUnit, countsIn: o.countsIn, overdue: o.overdue } })),
+          changeDrivers: o.changeDriversHe.map(partner), question: o.questionHe ? partner(o.questionHe) : null, confidence: o.confidence, provenance: o.provenance, businessUnit: o.businessUnit, countsIn: o.countsIn, overdue: o.overdue,
+          // the Owner's decision about WHEN (question memory, exact entity per member; answerAs = how to save his answer) — never money
+          decision: o.decision ? { state: o.decision.state, he: partner(o.decision.he), conditionNote: o.decision.conditionNoteHe ? partner(o.decision.conditionNoteHe) : null,
+            members: o.decision.members.map((m) => ({ entity: m.entity, label: record(m.labelHe), state: m.state, knowledgeId: m.knowledgeId, decision: m.decisionHe ? record(m.decisionHe) : null, timing: m.timing, timingHe: m.timingHe ? partner(m.timingHe) : null,
+              condition: m.conditionHe ? record(m.conditionHe) : null, decidedOn: m.decidedOn, question: partner(m.questionHe), answerAs: m.answerAs })) } : null } })),
         { ...base, coverage: [...COVERAGE, partner(ff.coverageHe), partner("צפוי ≠ התקבל; הצעה ≠ כסף; ₪ ו-$ נפרדים בלי המרה; התחשבנות = סקירה במועד הסגירה, לא תשלום"), ...ff.unchecked.map(partner)],
           summary: [sfact("ANSWER", "כסף קדימה — תמונה קצרה", ff.lineHe, "DERIVED", "FINANCE"), sfact("COVERAGE", "כיסוי (אין יתרת בנק)", ff.coverage, "DERIVED", "FINANCE"),
             sfact("WINDOWS", "חלונות 7 / 14 / 30 (לפי מטבע)", ff.windows, "DERIVED", "FINANCE"), sfact("SURPRISES", "מה עלול להפתיע", ff.surprises.map((o) => o.he), "DERIVED", "FINANCE"),
