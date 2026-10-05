@@ -20,7 +20,8 @@ import { financeKnowledgeContextOf, reconcileForKnowledge } from "../lib/partner
 import { canonicalEffectOf } from "../lib/partner/owner-knowledge/propose";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../lib/partner/owner-knowledge/store";
 import { knowledgeKind } from "../lib/partner/owner-knowledge/kinds";
-import { followUpKnowledgeFor, followUpKnown } from "../lib/partner/sunny/known-context";
+import { followUpKnowledgeFor, followUpKnown, vendorWorkKnown, victorDeliveryQuestionId } from "../lib/partner/sunny/known-context";
+import { buildVictorView } from "../lib/partner/victor/view";
 import { buildNeedsMe } from "../lib/partner/needs-me/curate";
 import { buildClientView } from "../lib/partner/clients/view";
 import type { Plan } from "../lib/partner/act/types";
@@ -228,6 +229,48 @@ const tx = (o: Partial<FinanceTxRow> & { id: string }): FinanceTxRow => ({ proje
     ok("7a. proposal 301 (the Owner said 'לחזור ב-20.10') → a known line with SET_PROPOSAL_FOLLOWUP, NOT a FOLLOW_UP question", v.known.some((k) => k.entityKey === `proposal:${U(301)}` && k.actions[0]?.actionId === "SET_PROPOSAL_FOLLOWUP") && !v.questions.some((q) => q.kind === "FOLLOW_UP" && q.questionHe.includes("הצעה 301")), { known: v.known, q: v.questions });
     ok("7b. proposal 302 of the SAME client (nothing said about it) is still asked — no cross-proposal suppression", v.questions.some((q) => q.kind === "FOLLOW_UP" && q.questionHe.includes("הצעה 302")), v.questions);
     ok("7c. the record signal FOLLOW_UP_DUE stays for both proposals (D1: knowledge never removes a record signal)", v.signals.filter((s) => s.code === "FOLLOW_UP_DUE").length === 2);
+  }
+
+  console.log("\nS8. Stage 5 — Victor / vendor outside communication: work-level identity, commitment ≠ communication, push ≠ proof");
+  {
+    const T = "2026-10-05", W1 = `victor-work:${U(401)}`, W2 = `victor-work:${U(402)}`;
+    const vc = (o: Partial<OwnerKnowledgeRecord> & { id: string; value: Record<string, unknown> }) => ({ createdAt: "2026-10-03T10:00:00Z", kind: "VENDOR_COMMITMENT", subjectKey: "vendor:VICTOR", identityKeys: ["vendor:VICTOR"], slotKey: `${o.id}-s`, epistemic: "OWNER_REPORTED", meaningHe: "ויקטור התחייב לשלוח תיקון (בלי מועד).", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-17", expiresAt: null, ...o } as OwnerKnowledgeRecord);
+    const base = { label: "Mad Luv", lastUploadAt: "2026-09-19T10:00:00Z", todayIL: T, vendorLabel: "ויקטור", vendorBall: "VICTOR" };
+    const onW1 = vc({ id: "c1", value: { commitment: "SEND_REVISION", work: W1 } });
+    const k1 = vendorWorkKnown({ ...base, workKey: W1, records: [onW1] });
+    ok("8a. a commitment on THIS work ('הוא על זה') → a known line (no repeated 'contact Victor?'); nothing canonical is claimed", !!k1 && k1.questionKind === "OUTSIDE_COMMUNICATION" && k1.actions.length === 0 && /אין פעולה קנונית/.test(k1.canonicalHe) && !/עדכנתי|רשמתי|סגרתי/.test(k1.textHe), k1);
+    ok("8b. …never applied to another work of the same vendor", vendorWorkKnown({ ...base, workKey: W2, records: [onW1] }) === null);
+    ok("8c. a vendor-level commitment without a work never covers a specific work (no vendor-wide suppression)", vendorWorkKnown({ ...base, workKey: W1, records: [vc({ id: "c2", value: { commitment: "SEND_REVISION" } })] }) === null);
+    ok("8d. a version uploaded AFTER the commitment → newer canonical evidence: the old statement no longer counts (the question may return)", vendorWorkKnown({ ...base, workKey: W1, lastUploadAt: "2026-10-04T10:00:00Z", records: [onW1] }) === null);
+    const wd = [onW1, { ...onW1, id: "c1w", operation: "WITHDRAW", supersedesId: "c1", createdAt: "2026-10-04T08:00:00Z" } as OwnerKnowledgeRecord];
+    ok("8e. a withdrawn commitment → the question can be asked again (activeKnowledge)", vendorWorkKnown({ ...base, workKey: W1, records: activeKnowledge(wd, T) }) === null);
+    const ans = (o: Record<string, unknown>) => ({ questionId: victorDeliveryQuestionId(U(401)), contextId: "ctx-9", questionType: "WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM", answerCode: "REVIEWED_OUTSIDE_SYSTEM", answeredAt: "2026-09-25T10:00:00Z", status: "ACTIVE", ...o });
+    const k2 = vendorWorkKnown({ ...base, workKey: W1, records: [], answers: [ans({})] });
+    ok("8f. 'דיברתי איתו / עברנו על זה' recorded as the existing review answer (Owner Context) → known line, basis OWNER_ANSWER — outside communication, NOT a commitment", k2?.basis.kind === "OWNER_ANSWER" && /מחוץ למערכת/.test(k2.textHe) && k2.questionKind === "OUTSIDE_COMMUNICATION", k2);
+    ok("8g. the answer of ANOTHER work's case never applies (exact question id per work)", vendorWorkKnown({ ...base, workKey: W2, records: [], answers: [ans({})] }) === null);
+    ok("8h. a superseded / not-applicable answer does not count", vendorWorkKnown({ ...base, workKey: W1, records: [], answers: [ans({ status: "SUPERSEDED" })] }) === null);
+    ok("8i. a newer upload than the answer → a real new reason (null → the question returns)", vendorWorkKnown({ ...base, workKey: W1, lastUploadAt: "2026-09-30T10:00:00Z", records: [], answers: [ans({})] }) === null);
+    const upd = (ballWith: string) => ({ id: "i1", ballWith, createdAt: "2026-09-28T10:00:00Z", whatHappened: "שלחתי לויקטור הערות בוואטסאפ" });
+    ok("8j. a processed update on the work's project that puts the ball with Victor → known (the caller passes it only for the project's single Victor work)", vendorWorkKnown({ ...base, workKey: W1, records: [], projectUpdate: upd("VICTOR") })?.basis.kind === "OWNER_KNOWLEDGE");
+    ok("8k. an update that says the ball is the Owner's / an engineer's is not about Victor → no known line", vendorWorkKnown({ ...base, workKey: W1, records: [], projectUpdate: upd("OWNER") }) === null && vendorWorkKnown({ ...base, workKey: W1, records: [], projectUpdate: upd("ENGINEER") }) === null);
+    const kc = read("lib/partner/sunny/known-context.ts");
+    ok("8l. push ≠ proof: the vendor helper has no push / marker / notification input", !/markerStateOf|sendPush|push_|P_VICTOR|notifiedAt/.test(kc.slice(kc.indexOf("export function vendorWorkKnown"))));
+    // victor_view: the question for THIS work is replaced; the other work is still asked; the record signal stays
+    const vFile = (at: string, v: string) => ({ name: `${v}.wav`, uploadedAt: at, versionLabel: v, durationSeconds: null, size: null, hasShareLink: false, path: null, uploadedBy: "victor" });
+    const vRow = (id: number) => ({ id: U(id), projectId: null, vendorName: "victor", title: `work ${id}`, status: "פעיל", workState: null, sentDate: "2026-09-01", internalDeadline: null, linkedTaskId: null, notes: null, briefText: null, references: [], filesSent: [vFile("2026-09-01T10:00:00Z", "v1"), vFile("2026-09-19T10:00:00Z", "v2")], filesReceived: [], briefFiles: [],
+      reviews: [{ version: "v1", sentAt: "2026-09-05T10:00:00Z", draft: false, notes: "x", sentNotes: "x", status: "waiting" }], returnedDate: null, outcome: null, quality: null, enteredProject: null, dropboxFolder: null, hasFolderLink: false, createdAt: null, updatedAt: null });
+    const vsrc = (knowledge: unknown[], answers: unknown[] = []) => ({
+      now: new Date(`${T}T09:00:00Z`), identities: { cleantone: null },
+      state: { status: "OK", value: { todayIL: T, domains: { projects: { data: { index: {}, open: [] } }, clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: [] } }, sessions: { data: { items: [] } }, releasesFull: { data: { items: [] } }, proposalsFull: { data: { items: [] } }, tasksFull: { data: { items: [] } } } } },
+      projectDetail: { status: "OK", value: { victor: { rows: [vRow(401), vRow(402)], capped: false }, engineerWork: { rows: [], capped: false }, mixVersions: { rows: [], capped: false }, mixComments: { rows: [], capped: false }, tasks: { rows: [], capped: false }, actions: { rows: [], capped: false }, projectSettings: { rows: [], capped: false }, finalFiles: { rows: [], capped: false }, mixTargets: { rows: [], capped: false }, mixTargetNotes: { rows: [], capped: false } } },
+      settings: { status: "OK", value: { families: {} } }, ownerKnowledge: { status: "OK", value: knowledge },
+      memory: { status: "OK", value: { entities: [{ ownerDecisions: answers }] } }, audience: { channel: "INTERNAL", ownerAuthorized: true },
+    } as never);
+    const vv = buildVictorView(vsrc([onW1]));
+    ok("8m. victor_view: work 401 (commitment) → known line, no OUTSIDE_COMMUNICATION question; work 402 (nothing said) → still asked", vv.known.some((k) => k.entityKey === W1) && !vv.questions.some((q) => q.kind === "OUTSIDE_COMMUNICATION" && q.work === W1) && vv.questions.some((q) => q.kind === "OUTSIDE_COMMUNICATION" && q.work === W2), { known: vv.known.map((k) => k.entityKey), q: vv.questions.map((q) => `${q.kind}:${q.work}`) });
+    ok("8n. the record signal WAITING_ON_OWNER stays for both works (the ball is unchanged)", vv.signals.filter((s) => s.code === "WAITING_ON_OWNER").length === 2);
+    const vv2 = buildVictorView(vsrc([], [ans({})]));
+    ok("8o. the existing review answer (dashboard) also turns the question into a known line for THAT work only", vv2.known.some((k) => k.entityKey === W1 && k.basis.kind === "OWNER_ANSWER") && vv2.questions.some((q) => q.kind === "OUTSIDE_COMMUNICATION" && q.work === W2));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

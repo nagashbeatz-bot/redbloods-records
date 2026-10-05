@@ -43,7 +43,7 @@ export const needsMe: KnowledgeCapability = {
   access: { externalRead: true, ownerOnly: true, sensitivity: "PERSONAL" },
   needs: ["STATE", "OPERATIONS", "PROJECT_DETAIL", "LABEL_DETAIL", "SETTINGS", "OWNER_INBOX", "ACTIONS", "INTEGRITY"],
   // FINANCE (optional): the open client money / DJ fee of a past unclosed show; unreadable → the stored payment label, said so
-  optionalNeeds: ["OWNER_KNOWLEDGE", "FINANCE"],
+  optionalNeeds: ["OWNER_KNOWLEDGE", "FINANCE", "MEMORY"],
   read(src, q) {
     if (!ok(src.state)) return { ...result([], { completeness: "UNKNOWN" }), missing: [{ fact: "company state", whyNeeded: "without the records the ball cannot be checked — nothing here means \"nothing needs you\"" }] };
     const n = buildNeedsMe(src);

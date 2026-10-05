@@ -10,6 +10,7 @@
  * No workload score, no capacity limit, no performance judgement.
  */
 import type { GatewaySources } from "../gateway/core";
+import { vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw, DetailVictorWork } from "../projects/detail-types";
@@ -163,9 +164,16 @@ export function buildVictorView(src: GatewaySources) {
   const open = works.filter((w) => w.status === "פעיל");
   const signals: VictorSignal[] = [];
   const questions: VictorQuestion[] = [];
+  // D1 / D2 (2026-10-05): what the Owner already said about a work (commitment / outside review / a processed update on the
+  // work's project when it is the project's ONLY open Victor work) → a known line, never the same question again.
+  const known: KnownContextItem[] = [];
+  const kin = vendorKnownInputs(src);
+  const openPerProject = new Map<string, number>();
+  for (const w of open) if (w.project?.key) openPerProject.set(w.project.key, (openPerProject.get(w.project.key) ?? 0) + 1);
+  const knownOf = (w: (typeof open)[number]) => vendorWorkKnown({ workKey: w.key, label: w.title, lastUploadAt: w.handoff.lastUploadAt ?? null, todayIL: c.today, records: c.kn, answers: kin.answers, projectUpdate: w.project?.key && openPerProject.get(w.project.key) === 1 ? kin.projectUpdate(w.project.key) : null, vendorLabel: "ויקטור", vendorBall: "VICTOR" });
   for (const w of open) {
     if (w.handoff.state === "WAITING_ON_VICTOR") signals.push({ code: "WAITING_ON_VICTOR", kind: "DERIVED_SIGNAL", he: `${w.title}: נשלחו הערות אחרי ההעלאה האחרונה`, work: w.key });
-    if (w.handoff.state === "WAITING_ON_OWNER") { signals.push({ code: "WAITING_ON_OWNER", kind: "DERIVED_SIGNAL", he: `${w.title}: ויקטור העלה אחרי ההערות האחרונות (לפי המערכת)`, work: w.key }); if ((w.handoff.daysSinceLastUpload ?? 0) > 7) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ויקטור העלה לפני ${w.handoff.daysSinceLastUpload} ימים ולא נשלחו הערות במערכת. טופל מחוץ למערכת?`, why: "in-app evidence only", work: w.key }); }
+    if (w.handoff.state === "WAITING_ON_OWNER") { signals.push({ code: "WAITING_ON_OWNER", kind: "DERIVED_SIGNAL", he: `${w.title}: ויקטור העלה אחרי ההערות האחרונות (לפי המערכת)`, work: w.key }); const kw = knownOf(w); if (kw) known.push(kw); else if ((w.handoff.daysSinceLastUpload ?? 0) > 7) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ויקטור העלה לפני ${w.handoff.daysSinceLastUpload} ימים ולא נשלחו הערות במערכת. טופל מחוץ למערכת?`, why: "in-app evidence only", work: w.key }); }
     if (w.handoff.state === "UNKNOWN") signals.push({ code: "HANDOFF_UNKNOWN", kind: "UNKNOWN", he: `${w.title}: ${w.handoff.appRule.basis}`, work: w.key });
     if (w.handoff.state === "CONFLICTING_EVIDENCE") { signals.push({ code: "HANDOFF_CONFLICT", kind: "DERIVED_SIGNAL", he: `${w.title}: יומן השליחה (${w.handoff.sendLogHolder}) לא תואם להעלאות / הערות (${w.handoff.appRule.holder})`, work: w.key }); questions.push({ kind: "HANDOFF", questionHe: `"${w.title}" — אצל מי זה באמת עכשיו?`, why: "send log and upload / notes evidence disagree", work: w.key }); }
     if (w.internalDeadline?.passed) signals.push({ code: "INTERNAL_DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `${w.title}: הדדליין הפנימי (${w.internalDeadline.date}) עבר — ציפייה פנימית, לא התחייבות ללקוח; לבדוק את המצב, לא להאשים.`, work: w.key });
@@ -188,7 +196,7 @@ export function buildVictorView(src: GatewaySources) {
       internalDeadlinesPassed: open.filter((w) => w.internalDeadline?.passed).length, labelWork: open.filter((w) => w.labelWork).length, clientWork: open.filter((w) => w.labelWork === false).length, note: "recorded counts — no capacity limit, no workload score" },
     works, money, presence: { lastPortalVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity evidence only — not work done, not 'saw a message'. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" },
     stuck: { rule: "status פעיל AND more than stuckAfterDays whole days since sent (the app's own rule)", stuckAfterDays, count: open.filter((w) => isVictorWorkStuck(w.status, w.daysSinceSent, stuckAfterDays)).length, pushEnabled: VICTOR_STUCK_PUSH_ENABLED, pushNote: "Owner decision Q3 (2026-09-27): the Victor-stuck push is disabled; the signal is computed only" },
-    ownerKnowledge: kn, signals, questions,
+    ownerKnowledge: kn, signals, questions, known,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (Victor works) was not read — works unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (salary settings, presence, markers)"]), ...money.unavailable.map((u) => `${u} (money)`)],
   };
 }

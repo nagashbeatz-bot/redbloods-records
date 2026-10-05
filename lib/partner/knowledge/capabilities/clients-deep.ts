@@ -51,7 +51,7 @@ export const clientView: KnowledgeCapability = {
     section: { kind: "enum", values: [...CLIENT_SECTIONS], descriptionForModel: "Which part to deepen (default summary)" },
   },
   entityScope: { types: ["client"], param: "client", mode: "view", limit: 1 },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR"],
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "MEMORY", "OWNER_INBOX"],
   read(src, q) {
     if (!q.params.client) return result([], { completeness: "UNKNOWN", missing: [{ fact: "client", whyNeeded: "pass params.client (partner_resolve gives the key)" }] });
     if (!src.state || src.state.status !== "OK") return unavailable("clients");
@@ -82,7 +82,7 @@ export const clientPortfolioCap: KnowledgeCapability = {
     client: { kind: "entityKey", types: ["client"], descriptionForModel: "workflow: the client, if known" },
     name: { kind: "text", maxLength: 80, descriptionForModel: "workflow: the name the Owner used, when not resolved" },
   },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR"],
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["CALENDAR", "MEMORY", "OWNER_INBOX"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return unavailable("clients");
     if (q.mode === "workflow") {

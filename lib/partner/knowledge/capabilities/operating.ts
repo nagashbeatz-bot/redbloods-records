@@ -42,7 +42,7 @@ export const operatingModel: KnowledgeCapability = {
   entityScope: { types: ["project"], param: "project", mode: "project", limit: 1 },
   paging: { defaultLimit: 30, maxLimit: 50 }, recordTextLimit: 2000, // 26 Owner rules fit one page
   access: { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" },
-  needs: ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "INTEGRITY", "CASES", "ACTIONS", "OUTCOMES", "PROJECT_DETAIL"], optionalNeeds: ["CALENDAR", "SETTINGS", "LABEL_DETAIL"],
+  needs: ["STATE", "FINANCE", "OPERATIONS", "OWNER_KNOWLEDGE", "INTEGRITY", "CASES", "ACTIONS", "OUTCOMES", "PROJECT_DETAIL"], optionalNeeds: ["CALENDAR", "SETTINGS", "LABEL_DETAIL", "MEMORY", "OWNER_INBOX"],
   read(src, q) {
     const version = sfact("OWNER_MODEL_VERSION", "גרסת מודל העבודה", OWNER_MODEL_VERSION, "OWNER_DECISION", "PARTNER_KNOWLEDGE");
     if (q.mode === "rules") {

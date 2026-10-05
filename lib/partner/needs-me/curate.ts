@@ -43,7 +43,7 @@ import { isStrictYmd } from "../../project-deadline";
 import { BALL_WITH_HE, freshnessOf, FRESHNESS_HE, headOf, type BallWith, type Freshness, type InboxMemory } from "../../inbox-memory";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { CLOSED_PROPOSAL } from "../clients/view";
-import { followUpKnowledgeFor, followUpKnown, freshnessOf as knownFreshnessOf, knownAtOf, knownItem, ownerSaidBallOf, projectKnowledgeFor, type KnownContextItem } from "../sunny/known-context";
+import { followUpKnowledgeFor, followUpKnown, freshnessOf as knownFreshnessOf, knownAtOf, knownItem, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 
@@ -498,7 +498,18 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   };
   const proposalsAll = st?.domains.proposalsFull.data?.items ?? [];
   const openOfClient = (cid: string | null) => (cid ? proposalsAll.filter((x) => x.clientId === cid && !CLOSED_PROPOSAL.has(x.status)).length : 0);
+  const kin = vendorKnownInputs(src);
+  const sameProjectItems = (pid: string) => items.filter((x) => x.projectId === pid).length;
   for (const it of [...items]) {
+    // a Victor / mix work: what the Owner said about THIS work (commitment / review answer / the project's update when it is
+    // the project's only item) — work-level identity first (D2); a push to the vendor is never an input
+    if (it.entityKey.startsWith("victor-work:") || it.entityKey.startsWith("mix-work:")) {
+      const victor = it.entityKey.startsWith("victor-work:");
+      const single = !!it.projectId && sameProjectItems(it.projectId) === 1;
+      const wk = vendorWorkKnown({ workKey: it.entityKey, label: it.title.split(" — ")[0], lastUploadAt: it.ball.sinceAt, todayIL: today, records: kn, answers: kin.answers, projectUpdate: single ? kin.projectUpdate(`project:${it.projectId}`) : null, vendorLabel: it.ball.waitingParty ?? (victor ? "ויקטור" : "המהנדס"), vendorBall: victor ? "VICTOR" : "ENGINEER" });
+      if (wk) { attach(it, wk, false); continue; }
+      if (!single) continue; // a project-level statement never applies to one of several works in the project
+    }
     if (it.entityKey.startsWith("proposal:")) {
       const p = proposalsAll.find((x) => `proposal:${x.id}` === it.entityKey);
       const fk = followUpKnowledgeFor(kn, it.entityKey, p?.clientId ? `client:${p.clientId}` : null, openOfClient(p?.clientId ?? null));
@@ -557,10 +568,11 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
       whyToday: `הישנה ביותר: ${dayWord(oldest.waitingDays ?? 0)} (${oldest.title.split(" — ")[0]}) · ${recent} התעדכנו ב-${RECENT_VERSION_DAYS} הימים האחרונים · ${tasks} מעקבים פתוחים`,
       waitingDays: oldest.waitingDays,
       ball: { holder: "OWNER", waitingParty: "ויקטור", sinceAt: oldest.ball.sinceAt, ruleHe: "computeVictorBall לכל עבודה (ההעלאה האחרונה מול ההערות האחרונות) — מאוחד לתצוגה בלבד; הכדור בכל עבודה לא שונה" },
-      evidence: members.map((m) => ({ code: "VICTOR_WAITING_OWNER", he: `${m.title.split(" — ")[0]} — ${m.waitingDays !== null ? `מחכה ${dayWord(m.waitingDays)}` : "בלי חותמת זמן"}`, source: "TEAM_VICTOR", epistemic: "DERIVED" as const, at: m.ball.sinceAt })),
+      evidence: [...members.map((m) => ({ code: "VICTOR_WAITING_OWNER", he: `${m.title.split(" — ")[0]} — ${m.waitingDays !== null ? `מחכה ${dayWord(m.waitingDays)}` : "בלי חותמת זמן"}`, source: "TEAM_VICTOR", epistemic: "DERIVED" as const, at: m.ball.sinceAt })),
+        ...(members.some((m) => m.known?.length) ? [{ code: "OWNER_KNOWLEDGE", he: `על ${members.filter((m) => m.known?.length).length} מהעבודות כבר אמרת לי משהו (פירוט ברשימה) — הכדור לפי הרשומות לא השתנה`, source: "OWNER_KNOWLEDGE", epistemic: "OWNER_REPORTED" as const, at: null }] : [])],
       nextAction: { he: "לעבור על הגרסאות ולשלוח לויקטור הערות (מה שכבר נענה מחוץ למערכת — כדאי לרשום)", actionId: null },
       fromInbox: null, date: oldest.date,
-      open: { kind: "list", title: `ויקטור מחכה לפידבק שלך (${members.length})`, entries: members.map((m) => ({ key: m.key, title: m.title.split(" — ")[0], reasonHe: m.whyToday, open: m.open })) },
+      open: { kind: "list", title: `ויקטור מחכה לפידבק שלך (${members.length})`, entries: members.map((m) => ({ key: m.key, title: m.title.split(" — ")[0], reasonHe: m.known?.length ? `${m.whyToday} · ${m.known[0].textHe}` : m.whyToday, open: m.open })) },
     });
   }
 

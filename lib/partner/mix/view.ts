@@ -10,6 +10,8 @@
  * completion, approval, final files and payment stay four separate facts. No score, no ranking, no invented policy.
  */
 import type { GatewaySources } from "../gateway/core";
+import { vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { ProjectDetailRaw, DetailEngineerWork, DetailMixVersion, DetailMixComment } from "../projects/detail-types";
 import type { SettingsState } from "../settings/types";
@@ -195,11 +197,18 @@ export function buildMixView(src: GatewaySources) {
   const orphanExpenses = (c.txs ?? []).filter((t) => t.type === "expense" && t.category === INTENDED_SCOPE && !linkedTx.has(t.id) && !isCancelledStatus(t.status)).map((t) => ({ id: t.id, status: t.status, amount: validateTx(t)?.amount ?? null, currency: t.currency, date: t.date, project: t.projectId ? `project:${t.projectId}` : null }));
   const signals: MixSignal[] = [];
   const questions: MixQuestion[] = [];
+  // D1 / D2 (2026-10-05): a commitment on THIS mix work, or a processed update on its project when it is the project's ONLY
+  // open mix work → a known line, never the same question again (the ball stays where the records put it).
+  const known: KnownContextItem[] = [];
+  const kin = vendorKnownInputs(src);
+  const knRecs = src.ownerKnowledge?.status === "OK" ? activeKnowledge(src.ownerKnowledge.value as OwnerKnowledgeRecord[], c.today) : [];
+  const openMixPerProject = new Map<string, number>();
+  for (const w of works) if (!isClosedStatus(w.status) && w.project?.key) openMixPerProject.set(w.project.key, (openMixPerProject.get(w.project.key) ?? 0) + 1);
   for (const w of works) {
     const S = (code: string, kind: MixSignal["kind"], he: string) => signals.push({ code, kind, he, work: w.key, project: w.project?.key });
     if (!isClosedStatus(w.status)) {
       if (w.handoff.state === "WAITING_ON_ENGINEER") S("WAITING_ON_ENGINEER", "DERIVED_SIGNAL", `${w.title} (${w.engineer}): ${w.handoff.basis}`);
-      if (w.handoff.state === "WAITING_ON_OWNER") { S("WAITING_ON_OWNER", "DERIVED_SIGNAL", `${w.title} (${w.engineer}): ${w.handoff.basis}`); if ((w.handoff.daysSinceLastUpload ?? 0) > 7) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ${w.engineer} העלה לפני ${w.handoff.daysSinceLastUpload} ימים ואין פידבק במערכת מאז. נתת פידבק מחוץ למערכת?`, why: "in-app evidence only", work: w.key }); }
+      if (w.handoff.state === "WAITING_ON_OWNER") { S("WAITING_ON_OWNER", "DERIVED_SIGNAL", `${w.title} (${w.engineer}): ${w.handoff.basis}`); const kw = vendorWorkKnown({ workKey: w.key, label: w.title, lastUploadAt: w.handoff.lastUploadAt ?? null, todayIL: c.today, records: knRecs, answers: null, projectUpdate: w.project?.key && openMixPerProject.get(w.project.key) === 1 ? kin.projectUpdate(w.project.key) : null, vendorLabel: w.engineer, vendorBall: "ENGINEER" }); if (kw) known.push(kw); else if ((w.handoff.daysSinceLastUpload ?? 0) > 7) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ${w.engineer} העלה לפני ${w.handoff.daysSinceLastUpload} ימים ואין פידבק במערכת מאז. נתת פידבק מחוץ למערכת?`, why: "in-app evidence only", work: w.key }); }
       if (w.handoff.state === "UNKNOWN") S("HANDOFF_UNKNOWN", "UNKNOWN", `${w.title}: ${w.handoff.basis}`);
       if (w.handoff.state === "CONFLICTING_EVIDENCE") { S("HANDOFF_CONFLICT", "DERIVED_SIGNAL", `${w.title}: ${w.handoff.basis}`); questions.push({ kind: "HANDOFF", questionHe: `"${w.title}" — אצל מי המיקס באמת עכשיו?`, why: "status / reminder and upload / feedback evidence disagree", work: w.key }); }
       if (w.internalDeadline?.passed) S("INTERNAL_DEADLINE_PASSED", "DERIVED_SIGNAL", `${w.title}: הדדליין הפנימי (${w.internalDeadline.date}) עבר${w.handoff.state === "WAITING_ON_OWNER" ? " — אבל הגרסה האחרונה מחכה לך" : ""} — ציפייה פנימית, לא התחייבות ללקוח; לבדוק, לא להאשים.`);
@@ -241,7 +250,7 @@ export function buildMixView(src: GatewaySources) {
       note: "recorded counts — no capacity limit, no ranking, no performance score" },
     money: { paidByCurrency, owedByCurrency, orphanExpenses, rule: "paid = agreed > 0 AND paid ≥ agreed AND a payment date (the app's rule); currencies never added", ratio: `historical only: the retired Steven sync recorded $ × ${APP_PAYMENT_RATIO} in ₪ (working value, not Owner policy); new expenses are in the work currency, the ₪ figure is a notes estimate`, paypal: "the ×1.05 PayPal gross is a note only; no fee policy is stored" },
     steven: { works: steven.length, open: steven.filter((w) => !isClosedStatus(w.status)).length, presence: { lastVisit: pres.lastSeenAt, lastSeenAt: pres.lastSeenAt, visitPush: pres.visitPush, legacyLastPushedVisitAt: legacyVisit?.at ?? null, state: pres.lastSeenAt ? "RECORDED" : c.settings ? "NONE_RECORDED" : "UNKNOWN", meaning: "portal activity only — not work done, not a mix heard, not a comment handled. lastSeenAt = the last ping / heartbeat of his own portal (shared presence model, 2026-09-27); visitPush = the Owner presence push of the latest visit (sent only after delivery); legacyLastPushedVisitAt = the pre-2026-09-27 push cooldown, not a last-seen" }, digestsSent: { count: digests.length, last: digests.at(-1) ?? null } },
-    works, mixStageNoEngineer, victorDoneNoMix, signals, questions,
+    works, mixStageNoEngineer, victorDoneNoMix, signals, questions, known,
     unavailable: [...(c.det ? [] : ["PROJECT_DETAIL (engineer works, versions, comments, final files) was not read — unknown, not none"]), ...(c.settings ? [] : ["SETTINGS (notes-sent cycles, markers, presence)"]), ...(c.txs ? [] : ["FINANCE (expenses)"]), "storage itself is not listed — a missing file record ≠ a missing file"],
   };
 }

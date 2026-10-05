@@ -20,7 +20,7 @@ import { sendEntryCurrent, evidenceFor } from "../work/send-log";
 import { HISTORICAL_DEBT_CUTOFF, QUESTION_TYPE_TO_MISSING_CONCEPT, WORKFLOW_MODELS } from "../system/owner-model";
 import type { LabelDetailRaw } from "../label/detail-types";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
-import { freshnessOf as knownFreshnessOf, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, type KnownContextItem } from "./known-context";
+import { freshnessOf as knownFreshnessOf, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "./known-context";
 import { paymentPathOf } from "../finance/decision-gate";
 import { ANSWER_OPTIONS } from "../investigation/questions";
 import type { PartnerMemory } from "../memory/types";
@@ -35,7 +35,9 @@ const PROGRESSED = new Set(["מחכה למיקס", "במיקס", "הושלם"]);
 
 /** ON_HOLD (B5, Owner): a בהשהייה project is never overdue — its passed deadline is not a failure / debt. HIDDEN: a hidden project is never overdue (not assessed). UNPARSEABLE_DEADLINE: the stored text is not YYYY-MM-DD. */
 export type ClientDeadlineClass = "NO_DEADLINE" | "UPCOMING" | "APPROACHING" | "AT_RISK" | "PASSED_NEW_FAILURE" | "HISTORICAL_OPERATIONAL_DEBT" | "CLOSED" | "ON_HOLD" | "HIDDEN" | "UNPARSEABLE_DEADLINE";
-export interface BallEvidence { holder: string; basis: string; confidence: "RECORDED" | "IN_APP_TIMESTAMPS" | "OWNER_REPORTED" | "UNKNOWN"; outsideCommunicationPossible: boolean }
+export interface BallEvidence { holder: string; basis: string; confidence: "RECORDED" | "IN_APP_TIMESTAMPS" | "OWNER_REPORTED" | "UNKNOWN"; outsideCommunicationPossible: boolean;
+  /** the vendor work this evidence comes from (victor-work:<id> / mix-work:<id>) — for the Owner's work-level known context */
+  work?: string }
 export interface OwnerQuestion { questionHe: string; why: string; kind: "PROJECT_STATE" | "OUTSIDE_COMMUNICATION" | "PAYMENT_EVIDENCE" | "DEADLINE_REALITY" | "MISSING_DETAIL" }
 
 /** Label artists the Owner classified (integrity: LABEL_SONGS) + roster names — for label protection. */
@@ -68,18 +70,22 @@ export function projectOperating(src: GatewaySources, projectId: string) {
 
   // ── ball holder (evidence, never certainty) ──
   const ball: BallEvidence[] = [];
+  const vendorWork = new Map<string, { label: string; lastUploadAt: string | null; vendorLabel: string; vendorBall: string }>();
   // Engineer works: THE mix handoff evidence rule (lib/partner/mix/handoff — the same answer as mix_view), never the
   // engineer status alone (a חזר status with newer Owner feedback is CONFLICTING evidence, not "the Owner holds it").
   for (const w of ops?.engineerWork?.rows.filter((x) => x.projectId === projectId && !["אושר", "בוטל"].includes(x.status ?? "")) ?? []) {
     const h = engineerHandoff(src, { id: w.id, projectId: w.projectId, engineerName: w.engineerName, status: w.status, sentDate: w.sentDate });
     const conf: BallEvidence["confidence"] = h.timestampEvidence ? "IN_APP_TIMESTAMPS" : h.state === "UNKNOWN" || h.state === "CONFLICTING_EVIDENCE" ? "UNKNOWN" : "RECORDED";
     if (!h.detailRead) { ball.push({ holder: "UNKNOWN", basis: `${w.engineerName}: engineer status ${w.status} — the mix evidence (versions / feedback) was not read, and a status alone is not the ball`, confidence: "UNKNOWN", outsideCommunicationPossible: true }); continue; }
-    ball.push(h.state === "WAITING_ON_OWNER" ? { holder: "OWNER", basis: `${w.engineerName}: ${h.basis}`, confidence: conf, outsideCommunicationPossible: true }
+    vendorWork.set(`mix-work:${w.id}`, { label: w.workTitle ?? id.name, lastUploadAt: h.lastUpload ?? null, vendorLabel: w.engineerName, vendorBall: "ENGINEER" });
+    ball.push(h.state === "WAITING_ON_OWNER" ? { holder: "OWNER", basis: `${w.engineerName}: ${h.basis}`, confidence: conf, outsideCommunicationPossible: true, work: `mix-work:${w.id}` }
       : h.state === "WAITING_ON_ENGINEER" ? { holder: `ENGINEER:${w.engineerName}`, basis: `${w.engineerName}: ${h.basis}`, confidence: conf, outsideCommunicationPossible: true }
       : { holder: "UNKNOWN", basis: `${w.engineerName}: ${h.basis}${h.detailRead ? "" : " (mix evidence not read)"}`, confidence: "UNKNOWN", outsideCommunicationPossible: true });
   }
-  for (const w of st?.domains.victor.data?.active.filter((x) => x.projectId === projectId) ?? [])
-    ball.push({ holder: w.ball.holder === "owner" ? "OWNER" : w.ball.holder === "victor" ? "VICTOR" : "UNKNOWN", basis: "Victor uploads vs the Owner's recorded responses (in-app timestamps)", confidence: "IN_APP_TIMESTAMPS", outsideCommunicationPossible: true });
+  for (const w of st?.domains.victor.data?.active.filter((x) => x.projectId === projectId) ?? []) {
+    vendorWork.set(`victor-work:${w.id}`, { label: w.title, lastUploadAt: w.lastUploadAt ?? null, vendorLabel: "ויקטור", vendorBall: "VICTOR" });
+    ball.push({ holder: w.ball.holder === "owner" ? "OWNER" : w.ball.holder === "victor" ? "VICTOR" : "UNKNOWN", basis: "Victor uploads vs the Owner's recorded responses (in-app timestamps)", confidence: "IN_APP_TIMESTAMPS", outsideCommunicationPossible: true, work: `victor-work:${w.id}` });
+  }
   // B5: a pending send-log entry superseded by LATER in-app evidence (engineer → mix versions of this project's works;
   // external producer → Victor uploads / sent notes) is history — never a ball holder (lib/partner/work/send-log).
   const projEngIds = new Set((ops?.engineerWork?.rows ?? []).filter((x) => x.projectId === projectId).map((x) => x.id));
@@ -185,7 +191,18 @@ export function projectOperating(src: GatewaySources, projectId: string) {
       canonicalHe: `הדדליין הרשום עדיין ${dl}`, actions: newDate && newDate !== dl ? [{ actionId: "UPDATE_PROJECT_DEADLINE", args: { project: projKey, deadline: newDate }, missing: [], required: true, noteHe: "מעדכן את הדדליין הרשום לתאריך שאמרת — רק באישורך." }] : [] }));
   }
   if (!closed && ball.length === 0) questions.push({ kind: "PROJECT_STATE", questionHe: `מה המצב של "${id.name}" ועל מי הוא מחכה עכשיו?`, why: "no send log, engineer, Victor or blocker evidence — Redbloods does not record who the project waits on" });
-  if (!closed && ball.some((b) => b.holder === "OWNER" && b.confidence === "IN_APP_TIMESTAMPS")) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `ב-"${id.name}" נראה שהכדור אצלך לפי המערכת — טופל משהו מחוץ ל-Redbloods (וואטסאפ/טלפון)?`, why: "in-app timestamps only; outside communication is common" });
+  // OUTSIDE_COMMUNICATION (D1 / D2, 2026-10-05): asked only for an Owner-held work the Owner has NOT already spoken about
+  // (a commitment on that work / the Owner Context review answer / a processed update when it is the project's only work of
+  // that vendor). A push to the vendor is never an input. The ball itself is unchanged.
+  const ownerInApp = ball.filter((b) => b.holder === "OWNER" && b.confidence === "IN_APP_TIMESTAMPS");
+  const kin = vendorKnownInputs(src);
+  const perVendorBall = (vb: string) => [...vendorWork.values()].filter((x) => x.vendorBall === vb).length;
+  const commKnown = ownerInApp.map((b) => {
+    const m = b.work ? vendorWork.get(b.work) : undefined;
+    return m && b.work ? vendorWorkKnown({ workKey: b.work, label: m.label, lastUploadAt: m.lastUploadAt, todayIL: today, records: kn, answers: kin.answers, projectUpdate: perVendorBall(m.vendorBall) === 1 ? kin.projectUpdate(projKey) : null, vendorLabel: m.vendorLabel, vendorBall: m.vendorBall }) : null;
+  });
+  for (const k of commKnown) if (k) known.push(k);
+  if (!closed && ownerInApp.length && commKnown.some((k) => !k)) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `ב-"${id.name}" נראה שהכדור אצלך לפי המערכת — טופל משהו מחוץ ל-Redbloods (וואטסאפ/טלפון)?`, why: "in-app timestamps only; outside communication is common" });
   if (!closed && advance.state === "ADVANCE_EVIDENCE_MISSING" && !payKnown) questions.push({ kind: "PAYMENT_EVIDENCE", questionHe: `"${id.name}" התקדם אבל לא רשומה מקדמה/תשלום — התקבלה מקדמה?`, why: "Owner pattern: most client projects start with an advance; nothing is recorded (no amount is assumed)" });
   if (deadlineClass === "HISTORICAL_OPERATIONAL_DEBT" && !dlAnswer) questions.push({ kind: "DEADLINE_REALITY", questionHe: `"${id.name}" — הדדליין (${dl}) ישן. מה המצב האמיתי ומה הצעד הבא לשיקום?`, why: "historical operational debt — understand before acting (not an emergency)" });
 

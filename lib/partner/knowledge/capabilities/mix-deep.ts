@@ -54,7 +54,7 @@ export const mixView: KnowledgeCapability = {
   examplesHe: ["מה קורה אצל סטיבן?", "מה קורה עם המיקס של X?", "מה מחכה לי מסטיבן?", "איזה הערות עדיין פתוחות?", "האם סטיבן קיבל תשלום?", "כמה חייבים לו?", "איזה מיקסים הושלמו בלי קבצים סופיים?"],
   modes: { overview: { descriptionForModel: "Company mix overview" }, steven: { descriptionForModel: "Steven-specific summary" }, work: { descriptionForModel: "One work (param work; optional section)" }, money: { descriptionForModel: "Engineer money vs Finance" } }, defaultMode: "overview",
   params: { work: { kind: "text", maxLength: 60, descriptionForModel: "work: an engineer work id (from mix_portfolio)" }, section: { kind: "enum", values: [...WORK_SECTIONS], descriptionForModel: "work: which part (default summary)" } },
-  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS,
+  paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 2000, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["MEMORY", "OWNER_INBOX"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return unavailable("company state");
     const v = buildMixView(src);
@@ -78,7 +78,9 @@ export const mixView: KnowledgeCapability = {
           sfact("SCOPE", "ייחודי לסטיבן מול כללי", "portal, completion flow, reminders, digest, presence and upload pushes are Steven-only; work / versions / comments / final files / price sync are generic; the payment push, the ₪ payment sync and the notes / send pushes apply Steven assumptions to any engineer (see system_awareness mix_model)", "FACT", "SYSTEM_CONTRACTS")] });
     }
     return result([...v.signals.map((x, i) => item({ id: `${x.code}:${i}`, entity: x.project ?? null, label: record(x.he), epistemic: x.kind === "UNKNOWN" ? "UNKNOWN" : x.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", source: "TEAM_STEVEN", fields: { code: x.code, work: x.work ?? null } })),
-      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_STEVEN", fields: { kind: x.kind, why: x.why, work: x.work ?? null } }))],
+      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_STEVEN", fields: { kind: x.kind, why: x.why, work: x.work ?? null } })),
+      ...v.known.map((k, i) => item({ id: `known:${i}`, label: record(k.textHe), epistemic: k.epistemic, source: "TEAM_STEVEN", fields: { questionKind: k.questionKind, work: k.entityKey, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: partner(k.canonicalHe), actions: k.actions } })),
+    ],
       { ...base, summary: [sfact("COUNTS", "ספירות רשומות", v.counts, "DERIVED", "TEAM_STEVEN"), sfact("STEVEN", "סטיבן", v.steven, "FACT", "TEAM_STEVEN"), sfact("SIGNALS", "אותות", byCount(v.signals.map((x) => x.code)), "DERIVED", "TEAM_STEVEN")] });
   },
 };
@@ -90,7 +92,7 @@ export const mixPortfolio: KnowledgeCapability = {
   examplesHe: ["איזה פרויקטים כרגע במיקס?", "מה מחכה לסטיבן?", "מה מחכה לי?", "איזה מיקסים לא שולמו?", "איזה בלי איש סאונד?"],
   modes: { list: { descriptionForModel: "Works (optional filter)" } }, defaultMode: "list",
   params: { filter: { kind: "enum", values: [...MIX_FILTERS], descriptionForModel: "which works" } },
-  paging: { defaultLimit: 25, maxLimit: 50 }, access: OWNER_FIN, needs: NEEDS,
+  paging: { defaultLimit: 25, maxLimit: 50 }, access: OWNER_FIN, needs: NEEDS, optionalNeeds: ["MEMORY", "OWNER_INBOX"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return unavailable("company state");
     const v = buildMixView(src);

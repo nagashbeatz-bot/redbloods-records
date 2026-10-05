@@ -140,3 +140,60 @@ export function ownerSaidBallOf(k: OwnerKnowledgeRecord): "OWNER" | "OTHER" | nu
 export function projectKnowledgeFor(records: readonly OwnerKnowledgeRecord[], projectKey: string): OwnerKnowledgeRecord[] {
   return knowledgeAbout(records, ["PROJECT_BLOCKER", "FOLLOW_UP_EXPECTATION"], projectKey).filter((k) => !(k.value as Record<string, unknown>).proposal);
 }
+
+/** The existing Owner Context answer for a Victor delivery (investigation case DELIVERY_WITHOUT_RECORDED_FOLLOWUP, per work). */
+export const victorDeliveryQuestionId = (workId: string) => `victor_delivery_no_followup:${workId}::WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM`;
+const REVIEW_ANSWER_HE: Record<string, string> = { REVIEWED_OUTSIDE_SYSTEM: "המסירה נבדקה / טופלה מחוץ למערכת", NOT_REVIEWED_YET: "המסירה עוד לא נבדקה", NO_REVIEW_NEEDED: "לא נדרשת בדיקה למסירה הזו", WAITING_ON_SOMETHING_ELSE: "הטיפול ממתין לדבר אחר" };
+
+/**
+ * OUTSIDE_COMMUNICATION for ONE vendor work (Victor / a mix engineer). What the Owner already said, most specific first:
+ *   1 VENDOR_COMMITMENT naming THIS work (a commitment — "הוא על זה");
+ *   2 the Owner Context answer about THIS work's delivery (dashboard "צריך ממך": reviewed outside / not yet / …);
+ *   3 a processed update (inbox interpretation) on the work's PROJECT that puts the ball with the vendor — only when the
+ *     project has exactly ONE active work of that vendor (never project-wide across works).
+ * A version uploaded AFTER the statement is newer canonical evidence: the statement no longer counts (a real new reason).
+ * A push to the vendor is NEVER proof of communication (it is not an input here). No canonical primitive records "we talked
+ * outside" — the line says so honestly; the ball stays where the records put it.
+ */
+export function vendorWorkKnown(o: {
+  workKey: string; label: string | null; lastUploadAt: string | null; todayIL: string;
+  records: readonly OwnerKnowledgeRecord[];
+  answers?: ReadonlyArray<{ questionId: string; contextId: string; questionType: string; answerCode: string; answeredAt: string; status: string }> | null;
+  projectUpdate?: { id: string; ballWith: string; createdAt: string; whatHappened: string } | null;
+  vendorLabel: string;
+  /** the inbox ballWith that means "with this vendor" (VICTOR / ENGINEER) — any other value is not about this work */
+  vendorBall: string;
+}): KnownContextItem | null {
+  const upDay = ymd(o.lastUploadAt);
+  const canonicalHe = `לפי המערכת ${o.vendorLabel} העלה גרסה${upDay ? ` ב-${ddmm(upDay)}` : ""} ואין הערות שלך רשומות אחריה — אין פעולה קנונית שרושמת "דיברנו מחוץ למערכת", אז הכדור לפי הרשומות נשאר אצלך עד שיישלחו הערות או תעלה גרסה`;
+  const commit = knowledgeAbout(o.records, ["VENDOR_COMMITMENT"], o.workKey, "work")[0];
+  if (commit) {
+    const fr = freshnessOf(commit, o.todayIL, upDay);
+    if (fr !== "SUPERSEDED_BY_EVIDENCE") return knownItem({ questionKind: "OUTSIDE_COMMUNICATION", entityKey: o.workKey, label: o.label, meaningHe: commit.meaningHe, knownAt: knownAtOf(commit), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: commit.id, knowledgeKind: commit.kind }, freshness: fr, canonicalHe });
+  }
+  const wid = o.workKey.startsWith("victor-work:") ? o.workKey.slice("victor-work:".length) : null;
+  const ans = wid ? (o.answers ?? []).filter((a) => a.questionId === victorDeliveryQuestionId(wid) && a.status === "ACTIVE").sort((a, b) => b.answeredAt.localeCompare(a.answeredAt))[0] : undefined;
+  if (ans && !(upDay && ymd(ans.answeredAt) && upDay > ymd(ans.answeredAt)!)) {
+    return knownItem({ questionKind: "OUTSIDE_COMMUNICATION", entityKey: o.workKey, label: o.label, meaningHe: REVIEW_ANSWER_HE[ans.answerCode] ?? ans.answerCode, knownAt: ymd(ans.answeredAt), basis: { kind: "OWNER_ANSWER", contextId: ans.contextId, questionType: ans.questionType, answerCode: ans.answerCode }, freshness: "CURRENT", canonicalHe });
+  }
+  const u = o.projectUpdate;
+  if (u && u.ballWith === o.vendorBall && !(upDay && ymd(u.createdAt) && upDay > ymd(u.createdAt)!)) {
+    return knownItem({ questionKind: "OUTSIDE_COMMUNICATION", entityKey: o.workKey, label: o.label, meaningHe: u.whatHappened, knownAt: ymd(u.createdAt), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: u.id, knowledgeKind: "INBOX_INTERPRETATION" }, freshness: "CURRENT", canonicalHe });
+  }
+  return null;
+}
+
+/** The inputs vendorWorkKnown needs, read from the Gateway sources a view already has (memory answers, processed updates). */
+export function vendorKnownInputs(src: { memory?: { status: string; value?: unknown }; inboxMemory?: { status: string; value?: unknown } }) {
+  const mem = src.memory?.status === "OK" ? (src.memory.value as { entities: Array<{ ownerDecisions: Array<{ questionId: string; contextId: string; questionType: string; answerCode: string; answeredAt: string; status: string }> }> }) : null;
+  const inbox = src.inboxMemory?.status === "OK" ? (src.inboxMemory.value as { interpretations: Array<{ id: string; entityKey: string; ballWith: string; createdAt: string; whatHappened: string; retractedAt: string | null; supersedesId: string | null }> }) : null;
+  const answers = mem ? mem.entities.flatMap((e) => e.ownerDecisions) : null;
+  /** the newest live (not retracted, not superseded) interpretation of a project */
+  const projectUpdate = (projectKey: string) => {
+    if (!inbox) return null;
+    const rows = inbox.interpretations.filter((x) => x.entityKey === projectKey && !x.retractedAt);
+    const superseded = new Set(rows.map((x) => x.supersedesId).filter(Boolean));
+    return rows.filter((x) => !superseded.has(x.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  };
+  return { answers, projectUpdate };
+}

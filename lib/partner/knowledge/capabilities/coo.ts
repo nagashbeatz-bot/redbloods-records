@@ -49,7 +49,7 @@ export const coo: KnowledgeCapability = {
   entityScope: { types: ["project", "label-artist", "show", "session", "release"], param: "entity", mode: "entity", limit: 6 },
   paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1200, access: OWNER_FIN,
   needs: ["STATE", "FINANCE", "OPERATIONS", "PROJECT_DETAIL"],
-  optionalNeeds: ["LABEL_DETAIL", "SETTINGS", "CALENDAR", "BRAIN", "OWNER_KNOWLEDGE", "INTEGRITY"],
+  optionalNeeds: ["LABEL_DETAIL", "SETTINGS", "CALENDAR", "BRAIN", "OWNER_KNOWLEDGE", "INTEGRITY", "MEMORY", "OWNER_INBOX"],
   read(src, q) {
     if (!src.state || src.state.status !== "OK") return result([], { completeness: "UNKNOWN", coverage: COVERAGE, missing: [{ fact: "company state", whyNeeded: "without the records nothing can be checked — unknown, never 'all fine'" }] });
     const c = cooCtx(src);
