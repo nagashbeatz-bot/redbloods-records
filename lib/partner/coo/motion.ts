@@ -221,8 +221,11 @@ function mergeInto(map: Map<string, MotionItem>, d: Draft) {
 const SECTION_RANK: MotionSection[] = ["AT_RISK", "LABEL", "CLOSE_LOOPS", "OWNER_BOTTLENECK", "MONEY", "OTHER"];
 function rankItems(items: MotionItem[]): MotionItem[] {
   const best = (i: MotionItem) => Math.min(...i.sections.map((s) => SECTION_RANK.indexOf(s)));
+  // inside a level: what is still ahead comes first (nearest first), then what already passed (most recent first) — a long-passed
+  // date is likely stale, not the most urgent; undated last
+  const dk = (d: number | null) => (d === null ? 10_000 : d >= 0 ? d : 1_000 - d);
   return [...items].sort((a, b) => lv(a.level) - lv(b.level)
-    || (a.daysTo ?? 999) - (b.daysTo ?? 999)
+    || dk(a.daysTo) - dk(b.daysTo)
     || Number(b.labelProtected) - Number(a.labelProtected)
     || best(a) - best(b)
     || a.titleHe.localeCompare(b.titleHe, "he"));
@@ -365,7 +368,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     const level: MotionLevel = (relDays !== null && relDays >= 0 && relDays <= H.mustDays) || nearDeadline ? "MUST" : nearRelease ? "SHOULD" : capacity === "OPEN" ? "SHOULD" : "WATCH";
     const since = ymdOf(w.lastUploadAt);
     mergeInto(map, { key: `victor-owner:${w.id}`, entity: pk, level, code: "OWNER_BOTTLENECK_EXTRACT", titleHe: name(w.projectId), labelWork: c.isLabel(w.projectId), labelProtected: prot, daysTo: nearRelease ? relDays : nearDeadline ? dlDays : null,
-      reasonHe: `ויקטור העלה גרסה${since ? ` ב-${heDate(since)}` : ""} ומחכה לפידבק שלך${nearRelease ? ` — והריליס ב-${heDate(m!.release!.target)}` : nearDeadline ? " — והדדליין קרוב" : " — אמן לייבל מוגן"}`,
+      reasonHe: `ויקטור העלה גרסה${since ? ` ב-${heDate(since)}` : ""} ומחכה לפידבק שלך${nearRelease ? ` — והריליס ב-${heDate(m!.release!.target)}` : nearDeadline ? (dlDays! < 0 ? " — והדדליין כבר עבר" : " — והדדליין קרוב") : " — אמן לייבל מוגן"}`,
       evidence: [{ source: "TEAM_VICTOR", ref: `victor-work:${w.id}`, he: "computeVictorBall: owner", epistemic: "DERIVED" }], move: MOVES.victorNotes() });
   }
   const restCount = victorOwner.length - extracted.length;
@@ -570,9 +573,9 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     label: protectedLabel.length ? `לייבל: ל${protectedLabel.join(" ול")} אין סשן מתוכנן ויש עבודה שמחכה לצעד` : null,
     money: revenue.state === "PIPELINE_EMPTY" ? "כסף: הצנרת ריקה (אין גבייה פתוחה / הצעות / הופעות קרובות)" : null,
     external, opportunity,
-    lineHe: [`(${heDate(today)}–${heDate(end)}) ${capHe}${recordedEvents ? `, ${recordedEvents} אירועים רשומים ב-Redbloods` : ", בלי סשנים / הופעות / צילומים רשומים"}`,
+    lineHe: [`(${heDate(today)}–${heDate(end)}) ${capHe}${recordedEvents ? `, ${recordedEvents === 1 ? "אירוע אחד רשום" : `${recordedEvents} אירועים רשומים`} ב-Redbloods` : ", בלי סשנים / הופעות / צילומים רשומים"}`,
       dueThisWeek.length ? dueThisWeek.slice(0, 3).join(", ") : null, protectedLabel.length ? `לייבל: ${protectedLabel.join(", ")} בלי סשן` : null,
-      revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? `${external} עבודות אצל אחרים` : null].filter(Boolean).join(" · "),
+      revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? (external === 1 ? "עבודה אחת אצל אחרים" : `${external} עבודות אצל אחרים`) : null].filter(Boolean).join(" · "),
   };
 
   const inbox = { read: tri.read, needsOwner: tri.summary?.counts.NEEDS_OWNER ?? 0, unread: tri.summary?.counts.UNREAD ?? 0, closable: tri.summary?.closable ?? 0,
