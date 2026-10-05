@@ -404,3 +404,15 @@ The rule-based Agent Alerts subsystem was removed on 2026-10-05 by Owner decisio
 - **Goals stay:** `lib/agent/goals.ts`, `/api/agent/goals`, SET_BUSINESS_GOAL and the weekly report's goals are the Owner's KPIs, owned by the COMPANY_OVERVIEW domain (never an alert, never a pay rule).
 - The shared Push infrastructure, Resend and the reports are unchanged.
 - `scripts/test-agent-alerts-removed.tsx` must pass.
+
+## Sunny Awareness Check: ONE memory — known context (Owner decisions D1–D5, 2026-10-05)
+
+What the Owner already told Sunny, or what Sunny already executed, is used by EVERY Sunny surface — never as business truth.
+- **D1:** knowledge / an Owner answer changes CONVERSATION behaviour; canonical state changes BUSINESS truth. A question the Owner already answered becomes a known line ("כבר אמרת לי X — לפי הרשומות Y — לסנכרן?") with the existing canonical primitive as a PROPOSAL. A record signal is never removed (needs_me / cases keep it; a contradiction is shown, records win).
+- **ONE rule:** `lib/partner/sunny/known-context.ts` (the decision-gate extension) + `lib/partner/finance/decision-gate.ts` + `lib/partner/finance/payment-match.ts`. Consumers: projectOperating (PROJECT_STATE / PAYMENT_EVIDENCE / DEADLINE_REALITY / OUTSIDE_COMMUNICATION), client_view (FOLLOW_UP), victor_view / mix_view (OUTSIDE_COMMUNICATION), needs_me (enrichment). No store, no table, no generic suppression.
+- **Identity:** exact keys only; the most specific wins (a proposal / a work over its client / project); a client- or project-level statement applies only when there is exactly ONE open proposal / work there; never vendor-wide or company-wide.
+- **D3 freshness:** canonical evidence newer than the statement wins (the old statement no longer counts); otherwise a passed reviewAt asks "זה עדיין נכון?" (never expiry, never deletion). Wording / title / updatedAt are never evidence.
+- **D2:** VENDOR_COMMITMENT (work, optional due) is only an explicit commitment; "דיברתי איתו / שלחתי לו" is outside communication, never a commitment. A push is never proof of communication.
+- **D4 payments:** a reported payment is "recorded" only against a real money row (income שולם / התקבל, expense שולם); ONE unique expected row (same project + direction + amount + currency) → SET_TRANSACTION_STATUS; no row → ADD_TRANSACTION (dupGate → preview → approval → read-back); ambiguity / partial / another currency → ASK. Direction is never flipped.
+- **D5 actions:** recentActions (partner_brief / partner_entity) and history are provenance only; PRIOR_EXECUTION on a RECEIPT action is a warning only; OUTCOME_UNKNOWN is never "done"; an interrupted RECEIPT step is OUTCOME_UNKNOWN (FAILED + the MAY_HAVE_RUN marker); the size guard never strips canonicalEffect / verification.
+- `scripts/test-sunny-known-context.tsx` (S1–S10) and operating-model scenario K must pass.
