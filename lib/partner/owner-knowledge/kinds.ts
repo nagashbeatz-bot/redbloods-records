@@ -295,7 +295,7 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
     },
     epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}${v.about ? `:${s(v.about)}` : ""}${v.ref ? `:${s(v.ref)}` : ""}`,
     reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
-    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${decisionTimingHe(v) ? `. מתי: ${decisionTimingHe(v)}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
+    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : v.refLabel ? ` — על ${s(v.refLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${decisionTimingHe(v) ? `. מתי: ${decisionTimingHe(v)}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
     check: (v) => {
       const e = [...checkProvenanceAndTime(v), ...checkDecisionTiming(v)];
       if (!topicSlug(s(v.topic))) e.push("topic: a short topic in Latin letters / digits (e.g. clip-pricing)");

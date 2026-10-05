@@ -27,6 +27,8 @@ import { SHALEV_ARTIST_ID } from "../lib/red-artists/portal-registry";
 import { AVI_ARTIST_ID } from "../lib/roles";
 import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
 import { answerTopicOf } from "../lib/partner/sunny/known-context";
+import { commitKnowledgeCore, createNonceGuard, previewKnowledgeCore, refRecordOf, type KnowledgeProposeDeps } from "../lib/partner/owner-knowledge/propose";
+import type { OwnerKnowledgeRecord, OwnerKnowledgeStore } from "../lib/partner/owner-knowledge/store";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 900)}` : ""}`); } };
@@ -41,8 +43,9 @@ const OWNER = { channel: "INTERNAL" as const, ownerAuthorized: true };
 const A_NAGASH = U(3);
 const P_BAM = U(10), P_YAH = U(11), P_TZO = U(12), P_DH = U(13), P_X = U(14), P_CL = U(15), P_CANC = U(16);
 const S1 = U(20), DANIEL = U(21), SHALEV_CLIENT = U(22);
+const W_EP = U(31), W_200 = U(32);
 
-interface Fx { shalevBalance?: number; aviBalance?: number; anchor?: string; victorStatus?: string; victorTx?: boolean; victorDue?: string; dhStatus?: string; dhLinkedTx?: boolean; extraTx?: unknown[]; noFinance?: boolean; proposals?: unknown[]; receivables?: boolean; shows?: unknown[]; noLedger?: boolean; knowledge?: unknown[]; today?: string; extraWorks?: unknown[]; noKnowledge?: boolean }
+interface Fx { shalevBalance?: number; aviBalance?: number; anchor?: string; victorStatus?: string; victorTx?: boolean; victorDue?: string; dhStatus?: string; dhLinkedTx?: boolean; extraTx?: unknown[]; noFinance?: boolean; proposals?: unknown[]; receivables?: boolean; shows?: unknown[]; noLedger?: boolean; knowledge?: unknown[]; today?: string; extraWorks?: unknown[]; noKnowledge?: boolean; uuidWorks?: boolean }
 
 const tx = (id: string, o: Record<string, unknown>) => ({ id, projectId: null, type: "expense", date: D(0), amount: 0, currency: "₪", status: "צפוי", category: null, scope: null, expenseScope: null, linkedSessionId: null, showId: null, showMoneyRole: null, createdAt: `${D(-6)}T10:00:00Z`, description: null, businessUnit: "STUDIO", businessUnitSource: "RULE", ...o });
 
@@ -65,8 +68,8 @@ function rawOf(fx: Fx): FinanceRaw {
   return {
     transactions: transactions as never, projects: [], financeSettings: [],
     engineerWorks: [
-      { id: "w-ep", projectId: null, engineerName: "Steven", status: "אושר", agreedPrice: 550, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
-      { id: "w-200", projectId: P_X, engineerName: "Steven", status: "אושר", agreedPrice: 200, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
+      { id: fx.uuidWorks ? W_EP : "w-ep", projectId: null, engineerName: "Steven", status: "אושר", agreedPrice: 550, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
+      { id: fx.uuidWorks ? W_200 : "w-200", projectId: P_X, engineerName: "Steven", status: "אושר", agreedPrice: 200, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
       { id: "w-dh", projectId: P_DH, engineerName: "Steven", status: fx.dhStatus ?? "נשלח", agreedPrice: 400, amountPaid: 0, currency: "$", linkedTransactionId: fx.dhLinkedTx ? "dh-linked" : null, paymentDate: null },
       { id: "w-paid", projectId: P_CL, engineerName: "Steven", status: "אושר", agreedPrice: 200, amountPaid: 200, currency: "$", linkedTransactionId: null, paymentDate: D(-3) },
       { id: "w-canc", projectId: P_CANC, engineerName: "Steven", status: "בוטל", agreedPrice: 300, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null },
@@ -355,6 +358,31 @@ async function main() {
   ok("D24. no hardcode: the WHEN questions are per mix-work / per artist key and go through the ONE resolver (resolveQuestions) — no vendor identity in the decision path", /entity: `mix-work:\$\{e\.id\.replace/.test(ffSrc) && /resolveQuestions\(qs, kn, today, evidenceOf\)/.test(ffSrc) && !/vendor:STEVEN[^\n]*decideObligation|decideObligation[^\n]*vendor:STEVEN/.test(ffSrc) && !/Steven|Shalev|שליו/.test(ffSrc.slice(ffSrc.indexOf("export function decideObligation"), ffSrc.indexOf("const ilToday"))));
   ok("D25. no Finance writer, no DB: Financial Forward still writes nothing", !/\.insert\(|\.update\(|\.upsert\(|\.rpc\(|ADD_TRANSACTION/.test(ffSrc));
   ok("D26. the connector instructions: per-member answerAs, ONE preview listing the works, THIS_MONTH = the month of decidedOn, never a Finance row / invented date, never judge his condition, REVIEW_DUE = 'זה עדיין נכון?'", /MONEY DECISIONS — WHEN/.test(SERVER_INSTRUCTIONS) && /ONE preview for a payable of several works/.test(SERVER_INSTRUCTIONS) && /THIS_MONTH = the month of decidedOn/.test(SERVER_INSTRUCTIONS) && /Never a Finance row/.test(SERVER_INSTRUCTIONS) && /never judge whether his condition happened/.test(SERVER_INSTRUCTIONS));
+
+  section("DECISION PERSISTENCE — the REAL save path (preview → Owner's words → commit) on completed works");
+  const S0 = src({ uuidWorks: true });
+  ok("D27. a COMPLETED engineer work is a real ref (the SAME rows Financial Forward reads); named by its project, else by the engineer + price; a cancelled work is not", refRecordOf(S0, `mix-work:${W_200}`)?.label === "פרויקט X" && refRecordOf(S0, `mix-work:${W_EP}`)?.label === "העבודה של סטיבן ($550)" && refRecordOf(src({ uuidWorks: true, extraWorks: [{ id: U(33), projectId: P_CANC, engineerName: "Steven", status: "בוטל", agreedPrice: 300, amountPaid: 0, currency: "$", linkedTransactionId: null, paymentDate: null }] }), `mix-work:${U(33)}`) === null && refRecordOf(S0, `mix-work:${U(99)}`) === null);
+  const rows: OwnerKnowledgeRecord[] = [];
+  const store = { async list() { return { status: "OK", records: rows.slice() }; }, async appendBatch(drafts: Array<Record<string, unknown>>) { const out = drafts.map((d, i) => ({ ...d, id: `kn-${rows.length + i + 1}`, createdAt: `${TODAY}T21:00:0${i}Z`, confirmationId: d.confirmationId, itemIndex: d.itemIndex }) as unknown as OwnerKnowledgeRecord); rows.push(...out); return { status: "APPENDED", records: out }; } } as unknown as OwnerKnowledgeStore;
+  const nonce = createNonceGuard();
+  const deps: KnowledgeProposeDeps = { secret: "s".repeat(40), nowMs: () => NOW.getTime(), isOwner: async (u) => u === "owner-1",
+    async loadLive() { const sv = src({ knowledge: rows, uuidWorks: true }); return { ok: true, live: { src: sv, records: rows.slice(), facts: { todayIL: TODAY, projectStatus: () => null, financeMatch: () => null } } } as never; },
+    store, async freshRecords() { return rows.slice(); }, consumeNonce: (n, e) => nonce(n, e) };
+  const ACT = { userId: "owner-1", clientId: "client-1", tokenId: "tok-1" };
+  const kItem = (target: string, f: Record<string, string>) => ({ kind: "BUSINESS_DECISION", subject: "Redbloods", fields: { area: "FINANCE", topic: TOPIC, ...(target.startsWith("mix-work:") ? { ref: target } : { about: target }), ...f } });
+  const items = [
+    kItem(`mix-work:${W_200}`, { decisionHe: "לשלם לסטיבן על העבודה הזאת במהלך החודש", timing: "THIS_MONTH", decidedOn: "2026-10-05", conditionHe: COND }),
+    kItem(`mix-work:${W_EP}`, { decisionHe: "לשלם לסטיבן על העבודה הזאת במהלך החודש", timing: "THIS_MONTH", decidedOn: "2026-10-05", conditionHe: COND }),
+    kItem(SH, { decisionHe: "בסוף המחזור הנוכחי משלמים לשליו לפי היתרה המדויקת שתהיה אז", timing: "AT_CYCLE_CLOSE", decidedOn: "2026-10-05", validUntil: "2026-10-10" }),
+  ];
+  const pv = await previewKnowledgeCore(deps, ACT, items) as unknown as { status: string; items?: Array<{ meaningHe: string }>; confirmationToken?: string; errors?: string[] };
+  ok("D28. the preview accepts the 3 decisions and names EXACTLY which work each one is on", pv.status === "PREVIEW" && pv.items!.length === 3 && pv.items![0].meaningHe.includes("— על פרויקט X") && pv.items![1].meaningHe.includes("— על העבודה של סטיבן ($550)") && pv.items![0].meaningHe.includes(`במהלך אוקטובר 2026 — בתנאי שלך: «${COND}»`) && pv.items![2].meaningHe.includes("בסגירת המחזור"), pv);
+  const c = await commitKnowledgeCore(deps, ACT, items, pv.confirmationToken, "audit-1", "מאשר את שלוש ההחלטות בדיוק לפי ה-preview.") as unknown as { status: string; recorded?: unknown[] };
+  ok("D29. the Owner's exact words commit ALL 3 (one atomic batch) and they read back", c.status === "LEARNED" && c.recorded?.length === 3 && rows.length === 3, c);
+  const FA = ff({ knowledge: rows, uuidWorks: true });
+  const sA = ob(FA, "vendor-payable:Steven")!, shA = ob(FA, `settlement:${SH}`)!;
+  ok("D30. after the save: Steven DECIDED_CONDITIONAL (no 'מתי משלמים'), Shalev DECIDED_DATED — and every amount / date / window is unchanged", sA.decision?.state === "DECIDED_CONDITIONAL" && sA.questionHe === null && shA.decision?.state === "DECIDED_DATED" && shA.questionHe === null
+    && JSON.stringify(moneyOf(sA)) === JSON.stringify(moneyOf(ob(F0, "vendor-payable:Steven")!)) && JSON.stringify(moneyOf(shA)) === JSON.stringify(moneyOf(ob(F0, `settlement:${SH}`)!)) && JSON.stringify(FA.windows) === JSON.stringify(F0.windows), { s: sA.decision?.state, sh: shA.decision?.state });
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
