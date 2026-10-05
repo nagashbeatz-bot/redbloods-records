@@ -315,6 +315,7 @@ async function main() {
   ok("99. (4) LIKELY same project + the proposed move covers it (מיקס ↔ CREATE_ENGINEER_WORK) → absorbed AS A HYPOTHESIS ('כנראה', evidence HYPOTHESIS, no link stored)", !!yMix.absorbedBy && yItem.reasonsHe.some((r) => r.startsWith("כנראה זה גם מה שכתבת")) && yItem.evidence.some((e) => e.ref === `owner-inbox:${YAH_MIX.id}` && e.epistemic === "HYPOTHESIS") && yMix.lifecycle.entitySource === "LIKELY", { absorbedBy: yMix.absorbedBy, reasons: yItem.reasonsHe });
   const maorE = entry(mix, MAOR.id)!;
   ok("100. (5) LINKED + reflected in a move → not duplicated in the greeting (absorbed, not counted, text not repeated)", !!maorE.absorbedBy && !/חייב להתקדם/.test(mix.inbox.lineHe ?? ""));
+  ok("100b. absorbedBy names a move that really carries the update as evidence", mix.inbox.entries.filter((e) => e.absorbedBy).every((e) => mix.all.some((i) => i.key === e.absorbedBy && i.evidence.some((x) => x.ref === `owner-inbox:${e.lifecycle.itemId}`))), mix.inbox.entries.map((e) => e.absorbedBy));
   const tech = entry(mix, TECH.id)!;
   ok("101. (6) a technical unresolved update is represented ('עדכון טכני אחד עדיין פתוח'), never silently dropped", tech.lifecycle.technical && (tech.lifecycle.state === "UNREAD" ? /עדכון טכני אחד עדיין פתוח/.test(mix.inbox.lineHe ?? "") : tech.lifecycle.state === "NEEDS_OWNER"), { state: tech.lifecycle.state, line: mix.inbox.lineHe });
   const old = entry(mix, OLD_CLOSER.id)!;

@@ -665,7 +665,9 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     absorbed.set(item.id, it.key);
   }
 
-  const inbox = motionInboxOf(tri.read, tri.items.map(({ lifecycle }) => motionInboxEntry(lifecycle, absorbed.get(lifecycle.itemId) ?? null)));
+  // the move that finally carries the update (a client package may have merged the record it first raised)
+  const carrier = (id: string) => absorbed.has(id) ? (all.find((i) => i.evidence.some((e) => e.ref === `owner-inbox:${id}`))?.key ?? absorbed.get(id)!) : null;
+  const inbox = motionInboxOf(tri.read, tri.items.map(({ lifecycle }) => motionInboxEntry(lifecycle, carrier(lifecycle.itemId))));
 
   let pats: DerivedPattern[] = [];
   try { pats = derivePatterns(src).filter((p) => p.showToOwner); } catch { pats = []; }
