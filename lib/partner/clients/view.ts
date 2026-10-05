@@ -17,7 +17,7 @@ import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import type { ClientDetailRaw } from "./detail-types";
-import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { CalendarWindowResult } from "../calendar/types";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import { validateTx } from "../finance/core";
@@ -46,7 +46,7 @@ interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: 
 function ctxOf(src: GatewaySources): Ctx {
   const st = ok(src.state) as PartnerCompanyState | null;
   return { st, ops: ok(src.operations) as OperationsRaw | null, det: ok(src.projectDetail) as ProjectDetailRaw | null, cdet: ok(src.clientDetail) as ClientDetailRaw | null,
-    kn: (ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], cal: ok(src.calendar) as CalendarWindowResult | null, integrity: ok(src.integrity) as CompanyIntegrityRegister | null, today: st?.todayIL ?? ilToday(src.now) };
+    kn: activeKnowledge((ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], st?.todayIL ?? ilToday(src.now)), cal: ok(src.calendar) as CalendarWindowResult | null, integrity: ok(src.integrity) as CompanyIntegrityRegister | null, today: st?.todayIL ?? ilToday(src.now) };
 }
 
 /** Every project related to a client, with the basis of the link. */

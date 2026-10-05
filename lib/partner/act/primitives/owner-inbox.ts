@@ -18,6 +18,13 @@ export interface OwnerInboxFamilyWriters {
   readActionPlanState(planId: string): Promise<"EXECUTED" | "NOT_EXECUTED" | "NOT_FOUND" | "HOUSEKEEPING_ONLY">;
   /** Read-only: does an Owner-knowledge record with this id exist (LEARNED_KNOWLEDGE)? */
   ownerKnowledgeExists(id: string): Promise<boolean>;
+  /**
+   * Read-only (O2, 2026-10-05): the canonical entity keys an Owner-knowledge record is about — its non-company subject /
+   * identity keys and typed entity fields (e.g. BUSINESS_DECISION.about). [] = company-level / unlinked; null = not found.
+   */
+  ownerKnowledgeEntityKeys(id: string): Promise<string[] | null>;
+  /** Read-only: the entity keys this inbox item is linked to (live, non-retracted links). */
+  inboxItemEntityKeys(itemId: string): Promise<string[]>;
 }
 
 const LABEL_CHARS = 80;
@@ -40,6 +47,15 @@ async function onItem(d: WriterDeps, a: Readonly<Record<string, unknown>>): Prom
       if (st !== "EXECUTED") return refuse("REF_PLAN_NOT_EXECUTED", st === "NOT_FOUND" ? "לא מצאתי את ה-plan הזה" : st === "HOUSEKEEPING_ONLY" ? "ה-plan הזה הוא רק סימון עדכונים — ACTION_PLANNED צריך plan של פעולה אמיתית" : "ה-plan הזה עוד לא בוצע במלואו — אפשר לסמן ACTION_PLANNED רק אחרי שהפעולה בוצעה");
     }
     if (ref.ok && ref.ref && a.outcome === "LEARNED_KNOWLEDGE" && !(await d.ownerKnowledgeExists(ref.ref))) return refuse("REF_KNOWLEDGE_NOT_FOUND", "לא מצאתי רשומת ידע במזהה הזה — אפשר לסמן LEARNED_KNOWLEDGE רק אחרי שהידע נשמר");
+    if (ref.ok && ref.ref && a.outcome === "LEARNED_KNOWLEDGE") {
+      // O2 (2026-10-05): an update linked to records is closed by knowledge about THOSE records — never by an unrelated (e.g.
+      // company-level) entry that would silently "handle" an update which still needs its own knowledge / action.
+      const itemKeys = await d.inboxItemEntityKeys(k.id);
+      if (itemKeys.length) {
+        const about = (await d.ownerKnowledgeEntityKeys(ref.ref)) ?? [];
+        if (!about.some((x) => itemKeys.includes(x))) return refuse("REF_KNOWLEDGE_UNRELATED", `הידע הזה לא מקושר לרשומות שהעדכון מדבר עליהן (${itemKeys.join(", ")}) — הוא לא סוגר את העדכון. אם זו החלטה על אחת מהן, שמור אותה עם about של הרשומה; אם היא דורשת שינוי ברשומה — זו פעולה (ACTION_PLANNED)`);
+      }
+    }
   }
   return { key: `owner-inbox:${k.id}`, id: k.id, label: `עדכון לסאני: ${short(it.body)}`, fields: fieldsOf(it) };
 }

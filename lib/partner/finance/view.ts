@@ -25,6 +25,7 @@ import { buildFinanceBrain } from "./core";
 import { deriveFinanceActions, financeActionNoteHe, type FinanceActionCandidate } from "./actions";
 import { buildFinanceIntegrity, MAX_SURFACED_QUESTIONS, type PartnerFinanceIntegrityState } from "./integrity";
 import type { FinanceOwnerAnswer } from "./owner-answers";
+import type { FinanceKnowledgeContext } from "./decision-gate";
 import { resolveKnownAnswerBeforeAsking, type KnownAnswer } from "../memory/preflight";
 import type { FinanceRaw, PartnerFinanceState } from "./types";
 
@@ -41,9 +42,9 @@ export interface FinanceView {
   preflight: Array<{ questionId: string; questionType: string; verdict: KnownAnswer }>;
 }
 
-export function deriveFinanceView(raw: FinanceRaw, now: Date, answers: readonly FinanceOwnerAnswer[] = []): FinanceView {
+export function deriveFinanceView(raw: FinanceRaw, now: Date, answers: readonly FinanceOwnerAnswer[] = [], knowledge: readonly FinanceKnowledgeContext[] = []): FinanceView {
   const state0 = buildFinanceBrain(raw, now);
-  const integrity0 = buildFinanceIntegrity(raw, state0, now, answers);
+  const integrity0 = buildFinanceIntegrity(raw, state0, now, answers, knowledge);
   const closed = new Map<string, string>();
   for (const i of integrity0.issues) {
     const q = i.recommendedOwnerQuestion;
@@ -53,7 +54,7 @@ export function deriveFinanceView(raw: FinanceRaw, now: Date, answers: readonly 
   let state = state0, integrity = integrity0;
   if (closed.size) {
     state = buildFinanceBrain(raw, now, { ownerClosedReceivables: closed });
-    integrity = buildFinanceIntegrity(raw, state, now, answers);
+    integrity = buildFinanceIntegrity(raw, state, now, answers, knowledge);
     // The closing answers are applied through the overlay (their questions no longer exist on the overlaid facts).
     integrity.ownerAnswers.applied += closed.size;
   }

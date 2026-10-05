@@ -21,6 +21,8 @@ export const FINANCE_QUESTION_TYPES = [
   "FINANCE_OVERDUE_REASON",
   // F2.11: the ONE missing fact for recording a payment the Owner confirmed (e.g. Victor paid, not in Finance).
   "FINANCE_PAYMENT_DATE",
+  // 2026-10-05 (Owner-approved decision-memory fix): the agreed-price question is answerable (was the display-only PROJECT_PRICE).
+  "FINANCE_PROJECT_PRICE",
 ] as const;
 export type FinanceQuestionType = (typeof FINANCE_QUESTION_TYPES)[number];
 
@@ -43,12 +45,16 @@ export const FINANCE_ANSWER_OPTIONS: Record<FinanceQuestionType, readonly Financ
     // F2.11: the deal was cancelled / commercially closed — nothing further is owed. OWNER_DECISION only: the
     // calculated balance leaves collection, canonical project / price / transactions are NOT changed.
     { code: "PROJECT_CANCELLED_NO_FURTHER_PAYMENT", labelHe: "הפרויקט בוטל — אין יתרה נוספת לגבייה" },
+    // 2026-10-05: the work was done and the Owner WAIVED the balance (a write-off — never "cancelled", never "an unpaid project").
+    { code: "BALANCE_WAIVED", labelHe: "העבודה בוצעה — ויתרתי על היתרה" },
     { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
   FINANCE_COMPLETED_PROJECT_INCOME_STATUS: [
     { code: "INCOME_RECEIVED_NOT_RECORDED", labelHe: "ההכנסה התקבלה ולא נרשמה" },
     { code: "INCOME_NOT_RECEIVED", labelHe: "ההכנסה עדיין לא התקבלה" },
     { code: "NON_PAID_PROJECT", labelHe: "הפרויקט לא היה בתשלום" },
+    // 2026-10-05: there WAS a price, the money was never collected and the Owner gave it up (a write-off, not a free project).
+    { code: "WRITTEN_OFF", labelHe: "היה מחיר, הכסף לא נגבה — ויתרתי עליו" },
     { code: "OTHER", labelHe: "אחר" },
     { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
@@ -68,6 +74,7 @@ export const FINANCE_ANSWER_OPTIONS: Record<FinanceQuestionType, readonly Financ
     { code: "DISPUTE", labelHe: "יש מחלוקת" },
     { code: "WAITING_FOR_DELIVERY", labelHe: "מחכה למסירה" },
     { code: "OWNER_AGREED_DELAY", labelHe: "סיכמתי לדחות" },
+    { code: "BALANCE_WAIVED", labelHe: "ויתרתי על היתרה — לא גובים" },
     { code: "OTHER", labelHe: "אחר" },
     { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
@@ -76,10 +83,20 @@ export const FINANCE_ANSWER_OPTIONS: Record<FinanceQuestionType, readonly Financ
     { code: "EXACT_DATE", labelHe: "יש תאריך מדויק" },
     { code: "UNKNOWN", labelHe: "לא זוכר" },
   ],
+  // The agreed price of an open project with none recorded. SET_PRICE carries no amount: the price itself is recorded only
+  // by the canonical SET_AGREED_PRICE action (the answer is the Owner's decision, the action is the record).
+  FINANCE_PROJECT_PRICE: [
+    { code: "SET_PRICE", labelHe: "יש מחיר — צריך לרשום" },
+    { code: "NO_CHARGE", labelHe: "לא בתשלום" },
+    { code: "UNKNOWN", labelHe: "לא יודע" },
+  ],
 };
 
 /** Answers that commercially CLOSE a receivable (Owner decision; canonical data is not reconciled by it). */
-export const FINANCE_RECEIVABLE_CLOSING_ANSWERS: Partial<Record<FinanceQuestionType, readonly string[]>> = { FINANCE_RECEIVABLE_TIMING: ["PROJECT_CANCELLED_NO_FURTHER_PAYMENT"] };
+export const FINANCE_RECEIVABLE_CLOSING_ANSWERS: Partial<Record<FinanceQuestionType, readonly string[]>> = {
+  FINANCE_RECEIVABLE_TIMING: ["PROJECT_CANCELLED_NO_FURTHER_PAYMENT", "BALANCE_WAIVED"],
+  FINANCE_OVERDUE_REASON: ["BALANCE_WAIVED"],
+};
 
 /** The only finance answer that carries a value (an explicit calendar date, never in the past). */
 export const FINANCE_EXACT_DATE_ANSWERS: Partial<Record<FinanceQuestionType, string>> = { FINANCE_RECEIVABLE_TIMING: "EXACT_DATE", FINANCE_PAYMENT_DATE: "EXACT_DATE" };

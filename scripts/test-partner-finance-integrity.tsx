@@ -148,7 +148,7 @@ async function main() {
     const over = run(empty({ transactions: [tx({ type: "income", amount: 800, status: "צפוי", date: "2026-09-15" })] }));
     const oi = over.integrity.issues.find((i) => i.issueType === "OVERDUE_RECEIVABLE_REASON_UNKNOWN")!;
     check("29. overdue → reason UNKNOWN (never invented)", [oi.epistemicStatus, over.integrity.overdueReasonGaps.map((g) => g.reason)], ["UNKNOWN", ["OVERDUE_REASON_UNKNOWN"]]);
-    check("30. future-compatible reason question shape (codes + Hebrew)", QUESTION_OPTIONS.FINANCE_OVERDUE_REASON.map((o) => [o.code, o.labelHe]), [["WAITING_FOR_CLIENT", "מחכה ללקוח"], ["PROMISED_NEW_DATE", "הבטיח תאריך חדש"], ["DISPUTE", "יש מחלוקת"], ["WAITING_FOR_DELIVERY", "מחכה למסירה"], ["OWNER_AGREED_DELAY", "סיכמתי לדחות"], ["OTHER", "אחר"], ["UNKNOWN", "לא יודע"]]);
+    check("30. future-compatible reason question shape (codes + Hebrew)", QUESTION_OPTIONS.FINANCE_OVERDUE_REASON.map((o) => [o.code, o.labelHe]), [["WAITING_FOR_CLIENT", "מחכה ללקוח"], ["PROMISED_NEW_DATE", "הבטיח תאריך חדש"], ["DISPUTE", "יש מחלוקת"], ["WAITING_FOR_DELIVERY", "מחכה למסירה"], ["OWNER_AGREED_DELAY", "סיכמתי לדחות"], ["BALANCE_WAIVED", "ויתרתי על היתרה — לא גובים"], ["OTHER", "אחר"], ["UNKNOWN", "לא יודע"]]);
     const pp = project();
     const expected = tx({ projectId: pp.id, scope: "project", type: "income", amount: 1200, status: "צפוי", date: "2026-09-20" });
     check("31. expected income due with no received record → signal", issuesOf(empty({ projects: [pp], transactions: [expected] }), "INCOME_EXPECTED_BUT_NOT_RECORDED").length, 1);
@@ -204,7 +204,7 @@ async function main() {
       { issueType: "RECEIVABLE_DUE_DATE_MISSING", epistemic: "FACT", textHe: "יש יתרה של ₪1,600 בלי תאריך גבייה. צריך לקבוע תאריך גבייה." },
       { issueType: "COMPLETED_WORK_NO_INCOME", epistemic: "FACT", textHe: "8 פרויקטים שהסתיימו עם הוצאה מתועדת, אבל אני לא רואה בהם הכנסה. צריך בירור." },
     ]);
-    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", 3], ["FINANCE_RECEIVABLE_TIMING", 7]]);
+    check("64. surfaced questions (2)", prod.brief.rehab.questions.map((q) => [q.questionType, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", 3], ["FINANCE_RECEIVABLE_TIMING", 8]]);
     check("65. main brief keeps money status, no duplicates of 'צריך ממך'", prod.brief.items.map((i) => i.family), ["UPCOMING_COLLECTION", "COMMITTED_EXPENSE", "REVENUE_OPPORTUNITY"]);
     ok("65/66. main ≤5, rehab ≤3, questions ≤2", prod.brief.items.length <= FINANCE_BRIEF_MAX_ITEMS && prod.brief.rehab.items.length <= 3 && prod.brief.rehab.questions.length <= 2);
     check("F2 numbers unchanged (₪ in 2,700 / out 500 / net 2,200; position 3,100)", [prod.state.realized.ils, prod.state.pacing.knownMonthEndPositionIls], [{ cashIn: 2700, cashOut: 500, net: 2200 }, 3100]);

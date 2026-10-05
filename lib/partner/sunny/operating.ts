@@ -6,7 +6,7 @@
 import type { GatewaySources } from "../gateway/core";
 import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
-import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { CompanyIntegrityRegister } from "../integrity/types";
 import type { SettingsState } from "../settings/types";
 import type { CalendarWindowResult } from "../calendar/types";
@@ -45,7 +45,7 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   const st = ok(src.state) as PartnerCompanyState | null;
   const ops = ok(src.operations) as OperationsRaw | null;
   const fin = ok(src.finance);
-  const kn = (ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [];
+  const kn = activeKnowledge((ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], st?.todayIL ?? ilToday(src.now));
   const integrity = ok(src.integrity) as CompanyIntegrityRegister | null;
   const cal = ok(src.calendar) as CalendarWindowResult | null;
   const today = st?.todayIL ?? ilToday(src.now);
@@ -161,7 +161,7 @@ export function projectOperating(src: GatewaySources, projectId: string) {
 /** "נכנסה הופעה ל<artist> ב-<date>" → what Redbloods knows, what is missing, downstream, notifications, actions. */
 export function showWorkflow(src: GatewaySources, artistKey: string, date: string | null) {
   const st = ok(src.state) as PartnerCompanyState | null;
-  const kn = (ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [];
+  const kn = activeKnowledge((ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], st?.todayIL ?? ilToday(src.now));
   const settings = ok(src.settings) as SettingsState | null;
   const cal = ok(src.calendar) as CalendarWindowResult | null;
   const model = WORKFLOW_MODELS.find((w) => w.event === "NEW_SHOW")!;

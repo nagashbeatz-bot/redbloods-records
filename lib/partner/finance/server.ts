@@ -20,6 +20,8 @@ import { deriveFinanceView, type FinanceView } from "./view";
 import type { FinanceActionCandidate } from "./actions";
 import { financeAnswersFromContexts, type FinanceOwnerAnswer } from "./owner-answers";
 import { readFinanceRaw, type FinanceReadClient } from "./readers";
+import { financeKnowledgeContextOf, type FinanceKnowledgeContext } from "./decision-gate";
+import { createOwnerKnowledgeStore, type OwnerKnowledgeTableClient } from "../owner-knowledge/store";
 import type { FinanceBriefDto } from "./dto";
 import type { FinanceRaw, PartnerFinanceState, SalaryMonthRow } from "./types";
 
@@ -40,8 +42,21 @@ async function readFinanceAnswers(): Promise<{ ok: true; answers: FinanceOwnerAn
   return { ok: false, detail: r.status === "READ_FAILED" ? r.error.message : `owner context unreadable (${r.status})` };
 }
 
+/**
+ * Decision gate (2026-10-05): the Owner's ACTIVE money knowledge (P2), linked to a canonical entity — CONTEXT only (it turns a
+ * repeated question into a reconciliation; never money, never silence). Fail-open to "no context": an unreadable store only means
+ * the gate cannot use it (the question is asked as before) — it never hides a question. Off where the store is not enabled.
+ */
+async function readFinanceKnowledge(now: Date): Promise<{ available: boolean; knowledge: FinanceKnowledgeContext[] }> {
+  if (process.env.PARTNER_OWNER_KNOWLEDGE_ENABLED !== "true") return { available: false, knowledge: [] };
+  try {
+    const r = await createOwnerKnowledgeStore(supabase as unknown as OwnerKnowledgeTableClient).list();
+    return r.status === "OK" ? { available: true, knowledge: financeKnowledgeContextOf(r.records, ilYmd(now)) } : { available: false, knowledge: [] };
+  } catch { return { available: false, knowledge: [] }; }
+}
+
 export type FinanceLiveResult =
-  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null; actions: FinanceActionCandidate[]; actionNoteHe: string | null; raw: FinanceRaw; view: FinanceView }
+  | { status: "OK"; state: PartnerFinanceState; integrity: PartnerFinanceIntegrityState; answers: FinanceOwnerAnswer[]; answersAvailable: boolean; answersDetail: string | null; knowledgeAvailable: boolean; actions: FinanceActionCandidate[]; actionNoteHe: string | null; raw: FinanceRaw; view: FinanceView }
   | { status: "UNAVAILABLE"; detail: string };
 
 /** One live derivation: finance read → brain → Owner answers → integrity (answers consumed as OWNER_DECISION). */
@@ -52,10 +67,11 @@ export async function loadFinanceLive(now: Date = new Date()): Promise<FinanceLi
     let a: Awaited<ReturnType<typeof readFinanceAnswers>>;
     try { a = await readFinanceAnswers(); } catch (e) { a = { ok: false, detail: e instanceof Error ? e.message : "owner context read failed" }; }
     const answers = a.ok ? a.answers : [];
+    const k = await readFinanceKnowledge(now);
     // F2.5–F2.11: integrity / rehabilitation + the Owner overlay are evaluated on every read (no background worker).
-    const view = deriveFinanceView(raw, now, answers);
+    const view = deriveFinanceView(raw, now, answers, k.knowledge);
     const { state, integrity, actions, actionNoteHe } = view;
-    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail, actions, actionNoteHe, raw, view };
+    return { status: "OK", state, integrity, answers, answersAvailable: a.ok, answersDetail: a.ok ? null : a.detail, knowledgeAvailable: k.available, actions, actionNoteHe, raw, view };
   } catch (e) {
     return { status: "UNAVAILABLE", detail: e instanceof Error ? e.message : "finance read failed" };
   }

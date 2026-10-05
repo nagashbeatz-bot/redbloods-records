@@ -24,19 +24,24 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 interface Item { body: string; status: string; outcome: string | null; outcomeRef: string | null; processedVia: string | null }
-interface W { items: Record<string, Item>; knowledge: number; actions: number; plans: Record<string, "EXECUTED" | "NOT_EXECUTED" | "HOUSEKEEPING_ONLY">; knowledgeIds: string[] }
+interface W { items: Record<string, Item>; knowledge: number; actions: number; plans: Record<string, "EXECUTED" | "NOT_EXECUTED" | "HOUSEKEEPING_ONLY">; knowledgeIds: string[]; knowledgeKeys: Record<string, string[]>; links: Record<string, string[]> }
 const PLAN = "pl_AbCdEfGhIjKlMnOpQrStUvWx";
 const KNOW = U(77);
+const KNOW_P = U(79); // O2: knowledge ABOUT project P (e.g. BUSINESS_DECISION.about)
+const PROJ_P = `project:${U(50)}`;
 const world = (): W => ({
   items: {
     [U(1)]: { body: "נפגשתי היום עם אמן חדש מבאר שבע", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
     [U(2)]: { body: "סטיבן יחזיר מיקס ביום ראשון", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
     [U(3)]: { body: "להזכיר לי לשלם גז", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
     [U(4)]: { body: "כבר טופל", status: "PROCESSED", outcome: "DISMISSED", outcomeRef: null, processedVia: "DASHBOARD" },
+    [U(6)]: { body: "לגבי הפרויקט — לא לרדוף אחרי הכסף", status: "NEW", outcome: null, outcomeRef: null, processedVia: null },
   },
   knowledge: 27, actions: 0,
   plans: { [PLAN]: "EXECUTED", pl_NotRunYetAbcdefghijklmnop: "NOT_EXECUTED", pl_OnlyHousekeepingAbcdefghij: "HOUSEKEEPING_ONLY" },
-  knowledgeIds: [KNOW],
+  knowledgeIds: [KNOW, KNOW_P],
+  knowledgeKeys: { [KNOW]: [], [KNOW_P]: [PROJ_P] },
+  links: { [U(6)]: [PROJ_P] },
 });
 function mk() {
   const w = world(); const calls: string[] = [];
@@ -46,6 +51,8 @@ function mk() {
     // behaves like the shared writer + the RPC: validates the ref, NEW only, via stored
     async readActionPlanState(planId: string) { return w.plans[planId] ?? "NOT_FOUND"; },
     async ownerKnowledgeExists(id: string) { return w.knowledgeIds.includes(id); },
+    async ownerKnowledgeEntityKeys(id: string) { return w.knowledgeIds.includes(id) ? [...(w.knowledgeKeys[id] ?? [])] : null; },
+    async inboxItemEntityKeys(itemId: string) { return [...(w.links[itemId] ?? [])]; },
     async markOwnerInboxItem(id: string, outcome: string, outcomeRef: string | null) {
       calls.push("markOwnerInboxItem");
       const r = checkOutcomeRef(outcome as never, outcomeRef);
@@ -94,6 +101,11 @@ const CASES: FamilyCase<W>[] = [
   ok("ACTION_PLANNED with an unknown plan → refused", (await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: "pl_DoesNotExistAbcdefghijk" })).status === "REF_PLAN_NOT_EXECUTED");
   ok("ACTION_PLANNED with a housekeeping-only plan → refused (needs a real business action)", (await q({ item: I1, outcome: "ACTION_PLANNED", outcomeRef: "pl_OnlyHousekeepingAbcdefghij" })).status === "REF_PLAN_NOT_EXECUTED");
   ok("LEARNED_KNOWLEDGE with a knowledge id that was never saved → refused", (await q({ item: I1, outcome: "LEARNED_KNOWLEDGE", outcomeRef: U(78) })).status === "REF_KNOWLEDGE_NOT_FOUND");
+  // O2 (2026-10-05): an update linked to records is closed only by knowledge about THOSE records
+  const I6 = `owner-inbox:${U(6)}`;
+  ok("O2: an update linked to a project is NOT closed by company-level / unrelated knowledge → REF_KNOWLEDGE_UNRELATED", (await q({ item: I6, outcome: "LEARNED_KNOWLEDGE", outcomeRef: KNOW })).status === "REF_KNOWLEDGE_UNRELATED");
+  ok("O2: …it IS closed by knowledge about that project (about = the project key)", (await q({ item: I6, outcome: "LEARNED_KNOWLEDGE", outcomeRef: KNOW_P })).status === "PREVIEW");
+  ok("O2: an update with no links keeps the old rule (any saved knowledge id)", (await q({ item: I1, outcome: "LEARNED_KNOWLEDGE", outcomeRef: KNOW })).status === "PREVIEW");
 
   console.log("\nStanding authorization (housekeeping only)");
   {
@@ -197,7 +209,7 @@ const CASES: FamilyCase<W>[] = [
     ok("LEARNED_KNOWLEDGE only records the link: no knowledge / action writer is called", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.knowledge === 27 && h.w.actions === 0 && h.calls.join() === "markOwnerInboxItem");
     const src = read("lib/partner/act/primitives/owner-inbox.ts");
     ok("the primitive has no knowledge / plan / push / finance / calendar path", !/propose|commitKnowledge|planAction|sendPush|transactions|google-calendar|owner-knowledge\/store/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")));
-    ok("its only WRITE is markOwnerInboxItem; every other dep it calls is a read-only reader", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem(", "d.readActionPlanState(", "d.ownerKnowledgeExists("].includes(m)) && (src.match(/d\.markOwnerInboxItem\(/g) ?? []).length === 1);
+    ok("its only WRITE is markOwnerInboxItem; every other dep it calls is a read-only reader", (src.match(/d\.[a-zA-Z]+\(/g) ?? []).every((m) => ["d.listOwnerInboxNew(", "d.readOwnerInboxItem(", "d.markOwnerInboxItem(", "d.readActionPlanState(", "d.ownerKnowledgeExists(", "d.inboxItemEntityKeys(", "d.ownerKnowledgeEntityKeys("].includes(m)) && (src.match(/d\.markOwnerInboxItem\(/g) ?? []).length === 1);
   }
 
   console.log("\nWiring");

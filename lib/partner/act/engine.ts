@@ -28,6 +28,7 @@ import { OWNER_EVENT_DETAIL, STANDING_EVENT_DETAIL, standingEligible } from "./s
 import type { ActionContract, Plan, PlanEventType, PlanOutcome, PlanStep, StepOutcome, StepStatus } from "./types";
 import { executionKey, planHash, validatePlan } from "./plan";
 import { verifyApproval, type NonceStore } from "./approval";
+import { verifiedDetail, type VerifyKind } from "./verify-kind";
 import { ENTITY_KEY_RE, safeDetail, toPersistablePlan } from "./persist";
 import { resolveStepRefs } from "./refs";
 
@@ -61,6 +62,8 @@ export interface PrimitiveExecutor {
   execute(step: PlanStep, priorOutputs: ReadonlyMap<number, unknown>, ctx?: StepContext): Promise<{ changed: boolean; output?: unknown }>;
   /** Fresh read after execution: did the canonical state become what the preview said? */
   verify(step: PlanStep, output: unknown): Promise<boolean>;
+  /** What `verify` actually proves (claim contract 2026-10-05, lib/partner/act/verify-kind.ts); absent = FRESH_READ. */
+  verifyKind?: VerifyKind;
 }
 export interface EngineDeps {
   nowMs: number;
@@ -173,7 +176,7 @@ export async function executePlan(plan: Plan, approval: { token: string; ownerId
       if (typeof cid === "string" && cid) created.push(cid);
       const ok = await ex.verify(rs, r.output);
       const createdKey = createdKeyOf(s, cid);
-      o = { index: s.index, actionId: s.actionId, status: !ok ? "FAILED" : r.changed ? "APPLIED_AS_EXPECTED" : "NO_CHANGE", detail: ok ? "verified by a fresh read" : "executed but the fresh read does not match the preview", replayed: false, at, ...(createdKey ? { createdKey } : {}) };
+      o = { index: s.index, actionId: s.actionId, status: !ok ? "FAILED" : r.changed ? "APPLIED_AS_EXPECTED" : "NO_CHANGE", detail: verifiedDetail(ex.verifyKind ?? "FRESH_READ", ok), replayed: false, at, ...(createdKey ? { createdKey } : {}) };
       await log(ok ? "VERIFIED" : "STEP_FAILED", s.index, o.detail);
       if (ok) await log("STEP_EXECUTED", s.index, r.changed ? "changed" : "no change");
     } catch (e) {

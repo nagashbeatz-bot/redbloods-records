@@ -49,6 +49,7 @@ import { asApproved, malformedRefArgs, REF_TARGET_KEY_RE, refSentinelId, refStri
 import { newProjectMeta, REF_CREATED_KINDS, withPlannedRecords, type ResolvedTarget } from "./primitives";
 import { HISTORY_OUTCOMES, MAX_WORKFLOW_STEPS, validateActInput } from "./mcp-tools";
 import { nextStepsFor } from "./next-step";
+import { verifyKindOf, weakestVerifyKind, type VerifyKind } from "./verify-kind";
 
 export const PLAN_TTL_MS = 15 * 60_000;
 /** A CLAIMED step older than this is treated as an interrupted run and reconciled read-only (never re-executed). A live
@@ -448,7 +449,21 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
   const now: Fields | null = fresh[0].now;
   const next = nextStepFor(s0.actionId, now);
   const ok = out.status === "APPLIED_AS_EXPECTED" || out.status === "NO_CHANGE";
-  const asState = (f: { entity: string; now: Fields | null; readFailed: boolean }) => (f.now ? { entity: f.entity, fields: Object.fromEntries(Object.entries(f.now).map(([k, v]) => [k, { value: v, trust: "RECORD" }])) } : f.readFailed ? { entity: f.entity, readFailed: true } : null);
+  // Claim contract (2026-10-05): what each step's verification actually proves decides what may be said about it.
+  const kindOf = (s: PlanStep): VerifyKind => verifyKindOf(s.actionId, PRIMITIVES_BY_ID.get(s.actionId)?.kinds ?? []);
+  const appliedKinds = plan.steps.filter((s, i) => out.steps[i]?.status === "APPLIED_AS_EXPECTED").map(kindOf);
+  const weakest = appliedKinds.length ? weakestVerifyKind(appliedKinds) : null;
+  const verification = { kind: weakest, steps: plan.steps.map((s, i) => ({ index: s.index, actionId: s.actionId, status: out.steps[i]?.status ?? "NOT_RUN", verifyKind: kindOf(s) })) };
+  const canonicalEffect = out.status === "APPLIED_AS_EXPECTED" ? (weakest ?? "FRESH_READ") : out.status === "NO_CHANGE" ? "NONE" : out.status === "PARTIALLY_APPLIED" ? "PARTIAL" : "FAILED";
+  // A RECEIPT step's read view cannot show its effect (a push / email / sync): never present that view as a record of the result.
+  const asState = (f: { entity: string; now: Fields | null; readFailed: boolean }, i: number) => (plan.steps[i] && kindOf(plan.steps[i]) === "RECEIPT"
+    ? { entity: f.entity, receiptOnly: true, noteHe: "לפעולה הזאת אין קריאה טרייה של התוצאה — האישור הוא של המערכת שביצעה אותה (קבלה), לא בדיקה מחדש" }
+    : f.now ? { entity: f.entity, fields: Object.fromEntries(Object.entries(f.now).map(([k, v]) => [k, { value: v, trust: "RECORD" }])) } : f.readFailed ? { entity: f.entity, readFailed: true } : null);
+  const appliedHe = weakest === "RECEIPT"
+    ? "בוצע בוס — המערכת שביצעה את זה אישרה (קבלה). את התוצאה עצמה לא קראתי שוב"
+    : weakest === "PARTIAL"
+      ? "בוצע בוס — בדקתי מחדש את הרשומה הראשית והיא קיימת; שדות / השפעות נוספות (יומן, כספים, קישורים) לא נבדקו מחדש"
+      : "בוצע בוס — בדקתי מחדש והשינוי קיים";
   const partial = plan.steps.length > 1 && !ok ? {
     applied: out.steps.filter((x) => x.status === "APPLIED_AS_EXPECTED" || x.status === "NO_CHANGE").map((x) => x.index),
     failed: out.steps.filter((x) => x.status === "FAILED" || x.status === "CONFLICT" || x.status === "STALE").map((x) => x.index),
@@ -458,10 +473,11 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
   return {
     status: out.status, planId: plan.planId, refusal: out.refusal, steps: out.steps,
     ...(out.steps.some((x) => x.createdKey) ? { created: out.steps.filter((x) => x.createdKey).map((x) => ({ index: x.index, createdKey: x.createdKey })) } : {}),
-    freshState: asState(fresh[0]),
-    ...(plan.steps.length > 1 ? { freshStates: fresh.map(asState), partial } : {}),
+    freshState: asState(fresh[0], 0),
+    ...(plan.steps.length > 1 ? { freshStates: fresh.map((f, i) => asState(f, i)), partial } : {}),
+    canonicalEffect, verification,
     nextStep: next ? { ...next, epistemic: "DERIVED" } : null,
-    messageHe: ok ? (out.status === "NO_CHANGE" ? "בוס, לא היה מה לשנות — המצב כבר כזה" : "בוצע בוס — בדקתי מחדש והשינוי קיים") : out.status === "STALE" ? "בוס, המצב השתנה מאז התצוגה, לא ביצעתי כלום. צריך תצוגה חדשה" : out.status === "PARTIALLY_APPLIED" ? `בוס, התהליך בוצע חלקית: שלבים ${partial?.applied.map((i) => i + 1).join(", ") || "—"} בוצעו, ${partial?.failed.map((i) => i + 1).join(", ") || "—"} נכשל, ${partial?.notRun.map((i) => i + 1).join(", ") || "—"} לא רצו. זה המצב החי עכשיו` : "בוס, הפעולה לא בוצעה — הנה מה שקרה",
+    messageHe: ok ? (out.status === "NO_CHANGE" ? "בוס, לא היה מה לשנות — המצב כבר כזה" : appliedHe) : out.status === "STALE" ? "בוס, המצב השתנה מאז התצוגה, לא ביצעתי כלום. צריך תצוגה חדשה" : out.status === "PARTIALLY_APPLIED" ? `בוס, התהליך בוצע חלקית: שלבים ${partial?.applied.map((i) => i + 1).join(", ") || "—"} בוצעו, ${partial?.failed.map((i) => i + 1).join(", ") || "—"} נכשל, ${partial?.notRun.map((i) => i + 1).join(", ") || "—"} לא רצו. זה המצב החי עכשיו` : "בוס, הפעולה לא בוצעה — הנה מה שקרה",
   };
 }
 /** Every value the plan itself carries (arguments, after-values, key values) — only so a voluntary repeat is never read as a change. */
@@ -547,6 +563,8 @@ async function verifyInterrupted(plan: Plan, s0: PlanStep, d: ActServiceDeps, cr
   if (!res) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the record an earlier step created is not known — treated as not applied (never re-executed)");
   const s = res.step;
   if (stepTargetId(s) === "new") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; a created record cannot be verified without its id — check the live records before planning it again (never re-executed)");
+  // A RECEIPT step (push / email / sync / file move) cannot be re-verified from records: it MAY have run — never "not applied".
+  if (verifyKindOf(spec.actionId, spec.kinds) === "RECEIPT") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; this step's effect (a push / email / sync / file) cannot be checked from the records — it may have happened. Check before repeating it (never re-executed)");
   try {
     const ex = executorFor(spec, d.writers);
     if (s !== s0) {

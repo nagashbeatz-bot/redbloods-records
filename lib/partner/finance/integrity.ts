@@ -19,7 +19,8 @@ import { addDays, diffDays } from "../../coo/dates";
 import { fmtMoney } from "./brief";
 import { RECORDING_POLICY_START, financeExceptionOf, validateTx, type ValidatedTx } from "./core";
 import { FINANCE_ANSWER_OPTIONS, FINANCE_EXACT_DATE_ANSWERS, isFinanceQuestionType, type FinanceQuestionType } from "../investigation/finance-questions";
-import { financeAnswerLabelHe, financeCaseId, financeQuestionFingerprint, financeQuestionId, type FinanceOwnerAnswer } from "./owner-answers";
+import { financeAnswerLabelHe, financeAnswerMatches, financeCaseId, financeQuestionFingerprints, financeQuestionId, type FinanceOwnerAnswer } from "./owner-answers";
+import { reconcileForAnswer, reconcileForKnowledge, type DecisionGateState, type FinanceKnowledgeContext, type ReconcileItem } from "./decision-gate";
 import type { CurrencyTotals, Evidence, FinanceRaw, PartnerFinanceState, Receivable } from "./types";
 
 export const INTEGRITY_SCHEMA_VERSION = "partner-finance-integrity-v1";
@@ -45,8 +46,8 @@ export const ISSUE_TYPES = [
 ] as const;
 export type IssueType = (typeof ISSUE_TYPES)[number];
 
-/** The six FINANCE_* types are answerable (F2.8–F2.10); EXPENSE_CLASSIFICATION / PROJECT_PRICE stay display-only. */
-export type QuestionType = FinanceQuestionType | "EXPENSE_CLASSIFICATION" | "PROJECT_PRICE";
+/** The FINANCE_* types are answerable (F2.8–F2.10; FINANCE_PROJECT_PRICE since 2026-10-05); EXPENSE_CLASSIFICATION stays display-only. */
+export type QuestionType = FinanceQuestionType | "EXPENSE_CLASSIFICATION";
 export interface QuestionOption { code: string; labelHe: string }
 export interface OwnerQuestion {
   questionType: QuestionType;
@@ -58,13 +59,18 @@ export interface OwnerQuestion {
   priority: number;
   /** Set for answerable (FINANCE_*) questions once the issue is known; null for display-only questions. */
   identity: FinanceQuestionIdentity | null;
+  /** Decision gate (2026-10-05): the Owner already said something about this issue (Owner knowledge linked by entity). */
+  gate?: { state: "KNOWN_CONTEXT_RECONCILE"; knownHe: string; reconcile: ReconcileItem } | null;
 }
 export interface FinanceQuestionIdentity {
   questionId: string;
   caseId: string;
   /** The integrity issue type that raised the question (persisted as case_type). */
   issueType: IssueType;
+  /** v2 (facts only) — what a NEW answer stores; the client sends it back as seenQuestionFingerprint. */
   fingerprint: string;
+  /** v1 (legacy, wording-bound) — only so answers stored before 2026-10-05 keep matching (financeAnswerMatches). */
+  legacyFingerprint: string;
   /** The answer code that carries an explicit date (EXACT_DATE), if any. */
   exactDateCode: string | null;
   /** The Owner's earlier answer when the facts have changed since — the new answer supersedes it. */
@@ -89,8 +95,12 @@ export interface RehabIssue {
   recommendedOwnerQuestion: OwnerQuestion | null;
   /** F2.8: the Owner's active answer that matches the live question (same fingerprint), else null. */
   ownerAnswer?: IssueOwnerAnswer | null;
-  /** F2.8: the Owner's answer closes the gap (e.g. NON_PAID_PROJECT). Kept for audit; never surfaced. */
+  /** F2.8: the Owner's answer closes the gap (e.g. NON_PAID_PROJECT). Kept for audit; never asked again. */
   ownerResolved?: boolean;
+  /** Decision gate (2026-10-05): what Sunny does with this issue given what the Owner already said. */
+  decision?: DecisionGateState;
+  /** The reconciliation when the Owner's answer / knowledge is not reflected by the records yet (a proposal — nothing runs by itself). */
+  reconcile?: ReconcileItem | null;
 }
 
 /** An obligation the Owner declared (e.g. "עדיין לא שולם"). OWNER_DECISION — never added to open-expense totals or forecasts. */
@@ -128,7 +138,8 @@ export interface PartnerFinanceIntegrityState {
   dueDateQueue: Receivable[];
   overdueReasonGaps: { receivableId: string; reason: "OVERDUE_REASON_UNKNOWN" }[];
   questions: OwnerQuestion[];
-  top: { items: RehabOwnerItem[]; questions: OwnerQuestion[] };
+  /** reconcile = known Owner decisions the records do not reflect yet (never an ordinary question; every action needs approval). */
+  top: { items: RehabOwnerItem[]; questions: OwnerQuestion[]; reconcile: ReconcileItem[] };
   /** F2.8–F2.10: how many active Owner answers matched a live question, and the obligations they declared. */
   ownerAnswers: { applied: number; outdated: number; obligations: OwnerDeclaredObligation[] };
 }
@@ -161,19 +172,23 @@ export const QUESTION_OPTIONS: Record<QuestionType, QuestionOption[]> = {
     { code: "PROJECT_COST", labelHe: "עלות פרויקט" }, { code: "TEAM_COST", labelHe: "צוות" }, { code: "LABEL_COST", labelHe: "לייבל" }, { code: "MARKETING", labelHe: "שיווק" },
     { code: "SOFTWARE", labelHe: "תוכנה / מנוי" }, { code: "GENERAL_BUSINESS", labelHe: "הוצאה כללית של העסק" }, { code: "UNKNOWN", labelHe: "לא יודע" },
   ],
-  PROJECT_PRICE: [{ code: "SET_PRICE", labelHe: "יש מחיר — צריך לרשום" }, { code: "NO_CHARGE", labelHe: "לא בתשלום" }, { code: "UNKNOWN", labelHe: "לא יודע" }],
+  FINANCE_PROJECT_PRICE: financeOptions("FINANCE_PROJECT_PRICE"),
 };
 
-/** Answers that close the gap entirely (the issue stays in the state for audit, but is never surfaced again). */
+/**
+ * Answers that close the gap as a QUESTION (the issue stays for audit and is never asked again). When the answer implies a
+ * canonical change the records do not show yet, the decision gate turns it into a reconciliation (top.reconcile) instead.
+ */
 export const RESOLVING_ANSWERS: Partial<Record<FinanceQuestionType, readonly string[]>> = {
-  FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT"],
+  FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT", "WRITTEN_OFF"],
+  FINANCE_PROJECT_PRICE: ["SET_PRICE", "NO_CHARGE"],
   FINANCE_ORPHAN_SETTING_MEANING: ["HISTORICAL_ONLY"],
   FINANCE_EXPENSE_RECURRENCE: ["ONE_TIME"],
 };
 
 // ── the integrity brain ──
 
-export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceState, now: Date, ownerAnswers: readonly FinanceOwnerAnswer[] = []): PartnerFinanceIntegrityState {
+export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceState, now: Date, ownerAnswers: readonly FinanceOwnerAnswer[] = [], ownerKnowledge: readonly FinanceKnowledgeContext[] = []): PartnerFinanceIntegrityState {
   void now; // the month window / today are already in `state` (same clock); kept for signature symmetry
   const today = state.month.today;
   const txs: ValidatedTx[] = raw.transactions.map(validateTx).filter((t): t is ValidatedTx => t !== null);
@@ -213,7 +228,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
       issueType: "PRICE_MISSING", severityBand: open ? "MEDIUM" : "LOW", epistemicStatus: "FACT", subjectType: "project", subjectId: pr.projectId, subjectLabel: pr.name,
       currency: null, amount: null, date: null, period: periodOf(p.updatedAt), reasonCodes: [open ? "OPEN_PROJECT_NO_AGREED_PRICE" : "COMPLETED_PROJECT_NO_AGREED_PRICE", `BUSINESS_${pr.business}`],
       evidence: [pEv(pr.projectId, "PRICE_UNKNOWN", pr.status)],
-      recommendedOwnerQuestion: open ? question("PROJECT_PRICE", { type: "project", id: pr.projectId, labelHe: pr.name }, `לפרויקט '${pr.name}' אין מחיר מוסכם במערכת. יש מחיר?`, "בלי מחיר אי אפשר לחשב גבייה ויתרה לפרויקט.", [pEv(pr.projectId, "PRICE_UNKNOWN")], 60) : null,
+      recommendedOwnerQuestion: open ? question("FINANCE_PROJECT_PRICE", { type: "project", id: pr.projectId, labelHe: pr.name }, `לפרויקט '${pr.name}' אין מחיר מוסכם במערכת. יש מחיר?`, "בלי מחיר אי אפשר לחשב גבייה ויתרה לפרויקט.", [pEv(pr.projectId, "PRICE_UNKNOWN")], 60) : null,
     });
   }
 
@@ -387,7 +402,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   }
 
   // ── F2.8–F2.10: consume the Owner's active answers (OWNER_DECISION — never money) ──
-  const answered = applyOwnerAnswers(issues, ownerAnswers);
+  const answered = applyOwnerAnswers(issues, ownerAnswers, ownerKnowledge);
   const open = (t: IssueType) => issues.filter((i) => i.issueType === t && !i.ownerResolved);
   const openOrphans = orphanQueue.filter((o) => !issues.some((i) => i.issueType === "ORPHAN_FINANCE_SETTING" && i.subjectId === o.projectId && i.ownerResolved));
 
@@ -412,8 +427,9 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   if (trust.completedWorkIncome.state !== "RELIABLE") coverageReasonsHe.push("בחלק מהפרויקטים שהסתיימו לא רשומה הכנסה");
   if (openOrphans.length) coverageReasonsHe.push("יש נתוני מחיר ישנים שדורשים בירור");
 
-  const questions = issues.filter((i) => !i.ownerAnswer && !i.ownerResolved).map((i) => i.recommendedOwnerQuestion).filter((q): q is OwnerQuestion => !!q).sort((a, b) => a.priority - b.priority || (a.subject.id < b.subject.id ? -1 : 1));
-  const top = prioritize(issues);
+  // Asked = no answer AND no linked Owner knowledge (those are reconciliations — never re-asked as if nothing was said).
+  const questions = issues.filter((i) => !i.ownerAnswer && !i.ownerResolved && i.decision !== "KNOWN_CONTEXT_RECONCILE").map((i) => i.recommendedOwnerQuestion).filter((q): q is OwnerQuestion => !!q).sort((a, b) => a.priority - b.priority || (a.subject.id < b.subject.id ? -1 : 1));
+  const top = { ...prioritize(issues), reconcile: reconcileItemsOf(issues) };
   return {
     schemaVersion: INTEGRITY_SCHEMA_VERSION, policyStartYmd: RECORDING_POLICY_START, trust, coverageReasonsHe, projects, issues, orphanQueue,
     expenseClassification, dueDateQueue, overdueReasonGaps, questions, top, ownerAnswers: answered,
@@ -426,30 +442,50 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
  * it); a different fingerprint → the facts changed, the question is asked again and the new answer will
  * supersede the old one. Mutates only objects built in this call. Never touches any money figure.
  */
-function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerAnswer[]): PartnerFinanceIntegrityState["ownerAnswers"] {
+function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerAnswer[], knowledge: readonly FinanceKnowledgeContext[]): PartnerFinanceIntegrityState["ownerAnswers"] {
   const byQuestion = new Map(answers.map((a) => [a.questionId, a]));
   let applied = 0, outdated = 0;
   const obligations: OwnerDeclaredObligation[] = [];
   for (const i of issues) {
     i.ownerAnswer = null;
     i.ownerResolved = false;
+    i.decision = "ASK";
+    i.reconcile = null;
+    if (i.issueType === "RECEIVABLE_OWNER_CLOSED") {
+      // F2.11 closure (the answer was applied by the overlay): the records still imply the balance → a reconciliation.
+      const code = i.reasonCodes.find((c) => c === "PROJECT_CANCELLED_NO_FURTHER_PAYMENT" || c === "BALANCE_WAIVED");
+      const closing = code ? answers.find((a) => a.subjectType === "receivable" && a.subjectId === i.subjectId && a.answerCode === code) : undefined;
+      const r = code ? reconcileForAnswer(i, { contextId: closing?.contextId ?? "", answerCode: code, labelHe: (closing && financeAnswerLabelHe(closing.questionType, code)) ?? code, answeredAt: closing?.answeredAt ?? "" }) : null;
+      i.decision = r ? "KNOWN_DECISION_RECONCILE" : "KNOWN_MATCHES";
+      i.reconcile = r;
+      continue;
+    }
     const q = i.recommendedOwnerQuestion;
     if (!q || !isFinanceQuestionType(q.questionType)) continue;
     const caseId = financeCaseId(i.issueType, q.subject.type, q.subject.id);
     const questionId = financeQuestionId(caseId, q.questionType);
-    const fingerprint = financeQuestionFingerprint({ questionType: q.questionType, issueType: i.issueType, subject: q.subject, textHe: q.textHe, optionCodes: q.options.map((o) => o.code), amount: i.amount, currency: i.currency, date: i.date, evidence: q.evidence });
+    const fps = financeQuestionFingerprints({ questionType: q.questionType, issueType: i.issueType, subject: q.subject, textHe: q.textHe, optionCodes: q.options.map((o) => o.code), amount: i.amount, currency: i.currency, date: i.date, evidence: q.evidence });
     const a = byQuestion.get(questionId);
     const label = a ? financeAnswerLabelHe(q.questionType, a.answerCode) : null;
-    const current = !!a && !!label && a.factsFingerprint === fingerprint && a.caseType === i.issueType && a.subjectType === q.subject.type && a.subjectId === q.subject.id;
+    const current = !!a && !!label && financeAnswerMatches(a.factsFingerprint, fps) && a.caseType === i.issueType && a.subjectType === q.subject.type && a.subjectId === q.subject.id;
     q.identity = {
-      questionId, caseId, issueType: i.issueType, fingerprint, exactDateCode: FINANCE_EXACT_DATE_ANSWERS[q.questionType] ?? null,
+      questionId, caseId, issueType: i.issueType, fingerprint: fps.fingerprint, legacyFingerprint: fps.legacyFingerprint, exactDateCode: FINANCE_EXACT_DATE_ANSWERS[q.questionType] ?? null,
       previousAnswer: a && label && !current ? { contextId: a.contextId, answerCode: a.answerCode, labelHe: label, answerValueYmd: a.answerValueYmd } : null,
     };
-    if (!a || !label) continue;
-    if (!current) { outdated++; continue; }
+    if (!a || !label || !current) {
+      if (a && label) outdated++;
+      // Decision gate: no current answer, but ACTIVE Owner knowledge linked to THIS entity → a reconciliation, never a fresh question.
+      const r = reconcileForKnowledge(i, knowledge);
+      if (r) { i.decision = "KNOWN_CONTEXT_RECONCILE"; i.reconcile = r; q.gate = { state: "KNOWN_CONTEXT_RECONCILE", knownHe: r.knownHe, reconcile: r }; }
+      continue;
+    }
     applied++;
     i.ownerAnswer = { contextId: a.contextId, answerCode: a.answerCode, labelHe: label, answerValueYmd: a.answerValueYmd, answeredAt: a.answeredAt };
     i.ownerResolved = (RESOLVING_ANSWERS[q.questionType] ?? []).includes(a.answerCode);
+    // Decision gate: the answer is known; if it implies a canonical change the records do not show → reconcile (proposal only).
+    const r = reconcileForAnswer(i, i.ownerAnswer);
+    i.decision = r ? "KNOWN_DECISION_RECONCILE" : "KNOWN_MATCHES";
+    i.reconcile = r;
     if (q.questionType === "FINANCE_RECURRING_PAYMENT_STATUS" && a.answerCode === "NOT_PAID") {
       obligations.push({ subjectId: i.subjectId, labelHe: i.subjectLabel, amount: i.amount, currency: i.currency, dueDate: i.date, basis: "OWNER_DECISION", contextId: a.contextId });
     }
@@ -478,10 +514,11 @@ const FAMILY_OF: Partial<Record<IssueType, string>> = { RECURRING_EXPENSE_MISSIN
 export function prioritize(issues: RehabIssue[]): { items: RehabOwnerItem[]; questions: OwnerQuestion[] } {
   // Only issues that would help the Owner right now; LOW historical data hygiene does not crowd the list.
   // Owner-resolved gaps are never surfaced; inside a family, still-open (unanswered) gaps lead.
-  const ordered = issues.filter((i) => !i.ownerResolved).sort((a, b) => REHAB_FAMILY_RANK[a.issueType] - REHAB_FAMILY_RANK[b.issueType] || Number(!!a.ownerAnswer) - Number(!!b.ownerAnswer) || SEV[a.severityBand] - SEV[b.severityBand] || (a.period === b.period ? 0 : a.period === "POST_POLICY" ? -1 : 1) || (a.id < b.id ? -1 : 1));
+  const ordered = issues.filter((i) => !i.ownerResolved || i.decision === "KNOWN_DECISION_RECONCILE").sort((a, b) => REHAB_FAMILY_RANK[a.issueType] - REHAB_FAMILY_RANK[b.issueType] || Number(!!a.ownerAnswer) - Number(!!b.ownerAnswer) || SEV[a.severityBand] - SEV[b.severityBand] || (a.period === b.period ? 0 : a.period === "POST_POLICY" ? -1 : 1) || (a.id < b.id ? -1 : 1));
   const families = new Map<string, RehabIssue[]>();
   for (const i of ordered) {
-    const f = FAMILY_OF[i.issueType] ?? i.issueType;
+    // a known-but-unreconciled decision is its own line, never counted with the still-open gaps of its type
+    const f = i.reconcile ? `${i.issueType}:RECONCILE:${i.subjectId}` : FAMILY_OF[i.issueType] ?? i.issueType;
     families.set(f, [...(families.get(f) ?? []), i]);
   }
   const items: RehabOwnerItem[] = [];
@@ -489,11 +526,16 @@ export function prioritize(issues: RehabIssue[]): { items: RehabOwnerItem[]; que
   for (const [, list] of families) {
     if (items.length >= MAX_REHAB_ITEMS) break;
     const head = list[0];
-    const answeredLine = head.ownerAnswer ? ownerAnsweredLine(head, list.length) : null;
-    const text = answeredLine ? answeredLine.textHe : ownerLine(head, list);
-    if (!text) continue;
-    items.push({ issueType: head.issueType, epistemic: answeredLine ? answeredLine.epistemic : head.epistemicStatus, textHe: text });
-    const q = list.filter((x) => !x.ownerAnswer).map((x) => x.recommendedOwnerQuestion).find((x): x is OwnerQuestion => !!x);
+    if (head.reconcile) {
+      // The Owner already said it: the line is the reconciliation ("… המערכת עדיין לא משקפת — לסנכרן?"), never the raw question.
+      items.push({ issueType: head.issueType, epistemic: "OWNER_DECISION", textHe: head.reconcile.textHe });
+    } else {
+      const answeredLine = head.ownerAnswer ? ownerAnsweredLine(head, list.length) : null;
+      const text = answeredLine ? answeredLine.textHe : ownerLine(head, list);
+      if (!text) continue;
+      items.push({ issueType: head.issueType, epistemic: answeredLine ? answeredLine.epistemic : head.epistemicStatus, textHe: text });
+    }
+    const q = list.filter((x) => !x.ownerAnswer && x.decision !== "KNOWN_CONTEXT_RECONCILE").map((x) => x.recommendedOwnerQuestion).find((x): x is OwnerQuestion => !!x);
     if (q && questions.length < MAX_SURFACED_QUESTIONS && !questions.some((x) => x.questionType === q.questionType)) questions.push(q);
   }
   return { items, questions };
@@ -532,6 +574,7 @@ function ownerAnsweredLine(head: RehabIssue, n: number): { textHe: string; epist
     case "COMPLETED_WORK_NO_INCOME":
       if (a.answerCode === "INCOME_RECEIVED_NOT_RECORDED") return od(`פרויקט '${label}': ההכנסה התקבלה לפי מה שאמרת, ועדיין חסר רישום בכספים.`);
       if (a.answerCode === "INCOME_NOT_RECEIVED") return od(`פרויקט '${label}': לפי מה שאמרת ההכנסה עדיין לא התקבלה.`);
+      if (a.answerCode === "WRITTEN_OFF") return od(`פרויקט '${label}': לפי מה שאמרת היה מחיר, הכסף לא נגבה וויתרת עליו.`);
       return unknown(`פרויקט '${label}': עדיין לא ברור מה קרה עם ההכנסה.`);
     case "ORPHAN_FINANCE_SETTING":
       if (a.answerCode === "REAL_DEAL_NEEDS_RECOVERY") return od(`מחיר ישן${money ? ` של ${money}` : ""}: לפי מה שאמרת זו עסקה אמיתית שצריך לשחזר. הוא עדיין לא נספר בכסף.`);
@@ -582,4 +625,23 @@ function ownerLine(head: RehabIssue, list: RehabIssue[]): string | null {
     default:
       return null; // currency / overlap / unlinked / ledger hygiene: kept in the state, not an Owner line by default
   }
+}
+
+/** The reconciliations of the decision gate (answer- or knowledge-based), one per issue, deterministic order. */
+function reconcileItemsOf(issues: readonly RehabIssue[]): ReconcileItem[] {
+  return issues.filter((i) => i.reconcile).map((i) => i.reconcile!)
+    .sort((a, b) => (a.state === b.state ? 0 : a.state === "KNOWN_DECISION_RECONCILE" ? -1 : 1) || (a.subject.id < b.subject.id ? -1 : a.subject.id > b.subject.id ? 1 : 0));
+}
+
+/**
+ * Every finance question the Owner may answer RIGHT NOW: the surfaced ones (top.questions) plus the open question behind a
+ * knowledge reconciliation (so "כן, ויתרתי" can be recorded as the answer). ONE list for the answer core, the bridge and readers.
+ */
+export function answerableFinanceQuestions(integrity: Pick<PartnerFinanceIntegrityState, "top" | "issues">): OwnerQuestion[] {
+  const out = [...integrity.top.questions];
+  for (const i of integrity.issues) {
+    const q = i.recommendedOwnerQuestion;
+    if (i.decision === "KNOWN_CONTEXT_RECONCILE" && q?.identity && !out.some((x) => x.identity?.questionId === q.identity!.questionId)) out.push(q);
+  }
+  return out;
 }

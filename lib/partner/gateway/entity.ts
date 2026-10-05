@@ -375,7 +375,7 @@ export function getPartnerEntityCore(key: string, src: GatewaySources): EntityRe
   const used: Parameters<typeof envelope>[3] = [["PROJECTS", src.state], ["FINANCE", src.finance], ["MEMORY", src.memory], ["CASES", src.cases], ["ACTIONS", src.actions]];
   const env = envelope("partner_entity", { key }, src, used);
   const empty = (status: EntityResponse["status"], why: string): EntityResponse => ({
-    ...env, status, entity: null, facts: [], relationships: [], ownerDecisions: [], observations: [], conflicts: [], patterns: { candidates: [], confirmed: [] },
+    ...env, status, entity: null, facts: [], relationships: [], ownerDecisions: [], observations: [], conflicts: [], patterns: { candidates: [], confirmed: [] }, knownDecisions: [],
     resolutions: [], openIssues: [], openQuestions: [], suggestedActions: [], actionHistory: [], recentOutcomes: [], missing: [{ fact: key.slice(0, 80), whyNeeded: why }], drillDown: [], truncated: {}, knowledge: [],
   });
   const parsed = parseEntityKey(key);

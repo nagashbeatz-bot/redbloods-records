@@ -250,9 +250,12 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   // ── DECISION MEMORY + OWNER-APPROVED LEARNINGS (P2 kinds, DB CHECK applied 2026-10-02) ──
   {
     kind: "BUSINESS_DECISION", family: "OPERATING_KNOWLEDGE", titleHe: "החלטה עסקית", subjectTypes: ["company"],
-    descriptionForModel: "A business decision the Owner MADE and states (decision memory): what was decided, why, the alternatives he rejected and when to revisit it. One current decision per area + topic (a newer one supersedes; history kept). Only the Owner's own statement — never Sunny's recommendation, never inferred, never from company data. It changes nothing in Redbloods (a decision is not an action).",
+    descriptionForModel: "A business decision the Owner MADE and states (decision memory): what was decided, why, the alternatives he rejected and when to revisit it. One current decision per area + topic (+ about) (a newer one supersedes; history kept). Only the Owner's own statement — never Sunny's recommendation, never inferred, never from company data. It changes nothing in Redbloods (a decision is not an action). A decision about ONE record (a project / client / show / release / artist) sets 'about' to that record's key — that is the ONLY link Sunny uses (a name inside the text links nothing); a company-wide decision leaves 'about' empty.",
     fields: {
       area: { type: "enum", values: BUSINESS_AREAS, required: true, labelsHe: BUSINESS_AREA_HE },
+      // 2026-10-05 (decision memory): the ONE record the decision is about — a canonical key, never a name in the text. The subject
+      // stays the company (no subjectTypes change); the finance decision gate reads this key (lib/partner/finance/decision-gate.ts).
+      about: { type: "entity", subjectTypes: ["project", "client", "show", "release", "label-artist", "dj"], required: false },
       topic: { type: "text", maxLength: 40, required: true },
       decisionHe: { type: "text", maxLength: 200, required: true },
       rationaleHe: { type: "text", maxLength: 200, required: false },
@@ -262,9 +265,9 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
       reviewAt: { type: "ymd", required: false },
       ...TIME_FIELDS,
     },
-    epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}`,
+    epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}${v.about ? `:${s(v.about)}` : ""}`,
     reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
-    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
+    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
     check: (v) => {
       const e = checkProvenanceAndTime(v);
       if (!topicSlug(s(v.topic))) e.push("topic: a short topic in Latin letters / digits (e.g. clip-pricing)");
@@ -272,7 +275,7 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
     },
     conflicts: (_k, v, live) => (v.decidedOn && s(v.decidedOn) > live.todayIL ? [{ code: "DATE_IN_FUTURE", severity: "BLOCKING", messageHe: "תאריך ההחלטה לא יכול להיות בעתיד." }] : []),
     influencesAnalysis: true, mutatesCanonicalState: false, relationQuality: null, timeAware: true,
-    notesHe: ["החלטה היא זיכרון של מה שהחלטת — היא לא משנה שום רשומה ולא מפעילה פעולה.", "תאריך הבדיקה (reviewAt) הוא תזכורת לקריאה בלבד — אין בדיקה או תפוגה אוטומטית."],
+    notesHe: ["החלטה היא זיכרון של מה שהחלטת — היא לא משנה שום רשומה ולא מפעילה פעולה.", "מצב הרשומות לא משתנה: מה שנבדק (כספים / חובות / שאלות) ימשיך להופיע עד פעולה קנונית שתאשר — אז אציג אותו כ\"כבר אמרת לי — לסנכרן?\" ולא כשאלה חדשה.", "תאריך הבדיקה (reviewAt) הוא תזכורת לקריאה בלבד — אין בדיקה או תפוגה אוטומטית."],
   },
   {
     kind: "BUSINESS_LEARNING", family: "OPERATING_KNOWLEDGE", titleHe: "לקח עסקי (באישור הבעלים)", subjectTypes: ["company"],

@@ -542,6 +542,21 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
       if (r.status !== "OK") throw new Error(`owner knowledge read failed: ${r.status}`);
       return r.records.some((k) => k.id === id);
     },
+    async ownerKnowledgeEntityKeys(id) {
+      const { createOwnerKnowledgeStore } = await import("@/lib/partner/owner-knowledge/store");
+      const r = await createOwnerKnowledgeStore(supabase as unknown as import("@/lib/partner/owner-knowledge/store").OwnerKnowledgeTableClient).list();
+      if (r.status !== "OK") throw new Error(`owner knowledge read failed: ${r.status}`);
+      const k = r.records.find((x) => x.id === id);
+      if (!k) return null;
+      const ENTITY = /^(project|client|show|release|label-artist|dj):[0-9a-f-]{36}$/;
+      return [...new Set([k.subjectKey, ...k.identityKeys, ...Object.values(k.value).filter((v): v is string => typeof v === "string")].filter((x) => ENTITY.test(x)))].sort();
+    },
+    async inboxItemEntityKeys(itemId) {
+      const { createInboxMemoryStore } = await import("@/lib/inbox-memory-store");
+      const r = await createInboxMemoryStore(supabase as unknown as import("@/lib/inbox-memory-store").InboxMemoryClient).readAll();
+      if (r.status !== "OK") throw new Error(`inbox memory read failed: ${r.detail}`);
+      return [...new Set(r.value.links.filter((l) => l.itemId === itemId && !l.retractedAt).map((l) => l.entityKey))].sort();
+    },
   };
 }
 

@@ -86,6 +86,13 @@ export const ownerNeeds: KnowledgeCapability = {
       });
     } else if (f && !f.answersAvailable) missing.push({ fact: "Finance Owner questions", whyNeeded: "hidden until Owner answers can be read (never re-ask blindly)" });
     else if (!f) missing.push({ fact: "Finance Owner questions", whyNeeded: "the Finance Brain could not be read" });
+    // Decision gate (2026-10-05): what the Owner already decided / said and the records do not reflect yet — a sync, never a question.
+    for (const r of f?.integrity.top.reconcile ?? []) {
+      items.push(item({
+        id: `reconcile:${r.issueType}:${r.subject.id}`, entity: r.entityKey, label: partnerRecord(r.textHe), epistemic: "OWNER_DECISION", source: "FINANCE",
+        fields: { kind: "KNOWN_DECISION_RECONCILE", state: r.state, known: partnerRecord(r.knownHe), canonical: partner(r.canonicalHe), actions: r.actions.map((a) => ({ actionId: a.actionId, args: a.args, missing: a.missing, required: a.required })), requiresOwnerApproval: true, howToSync: partner("הפעולה רצה רק אחרי אישור שלך (partner_plan_action) — אין סנכרון אוטומטי") },
+      }));
+    }
     const acts = ok(src.actions);
     for (const a of acts ?? []) {
       items.push(item({

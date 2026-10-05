@@ -9,7 +9,7 @@
  */
 import type { FinanceRaw } from "../finance/types";
 import type { OwnerQuestion } from "../finance/integrity";
-import type { FinanceOwnerAnswer } from "../finance/owner-answers";
+import { financeAnswerMatches, type FinanceOwnerAnswer } from "../finance/owner-answers";
 import { salaryLinkedId } from "../../victor-salary-format";
 import { isCancelledStatus, isExpenseFullyPaidStatus } from "../../finance/classify";
 import type { KnownAnswerStatus } from "./types";
@@ -38,7 +38,7 @@ export function resolveKnownAnswerBeforeAsking(q: OwnerQuestion, ctx: PreflightC
 
   // 2. ACTIVE Owner Context for this exact question, still matching the facts it was given for.
   const active = ctx.answers.find((a) => a.questionId === q.identity!.questionId);
-  if (active && active.factsFingerprint === q.identity.fingerprint) {
+  if (active && financeAnswerMatches(active.factsFingerprint, q.identity)) {
     return { status: "KNOWN_OWNER_DECISION", suppress: true, source: "OWNER_CONTEXT", detail: `context ${active.contextId}: ${active.answerCode}${active.answerValueYmd ? ` ${active.answerValueYmd}` : ""}` };
   }
 

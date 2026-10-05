@@ -91,6 +91,28 @@ export interface GatewayRelationship {
   note?: GText;
 }
 
+/**
+ * Decision gate (2026-10-05): something the Owner ALREADY decided / said that the records do not reflect yet. Never a question
+ * to ask again and never money: the actions are typed PROPOSALS (existing primitives) that run only after his approval.
+ */
+export interface GatewayKnownDecision {
+  state: "KNOWN_DECISION_RECONCILE" | "KNOWN_CONTEXT_RECONCILE";
+  issueType: string;
+  subject: string | null;
+  /** What the Owner said (attributed — OWNER_DECISION / Owner knowledge, never a record). */
+  known: GText;
+  /** What the records still show. */
+  canonical: GText;
+  basis: { kind: "OWNER_ANSWER"; answerCode: string } | { kind: "OWNER_KNOWLEDGE"; knowledgeId: string; knowledgeKind: string };
+  knownAt: string | null;
+  /** partner_plan_action input: actionId + the args already known; `missing` = args only the Owner can give. */
+  actions: Array<{ actionId: string; args: Record<string, string | number | boolean>; missing: string[]; required: boolean; note: GText }>;
+  orderNote: GText | null;
+  epistemic: "OWNER_DECISION";
+  /** KNOWN_CONTEXT_RECONCILE only: the open question behind it, so the Owner's confirmation can also be recorded as his answer. */
+  answer?: { questionRef: string; options: Array<{ code: string; label: GText }> };
+}
+
 export interface GatewayOwnerDecision {
   questionType: string;
   answerCode: string;
@@ -213,6 +235,8 @@ export interface EntityResponse extends Envelope<"partner_entity"> {
   patterns: { candidates: GatewayPattern[]; confirmed: GatewayPattern[] };
   openIssues: GatewayIssue[];
   openQuestions: GatewayQuestion[];
+  /** Decision gate: known Owner decisions the records do not reflect yet (never truncated; never re-asked as questions). */
+  knownDecisions: GatewayKnownDecision[];
   suggestedActions: GatewaySuggestedAction[];
   actionHistory: GatewayActionHistory[];
   recentOutcomes: GatewayOutcome[];
@@ -229,7 +253,8 @@ export interface EntityResponse extends Envelope<"partner_entity"> {
 
 // ── partner_brief ───────────────────────────────────────────────────────────
 
-export type BriefCategory = "ACTION_READY" | "OWNER_DECISION_NEEDED" | "MONEY" | "ATTENTION" | "RECENT_OUTCOME";
+/** KNOWN_DECISION_RECONCILE (2026-10-05): the Owner already decided / said it; the records do not reflect it yet → sync, never re-ask. */
+export type BriefCategory = "ACTION_READY" | "OWNER_DECISION_NEEDED" | "KNOWN_DECISION_RECONCILE" | "MONEY" | "ATTENTION" | "RECENT_OUTCOME";
 
 export interface BriefItem {
   category: BriefCategory;

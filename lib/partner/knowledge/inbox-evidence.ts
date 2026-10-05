@@ -66,7 +66,7 @@ interface Graph {
 /** Approved Owner aliases (ENTITY_ALIAS, active) → the entity they name. Canonical-grade identity (the Owner said it). */
 function aliasHits(text: string, g: Graph): Array<{ alias: string; key: string }> {
   const tt = normalizeName(text).split(" ").filter(Boolean);
-  return g.knowledge.filter((k) => k.kind === "ENTITY_ALIAS" && typeof k.value.alias === "string")
+  return activeKnowledge(g.knowledge, g.today).filter((k) => k.kind === "ENTITY_ALIAS" && typeof k.value.alias === "string")
     .filter((k) => containsWholeName(tt, normalizeName(String(k.value.alias)).split(" ").filter(Boolean)))
     .map((k) => ({ alias: String(k.value.alias), key: k.servedSubjectKey ?? k.subjectKey }));
 }

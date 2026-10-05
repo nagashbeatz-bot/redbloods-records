@@ -217,6 +217,8 @@ export const QUESTION_TYPE_TO_MISSING_CONCEPT: Readonly<Record<string, string>> 
   INTEGRITY_LABEL_PROJECT_CLASSIFICATION: "Only Shalev / Avi projects are classified as label automatically at creation (Owner rule, 2026-09-27) — other roster artists' projects and older projects still need the Owner's explicit classification.",
   INTEGRITY_CLIENT_IDENTITY: "Projects carry the client only as free-text artist names — there is no client id on a project.",
   PROJECT_PRICE: "The agreed price is not captured when a project is created (only on proposal conversion).",
+  // 2026-10-05: the agreed-price question is answerable as FINANCE_PROJECT_PRICE (the same missing concept)
+  FINANCE_PROJECT_PRICE: "The agreed price is not captured when a project is created (only on proposal conversion).",
   FINANCE_COMPLETED_PROJECT_INCOME_STATUS: "A project can be completed without its income being recorded — there is no completion check for money.",
   WAITING_ON_CLIENT_OR_ARTIST: "Redbloods has no 'waiting on' / blocker field — only the send log.",
   WHY_DEADLINE_STILL_ACTIVE: "Deadlines are overwritten with no reason / history.",

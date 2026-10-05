@@ -32,6 +32,7 @@ import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { SECURITY_GAPS } from "../system/people";
 import { ATTENTION_DIMENSIONS, ATTENTION_MAP, EXECUTABLE_TODAY, FUTURE_PRIMITIVES, GAP_ROOTS, STILL_PENDING, gapRootOf, type AttentionDimension, type AttentionNature, type AttentionSide, type GapRoot } from "../system/company";
 import { isClientProject, isLabelProject } from "../../project-classification";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 
 const CLOSED = new Set(["הושלם", "בוטל"]);
 const DAY = 86_400_000;
@@ -257,8 +258,9 @@ export function buildCompanyView(src: GatewaySources) {
   for (const a of artists ?? []) a.questions.forEach((q, i) => addQ({ id: `${a.key}:q${i}`, questionHe: `${a.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "LABEL", origin: "LIVE_QUESTION" }));
   for (const s of (shows ?? []).filter((x) => x.identity.date && x.identity.date >= addDays(c.today, -30))) s.questions.forEach((q, i) => addQ({ id: `${s.key}:q${i}`, questionHe: `הופעה ${s.identity.date}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "SHOWS", origin: "LIVE_QUESTION" }));
   for (const cl of clients ?? []) cl.questions.forEach((q, i) => addQ({ id: `${cl.key}:q${i}`, questionHe: `${cl.identity.name}: ${q.questionHe}`, why: q.why, kind: q.kind, domain: "CLIENTS", origin: "LIVE_QUESTION" }));
-  const kn = (ok(src.ownerKnowledge) ?? []) as Array<{ subjectKey: string; operation?: string }>;
-  const decided = (subject: string) => kn.some((k) => k.subjectKey === subject && k.operation !== "WITHDRAW");
+  // O1 (2026-10-05): only knowledge IN USE (activeKnowledge — the one rule): an ASSERT later withdrawn / superseded / expired decides nothing.
+  const kn = activeKnowledge((ok(src.ownerKnowledge) ?? []) as OwnerKnowledgeRecord[], c.today);
+  const decided = (subject: string) => kn.some((k) => k.subjectKey === subject);
   const known: Array<{ id: string; questionHe: string; why: string; kind: string; domain: CompanyDecision["domain"]; supersedes?: { domain: CompanyDecision["domain"]; text: RegExp }; state: () => { s: NonNullable<CompanyDecision["liveState"]>; e: string } }> = [
     { id: "known:victor-june-500", questionHe: "משכורת ויקטור יוני: הסכום $500 מול $550 הגלובלי — מה נכון?", why: "salary sources disagree; kept for later by the Owner", kind: "PAYMENT", domain: "VICTOR", supersedes: { domain: "VICTOR", text: /2026-06/ }, state: () => victor ? ((() => { const jm = victor.money.months.find((m) => m.month.startsWith("2026-06")); const ev = jm ? [...jm.conflicts, ...(jm.ownerNotes ?? [])] : []; return ev.length ? { s: "STILL_OBSERVED", e: `2026-06: ${ev.join("; ")}` } : null; })() ?? { s: "NO_LONGER_OBSERVED", e: "no June salary conflict / Owner amount statement in the live read" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "Victor view unavailable" } },
     { id: "known:mix-orphan-expenses", questionHe: "הוצאות מיקס שלא מקושרות לשום עבודה — לשייך או שאריות?", why: "never fuzzy-linked by Sunny", kind: "FINANCE", domain: "MIX", supersedes: { domain: "MIX", text: /לא מקושרות לשום עבודה/ }, state: () => mix ? (mix.money.orphanExpenses.length ? { s: "STILL_OBSERVED", e: `${mix.money.orphanExpenses.length} orphan mix expenses` } : { s: "NO_LONGER_OBSERVED", e: "no orphan mix expense now" }) : { s: "UNKNOWN_SOURCE_FAILED", e: "mix view unavailable" } },

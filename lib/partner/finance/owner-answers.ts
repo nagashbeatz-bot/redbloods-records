@@ -52,7 +52,10 @@ export interface FingerprintInput {
   evidence: readonly Evidence[];
 }
 
-/** SHA-256 (64 hex) of the exact question the Owner saw. Evidence is reduced to stable ids + reason codes. */
+/**
+ * v1 (legacy): SHA-256 (64 hex) of the exact question the Owner saw. Evidence is reduced to stable ids + reason codes.
+ * Kept ONLY so answers stored before 2026-10-05 keep matching (financeAnswerMatches) — never written for a new answer.
+ */
 export function financeQuestionFingerprint(q: FingerprintInput): string {
   const evidence = q.evidence
     .map((e) => ({ sourceType: e.sourceType, sourceId: e.sourceId, reasonCode: e.reasonCode }))
@@ -69,6 +72,44 @@ export function financeQuestionFingerprint(q: FingerprintInput): string {
     date: q.date,
     evidence,
   }));
+}
+
+/**
+ * Issue types whose `date` is NOT a fact of the question (COMPLETED_WORK_NO_INCOME carries the project's updated_at,
+ * which every project edit bumps). Leaving it out of v2 is what stops an unrelated edit from re-asking an answered question.
+ */
+const DATE_NOT_A_FACT = new Set(["COMPLETED_WORK_NO_INCOME", "PRICE_MISSING"]);
+
+/**
+ * v2 (2026-10-05, Owner-approved): the FACTS of the question only — type, issue, subject id, amount, currency, a factual
+ * date (a due date; never a record's updated_at) and the evidence ids. NOT the wording, the subject's label or the option
+ * codes: a rename, a reworded question or a new answer option never re-opens what the Owner already answered (like the
+ * Company Integrity Register's facts-only fingerprint). Every new answer stores v2.
+ */
+export function financeQuestionFingerprintV2(q: FingerprintInput): string {
+  const evidence = q.evidence
+    .map((e) => ({ sourceType: e.sourceType, sourceId: e.sourceId, reasonCode: e.reasonCode }))
+    .sort((a, b) => (a.sourceType + "|" + a.sourceId + "|" + a.reasonCode).localeCompare(b.sourceType + "|" + b.sourceId + "|" + b.reasonCode));
+  return sha256Hex(canonicalStableStringify({
+    v: 2,
+    questionType: q.questionType,
+    issueType: q.issueType,
+    subject: { type: q.subject.type, id: q.subject.id },
+    amount: q.amount,
+    currency: q.currency,
+    date: DATE_NOT_A_FACT.has(q.issueType) ? null : q.date,
+    evidence,
+  }));
+}
+
+/** Both fingerprints of a live question: `fingerprint` (v2 — what a new answer stores) and `legacyFingerprint` (v1). */
+export function financeQuestionFingerprints(q: FingerprintInput): { fingerprint: string; legacyFingerprint: string } {
+  return { fingerprint: financeQuestionFingerprintV2(q), legacyFingerprint: financeQuestionFingerprint(q) };
+}
+
+/** THE one rule: a stored answer applies to a live question when its fingerprint is the question's v2 or its legacy v1. */
+export function financeAnswerMatches(storedFingerprint: string, identity: { fingerprint: string; legacyFingerprint?: string | null }): boolean {
+  return storedFingerprint === identity.fingerprint || (!!identity.legacyFingerprint && storedFingerprint === identity.legacyFingerprint);
 }
 
 /** Active finance answers from the store's CURRENT_APPLICABLE contexts (anything non-finance is ignored). */

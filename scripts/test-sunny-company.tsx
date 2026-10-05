@@ -64,7 +64,7 @@ const SETTINGS: SettingsState = { families: {
   VICTOR_SALARY_OVERRIDES: sec([{ key: "vendor_victor_salary_overrides", updatedAt: null, value: { "2026-05": 550, "2026-06": 500 } }, { key: "vendor_victor_salary_status_overrides", updatedAt: null, value: { "2026-05": "שולם", "2026-06": "שולם" } }]),
 } } as unknown as SettingsState;
 
-interface Opt { extraTx?: ReturnType<typeof tx>[]; noFinance?: boolean; calendar?: "ok" | "fail" | "none"; noState?: boolean; knowledge?: Array<{ subjectKey: string; operation?: string }> }
+interface Opt { extraTx?: ReturnType<typeof tx>[]; noFinance?: boolean; calendar?: "ok" | "fail" | "none"; noState?: boolean; knowledge?: Array<Record<string, unknown> & { subjectKey: string; operation?: string }> }
 function sources(o: Opt = {}): GatewaySources {
   const st = input({ contexts: [] }).state!;
   const ops = { integrations: { googleCalendarConnected: true, dropboxConnected: true }, redFilms: sec([prod(PR_MAIN, { title: "קליפ אבי", projectId: P(2), shootDate: "2026-09-10", status: "בתכנון" })]),
@@ -200,9 +200,11 @@ function main() {
   ok("policy questions stay POLICY_OPEN (cadence, work hours); the recoup basis + artist accounting were ANSWERED by the Owner (2026-09-27) and are never asked again", ["known:release-cadence", "known:working-hours"].every((id) => dec(id)?.liveState === "POLICY_OPEN") && !dec("known:recoup-basis") && !dec("known:artist-accounting-canonical"));
   ok("every decision is Owner-only (Sunny never answers)", v.decisions.every((d) => d.answerable === "OWNER_ONLY"));
   section("SCENARIO O — decision QA: an Owner decision recorded in knowledge removes the question");
-  const withK = buildCompanyView(sources({ knowledge: [{ subjectKey: "known:release-cadence" }] }));
+  // full knowledge rows (O1 2026-10-05: decided() reads activeKnowledge — the slot's terminal ASSERT, in use now)
+  const withK = buildCompanyView(sources({ knowledge: [{ id: "k-assert", kind: "BUSINESS_DECISION", subjectKey: "known:release-cadence", identityKeys: ["known:release-cadence"], slotKey: "BUSINESS_DECISION|known:release-cadence|decision:RELEASES:cadence", value: {}, epistemic: "OWNER_DECISION", meaningHe: "x", operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, createdAt: "2026-09-20T10:00:00.000Z" }] }));
   ok("the cadence question is gone once decided", !withK.decisions.some((d) => d.id === "known:release-cadence"));
-  ok("a WITHDRAWN decision reopens it", buildCompanyView(sources({ knowledge: [{ subjectKey: "known:release-cadence", operation: "WITHDRAW" }] })).decisions.some((d) => d.id === "known:release-cadence"));
+  ok("a WITHDRAWN decision reopens it", buildCompanyView(sources({ knowledge: [{ id: "k-withdraw", kind: "BUSINESS_DECISION", subjectKey: "known:release-cadence", identityKeys: ["known:release-cadence"], slotKey: "BUSINESS_DECISION|known:release-cadence|decision:RELEASES:cadence", value: {}, epistemic: "OWNER_DECISION", meaningHe: "x", operation: "WITHDRAW", supersedesId: "k-assert", reviewAt: null, expiresAt: null, createdAt: "2026-09-21T10:00:00.000Z" }] })).decisions.some((d) => d.id === "known:release-cadence"));
+  ok("O1: an ASSERT later WITHDRAWN (same slot) reopens it — history never decides", buildCompanyView(sources({ knowledge: [{ id: "k-assert", kind: "BUSINESS_DECISION", subjectKey: "known:release-cadence", identityKeys: ["known:release-cadence"], slotKey: "BUSINESS_DECISION|known:release-cadence|decision:RELEASES:cadence", value: {}, epistemic: "OWNER_DECISION", meaningHe: "x", operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, createdAt: "2026-09-20T10:00:00.000Z" }, { id: "k-withdraw", kind: "BUSINESS_DECISION", subjectKey: "known:release-cadence", identityKeys: ["known:release-cadence"], slotKey: "BUSINESS_DECISION|known:release-cadence|decision:RELEASES:cadence", value: {}, epistemic: "OWNER_DECISION", meaningHe: "x", operation: "WITHDRAW", supersedesId: "k-assert", reviewAt: null, expiresAt: null, createdAt: "2026-09-21T10:00:00.000Z" }] })).decisions.some((d) => d.id === "known:release-cadence"));
   section("SCENARIO P — decision dedupe: the same question text appears once");
   const qk = v.decisions.map((d) => `${d.kind}|${d.questionHe.replace(/\s+/g, " ")}`);
   check("no duplicate question", qk.length - new Set(qk).size, 0);

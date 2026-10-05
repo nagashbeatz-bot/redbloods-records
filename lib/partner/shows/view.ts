@@ -13,7 +13,7 @@ import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw } from "../projects/detail-types";
 import type { LabelDetailRaw, DetailShow } from "../label/detail-types";
 import type { SettingsState } from "../settings/types";
-import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { CalendarWindowResult } from "../calendar/types";
 import { validateTx } from "../finance/core";
 import { buildCalendarLinkIndex, linkCalendarEvent } from "../calendar/links";
@@ -41,7 +41,7 @@ interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: 
 function ctxOf(src: GatewaySources): Ctx {
   const st = ok(src.state) as PartnerCompanyState | null;
   return { st, ops: ok(src.operations) as OperationsRaw | null, det: ok(src.projectDetail) as ProjectDetailRaw | null, ld: ok(src.labelDetail) as LabelDetailRaw | null, settings: ok(src.settings) as SettingsState | null,
-    kn: (ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], cal: ok(src.calendar) as CalendarWindowResult | null, today: st?.todayIL ?? ilToday(src.now), cleantone: src.identities?.cleantone?.clientId ?? null };
+    kn: activeKnowledge((ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], st?.todayIL ?? ilToday(src.now)), cal: ok(src.calendar) as CalendarWindowResult | null, today: st?.todayIL ?? ilToday(src.now), cleantone: src.identities?.cleantone?.clientId ?? null };
 }
 const marker = (c: Ctx, family: string, showId: string, currentFp: string) => {
   const rows = c.settings?.families[family]?.rows;

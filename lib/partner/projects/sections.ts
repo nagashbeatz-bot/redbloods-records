@@ -16,7 +16,7 @@
 import type { GatewaySources } from "../gateway/core";
 import type { OperationsRaw } from "../operations/types";
 import type { PartnerCompanyState } from "../eyes/types";
-import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import type { ProjectDetailRaw, DetailFile } from "./detail-types";
 import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { songClipRelations } from "../../project-song-link";
@@ -206,7 +206,7 @@ function waitingOf(c: Ctx): SectionRow[] {
   const del = rows(d?.deliveries).find((x) => x.projectId === id);
   if (del && del.status !== "delivered" && del.status !== "not_created") out.push(R("delivery", `מסירה: ${del.status}`, "DERIVED", { waitingOn: "OWNER_OR_CLIENT", evidence: "delivery folder ready, not marked delivered", status: del.status }));
   if (c.v.money?.verdict === "DEBT") out.push(R("payment", "כסף פתוח מהלקוח", "DERIVED", { waitingOn: "CLIENT", evidence: c.v.money.reasonsHe }));
-  const kn = (ok(c.src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [];
+  const kn = activeKnowledge((ok(c.src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], c.today);
   for (const k of kn.filter((x) => x.kind === "PROJECT_BLOCKER" && (x.subjectKey === c.key || x.identityKeys.includes(c.key)))) out.push(R(`owner-blocker:${k.id}`, k.meaningHe, "OWNER_REPORTED", { waitingOn: String((k.value as Record<string, unknown>).reason ?? "UNKNOWN"), evidence: "taught by the Owner (P2)", learnedAt: k.createdAt }));
   if (!out.length) out.push(R("not-recorded", "לא נרשם במערכת על מי הפרויקט מחכה", "UNKNOWN", { waitingOn: "DATA_NOT_RECORDED", evidence: "no open send-log entry, engineer / Victor wait, blocker, delivery or payment signal; Redbloods has no 'waiting for client / artist' field" }));
   return out;

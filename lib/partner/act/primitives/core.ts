@@ -18,6 +18,7 @@ import { asApproved } from "../refs";
 import type { ArgSpec, EffectKey, PlanStep, RiskClass } from "../types";
 import type { DuplicateWriters } from "./duplicates";
 import type { PrimitiveExecutor, StepContext } from "../engine";
+import { verifyKindOf, type VerifyKind } from "../verify-kind";
 import { LABEL_ARTIST_STATUSES, PROJECT_TYPES, RELEASE_STAGES, VICTOR_OUTCOMES, VICTOR_WORK_STATES } from "@/lib/types";
 
 export type Scalar = string | number | boolean | null;
@@ -331,8 +332,12 @@ export function withExcluded(d: WriterDeps, ctx?: StepContext): WriterDeps {
   });
 }
 
+/** What this primitive's verify proves (claim contract 2026-10-05) — the ONE lookup the engine and the service use. */
+export const verifyKindOfSpec = (spec: Pick<PrimitiveSpec, "actionId" | "kinds">): VerifyKind => verifyKindOf(spec.actionId, spec.kinds);
+
 export function executorFor(spec: PrimitiveSpec, d: WriterDeps): PrimitiveExecutor {
   return {
+    verifyKind: verifyKindOfSpec(spec),
     async fingerprint(s, ctx) {
       const cur = await currentOf(spec, withExcluded(d, ctx), s);
       if (!ctx?.chain) return fieldsFingerprint(spec.actionId, stepTargetId(s), cur);

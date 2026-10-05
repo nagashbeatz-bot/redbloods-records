@@ -24,7 +24,7 @@ import { financeAnswersFromContexts, financeCaseId, financeQuestionFingerprint, 
 import { deriveFinanceView } from "../lib/partner/finance/view";
 import { answerFinanceQuestionCore, createRequestLedger, validateFinanceAnswerInput, type FinanceAnswerDeps } from "../lib/partner/finance/answer";
 import { parseFinanceBriefResponse, FINANCE_BRIEF_DTO_VERSION, FINANCE_QUESTION_ID_RE, type FinanceBriefDto, type FinanceRehabQuestionDto } from "../lib/partner/finance/dto";
-import { FINANCE_ANSWER_OPTIONS, FINANCE_QUESTION_TYPES, isFinanceQuestionType } from "../lib/partner/investigation/finance-questions";
+import { FINANCE_ANSWER_OPTIONS, FINANCE_QUESTION_TYPES, FINANCE_RECEIVABLE_CLOSING_ANSWERS, isFinanceQuestionType } from "../lib/partner/investigation/finance-questions";
 import { ANSWER_OPTIONS, answerOptionsFor, isFollowUpQuestionType, decideInvestigation, resolveAnswerValue, VALUE_SPEC } from "../lib/partner/investigation";
 import { createOwnerContextStore, buildOwnerContextDraft, analyzeOwnerContextGraph } from "../lib/partner/investigation/context-persistence";
 import { isAnswerCodeValidFor, isKnownQuestionType, mapOwnerContextRow } from "../lib/partner/investigation/context-row";
@@ -127,12 +127,12 @@ async function main() {
 
   console.log("Phase 0 / taxonomy (1-10)");
   {
-    check("1. finance question types (six + F2.11 payment date)", [...FINANCE_QUESTION_TYPES], ["FINANCE_RECURRING_PAYMENT_STATUS", "FINANCE_RECEIVABLE_TIMING", "FINANCE_COMPLETED_PROJECT_INCOME_STATUS", "FINANCE_ORPHAN_SETTING_MEANING", "FINANCE_EXPENSE_RECURRENCE", "FINANCE_OVERDUE_REASON", "FINANCE_PAYMENT_DATE"]);
+    check("1. finance question types (six + F2.11 payment date + the agreed price, answerable since 2026-10-05)", [...FINANCE_QUESTION_TYPES], ["FINANCE_RECURRING_PAYMENT_STATUS", "FINANCE_RECEIVABLE_TIMING", "FINANCE_COMPLETED_PROJECT_INCOME_STATUS", "FINANCE_ORPHAN_SETTING_MEANING", "FINANCE_EXPENSE_RECURRENCE", "FINANCE_OVERDUE_REASON", "FINANCE_PAYMENT_DATE", "FINANCE_PROJECT_PRICE"]);
     const codes = (t: keyof typeof FINANCE_ANSWER_OPTIONS) => FINANCE_ANSWER_OPTIONS[t].map((o) => o.code);
     check("2. Victor / recurring payment answers", codes("FINANCE_RECURRING_PAYMENT_STATUS"), ["PAID_NEEDS_RECORDING", "NOT_PAID", "UNKNOWN"]);
-    check("3. receivable timing = collection intent windows (+ optional exact date)", codes("FINANCE_RECEIVABLE_TIMING"), ["THIS_WEEK", "BY_MONTH_END", "NEXT_MONTH", "EXACT_DATE", "NOT_EXPECTED", "PROJECT_CANCELLED_NO_FURTHER_PAYMENT", "UNKNOWN"]);
-    check("4. completed project answers", codes("FINANCE_COMPLETED_PROJECT_INCOME_STATUS"), ["INCOME_RECEIVED_NOT_RECORDED", "INCOME_NOT_RECEIVED", "NON_PAID_PROJECT", "OTHER", "UNKNOWN"]);
-    check("5. orphan / recurrence / overdue answers", [codes("FINANCE_ORPHAN_SETTING_MEANING"), codes("FINANCE_EXPENSE_RECURRENCE"), codes("FINANCE_OVERDUE_REASON")], [["HISTORICAL_ONLY", "REAL_DEAL_NEEDS_RECOVERY", "UNKNOWN"], ["RECURRING", "ONE_TIME", "UNKNOWN"], ["WAITING_FOR_CLIENT", "PROMISED_NEW_DATE", "DISPUTE", "WAITING_FOR_DELIVERY", "OWNER_AGREED_DELAY", "OTHER", "UNKNOWN"]]);
+    check("3. receivable timing = collection intent windows (+ optional exact date)", codes("FINANCE_RECEIVABLE_TIMING"), ["THIS_WEEK", "BY_MONTH_END", "NEXT_MONTH", "EXACT_DATE", "NOT_EXPECTED", "PROJECT_CANCELLED_NO_FURTHER_PAYMENT", "BALANCE_WAIVED", "UNKNOWN"]);
+    check("4. completed project answers", codes("FINANCE_COMPLETED_PROJECT_INCOME_STATUS"), ["INCOME_RECEIVED_NOT_RECORDED", "INCOME_NOT_RECEIVED", "NON_PAID_PROJECT", "WRITTEN_OFF", "OTHER", "UNKNOWN"]);
+    check("5. orphan / recurrence / overdue answers", [codes("FINANCE_ORPHAN_SETTING_MEANING"), codes("FINANCE_EXPENSE_RECURRENCE"), codes("FINANCE_OVERDUE_REASON")], [["HISTORICAL_ONLY", "REAL_DEAL_NEEDS_RECOVERY", "UNKNOWN"], ["RECURRING", "ONE_TIME", "UNKNOWN"], ["WAITING_FOR_CLIENT", "PROMISED_NEW_DATE", "DISPUTE", "WAITING_FOR_DELIVERY", "OWNER_AGREED_DELAY", "BALANCE_WAIVED", "OTHER", "UNKNOWN"]]);
     ok("6. finance types join the persisted taxonomy (strict row parser accepts them)", FINANCE_QUESTION_TYPES.every((t) => isKnownQuestionType(t) && Object.prototype.hasOwnProperty.call(ANSWER_OPTIONS, t)));
     ok("7. finance answer sets are complete as-is — no generic OTHER appended (Victor rejects OTHER)", FINANCE_QUESTION_TYPES.every((t) => JSON.stringify(answerOptionsFor(t).map((o) => o.code)) === JSON.stringify(codes(t))) && !isAnswerCodeValidFor("FINANCE_RECURRING_PAYMENT_STATUS", "OTHER") && isAnswerCodeValidFor("FINANCE_COMPLETED_PROJECT_INCOME_STATUS", "OTHER"));
     ok("8. Case questions keep their OTHER option (investigation unchanged)", answerOptionsFor("WHY_DEADLINE_STILL_ACTIVE").some((o) => o.code === "OTHER"));
@@ -350,11 +350,12 @@ async function main() {
       const q = issueQ(t, d0);
       for (const o of FINANCE_ANSWER_OPTIONS[t]) {
         const d1 = derive(fixture, [asAnswer(q, o.code, o.code === "EXACT_DATE" ? "2026-10-05" : null)]);
-        if ((o.code === "PROJECT_CANCELLED_NO_FURTHER_PAYMENT" ? realizedOnly(d1) !== realizedOnly(d0) : money(d1) !== money(d0))) every = false;
+        // a receivable-CLOSING answer (PROJECT_CANCELLED / BALANCE_WAIVED, 2026-10-05) legitimately changes the collection view
+        if (((FINANCE_RECEIVABLE_CLOSING_ANSWERS[t] ?? []).includes(o.code) ? realizedOnly(d1) !== realizedOnly(d0) : money(d1) !== money(d0))) every = false;
       }
     }
     ok("81. EVERY answer of EVERY type leaves realized / open expenses (and, except a closing answer, receivables / expected / pacing) identical", every);
-    check("82. resolving answers are exactly the Owner-approved closers", RESOLVING_ANSWERS, { FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT"], FINANCE_ORPHAN_SETTING_MEANING: ["HISTORICAL_ONLY"], FINANCE_EXPENSE_RECURRENCE: ["ONE_TIME"] });
+    check("82. resolving answers are exactly the Owner-approved closers (+ WRITTEN_OFF / the agreed-price decision, 2026-10-05)", RESOLVING_ANSWERS, { FINANCE_COMPLETED_PROJECT_INCOME_STATUS: ["NON_PAID_PROJECT", "WRITTEN_OFF"], FINANCE_PROJECT_PRICE: ["SET_PRICE", "NO_CHARGE"], FINANCE_ORPHAN_SETTING_MEANING: ["HISTORICAL_ONLY"], FINANCE_EXPENSE_RECURRENCE: ["ONE_TIME"] });
     ok("83. answered lines never blame", !/שכחת|טעית|אשמ|הזנחת/.test(JSON.stringify([oReal.brief, rRec.brief, oW.brief, cR.brief, uV.brief])));
     ok("84. the state object is never mutated by consuming answers", (() => { const s = buildFinanceBrain(RAW0, NOW); const j = JSON.stringify(s); buildFinanceIntegrity(RAW0, s, NOW, [asAnswer(qVictor, "NOT_PAID"), asAnswer(qBal, "THIS_WEEK")]); return JSON.stringify(s) === j; })());
   }
@@ -363,7 +364,7 @@ async function main() {
   {
     const b = base.brief;
     check("85. v4 brief parses (strict)", [b.v, FINANCE_BRIEF_DTO_VERSION, parseFinanceBriefResponse(JSON.parse(JSON.stringify(b))).ok], [4, 4, true]);
-    check("86. answerable question carries id + fingerprint + option codes; exact-date (with its rule) only on timing", b.rehab.questions.map((q) => [q.questionType, q.answer?.exactDateCode ?? null, q.answer?.exactDateRule ?? null, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", null, null, 3], ["FINANCE_RECEIVABLE_TIMING", "EXACT_DATE", "NOT_BEFORE_TODAY", 7]]);
+    check("86. answerable question carries id + fingerprint + option codes; exact-date (with its rule) only on timing", b.rehab.questions.map((q) => [q.questionType, q.answer?.exactDateCode ?? null, q.answer?.exactDateRule ?? null, q.options.length]), [["FINANCE_RECURRING_PAYMENT_STATUS", null, null, 3], ["FINANCE_RECEIVABLE_TIMING", "EXACT_DATE", "NOT_BEFORE_TODAY", 8]]);
     const q0 = b.rehab.questions[0];
     const forged = (patch: Partial<FinanceRehabQuestionDto>) => parseFinanceBriefResponse({ ...b, rehab: { ...b.rehab, questions: [{ ...q0, ...patch }] } }).ok;
     ok("87. forged fingerprint / question id / type mismatch rejected", !forged({ answer: { ...q0.answer!, fingerprint: "abc" } }) && !forged({ answer: { ...q0.answer!, questionId: "x::FINANCE_RECURRING_PAYMENT_STATUS" } }) && !forged({ questionType: "FINANCE_RECEIVABLE_TIMING" }));
@@ -434,11 +435,11 @@ async function main() {
       renderDatePicker: ({ ariaLabel }) => <input data-date-picker aria-label={ariaLabel} />, ...patch,
     });
     const d = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls()} />);
-    check("109. real answer buttons for both questions (3 + 7)", (d.match(/data-finance-answer="/g) ?? []).length, 10);
+    check("109. real answer buttons for both questions (3 + 8 — BALANCE_WAIVED added 2026-10-05)", (d.match(/data-finance-answer="/g) ?? []).length, 11);
     ok("110. buttons are type=button and labelled in Hebrew", /<button type="button" data-finance-answer="PAID_NEEDS_RECORDING"[^>]*>שולם — צריך לרשום בכספים<\/button>/.test(d));
     ok("111. questions marked answerable; no read-only notice", (d.match(/data-answerable="true"/g) ?? []).length === 2 && !d.includes("לעיון בלבד"));
     const busy = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ busy: true, activeQuestionId: b.rehab.questions[0].answer!.questionId })} />);
-    check("112. while saving EVERY answer button is disabled + 'שומר…'", [(busy.match(/data-finance-answer="[A-Z_]+" disabled=""/g) ?? []).length, busy.includes("שומר…")], [10, true]);
+    check("112. while saving EVERY answer button is disabled + 'שומר…'", [(busy.match(/data-finance-answer="[A-Z_]+" disabled=""/g) ?? []).length, busy.includes("שומר…")], [11, true]);
     const exact = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ exactFor: b.rehab.questions[1].answer!.questionId })} />);
     ok("113. EXACT_DATE opens a date picker; confirm disabled until a date is picked", exact.includes("data-date-picker") && /data-finance-exact-confirm="true" disabled=""/.test(exact) && exact.includes("שום רישום בכספים לא משתנה"));
     const msg = renderToStaticMarkup(<PartnerActionsView items={[]} isMobile={false} finance={b} financeControls={controls({ activeQuestionId: b.rehab.questions[0].answer!.questionId, message: "לא הצלחתי לשמור" })} />);

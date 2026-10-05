@@ -15,8 +15,8 @@ import { ownerClosedProjects } from "./entity-common";
 import { GATEWAY_LIMITS, type BriefCategory, type BriefItem, type BriefResponse, type GatewayDrillDown, type GatewaySourceName } from "./types";
 
 const CLASS_ORDER = ["RISK", "ATTENTION", "OPPORTUNITY", "INFORMATION"];
-const PER_CATEGORY: Record<BriefCategory, number> = { ACTION_READY: 2, OWNER_DECISION_NEEDED: 2, ATTENTION: 1, MONEY: 1, RECENT_OUTCOME: 1 };
-const CATEGORY_ORDER: BriefCategory[] = ["ACTION_READY", "OWNER_DECISION_NEEDED", "ATTENTION", "MONEY", "RECENT_OUTCOME"];
+const PER_CATEGORY: Record<BriefCategory, number> = { ACTION_READY: 2, OWNER_DECISION_NEEDED: 2, KNOWN_DECISION_RECONCILE: 2, ATTENTION: 1, MONEY: 1, RECENT_OUTCOME: 1 };
+const CATEGORY_ORDER: BriefCategory[] = ["ACTION_READY", "OWNER_DECISION_NEEDED", "KNOWN_DECISION_RECONCILE", "ATTENTION", "MONEY", "RECENT_OUTCOME"];
 /** Partner vocabulary for case types (display only). */
 const CASE_TYPE_HE: Record<string, string> = {
   DELIVERY_WITHOUT_RECORDED_FOLLOWUP: "מסירות של Victor בלי המשך מתועד", MISSED_INTERNAL_DEADLINE: "דדליינים פנימיים של Victor שעברו",
@@ -31,7 +31,7 @@ const open = (key: string | null): GatewayDrillDown | null => (key ? { tool: "pa
 
 export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
   const env = envelope("partner_brief", {}, src, [["ACTIONS", src.actions], ["FINANCE", src.finance], ["CASES", src.cases], ["OUTCOMES", src.outcomes], ["MEMORY", src.memory], ...(src.integrity ? [["INTEGRITY", src.integrity] as [GatewaySourceName, typeof src.integrity]] : [])]);
-  const byCat: Record<BriefCategory, BriefItem[]> = { ACTION_READY: [], OWNER_DECISION_NEEDED: [], ATTENTION: [], MONEY: [], RECENT_OUTCOME: [] };
+  const byCat: Record<BriefCategory, BriefItem[]> = { ACTION_READY: [], OWNER_DECISION_NEEDED: [], KNOWN_DECISION_RECONCILE: [], ATTENTION: [], MONEY: [], RECENT_OUTCOME: [] };
   const missing: BriefResponse["missing"] = [];
   const f = ok(src.finance);
 
@@ -58,6 +58,12 @@ export function getPartnerBriefCore(src: GatewaySources): BriefResponse {
       subject: q.subject.type === "label-artist" ? `label-artist:${q.subject.id}` : null, drillDown: { tool: "partner_query", args: { capability: "owner_needs" }, label: partner("מה Partner צריך ממך") } });
   }
   if (src.integrity && !reg) missing.push({ fact: "Company Integrity questions", whyNeeded: "the integrity register could not be read — open definition questions may exist" });
+
+  // KNOWN_DECISION_RECONCILE — the decision gate: the Owner already answered / said it, the records do not show it yet. Never
+  // asked again as a question; partner_entity carries the typed canonical action (it runs only after the Owner's approval).
+  for (const r of f?.integrity.top.reconcile ?? []) {
+    byCat.KNOWN_DECISION_RECONCILE.push({ category: "KNOWN_DECISION_RECONCILE", headline: partnerRecord(r.textHe), epistemic: "OWNER_DECISION", freshness: "LIVE", source: "FINANCE", subject: r.entityKey, drillDown: open(r.entityKey) });
+  }
 
   // ATTENTION — live Partner Cases, minus balance cases the Owner closed
   const closed = ownerClosedProjects(src);

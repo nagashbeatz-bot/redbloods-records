@@ -21,6 +21,7 @@ import { INTEGRITY_ANSWER_OPTIONS, isIntegrityQuestionType } from "../investigat
 import type { OwnerContextProvenance } from "../investigation/types";
 import { answerIntegrityQuestionCore, type IntegrityAnswerDeps } from "../integrity/answer";
 import type { CompanyIntegrityRegister } from "../integrity/types";
+import { answerableFinanceQuestions } from "../finance/integrity";
 import { FINANCE_ANSWER_OPTIONS, isFinanceQuestionType } from "../investigation/finance-questions";
 import { answerFinanceQuestionCore, type FinanceAnswerDeps, type FinanceLiveView } from "../finance/answer";
 import { financeAnswerOffer } from "./finance-ref";
@@ -202,15 +203,21 @@ async function answerFinanceViaConnector(deps: BridgeDeps, ref: QuestionRef, i: 
   };
   switch (r.status) {
     case "ANSWER_SAVED": {
-      const stillAsked = !!live && live.ok && live.integrity.top.questions.some((q) => q.identity?.questionId === ref.questionId);
+      const stillAsked = !!live && live.ok && answerableFinanceQuestions(live.integrity).some((q) => q.identity?.questionId === ref.questionId);
       const rec = recordedOf(r.contextId);
-      if (live && live.ok && rec && !stillAsked) return out("LEARNED", `למדתי. שמרתי את זה כהחלטה שלך (${label}). זה לא רושם הכנסה או תנועה בכספים.`, live, rec, true);
+      if (live && live.ok && rec && !stillAsked) {
+        // Claim contract: an answer is an OWNER DECISION — it changes no record. When it implies a canonical change the records do
+        // not show yet, say so and name the typed action (it runs only after the Owner's approval) — never "it's done / closed".
+        const rc = live.integrity.top.reconcile.find((x) => x.basis.kind === "OWNER_ANSWER" && x.basis.contextId === r.contextId);
+        const tail = rc ? ` המערכת עדיין לא משקפת את זה — כדי לסנכרן יש פעולה מתאימה (${rc.actions.map((a) => a.actionId).join(" + ")}). לסנכרן?` : "";
+        return out("LEARNED", `למדתי. שמרתי את זה כהחלטה שלך (${label}). זה לא רושם הכנסה או תנועה בכספים, ושום רשומה לא השתנתה.${tail}`, live, rec, true);
+      }
       return out("NOT_VERIFIED", "התשובה נשלחה, אבל עוד לא הצלחתי לוודא ש־Partner משתמש בה. אל תסתמך עליה עדיין — בדוק בלוח הבקרה.", live, null, true);
     }
     case "REPLAY": return out("ALREADY_ANSWERED", "התשובה הזו כבר רשומה אצל Partner.", live, recordedOf(r.contextId));
     case "STALE_QUESTION": {
       if (live && live.ok && live.answers.some((a) => a.questionId === ref.questionId)) return out("ALREADY_ANSWERED", "כבר יש תשובה לשאלה הזו עבור אותן עובדות. שינוי תשובה קיימת עוד לא נתמך.", live, recordedOf(null));
-      if (live && live.ok && live.integrity.top.questions.some((q) => q.identity?.questionId === ref.questionId)) return out("STALE_QUESTION", "הנתונים השתנו מאז שהשאלה הוצגה. הנה השאלה העדכנית.", live);
+      if (live && live.ok && answerableFinanceQuestions(live.integrity).some((q) => q.identity?.questionId === ref.questionId)) return out("STALE_QUESTION", "הנתונים השתנו מאז שהשאלה הוצגה. הנה השאלה העדכנית.", live);
       return out("NOT_CURRENT", "Partner כבר לא שואל את השאלה הזו כרגע.", live);
     }
     case "INVALID_INPUT": return out("NOT_CURRENT", "השאלה הזו לא תואמת לשאלות הנוכחיות של Partner.", live);

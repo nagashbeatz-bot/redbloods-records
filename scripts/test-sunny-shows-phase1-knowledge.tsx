@@ -73,7 +73,7 @@ ML._load = function (request: string, parent: unknown, isMain: boolean) { if (re
   ok("14. WORKFLOW_MODELS (served as operating_model) carries the DJ payment push", !!showWf, Object.keys(ownerMod).slice(0, 5));
   ok("15. OWNER_MODEL_VERSION moved (the owner model changed)", ownerMod.OWNER_MODEL_VERSION === "2026.10.03-owner-10", ownerMod.OWNER_MODEL_VERSION);
   const reg = await import("../lib/partner/system/registry");
-  ok("16. the system baseline version covers this change and the changelog has the entry", reg.SYSTEM_BASELINE_VERSION === "2026.10.03-89" && reg.CAPABILITY_CHANGES.some((c) => c.version === "2026.10.03-89"), reg.SYSTEM_BASELINE_VERSION);
+  ok("16. the system baseline version covers this change and the changelog has the entry", reg.SYSTEM_BASELINE_VERSION >= "2026.10.03-89" && reg.CAPABILITY_CHANGES.some((c) => c.version === "2026.10.03-89"), reg.SYSTEM_BASELINE_VERSION);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

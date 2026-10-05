@@ -25,6 +25,8 @@ import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, typ
 import { assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
 import { isAuthoritative, withProvenanceDefaults } from "./provenance";
 import { ownerApprovalVerdict } from "../owner-approval";
+import { financeKnowledgeContextOf, issueEntityKey, reconcileForKnowledge, type ReconcileAction } from "../finance/decision-gate";
+import type { RehabIssue } from "../finance/integrity";
 
 export const MAX_ITEMS = 3;
 export const TOKEN_TTL_MS = 10 * 60_000;
@@ -70,8 +72,24 @@ export interface NormalizedItem {
   notesHe: string[];
 }
 
+/**
+ * Claim contract (2026-10-05): a knowledge write changes NOTHING in Redbloods. Every result says so in data (canonicalEffect NONE)
+ * and names what will keep appearing about the linked records (stillSurfaced) — so nobody can read "למדתי" as "done / closed /
+ * I won't ask again". willAppearAs: RECONCILIATION = shown as "כבר אמרת לי — לסנכרן?" (never a fresh question); QUESTION / ISSUE =
+ * unchanged. canonicalPath = the existing typed actions that WOULD make the records reflect it (only with the Owner's approval).
+ */
+export interface StillSurfacedItem { entityKey: string; issueType: string; textHe: string; willAppearAs: "RECONCILIATION" | "QUESTION" | "ISSUE" }
+export interface CanonicalEffectInfo {
+  canonicalEffect: "NONE";
+  /** Records (canonical keys) this knowledge is linked to; [] = company-level / unlinked (nothing about a record changes how it is asked). */
+  linkedEntities: string[];
+  stillSurfaced: StillSurfacedItem[];
+  canonicalPath: Array<Pick<ReconcileAction, "actionId" | "args" | "missing" | "required">>;
+  effectHe: string;
+}
+
 export type PreviewResult =
-  | { status: "PREVIEW"; readBackHe: string; items: NormalizedItem[]; confirmationToken: string; expiresAt: string; instructionsForModel: string }
+  | ({ status: "PREVIEW"; readBackHe: string; items: NormalizedItem[]; confirmationToken: string; expiresAt: string; instructionsForModel: string } & CanonicalEffectInfo)
   | { status: "NEEDS_CLARIFICATION"; questionHe: string; candidates: Array<{ key: string; label: string; type: string }> }
   | { status: "INVALID"; errors: string[] }
   | { status: "CONFLICT_WITH_LIVE"; messagesHe: string[] }
@@ -83,7 +101,7 @@ export type PreviewResult =
   | { status: "UNAVAILABLE"; detail: string };
 
 export type CommitResult =
-  | { status: "LEARNED"; ownerMessageHe: string; recorded: Array<{ id: string; kind: string; subjectKey: string; meaningHe: string; epistemic: string; provenance: "OWNER_VIA_SUNNY" }> }
+  | ({ status: "LEARNED"; ownerMessageHe: string; recorded: Array<{ id: string; kind: string; subjectKey: string; meaningHe: string; epistemic: string; provenance: "OWNER_VIA_SUNNY" }> } & CanonicalEffectInfo)
   | { status: "STALE"; messageHe: string }
   /** The Owner's words were missing / not an approval / changed the read-back — nothing written (T1, 2026-10-01). */
   | { status: "APPROVAL_MISSING" | "NOT_AN_APPROVAL" | "APPROVAL_WITH_CHANGES"; messageHe: string }
@@ -288,6 +306,47 @@ function readToken(secret: string, token: unknown): TokenBody | null {
   try { const j = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as TokenBody; return j.v === 1 && typeof j.n === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(j.n) ? j : null; } catch { return null; }
 }
 
+const ENTITY_KEY_RE = /^(project|client|show|release|label-artist|dj):[0-9a-f-]{36}$/;
+/** The canonical records an item is linked to: non-company subject / identity keys + typed entity fields (e.g. about). */
+function linkedEntitiesOf(items: ReadonlyArray<Pick<NormalizedItem, "subjectKey" | "identityKeys" | "value">>): string[] {
+  const keys = new Set<string>();
+  for (const x of items) {
+    for (const k of [x.subjectKey, ...x.identityKeys]) if (ENTITY_KEY_RE.test(k)) keys.add(k);
+    for (const v of Object.values(x.value)) if (typeof v === "string" && ENTITY_KEY_RE.test(v)) keys.add(v);
+  }
+  return [...keys].sort();
+}
+
+/**
+ * What a knowledge write does NOT change, computed from the live finance read (pure): the finance issues / questions about the
+ * linked records and how they will appear once this knowledge exists (the SAME decision-gate rule the readers use).
+ */
+export function canonicalEffectOf(src: GatewaySources, items: ReadonlyArray<Pick<NormalizedItem, "kind" | "subjectKey" | "identityKeys" | "value" | "meaningHe">>, todayIL: string): CanonicalEffectInfo {
+  const linked = linkedEntitiesOf(items);
+  const fin = src.finance?.status === "OK" ? src.finance.value : null;
+  const issues: RehabIssue[] = (fin?.integrity?.issues ?? []) as RehabIssue[];
+  // The knowledge as it will be stored (ASSERTs), in the decision gate's own shape — exactly what the next read will see.
+  const asRecords = items.map((x, i) => ({ id: `preview-${i}`, kind: x.kind, subjectKey: x.subjectKey, identityKeys: x.identityKeys, slotKey: `preview-${i}`, value: x.value, epistemic: "OWNER_DECISION", meaningHe: x.meaningHe, operation: "ASSERT" as const, supersedesId: null, reviewAt: null, expiresAt: null, createdAt: `${todayIL}T00:00:00.000Z` }));
+  const ctx = financeKnowledgeContextOf(asRecords as never, todayIL);
+  const stillSurfaced: StillSurfacedItem[] = [];
+  const canonicalPath: CanonicalEffectInfo["canonicalPath"] = [];
+  for (const i of issues) {
+    const key = issueEntityKey(i);
+    if (!key || !linked.includes(key) || i.ownerResolved) continue;
+    const r = i.reconcile ?? reconcileForKnowledge(i, ctx);
+    stillSurfaced.push({ entityKey: key, issueType: i.issueType, textHe: (r?.textHe ?? i.recommendedOwnerQuestion?.textHe ?? i.subjectLabel ?? i.issueType).slice(0, 300), willAppearAs: r ? "RECONCILIATION" : i.recommendedOwnerQuestion ? "QUESTION" : "ISSUE" });
+    for (const a of r?.actions ?? []) if (!canonicalPath.some((c) => c.actionId === a.actionId && c.args.project === a.args.project)) canonicalPath.push({ actionId: a.actionId, args: a.args, missing: a.missing, required: a.required });
+  }
+  const recon = stillSurfaced.filter((x) => x.willAppearAs === "RECONCILIATION").length;
+  const effectHe = [
+    "נשמר כזיכרון בלבד — שום רשומה ב-Redbloods לא השתנתה (לא כסף, לא סטטוס, לא שאלה שנסגרה).",
+    !linked.length ? "זה לא מקושר לרשומה מסוימת, אז שום דבר לגבי פרויקט / לקוח / הופעה לא ישתנה באופן שבו הוא מוצג." : "",
+    stillSurfaced.length ? `על הרשומות האלה עדיין יופיעו ${stillSurfaced.length} נושאים${recon ? ` (${recon} מהם כ"כבר אמרת לי — לסנכרן?", לא כשאלה חדשה)` : ""}.` : "",
+    canonicalPath.length ? `כדי שהמערכת עצמה תשקף את זה צריך פעולה קנונית (${canonicalPath.map((c) => c.actionId).join(" + ")}) — רק באישורך.` : "",
+  ].filter(Boolean).join(" ");
+  return { canonicalEffect: "NONE", linkedEntities: linked, stillSurfaced, canonicalPath, effectHe };
+}
+
 export async function previewKnowledgeCore(deps: KnowledgeProposeDeps, actor: KnowledgeActor, items: unknown): Promise<PreviewResult> {
   let owner = false;
   try { owner = await deps.isOwner(actor.userId); } catch { owner = false; }
@@ -298,11 +357,13 @@ export async function previewKnowledgeCore(deps: KnowledgeProposeDeps, actor: Kn
   if (!n.ok) return n.result;
   const exp = deps.nowMs() + TOKEN_TTL_MS;
   const token = issueToken(deps.secret, { v: 1, h: payloadHash(n.items), f: stateHash(n.items), u: actor.userId, c: actor.clientId, t: actor.tokenId, exp, n: randomBytes(18).toString("base64url") });
+  const effect = canonicalEffectOf(l.live.src, n.items, l.live.facts.todayIL);
   return {
     status: "PREVIEW",
-    readBackHe: `הבנתי: ${n.items.map((x) => x.meaningHe).join(" ")}${n.items.some((x) => x.supersedesMeaningHe) ? ` (זה מחליף: ${n.items.filter((x) => x.supersedesMeaningHe).map((x) => x.supersedesMeaningHe).join("; ")})` : ""} לשמור את זה כידע של סאני?`,
+    readBackHe: `הבנתי: ${n.items.map((x) => x.meaningHe).join(" ")}${n.items.some((x) => x.supersedesMeaningHe) ? ` (זה מחליף: ${n.items.filter((x) => x.supersedesMeaningHe).map((x) => x.supersedesMeaningHe).join("; ")})` : ""} ${effect.effectHe} לשמור את זה כידע של סאני?`,
     items: n.items, confirmationToken: token, expiresAt: new Date(exp).toISOString(),
-    instructionsForModel: "Show readBackHe to the Owner in your own words. Call commit with the SAME items, this token and confirmationText = the Owner's exact words of approval, ONLY after the Owner explicitly confirms in this conversation (the server refuses words that are not an approval or that change something). If they correct anything, preview again.",
+    instructionsForModel: "Show readBackHe to the Owner in your own words — INCLUDING that it changes no record (canonicalEffect NONE). Call commit with the SAME items, this token and confirmationText = the Owner's exact words of approval, ONLY after the Owner explicitly confirms in this conversation (the server refuses words that are not an approval or that change something). If they correct anything, preview again. Never say it was entered / updated / closed / removed from tracking / that you will not ask again: knowledge changes nothing in Redbloods. When canonicalPath is not empty, offer that typed action separately (partner_plan_action → the Owner's approval).",
+    ...effect,
   };
 }
 
@@ -341,7 +402,8 @@ export async function commitKnowledgeCore(deps: KnowledgeProposeDeps, actor: Kno
   const fresh = await deps.freshRecords().catch(() => null);
   const ok = !!fresh && w.records.every((r) => fresh.some((f) => f.id === r.id) && terminalOfSlot(fresh, r.slotKey)?.id === r.id);
   if (!ok) return { status: "NOT_VERIFIED", messageHe: "הידע נשלח, אבל עוד לא הצלחתי לוודא שסאני משתמש בו.", persisted: true };
-  return { status: "LEARNED", ownerMessageHe: `למדתי: ${w.records.map((r) => r.meaningHe).join(" ")}`, recorded: w.records.map((r) => ({ id: r.id, kind: r.kind, subjectKey: r.subjectKey, meaningHe: r.meaningHe, epistemic: r.epistemic, provenance: "OWNER_VIA_SUNNY" })) };
+  const effect = canonicalEffectOf(l.live.src, n.items, l.live.facts.todayIL);
+  return { status: "LEARNED", ownerMessageHe: `למדתי: ${w.records.map((r) => r.meaningHe).join(" ")} ${effect.effectHe}`, recorded: w.records.map((r) => ({ id: r.id, kind: r.kind, subjectKey: r.subjectKey, meaningHe: r.meaningHe, epistemic: r.epistemic, provenance: "OWNER_VIA_SUNNY" })), ...effect };
 }
 
 /** In-process one-time nonce guard (bounded). The DB unique (confirmation_id, item_index) is the cross-process backstop. */

@@ -19,7 +19,7 @@
 import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { deriveQuestionId } from "../investigation/context-row";
 import { FINANCE_ANSWER_OPTIONS } from "../investigation/finance-questions";
-import { financeQuestionFingerprint, type FinanceOwnerAnswer } from "./owner-answers";
+import { financeAnswerMatches, financeQuestionFingerprints, type FinanceOwnerAnswer } from "./owner-answers";
 import { salaryLinkedId, salaryTransactionDescription } from "../../victor-salary-format";
 import type { OwnerQuestion, PartnerFinanceIntegrityState, RehabIssue } from "./integrity";
 import type { FinanceRaw, PartnerFinanceState, VictorSalaryConfigRaw } from "./types";
@@ -156,7 +156,7 @@ export function paymentDateQuestion(issue: RehabIssue, statusAnswerContextId: st
   const caseId = `finance:${issue.issueType}:${issue.subjectType}:${issue.subjectId}`;
   q.identity = {
     questionId: deriveQuestionId(caseId, "FINANCE_PAYMENT_DATE"), caseId, issueType: issue.issueType,
-    fingerprint: financeQuestionFingerprint({ questionType: "FINANCE_PAYMENT_DATE", issueType: issue.issueType, subject: q.subject, textHe: q.textHe, optionCodes: q.options.map((o) => o.code), amount: issue.amount, currency: issue.currency, date: issue.date, evidence: q.evidence }),
+    ...financeQuestionFingerprints({ questionType: "FINANCE_PAYMENT_DATE", issueType: issue.issueType, subject: q.subject, textHe: q.textHe, optionCodes: q.options.map((o) => o.code), amount: issue.amount, currency: issue.currency, date: issue.date, evidence: q.evidence }),
     exactDateCode: "EXACT_DATE", previousAnswer: null,
   };
   return q;
@@ -244,7 +244,7 @@ export function deriveFinanceActions(raw: FinanceRaw, state: PartnerFinanceState
       if (!(Number.isFinite(known.amount) && known.amount > 0)) missing.push("amount");
       if (!known.currency || !known.currency.trim()) missing.push("currency");
       const dq = paymentDateQuestion(i, a.contextId, workMonth);
-      const dateAnswer = answers.find((x) => x.questionId === dq.identity!.questionId && x.factsFingerprint === dq.identity!.fingerprint);
+      const dateAnswer = answers.find((x) => x.questionId === dq.identity!.questionId && financeAnswerMatches(x.factsFingerprint, dq.identity!));
       const date = dateAnswer?.answerCode === "EXACT_DATE" ? dateAnswer.answerValueYmd : null;
       if (!date) {
         missing.push("paymentDate");

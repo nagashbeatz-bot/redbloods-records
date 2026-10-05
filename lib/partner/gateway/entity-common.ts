@@ -10,9 +10,10 @@ import { salaryLinkedId } from "../../victor-salary-format";
 import { encodeQuestionRef } from "../bridge/ref";
 import { financeAnswerAvailableFor, financeAnswerOffer } from "../bridge/finance-ref";
 import { isCancelledStatus, isExpenseFullyPaidStatus } from "../../finance/classify";
+import { answerableFinanceQuestions } from "../finance/integrity";
 import {
   GATEWAY_LIMITS,
-  type EntityResponse, type GatewayActionHistory, type GatewayEntityRef, type GatewayFact, type GatewayIssue, type GatewayMissing,
+  type EntityResponse, type GatewayActionHistory, type GatewayEntityRef, type GatewayFact, type GatewayIssue, type GatewayKnownDecision, type GatewayMissing,
   type GatewayOutcome, type GatewayQuestion, type GatewayResolution, type GatewayRelationship, type GatewaySuggestedAction, type GatewayDrillDown,
 } from "./types";
 
@@ -54,7 +55,7 @@ export function questionsFor(src: GatewaySources, keys: ReadonlySet<string>): Ga
   if (f && f.answersAvailable) {
     // A Finance question is answerable through Claude only when the dedicated switch is on for THIS audience AND it is one of the
     // surfaced (≤ 2, memory-preflighted) questions the answer core will accept; otherwise it is dashboard-only (answerable = false).
-    const surfaced = new Set(f.integrity.top.questions.map((x) => x.identity?.questionId).filter((x): x is string => !!x));
+    const surfaced = new Set(answerableFinanceQuestions(f.integrity).map((x) => x.identity?.questionId).filter((x): x is string => !!x));
     const viaClaude = financeAnswerAvailableFor(src.audience);
     out.push(...f.integrity.questions
       .filter((q) => keys.has(gatewayKeyForSubject(q.subject.type, q.subject.id)))
@@ -70,6 +71,28 @@ export function questionsFor(src: GatewaySources, keys: ReadonlySet<string>): Ga
       answer: { questionRef: encodeQuestionRef({ kind: "integrity", questionId: q.questionId, subjectId: q.subject.id, fingerprint: q.fingerprint }), options: q.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) } });
   }
   return out;
+}
+
+/**
+ * Decision gate (2026-10-05): what the Owner already decided / said about these entities that the records do not reflect yet,
+ * with the typed canonical actions that would sync them (proposals — partner_plan_action → his approval → execute → verify).
+ */
+export function knownDecisionsFor(src: GatewaySources, keys: ReadonlySet<string>): GatewayKnownDecision[] {
+  const f = ok(src.finance);
+  if (!f) return [];
+  const viaClaude = financeAnswerAvailableFor(src.audience);
+  const answerable = answerableFinanceQuestions(f.integrity);
+  return f.integrity.top.reconcile.filter((r) => r.entityKey && keys.has(r.entityKey)).map((r): GatewayKnownDecision => {
+    const q = r.state === "KNOWN_CONTEXT_RECONCILE" ? answerable.find((x) => x.gate?.reconcile === r || (x.subject.type === r.subject.type && x.subject.id === r.subject.id && !!x.gate)) : undefined;
+    const offer = viaClaude && q && f.answersAvailable ? financeAnswerOffer(q) : null;
+    return {
+      state: r.state, issueType: r.issueType, subject: r.entityKey, known: partnerRecord(r.knownHe), canonical: partner(r.canonicalHe),
+      basis: r.basis.kind === "OWNER_ANSWER" ? { kind: "OWNER_ANSWER", answerCode: r.basis.answerCode } : { kind: "OWNER_KNOWLEDGE", knowledgeId: r.basis.knowledgeId, knowledgeKind: r.basis.knowledgeKind },
+      knownAt: r.knownAt, actions: r.actions.map((a) => ({ actionId: a.actionId, args: a.args, missing: a.missing, required: a.required, note: partner(a.noteHe) })),
+      orderNote: r.orderHe ? partner(r.orderHe) : null, epistemic: "OWNER_DECISION",
+      ...(offer ? { answer: { questionRef: offer.questionRef, options: offer.options.map((o) => ({ code: o.code, label: partner(o.labelHe) })) } } : {}),
+    };
+  });
 }
 
 /** Suggested Actions for these entities (read-only): the live Owner surface first, then finance candidates not surfaced. */
@@ -171,6 +194,7 @@ export function finishEntity(src: GatewaySources, d: EntityDraft, env: Pick<Enti
     patterns: mem.patterns,
     openIssues: cap(issuesFor(src, d.entity.key, d.caseIds), GATEWAY_LIMITS.openIssues, truncated, "openIssues"),
     openQuestions: cap(questionsFor(src, keys), GATEWAY_LIMITS.openQuestions, truncated, "openQuestions"),
+    knownDecisions: knownDecisionsFor(src, keys), // never truncated
     suggestedActions: suggestedFor(src, keys), // never truncated
     actionHistory: mem.actions, // never truncated
     recentOutcomes: cap(mem.outcomes, GATEWAY_LIMITS.recentOutcomes, truncated, "recentOutcomes"),

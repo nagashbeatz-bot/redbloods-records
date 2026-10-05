@@ -14,7 +14,7 @@ import type { PartnerCompanyState } from "../eyes/types";
 import type { OperationsRaw } from "../operations/types";
 import type { ProjectDetailRaw, DetailVictorWork } from "../projects/detail-types";
 import type { SettingsState } from "../settings/types";
-import type { OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { validateTx } from "../finance/core";
 import { projectOperating } from "../sunny/operating";
 import { computeVictorBall, victorVersionKeyOf } from "../../coo/victor-ball";
@@ -36,7 +36,7 @@ export interface VictorQuestion { questionHe: string; why: string; kind: string;
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; settings: SettingsState | null; kn: OwnerKnowledgeRecord[]; today: string }
 function ctxOf(src: GatewaySources): Ctx {
   const st = ok(src.state) as PartnerCompanyState | null;
-  return { st, ops: ok(src.operations) as OperationsRaw | null, det: ok(src.projectDetail) as ProjectDetailRaw | null, settings: ok(src.settings) as SettingsState | null, kn: (ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], today: st?.todayIL ?? ilToday(src.now) };
+  return { st, ops: ok(src.operations) as OperationsRaw | null, det: ok(src.projectDetail) as ProjectDetailRaw | null, settings: ok(src.settings) as SettingsState | null, kn: activeKnowledge((ok(src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], st?.todayIL ?? ilToday(src.now)), today: st?.todayIL ?? ilToday(src.now) };
 }
 const setting = (c: Ctx, family: string, key: string) => c.settings?.families[family]?.rows.find((r) => r.key === key)?.value ?? null;
 

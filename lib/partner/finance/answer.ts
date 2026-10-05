@@ -27,7 +27,7 @@ import type { PersistedOwnerContext } from "../investigation/context-row";
 import type { OwnerContextProvenance } from "../investigation/types";
 import { isFinanceQuestionType } from "../investigation/finance-questions";
 import { FINANCE_QUESTION_ID_RE } from "./dto";
-import { INTEGRITY_SCHEMA_VERSION, type OwnerQuestion, type PartnerFinanceIntegrityState } from "./integrity";
+import { answerableFinanceQuestions, INTEGRITY_SCHEMA_VERSION, type OwnerQuestion, type PartnerFinanceIntegrityState } from "./integrity";
 import type { FinanceOwnerAnswer } from "./owner-answers";
 
 export const FINANCE_ANSWER_KEYS = ["questionId", "answerCode", "seenQuestionFingerprint", "requestId", "exactDateYmd"] as const;
@@ -124,7 +124,8 @@ async function answerOnce(deps: FinanceAnswerDeps, actorUserId: string, v: Valid
   if (!live.ok) return { status: "LIVE_READ_FAILED", detail: live.detail };
 
   // The question must be one the Owner is shown right now, exactly as shown.
-  const q: OwnerQuestion | undefined = live.integrity.top.questions.find((x) => x.identity?.questionId === v.questionId);
+  // …or the open question behind a knowledge reconciliation (the Owner confirms what he already said — decision gate 2026-10-05).
+  const q: OwnerQuestion | undefined = answerableFinanceQuestions(live.integrity).find((x) => x.identity?.questionId === v.questionId);
   if (!q || !q.identity) {
     const active = live.answers.find((a) => a.questionId === v.questionId);
     if (active && active.answerCode === v.answerCode && active.answerValueYmd === v.exactDateYmd && active.factsFingerprint === v.seenQuestionFingerprint) {
