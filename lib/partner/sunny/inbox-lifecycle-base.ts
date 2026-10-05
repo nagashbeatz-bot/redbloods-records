@@ -2,6 +2,7 @@
  * Owner Inbox lifecycle — the BASE of one update from the sources owner_inbox already reads (no new reader, no store).
  * The decision itself is decideInboxLifecycle (inbox-lifecycle.ts) — ONE rule for the capability and the connector.
  */
+import { moneyAlreadyRecorded } from "./money-overtaken";
 import type { GatewaySources } from "../gateway/core";
 import type { OwnerInboxItem } from "../../owner-inbox";
 import type { UnderstoodUpdateV2 } from "../knowledge/inbox-evidence";
@@ -21,8 +22,10 @@ export function inboxLifecycleBaseOf(src: GatewaySources, item: OwnerInboxItem, 
   const linked = mem ? [...new Set(activeLinksOf(mem.links, (l) => l.itemId === item.id).map((l) => l.entityKey))] : [];
   const r = understood?.resolution ?? null;
   const likely = r?.status === "LIKELY" && r.chosen ? [...new Set(r.chosen.chain.filter((c) => (c.level === "PROJECT" || c.level === "VENDOR") && c.key).map((c) => c.key as string))].slice(0, 2) : [];
-  const entityKeys = linked.length ? linked : likely;
-  const entitySource: InboxLifecycleBase["entitySource"] = linked.length ? "LINKED" : likely.length ? "LIKELY" : "NONE";
+  // a money doubt the canonical Finance already answers (Owner decision 2026-10-05) — the record it is about, OVERTAKEN
+  const money = linked.length ? null : moneyAlreadyRecorded(src, item.body);
+  const entityKeys = linked.length ? linked : money ? [money.entity] : likely;
+  const entitySource: InboxLifecycleBase["entitySource"] = linked.length ? "LINKED" : entityKeys.length ? "LIKELY" : "NONE";
   const technical = !!understood?.signals.work.includes("SYSTEM");
   // the item's own interpretation (latest by seq) and its freshness against the live project basis
   const own = mem ? mem.interpretations.filter((x) => x.itemId === item.id && !x.retractedAt && entityKeys.includes(x.entityKey)).sort((a, b) => b.seq - a.seq)[0] ?? null : null;
@@ -41,6 +44,7 @@ export function inboxLifecycleBaseOf(src: GatewaySources, item: OwnerInboxItem, 
     relatedEarlier: onEntity.filter((k) => !after(k)).slice(0, 3).map((k) => ({ id: k.id, he: k.meaningHe, at: k.createdAt })),
     businessOpen: !statuses.length ? null : statuses.some((s) => s === null) ? null : statuses.some((s) => !CLOSED_PROJECT.has(s as string)),
     since: whatHappenedSince({ src, entityKeys, sinceIso: item.createdAt, itemId: item.id }),
+    overtakenByCanonical: money?.he ?? null,
   };
 }
 

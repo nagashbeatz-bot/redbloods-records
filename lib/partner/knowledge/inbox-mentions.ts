@@ -29,6 +29,8 @@ export interface MentionEntry { key: string; type: GatewayEntityType; name: stri
 /** Words that are also names of records in the company but mean something generic in an update — never linked. */
 export const GENERIC_NAME_WORDS: ReadonlySet<string> = new Set([
   "שיר", "שירים", "אלבום", "סינגל", "ep", "קליפ", "הופעה", "סשן", "חזרה", "פרויקט", "לקוח", "אמן", "מיקס", "מאסטר", "דמו", "רמיקס", "ביט",
+  // money words the Owner writes in updates (2026-10-05: "הכסף של X" must never link a project named "כסף")
+  "כסף", "תשלום", "חוב", "מחיר", "הכנסה", "הוצאה", "חשבונית", "גבייה", "מקדמה",
   "חדש", "חדשה", "ישן", "היום", "מחר", "עכשיו", "אתמול", "כלום", "בלי", "שם", "עוד", "הכל", "טוב", "אהבה", "לילה", "בית", "אמא", "אבא",
   "test", "demo", "new", "untitled", "song", "album", "single", "mix", "master", "remix", "intro", "outro", "love", "home",
 ]);

@@ -8,6 +8,7 @@ import type { KnowledgeCapability, KnowledgeItem } from "../types";
 import { item, partner, record, result, sfact } from "./common";
 import { buildCooView, prioritiesHe } from "../../coo/priorities";
 import { MOTION_HEURISTICS, MOTION_LEVEL_HE, motionSummary, type MotionItem } from "../../coo/motion";
+import { buildFinancialForward, FINANCIAL_FORWARD_WINDOWS } from "../../coo/financial-forward";
 import { cooCtx } from "../../coo/context";
 import { readinessOf } from "../../coo/readiness";
 import { artistCare, projectMomentum } from "../../coo/momentum";
@@ -41,10 +42,11 @@ const motionItem = (i: MotionItem, k: number): KnowledgeItem => item({
 });
 export const coo: KnowledgeCapability = {
   id: "coo", domain: "COMPANY", titleHe: "סאני COO — מוכנות, תנועה, לו״ז, כסף",
-  descriptionForModel: "Sunny as COO (Owner-only, read-only, interaction time). Modes: priorities (DEFAULT = BUSINESS_MOTION today, ≤5 moves), motion (the full BUSINESS_MOTION: greeting ≤3 moves, week / capacity opportunity, close loops, curated Owner bottleneck, label, commercial gap), readiness (next 14 days events: confirmed / not seen / open / blocked), momentum (last progress, next step, who holds it), artists (label roster; DJ / team never), schedule (this week), money (param entity = project), entity, patterns, learning. RULES: short, grounded, actionable; ✓ confirmed / ? 'אני לא רואה …' (never 'אין …') / → recommendation; inference is inference; no invented threshold, quota, cash balance or song↔clip link; never move / create / schedule / send / approve anything.",
+  descriptionForModel: "Sunny as COO (Owner-only, read-only, interaction time). Modes: priorities (DEFAULT = BUSINESS_MOTION today, ≤5 moves), motion (the full BUSINESS_MOTION: greeting ≤3 moves, week / capacity opportunity, close loops, curated Owner bottleneck, label, commercial gap), forward (money ahead: obligations, settlements, payables, 7/14/30; no bank → coverage UNKNOWN), readiness (next 14 days events: confirmed / not seen / open / blocked), momentum (last progress, next step, who holds it), artists (label roster; DJ / team never), schedule (this week), money (param entity = project), entity, patterns, learning. RULES: short, grounded, actionable; ✓ confirmed / ? 'אני לא רואה …' (never 'אין …') / → recommendation; inference is inference; no invented threshold, quota, cash balance or song↔clip link; never move / create / schedule / send / approve anything.",
   examplesHe: ["מה הכי חשוב לי לסגור עכשיו?", "אנחנו מוכנים לצילום ביום ראשון?", "מה קורה עם אמני הלייבל?", "הלו״ז שלי השבוע נראה טוב?", "יש משהו שאני מפספס?", "הפרויקט של אבי מתקדם?", "מה לעשות השבוע?", "מה תקוע?", "מה הכי כדאי לסגור היום?"],
   modes: {
     priorities: { descriptionForModel: "= BUSINESS_MOTION today (the ONE ranking): ≤5 MUST / SHOULD moves + more count, each with level, reasons, a concrete move and the registered actionIds (each runs only after his approval). Answer like: 'שלושה דברים שהייתי סוגרת עכשיו: 1. … 2. … 3. …' — concise first, details only when asked. After an outcome is discussed you may ask 'רוצה שנשמור מזה לקח עסקי?' (BUSINESS_LEARNING only via partner_propose_knowledge + his approval)." },
+    forward: { descriptionForModel: "FINANCIAL_FORWARD — the money picture ahead (an input to motion): obligations with strength / timing / preparedness / readiness level, 7 / 14 / 30-day windows per currency, settlements (direction in words: 'לטובת שליו' / 'לטובת הלייבל'; a cycle end is a REVIEW, never a payment), vendor payables (no due date = ask when), possible duplicates (counted once), inflow (expected ≠ received; a proposal is never cash). Coverage is ALWAYS UNKNOWN (no bank balance): say 'לפי התזרים הרשום במערכת…', never 'יש כיסוי' / 'יש מספיק כסף' / 'העסק יציב'. Never sum ₪ and $. Never infer one unit covers another." },
     motion: { descriptionForModel: "BUSINESS_MOTION in full (the SAME object partner_brief carries): greeting (≤3 moves), today, atRisk, closeLoops (done-but-not-recorded / one move to the mix / a mix version only he opens / his own 'almost done' note — never a status change), ownerBottleneck (Victor waits curated: extracted ones + ONE line for the rest), label (protected Shalev / Avi — promoted one level only; no cadence), revenue (commercial gap; conflicting goals are never a driver), week (capacity = an OPPORTUNITY only — never work hours, never scheduling; unreadable calendar = UNKNOWN), inbox line, watch. Use for 'מה לעשות השבוע' / 'מה תקוע' / 'מה הכי כדאי לסגור היום' / 'מה עם האמנים' and every greeting." },
     readiness: { descriptionForModel: "Readiness board (or one entity / production). Speak per event: '✓ … / ? אני לא רואה … / → הייתי סוגרת …'. A data source that was not read = לא ידוע, never 'not ready'." },
     momentum: { descriptionForModel: "Active projects' momentum (param entity = one project)" },
@@ -122,6 +124,18 @@ export const coo: KnowledgeCapability = {
       const pid = entity.slice(8);
       const m = moneyReadiness(c.project(pid), { labelWork: c.isLabel(pid), financeReadable: c.financeReadable });
       return result(m.checks.map((x) => item({ id: x.id, entity, label: partner(x.labelHe), epistemic: "DERIVED", source: "FINANCE", fields: { state: x.state, he: partner(x.he), evidence: x.evidence } })), { ...base, summary: [sfact("VERDICT", "מצב הכסף (החישוב הקנוני)", m.verdict, "DERIVED", "FINANCE"), sfact("FACTS", "עובדות", m.facts, "DERIVED", "FINANCE"), sfact("RISK", "סיכון כספי שיכול לעכב", m.risk, "DERIVED", "FINANCE")] });
+    }
+    if (q.mode === "forward") {
+      // FINANCIAL_FORWARD — the money picture ahead (an input to BUSINESS_MOTION; never a second ranking)
+      const ff = buildFinancialForward(src, c);
+      return result(ff.obligations.map((o, k) => item({ id: `${k + 1}:${o.key}`, entity: o.entity && /^(project|show|session|release|label-artist|client):/.test(o.entity) ? o.entity : null, label: partner(o.he), epistemic: o.dynamic ? "DERIVED" : "FACT", source: "FINANCE",
+        fields: { key: o.key, kind: o.kind, level: o.level, preparedness: o.preparedness, strength: o.strength, timing: o.timing, amount: o.amount, currency: o.currency, currencyNote: o.currencyNote, date: o.date, daysTo: o.daysTo, dynamic: o.dynamic, direction: o.direction, directionHe: partner(o.directionHe),
+          changeDrivers: o.changeDriversHe.map(partner), question: o.questionHe ? partner(o.questionHe) : null, confidence: o.confidence, provenance: o.provenance, businessUnit: o.businessUnit, countsIn: o.countsIn, overdue: o.overdue } })),
+        { ...base, coverage: [...COVERAGE, partner(ff.coverageHe), partner("צפוי ≠ התקבל; הצעה ≠ כסף; ₪ ו-$ נפרדים בלי המרה; התחשבנות = סקירה במועד הסגירה, לא תשלום"), ...ff.unchecked.map(partner)],
+          summary: [sfact("ANSWER", "כסף קדימה — תמונה קצרה", ff.lineHe, "DERIVED", "FINANCE"), sfact("COVERAGE", "כיסוי (אין יתרת בנק)", ff.coverage, "DERIVED", "FINANCE"),
+            sfact("WINDOWS", "חלונות 7 / 14 / 30 (לפי מטבע)", ff.windows, "DERIVED", "FINANCE"), sfact("SURPRISES", "מה עלול להפתיע", ff.surprises.map((o) => o.he), "DERIVED", "FINANCE"),
+            sfact("DUPLICATES", "רשומות כפולות אפשריות (נספרות פעם אחת)", ff.duplicates.map((d) => d.he), "HYPOTHESIS", "FINANCE"), sfact("ACTUAL_MONTH", "בפועל החודש (לפי מטבע)", ff.actualMonth, "FACT", "FINANCE"),
+            sfact("INFLOW", "נכנס צפוי (צפוי ≠ התקבל)", ff.inflow, "DERIVED", "FINANCE"), sfact("UNITS", "לפי יחידה (בלי הסקה בין יחידות)", ff.unitsHe, "DERIVED", "FINANCE"), sfact("WINDOW_RULE", "כלל המוכנות (לא תזכורת)", FINANCIAL_FORWARD_WINDOWS, "DERIVED", "PARTNER_KNOWLEDGE")] });
     }
     // priorities (default) = BUSINESS_MOTION today (the ONE ranking); motion = every section of the same object
     const v = buildCooView(src);

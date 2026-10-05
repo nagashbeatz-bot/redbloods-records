@@ -47,6 +47,9 @@ const CANCELLED_PROJECT = "בוטל";
 const PROPOSAL_TERMINAL = new Set(["נסגר", "לא נסגר"]);
 const NEAR_DELIVERY_STATUSES = new Set(["במיקס", "מחכה למיקס"]);
 const MIX_CATEGORY = /מיקס|מאסטר/;
+/** Financial COO Phase 2 (2026-10-05): a mix / master expense is recognised by its category OR its expense scope (the Owner's
+ *  manual "צפוי" rows carry the scope "מיקס / מאסטר" with an EMPTY category — the category-only test missed them). */
+export const isMixExpenseRow = (row: { category: string | null; expenseScope?: string | null }) => MIX_CATEGORY.test(row.category ?? "") || MIX_CATEGORY.test(row.expenseScope ?? "");
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -315,14 +318,18 @@ export function buildFinanceBrain(raw: FinanceRaw, now: Date, overlay: FinanceOw
     items.push({ id: `ENGINEER_WORK:${w.id}`, source: "ENGINEER_WORK", amount: round2(agreed - paid), currency: cur, dueDate: null, category: "מיקס / מאסטר", projectId: w.projectId, legacy: approvedUnpaid ? "NEEDS_REVIEW" : "CONFIRMED_CURRENT", overdueDays: null, evidence: [{ sourceType: "engineer_work", sourceId: w.id, projectId: w.projectId, currency: cur, status: w.status, reasonCode: approvedUnpaid ? "APPROVED_WORK_UNPAID" : "WORK_IN_PROGRESS_UNPAID" }] });
   }
   const possibleOverlaps: OpenExpense[] = [];
+  // a mix row on a project with NO engineer work yet is CONDITIONAL (goes out when the mix exists) — its date is a target
+  // month, never a due date (Owner decision 2026-10-05: "01.10 = באוקטובר"), so it is never reported overdue
+  const projectsWithWork = new Set(raw.engineerWorks.filter((w) => (w.status ?? "") !== "בוטל" && w.projectId).map((w) => w.projectId as string));
   for (const t of txs) {
     if (t.type !== "expense" || t.received || t.cancelled || engineerLinked.has(t.row.id)) continue;
+    const mixAwaitingWork = isMixExpenseRow(t.row) && !!t.row.projectId && !projectsWithWork.has(t.row.projectId);
     const e: OpenExpense = {
       id: `TX:${t.row.id}`, source: showPayoutTx.has(t.row.id) ? "SHOW_PAYOUT" : "TRANSACTION", amount: t.amount, currency: t.currency, dueDate: t.date, category: t.row.category, projectId: t.row.projectId,
-      legacy: legacyOf({ dueDate: t.date, createdAt: t.row.createdAt, amount: t.amount, policyStart }), overdueDays: t.date && t.date < today ? diffDays(t.date, today) : null,
+      legacy: legacyOf({ dueDate: t.date, createdAt: t.row.createdAt, amount: t.amount, policyStart }), overdueDays: t.date && t.date < today && !mixAwaitingWork ? diffDays(t.date, today) : null,
       evidence: [txEv(t, showPayoutTx.has(t.row.id) ? "SHOW_PAYOUT_OPEN" : "EXPENSE_OPEN")],
     };
-    const overlaps = e.source === "TRANSACTION" && MIX_CATEGORY.test(t.row.category ?? "") && items.some((w) => w.source === "ENGINEER_WORK" && w.projectId && w.projectId === t.row.projectId && w.currency === t.currency);
+    const overlaps = e.source === "TRANSACTION" && isMixExpenseRow(t.row) && items.some((w) => w.source === "ENGINEER_WORK" && w.projectId && w.projectId === t.row.projectId && w.currency === t.currency);
     (overlaps ? possibleOverlaps : items).push(e);
   }
   const openTotals: CurrencyTotals = {};

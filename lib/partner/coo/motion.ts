@@ -40,6 +40,7 @@ import { OWNER_LABEL_ARTIST_IDS } from "../../project-classification";
 import { normalizeName } from "../gateway/resolve";
 import type { PartnerFinanceState } from "../finance/types";
 import type { OutcomeAssessment } from "../sunny/learning";
+import { buildFinancialForward, type FinancialForward, type Obligation } from "./financial-forward";
 
 /** INTERNAL engineering windows — never Owner policy, never "stuck", never served as a rule (each use says heuristic). */
 export const MOTION_HEURISTICS = {
@@ -70,7 +71,7 @@ export type MotionCode =
   | "OWNER_BOTTLENECK_EXTRACT" | "OWNER_APPROVAL_WAITING" | "OWNER_BALL"
   | "LABEL_NEEDS_MOTION" | "REVENUE_PIPELINE_EMPTY" | "PRICE_MISSING"
   | "STATUS_BEHIND_ACTIVITY" | "SHOOT_AUTO_MARKED" | "FOLLOW_UP_AFTER_CONDITION" | "OWNER_UPDATE_LINKED"
-  | "STALE_SIGNAL_CONFLICT" | "NO_NEXT_STEP";
+  | "STALE_SIGNAL_CONFLICT" | "NO_NEXT_STEP" | "FIN_OBLIGATION" | "FIN_DUPLICATE";
 
 export type MotionSection = "AT_RISK" | "CLOSE_LOOPS" | "OWNER_BOTTLENECK" | "LABEL" | "MONEY" | "OTHER";
 const SECTION_OF: Record<MotionCode, MotionSection> = {
@@ -79,6 +80,7 @@ const SECTION_OF: Record<MotionCode, MotionSection> = {
   OWNER_BOTTLENECK_EXTRACT: "OWNER_BOTTLENECK", OWNER_APPROVAL_WAITING: "OWNER_BOTTLENECK", OWNER_BALL: "OWNER_BOTTLENECK",
   LABEL_NEEDS_MOTION: "LABEL", REVENUE_PIPELINE_EMPTY: "MONEY", PRICE_MISSING: "MONEY",
   STATUS_BEHIND_ACTIVITY: "OTHER", SHOOT_AUTO_MARKED: "OTHER", FOLLOW_UP_AFTER_CONDITION: "OTHER", OWNER_UPDATE_LINKED: "OTHER", STALE_SIGNAL_CONFLICT: "OTHER", NO_NEXT_STEP: "OTHER",
+  FIN_OBLIGATION: "MONEY", FIN_DUPLICATE: "MONEY",
 };
 
 /** Every action id a move may name — each MUST be a registered Partner action (scripts/test-sunny-motion pins it). */
@@ -86,6 +88,7 @@ export const MOTION_ACTION_IDS = [
   "UPDATE_PROJECT_STATUS", "SET_DELIVERY_STATUS", "CREATE_ENGINEER_WORK", "SEND_MIX_NOTES", "SET_ENGINEER_WORK_STATUS",
   "SEND_VICTOR_VERSION_NOTES", "SCHEDULE_SESSION", "SET_AGREED_PRICE", "UPDATE_PRODUCTION_DETAILS", "UPDATE_RELEASE_DETAILS",
   "UPDATE_PROJECT_DEADLINE", "UPDATE_SESSION", "UPDATE_CALENDAR_EVENT",
+  "RECORD_ENGINEER_PAYMENT", "RECORD_VICTOR_SALARY_MONTH", "ADD_LEDGER_ENTRY", "CLOSE_BALANCE_CYCLE",
 ] as const;
 export type MotionActionId = (typeof MOTION_ACTION_IDS)[number];
 
@@ -111,6 +114,8 @@ export interface MotionItem {
   heuristic: boolean;
   /** set by applyMotionLearning when an earlier planning move did not move the work */
   learning?: { changed: boolean; he: string; planIds: string[] } | null;
+  /** a money item from FINANCIAL_FORWARD (shown in the greeting's ONE money line, never as an operational move) */
+  financial?: boolean;
   he: string;
 }
 
@@ -153,6 +158,8 @@ export interface BusinessMotion {
   learning: { status: "NOT_READ" | "READ"; changed: number; noteHe: string };
   unchecked: string[];
   heuristics: typeof MOTION_HEURISTICS;
+  /** FINANCIAL_FORWARD (an input — never a second engine): the compact money picture */
+  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
   answerHe: string;
 }
 
@@ -525,6 +532,21 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   // the per-project price items are now carried by the revenue line (one commercial move, not N alerts)
   for (const [k, it] of map) if (it.codes.length === 1 && it.codes[0] === "PRICE_MISSING" && it.entity) map.delete(k);
 
+  // ── FINANCIAL_FORWARD (an input): obligations the Owner is not prepared for enter as moves; prepared ones stay quiet ──
+  let ff: FinancialForward | null = null;
+  try { ff = buildFinancialForward(src, c); } catch { unchecked.push("התמונה הכספית קדימה לא חושבה — לא ידוע, לא ריק"); }
+  const finMove = (o: Obligation): MotionMove | null => o.kind === "VENDOR_PAYABLE" ? mv(o.questionHe ?? "לקבוע מתי משלמים", ["RECORD_ENGINEER_PAYMENT"])
+    : o.kind === "RECURRING" ? mv(o.questionHe ?? "לתכנן את התשלום", ["RECORD_VICTOR_SALARY_MONTH"])
+    : o.kind === "SETTLEMENT" ? mv(o.questionHe ?? "להחליט על ההתחשבנות", ["ADD_LEDGER_ENTRY", "CLOSE_BALANCE_CYCLE"])
+    : o.questionHe ? mv(o.questionHe, []) : null;
+  for (const o of ff?.obligations ?? []) {
+    if (o.level !== "MUST" && o.level !== "SHOULD") continue;
+    const key = `fin:${o.key}`;
+    map.set(key, { ...toItem({ key, entity: o.entity, level: o.level, code: "FIN_OBLIGATION", titleHe: o.titleHe, reasonHe: o.he.slice(o.titleHe.length + 2), daysTo: o.daysTo, heuristic: false,
+      evidence: [{ source: "FINANCE", ref: o.key, he: `${o.strength} · ${o.timing} · ${o.provenance}`, epistemic: o.dynamic ? "DERIVED" : "FACT" }], move: finMove(o), labelProtected: false }), financial: true });
+  }
+  for (const d of ff?.duplicates ?? []) mergeInto(map, { key: `fin-dup:${d.key}`, entity: d.canonical.startsWith("project:") ? d.canonical : null, level: "WATCH", code: "FIN_DUPLICATE", titleHe: "רשומה כפולה אפשרית", reasonHe: d.he, move: null });
+
   // ── one client = one move: several projects of the SAME client that each need the mix → ONE package ──
   const groups = new Map<string, MotionItem[]>();
   for (const it of map.values()) {
@@ -551,7 +573,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const all = rankItems([...map.values()]);
   const act = all.filter((i) => i.level === "MUST" || i.level === "SHOULD");
   const todayItems = act.slice(0, H.todayMax);
-  const greeting = todayItems.slice(0, heavyToday ? 1 : H.greetingMoves);
+  const greeting = act.filter((i) => !i.financial).slice(0, heavyToday ? 1 : H.greetingMoves);
   const atRisk = all.filter((i) => i.sections.includes("AT_RISK")).slice(0, 8);
   const closeLoops = all.filter((i) => i.sections.includes("CLOSE_LOOPS")).slice(0, 8);
   const watch = all.filter((i) => i.level === "WATCH").slice(0, 10);
@@ -562,7 +584,8 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const needy = capacity === "OPEN" ? all.filter((i) => (i.level === "MUST" || i.level === "SHOULD") && i.codes.some((cd) => NEED.includes(cd))) : [];
   const gk = new Set(greeting.map((g) => g.key));
   const candidates = [...needy.filter((i) => !gk.has(i.key)), ...needy.filter((i) => gk.has(i.key))].slice(0, 3);
-  const opportunity = candidates.length ? { he: `השבוע יחסית פתוח ביומן (${openDays.length} ימים כמעט פנויים) — הייתי מנצלת חלון ל: ${candidates.map((i) => i.titleHe).join(", ")} (הצעה בלבד — לא קובעת כלום ביומן, ולא כל זמן פנוי הוא זמן עבודה)`, candidates: candidates.map((i) => i.key), epistemic: "HYPOTHESIS" as const } : null;
+  const finPressure = !!ff && ff.commercialGap && ff.surprises.length > 0;
+  const opportunity = candidates.length ? { he: `השבוע יחסית פתוח ביומן (${openDays.length} ימים כמעט פנויים) — הייתי מנצלת חלון ל: ${candidates.map((i) => i.titleHe).join(", ")}${finPressure ? "; ובמקביל — הצנרת חלשה מול ההתחייבויות הרשומות, אז חלק מהחלון כדאי לתמחור / גבייה" : ""} (הצעה בלבד — לא קובעת כלום ביומן, ולא כל זמן פנוי הוא זמן עבודה)`, candidates: candidates.map((i) => i.key), epistemic: "HYPOTHESIS" as const } : null;
   const recordedEvents = input.schedule.days.reduce((n, d) => n + d.items.filter((i) => i.source === "REDBLOODS").length, 0);
   const dueThisWeek = input.readiness.events.filter((r) => r.daysTo !== null && r.daysTo <= 6 && (r.kind === "RELEASE" || r.kind === "DEADLINE" || r.kind === "SHOW" || r.kind === "SHOOT")).map((r) => `${r.kind === "RELEASE" ? "ריליס" : r.kind === "DEADLINE" ? "דדליין" : r.kind === "SHOW" ? "הופעה" : "צילום"} ${r.titleHe} ${heDate(r.date)}`);
   const protectedLabel = labelItems.filter((i) => i.labelProtected).map((i) => i.titleHe);
@@ -593,6 +616,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const m: BusinessMotion = {
     today, todayItems, greeting, more: Math.max(0, act.length - todayItems.length), atRisk, closeLoops, ownerBottleneck, label: labelItems, revenue, week, inbox, watch, all,
     patterns: pats.map((p) => ({ code: p.code, level: p.level, he: p.hypothesisHe })), progress,
+    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
     learning: { status: "NOT_READ", changed: 0, noteHe: "היסטוריית הפעולות לא נקראה כאן — ההמלצות לא נבדקו מול מה שכבר נוסה (זה לא אומר שכלום לא נוסה)" },
     unchecked: [...new Set(unchecked)], heuristics: MOTION_HEURISTICS, answerHe: "",
   };
@@ -608,13 +632,16 @@ function lastShowOf(c: CooCtx, artistName: string): string | null {
 }
 
 /** The executive Hebrew answer: ≤3 moves + the week line + the inbox line — never a dump, never "במה נתחיל?". */
-export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number }
+export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
+  financial?: { surprises: string[]; coverageHe: string } | null }
 export function motionAnswerHe(m: MotionAnswerInput): string {
   const n = m.greeting.length;
   const head = n === 0 ? "לא רואה כרגע מהלך שחייב אותך היום." : n === 1 ? (m.week.heavyToday ? "היום עמוס ביומן — מהלך אחד שהייתי עושה:" : "המהלך שהייתי עושה עכשיו:") : `${n === 2 ? "שני" : "שלושת"} המהלכים שהייתי עושה עכשיו:`;
   const lines = m.greeting.map((i, k) => `${k + 1}. ${i.he}`);
   const extra = [
     `השבוע: ${m.week.lineHe}`,
+    // ONE money line — only what could surprise him (MUST / SHOULD, not prepared); never an accounting dump
+    m.financial && m.financial.surprises.length ? `מבחינת כסף: ${m.financial.surprises.slice(0, 2).join(" · ")} (${m.financial.coverageHe})` : null,
     m.week.opportunity ? m.week.opportunity.he : null,
     m.ownerBottleneck.lineHe,
     m.inbox.lineHe,
@@ -667,5 +694,5 @@ export function prioritiesAnswerHe(items: ReadonlyArray<{ he: string }>, more: n
 export function motionSummary(m: BusinessMotion) {
   const slim = (i: MotionItem) => ({ key: i.key, entity: i.entity, entities: i.entities, level: i.level, codes: i.codes, he: i.he, titleHe: i.titleHe, reasonsHe: i.reasonsHe.slice(0, 4), move: i.move, daysTo: i.daysTo, labelProtected: i.labelProtected, epistemic: i.epistemic, learning: i.learning ?? null });
   return { today: m.today, answerHe: m.answerHe, greeting: m.greeting.map(slim), todayItems: m.todayItems.map(slim), more: m.more, atRisk: m.atRisk.map(slim), closeLoops: m.closeLoops.map(slim), label: m.label.map(slim), watch: m.watch.map(slim),
-    ownerBottleneck: m.ownerBottleneck, revenue: m.revenue, week: m.week, inbox: m.inbox, patterns: m.patterns, progress: m.progress, learning: m.learning, unchecked: m.unchecked, heuristics: m.heuristics };
+    ownerBottleneck: m.ownerBottleneck, revenue: m.revenue, week: m.week, inbox: m.inbox, patterns: m.patterns, financial: m.financial, progress: m.progress, learning: m.learning, unchecked: m.unchecked, heuristics: m.heuristics };
 }

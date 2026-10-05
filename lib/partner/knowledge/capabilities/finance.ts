@@ -30,7 +30,7 @@ export const financePosition: KnowledgeCapability = {
     const summary = q.mode === "history" ? [] : [
       sfact("TARGET_POSITION", "מיקום מול היעדים (₪ בלבד)", s.realized.targetPosition, "DERIVED", "FINANCE"),
       sfact("POLICY_ILS", "רצפה / יעד מועדף (₪)", { floor: s.policy.floorIls, preferred: s.policy.preferredIls }, "OWNER_DECISION", "FINANCE"),
-      sfact("KNOWN_MONTH_END_ILS", "מצב ידוע לסוף החודש (₪) — לא תחזית", { recordedNet: s.pacing.recordedRealizedNetIls, knownIncoming: s.pacing.knownIncomingIls, knownOutgoing: s.pacing.knownOutgoingIls, knownPosition: s.pacing.knownMonthEndPositionIls, daysRemaining: s.pacing.daysRemaining }, "DERIVED", "FINANCE"),
+      sfact("KNOWN_MONTH_END_ILS", "מצב ידוע לסוף החודש (₪) — לא תחזית, לא יתרת בנק; לא כולל חוב לאמנים (התחשבנות) והתחייבויות ב-$ (בנפרד) — התמונה קדימה: coo mode forward", { recordedNet: s.pacing.recordedRealizedNetIls, knownIncoming: s.pacing.knownIncomingIls, knownOutgoing: s.pacing.knownOutgoingIls, knownPosition: s.pacing.knownMonthEndPositionIls, daysRemaining: s.pacing.daysRemaining }, "DERIVED", "FINANCE"),
       sfact("OTHER_CURRENCIES_KNOWN_FLOWS", "תזרים ידוע במטבעות אחרים (לא מומר)", s.pacing.otherCurrencies, "DERIVED", "FINANCE"),
     ];
     return result(items, { summary, coverage, completeness: partial ? "PARTIAL" : "COMPLETE" });
@@ -145,7 +145,7 @@ export const unitBalance: KnowledgeCapability = {
       sfact("UNCLASSIFIED_ROWS", "תנועות שדורשות סיווג יחידה", b.unclassified.rows, "FACT", "FINANCE"),
       sfact("ARTIST_PAYMENT_RECONCILIATION", "תשלומי אמנים: כספים ↔ מאזן", { ledgerWithoutFinance: rec.ledgerPaymentsWithoutFinance.length, financeWithoutLedger: rec.financePaymentsWithoutLedger.length, explained: rec.explained.length }, "DERIVED", "FINANCE"),
     ];
-    return result(items, { summary, coverage: [partner("כסף אמיתי לפי יחידה עסקית (כל הזמנים), לפי מטבע — אותו חישוב של מסך הכספים. זכאות עתידית של אמן אינה Cash ואינה התחייבות.")], completeness: "COMPLETE" });
+    return result(items, { summary, coverage: [partner("Cash כאן = תזרים רשום מאז ומעולם (הכנסות שהתקבלו פחות הוצאות ששולמו) — לא יתרת בנק; אין להסיק ממנו כיסוי או יציבות, ואין להסיק שיחידה אחת מכסה אחרת."), partner("כסף אמיתי לפי יחידה עסקית (כל הזמנים), לפי מטבע — אותו חישוב של מסך הכספים. זכאות עתידית של אמן אינה Cash ואינה התחייבות.")], completeness: "COMPLETE" });
   },
 };
 

@@ -458,3 +458,21 @@ What the Owner already told Sunny, or what Sunny already executed, is used by EV
 - **Greeting:** the SERVER_INSTRUCTIONS core says a greeting / general message ALSO calls partner_brief and leads with its motion: ≤3 moves + one week line + one inbox line. Never a raw count, never the raw update list, never "במה נתחיל?". With motion available, the brief's cases count is `casesContext` (context), not an item.
 - **Never:** a write, a push, a cron, a calendar change, a status change, a send-log mutation, a cadence or working-hours rule, a goal choice, a release-date change.
 - `scripts/test-sunny-motion.tsx` must pass.
+
+## Sunny Awareness Check: FINANCIAL_FORWARD — the financial COO (Owner decisions 2026-10-05, Phase 2)
+
+- **ONE derived money projection:** `lib/partner/coo/financial-forward.ts` (pure) composes the Finance Brain (realized month, open expenses + its dedupe, Victor salary months, receivables, proposals) and the artist view's open cycle. It is never a truth store: no forecast table, no settlement mirror, no transaction, payment or ledger change. It is an INPUT to BUSINESS_MOTION (money items flagged `financial`; the greeting gets ONE money line) and is served as `coo` mode `forward`. Never a second ranking.
+- **Settlements:** a cycle end is a SETTLEMENT REVIEW, never a payment due date. Show the balance, its direction in words ("לטובת X" / "לטובת הלייבל"), DYNAMIC, what can change it, NEEDS_DECISION ("משלמים בסגירה או מעבירים למחזור הבא?"). Never an automatic payment, carry-forward, expense or "צפוי" row. A zero balance raises nothing.
+- **Payables:** a completed unpaid engineer work is HARD with NO due date (KNOWN_AMOUNT_UNKNOWN_DATE + NEEDS_DECISION "מתי אתה רוצה לשלם?") — never an invented date, never overdue. Open engineer work = CONDITIONAL on completion.
+- **Readiness (reasoning only, no reminder / cron / push):**
+  - an obligation ≤ 7 days with no plan → SHOULD;
+  - an obligation ≤ 3 days with no plan or decision → MUST;
+  - Owner-aware + a plan (a record he made) → PREPARED, quiet.
+- **The manual mix rows (P0 double-count guard):**
+  - a mix expense is recognised by category OR `expenseScope` (`isMixExpenseRow`, Finance Brain);
+  - on a project with NO engineer work it is CONDITIONAL — its date is a target month, never overdue;
+  - once an engineer work exists, the work is the canonical obligation and the manual row is a `possibleOverlap` counted once — never deleted or merged automatically (shown as a duplicate to merge with his approval).
+  - The engineer completion writer still writes its own linked row (two Finance rows remain until he merges them — a writer change was NOT made: reported).
+- **Cash:** there is no bank balance → coverage is ALWAYS UNKNOWN. Say "לפי התזרים הרשום במערכת"; never "יש כיסוי" / "יש מספיק כסף" / "העסק יציב". `unit_balance` Cash = recorded flow, not a bank balance. Units are shown side by side; never "Studio covers Records". ₪ and $ are never summed; expected ≠ received; a proposal is never cash.
+- **Money notes:** a note doubting money that canonical Finance shows received (`lib/partner/sunny/money-overtaken.ts`: a named client + the exact amount + a received income of their show / project) is OVERTAKEN — never reopened, never asked again. Money words ("כסף", "תשלום", …) are generic names, never a whole-name project link.
+- `scripts/test-financial-forward.tsx` must pass.
