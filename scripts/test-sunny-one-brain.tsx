@@ -20,6 +20,7 @@ import { inboxTriageOf } from "../lib/partner/sunny/inbox-lifecycle-base";
 import { ownerInbox } from "../lib/partner/knowledge/capabilities/sunny";
 import { buildProjectMemory } from "../lib/partner/projects/memory";
 import { ownerUpdatesOf } from "../lib/partner/gateway/brief";
+import { deriveWithActionHistory } from "../lib/partner/sunny/with-history";
 import { extractSignals, TEAM_NAMES } from "../lib/partner/knowledge/inbox-signals";
 import { QUESTION_HOMES } from "../lib/partner/sunny/known-context";
 import { projectLastEventAt } from "../lib/partner/projects/memory";
@@ -265,6 +266,12 @@ const hist = (planId: string, at: string, actionId: string, entity: string, outc
     ok("13b. project_memory and the lifecycle read the SAME understanding freshness (same freshnessOf + projectBasisOf)", pm.understanding?.freshness === t0.understanding?.freshness, { pm: pm.understanding?.freshness, life: t0.understanding });
     ok("13c. the brief lists the SAME NEW updates the lifecycle covers (and drills into it)", JSON.stringify((ownerUpdatesOf(s3) as { items: Array<{ id: string }> }).items.map((x) => x.id)) === JSON.stringify(tri.items.map((x) => x.item.id)));
     ok("13d. canonical state: every view reads the live project basis — a later version makes the understanding OUTDATED everywhere", t0.understanding?.freshness === "OUTDATED_BY_CANONICAL" && pm.understanding?.freshness === "OUTDATED_BY_CANONICAL" && t0.state === "OVERTAKEN");
+    const s4 = src({ items: [item(U(1), "דחוף למקסס את אין לך", "2026-10-01T08:00:00Z")], memory: { links: [link(U(50), U(1), KEY)], interpretations: [] } });
+    const hist4 = [hist("pl_DL", "2026-10-02T10:00:00Z", "UPDATE_PROJECT_DEADLINE", KEY)];
+    const u4 = deriveWithActionHistory("inbox", ownerInbox.read(s4, { capability: "owner_inbox", mode: "understand", params: {} } as never) as unknown as Record<string, unknown>, hist4, NOW.getTime()) as { items: Array<{ fields: { lifecycle: { state: string; homes: Array<{ kind: string }> } } }> };
+    const e4 = deriveWithActionHistory("inbox", ownerInbox.read(s4, { capability: "owner_inbox", mode: "new", params: { entity: KEY } } as never) as unknown as Record<string, unknown>, hist4, NOW.getTime()) as { items: Array<{ fields: { state: string; lifecycle: { state: string } } }> };
+    ok("13f. WITH Sunny's action history, owner_inbox and partner_entity(project) still agree (the plan after the note is the home in both)", u4.items[0].fields.lifecycle.state === e4.items[0].fields.state && e4.items[0].fields.state === e4.items[0].fields.lifecycle.state && u4.items[0].fields.lifecycle.homes.some((h) => h.kind === "PLAN"), { u: u4.items[0].fields.lifecycle.state, e: e4.items[0].fields.state });
+    ok("13g. the connector applies the history to the partner_entity inbox section too", /k\.capability === "owner_inbox" \? deps\.gateway\.withActionHistory!\("inbox", k, history/.test(read("lib/integrations/partner-mcp/mcp.ts")));
     ok("13e. company_view and needs_me both call inboxTriageOf (no second decision)", /inboxTriageOf\(src\)/.test(read("lib/partner/knowledge/capabilities/company-view.ts")) && /inboxTriageOf\(src\)/.test(read("lib/partner/needs-me/curate.ts")));
   }
 

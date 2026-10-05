@@ -309,6 +309,11 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
   if (a.tool === "partner_brief" || (a.tool === "partner_entity" && payload.status === "OK")) payload = { ...payload, recentActions: await recentActionsFor(a.tool === "partner_entity" ? a.key : null, p, deps) };
   // One Brain (2026-10-05): each update's "what happened since" also sees what Sunny EXECUTED after it on the exact
   // records — the SAME decideInboxLifecycle the capability uses (no second rule); unreadable history → said so.
+  // partner_entity: its owner_inbox section (a project's NEW updates) gets the SAME history-aware decision as owner_inbox
+  if (a.tool === "partner_entity" && payload.status === "OK" && deps.gateway.withActionHistory && Array.isArray(payload.knowledge) && (payload.knowledge as Array<{ capability?: string }>).some((k) => k.capability === "owner_inbox")) {
+    const history = await actionHistory(p, deps);
+    payload = { ...payload, knowledge: (payload.knowledge as Array<Record<string, unknown>>).map((k) => (k.capability === "owner_inbox" ? deps.gateway.withActionHistory!("inbox", k, history, deps.nowMs()) : k)) };
+  }
   const derive = a.tool === "partner_query" && payload.status === "OK" && deps.gateway.withActionHistory
     ? (a.capability === "owner_inbox" && (a.mode === "understand" || a.mode === "deep") ? "inbox" : a.capability === "coo" && a.mode === "learning" ? "learning" : null) : null;
   if (derive) payload = deps.gateway.withActionHistory!(derive, payload, await actionHistory(p, deps), deps.nowMs());

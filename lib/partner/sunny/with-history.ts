@@ -29,7 +29,14 @@ export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record
   const items = Array.isArray(payload.items) ? (payload.items as Array<{ fields?: { lifecycle?: InboxLifecycle | null } }>) : [];
   if (!items.some((i) => i.fields?.lifecycle)) return payload;
   if (!history) return { ...payload, inboxActions: { status: "NOT_READ", noteHe: "לא קראתי את הפעולות שסאני ביצעה — 'מה קרה מאז' כאן לא כולל אותן (זה לא אומר שלא בוצע כלום)" } };
-  const next = items.map((i) => (i.fields?.lifecycle ? { ...i, fields: { ...i.fields, lifecycle: decideInboxLifecycle(i.fields.lifecycle, history) } } : i));
+  const next = items.map((i) => {
+    if (!i.fields?.lifecycle) return i;
+    const l = decideInboxLifecycle(i.fields.lifecycle, history);
+    // the partner_entity shape also carries the flattened view — refreshed from the SAME decision (never two answers)
+    const f = i.fields as Record<string, unknown>;
+    const flat = "state" in f ? { state: l.state, stateHe: { text: l.stateHe, trust: "PARTNER" }, since: l.since.verdict, sinceHe: { text: l.since.he, trust: "PARTNER" }, homes: l.homes.map((h) => h.kind), nextHe: { text: l.nextHe, trust: "PARTNER" } } : {};
+    return { ...i, fields: { ...i.fields, ...flat, lifecycle: l } };
+  });
   const lives = next.map((i) => i.fields?.lifecycle).filter((x): x is InboxLifecycle => !!x);
   return { ...payload, items: next, summary: summary.map((x) => (x.code === "EXECUTIVE" ? { ...x, value: { ...(x.value as Record<string, unknown>), ...inboxExecutiveSummary(lives) } } : x)), inboxActions: { status: "READ", plans: history.length } };
 }
