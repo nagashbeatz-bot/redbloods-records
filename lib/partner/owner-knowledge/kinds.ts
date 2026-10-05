@@ -11,6 +11,7 @@
  */
 import { BUSINESS_AREAS, BUSINESS_AREA_HE, ALL_CLASSIFICATION_VALUES, CLASSIFICATION_REGISTRY, CLASSIFICATION_TYPES, CLASSIFICATION_VALUE_HE, CONFIDENCES, RELATION_HE, RELATION_TYPES, SOURCE_TYPES, SOURCE_TYPE_HE, TIME_STATUSES, TIME_STATUS_HE, classificationValueAllowed } from "./taxonomy";
 import { checkProvenanceAndTime, provenanceOf } from "./provenance";
+import { checkDecisionTiming, decisionTimingHe, DECISION_TIMINGS, DECISION_TIMING_HE } from "./decision-timing";
 
 export const COMPANY_KEY = "company:REDBLOODS";
 
@@ -285,13 +286,18 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
       revisitWhenHe: { type: "text", maxLength: 160, required: false },
       decidedOn: { type: "ymd", required: false },
       reviewAt: { type: "ymd", required: false },
+      // Decision Persistence (Owner decision 2026-10-06): the typed WHEN of the decision (decision-timing.ts) — never money,
+      // never a Finance row, never an invented due date. THIS_MONTH is anchored to decidedOn's month; conditionHe = his words.
+      timing: { type: "enum", values: DECISION_TIMINGS, required: false, labelsHe: DECISION_TIMING_HE },
+      timingDate: { type: "ymd", required: false },
+      conditionHe: { type: "text", maxLength: 160, required: false },
       ...TIME_FIELDS,
     },
     epistemic: "OWNER_DECISION", slot: (v) => `decision:${s(v.area)}:${topicSlug(s(v.topic))}${v.about ? `:${s(v.about)}` : ""}${v.ref ? `:${s(v.ref)}` : ""}`,
     reviewAt: (v) => (v.reviewAt ? s(v.reviewAt) : null), expiresAt: () => null,
-    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
+    readBackHe: (_l, v) => `החלטה (${BUSINESS_AREA_HE[s(v.area) as keyof typeof BUSINESS_AREA_HE] ?? s(v.area)} / ${topicSlug(s(v.topic))}${v.aboutLabel ? ` — על ${s(v.aboutLabel)}` : ""}): ${norm(s(v.decisionHe))}${v.rationaleHe ? ` — כי ${norm(s(v.rationaleHe))}` : ""}${v.alternativesHe ? `. חלופות שנדחו: ${norm(s(v.alternativesHe))}` : ""}${decisionTimingHe(v) ? `. מתי: ${decisionTimingHe(v)}` : ""}${v.revisitWhenHe ? `. לבחון מחדש כש${norm(s(v.revisitWhenHe))}` : ""}${v.decidedOn ? ` (הוחלט ${s(v.decidedOn)})` : ""}${v.reviewAt ? ` [לבדיקה ב־${s(v.reviewAt)}]` : ""}${timeHe(v)}.`,
     check: (v) => {
-      const e = checkProvenanceAndTime(v);
+      const e = [...checkProvenanceAndTime(v), ...checkDecisionTiming(v)];
       if (!topicSlug(s(v.topic))) e.push("topic: a short topic in Latin letters / digits (e.g. clip-pricing)");
       return e;
     },
@@ -327,7 +333,7 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   },
 ];
 
-export const MAX_FIELDS = 13; // 13 since 2026-10-05: BUSINESS_DECISION.ref (question memory — the exact non-subject record)
+export const MAX_FIELDS = 16; // 16 since 2026-10-06: BUSINESS_DECISION timing / timingDate / conditionHe (decision persistence); 13 since 2026-10-05: .ref
 const BY_KIND = new Map(KNOWLEDGE_KINDS.map((k) => [k.kind, k]));
 export const knowledgeKind = (kind: unknown): KnowledgeKind | null => (typeof kind === "string" && BY_KIND.has(kind) ? BY_KIND.get(kind)! : null);
 

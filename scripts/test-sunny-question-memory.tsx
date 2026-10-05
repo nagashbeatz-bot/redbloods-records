@@ -218,6 +218,20 @@ const code = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'
     ok("4l. the main-calendar reader never swallows an error (a failed read is not 'none')", !/catch/.test(read("lib/google-calendar.ts").split("export async function listMainCalendarEventsOnDay")[1] ?? "catch"));
   }
 
+  console.log("\nQ6. OBLIGATION_TIMING — WHEN money moves is the Owner's decision on the EXACT entity (Decision Persistence C, 2026-10-06)");
+  {
+    const W = "mix-work:00000000-0000-4000-8000-000000000701", A = "label-artist:00000000-0000-4000-8000-000000000702";
+    const qW = { kind: "OBLIGATION_TIMING", questionHe: "מתי משלמים?", why: "x", entity: W }, qA = { ...qW, entity: A };
+    const aW = answerAsOf(qW) as { ref?: string; topic?: string; contextKind?: string }, aA = answerAsOf(qA) as { about?: string; topic?: string };
+    ok("6a. a work is answered on ref = the work; an artist on about = the artist; topic q-obligation-timing; context = BUSINESS_DECISION", aW.ref === W && aA.about === A && aW.topic === "q-obligation-timing" && aA.topic === "q-obligation-timing" && aW.contextKind === "BUSINESS_DECISION");
+    ok("6b. a vendor-wide key has NO context home (only exact records — never a pseudo aggregate entity)", (answerAsOf({ ...qW, entity: "vendor:STEVEN" }) as { contextKind: string | null }).contextKind === null);
+    const rec = (entity: string, field: "ref" | "about") => ({ id: "d1", createdAt: "2026-10-05T20:00:00Z", kind: "BUSINESS_DECISION", subjectKey: "company:REDBLOODS", identityKeys: ["company:REDBLOODS"], slotKey: `decision:FINANCE:q-obligation-timing:${entity}`,
+      value: { area: "FINANCE", topic: answerTopicOf("OBLIGATION_TIMING"), decisionHe: "לשלם במהלך החודש", [field]: entity, timing: "THIS_MONTH", decidedOn: "2026-10-05" }, epistemic: "OWNER_DECISION", meaningHe: "x", operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null,
+      provenance: { source: "owner_via_sunny", channel: "mcp", client_id: "c", token_id: "t", attempt_audit_id: "a", operation: "LEARN_KNOWLEDGE" }, confirmationId: "n", itemIndex: 0 }) as unknown as OwnerKnowledgeRecord;
+    const r = resolveQuestions([qW, qA], activeKnowledge([rec(W, "ref")], "2026-10-06"), "2026-10-06");
+    ok("6c. the answered work is KNOWN (not asked); the other entity is still ASK — a decision never spreads to another record", r.known.length === 1 && r.known[0].entityKey === W && r.asked.length === 1 && r.asked[0].entity === A && r.asked[0].state === "ASK");
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })();
