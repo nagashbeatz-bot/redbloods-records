@@ -22,7 +22,7 @@ import { resolvePartnerEntityCore } from "../gateway/resolve";
 import { parseEntityKey } from "../gateway/keys";
 import type { GatewaySources } from "../gateway/core";
 import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeRefKind, type KnowledgeRefOwner, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
-import { assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
+import { activeKnowledge, assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
 import { isAuthoritative, withProvenanceDefaults } from "./provenance";
 import { ownerApprovalVerdict } from "../owner-approval";
 import { financeKnowledgeContextOf, issueEntityKey, reconcileForKnowledge, type ReconcileAction } from "../finance/decision-gate";
@@ -278,6 +278,12 @@ export function normalizeItems(inputs: unknown, live: KnowledgeLive): NormalizeO
     const slotKey = `${kind.kind}|${subj.key}|${kind.slot(value)}`.slice(0, 300);
     const terminal = terminalOfSlot(live.records, slotKey);
     const conflicts = op === "ASSERT" ? kind.conflicts(subj.key, value, live.facts) : [];
+    // 2026-10-05: a corrected amount / date opens a new slot — an ACTIVE report on the same subject + direction is named, and
+    // the Owner says whether this one replaces it (withdraw the old one) or is another payment. Never decided silently.
+    if (op === "ASSERT" && kind.kind === "PAYMENT_REPORTED_BY_OWNER") {
+      const others = activeKnowledge(live.records, live.facts.todayIL).filter((k) => k.kind === kind.kind && k.subjectKey === subj.key && k.value.direction === value.direction && k.slotKey !== slotKey);
+      if (others.length) conflicts.push({ code: "PAYMENT_REPORT_EXISTS", severity: "NOTE", messageHe: `כבר יש דיווח פעיל על אותה ישות (${others.map((k) => k.meaningHe).join(" · ").slice(0, 160)}) — זה תיקון שלו (אז לבטל את הקודם) או תשלום נוסף? לא מחליטה לבד.` });
+    }
     const current = assertedTerminal(live.records, slotKey);
     const inUse = current && (!current.expiresAt || current.expiresAt >= live.facts.todayIL) ? current : null;
     const defaultsOf = (v: KnowledgeValue) => (kind.provenance || kind.timeAware ? withProvenanceDefaults(v, new Set(Object.keys(kind.fields))) : v);

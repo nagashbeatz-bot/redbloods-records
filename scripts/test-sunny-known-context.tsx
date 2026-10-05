@@ -17,7 +17,7 @@ import { guardOutput } from "../lib/integrations/partner-mcp/tools";
 import { matchReportedPayment } from "../lib/partner/finance/payment-match";
 import type { FinanceTxRow } from "../lib/partner/finance/types";
 import { financeKnowledgeContextOf, reconcileForKnowledge } from "../lib/partner/finance/decision-gate";
-import { canonicalEffectOf } from "../lib/partner/owner-knowledge/propose";
+import { canonicalEffectOf, previewKnowledgeCore, type KnowledgeProposeDeps } from "../lib/partner/owner-knowledge/propose";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../lib/partner/owner-knowledge/store";
 import { knowledgeKind } from "../lib/partner/owner-knowledge/kinds";
 import { followUpKnowledgeFor, followUpKnown, vendorWorkKnown, victorDeliveryQuestionId } from "../lib/partner/sunny/known-context";
@@ -321,6 +321,28 @@ const tx = (o: Partial<FinanceTxRow> & { id: string }): FinanceTxRow => ({ proje
     const rc = await recentActionsFor(null, { ...(P as object), scope: "partner:read" } as never, deps(async () => ({ status: "HISTORY", items: [] })));
     ok("9n. without the act scope / channel → NOT_CONNECTED (not 'none')", rc.status === "NOT_CONNECTED");
     ok("9o. recentActions never touches truth: it is attached beside the gateway result (no reader of it in any detector / view)", !/recentActions/.test([read("lib/partner/needs-me/curate.ts"), read("lib/partner/sunny/operating.ts"), read("lib/partner/finance/integrity.ts"), read("lib/partner/cases/engine.ts")].join("\n")));
+  }
+
+  console.log("\nS10. Stage 7 — hygiene on these flows: payment correction is asked, a LEARNED close needs knowledge in use, no stale 'no primitive' text");
+  {
+    const OWNER_ID = "0f0f0f0f-0000-4000-8000-00000000a0a0";
+    const ACTOR = { userId: OWNER_ID, clientId: "rbmcp_" + "c".repeat(40), tokenId: "00000000-0000-4000-8000-00000000abcd" };
+    const PID = U(10);
+    const ksrc = { now: new Date("2026-10-05T09:00:00Z"), identities: { cleantone: null }, state: { status: "OK", value: { todayIL: "2026-10-05", domains: { projects: { data: { index: { [PID]: { name: "יהלום", status: "בעבודה" } }, open: [] } }, clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, shows: { data: { items: [] } }, proposalsFull: { data: { items: [] } }, victor: { data: { active: [] } }, steven: { data: { open: [] } } } } } } as never;
+    const recs: OwnerKnowledgeRecord[] = [{ id: "p-old", createdAt: "2026-10-04T10:00:00Z", kind: "PAYMENT_REPORTED_BY_OWNER", subjectKey: `project:${PID}`, identityKeys: [`project:${PID}`], slotKey: `PAYMENT_REPORTED_BY_OWNER|project:${PID}|payment:RECEIVED:1000:₪:-`, value: { direction: "RECEIVED", amount: 1000, currency: "₪" }, epistemic: "OWNER_REPORTED", meaningHe: "הבוס דיווח: התקבל ₪1,000", operation: "ASSERT", supersedesId: null, reviewAt: "2026-10-11", expiresAt: null } as unknown as OwnerKnowledgeRecord];
+    const deps: KnowledgeProposeDeps = {
+      secret: "s".repeat(48), nowMs: () => Date.parse("2026-10-05T09:00:00Z"), isOwner: async (u) => u === OWNER_ID,
+      async loadLive() { return { ok: true, live: { src: ksrc, records: recs.map((r) => ({ ...r })), facts: { todayIL: "2026-10-05", projectStatus: () => "בעבודה", financeMatch: () => false } } }; },
+      store: { async list() { return { status: "OK", records: recs }; }, async appendBatch() { return { status: "APPENDED", records: [] }; } } as never,
+      async freshRecords() { return recs; }, consumeNonce: () => true,
+    };
+    const pv = (await previewKnowledgeCore(deps, ACTOR, [{ kind: "PAYMENT_REPORTED_BY_OWNER", subject: `project:${PID}`, fields: { direction: "RECEIVED", amount: 1500, currency: "₪" } }])) as unknown as { status: string; items?: Array<{ conflicts: Array<{ code: string; severity: string; messageHe: string }> }> };
+    const cf = pv.items?.[0]?.conflicts ?? [];
+    ok("10a. a second RECEIVED report on the same project (1,500 after 1,000) → a NOTE that asks: a correction (withdraw the old) or another payment? — never two silent actives, never decided alone", pv.status === "PREVIEW" && cf.some((c) => c.code === "PAYMENT_REPORT_EXISTS" && c.severity === "NOTE" && /תיקון/.test(c.messageHe) && /תשלום נוסף/.test(c.messageHe)), pv);
+    const pv2 = (await previewKnowledgeCore(deps, ACTOR, [{ kind: "PAYMENT_REPORTED_BY_OWNER", subject: `project:${PID}`, fields: { direction: "PAID", amount: 300, currency: "₪" } }])) as unknown as { status: string; items?: Array<{ conflicts: Array<{ code: string }> }> };
+    ok("10b. a PAID report is not compared with a RECEIVED one (direction never mixed)", pv2.status === "PREVIEW" && !(pv2.items?.[0]?.conflicts ?? []).some((c) => c.code === "PAYMENT_REPORT_EXISTS"), pv2);
+    ok("10c. an inbox update closes as LEARNED_KNOWLEDGE only with knowledge IN USE (activeKnowledge) — never a withdrawn / superseded row", /activeKnowledge\(r\.records, today\)\.some\(\(k\) => k\.id === id\)/.test(read("lib/partner/act/server.ts")));
+    ok("10d. client_view's workflow names the existing proposal primitives — no stale FUTURE_PRIMITIVE_REQUIRED / 'not executable today'", !/FUTURE_PRIMITIVE_REQUIRED|no client \/ proposal primitive is executable today/.test(read("lib/partner/clients/view.ts")));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

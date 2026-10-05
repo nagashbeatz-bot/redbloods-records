@@ -297,8 +297,8 @@ export function clientWorkflow(src: GatewaySources, event: "NEW_CLIENT_REQUEST" 
   return {
     event, identity, client: client ? `client:${client.id}` : null, known, ask,
     nextStep: event === "NEW_CLIENT_REQUEST"
-      ? (client ? "CREATE_PROPOSAL for the existing client (Owner does it in the client drawer; Sunny proposes the exact fields — FUTURE_PRIMITIVE_REQUIRED)" : "CREATE_CLIENT, then CREATE_PROPOSAL (Owner, Clients page; FUTURE_PRIMITIVE_REQUIRED)")
-      : (open.length ? "report the recorded proposal state; update status / follow-up if the Owner wants (UPDATE_PROPOSAL — FUTURE_PRIMITIVE_REQUIRED)" : "record the proposal (CREATE_PROPOSAL — Owner, client drawer)"),
-    mutations: "none — Sunny proposes; the Owner approves; no client / proposal primitive is executable today",
+      ? (client ? "CREATE_PROPOSAL for the existing client (a typed action — preview → the Owner's approval)" : "CREATE_CLIENT, then CREATE_PROPOSAL (one plan — preview → the Owner's approval)")
+      : (open.length ? "report the recorded proposal state; status / follow-up only if the Owner wants (CHANGE_PROPOSAL_STATUS / SET_PROPOSAL_FOLLOWUP — preview → approval)" : "record the proposal (CREATE_PROPOSAL — preview → approval)"),
+    mutations: "none from here — every change is a typed action the Owner approves (CREATE_CLIENT / CREATE_PROPOSAL / CHANGE_PROPOSAL_STATUS / SET_PROPOSAL_FOLLOWUP)",
   };
 }

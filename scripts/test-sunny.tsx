@@ -278,7 +278,8 @@ async function main() {
     check("committed to partner_owner_knowledge ONLY (the store client can reach no other table); stored as OWNER_REPORTED", [w.table.rows.length, [...w.table.tablesTouched], (await w.records())[0].epistemic, before.length > 0], [1, [OWNER_KNOWLEDGE_TABLE], "OWNER_REPORTED", true]);
     w.live.financeMatch = true;
     const pv2 = (await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { ...item[0].fields, amount: 500 } }])) as AnyRes & { items: Array<{ conflicts: Array<{ code: string }> }> };
-    check("a matching Finance record → ALREADY_RECORDED_IN_FINANCE note", pv2.items[0].conflicts.map((c) => c.code), ["ALREADY_RECORDED_IN_FINANCE"]);
+    // 2026-10-05: a second report on the same project + direction also names the active one (correction or another payment?)
+    check("a matching Finance record → ALREADY_RECORDED_IN_FINANCE note (+ the earlier active report is named)", pv2.items[0].conflicts.map((c) => c.code), ["ALREADY_RECORDED_IN_FINANCE", "PAYMENT_REPORT_EXISTS"]);
     check("a payment dated in the future → CONFLICT_WITH_LIVE", ((await previewKnowledgeCore(w.deps, ACTOR, [{ ...item[0], fields: { ...item[0].fields, date: "2026-12-01" } }])) as AnyRes).status, "CONFLICT_WITH_LIVE");
     ok("the owner-knowledge code imports no Finance writer / action executor / Owner Context store", ["lib/partner/owner-knowledge/propose.ts", "lib/partner/owner-knowledge/store.ts", "lib/partner/owner-knowledge/kinds.ts", "lib/partner/owner-knowledge/server.ts"].every((f) => !/finance\/execut|actions\/(execute|service|events)|context-persistence|\.rpc\(|\.upsert\(|\.from\([^)]*\)\s*\.(update|delete)\(/.test(read(f))));
   }

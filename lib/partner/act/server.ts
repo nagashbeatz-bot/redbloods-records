@@ -546,7 +546,10 @@ async function ownerInboxFamilyWriters(): Promise<OwnerInboxFamilyWriters> {
       const { createOwnerKnowledgeStore } = await import("@/lib/partner/owner-knowledge/store");
       const r = await createOwnerKnowledgeStore(supabase as unknown as import("@/lib/partner/owner-knowledge/store").OwnerKnowledgeTableClient).list();
       if (r.status !== "OK") throw new Error(`owner knowledge read failed: ${r.status}`);
-      return r.records.some((k) => k.id === id);
+      // 2026-10-05: only knowledge that is IN USE (activeKnowledge — the one rule) can be the reference of a LEARNED close
+      const { activeKnowledge } = await import("@/lib/partner/owner-knowledge/store");
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      return activeKnowledge(r.records, today).some((k) => k.id === id);
     },
     async ownerKnowledgeEntityKeys(id) {
       const { createOwnerKnowledgeStore } = await import("@/lib/partner/owner-knowledge/store");
