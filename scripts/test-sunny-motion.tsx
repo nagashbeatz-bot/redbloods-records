@@ -304,8 +304,9 @@ async function main() {
   const YAH_CHORUS = N(102, "לשנות את העטיפה של יהלום", 0);
   const TECH = N(103, "לתקן התראות של סטיבן", 0);
   const ASK = N(104, "צריך לחשוב על זה שוב", -1);
+  const TZ = N(106, "חיזקתי את ההפקה לצועדים", -4, K(P_TZOADIM));
   const OLD_CLOSER = N(105, "צריך לבדוק את המיקס של קרוב אלייך", -6, K(P_CLOSER));
-  const mix = motionOf({ inbox: [MAOR, YAH_MIX, YAH_CHORUS, TECH, ASK, OLD_CLOSER] });
+  const mix = motionOf({ inbox: [MAOR, TZ, YAH_MIX, YAH_CHORUS, TECH, ASK, OLD_CLOSER] });
   const entry = (m: BusinessMotion, id: string) => m.inbox.entries.find((e) => e.lifecycle.itemId === id);
   const yMix = entry(mix, YAH_MIX.id)!, yCh = entry(mix, YAH_CHORUS.id)!;
   ok("96. (1) a NEW unlinked update went through understand → lifecycle BEFORE curation (entity resolved, state decided)", !!yMix && yMix.lifecycle.entitySource === "LIKELY" && yMix.lifecycle.entityKeys.includes(K(P_YAHALOM)) && !!yMix.lifecycle.state, yMix?.lifecycle);
@@ -313,9 +314,13 @@ async function main() {
   ok("98. (3) LIKELY same project but the move does not cover its content (עטיפה ≠ open mix) → NOT absorbed", !yCh.absorbedBy);
   const yItem = itemFor(mix, K(P_YAHALOM))!;
   ok("99. (4) LIKELY same project + the proposed move covers it (מיקס ↔ CREATE_ENGINEER_WORK) → absorbed AS A HYPOTHESIS ('כנראה', evidence HYPOTHESIS, no link stored)", !!yMix.absorbedBy && yItem.reasonsHe.some((r) => r.startsWith("כנראה זה גם מה שכתבת")) && yItem.evidence.some((e) => e.ref === `owner-inbox:${YAH_MIX.id}` && e.epistemic === "HYPOTHESIS") && yMix.lifecycle.entitySource === "LIKELY", { absorbedBy: yMix.absorbedBy, reasons: yItem.reasonsHe });
-  const maorE = entry(mix, MAOR.id)!;
-  ok("100. (5) LINKED + reflected in a move → not duplicated in the greeting (absorbed, not counted, text not repeated)", !!maorE.absorbedBy && !/חייב להתקדם/.test(mix.inbox.lineHe ?? ""));
+  const maorE = entry(mix, TZ.id)!;
+  ok("100. (5) LINKED + reflected in a move → not duplicated in the greeting (absorbed, not counted, text not repeated)", !!maorE.absorbedBy && !/חיזקתי/.test(mix.inbox.lineHe ?? ""));
+  const maorOnly = entry(mix, MAOR.id)!;
+  ok("100d. a LINKED update whose only carrier is an unserved INFO move is NOT 'משוקף' — it stays 'צריך ניתוב'", !maorOnly.absorbedBy && maorOnly.lifecycle.state === "UNREAD" && /ועוד 2 עדיין צריכים ניתוב/.test(mix.inbox.lineHe ?? ""), mix.inbox.lineHe);
   ok("100b. absorbedBy names a move that really carries the update as evidence", mix.inbox.entries.filter((e) => e.absorbedBy).every((e) => mix.all.some((i) => i.key === e.absorbedBy && i.evidence.some((x) => x.ref === `owner-inbox:${e.lifecycle.itemId}`))), mix.inbox.entries.map((e) => e.absorbedBy));
+  const servedKeys = new Set([...mix.todayItems, ...mix.greeting, ...mix.atRisk, ...mix.closeLoops, ...mix.label, ...mix.watch].map((i) => i.key));
+  ok("100c. absorbed only by a move Sunny SERVES (an unserved INFO move never makes an update 'משוקף')", mix.inbox.entries.filter((e) => e.absorbedBy).every((e) => servedKeys.has(e.absorbedBy!)));
   const tech = entry(mix, TECH.id)!;
   ok("101. (6) a technical unresolved update is represented ('עדכון טכני אחד עדיין פתוח'), never silently dropped", tech.lifecycle.technical && (tech.lifecycle.state === "UNREAD" ? /עדכון טכני אחד עדיין פתוח/.test(mix.inbox.lineHe ?? "") : tech.lifecycle.state === "NEEDS_OWNER"), { state: tech.lifecycle.state, line: mix.inbox.lineHe });
   const old = entry(mix, OLD_CLOSER.id)!;
@@ -334,7 +339,7 @@ async function main() {
   ok("105b. the re-derived line is inside the answer the greeting serves", brief9.motion.inbox.lineHe !== null && brief9.motion.answerHe.includes(brief9.motion.inbox.lineHe));
   const onlyAsk = motionOf({ inbox: [ASK] });
   const onlyUnrouted = motionOf({ inbox: [YAH_CHORUS] });
-  ok("106. (11) 'משוקפים' only when something really is reflected / absorbed / overtaken / understood", !/משוקפים/.test(onlyAsk.inbox.lineHe ?? "") && !/משוקפים/.test(onlyUnrouted.inbox.lineHe ?? "") && /משוקפים/.test(mix.inbox.lineHe ?? "") && motionOf().inbox.lineHe === null, { ask: onlyAsk.inbox.lineHe, unrouted: onlyUnrouted.inbox.lineHe, mix: mix.inbox.lineHe });
+  ok("106. (11) 'משוקפים' only when something really is reflected / absorbed / overtaken / understood", !/משוקפים/.test(onlyAsk.inbox.lineHe ?? "") && !/משוקפים/.test(onlyUnrouted.inbox.lineHe ?? "") && /משוקפים/.test(mix.inbox.lineHe ?? "") && motionOf({ inbox: [TZ] }).inbox.lineHe === null, { ask: onlyAsk.inbox.lineHe, unrouted: onlyUnrouted.inbox.lineHe, mix: mix.inbox.lineHe });
   ok("106b. the greeting never dumps the update list", !/דחוף למקססס|העטיפה|התראות של סטיבן/.test(mix.inbox.lineHe ?? "") && !/עדכונים מהתיבה:/.test(mix.answerHe));
   const mot = read("lib/partner/coo/motion.ts"), wh = read("lib/partner/sunny/with-history.ts");
   ok("107. (12) no new lifecycle and no writes: motion uses inboxTriageOf; the re-decision is the ONE decideInboxLifecycle (with-history); no link / store / push", mot.includes("inboxTriageOf(src)") && !mot.includes("decideInboxLifecycle") && /motionInboxOf\(ib\.read, ib\.entries\.map\(\(e\) => motionInboxEntry\(decideInboxLifecycle\(e\.lifecycle, history\)/.test(wh) && !/LINK_INBOX_ENTITY|supabase|\.from\(|sendPush/.test(code(mot)));

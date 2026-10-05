@@ -666,7 +666,13 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   }
 
   // the move that finally carries the update (a client package may have merged the record it first raised)
-  const carrier = (id: string) => absorbed.has(id) ? (all.find((i) => i.evidence.some((e) => e.ref === `owner-inbox:${id}`))?.key ?? absorbed.get(id)!) : null;
+  // — and only a move Sunny actually SERVES counts (an INFO move nobody sees would hide the update again)
+  const served = new Set([...todayItems, ...greeting, ...atRisk, ...closeLoops, ...labelItems, ...watch].map((i) => i.key));
+  const carrier = (id: string) => {
+    if (!absorbed.has(id)) return null;
+    const k = all.find((i) => i.evidence.some((e) => e.ref === `owner-inbox:${id}`))?.key ?? absorbed.get(id)!;
+    return served.has(k) ? k : null;
+  };
   const inbox = motionInboxOf(tri.read, tri.items.map(({ lifecycle }) => motionInboxEntry(lifecycle, carrier(lifecycle.itemId))));
 
   let pats: DerivedPattern[] = [];
