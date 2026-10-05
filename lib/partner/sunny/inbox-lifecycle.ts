@@ -88,7 +88,7 @@ export function decideInboxLifecycle(base: InboxLifecycleBase, actions?: readonl
     : { outcome: "NO_ACTION_NEEDED" as const, outcomeRef: null, whyHe: "ההבנה נרשמה על הרשומה המדויקת ועדכנית; ההמשך חי ב-project_memory" };
   const nextHe = base.technical ? "עניין טכני במערכת: לשאול את הבוס מה בדיוק לא עובד / אם זה עובד עכשיו — נסגר רק כשהוא אומר שזה עובד (deploy הוא לא הוכחה)"
     : state === "NEEDS_OWNER" ? (base.contradiction ? "יש סתירה — להציג לבוס את שתי האפשרויות ולשאול" : "לשאול שאלה אחת: למי / לאיזה פרויקט זה שייך")
-    : state === "OVERTAKEN" ? (base.overtakenByCanonical ? `${base.overtakenByCanonical} — לא לפתוח מחדש ולא לשאול שוב אם התקבל; להציע לסגור את הפתק` : `לספר לבוס מה קרה מאז (${since.he}) ולשאול אם העדכון מיצה את עצמו`)
+    : state === "OVERTAKEN" ? (base.overtakenByCanonical ? `${base.overtakenByCanonical} — לא לפתוח מחדש ולא לשאול שוב אם התקבל; להסביר לבוס שהפתק נעקף על ידי רשומה קנונית בכספים (לא שהוא סתם ישן), ולהציע לסגור אותו` : `לספר לבוס מה קרה מאז (${since.he}) ולשאול אם העדכון מיצה את עצמו`)
     : state === "UNREAD" ? (linked ? "לרשום הבנה על הרשומה המקושרת (מה קרה / מה פתוח / הצעד הבא) ואז להציע סגירה" : "להציע את הישות (LIKELY) + למה, לשאול 'נכון?', לקשר ולרשום הבנה")
     : closable ? "להציע סגירה של הפתק (יש לו בית) — העניין העסקי ממשיך ברשומות"
     : "לקשר את העדכון לרשומה המדויקת לפני סגירה";

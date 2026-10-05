@@ -246,8 +246,8 @@ async function main() {
   ok("72. financial MUST / SHOULD enter motion as moves (Victor / Shalev / Steven)", fin.length === 3 && fin.every((i) => i.level === "SHOULD" || i.level === "MUST"), fin.map((i) => [i.titleHe, i.level]));
   ok("73. a financial MUST can enter TODAY", (() => { const w = buildCooView(src({ victorDue: D(1) })); return w.motion.todayItems.some((i) => i.financial && i.level === "MUST"); })());
   ok("74. prepared / conditional money stays out of motion (no noise)", !V.motion.all.some((i) => i.financial && i.titleHe.startsWith("מיקס —")));
-  ok("75. the greeting stays operational — money is ONE line, never moves", V.motion.greeting.every((i) => !i.financial) && (V.motion.answerHe.match(/מבחינת כסף:/g) ?? []).length <= 1);
-  ok("76. the money line carries the coverage wording", /מבחינת כסף:[^\n]*לפי התזרים הרשום במערכת/.test(V.motion.answerHe), V.motion.answerHe);
+  ok("75. the greeting stays operational — money is ONE line, never moves", V.motion.greeting.every((i) => !i.financial) && (V.motion.answerHe.match(/מבחינת כסף/g) ?? []).length <= 1);
+  ok("76. the money line carries the coverage wording", /מבחינת כסף —[^\n]*לפי התזרים הרשום במערכת/.test(V.motion.answerHe), V.motion.answerHe);
   ok("77. every financial move names a REGISTERED action", fin.every((i) => !i.move || i.move.actionIds.every((a) => ACTION_REGISTRY.has(a) && (MOTION_ACTION_IDS as readonly string[]).includes(a))));
   ok("78. the duplicate appears as a WATCH note on its project (not a new obligation)", V.motion.all.some((i) => i.codes.includes("FIN_DUPLICATE") && i.level !== "MUST" && i.level !== "SHOULD"));
   ok("79. financial-forward has no ranking of its own (motion ranks)", !/sort\(\(a, b\) => lv\(|rankItems|todayItems/.test(code(read("lib/partner/coo/financial-forward.ts")).replace(/surprises[\s\S]*?slice\(0, 3\)/, "")));
@@ -274,6 +274,9 @@ async function main() {
   section("FRESH-CHAT QA CORRECTNESS (2026-10-05)");
   const setl = ob(F, "settlement:")!;
   ok("93. a cycle end is a DUE close date — never 'נסגר' (nothing closes by itself)", (setl.questionHe ?? "").includes("מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד)") && !/נסגר המחזור|בסגירה ב-/.test(JSON.stringify(F)), setl.questionHe);
+  const ml = V.motion.answerHe.split("\n").find((l) => l.startsWith("מבחינת כסף")) ?? "";
+  const [datedPart, undatedPart] = ml.split(" | בלי תאריך: ");
+  ok("95. an undated payable never sits under a dated heading (Steven $750 only under 'בלי תאריך')", datedPart.startsWith("מבחינת כסף — עם תאריך:") && !datedPart.includes("$750") && (undatedPart ?? "").includes("$750") && F.lineHe.includes("בלי תאריך (לא בתוך ה-7 ימים): חוב פתוח $750") && !F.lineHe.split(" · בלי תאריך")[0].includes("750"), { ml, line: F.lineHe });
   const fb = read("lib/partner/finance/brief.ts");
   ok("94. the monthly target is a registered conflict → the money line never states a canonical floor / preferred gap while it is open", /RP_FINANCE_TARGETS_CONFLICT/.test(fb) && /עוד לא נקבע יעד חודשי אחד/.test(fb));
 

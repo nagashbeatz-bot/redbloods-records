@@ -160,7 +160,7 @@ export interface BusinessMotion {
   unchecked: string[];
   heuristics: typeof MOTION_HEURISTICS;
   /** FINANCIAL_FORWARD (an input — never a second engine): the compact money picture */
-  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
+  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; datedSurprises: string[]; undatedSurprises: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
   answerHe: string;
 }
 
@@ -631,13 +631,17 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const needy = capacity === "OPEN" ? all.filter((i) => (i.level === "MUST" || i.level === "SHOULD") && i.codes.some((cd) => NEED.includes(cd))) : [];
   const gk = new Set(greeting.map((g) => g.key));
   // a protected label artist (Shalev / Avi) with a concrete move is always represented in the open week (no cadence — only its existing move)
-  const protectedMoves = needy.filter((i) => i.labelProtected && i.move && !gk.has(i.key));
-  const candidates = [...new Set([...protectedMoves, ...needy.filter((i) => !gk.has(i.key)), ...needy.filter((i) => gk.has(i.key))])].slice(0, Math.max(3, protectedMoves.length));
+  const inWeekLine = new Set(labelItems.filter((i) => i.labelProtected).map((i) => i.key)); // named with their move in the week line itself
+  const protectedMoves = needy.filter((i) => i.labelProtected && i.move && !gk.has(i.key) && !inWeekLine.has(i.key));
+  const pool = needy.filter((i) => !inWeekLine.has(i.key));
+  const candidates = [...new Set([...protectedMoves, ...pool.filter((i) => !gk.has(i.key)), ...pool.filter((i) => gk.has(i.key))])].slice(0, Math.max(3, protectedMoves.length));
   const finPressure = !!ff && ff.commercialGap && ff.surprises.length > 0;
   const opportunity = candidates.length ? { he: `השבוע יחסית פתוח ביומן (${openDays.length} ימים כמעט פנויים) — הייתי מנצלת חלון ל: ${candidates.map((i) => (i.move ? `${i.titleHe} → ${i.move.he}` : i.titleHe)).join(" · ")}${finPressure ? "; ובמקביל — הצנרת חלשה מול ההתחייבויות הרשומות, אז חלק מהחלון כדאי לתמחור / גבייה" : ""} (הצעה בלבד — לא קובעת כלום ביומן, ולא כל זמן פנוי הוא זמן עבודה)`, candidates: candidates.map((i) => i.key), epistemic: "HYPOTHESIS" as const } : null;
   const recordedEvents = input.schedule.days.reduce((n, d) => n + d.items.filter((i) => i.source === "REDBLOODS").length, 0);
   const dueThisWeek = input.readiness.events.filter((r) => r.daysTo !== null && r.daysTo <= 6 && (r.kind === "RELEASE" || r.kind === "DEADLINE" || r.kind === "SHOW" || r.kind === "SHOOT")).map((r) => `${r.kind === "RELEASE" ? "ריליס" : r.kind === "DEADLINE" ? "דדליין" : r.kind === "SHOW" ? "הופעה" : "צילום"} ${r.titleHe} ${heDate(r.date)}`);
-  const protectedLabel = labelItems.filter((i) => i.labelProtected).map((i) => i.titleHe);
+  const protectedItems = labelItems.filter((i) => i.labelProtected);
+  const protectedLabel = protectedItems.map((i) => i.titleHe);
+  const protectedLabelHe = protectedItems.map((i) => (i.move ? `${i.titleHe} → ${i.move.he}` : `${i.titleHe} בלי סשן`)).join(" · ");
   const external = input.momentum.filter((m) => m.state === "WAITING_EXTERNAL" && !completed.has(m.key)).length;
   const capHe = capacity === "OPEN" ? `${openDays.length} ימים כמעט פנויים ביומן` : capacity === "BUSY" ? "שבוע עמוס ביומן" : capacity === "NORMAL" ? "שבוע רגיל ביומן" : "היומן לא נקרא — לא יודעת כמה השבוע פנוי";
   const week: MotionWeek = {
@@ -646,7 +650,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     money: revenue.state === "PIPELINE_EMPTY" ? "כסף: הצנרת ריקה (אין גבייה פתוחה / הצעות / הופעות קרובות)" : null,
     external, opportunity,
     lineHe: [`(${heDate(today)}–${heDate(end)}) ${capHe}${recordedEvents ? `, ${recordedEvents === 1 ? "אירוע אחד רשום" : `${recordedEvents} אירועים רשומים`} ב-Redbloods` : ", בלי סשנים / הופעות / צילומים רשומים"}`,
-      dueThisWeek.length ? dueThisWeek.slice(0, 3).join(", ") : null, protectedLabel.length ? `לייבל: ${protectedLabel.join(", ")} בלי סשן` : null,
+      dueThisWeek.length ? dueThisWeek.slice(0, 3).join(", ") : null, protectedItems.length ? `לייבל: ${protectedLabelHe}` : null,
       revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? (external === 1 ? "עבודה אחת אצל אחרים" : `${external} עבודות אצל אחרים`) : null].filter(Boolean).join(" · "),
   };
 
@@ -689,7 +693,7 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   const m: BusinessMotion = {
     today, todayItems, greeting, more: Math.max(0, act.length - todayItems.length), atRisk, closeLoops, ownerBottleneck, label: labelItems, revenue, week, inbox, watch, all,
     patterns: pats.map((p) => ({ code: p.code, level: p.level, he: p.hypothesisHe })), progress,
-    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
+    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), datedSurprises: ff.surprises.filter((o) => o.date).map((o) => o.he), undatedSurprises: ff.surprises.filter((o) => !o.date).map((o) => o.he), duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
     learning: { status: "NOT_READ", changed: 0, noteHe: "היסטוריית הפעולות לא נקראה כאן — ההמלצות לא נבדקו מול מה שכבר נוסה (זה לא אומר שכלום לא נוסה)" },
     unchecked: [...new Set(unchecked)], heuristics: MOTION_HEURISTICS, answerHe: "",
   };
@@ -705,8 +709,22 @@ function lastShowOf(c: CooCtx, artistName: string): string | null {
 }
 
 /** The executive Hebrew answer: ≤3 moves + the week line + the inbox line — never a dump, never "במה נתחיל?". */
-export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
-  financial?: { surprises: string[]; coverageHe: string } | null }
+export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
+  financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; coverageHe: string } | null }
+
+/** Money in the greeting: dated and undated are never under one heading (an undated payable is never "due" on a date). */
+function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; coverageHe: string }): string {
+  const dated = f.datedSurprises ?? f.surprises, undated = f.undatedSurprises ?? [];
+  const parts = [dated.length ? `עם תאריך: ${dated.slice(0, 2).join(" · ")}` : null, undated.length ? `בלי תאריך: ${undated.slice(0, 1).join(" · ")}` : null].filter(Boolean);
+  return `מבחינת כסף — ${parts.join(" | ")} (${f.coverageHe})`;
+}
+
+/** The COO leads: motion already ranked the first move — recommend it; only its EXECUTION needs the Boss's approval. */
+function leadHe(first: MotionAnswerInput["greeting"][number] | undefined): string | null {
+  if (!first || !first.titleHe) return null;
+  return `אני הייתי מתחילה ב${first.titleHe}${first.move ? ` — ${first.move.he}` : ""}.${first.move?.canAct ? " אם תאשר, אכין את זה לאישור שלך." : ""}`;
+}
+
 export function motionAnswerHe(m: MotionAnswerInput): string {
   const n = m.greeting.length;
   const head = n === 0 ? "לא רואה כרגע מהלך שחייב אותך היום." : n === 1 ? (m.week.heavyToday ? "היום עמוס ביומן — מהלך אחד שהייתי עושה:" : "המהלך שהייתי עושה עכשיו:") : `${n === 2 ? "שני" : "שלושת"} המהלכים שהייתי עושה עכשיו:`;
@@ -714,11 +732,12 @@ export function motionAnswerHe(m: MotionAnswerInput): string {
   const extra = [
     `השבוע: ${m.week.lineHe}`,
     // ONE money line — only what could surprise him (MUST / SHOULD, not prepared); never an accounting dump
-    m.financial && m.financial.surprises.length ? `מבחינת כסף: ${m.financial.surprises.slice(0, 2).join(" · ")} (${m.financial.coverageHe})` : null,
+    m.financial && m.financial.surprises.length ? moneyLineHe(m.financial) : null,
     m.week.opportunity ? m.week.opportunity.he : null,
     m.ownerBottleneck.lineHe,
     m.inbox.lineHe,
     m.more ? `(ועוד ${m.more} מהלכים שכדאי השבוע — אפשר לפרט.)` : null,
+    leadHe(m.greeting[0]),
   ].filter(Boolean);
   return [head, ...lines, ...extra].join("\n");
 }

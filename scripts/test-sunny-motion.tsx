@@ -347,9 +347,14 @@ async function main() {
 
   section("16. FRESH-CHAT QA CORRECTNESS (2026-10-05)");
   const closerItem = itemFor(M, K(P_CLOSER));
-  ok("108. completion provenance: no invented actor ('אצל Steven אושר' never) — the work is marked 'אושר' and the finals were uploaded", !!closerItem && closerItem.reasonsHe.some((r) => r.includes("מסומנת 'אושר' והקבצים הסופיים הועלו")) && !/אצל S+ אושר/.test(JSON.stringify(M)), closerItem?.reasonsHe);
-  const protectedWithMove = M.all.filter((i) => i.labelProtected && i.move && (i.level === "MUST" || i.level === "SHOULD") && !M.greeting.some((g) => g.key === i.key));
-  ok("109. an open week names the CONCRETE move of every protected label artist that has one (no cadence)", !!M.week.opportunity && protectedWithMove.length > 0 && protectedWithMove.every((i) => M.week.opportunity!.candidates.includes(i.key) && M.week.opportunity!.he.includes(`${i.titleHe} → ${i.move!.he}`)), { he: M.week.opportunity?.he, protected: protectedWithMove.map((i) => i.titleHe) });
+  ok("108. completion provenance: no invented actor ('אצל Steven אושר' never) — the work is marked 'אושר' and the finals were uploaded", !!closerItem && closerItem.reasonsHe.some((r) => r.includes("מסומנת 'אושר' והקבצים הסופיים הועלו")) && !/אצל \S+ אושר/.test(JSON.stringify(M)), closerItem?.reasonsHe);
+  const protectedArtists = M.label.filter((i) => i.labelProtected && i.move);
+  const weekAnswerLine = M.answerHe.split("\n").find((l) => l.startsWith("השבוע:")) ?? "";
+  ok("109. the week line names the CONCRETE existing move of every protected label artist (never generic; no cadence)", M.week.capacity === "OPEN" && protectedArtists.length > 0 && protectedArtists.every((i) => M.week.lineHe.includes(`${i.titleHe} → ${i.move!.he}`) && weekAnswerLine.includes(`${i.titleHe} → ${i.move!.he}`)) && !/יש זמן לסשנים/.test(M.answerHe), { week: M.week.lineHe, protected: protectedArtists.map((i) => i.titleHe) });
+  ok("109b. the opportunity line does not repeat what the week line already names", protectedArtists.every((i) => !M.week.opportunity?.candidates.includes(i.key)));
+  const lastLine = M.answerHe.split("\n").pop() ?? "";
+  ok("111. the greeting ENDS with the recommendation (never 'במה מתחילים?') — execution needs approval", lastLine.startsWith(`אני הייתי מתחילה ב${M.greeting[0].titleHe}`) && !/במה (נתחיל|מתחילים)\?/.test(M.answerHe), lastLine);
+  ok("111b. the instructions forbid handing the ranking back to the Boss", SERVER_INSTRUCTIONS.includes("never which to start with"));
   ok("110. the capacity line stays a suggestion (never a calendar write)", /הצעה בלבד/.test(M.week.opportunity?.he ?? ""));
 
 

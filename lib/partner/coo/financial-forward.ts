@@ -260,10 +260,11 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
 
   const w7 = windows[0];
   const lineHe = [
-    `כסף, 7 ימים: יוצא בוודאות ${totalsHe(w7.hardOutflow)}${Object.keys(w7.undatedHard).length ? ` · חוב פתוח בלי תאריך ${totalsHe(w7.undatedHard)}` : ""}${Object.keys(w7.dynamicExposure).length ? ` · התחשבנות דינמית ${totalsHe(w7.dynamicExposure)}` : ""}`,
+    `כסף עם תאריך, 7 ימים: יוצא בוודאות ${totalsHe(w7.hardOutflow)}${Object.keys(w7.dynamicExposure).length ? ` · התחשבנות דינמית ${totalsHe(w7.dynamicExposure)}` : ""}`,
     `נכנס צפוי ${totalsHe(w7.expectedInflow)}${commercialGap ? " (אין גבייה, הצעות או הופעות קרובות)" : ""}`,
+    Object.keys(w7.undatedHard).length ? `בלי תאריך (לא בתוך ה-7 ימים): חוב פתוח ${totalsHe(w7.undatedHard)} — מחכה להחלטה שלך מתי לשלם` : null,
     coverageHe,
-  ].join(" · ");
+  ].filter(Boolean).join(" · ");
   return { status: "OK", today, coverage: "UNKNOWN", coverageHe, actualMonth, obligations, windows, settlements: obligations.filter((o) => o.kind === "SETTLEMENT"),
     vendorPayables: obligations.filter((o) => o.kind === "VENDOR_PAYABLE"), duplicates,
     inflow: { receivables: collectible.length, expectedInflow, overdueInflow, proposals, shows14, proposalsAreNotCash: true }, commercialGap, surprises, unitsHe, lineHe, unchecked };
