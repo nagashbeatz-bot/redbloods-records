@@ -204,8 +204,17 @@ export function refRecordOf(src: GatewaySources, key: string): { label: string; 
   if (kind === "transaction") { const fin = src.finance?.status === "OK" ? src.finance.value : null; const t = fin?.raw.transactions.find((x) => x.id === id); return t ? { label: `${t.type === "income" ? "הכנסה" : "הוצאה"} ${t.currency ?? ""}${String(t.amount ?? "")} ${t.date ?? ""}`.trim(), owner: { clientKey: null, projectKey: t.projectId ? `project:${t.projectId}` : null, vendorKey: null } } : null; }
   if (kind === "rf-production") { const ops = src.operations?.status === "OK" ? src.operations.value : null; const p = ops?.redFilms?.rows.find((x) => x.id === id); return p ? { label: p.title ?? "הפקה", owner: { clientKey: null, projectKey: p.projectId ? `project:${p.projectId}` : null, vendorKey: null } } : null; }
   if (kind === "victor-work") { const w = st.domains.victor.data?.active.find((x) => x.id === id); return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:VICTOR" } } : null; }
-  const w = st.domains.steven.data?.open.find((x) => x.id === id);
-  return w ? { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:STEVEN" } } : null;
+  const w = st.domains.steven?.data?.open.find((x) => x.id === id);
+  if (w) return { label: w.title, owner: { clientKey: null, projectKey: w.projectId ? `project:${w.projectId}` : null, vendorKey: "vendor:STEVEN" } };
+  // Decision Persistence (2026-10-06): a COMPLETED / any-engineer work is still a real record — the SAME engineer-work rows
+  // Financial Forward reads (its WHEN question is asked exactly on a completed unpaid work). Exact id only; a cancelled work is not.
+  const fin = src.finance?.status === "OK" ? src.finance.value : null;
+  const ew = fin?.raw.engineerWorks.find((x) => x.id === id && (x.status ?? "") !== "בוטל");
+  if (!ew) return null;
+  const pname = ew.projectId ? (st.domains.projects.data?.index?.[ew.projectId]?.name ?? null) : null;
+  const who = ew.engineerName === "Steven" ? "סטיבן" : ew.engineerName ?? "המהנדס";
+  const price = typeof ew.agreedPrice === "number" ? ` (${ew.currency === "$" ? "$" : ew.currency ?? ""}${ew.agreedPrice})` : "";
+  return { label: pname ?? `העבודה של ${who}${price}`, owner: { clientKey: null, projectKey: ew.projectId ? `project:${ew.projectId}` : null, vendorKey: ew.engineerName === "Steven" ? "vendor:STEVEN" : null } };
 }
 function resolveRef(src: GatewaySources, raw: unknown, kinds: readonly KnowledgeRefKind[], what: string): { ok: true; key: string; label: string } | { ok: false; error: string } {
   const key = typeof raw === "string" ? raw.trim() : typeof (raw as { key?: unknown } | null)?.key === "string" ? String((raw as { key: string }).key).trim() : "";
