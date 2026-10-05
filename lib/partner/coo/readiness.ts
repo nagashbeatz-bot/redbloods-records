@@ -234,7 +234,9 @@ export function sessionReadiness(c: CooCtx, s: { id: string; projectId: string |
   if (pk) {
     const v = c.project(s.projectId!);
     if (v.identity && CLOSED_PROJECT.has(v.identity.status ?? "")) checks.push(check("deps.project", "DEPENDENCIES", "סטטוס הפרויקט", "OPEN", `הפרויקט מסומן ${v.identity.status} — לבדוק שהסשן עדיין רלוונטי.`, [ev("PROJECTS", pk, "project status")]));
-    const owner = c.operating(s.projectId!)?.ballHolder.holders.some((h) => h === "OWNER" || h === "WAITING_FOR_OWNER");
+    // the ONE recorded project-ball rule (needs_me projectBalls) — an Owner statement never makes it "לפי הרשומות"
+    const rb = c.recordedBall(s.projectId!);
+    const owner = rb !== "UNREAD" && rb.ownerWait;
     if (owner) checks.push(check("deps.owner", "OWNER_DECISION", "משהו מחכה לך בפרויקט", "OPEN", "לפי הרשומות יש בפרויקט משהו שמחכה לך — כדאי לסגור לפני הסשן.", [ev("PROJECTS", pk, "ball holder OWNER")], false));
   } else checks.push(check("deps.project", "DEPENDENCIES", "פרויקט מקושר", "NOT_SEEN", "הסשן לא מקושר לפרויקט — אני לא יודעת על מה הוא.", [ev("SESSIONS", sk, "project_id empty")], false));
   return finishReadiness({ key: `readiness:${sk}`, kind: "SESSION", titleHe: c.projectName(s.projectId) ?? s.type ?? "סשן", date: s.date, time: s.startTime?.slice(0, 5) ?? null, daysTo: daysBetween(c.today, s.date), entity: sk, project: pk, checks, insights: [], sources: ["SESSIONS", "PROJECTS"], coreReadable: true });
@@ -259,7 +261,8 @@ export function deadlineReadiness(c: CooCtx, projectId: string): Readiness | nul
   const openEng = (v.work.engineers ?? []).filter((w) => !["אושר", "בוטל"].includes(w.status ?? ""));
   if (openEng.length) checks.push(check("deps.engineer", "DEPENDENCIES", "עבודה אצל מהנדס", "OPEN", `עבודה עוד פתוחה אצל ${[...new Set(openEng.map((w) => w.engineer))].join(", ")}.`, [ev("MIX", pk, "engineer work open")]));
   if (v.work.victor?.some((w) => w.ball === "victor")) checks.push(check("deps.victor", "DEPENDENCIES", "עבודה אצל ויקטור", "OPEN", "הכדור אצל ויקטור.", [ev("TEAM_VICTOR", pk, "computeVictorBall")]));
-  if (v.work.victor?.some((w) => w.ball === "owner") || v.signals.some((s) => s.code === "OWNER_FEEDBACK_DUE" || s.code === "ENGINEER_RETURNED_WORK")) checks.push(check("deps.owner", "OWNER_DECISION", "משהו מחכה לך", "OPEN", "לפי הרשומות יש כאן משהו שמחכה לתגובה שלך.", [ev("PROJECTS", pk, "ball OWNER")]));
+  const rb = c.recordedBall(projectId);
+  if (rb !== "UNREAD" && rb.ownerWait) checks.push(check("deps.owner", "OWNER_DECISION", "משהו מחכה לך", "OPEN", "לפי הרשומות יש כאן משהו שמחכה לתגובה שלך.", [ev("PROJECTS", pk, "ball OWNER")]));
   if (v.work.tasksOverdue) checks.push(check("deps.tasks", "DEPENDENCIES", "משימות שעבר מועדן", "OPEN", `${v.work.tasksOverdue} משימות של הפרויקט עבר מועדן.`, [ev("TASKS", pk, "tasks overdue")], false));
   // the ONE stage rule (lib/partner/coo/stage): done-but-not-recorded is said as such; a stage materially behind a near
   // deadline is OPEN (required) — never an invented claim of what the deadline includes

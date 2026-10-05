@@ -90,6 +90,11 @@ export interface McpGateway {
   /** One Brain (2026-10-05): the Gateway's PURE transform of a read result with Sunny's own action history (inbox
    *  lifecycle / outcome learning) — the connector only fetches the history; it holds no rule of its own. */
   withActionHistory?(kind: "inbox" | "learning" | "motion", payload: Record<string, unknown>, history: ReadonlyArray<ConnectorActionItem> | null, nowMs: number): Record<string, unknown>;
+  /** Dashboard parity (2026-10-05): the Gateway's ONE selector / history request / history mapping — the SAME ones
+   *  Redbloods MAIN's executive read uses, so the chat and the dashboard can never derive differently. */
+  historyDerivationFor?(q: { tool: string; capability?: string | null; mode?: string | null }): "inbox" | "learning" | "motion" | null;
+  actionHistoryRequest?: Readonly<Record<string, unknown>>;
+  actionHistoryItemsOf?(h: Record<string, unknown>): ConnectorActionItem[] | null;
 }
 /** One executed / proposed plan of the owner-scoped history op, as the Gateway transform reads it. */
 export interface ConnectorActionItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }>; approvedBy?: string | null }
@@ -315,12 +320,12 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     const history = await actionHistory(p, deps);
     payload = { ...payload, knowledge: (payload.knowledge as Array<Record<string, unknown>>).map((k) => (k.capability === "owner_inbox" ? deps.gateway.withActionHistory!("inbox", k, history, deps.nowMs()) : k)) };
   }
-  const derive = a.tool === "partner_query" && payload.status === "OK" && deps.gateway.withActionHistory
-    ? (a.capability === "owner_inbox" && (a.mode === "understand" || a.mode === "deep") ? "inbox" : a.capability === "coo" && a.mode === "learning" ? "learning"
-      : a.capability === "coo" && (!a.mode || a.mode === "priorities" || a.mode === "motion") ? "motion" : null) : null;
+  // the Gateway's ONE selector (historyDerivationFor) — the SAME one MAIN's executive read uses
+  const derive = a.tool === "partner_query" && payload.status === "OK" && deps.gateway.withActionHistory && deps.gateway.historyDerivationFor
+    ? deps.gateway.historyDerivationFor({ tool: a.tool, capability: a.capability, mode: a.mode ?? null }) : null;
   if (derive) payload = deps.gateway.withActionHistory!(derive, payload, await actionHistory(p, deps), deps.nowMs());
   // BUSINESS_MOTION in the brief: the SAME learning (a planning move that already ran and did not move the work is not proposed again)
-  if (a.tool === "partner_brief" && deps.gateway.withActionHistory && payload.motion && typeof payload.motion === "object") payload = deps.gateway.withActionHistory("motion", payload, await actionHistory(p, deps), deps.nowMs());
+  if (a.tool === "partner_brief" && deps.gateway.withActionHistory && deps.gateway.historyDerivationFor?.({ tool: a.tool }) === "motion" && payload.motion && typeof payload.motion === "object") payload = deps.gateway.withActionHistory("motion", payload, await actionHistory(p, deps), deps.nowMs());
   const g = guardOutput(payload, deps.config.maxResultChars);
   if (a.tool === "partner_query" && payload.status !== "OK") {
     // A refused query (unknown / not authorized / invalid params or cursor) is a tool error Claude can read and fix.
@@ -336,16 +341,13 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
   });
 }
 
-/** The owner-scoped Action Layer history (≤ 50 plans, every outcome) — null when not readable here. */
+/** The owner-scoped Action Layer history (≤ 50 plans, every outcome) — null when not readable here. The Gateway's ONE
+ *  request + mapping (the SAME Redbloods MAIN's executive read uses). */
 async function actionHistory(p: Principal, deps: McpDeps): Promise<ConnectorActionItem[] | null> {
-  if (!actAvailable(deps) || !hasActScope(p.scope)) return null;
+  if (!actAvailable(deps) || !hasActScope(p.scope) || !deps.gateway.actionHistoryRequest || !deps.gateway.actionHistoryItemsOf) return null;
   try {
-    const h = await withTimeout(deps.act!.call("status", { history: true, limit: 50 }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
-    if (h.status !== "HISTORY" || !Array.isArray(h.items)) return null;
-    return (h.items as Array<Record<string, unknown>>).map((x) => ({
-      planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""), approvedBy: (x.approvedBy ?? null) as string | null,
-      steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null })),
-    }));
+    const h = await withTimeout(deps.act!.call("status", { ...deps.gateway.actionHistoryRequest }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
+    return deps.gateway.actionHistoryItemsOf(h);
   } catch { return null; }
 }
 

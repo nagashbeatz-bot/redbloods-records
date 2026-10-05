@@ -6,7 +6,8 @@
  * There is NO age threshold: nothing is "stuck" because N days passed (no approved policy exists). The only warnings:
  *   NO_NEXT_STEP — an active project with no upcoming session, no open work anywhere, no dated task and no recorded
  *                  release next action (a fact about the records — the plan may live outside Redbloods);
- *   OWNER_BALL   — the records put the ball with the Owner (computeVictorBall, engineerHandoff, the send log);
+ *   OWNER_BALL   — the records put the ball with the Owner: the ONE recorded project-ball rule (needs_me projectBalls —
+ *                  computeVictorBall, engineerHandoff, the send log). An Owner statement is ownerSaid, never the ball;
  *   *_RISK       — a deadline / release inside the horizon while the next step is not scheduled.
  *
  * Label artists are read from the canonical roster (label_artists) only; DJ / team identities never enter. A project
@@ -48,6 +49,10 @@ export interface ProjectMomentum {
   nextSteps: NextStep[];
   scheduledNext: NextStep | null;
   waitingOn: string[];
+  /** no recorded wait on the Owner and a recorded but unresolved ball (needs_me "לא הוכרע") */
+  ballUndecided: boolean;
+  /** the Owner SAID it waits on him (P2 / a processed update) while the records do not show it — OWNER_REPORTED, never the ball */
+  ownerSaid: { he: string; at: string | null } | null;
   deadline: string | null; deadlineDaysTo: number | null;
   release: { stage: string; target: string | null; daysTo: number | null } | null;
   risks: string[];
@@ -63,8 +68,8 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
   const labelWork = c.isLabel(projectId);
   const base = { key, name, status, labelWork, deadline: v.identity?.deadline ?? null, deadlineDaysTo: isYmd(v.identity?.deadline) ? daysBetween(c.today, v.identity!.deadline!) : null,
     release: v.work.release ? { stage: v.work.release.stage, target: v.work.release.targetDate, daysTo: isYmd(v.work.release.targetDate) ? daysBetween(c.today, v.work.release.targetDate!) : null } : null };
-  if (!v.identity) return { ...base, state: "UNKNOWN", stateHe: MOMENTUM_HE.UNKNOWN, lastProgress: null, nextSteps: [], scheduledNext: null, waitingOn: [], risks: [], warning: false, he: `${name}: הפרויקט לא נקרא.` };
-  if (INACTIVE.has(status ?? "")) return { ...base, state: "NOT_ACTIVE", stateHe: `${MOMENTUM_HE.NOT_ACTIVE} (${status})`, lastProgress: null, nextSteps: [], scheduledNext: null, waitingOn: [], risks: [], warning: false, he: `${name}: ${status}.` };
+  if (!v.identity) return { ...base, state: "UNKNOWN", stateHe: MOMENTUM_HE.UNKNOWN, lastProgress: null, nextSteps: [], scheduledNext: null, waitingOn: [], ballUndecided: false, ownerSaid: null, risks: [], warning: false, he: `${name}: הפרויקט לא נקרא.` };
+  if (INACTIVE.has(status ?? "")) return { ...base, state: "NOT_ACTIVE", stateHe: `${MOMENTUM_HE.NOT_ACTIVE} (${status})`, lastProgress: null, nextSteps: [], scheduledNext: null, waitingOn: [], ballUndecided: false, ownerSaid: null, risks: [], warning: false, he: `${name}: ${status}.` };
 
   // ── last meaningful progress (recorded events only; an auto-marked session is not the Owner's confirmation) ──
   const pts: ProgressPoint[] = [];
@@ -96,7 +101,15 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
 
   const op = c.operating(projectId);
   const holders = op?.ballHolder.holders ?? [];
-  const ownerBall = holders.some(isOwnerHolder) || v.signals.some((s) => s.code === "OWNER_FEEDBACK_DUE" || s.code === "ENGINEER_RETURNED_WORK" || s.code === "VICTOR_WAITING_OWNER");
+  // OWNER_BALL = the ONE recorded project-ball rule (needs_me's projectBalls — computeVictorBall, engineerHandoff, the
+  // send log; Owner decision 2026-10-05). An Owner statement ("מחכה לבעלים") never sets it: it is carried apart as
+  // ownerSaid (OWNER_REPORTED — "אמרת לי ש…", never "לפי הרשומות").
+  const rec = c.recordedBall(projectId);
+  const ownerBall = rec !== "UNREAD" && rec.ownerWait;
+  const ballUndecided = rec !== "UNREAD" && rec.undecided;
+  const saidOwner = (op?.ballHolder.evidence ?? []).some((e) => isOwnerHolder(e.holder) && e.confidence === "OWNER_REPORTED");
+  const saidAt = saidOwner ? (op?.known ?? []).filter((k) => k.questionKind === "PROJECT_STATE" && k.basis.kind === "OWNER_KNOWLEDGE" && k.knownAt).map((k) => k.knownAt as string).sort().at(-1) ?? null : null;
+  const ownerSaid = saidOwner && !ownerBall ? { he: `אמרת לי${saidAt ? ` (${heDate(saidAt)})` : ""} שזה מחכה לך — זו האמירה שלך, לא רשומה`, at: saidAt } : null;
   const external = [...new Set(holders.filter((h) => !isOwnerHolder(h) && h !== "UNKNOWN").map(holderHe))];
   const openWork = works.some((w) => !ENGINEER_DONE.has(w.status ?? "")) || vw.length > 0;
   const state: MomentumState = ownerBall ? "OWNER_BALL" : scheduledNext ? "SCHEDULED" : external.length || openWork ? "WAITING_EXTERNAL" : next.length ? "SCHEDULED" : "NO_NEXT_STEP";
@@ -105,10 +118,11 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
   if (near(base.release?.daysTo ?? null) && (state === "NO_NEXT_STEP" || !scheduledNext)) risks.push(`הריליס מתוכנן ל-${heDate(base.release!.target)} ואני לא רואה צעד הבא מתוכנן בתאריך.`);
   if (near(base.deadlineDaysTo) && state === "NO_NEXT_STEP") risks.push(`הדדליין ללקוח ב-${heDate(base.deadline)} ואני לא רואה עבודה פתוחה או מתוכננת.`);
   if (near(base.deadlineDaysTo) && state === "WAITING_EXTERNAL" && !scheduledNext) risks.push(`הדדליין ב-${heDate(base.deadline)} והעבודה עוד אצל ${external.join(", ") || "גורם חיצוני"}.`);
-  const warning = state === "OWNER_BALL" || state === "NO_NEXT_STEP" || risks.length > 0;
+  const warning = state === "OWNER_BALL" || state === "NO_NEXT_STEP" || risks.length > 0 || !!ownerSaid;
   const lp = lastProgress ? `התקדמות אחרונה רשומה: ${lastProgress.he} (${heDate(lastProgress.date)})` : "אני לא רואה התקדמות רשומה";
   const nx = state === "OWNER_BALL" ? "יש בו משהו שמחכה לך" : scheduledNext ? `הצעד הבא: ${scheduledNext.he}` : state === "WAITING_EXTERNAL" ? `כרגע אצל ${external.join(", ") || "גורם אחר"}${next.length ? ` (${next[0].he})` : ""}, בלי צעד הבא בתאריך` : next.length ? `צעד הבא בלי תאריך: ${next[0].he}` : "אני לא רואה צעד הבא רשום או סשן המשך";
-  return { ...base, state, stateHe: MOMENTUM_HE[state], lastProgress, nextSteps: next, scheduledNext, waitingOn: holders, risks, warning, he: `${name}: ${lp}; ${nx}.${risks.length ? ` ${risks[0]}` : ""}` };
+  const ballNote = rec === "UNREAD" ? " לא בדקתי אצל מי הכדור (needs_me לא נקרא)." : ballUndecided ? " לפי הרשומות לא מוכרע אצל מי הכדור." : "";
+  return { ...base, state, stateHe: MOMENTUM_HE[state], lastProgress, nextSteps: next, scheduledNext, waitingOn: holders, ballUndecided, ownerSaid, risks, warning, he: `${name}: ${lp}; ${nx}.${ballNote}${ownerSaid ? ` ${ownerSaid.he}.` : ""}${risks.length ? ` ${risks[0]}` : ""}` };
 }
 
 // ───────────────────────────── label artist care ─────────────────────────────

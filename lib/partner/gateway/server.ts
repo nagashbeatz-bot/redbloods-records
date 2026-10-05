@@ -26,7 +26,7 @@ import { entityKnowledge, queryKnowledgeCore, RESTRICTIVE_AUDIENCE, validateKnow
 import type { KnowledgeRegistry } from "../knowledge/registry";
 import type { KnowledgeAudience, KnowledgeRequest, KnowledgeSourceNeed, QueryResponse } from "../knowledge/types";
 // One Brain (2026-10-05): the pure transform the connector applies with Sunny's own action history (no I/O, no write)
-export { deriveWithActionHistory } from "../sunny/with-history";
+export { deriveWithActionHistory, historyDerivationFor, ACTION_HISTORY_REQUEST, actionHistoryItemsOf } from "../sunny/with-history";
 
 type AnyCtx = GatewayReadContext | CompanyReadContext;
 

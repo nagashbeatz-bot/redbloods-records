@@ -15,6 +15,33 @@ import { learnItem, learningNote, motionAnswerHe, motionInboxEntry, motionInboxO
 
 export type HistoryDerivation = "inbox" | "learning" | "motion";
 
+// ── ONE history read for every surface (Owner decision 2026-10-05, Dashboard parity Phase A2) ──────────────────────
+// The connector (chat) and Redbloods MAIN (the Owner's executive dashboard) ask the action service the SAME request,
+// map its answer with the SAME function and pick the derivation with the SAME selector — so the dashboard and the chat
+// can never apply a different history or a different lifecycle to the same records.
+
+/** The exact owner-scoped history request (partner_plan_status history) — newest first, the latest 50 plans. */
+export const ACTION_HISTORY_REQUEST: Readonly<{ history: true; limit: number }> = Object.freeze({ history: true, limit: 50 });
+
+/** Which history transform a read result gets. null = none (the read is served as is). */
+export function historyDerivationFor(q: { tool: string; capability?: string | null; mode?: string | null }): HistoryDerivation | null {
+  if (q.tool === "partner_brief") return "motion";
+  if (q.tool !== "partner_query") return null;
+  if (q.capability === "owner_inbox" && (q.mode === "understand" || q.mode === "deep")) return "inbox";
+  if (q.capability === "coo" && q.mode === "learning") return "learning";
+  if (q.capability === "coo" && (!q.mode || q.mode === "priorities" || q.mode === "motion")) return "motion";
+  return null;
+}
+
+/** The action service's history answer → the items the transforms read. null = not readable (never "nothing was done"). */
+export function actionHistoryItemsOf(h: Record<string, unknown> | null | undefined): ActionHistoryItem[] | null {
+  if (!h || h.status !== "HISTORY" || !Array.isArray(h.items)) return null;
+  return (h.items as Array<Record<string, unknown>>).map((x) => ({
+    planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""), approvedBy: (x.approvedBy ?? null) as string | null,
+    steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null })),
+  }));
+}
+
 type SlimMotion = Record<string, unknown> & { progress?: Record<string, SinceEvent[]>; more?: number; answerHe?: string };
 const MOTION_LISTS = ["greeting", "todayItems", "atRisk", "closeLoops", "label", "watch"] as const;
 

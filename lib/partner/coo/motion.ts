@@ -30,7 +30,6 @@ import { addDaysYmd, daysBetween, heDate, isYmd, ymdOf, INTERNAL_COO_HEURISTICS 
 import { completionEvidence, stageBehind, engineerWorksOf, STAGE_UNCERTAINTY_HE, WAITING_FOR_MIX } from "./stage";
 import { availability, dayList } from "../calendar/availability";
 import { engineerHandoff } from "../mix/handoff";
-import { buildNeedsMe } from "../needs-me/curate";
 import { inboxTriageOf } from "../sunny/inbox-lifecycle-base";
 import type { InboxDisplayState, InboxLifecycle } from "../sunny/inbox-lifecycle";
 import { ALMOST_RE, derivePatterns, type DerivedPattern } from "../sunny/patterns";
@@ -69,7 +68,7 @@ const raise = (l: MotionLevel): MotionLevel => (l === "INFO" ? "WATCH" : l === "
 export type MotionCode =
   | "COMMITMENT_NOT_READY" | "STAGE_VS_DEADLINE" | "LONG_OVERDUE_DEADLINES" | "SCHEDULE_CONFLICT"
   | "COMPLETION_NOT_RECORDED" | "ONE_MOVE_TO_MIX" | "OWNER_ONE_ACTION" | "OWNER_REPORTED_NEAR"
-  | "OWNER_BOTTLENECK_EXTRACT" | "OWNER_APPROVAL_WAITING" | "OWNER_BALL"
+  | "OWNER_BOTTLENECK_EXTRACT" | "OWNER_APPROVAL_WAITING" | "OWNER_BALL" | "OWNER_SAID_WAITING"
   | "LABEL_NEEDS_MOTION" | "REVENUE_PIPELINE_EMPTY" | "PRICE_MISSING"
   | "STATUS_BEHIND_ACTIVITY" | "SHOOT_AUTO_MARKED" | "FOLLOW_UP_AFTER_CONDITION" | "OWNER_UPDATE_LINKED"
   | "STALE_SIGNAL_CONFLICT" | "NO_NEXT_STEP" | "FIN_OBLIGATION" | "FIN_DUPLICATE";
@@ -78,7 +77,7 @@ export type MotionSection = "AT_RISK" | "CLOSE_LOOPS" | "OWNER_BOTTLENECK" | "LA
 const SECTION_OF: Record<MotionCode, MotionSection> = {
   COMMITMENT_NOT_READY: "AT_RISK", STAGE_VS_DEADLINE: "AT_RISK", LONG_OVERDUE_DEADLINES: "AT_RISK", SCHEDULE_CONFLICT: "AT_RISK",
   COMPLETION_NOT_RECORDED: "CLOSE_LOOPS", ONE_MOVE_TO_MIX: "CLOSE_LOOPS", OWNER_ONE_ACTION: "CLOSE_LOOPS", OWNER_REPORTED_NEAR: "CLOSE_LOOPS",
-  OWNER_BOTTLENECK_EXTRACT: "OWNER_BOTTLENECK", OWNER_APPROVAL_WAITING: "OWNER_BOTTLENECK", OWNER_BALL: "OWNER_BOTTLENECK",
+  OWNER_BOTTLENECK_EXTRACT: "OWNER_BOTTLENECK", OWNER_APPROVAL_WAITING: "OWNER_BOTTLENECK", OWNER_BALL: "OWNER_BOTTLENECK", OWNER_SAID_WAITING: "OWNER_BOTTLENECK",
   LABEL_NEEDS_MOTION: "LABEL", REVENUE_PIPELINE_EMPTY: "MONEY", PRICE_MISSING: "MONEY",
   STATUS_BEHIND_ACTIVITY: "OTHER", SHOOT_AUTO_MARKED: "OTHER", FOLLOW_UP_AFTER_CONDITION: "OTHER", OWNER_UPDATE_LINKED: "OTHER", STALE_SIGNAL_CONFLICT: "OTHER", NO_NEXT_STEP: "OTHER",
   FIN_OBLIGATION: "MONEY", FIN_DUPLICATE: "MONEY",
@@ -428,15 +427,16 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   };
 
   // ── needs_me: a partner action awaiting approval / a scheduled show missing something (the SAME curated list) ──
-  try {
-    const nm = buildNeedsMe(src);
-    for (const n of nm.items) {
+  {
+    const nm = c.needsMe();
+    if (!nm) unchecked.push("needs_me לא נקרא — אישורים / הופעות של היום לא נבדקו כאן (לא ידוע, לא ריק)");
+    for (const n of nm?.items ?? []) {
       if (n.group !== "APPROVAL" && n.group !== "SCHEDULED") continue;
       const pk = n.open.kind === "project" ? `project:${n.open.id}` : null;
       mergeInto(map, { key: `needs:${n.key}`, entity: pk ?? n.entityKey, level: "MUST", code: "OWNER_APPROVAL_WAITING", titleHe: n.title, reasonHe: n.whyToday,
         evidence: [{ source: "NEEDS_ME", ref: n.key, he: n.group, epistemic: "DERIVED" }], move: null });
     }
-  } catch { unchecked.push("needs_me לא נקרא — אישורים / הופעות של היום לא נבדקו כאן (לא ידוע, לא ריק)"); }
+  }
 
   // ── shoot sessions auto-marked: a passed date / AUTO_MARK never proves the shoot happened ──
   const SHOT_OR_LATER = new Set(["צולם", "חומרי גלם הועלו", "בעריכה", "נשלחה גרסה", "תיקונים", "מאושר", "פורסם"]);
@@ -461,6 +461,9 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     if (m.state === "NO_NEXT_STEP" && m.labelWork && !protectedProject(m.key)) mergeInto(map, { key: `nonext:${m.key}`, entity: m.key, level: "WATCH", code: "NO_NEXT_STEP", titleHe: m.name, labelWork: true, reasonHe: "אין צעד הבא רשום או סשן המשך", move: MOVES.session("") });
     else if (m.state === "NO_NEXT_STEP") mergeInto(map, { key: `nonext:${m.key}`, entity: m.key, level: "INFO", code: "NO_NEXT_STEP", titleHe: m.name, reasonHe: "אין צעד הבא רשום", move: MOVES.session("") });
     if (m.state === "OWNER_BALL" && !map.get(m.key)?.codes.some((x) => x === "OWNER_ONE_ACTION" || x === "OWNER_BOTTLENECK_EXTRACT")) mergeInto(map, { key: `ownerball:${m.key}`, entity: m.key, level: "WATCH", code: "OWNER_BALL", titleHe: m.name, labelWork: m.labelWork, reasonHe: "לפי הרשומות משהו כאן מחכה לך", move: null });
+    // the Owner SAID it waits on him while the records do not show it (Owner decision 2026-10-05): his statement, never "לפי הרשומות"
+    if (m.ownerSaid) mergeInto(map, { key: `ownersaid:${m.key}`, entity: m.key, level: "WATCH", code: "OWNER_SAID_WAITING", titleHe: m.name, labelWork: m.labelWork, epistemic: "HYPOTHESIS",
+      reasonHe: m.ownerSaid.he, evidence: [{ source: "OWNER_KNOWLEDGE", ref: m.key, he: m.ownerSaid.he, epistemic: "OWNER_REPORTED" }], move: null });
   }
 
   // ── schedule conflicts (real, two blocking timed commitments) ──
