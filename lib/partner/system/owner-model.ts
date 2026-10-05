@@ -12,7 +12,7 @@
  */
 
 // owner-8 (2026-10-01, Owner decision): NEW_CLIP = a clip PROJECT with ONE agreedPrice (one clip model — no clip deal)
-export const OWNER_MODEL_VERSION = "2026.10.03-owner-10";
+export const OWNER_MODEL_VERSION = "2026.10.05-owner-11";
 export const OWNER_MODEL_CONFIRMED_AT = "2026-09-25";
 /** Client deadlines that passed ON OR BEFORE this date are historical operational debt (the Owner's statement date). */
 export const HISTORICAL_DEBT_CUTOFF = "2026-09-25";
@@ -196,7 +196,7 @@ export const WORKFLOW_MODELS: readonly WorkflowModel[] = [
   { event: "NEW_PAYMENT", titleHe: "נכנס / יצא תשלום", source: "SYSTEM_CONTRACT",
     required: [{ item: "which project / client / show", knownFrom: "ASK_OWNER" }, { item: "amount + currency", knownFrom: "ASK_OWNER" }, { item: "received vs expected row it settles", knownFrom: "CANONICAL_DATA" }, { item: "advance or later payment", knownFrom: "ASK_OWNER", note: "Owner pattern: advance, then the rest around / after the mix — per deal" }],
     downstream: ["received = שולם / התקבל", "partial splits the expected row", "overpayment is credit / tip"],
-    notifications: [], actions: ["RECORD_RECEIVED_INCOME — FUTURE_PRIMITIVE_REQUIRED", "PAYMENT_REPORTED_BY_OWNER — Owner knowledge only, never a finance record"] },
+    notifications: [], actions: ["PROPOSAL_CANDIDATE: ADD_TRANSACTION (income, התקבל) — when no matching row exists (dupGate → preview → approval → read-back)", "PROPOSAL_CANDIDATE: SET_TRANSACTION_STATUS (צפוי → התקבל) — when exactly ONE expected row of the same project + amount + currency exists (D4, 2026-10-05; ambiguous → ask)", "PAYMENT_REPORTED_BY_OWNER — Owner knowledge only, never a finance record; it proposes the path above, never writes it"] },
   { event: "NEW_SESSION", titleHe: "סשן חדש", source: "IMPLEMENTATION_BEHAVIOR",
     required: [{ item: "project", knownFrom: "CANONICAL_DATA" }, { item: "date + time", knownFrom: "ASK_OWNER" }, { item: "conflicts", knownFrom: "LIVE_CALENDAR" }],
     downstream: ["project touched; start date filled if empty", "calendar event created with the session", "Shalev projects notify Shalev"],

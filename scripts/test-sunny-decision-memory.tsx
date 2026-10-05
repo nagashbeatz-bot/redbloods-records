@@ -305,7 +305,9 @@ function financeWriters(mode: "OK" | "THROWS" | "WRONG_VALUE" = "OK") {
     ok("10. a payment the Owner MADE (direction PAID) never reconciles the missing INCOME question", asks(conversation({}, [], [paid]), P_MB));
     const recv = knowledge({ kind: "PAYMENT_REPORTED_BY_OWNER", subjectKey: KEY_MB, value: { direction: "RECEIVED", amount: 2000, currency: "₪" }, slotKey: `PAYMENT_REPORTED_BY_OWNER|${KEY_MB}|payment:RECEIVED:2000:₪:` });
     const sr = conversation({}, [], [recv]);
-    ok("10. a payment the Owner says he RECEIVED → the missing-income question is a reconciliation (\"not recorded in Finance\"), with no invented action", !asks(sr, P_MB) && reconcileOf(sr, P_MB)?.state === "KNOWN_CONTEXT_RECONCILE" && reconcileOf(sr, P_MB)!.actions.length === 0 && reconcileOf(sr, P_MB)!.canonicalHe.includes("לא רשום בכספים"));
+    const ra = reconcileOf(sr, P_MB);
+    // D4 (Owner-approved 2026-10-05): the reconcile now carries the ONE canonical path, built ONLY from the report + the shared matcher (no row in Finance → ADD_TRANSACTION prefilled; the missing date is asked, never invented)
+    ok("10. a payment the Owner says he RECEIVED → the missing-income question is a reconciliation (\"not recorded in Finance\") whose action comes only from the report", !asks(sr, P_MB) && ra?.state === "KNOWN_CONTEXT_RECONCILE" && ra.canonicalHe.includes("לא רשום בכספים") && ra.actions.length === 1 && ra.actions[0].actionId === "ADD_TRANSACTION" && ra.actions[0].args.amount === 2000 && ra.actions[0].args.type === "income" && ra.actions[0].args.paymentStatus === "התקבל" && ra.actions[0].missing.join() === "date", ra);
   }
 
   section("CASE 11 — the finance exception is respected by every consumer");

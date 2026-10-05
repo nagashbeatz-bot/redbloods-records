@@ -402,7 +402,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
   }
 
   // ── F2.8–F2.10: consume the Owner's active answers (OWNER_DECISION — never money) ──
-  const answered = applyOwnerAnswers(issues, ownerAnswers, ownerKnowledge);
+  const answered = applyOwnerAnswers(issues, ownerAnswers, ownerKnowledge, raw.transactions);
   const open = (t: IssueType) => issues.filter((i) => i.issueType === t && !i.ownerResolved);
   const openOrphans = orphanQueue.filter((o) => !issues.some((i) => i.issueType === "ORPHAN_FINANCE_SETTING" && i.subjectId === o.projectId && i.ownerResolved));
 
@@ -442,7 +442,7 @@ export function buildFinanceIntegrity(raw: FinanceRaw, state: PartnerFinanceStat
  * it); a different fingerprint → the facts changed, the question is asked again and the new answer will
  * supersede the old one. Mutates only objects built in this call. Never touches any money figure.
  */
-function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerAnswer[], knowledge: readonly FinanceKnowledgeContext[]): PartnerFinanceIntegrityState["ownerAnswers"] {
+function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerAnswer[], knowledge: readonly FinanceKnowledgeContext[], transactions: FinanceRaw["transactions"]): PartnerFinanceIntegrityState["ownerAnswers"] {
   const byQuestion = new Map(answers.map((a) => [a.questionId, a]));
   let applied = 0, outdated = 0;
   const obligations: OwnerDeclaredObligation[] = [];
@@ -475,7 +475,7 @@ function applyOwnerAnswers(issues: RehabIssue[], answers: readonly FinanceOwnerA
     if (!a || !label || !current) {
       if (a && label) outdated++;
       // Decision gate: no current answer, but ACTIVE Owner knowledge linked to THIS entity → a reconciliation, never a fresh question.
-      const r = reconcileForKnowledge(i, knowledge);
+      const r = reconcileForKnowledge(i, knowledge, transactions);
       if (r) { i.decision = "KNOWN_CONTEXT_RECONCILE"; i.reconcile = r; q.gate = { state: "KNOWN_CONTEXT_RECONCILE", knownHe: r.knownHe, reconcile: r }; }
       continue;
     }

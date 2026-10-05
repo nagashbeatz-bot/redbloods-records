@@ -16,6 +16,9 @@ import { ACT_TABLES } from "../lib/partner/act/store-supabase";
 import { guardOutput } from "../lib/integrations/partner-mcp/tools";
 import { matchReportedPayment } from "../lib/partner/finance/payment-match";
 import type { FinanceTxRow } from "../lib/partner/finance/types";
+import { financeKnowledgeContextOf, reconcileForKnowledge } from "../lib/partner/finance/decision-gate";
+import { canonicalEffectOf } from "../lib/partner/owner-knowledge/propose";
+import type { OwnerKnowledgeRecord } from "../lib/partner/owner-knowledge/store";
 import type { Plan } from "../lib/partner/act/types";
 
 let pass = 0, fail = 0;
@@ -93,6 +96,44 @@ const tx = (o: Partial<FinanceTxRow> & { id: string }): FinanceTxRow => ({ proje
     ok("3n. a client / show subject or unread Finance → UNKNOWN (never 'not recorded')", matchReportedPayment({ ...base, subjectKey: `client:${U(3)}` }, []).kind === "UNKNOWN" && matchReportedPayment(base, null).kind === "UNKNOWN");
     const srv = read("lib/partner/owner-knowledge/server.ts");
     ok("3o. financeMatch (the ALREADY_RECORDED_IN_FINANCE note) uses the ONE matcher — no second rule", /matchReportedPayment\(/.test(srv) && !/Number\(t\.amount\) === amount/.test(srv));
+  }
+
+  console.log("\nS4. Stage 2 — a reported payment proposes the ONE canonical path (never written, never guessed)");
+  {
+    const today = "2026-10-05";
+    const issue = (o: Partial<{ issueType: string; subjectId: string }> = {}) => ({ issueType: o.issueType ?? "COMPLETED_WORK_NO_INCOME", subjectType: "project", subjectId: o.subjectId ?? U(10), subjectLabel: "יהלום", amount: null, currency: "₪", evidence: [] });
+    const rec = (o: Partial<OwnerKnowledgeRecord> & { id: string; value: Record<string, unknown> }): OwnerKnowledgeRecord => ({ createdAt: "2026-10-04T10:00:00Z", kind: "PAYMENT_REPORTED_BY_OWNER", subjectKey: P, identityKeys: [P], slotKey: `${o.id}-slot`, epistemic: "OWNER_REPORTED", meaningHe: "הבוס דיווח: התקבל ₪1,000", operation: "ASSERT", supersedesId: null, reviewAt: null, expiresAt: null, ...o } as OwnerKnowledgeRecord);
+    const RECV = { direction: "RECEIVED", amount: 1000, currency: "₪", date: "2026-10-03" };
+    const ctxOf = (rs: OwnerKnowledgeRecord[]) => financeKnowledgeContextOf(rs, today);
+    const none = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: RECV })]), []);
+    ok("4a. no row in Finance → KNOWN_CONTEXT_RECONCILE + ADD_TRANSACTION prefilled (project, income, amount, currency, התקבל, date) — a proposal only", none?.state === "KNOWN_CONTEXT_RECONCILE" && none.actions.length === 1 && none.actions[0].actionId === "ADD_TRANSACTION" && JSON.stringify(none.actions[0].args) === JSON.stringify({ project: P, type: "income", amount: 1000, currency: "₪", paymentStatus: "התקבל", date: "2026-10-03" }) && none.actions[0].missing.length === 0, none);
+    const noDate = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: { direction: "RECEIVED", amount: 1000, currency: "₪" } })]), []);
+    ok("4b. a report without a date → the date is MISSING (asked), never invented", noDate?.actions[0].missing.join() === "date" && !("date" in (noDate?.actions[0].args ?? {})), noDate?.actions);
+    const expd = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: RECV })]), [tx({ id: "t9", status: "צפוי" })]);
+    ok("4c. exactly ONE expected row of the same amount + currency → SET_TRANSACTION_STATUS on THAT row → התקבל (never a second row)", expd?.actions.length === 1 && expd.actions[0].actionId === "SET_TRANSACTION_STATUS" && expd.actions[0].args.transaction === "transaction:t9" && expd.actions[0].args.paymentStatus === "התקבל", expd?.actions);
+    const amb = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: RECV })]), [tx({ id: "a", status: "צפוי" }), tx({ id: "b", status: "צפוי" })]);
+    ok("4d. two candidate rows → a reconcile line that ASKS which (no action, nothing guessed) — still not a fresh question", amb?.state === "KNOWN_CONTEXT_RECONCILE" && amb.actions.length === 0 && /לא אנחש/.test(amb.canonicalHe), amb);
+    const part = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: RECV })]), [tx({ id: "a", status: "צפוי", amount: 2500 })]);
+    ok("4e. partial payment vs a different expected amount → ASK (no action)", part?.actions.length === 0 && /חלקי/.test(part.canonicalHe), part?.canonicalHe);
+    const cur = reconcileForKnowledge(issue(), ctxOf([rec({ id: "k1", value: RECV })]), [tx({ id: "a", status: "צפוי", currency: "$" })]);
+    ok("4f. a different currency → ASK (no action)", cur?.actions.length === 0 && /מטבע/.test(cur.canonicalHe), cur?.canonicalHe);
+    const done = reconcileForKnowledge(issue({ issueType: "OVERDUE_RECEIVABLE_REASON_UNKNOWN" }), ctxOf([rec({ id: "k1", value: RECV })]), [tx({ id: "a", status: "התקבל" })]);
+    ok("4g. the reported payment is ALREADY recorded → the report does not explain a remaining issue (no duplicate action; the issue is asked on its own facts)", done === null, done);
+    const paid = ctxOf([rec({ id: "k2", value: { direction: "PAID", amount: 1000, currency: "₪" } })]);
+    ok("4h. 'שילמתי' (PAID) never reconciles a missing-INCOME issue — never income", paid.length === 0 && reconcileForKnowledge(issue(), paid, []) === null);
+    const other = reconcileForKnowledge(issue({ subjectId: U(11) }), ctxOf([rec({ id: "k1", value: RECV })]), []);
+    ok("4i. cross-entity: a report on project A never touches project B (same amount)", other === null, other);
+    const withdrawn = [rec({ id: "k1", value: RECV, slotKey: "s" }), rec({ id: "k1w", value: RECV, slotKey: "s", operation: "WITHDRAW", supersedesId: "k1", createdAt: "2026-10-05T09:00:00Z" })];
+    ok("4j. a withdrawn report stops affecting the gate (activeKnowledge)", ctxOf(withdrawn).length === 0 && reconcileForKnowledge(issue(), ctxOf(withdrawn), []) === null);
+    // the propose preview uses the SAME gate with the live rows; a WITHDRAW is never previewed as an assertion
+    const src = { finance: { status: "OK", value: { raw: { transactions: [tx({ id: "t9", status: "צפוי" })] }, integrity: { issues: [{ ...issue(), ownerResolved: false, reconcile: null, recommendedOwnerQuestion: { textHe: "מה קרה?" } }] } } } } as never;
+    const item = { kind: "PAYMENT_REPORTED_BY_OWNER", subjectKey: P, identityKeys: [P], value: RECV, meaningHe: "התקבל ₪1,000" };
+    const eff = canonicalEffectOf(src, [item as never], today);
+    ok("4k. the knowledge preview shows the canonical path (SET_TRANSACTION_STATUS t9) and canonicalEffect NONE — saving knowledge changes no record", eff.canonicalEffect === "NONE" && eff.canonicalPath.length === 1 && eff.canonicalPath[0].actionId === "SET_TRANSACTION_STATUS" && eff.stillSurfaced[0]?.willAppearAs === "RECONCILIATION", eff);
+    const effW = canonicalEffectOf(src, [{ ...item, operation: "WITHDRAW" } as never], today);
+    ok("4l. a WITHDRAW preview is not presented as the assertion (no reconcile, no canonical path)", effW.canonicalPath.length === 0 && effW.stillSurfaced.every((x) => x.willAppearAs !== "RECONCILIATION"), effW);
+    const om = read("lib/partner/system/owner-model.ts");
+    ok("4m. the payment workflow names the existing primitives (no stale FUTURE_PRIMITIVE_REQUIRED)", !/RECORD_RECEIVED_INCOME — FUTURE_PRIMITIVE_REQUIRED/.test(om) && /SET_TRANSACTION_STATUS \(צפוי → התקבל\)/.test(om));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

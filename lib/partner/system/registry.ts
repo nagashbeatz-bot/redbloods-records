@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.05-92";
+export const SYSTEM_BASELINE_VERSION = "2026.10.05-93";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1101,4 +1101,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.05-90", date: "2026-10-05", domain: "SUNNY_CORE", dimension: "execute", from: "FULL", to: "FULL", noteHe: "ניסוח הצלחה לפי מה שהאימות באמת מוכיח (verifyKind): FRESH_READ = 'בוצע — בדקתי מחדש'; PARTIAL = הרשומה הראשית נבדקה, השפעות נוספות לא; RECEIPT (Push / מייל / סנכרון / קבצים) = אישור של המערכת שביצעה, לא בדיקה מחדש. freshState של פעולת קבלה לא מוצג כרשומה; פעולת קבלה שנקטעה = OUTCOME_UNKNOWN (ייתכן שקרתה), לא 'לא בוצע'. בלי שינוי בהתנהגות הפעולות עצמן." },
   { version: "2026.10.05-91", date: "2026-10-05", domain: "AGENT_ALERTS", dimension: "domain", from: "LEGACY_ALERT_ENGINE_PRESENT", to: "AGENT_ALERTS_REMOVED", noteHe: "Agent Alerts הוסרו (החלטת בעלים): המנוע, 13 הכללים, בדיקת החגים ו'השבוע הבא לא סגור', ה-Push שלהם, הראוטים /api/agent/alerts · check · snapshot, הבאדג' / הפאנלים / הכרטיס, המקור המשני ב-COO הישן, הקריאה של סאני (גם היסטוריה), ה-target והפעולה MARK_AGENT_ALERT_HANDLED. מחיקת פרויקט כבר לא תלויה בטבלה. agent_alerts נשארה רדומה ב-schema (בלי קורא ובלי כותב). היעדים העסקיים (goals) נשארו ועברו לדומיין COMPANY_OVERVIEW. בלי DB / DROP / ניקוי." },
   { version: "2026.10.05-92", date: "2026-10-05", domain: "SUNNY_CORE", dimension: "execute", from: "CLAIM_CAN_BE_TRIMMED", to: "CLAIM_ALWAYS_KEPT", noteHe: "ONE memory, שלב 1 (P0): תוצאת פעולה גדולה שנחתכת שומרת תמיד את מה שהאימות מוכיח (canonicalEffect / verification / הודעה / שלבים); שלב קבלה (Push / מייל / סנכרון) שנקטע = תוצאה לא ידועה (ייתכן שבוצע) — לא נכשל ולא בוצע; תשלום שדיווחת נחשב «כבר רשום בכספים» רק מול שורה שהכסף בה באמת עבר (התקבל / שולם) — לא צפוי ולא בוטל." },
+  { version: "2026.10.05-93", date: "2026-10-05", domain: "FINANCE", dimension: "propose", from: "PAYMENT_REPORT_CONTEXT_ONLY", to: "PAYMENT_REPORT_CANONICAL_PATH", noteHe: "ONE memory, שלב 2: תשלום שדיווחת (התקבל) מוצג כ'כבר אמרת לי' עם הדרך הקנונית — שורה צפויה אחת תואמת (אותו פרויקט, סכום ומטבע) → לסמן אותה התקבל; אין שורה → רישום חדש (בדיקת כפילות, תצוגה ואישור שלך); כמה שורות / סכום אחר / מטבע אחר → שאלה, בלי לנחש. תשלום שכבר רשום לא מוצע שוב. 'שילמתי' לעולם לא הופך להכנסה. ביטול ידע לא מוצג בתצוגה כאילו נאמר." },
 ];

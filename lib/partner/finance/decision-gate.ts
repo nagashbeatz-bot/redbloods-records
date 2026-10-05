@@ -20,12 +20,14 @@
  */
 import { COMPANY_KEY } from "../owner-knowledge/kinds";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { matchReportedPayment, REALIZED_STATUS_FOR, type PaymentMatch } from "./payment-match";
+import type { FinanceTxRow } from "./types";
 
 export type DecisionGateState = "ASK" | "KNOWN_MATCHES" | "KNOWN_DECISION_RECONCILE" | "KNOWN_CONTEXT_RECONCILE";
 export type ReconcileState = "KNOWN_DECISION_RECONCILE" | "KNOWN_CONTEXT_RECONCILE";
 
 /** The canonical actions a known decision can be synchronized with — existing Act primitives only. */
-export type ReconcileActionId = "SET_FINANCE_EXCEPTION" | "SET_AGREED_PRICE" | "SET_TRANSACTION_STATUS";
+export type ReconcileActionId = "SET_FINANCE_EXCEPTION" | "SET_AGREED_PRICE" | "SET_TRANSACTION_STATUS" | "ADD_TRANSACTION";
 export interface ReconcileAction {
   actionId: ReconcileActionId;
   /** Typed arguments already known from the records / the answer (entity keys, booleans, dates, reasons). */
@@ -71,6 +73,8 @@ export interface FinanceKnowledgeContext {
   meaningHe: string;
   /** YYYY-MM-DD (decidedOn / observedAt when given, else the day it was learned). */
   knownAt: string;
+  /** PAYMENT_REPORTED_BY_OWNER only: what was reported (typed fields — never parsed from text). */
+  payment?: { direction: "RECEIVED" | "PAID"; amount: number; currency: string; date: string | null };
 }
 
 /** Kinds that speak about an entity's money (the only ones the finance gate considers). */
@@ -101,7 +105,10 @@ export function financeKnowledgeContextOf(records: readonly OwnerKnowledgeRecord
       for (const k of [r.subjectKey, ...r.identityKeys]) if (k !== COMPANY_KEY && ENTITY_KEY_RE.test(k)) keys.add(k);
       for (const v of Object.values(r.value)) if (typeof v === "string" && ENTITY_KEY_RE.test(v)) keys.add(v);
       const knownAt = ymd(r.value.decidedOn) ?? ymd(r.value.observedAt) ?? ymd(r.createdAt) ?? todayIL;
-      return { id: r.id, kind: r.kind, entityKeys: [...keys].sort(), meaningHe: r.meaningHe, knownAt };
+      const payment = r.kind === "PAYMENT_REPORTED_BY_OWNER" && (r.value.direction === "RECEIVED" || r.value.direction === "PAID") && Number.isFinite(Number(r.value.amount)) && typeof r.value.currency === "string"
+        ? { direction: r.value.direction as "RECEIVED" | "PAID", amount: Number(r.value.amount), currency: r.value.currency, date: ymd(r.value.date) }
+        : undefined;
+      return { id: r.id, kind: r.kind, entityKeys: [...keys].sort(), meaningHe: r.meaningHe, knownAt, ...(payment ? { payment } : {}) };
     })
     .filter((k) => k.entityKeys.length > 0);
 }
@@ -174,13 +181,45 @@ export function reconcileForAnswer(i: GateIssue, answer: { contextId: string; an
 }
 
 /**
+ * A reported payment → the ONE canonical path (Owner decision D4, 2026-10-05), from the shared matcher (payment-match.ts):
+ *   RECORDED        → nothing (the money is already in Finance; the report does not explain a remaining issue).
+ *   EXPECTED_UNIQUE → SET_TRANSACTION_STATUS on THAT row (income → התקבל, expense → שולם) — never a second row.
+ *   NONE            → ADD_TRANSACTION (prefilled from the report; the plan still runs dupGate → preview → approval → read-back).
+ *   AMBIGUOUS       → no action: the Owner says which row / amount (never guessed).
+ *   UNKNOWN         → no action (Finance unread / not a project).
+ * Direction is never flipped (RECEIVED → income only, PAID → expense only).
+ */
+export function paymentPathOf(entityKey: string, payment: NonNullable<FinanceKnowledgeContext["payment"]>, transactions: readonly FinanceTxRow[] | null): { match: PaymentMatch; canonicalHe: string; actions: ReconcileAction[] } {
+  const match = matchReportedPayment({ subjectKey: entityKey, direction: payment.direction, amount: payment.amount, currency: payment.currency }, transactions);
+  const money = `${payment.currency}${payment.amount.toLocaleString("en-US")}`;
+  const word = payment.direction === "RECEIVED" ? "התקבל" : "שולם";
+  if (match.kind === "RECORDED") return { match, canonicalHe: `התשלום (${money}) כבר רשום בכספים כ${word}`, actions: [] };
+  if (match.kind === "EXPECTED_UNIQUE") return { match, canonicalHe: `בכספים יש שורה צפויה אחת של ${money} שעדיין לא מסומנת ${word}`, actions: [{ actionId: "SET_TRANSACTION_STATUS", args: { transaction: `transaction:${match.txId}`, paymentStatus: match.toStatus }, missing: [], required: true, noteHe: `מסמן את השורה הקיימת כ${match.toStatus} — לא נוצרת שורה נוספת.` }] };
+  if (match.kind === "NONE") {
+    const type = payment.direction === "RECEIVED" ? "income" : "expense";
+    return { match, canonicalHe: `התשלום שדיווחת עליו (${money}) עדיין לא רשום בכספים`, actions: [{ actionId: "ADD_TRANSACTION", args: { project: entityKey, type, amount: payment.amount, currency: payment.currency, paymentStatus: REALIZED_STATUS_FOR[payment.direction], ...(payment.date ? { date: payment.date } : {}) }, missing: payment.date ? [] : ["date"], required: true, noteHe: "רישום חדש בכספים — עובר בדיקת כפילות, תצוגה ואישור שלך לפני שנכתב." }] };
+  }
+  if (match.kind === "AMBIGUOUS") {
+    const why = match.reason === "MULTIPLE_CANDIDATES" ? `יש בכספים ${match.txIds.length} שורות צפויות של ${money} — איזו מהן?`
+      : match.reason === "AMOUNT_DIFFERS" ? `בכספים יש שורה פתוחה בסכום אחר — זה תשלום חלקי, תיקון סכום או שורה אחרת?`
+      : match.reason === "CURRENCY_DIFFERS" ? `בכספים יש שורה פתוחה במטבע אחר — באיזה מטבע זה התקבל?`
+      : `השורה התואמת מסומנת חלקי — כמה בדיוק עבר?`;
+    return { match, canonicalHe: `לא סימנתי ולא אנחש: ${why}`, actions: [] };
+  }
+  return { match, canonicalHe: "לא הצלחתי לבדוק מול הכספים — לא אומר שזה רשום ולא שזה חסר", actions: [] };
+}
+
+/**
  * KNOWN_CONTEXT_RECONCILE: no answer, but ACTIVE money knowledge is linked to the same entity. The newest one is quoted; the
  * canonical action is suggested only where it is the existing finance rule for this issue (the Owner confirms it in the plan).
+ * A reported payment that Finance ALREADY shows does not explain the issue (the issue is about something else, e.g. the
+ * remaining balance) → it is skipped, and the issue is asked normally.
  */
-export function reconcileForKnowledge(i: GateIssue, knowledge: readonly FinanceKnowledgeContext[]): ReconcileItem | null {
+export function reconcileForKnowledge(i: GateIssue, knowledge: readonly FinanceKnowledgeContext[], transactions: readonly FinanceTxRow[] | null = null): ReconcileItem | null {
   const entityKey = issueEntityKey(i);
   if (!entityKey) return null;
-  const k = knowledge.filter((x) => x.entityKeys.includes(entityKey) && !!KIND_ISSUES[x.kind]?.has(i.issueType)).sort((a, b) => b.knownAt.localeCompare(a.knownAt) || a.id.localeCompare(b.id))[0];
+  const explains = (x: FinanceKnowledgeContext) => !(x.payment && entityKey.startsWith("project:") && matchReportedPayment({ subjectKey: entityKey, direction: x.payment.direction, amount: x.payment.amount, currency: x.payment.currency }, transactions).kind === "RECORDED");
+  const k = knowledge.filter((x) => x.entityKeys.includes(entityKey) && !!KIND_ISSUES[x.kind]?.has(i.issueType) && explains(x)).sort((a, b) => b.knownAt.localeCompare(a.knownAt) || a.id.localeCompare(b.id))[0];
   if (!k) return null;
   const projectKey = entityKey.startsWith("project:") ? entityKey : null;
   const knownHe = `כבר אמרת לי (${ddmmyyyy(k.knownAt)}): ${clip(k.meaningHe, 220)}`;
@@ -192,7 +231,8 @@ export function reconcileForKnowledge(i: GateIssue, knowledge: readonly FinanceK
     actions = [{ ...exceptionAction(projectKey, "", k.knownAt), args: { project: projectKey, on: true, date: k.knownAt }, missing: ["reason"] }, optionalPriceAction(projectKey)];
     orderHe = EXCEPTION_FIRST_HE;
   } else if (k.kind === "PAYMENT_REPORTED_BY_OWNER") {
-    canonicalHe = "התשלום שדיווחת עליו עדיין לא רשום בכספים";
+    if (projectKey && k.payment) { const p = paymentPathOf(projectKey, k.payment, transactions); canonicalHe = p.canonicalHe; actions = p.actions; }
+    else canonicalHe = "התשלום שדיווחת עליו עדיין לא רשום בכספים";
   }
   return {
     state: "KNOWN_CONTEXT_RECONCILE", issueType: i.issueType, subject: { type: i.subjectType, id: i.subjectId, labelHe: i.subjectLabel }, entityKey,

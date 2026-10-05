@@ -326,16 +326,17 @@ export function canonicalEffectOf(src: GatewaySources, items: ReadonlyArray<Pick
   const fin = src.finance?.status === "OK" ? src.finance.value : null;
   const issues: RehabIssue[] = (fin?.integrity?.issues ?? []) as RehabIssue[];
   // The knowledge as it will be stored (ASSERTs), in the decision gate's own shape — exactly what the next read will see.
-  const asRecords = items.map((x, i) => ({ id: `preview-${i}`, kind: x.kind, subjectKey: x.subjectKey, identityKeys: x.identityKeys, slotKey: `preview-${i}`, value: x.value, epistemic: "OWNER_DECISION", meaningHe: x.meaningHe, operation: "ASSERT" as const, supersedesId: null, reviewAt: null, expiresAt: null, createdAt: `${todayIL}T00:00:00.000Z` }));
+  // A WITHDRAW removes knowledge — it never appears in the preview as if it were asserted (it can only stop a reconcile).
+  const asRecords = items.filter((x) => (x as { operation?: string }).operation !== "WITHDRAW").map((x, i) => ({ id: `preview-${i}`, kind: x.kind, subjectKey: x.subjectKey, identityKeys: x.identityKeys, slotKey: `preview-${i}`, value: x.value, epistemic: "OWNER_DECISION", meaningHe: x.meaningHe, operation: "ASSERT" as const, supersedesId: null, reviewAt: null, expiresAt: null, createdAt: `${todayIL}T00:00:00.000Z` }));
   const ctx = financeKnowledgeContextOf(asRecords as never, todayIL);
   const stillSurfaced: StillSurfacedItem[] = [];
   const canonicalPath: CanonicalEffectInfo["canonicalPath"] = [];
   for (const i of issues) {
     const key = issueEntityKey(i);
     if (!key || !linked.includes(key) || i.ownerResolved) continue;
-    const r = i.reconcile ?? reconcileForKnowledge(i, ctx);
+    const r = i.reconcile ?? reconcileForKnowledge(i, ctx, fin?.raw?.transactions ?? null);
     stillSurfaced.push({ entityKey: key, issueType: i.issueType, textHe: (r?.textHe ?? i.recommendedOwnerQuestion?.textHe ?? i.subjectLabel ?? i.issueType).slice(0, 300), willAppearAs: r ? "RECONCILIATION" : i.recommendedOwnerQuestion ? "QUESTION" : "ISSUE" });
-    for (const a of r?.actions ?? []) if (!canonicalPath.some((c) => c.actionId === a.actionId && c.args.project === a.args.project)) canonicalPath.push({ actionId: a.actionId, args: a.args, missing: a.missing, required: a.required });
+    for (const a of r?.actions ?? []) if (!canonicalPath.some((c) => c.actionId === a.actionId && c.args.project === a.args.project && c.args.transaction === a.args.transaction)) canonicalPath.push({ actionId: a.actionId, args: a.args, missing: a.missing, required: a.required });
   }
   const recon = stillSurfaced.filter((x) => x.willAppearAs === "RECONCILIATION").length;
   const effectHe = [
