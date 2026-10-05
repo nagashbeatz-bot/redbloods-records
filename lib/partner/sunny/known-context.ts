@@ -246,6 +246,11 @@ export const QUESTION_HOMES: Readonly<Record<string, Home>> = {
   // mix / Victor
   HANDOFF: { home: "CANONICAL_AND_CONTEXT", identity: "HANDOFF", answerHe: "SET_ENGINEER_WORK_STATUS / UPDATE_SEND_LOG_ENTRY (לעולם לא DELETE_SEND_LOG_ENTRY — מוחק בשרשור); 'אצלו' = הקשר" },
   PAYMENT: { home: "CANONICAL_AND_CONTEXT", identity: "PAYMENT", answerHe: "RECORD_ENGINEER_PAYMENT (שולח Push לסטיבן — רק באישורך) / Finance; 'שולם מחוץ למערכת' = הקשר" },
+  // "טופל / נתת פידבק מחוץ למערכת?" on ONE work: Victor → partner_answer_question with the question's questionRef (the case
+  // bridge, Owner Q1); any engineer → VENDOR_COMMITMENT on the work or BUSINESS_DECISION ref <work>. A new version reopens.
+  OUTSIDE_COMMUNICATION: { home: "CANONICAL_AND_CONTEXT", identity: "OUTSIDE_COMMUNICATION", answerHe: "שליחת הערות / גרסה במערכת; ויקטור: לענות עם ה-questionRef של השאלה (partner_answer_question); מהנדס מיקס: 'דיברנו / נתתי פידבק בחוץ' = הקשר על העבודה" },
+  // label project with no recorded ball evidence: a blocker / follow-up the Owner states is context on THAT project
+  PROJECT_STATE: { home: "CANONICAL_AND_CONTEXT", identity: "PROJECT_STATE", answerHe: "עבודת ויקטור / מיקס / משימה / סטטוס פרויקט; 'מחכה לאמן' / 'בהקפאה' = הקשר על הפרויקט (PROJECT_BLOCKER או BUSINESS_DECISION about)" },
   // clients
   CONVERSION: { home: "CANONICAL_AND_CONTEXT", identity: "CONVERSION", answerHe: "CONVERT_PROPOSAL / LINK_PROPOSAL_TO_PROJECT; 'לא צריך פרויקט' = הקשר" },
 };
