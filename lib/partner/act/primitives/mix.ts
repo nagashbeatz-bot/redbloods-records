@@ -41,6 +41,8 @@ export interface MixFamilyWriters {
   updatePremixNote(id: string, p: { noteText?: string; status?: string }): Promise<void>;
   deletePremixNote(id: string): Promise<void>;
   notifyMixReady(workId: string, sendAgain: boolean): Promise<Res & { alreadySent?: boolean; skipped?: boolean }>;
+  /** The app's own "already sent" marker for this work's mix-ready push (SENT / RECORDED_UNVERIFIED) — read only. */
+  readMixReadySent(workId: string): Promise<boolean>;
   sendMixNotes(workId: string, versionId: string | null): Promise<Res & { skipped?: boolean }>;
 }
 
@@ -344,9 +346,10 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "NOTIFY_MIX_READY", kinds: ["mix-work"],
     meta: meta("'שלח ל-Steven' — Push עבודה חדשה מוכנה", "Send Steven the 'new mix job ready' push (once per work unless sendAgain)", [K("mixWork"), { name: "sendAgain", kind: "boolean", required: false }], ["notified"], "notifyStevenMixReady (lib/steven-mix-ready-notify)", { effects: ["PUSH"], riskClass: "EXTERNAL_COMMUNICATION", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await onWork(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, notified: false } }; },
-    async read(d, id) { const f = await workFields(d, id); return f ? { ...f, notified: false } : null; },
-    plan: (_a, cur) => (isSteven(cur) ? { ok: true, after: { notified: true } } : refuse("NOT_STEVEN", "ה-Push הזה קיים רק ל-Steven")),
+    // the marker the app already keeps (steven_mix_ready_pushed_<id>) says it was sent — read it at plan time (2026-10-05)
+    async resolve(d, a) { const r = await onWork(d, a); return "ok" in r ? r : { ...r, fields: { ...r.fields, notified: await d.readMixReadySent(r.id) } }; },
+    async read(d, id) { const f = await workFields(d, id); return f ? { ...f, notified: await d.readMixReadySent(id) } : null; },
+    plan: (a, cur) => (!isSteven(cur) ? refuse("NOT_STEVEN", "ה-Push הזה קיים רק ל-Steven") : cur.notified === true && a.sendAgain !== true ? refuse("ALREADY_SENT", "כבר שלחתי ל-Steven שהעבודה הזאת מוכנה — לשלוח שוב? (sendAgain)") : { ok: true, after: { notified: true } }),
     async apply(d, id, _a, args) { const r = await d.notifyMixReady(id, args.sendAgain === true); if (!r.ok || r.skipped || r.alreadySent) throw new Error(r.alreadySent ? "already sent for this work — ask again with sendAgain" : r.skipped ? "push is not allowed in this environment" : `not sent: ${r.reason ?? "unknown"}`); return { receipt: "sent" }; },
     verify: async (_d, _id, _a, out) => out.receipt === "sent",
     requiredValues: () => ["Steven"],

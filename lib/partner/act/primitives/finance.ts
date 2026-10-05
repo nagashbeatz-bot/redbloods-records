@@ -304,6 +304,8 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     resolve: onProjectFinance, read: settingsRead,
     plan(a, cur) {
       if (typeof a.agreedPrice !== "number" || !(a.agreedPrice >= 0)) return refuse("BAD_MONEY", "מחיר לא תקין");
+      // a price of 0 is "no price" for every reader (> 0 only) — it would leave PRICE_MISSING open and loop (2026-10-05)
+      if (a.agreedPrice === 0) return refuse("ZERO_PRICE", "מחיר 0 לא נרשם — הוא נקרא בכל המערכת כ'אין מחיר'. אם הפרויקט לא בתשלום / ויתרת על הגבייה — זו חריגה כספית (SET_FINANCE_EXCEPTION עם הסיבה)");
       if (!TX_CURRENCIES.includes(String(a.currency))) return refuse("BAD_CURRENCY", "מטבע לא מוכר");
       return finishPlan(cur, { agreedPrice: a.agreedPrice, currency: String(a.currency) });
     },

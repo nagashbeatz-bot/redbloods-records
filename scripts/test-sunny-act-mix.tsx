@@ -59,6 +59,7 @@ function mk() {
     async createPremixNote(tid: string, text: string) { calls.push("createPremixNote"); const id = U(++n); w.notes[id] = { targetId: tid, text, status: "open" }; return id; },
     async updatePremixNote(id: string, p: { noteText?: string; status?: string }) { calls.push("updatePremixNote"); if (p.noteText !== undefined) w.notes[id].text = p.noteText; if (p.status !== undefined) w.notes[id].status = p.status; },
     async deletePremixNote(id: string) { calls.push("deletePremixNote"); delete w.notes[id]; },
+    async readMixReadySent() { return !!w.sentOnce; },
     async notifyMixReady(wid: string, again: boolean) { calls.push("notifyMixReady"); if (w.sentOnce && !again) return { ok: true, alreadySent: true }; w.sentOnce = true; w.pushes.push(`ready:${wid}`); return { ok: true }; },
     async sendMixNotes(wid: string) { calls.push("sendMixNotes"); w.pushes.push(`notes:${wid}`); return { ok: true }; },
   };

@@ -22,6 +22,8 @@ import { activeKnowledge, type OwnerKnowledgeRecord } from "../lib/partner/owner
 import { knowledgeKind } from "../lib/partner/owner-knowledge/kinds";
 import { followUpKnowledgeFor, followUpKnown, vendorWorkKnown, victorDeliveryQuestionId } from "../lib/partner/sunny/known-context";
 import { buildVictorView } from "../lib/partner/victor/view";
+import { PRIMITIVES_BY_ID } from "../lib/partner/act/primitives";
+import { recentActionsFor } from "../lib/integrations/partner-mcp/mcp";
 import { buildNeedsMe } from "../lib/partner/needs-me/curate";
 import { buildClientView } from "../lib/partner/clients/view";
 import type { Plan } from "../lib/partner/act/types";
@@ -271,6 +273,54 @@ const tx = (o: Partial<FinanceTxRow> & { id: string }): FinanceTxRow => ({ proje
     ok("8n. the record signal WAITING_ON_OWNER stays for both works (the ball is unchanged)", vv.signals.filter((s) => s.code === "WAITING_ON_OWNER").length === 2);
     const vv2 = buildVictorView(vsrc([], [ans({})]));
     ok("8o. the existing review answer (dashboard) also turns the question into a known line for THAT work only", vv2.known.some((k) => k.entityKey === W1 && k.basis.kind === "OWNER_ANSWER") && vv2.questions.some((q) => q.kind === "OUTSIDE_COMMUNICATION" && q.work === W2));
+  }
+
+  console.log("\nS9. Stage 6 — the Action Layer: markers read, PRIOR_EXECUTION warning only, recentActions provenance only, price 0 refused");
+  {
+    const SV = PRIMITIVES_BY_ID.get("SEND_VICTOR_VERSION_NOTES")!;
+    ok("9a. SEND_VICTOR_VERSION_NOTES: the review already sent (no newer draft) → the plan refuses ALREADY_SENT (the record says sent — no second push)", (SV.plan({ versionKey: "v2" }, { title: "Mad Luv", hasNotes: true, notesSent: true }) as { ok: boolean; code?: string }).code === "ALREADY_SENT");
+    ok("9b. …new notes saved as a draft after the send → plannable again", (SV.plan({ versionKey: "v2" }, { title: "Mad Luv", hasNotes: true, notesSent: false }) as { ok: boolean }).ok === true);
+    ok("9c. the read derives notesSent from the record (sent && !draft) — never a constant", /notesSent: !!rv\?\.sent && !rv\.draft/.test(read("lib/partner/act/primitives/victor.ts")));
+    const NM = PRIMITIVES_BY_ID.get("NOTIFY_MIX_READY")!;
+    const st = { notified: true, engineerName: "Steven" };
+    ok("9d. NOTIFY_MIX_READY: the app's marker says sent → refused at PLAN time (ALREADY_SENT), not a failed step; sendAgain → plannable", (NM.plan({}, st) as { code?: string }).code === "ALREADY_SENT" && (NM.plan({ sendAgain: true }, st) as { ok: boolean }).ok === true && (NM.plan({}, { notified: false, engineerName: "Steven" }) as { ok: boolean }).ok === true);
+    ok("9d2. the read uses the existing marker reader (readMixReadySent), never a constant false", /notified: await d\.readMixReadySent\(id\)/.test(read("lib/partner/act/primitives/mix.ts")));
+    const AP = PRIMITIVES_BY_ID.get("SET_AGREED_PRICE")!;
+    ok("9e. SET_AGREED_PRICE 0 → refused ZERO_PRICE with the no-charge path named (no loop)", (AP.plan({ agreedPrice: 0, currency: "₪" }, { agreedPrice: null, currency: "₪" }) as { code?: string; messageHe?: string }).code === "ZERO_PRICE");
+    // PRIOR_EXECUTION through the real service on the harness: a RECEIPT action (an email report) executed once → the next plan warns
+    const w = { sent: 0 };
+    const m = mkDeps({ async reportEmailConfigured() { return true; }, async sendReportNow() { w.sent++; return { subject: "דוח בוקר" }; } });
+    const p1 = await planAction({ intentHe: "דוח בוקר", actionId: "SEND_REPORT_NOW", args: { report: "morning" } }, OWNER, m.d);
+    ok("9f. first plan of a RECEIPT action → no priorExecution", p1.status === "PREVIEW" && !("priorExecution" in p1), p1);
+    const a1 = await approveAction({ planId: p1.planId, planHash: p1.planHash, confirmationText: "מאשר" }, OWNER, m.d);
+    const e1 = await executeAction({ planId: p1.planId, approvalToken: a1.approvalToken, confirmationText: "מאשר" }, OWNER, m.d);
+    ok("9g. executed: canonicalEffect RECEIPT (never presented as FRESH_READ)", e1.status === "APPLIED_AS_EXPECTED" && e1.canonicalEffect === "RECEIPT" && !/בדקתי מחדש/.test(String(e1.messageHe)), e1);
+    const p2 = await planAction({ intentHe: "דוח בוקר", actionId: "SEND_REPORT_NOW", args: { report: "morning" } }, OWNER, m.d);
+    const pe = (p2.priorExecution as Array<{ outcome: string; warningHe: string; verifyKind: string }> | undefined) ?? [];
+    ok("9h. a second plan → PREVIEW (never blocked) with priorExecution: action + target + time + RECEIPT verification", p2.status === "PREVIEW" && pe.length === 1 && pe[0].outcome === "APPLIED_AS_EXPECTED" && pe[0].verifyKind === "RECEIPT" && /כבר בוצעה בעבר/.test(pe[0].warningHe) && /קבלה/.test(pe[0].warningHe), p2);
+    ok("9i. …and the warning is in the preview's warnings shown to the Boss", JSON.stringify(p2.preview).includes("כבר בוצעה בעבר"));
+    const hist = await planStatus({ history: true }, OWNER, m.d);
+    ok("9j. history carries each step's verifyKind (RECEIPT) — a receipt never reads like a re-read change", (hist.items as Array<{ steps: Array<{ verifyKind: string }> }>).some((x) => x.steps[0]?.verifyKind === "RECEIPT"), hist.items);
+    // an OUTCOME_UNKNOWN earlier run → "ייתכן שכבר בוצעה", never "בוצע"
+    const m2 = mkDeps({ async reportEmailConfigured() { return true; }, async sendReportNow() { return { subject: "x" }; } });
+    const q1 = await planAction({ intentHe: "דוח ערב", actionId: "SEND_REPORT_NOW", args: { report: "evening" } }, OWNER, m2.d);
+    await approveAction({ planId: q1.planId, planHash: q1.planHash, confirmationText: "מאשר" }, OWNER, m2.d);
+    const plan1 = m2.db.rows(ACT_TABLES.plans).find((x) => x.plan_id === q1.planId)!.plan as Plan;
+    const old = new Date(m2.d.nowMs() - 3_600_000).toISOString();
+    m2.db.rows(ACT_TABLES.executions).push({ execution_key: executionKey(planHash(plan1), plan1.steps[0]), plan_id: q1.planId, step_index: 0, action_id: "SEND_REPORT_NOW", action_version: plan1.steps[0].actionVersion, status: "FAILED", outcome: { index: 0, actionId: "SEND_REPORT_NOW", status: "FAILED", detail: `${MAY_HAVE_RUN} interrupted`, replayed: false, at: old }, recorded_at: old });
+    const q2 = await planAction({ intentHe: "דוח ערב", actionId: "SEND_REPORT_NOW", args: { report: "evening" } }, OWNER, m2.d);
+    const pu = (q2.priorExecution as Array<{ outcome: string; warningHe: string }> | undefined) ?? [];
+    ok("9k. an OUTCOME_UNKNOWN earlier run → 'ייתכן שכבר בוצעה … לא אומתה' — never presented as done; still only a warning", q2.status === "PREVIEW" && pu[0]?.outcome === "OUTCOME_UNKNOWN" && /ייתכן/.test(pu[0].warningHe) && /לא אומתה/.test(pu[0].warningHe) && !/כבר בוצעה בעבר/.test(pu[0].warningHe), q2);
+    // recentActions (connector): provenance only; unavailable ≠ "nothing was done"
+    const P = { userId: "owner-user-1", clientId: "client-1", scope: "partner:read partner:act", tokenId: "t" } as never;
+    const deps = (call: () => Promise<Record<string, unknown>>) => ({ config: { actEnabled: true, toolTimeoutMs: 2000 }, act: { call } }) as never;
+    const ra = await recentActionsFor("project:x", P, deps(async () => ({ status: "HISTORY", items: [{ planId: "pl_1", executedAt: "2026-10-05T10:00:00Z", intentHe: { text: "מחיר", trust: "OWNER_REQUEST" }, outcome: "EXECUTED", steps: [{ actionId: "SET_AGREED_PRICE", entity: "project:x", outcome: "APPLIED_AS_EXPECTED", verifyKind: "FRESH_READ" }] }, { planId: "pl_2", outcome: "NOT_EXECUTED", steps: [] }] })));
+    ok("9l. recentActions = provenance only (meaning PROVENANCE_ONLY, the note says the live records are the state); never-executed plans are left out", ra.status === "OK" && ra.meaning === "PROVENANCE_ONLY" && /לא מצב/.test(String(ra.noteHe)) && (ra.items as unknown[]).length === 1, ra);
+    const rb = await recentActionsFor(null, P, deps(async () => { throw new Error("down"); }));
+    ok("9m. history unreadable → UNAVAILABLE + 'זה לא אומר שלא בוצע כלום' (never 'nothing was done')", rb.status === "UNAVAILABLE" && /לא אומר שלא בוצע/.test(String(rb.noteHe)));
+    const rc = await recentActionsFor(null, { ...(P as object), scope: "partner:read" } as never, deps(async () => ({ status: "HISTORY", items: [] })));
+    ok("9n. without the act scope / channel → NOT_CONNECTED (not 'none')", rc.status === "NOT_CONNECTED");
+    ok("9o. recentActions never touches truth: it is attached beside the gateway result (no reader of it in any detector / view)", !/recentActions/.test([read("lib/partner/needs-me/curate.ts"), read("lib/partner/sunny/operating.ts"), read("lib/partner/finance/integrity.ts"), read("lib/partner/cases/engine.ts")].join("\n")));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

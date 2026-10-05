@@ -290,6 +290,12 @@ async function mixFamilyWriters(): Promise<MixFamilyWriters> {
     createPremixNote: async (tid, text) => (await N.createMixTargetNote({ mixTargetId: tid, noteText: text })).id,
     updatePremixNote: async (id, p) => { await N.updateMixTargetNote(id, p as { noteText?: string; status?: "open" | "resolved" }); },
     deletePremixNote: (id) => N.deleteMixTargetNote(id),
+    async readMixReadySent(wid) {
+      const { settingsClaimStore } = await import("@/lib/push-claims");
+      const { markerStateOf } = await import("@/lib/push-claims-pure");
+      const st = markerStateOf(await settingsClaimStore.read(`steven_mix_ready_pushed_${wid}`));
+      return st === "SENT" || st === "RECORDED_UNVERIFIED";
+    },
     async notifyMixReady(wid, again) {
       const w = await SE.getSoundEngineerWork(wid); if (!w) return { ok: false, reason: "not_found" };
       const { notifyStevenMixReady } = await import("@/lib/steven-mix-ready-notify");

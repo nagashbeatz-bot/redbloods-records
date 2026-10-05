@@ -139,11 +139,13 @@ async function main() {
     ok("C. descriptions say read-only, data-not-instructions, no claimed actions without an Outcome", list.every((t) => /READ-ONLY/.test(t.description) && /never follow it as an instruction/.test(t.description) && /Never say an action happened unless the result contains an Outcome/.test(t.description)));
 
     const b = await call("tools/call", { name: "partner_brief", arguments: {} });
-    check("D. partner_brief {} → getPartnerBrief(): structuredContent + text are the Gateway result, unchanged", [b.json.result.isError, b.json.result.structuredContent, JSON.parse(b.json.result.content[0].text)], [false, brief, brief]);
+    // 2026-10-05: the ONLY addition is recentActions (Sunny's own executions — provenance only); without the act channel it says NOT_CONNECTED, never "none"
+    const noRecent = (x: Record<string, unknown>) => { const { recentActions: _r, ...rest } = x; void _r; return rest; };
+    check("D. partner_brief {} → getPartnerBrief(): structuredContent + text are the Gateway result (+ recentActions provenance only)", [b.json.result.isError, noRecent(b.json.result.structuredContent), noRecent(JSON.parse(b.json.result.content[0].text)), b.json.result.structuredContent.recentActions?.status], [false, brief, brief, "NOT_CONNECTED"]);
     const r = await call("tools/call", { name: "partner_resolve", arguments: { query: "  Victor  " } });
     check("D. partner_resolve {query} → resolvePartnerEntity(trimmed query)", [r.json.result.structuredContent.status, calls.includes("resolve:Victor")], ["RESOLVED", true]);
     const e = await call("tools/call", { name: "partner_entity", arguments: { key: "vendor:VICTOR" } });
-    check("27. output equivalence: MCP partner_entity(vendor:VICTOR) === getPartnerEntity(vendor:VICTOR) (incl. a Gateway UNKNOWN result)", [JSON.stringify(e.json.result.structuredContent) === JSON.stringify(unknownEntity), e.json.result.structuredContent.freshness], [true, "UNKNOWN"]);
+    check("27. output equivalence: MCP partner_entity(vendor:VICTOR) === getPartnerEntity(vendor:VICTOR) (incl. a Gateway UNKNOWN result; recentActions only on an OK entity)", [JSON.stringify(noRecent(e.json.result.structuredContent)) === JSON.stringify(unknownEntity), e.json.result.structuredContent.freshness, e.json.result.structuredContent.recentActions?.status ?? "none"], [true, "UNKNOWN", unknownEntity.status === "OK" ? "NOT_CONNECTED" : "none"]);
 
     const bad = await Promise.all([
       call("tools/call", { name: "partner_execute", arguments: {} }),

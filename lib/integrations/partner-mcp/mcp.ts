@@ -72,6 +72,7 @@ export const SERVER_INSTRUCTIONS =
   "A decision about ONE record (e.g. \"don't collect the old money on project X\", \"X was not charged\") is a canonical change: offer the typed action (e.g. SET_FINANCE_EXCEPTION, exception first and only then SET_AGREED_PRICE in the same plan; never a price without the exception) through partner_plan_action and his approval; if the matching question is offered, record his answer too (WRITTEN_OFF = there was a price and he gave it up; NON_PAID_PROJECT only when it was never charged; BALANCE_WAIVED = the work was done and he waived the balance — never pick an answer that is not true). " +
   "If you also store it as knowledge, set BUSINESS_DECISION.about to the record's key (a name in the text links nothing). " +
   "KNOWN_DECISION_RECONCILE (partner_brief / partner_entity knownDecisions / owner_needs): he ALREADY said it — never ask the question again; say \"כבר אמרת לי … — המערכת עדיין לא משקפת את זה. לסנכרן?\" and, on his yes, plan the listed action (missing args only from him). Nothing ever syncs by itself. " +
+  "KNOWN CONTEXT (2026-10-05): a known line (operating_model project / client_view / victor_view / mix_view section known; needs_me known) = he ALREADY told you — never ask that question again; say its line (\"כבר אמרת לי … — לפי הרשומות …\"); its actions are PROPOSALS (plan → his yes). STILL_TRUE_CHECK = ask only \"זה עדיין נכון?\" with what he said. The records still decide the ball / money / status; a known line never closes a record signal. recentActions (partner_brief / partner_entity) = what you already executed — provenance only, never the current state; RECEIPT ≠ re-read; OUTCOME_UNKNOWN ≠ done; a preview priorExecution = warn him it may be a repeat. " +
   "If the Owner asks for something Sunny cannot do, say you understood it and that it is not connected / must be done in the Redbloods dashboard; never claim it was done; if nothing canonical can hold a \"don't ask again\", say exactly what you can remember and that the records will keep showing it.";
 
 export interface McpGateway {
@@ -294,6 +295,10 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     return finish(toolError(id, timeout ? "Partner is taking too long right now. Try again shortly." : "Partner could not answer right now.", timeout ? "TIMEOUT" : "GATEWAY_ERROR"),
       { ...inputPatch, status: "ERROR", error_category: timeout ? "TIMEOUT" : "GATEWAY_ERROR" });
   }
+  // What Sunny itself already executed (Owner approval 2026-10-05): PROVENANCE only — attached to partner_brief and to
+  // partner_entity (that entity), read through the SAME owner-scoped history op. Never truth: the live records decide,
+  // a signal is never closed by it, money is never changed by it. Unreadable → said so (never "nothing was done").
+  if (a.tool === "partner_brief" || (a.tool === "partner_entity" && payload.status === "OK")) payload = { ...payload, recentActions: await recentActionsFor(a.tool === "partner_entity" ? a.key : null, p, deps) };
   const g = guardOutput(payload, deps.config.maxResultChars);
   if (a.tool === "partner_query" && payload.status !== "OK") {
     // A refused query (unknown / not authorized / invalid params or cursor) is a tool error Claude can read and fix.
@@ -307,6 +312,23 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     ...inputPatch, resolved_entity_key: resolved && AUDIT_ENTITY_KEY_RE.test(resolved) ? resolved : null,
     freshness, error_category: g.guarded ? "BUDGET_GUARD_APPLIED" : null,
   });
+}
+
+const RECENT_ACTIONS_NOTE = "מה סאני ביצעה דרך תוכנית שאישרת — היסטוריה / מקור בלבד, לא מצב: המצב הוא מה שהרשומות החיות מראות. RECEIPT = אישור קבלה של המערכת שביצעה (לא קריאה חוזרת); OUTCOME_UNKNOWN = ייתכן שבוצע, לא אומת — לעולם לא 'בוצע'.";
+/** Sunny's own recent executions (newest first, ≤ 5) for the brief / one entity — provenance only. */
+export async function recentActionsFor(entityKey: string | null, p: Principal, deps: McpDeps): Promise<Record<string, unknown>> {
+  if (!actAvailable(deps) || !hasActScope(p.scope)) return { status: "NOT_CONNECTED", epistemic: "UNKNOWN", noteHe: "היסטוריית הפעולות של סאני לא זמינה בחיבור הזה — זה לא אומר שלא בוצע כלום" };
+  try {
+    const h = await withTimeout(deps.act!.call("status", { history: true, limit: 5, ...(entityKey ? { entity: entityKey } : {}) }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
+    if (h.status !== "HISTORY" || !Array.isArray(h.items)) return { status: "UNAVAILABLE", epistemic: "UNKNOWN", noteHe: "לא הצלחתי לקרוא את היסטוריית הפעולות — זה לא אומר שלא בוצע כלום" };
+    const items = (h.items as Array<Record<string, unknown>>).filter((x) => x.outcome !== "NOT_EXECUTED" && x.outcome !== "EXPIRED_NOT_EXECUTED").map((x) => ({
+      planId: x.planId, at: x.executedAt ?? x.createdAt, intentHe: x.intentHe, outcome: x.outcome,
+      steps: (x.steps as Array<Record<string, unknown>> | undefined ?? []).map((s) => ({ actionId: s.actionId, entity: s.entity, outcome: s.outcome, verifyKind: s.verifyKind ?? null })),
+    }));
+    return { status: "OK", epistemic: "FACT", meaning: "PROVENANCE_ONLY", noteHe: RECENT_ACTIONS_NOTE, items };
+  } catch {
+    return { status: "UNAVAILABLE", epistemic: "UNKNOWN", noteHe: "לא הצלחתי לקרוא את היסטוריית הפעולות — זה לא אומר שלא בוצע כלום" };
+  }
 }
 
 /**

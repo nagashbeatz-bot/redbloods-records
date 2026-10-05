@@ -184,10 +184,11 @@ export const VICTOR_PRIMITIVES: readonly PrimitiveSpec[] = [
       const r = await onVictor(d, a); if ("ok" in r) return r;
       const vk = text(a.versionKey, 80); if (vk === null) return refuse("BAD_TEXT", "איזו גרסה?");
       const rv = await d.readVictorReview(r.id, vk.trim());
-      return { ...r, fields: { ...r.fields, notesSent: false, hasNotes: !!rv?.notes?.trim() } };
+      // the review record already says whether THESE notes were sent (a sent review with no newer draft) — never a constant
+      return { ...r, fields: { ...r.fields, notesSent: !!rv?.sent && !rv.draft, hasNotes: !!rv?.notes?.trim() } };
     },
-    async read(d, id, a) { const f = await vFields(d, id); if (!f) return null; const rv = await d.readVictorReview(id, String(a?.versionKey ?? "").trim()); return { ...f, notesSent: false, hasNotes: !!rv?.notes?.trim() }; },
-    plan: (_a, cur) => (!String(cur.title ?? "").trim() ? refuse("NO_TITLE", "חסר שם עבודה לויקטור") : !cur.hasNotes ? refuse("NO_NOTES", "אין הערות שמורות לגרסה הזאת") : { ok: true, after: { notesSent: true } }),
+    async read(d, id, a) { const f = await vFields(d, id); if (!f) return null; const rv = await d.readVictorReview(id, String(a?.versionKey ?? "").trim()); return { ...f, notesSent: !!rv?.sent && !rv.draft, hasNotes: !!rv?.notes?.trim() }; },
+    plan: (_a, cur) => (!String(cur.title ?? "").trim() ? refuse("NO_TITLE", "חסר שם עבודה לויקטור") : cur.notesSent === true ? refuse("ALREADY_SENT", "ההערות לגרסה הזאת כבר נשלחו לויקטור — לא שולחת שוב. יש הערות חדשות? שמור אותן כטיוטה לגרסה ואז נשלח") : !cur.hasNotes ? refuse("NO_NOTES", "אין הערות שמורות לגרסה הזאת") : { ok: true, after: { notesSent: true } }),
     async apply(d, id, _a, args) { const r = await d.sendVictorVersionNotes(id, String(args.versionKey).trim()); if (!r.ok) throw new Error(`not sent: ${r.reason}`); return { receipt: "sent" }; },
     verify: async (_d, _id, _a, out) => out.receipt === "sent",
     requiredValues: (a) => ["ויקטור", String(a.versionKey)],

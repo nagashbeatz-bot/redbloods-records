@@ -249,6 +249,33 @@ function refCheck(actionId: string, args: Readonly<Record<string, unknown>>, ind
 }
 const isBuilt = (x: BuiltStep | ActResult): x is BuiltStep => "step" in x && !!(x as BuiltStep).step;
 
+/**
+ * PRIOR_EXECUTION (Owner decision D5, 2026-10-05) — a WARNING only, never a block, no time threshold: an action whose effect
+ * leaves no record to re-read (RECEIPT: a push / email / sync / file) that Sunny already executed on the SAME target. The
+ * warning names the action, the target, when, and what the verification proved; an OUTCOME_UNKNOWN run is "ייתכן שכבר בוצע",
+ * never presented as done. History unreadable → said so (never "it was never done"). Action history is provenance only.
+ */
+async function priorExecutionsOf(built: readonly BuiltStep[], c: Caller, d: ActServiceDeps): Promise<Array<{ actionId: string; entity: string; at: string | null; outcome: string; verifyKind: string; warningHe: string }>> {
+  const out: Array<{ actionId: string; entity: string; at: string | null; outcome: string; verifyKind: string; warningHe: string }> = [];
+  for (const b of built) {
+    const vk = verifyKindOf(b.step.actionId, PRIMITIVES_BY_ID.get(b.step.actionId)?.kinds ?? []);
+    if (vk !== "RECEIPT" || b.key.endsWith(":new") || !d.stores.plans.history) continue;
+    let page: Awaited<ReturnType<NonNullable<typeof d.stores.plans.history>>>;
+    try { page = await d.stores.plans.history(c.ownerId, { limit: 5, before: null, since: null, actionId: b.step.actionId, entity: b.key }); }
+    catch { out.push({ actionId: b.step.actionId, entity: b.key, at: null, outcome: "UNKNOWN", verifyKind: vk, warningHe: `לא הצלחתי לבדוק אם ${b.step.actionId} כבר בוצעה על "${b.label}" — זה לא אומר שלא` }); continue; }
+    for (const r of page.items) {
+      const lc = lifecycleOf(r.plan, r.executions.map((x) => ({ actionId: "", outcome: null, ...x })), r.eventTypes, d.nowMs());
+      const idx = r.plan.steps.findIndex((s) => s.actionId === b.step.actionId && s.entities.includes(b.key));
+      const st = lc.steps.find((x) => x.index === idx)?.status ?? null;
+      const when = r.executedAt ? `${r.executedAt.slice(8, 10)}.${r.executedAt.slice(5, 7)}.${r.executedAt.slice(0, 4)}` : null;
+      if (st === "APPLIED_AS_EXPECTED") out.push({ actionId: b.step.actionId, entity: b.key, at: r.executedAt, outcome: "APPLIED_AS_EXPECTED", verifyKind: vk, warningHe: `הפעולה הזאת (${b.step.actionId}) כבר בוצעה בעבר על "${b.label}"${when ? ` ב-${when}` : ""} — אישור קבלה של המערכת שביצעה אותה (לא קריאה חוזרת של התוצאה). לבצע שוב?` });
+      else if (st === "OUTCOME_UNKNOWN" || lc.outcome === "OUTCOME_UNKNOWN") out.push({ actionId: b.step.actionId, entity: b.key, at: r.executedAt, outcome: "OUTCOME_UNKNOWN", verifyKind: vk, warningHe: `ייתכן שהפעולה הזאת (${b.step.actionId}) כבר בוצעה על "${b.label}"${when ? ` ב-${when}` : ""}; התוצאה הקודמת לא אומתה` });
+      if (out.length && out[out.length - 1].entity === b.key && out[out.length - 1].actionId === b.step.actionId) break; // the newest one is enough
+    }
+  }
+  return out;
+}
+
 /** Persist a server-built plan and return its preview (single action or workflow). */
 async function persistAndPreview(intentHe: string, built: readonly BuiltStep[], c: Caller, d: ActServiceDeps): Promise<ActResult> {
   const now = d.nowMs();
@@ -264,7 +291,8 @@ async function persistAndPreview(intentHe: string, built: readonly BuiltStep[], 
   if (!persistable.ok) return refused("NOT_PERSISTABLE", "הבקשה מכילה תוכן שאסור לשמור (סוד / נתיב / קישור) — נסח אותה בלי זה", { codes: [...new Set(persistable.problems.map((x) => x.code))] });
   const { planHash: hash } = await d.stores.plans.save(persistable.json, d.registry, d.registryVersion, d.knownSecrets);
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PLAN_CREATED", step: null, detail: built.length === 1 ? `${built[0].step.actionId}@${built[0].contract.version}` : `WORKFLOW:${built.map((b) => b.step.actionId).join("+")}`.slice(0, 200), ownerId: c.ownerId, clientId: c.clientId });
-  const preview = buildPreview(persistable.json, d.registry, { requiredConfirmationValues: built.flatMap((b) => b.requiredValues), duplicateWarningsHe: built.flatMap((b) => b.warnings) });
+  const prior = await priorExecutionsOf(built, c, d);
+  const preview = buildPreview(persistable.json, d.registry, { requiredConfirmationValues: built.flatMap((b) => b.requiredValues), duplicateWarningsHe: [...built.flatMap((b) => b.warnings), ...prior.map((x) => x.warningHe)] });
   await d.stores.audit.append({ planId: plan.planId, planHash: hash, type: "PREVIEWED", step: null, detail: "server-side preview returned", ownerId: c.ownerId, clientId: c.clientId });
   const changesOf = (b: BuiltStep) => Object.keys(b.after).map((k) => ({ field: k, before: { value: b.fields[k] ?? null, trust: "RECORD" }, after: { value: asApproved(b.after[k], b.refMap ?? {}), trust: "RECORD" } }));
   if (built.length === 1) {
@@ -273,6 +301,7 @@ async function persistAndPreview(intentHe: string, built: readonly BuiltStep[], 
       status: "PREVIEW", planId: plan.planId, planHash: hash, expiresAt: plan.expiresAt,
       entity: { key: b.key, labelHe: { text: b.label, trust: "RECORD" } }, changes: changesOf(b),
       preview, disclosuresHe: b.disclosuresHe, requiredConfirmationValues: preview.requiredConfirmationValues,
+      ...(prior.length ? { priorExecution: prior } : {}),
       askHe: "בוס, זה מה שאני עומדת לשנות. לאשר?",
     };
   }
@@ -280,6 +309,7 @@ async function persistAndPreview(intentHe: string, built: readonly BuiltStep[], 
     status: "PREVIEW", planId: plan.planId, planHash: hash, expiresAt: plan.expiresAt, workflow: true,
     steps: built.map((b, i) => ({ index: i, actionId: b.step.actionId, entity: { key: b.key, labelHe: { text: b.label, trust: "RECORD" } }, changes: changesOf(b), disclosuresHe: b.disclosuresHe })),
     preview, requiredConfirmationValues: preview.requiredConfirmationValues,
+    ...(prior.length ? { priorExecution: prior } : {}),
     executionRuleHe: "השלבים רצים לפי הסדר; אם שלב נכשל או שהמצב השתנה — השלבים שאחריו לא רצים, ואני מדווחת בדיוק מה בוצע ומה לא",
     askHe: `בוס, אלה ${built.length} השלבים שאני עומדת לבצע יחד. לאשר את כולם?`,
   };
@@ -674,7 +704,7 @@ async function actionHistory(input: Record<string, unknown>, c: Caller, d: ActSe
     return {
       planId: r.plan.planId, createdAt: r.plan.createdAt, executedAt: r.executedAt, intentHe: { text: r.plan.intentHe, trust: "OWNER_REQUEST" },
       compound: r.plan.steps.length > 1, approved: lc.approved, approvedBy: lc.approved ? approvedByOf(r.approvalDetail ?? "") : null, outcome: lc.outcome, partiallyApplied: lc.partial, staleSeen: lc.stale,
-      steps: r.plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], fields: s.changes.map((x) => x.field), outcome: lc.steps.find((x) => x.index === s.index)?.status ?? null })),
+      steps: r.plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], fields: s.changes.map((x) => x.field), outcome: lc.steps.find((x) => x.index === s.index)?.status ?? null, verifyKind: verifyKindOf(s.actionId, PRIMITIVES_BY_ID.get(s.actionId)?.kinds ?? []) })),
     };
   });
   if (typeof input.outcome === "string") items = items.filter((x) => x.outcome === input.outcome);
