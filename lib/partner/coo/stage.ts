@@ -47,7 +47,7 @@ export function completionEvidence(c: CooCtx, projectId: string): CompletionEvid
   const complete = approvedWithFinals.length > 0 && openEngineerWork === 0 && activeVictor === 0;
   const a = approvedWithFinals[0];
   return { complete, approvedWithFinals, openEngineerWork, activeVictor,
-    he: complete ? `המיקס אצל ${a.engineer} אושר והועלו קבצים סופיים${a.lastFinalAt ? ` (${heDate(ymdOf(a.lastFinalAt))})` : ""}, והסטטוס עדיין "${status}"` : null };
+    he: complete ? `עבודת המיקס (${a.engineer}) מסומנת 'אושר' והקבצים הסופיים הועלו${a.lastFinalAt ? ` (${heDate(ymdOf(a.lastFinalAt))})` : ""}, והסטטוס עדיין "${status}"` : null };
 }
 
 export interface StageVerdict { behind: boolean; status: string | null; he: string }

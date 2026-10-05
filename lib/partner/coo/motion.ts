@@ -630,9 +630,11 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   // what would USE the open time — moves beyond the greeting first (label sessions, opening a mix, closing loops), else the greeting ones
   const needy = capacity === "OPEN" ? all.filter((i) => (i.level === "MUST" || i.level === "SHOULD") && i.codes.some((cd) => NEED.includes(cd))) : [];
   const gk = new Set(greeting.map((g) => g.key));
-  const candidates = [...needy.filter((i) => !gk.has(i.key)), ...needy.filter((i) => gk.has(i.key))].slice(0, 3);
+  // a protected label artist (Shalev / Avi) with a concrete move is always represented in the open week (no cadence — only its existing move)
+  const protectedMoves = needy.filter((i) => i.labelProtected && i.move && !gk.has(i.key));
+  const candidates = [...new Set([...protectedMoves, ...needy.filter((i) => !gk.has(i.key)), ...needy.filter((i) => gk.has(i.key))])].slice(0, Math.max(3, protectedMoves.length));
   const finPressure = !!ff && ff.commercialGap && ff.surprises.length > 0;
-  const opportunity = candidates.length ? { he: `השבוע יחסית פתוח ביומן (${openDays.length} ימים כמעט פנויים) — הייתי מנצלת חלון ל: ${candidates.map((i) => i.titleHe).join(", ")}${finPressure ? "; ובמקביל — הצנרת חלשה מול ההתחייבויות הרשומות, אז חלק מהחלון כדאי לתמחור / גבייה" : ""} (הצעה בלבד — לא קובעת כלום ביומן, ולא כל זמן פנוי הוא זמן עבודה)`, candidates: candidates.map((i) => i.key), epistemic: "HYPOTHESIS" as const } : null;
+  const opportunity = candidates.length ? { he: `השבוע יחסית פתוח ביומן (${openDays.length} ימים כמעט פנויים) — הייתי מנצלת חלון ל: ${candidates.map((i) => (i.move ? `${i.titleHe} → ${i.move.he}` : i.titleHe)).join(" · ")}${finPressure ? "; ובמקביל — הצנרת חלשה מול ההתחייבויות הרשומות, אז חלק מהחלון כדאי לתמחור / גבייה" : ""} (הצעה בלבד — לא קובעת כלום ביומן, ולא כל זמן פנוי הוא זמן עבודה)`, candidates: candidates.map((i) => i.key), epistemic: "HYPOTHESIS" as const } : null;
   const recordedEvents = input.schedule.days.reduce((n, d) => n + d.items.filter((i) => i.source === "REDBLOODS").length, 0);
   const dueThisWeek = input.readiness.events.filter((r) => r.daysTo !== null && r.daysTo <= 6 && (r.kind === "RELEASE" || r.kind === "DEADLINE" || r.kind === "SHOW" || r.kind === "SHOOT")).map((r) => `${r.kind === "RELEASE" ? "ריליס" : r.kind === "DEADLINE" ? "דדליין" : r.kind === "SHOW" ? "הופעה" : "צילום"} ${r.titleHe} ${heDate(r.date)}`);
   const protectedLabel = labelItems.filter((i) => i.labelProtected).map((i) => i.titleHe);

@@ -8,6 +8,7 @@
 import type { CurrencyTotals, FinanceSignal, PartnerFinanceState, Receivable } from "./types";
 import type { IssueType, PartnerFinanceIntegrityState } from "./integrity";
 import { FINANCE_EXACT_DATE_RULE } from "../investigation/finance-questions";
+import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { FINANCE_BRIEF_DTO_VERSION, FINANCE_BRIEF_MAX_ITEMS, type FinanceBriefDto, type FinanceBriefFamily, type FinanceBriefItemDto, type FinanceRehabQuestionDto } from "./dto";
 
 /** Fixed priority (lower = more important). */
@@ -151,7 +152,11 @@ export function buildFinanceBrief(state: PartnerFinanceState, integrity: Partner
   if (coverage.agreedPrices.state !== "RELIABLE" && state.priceCoverage.priced * 2 < state.priceCoverage.liveProjects) notes.push("ברוב הפרויקטים אין מחיר מוסכם במערכת, ולכן אי אפשר לחשב גבייה מלאה.");
   if (sig("ORPHAN_PRICE_SETTINGS")) notes.push("יש נתוני מחיר ישנים שדורשים בירור.");
   const net = realized.ils.net;
-  const lineHe = realized.targetPosition === "BELOW_FLOOR"
+  // the monthly target is a registered CONFLICT until the Owner decides — never shown as the canonical target
+  const targetsConflict = KNOWLEDGE_GAPS.some((g) => g.id === "RP_FINANCE_TARGETS_CONFLICT" && g.status === "CONFLICT_REQUIRES_OWNER_DECISION");
+  const lineHe = targetsConflict
+    ? `נטו מתועד החודש: ${fmtMoney(net, ILS)}. עוד לא נקבע יעד חודשי אחד — ברשומות יש כמה יעדים שונים (נטו ${fmtMoney(state.policy.floorIls, ILS)}–${fmtMoney(state.policy.preferredIls, ILS)} במודל העבודה מול יעדים אחרים בקוד ובהגדרות), ואני לא מודדת מול אף אחד מהם עד שתחליט.`
+    : realized.targetPosition === "BELOW_FLOOR"
     ? `נטו מתועד החודש: ${fmtMoney(net, ILS)}. חסרים ${fmtMoney(realized.distanceToFloor, ILS)} לרף המינימום ו־${fmtMoney(realized.distanceToPreferred, ILS)} ליעד המועדף.`
     : realized.targetPosition === "IN_TARGET_RANGE"
       ? `נטו מתועד החודש: ${fmtMoney(net, ILS)}. מעל רף המינימום; חסרים ${fmtMoney(realized.distanceToPreferred, ILS)} ליעד המועדף.`

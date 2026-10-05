@@ -345,6 +345,14 @@ async function main() {
   ok("107. (12) no new lifecycle and no writes: motion uses inboxTriageOf; the re-decision is the ONE decideInboxLifecycle (with-history); no link / store / push", mot.includes("inboxTriageOf(src)") && !mot.includes("decideInboxLifecycle") && /motionInboxOf\(ib\.read, ib\.entries\.map\(\(e\) => motionInboxEntry\(decideInboxLifecycle\(e\.lifecycle, history\)/.test(wh) && !/LINK_INBOX_ENTITY|supabase|\.from\(|sendPush/.test(code(mot)));
 
 
+  section("16. FRESH-CHAT QA CORRECTNESS (2026-10-05)");
+  const closerItem = itemFor(M, K(P_CLOSER));
+  ok("108. completion provenance: no invented actor ('אצל Steven אושר' never) — the work is marked 'אושר' and the finals were uploaded", !!closerItem && closerItem.reasonsHe.some((r) => r.includes("מסומנת 'אושר' והקבצים הסופיים הועלו")) && !/אצל S+ אושר/.test(JSON.stringify(M)), closerItem?.reasonsHe);
+  const protectedWithMove = M.all.filter((i) => i.labelProtected && i.move && (i.level === "MUST" || i.level === "SHOULD") && !M.greeting.some((g) => g.key === i.key));
+  ok("109. an open week names the CONCRETE move of every protected label artist that has one (no cadence)", !!M.week.opportunity && protectedWithMove.length > 0 && protectedWithMove.every((i) => M.week.opportunity!.candidates.includes(i.key) && M.week.opportunity!.he.includes(`${i.titleHe} → ${i.move!.he}`)), { he: M.week.opportunity?.he, protected: protectedWithMove.map((i) => i.titleHe) });
+  ok("110. the capacity line stays a suggestion (never a calendar write)", /הצעה בלבד/.test(M.week.opportunity?.he ?? ""));
+
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }

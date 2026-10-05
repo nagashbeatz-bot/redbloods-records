@@ -222,7 +222,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
       amount, currency: "₪", currencyNote: "המאזן לא שומר מטבע — המסכים מציגים ₪", date: cur.endExclusive, daysTo, strength: "DYNAMIC", timing: "KNOWN_DATE_DYNAMIC_AMOUNT", dynamic: true,
       direction: owes ? "RECORDS_OWES_ARTIST" : "ARTIST_OWES_RECORDS", directionHe: owes ? `לטובת ${a.name}` : "לטובת הלייבל",
       changeDriversHe: ["הוצאת Records משותפת ששולמה", "הופעה שתבוצע", "הכנסות מדיה", "תשלום / תיקון ידני במאזן"],
-      plan: false, preparedness: "NEEDS_DECISION", questionHe: owes ? `בסגירה ב-${heDate(cur.endExclusive)}: משלמים ל${a.name} או מעבירים למחזור הבא?` : `בסגירה ב-${heDate(cur.endExclusive)}: גובים מ${a.name} או מעבירים למחזור הבא?`,
+      plan: false, preparedness: "NEEDS_DECISION", questionHe: owes ? `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): משלמים ל${a.name} או מעבירים למחזור הבא?` : `ב-${heDate(cur.endExclusive)} מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד): גובים מ${a.name} או מעבירים למחזור הבא?`,
       confidence: "DYNAMIC", provenance: "artist ledger — open cycle (computeOpenCycle); a close is a review, never a payment", businessUnit: "RECORDS", countsIn: "DYNAMIC", overdue: late }));
   }
 

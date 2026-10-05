@@ -271,6 +271,13 @@ async function main() {
   ok("91. it never disappears: a SHOULD move in motion carrying the Owner's question", !!stMove && stMove.level === "SHOULD" && /מתי אתה רוצה לשלם את ה-\$750 לסטיבן/.test(stMove.he + stMove.reasonsHe.join(" ")), stMove);
   ok("92. it stays in the forward view (surprises) even when dated items lead", F.surprises.some((o) => o.key === st2.key));
 
+  section("FRESH-CHAT QA CORRECTNESS (2026-10-05)");
+  const setl = ob(F, "settlement:")!;
+  ok("93. a cycle end is a DUE close date — never 'נסגר' (nothing closes by itself)", (setl.questionHe ?? "").includes("מגיע מועד סגירת המחזור (שום דבר לא נסגר לבד)") && !/נסגר המחזור|בסגירה ב-/.test(JSON.stringify(F)), setl.questionHe);
+  const fb = read("lib/partner/finance/brief.ts");
+  ok("94. the monthly target is a registered conflict → the money line never states a canonical floor / preferred gap while it is open", /RP_FINANCE_TARGETS_CONFLICT/.test(fb) && /עוד לא נקבע יעד חודשי אחד/.test(fb));
+
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }
