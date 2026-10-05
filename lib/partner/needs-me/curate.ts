@@ -42,6 +42,8 @@ import { checkProposalFollowUps } from "../../proposal-followups";
 import { isStrictYmd } from "../../project-deadline";
 import { BALL_WITH_HE, freshnessOf, FRESHNESS_HE, headOf, type BallWith, type Freshness, type InboxMemory } from "../../inbox-memory";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
+import { inboxTriageOf } from "../sunny/inbox-lifecycle-base";
+import type { InboxDisplayState } from "../sunny/inbox-lifecycle";
 import { CLOSED_PROPOSAL } from "../clients/view";
 import { followUpKnowledgeFor, followUpKnown, freshnessOf as knownFreshnessOf, knownAtOf, knownItem, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "../sunny/known-context";
 
@@ -119,7 +121,10 @@ export interface NeedsMe {
   excluded: NeedsEntry[];
   integrity: { count: number | null; blocking: number; questions: Array<{ questionId: string; subject: string; textHe: string }>; ruleHe: string };
   checked: number;
-  inbox: { read: boolean; interpretations: number; enriched: number; conflicts: number };
+  inbox: { read: boolean; interpretations: number; enriched: number; conflicts: number;
+    /** One Brain (2026-10-05): the NEW updates by their derived lifecycle (decideInboxLifecycle — the same decision owner_inbox /
+     *  company_view use): counts, how many enriched an item on the board, and the ONE NEEDS_OWNER line */
+    lifecycle: { read: boolean; counts: Record<InboxDisplayState, number> | null; enrichedItems: number; needsOwnerLine: number } };
   /** D1: the Owner's P2 knowledge used as enrichment (never the ball, never a new item). */
   knowledge: { read: boolean; enriched: number; conflicts: number };
 }
@@ -538,6 +543,24 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   };
   if (!integrity) unchecked.push({ source: "INTEGRITY", he: "שאלות סאני לא נקראו" });
 
+  // ── 8c. One Brain (2026-10-05): the Boss's NEW updates by their DERIVED lifecycle (the same decideInboxLifecycle as
+  //     owner_inbox / company_view — no second resolver). An update about a record already on the board ENRICHES that item
+  //     (never a second item); a NEEDS_OWNER update with no item = ONE summary line (a real question for him, shown once);
+  //     UNREAD / UNDERSTOOD_OPEN / REFLECTED / OVERTAKEN never create an item — their thread lives in the records.
+  const tri = inboxTriageOf(src);
+  let lifeEnriched = 0;
+  const needsOwner: Array<{ id: string; text: string; nextHe: string; at: string }> = [];
+  for (const { item: u, lifecycle: l } of tri.items) {
+    const match = items.find((i) => l.entityKeys.some((k) => k === i.entityKey || (k.startsWith("project:") && i.projectId === k.slice("project:".length))));
+    if (match) {
+      match.evidence.push({ code: "INBOX_STATE", he: `${l.stateHe}: «${u.body.slice(0, 80)}» — ${l.since.he}`, source: "OWNER_INBOX", epistemic: "OWNER_REPORTED", at: u.createdAt });
+      lifeEnriched++;
+      continue;
+    }
+    if (l.state === "NEEDS_OWNER") needsOwner.push({ id: u.id, text: u.body.slice(0, 80), nextHe: l.nextHe, at: u.createdAt });
+  }
+  if (!tri.read) unchecked.push({ source: "OWNER_INBOX", he: "העדכונים שכתבת לא נקראו — מצב העדכונים לא נבדק" });
+
   // ── precedence (Owner decision 2026-10-01): something NEW since yesterday first ──
   const recentFrom = addDays(today, -1);
   const dayOf = (iso: string | null | undefined) => (iso && Number.isFinite(Date.parse(iso)) ? ilYmd(new Date(iso)) : null);
@@ -576,6 +599,16 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
     });
   }
 
+  if (needsOwner.length) summaries.push({
+    key: "owner-inbox|NEEDS_OWNER", entityKey: "owner-inbox", projectId: null, group: "WAITING_ON_YOU",
+    title: `${needsOwner.length} עדכונים שכתבת צריכים ממך הבהרה אחת`,
+    whyToday: needsOwner.map((x) => `«${x.text}»`).join(" · "), waitingDays: null,
+    ball: { holder: "OWNER", waitingParty: null, sinceAt: needsOwner[0].at, ruleHe: "decideInboxLifecycle: אין ישות מדויקת / יש סתירה — שאלה אחת לכל עדכון; מוצג פעם אחת, לא כפריט נוסף" },
+    evidence: needsOwner.map((x) => ({ code: "INBOX_NEEDS_OWNER", he: `«${x.text}» — ${x.nextHe}`, source: "OWNER_INBOX", epistemic: "OWNER_REPORTED" as const, at: x.at })),
+    nextAction: { he: "לענות על השאלה של כל עדכון (למי / לאיזה פרויקט הוא שייך)", actionId: null }, fromInbox: null, date: null,
+    open: { kind: "list", title: "עדכונים שצריכים הבהרה", entries: needsOwner.map((x) => ({ key: `owner-inbox:${x.id}`, title: x.text, reasonHe: x.nextHe, open: { kind: "href", href: "/dashboard" } as NeedsOpen })) },
+  });
+
   // ── order: the fixed group order; inside a group the most recent event first (approvals: approved-awaiting first;
   //    own tasks: due today first; scheduled: the soonest first) ──
   const ts = (i: NeedsItem) => (i.ball.sinceAt && Number.isFinite(Date.parse(i.ball.sinceAt)) ? Date.parse(i.ball.sinceAt) : -1);
@@ -590,7 +623,7 @@ export function buildNeedsMe(src: GatewaySources): NeedsMe {
   return {
     today, items: sorted.slice(0, NEEDS_ME_MAX), moreToday: sorted.slice(NEEDS_ME_MAX), summaries,
     backlog: backlog.sort(byDate), undecided, unchecked, excluded: excluded.sort(byDate), integrity: integrityOut, checked,
-    inbox: { read: !!mem, interpretations, enriched, conflicts },
+    inbox: { read: !!mem, interpretations, enriched, conflicts, lifecycle: { read: tri.read, counts: tri.summary?.counts ?? null, enrichedItems: lifeEnriched, needsOwnerLine: needsOwner.length ? 1 : 0 } },
     knowledge: { read: !!knRaw, enriched: knEnriched, conflicts: knConflicts },
   };
 }

@@ -18,7 +18,6 @@ import { ACTION_MEANING, type ActionHistoryItem, type SinceEvent } from "./since
 import { patternLevel, type Occurrence, type PatternLevel } from "./patterns";
 
 const DAY = 86_400_000;
-const HOUSEKEEPING = new Set(["MARK_OWNER_INBOX_ITEM", "LINK_INBOX_ENTITY", "RECORD_INBOX_INTERPRETATION", "RETRACT_INBOX_LINK", "RETRACT_INBOX_INTERPRETATION"]);
 export const LEARNING_HEURISTICS = { windowDays: 14, note: "engineering window only — never Owner policy" } as const;
 export type OutcomeLevel = "CORRELATED" | "LIKELY_HELPFUL" | "INSUFFICIENT_EVIDENCE" | "DID_NOT_RESOLVE" | "CONTRADICTED";
 /** the progress kinds an action directly enables (semantic link) — anything else is at most CORRELATED */
@@ -31,7 +30,7 @@ export interface OutcomeAssessment { planId: string; actionId: string; entity: s
 export interface Lesson { code: string; level: PatternLevel; epistemic: "HYPOTHESIS"; he: string; cases: string[]; toKnowledgeHe: string; showToOwner: boolean }
 
 /** progressByEntity: the PROGRESS events (since.ts projectProgressEvents) of each entity the capability read. */
-export function assessOutcomes(history: readonly ActionHistoryItem[], progressByEntity: Readonly<Record<string, readonly SinceEvent[]>>, nowMs: number): { assessments: OutcomeAssessment[]; lessons: Lesson[]; preferences: Lesson[] } {
+export function assessOutcomes(history: readonly ActionHistoryItem[], progressByEntity: Readonly<Record<string, readonly SinceEvent[]>>, nowMs: number, ownerFeedback?: readonly OwnerFeedbackEvidence[]): { assessments: OutcomeAssessment[]; lessons: Lesson[]; preferences: Lesson[] } {
   const steps = history.filter((h) => h.at).flatMap((h) => h.steps.filter((s) => s.entity && s.outcome === "APPLIED_AS_EXPECTED").map((s) => ({ planId: h.planId, actionId: s.actionId, entity: s.entity as string, at: h.at as string })))
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const assessments: OutcomeAssessment[] = [];
@@ -72,23 +71,39 @@ export function assessOutcomes(history: readonly ActionHistoryItem[], progressBy
       toKnowledgeHe: "אם הבוס מאשר שזה נכון אצלנו — להציע BUSINESS_LEARNING דרך partner_propose_knowledge (באישורו), לעולם לא כלל אוטומטי",
       showToOwner: lv.level === "REPEATED" || lv.level === "STRONG" });
   }
-  // OWNER PREFERENCE: plans Sunny proposed that the Boss never approved, by action (history records NOT_EXECUTED plans)
-  const preferences: Lesson[] = [];
-  const declined = new Map<string, Occurrence[]>();
-  // a plan that never ran is NOT proof the Boss refused it: it may have been re-planned (a later EXECUTED plan of the same
-  // action on the same record supersedes it) — and inbox housekeeping / creations ("…:new") are never a preference signal
-  const executedLater = (actionId: string, entity: string, at: string | null) => history.some((x) => x.outcome !== "NOT_EXECUTED" && x.outcome !== "EXPIRED_NOT_EXECUTED" && x.steps.some((st) => st.actionId === actionId && st.entity === entity) && (!at || !x.at || Date.parse(x.at) >= Date.parse(at)));
-  for (const h of history) if (h.outcome === "NOT_EXECUTED" || h.outcome === "EXPIRED_NOT_EXECUTED") for (const s of h.steps) {
-    if (!s.entity || s.entity.endsWith(":new") || HOUSEKEEPING.has(s.actionId) || executedLater(s.actionId, s.entity, h.at)) continue;
-    declined.set(s.actionId, [...(declined.get(s.actionId) ?? []), { sourceId: `${s.actionId}:${s.entity}`, at: h.at ?? new Date(nowMs).toISOString(), entity: s.entity, he: "הוצע ולא בוצע (לא אושר / נזנח)" }]);
+  return { assessments, lessons, preferences: ownerPreferences(ownerFeedback ?? [], nowMs) };
+
+}
+
+/**
+ * OWNER PREFERENCE (completeness pass 2.1, Owner decision 2026-10-05): ONLY from EXPLICIT Owner evidence — he approved,
+ * rejected, changed the recommendation (X → Y), corrected Sunny, or stated it. A plan that was not executed is NO SIGNAL
+ * (it may have been superseded, abandoned or never seen) and is never an input here. Preference ≠ outcome.
+ */
+export interface OwnerFeedbackEvidence { kind: "APPROVED" | "REJECTED" | "CHANGED" | "CORRECTED" | "STATED"; actionId: string; entity: string | null; at: string; ref: string; from?: string; to?: string }
+export function ownerPreferences(evidence: readonly OwnerFeedbackEvidence[], nowMs: number): Lesson[] {
+  const out: Lesson[] = [];
+  const approvedOf = (actionId: string) => evidence.filter((e) => e.kind === "APPROVED" && e.actionId === actionId).length;
+  const groups = new Map<string, OwnerFeedbackEvidence[]>();
+  for (const e of evidence) {
+    if (e.kind === "APPROVED") continue;
+    const key = e.kind === "CHANGED" ? `CHANGED:${e.actionId}:${e.from ?? "?"}→${e.to ?? "?"}` : `${e.kind}:${e.actionId}`;
+    groups.set(key, [...(groups.get(key) ?? []), e]);
   }
-  for (const [actionId, occ] of declined) {
-    const lv = patternLevel({ occurrences: occ, nowMs, contradicting: 0, consequence: false });
-    if (!lv || lv.level === "OBSERVATION") continue;
-    preferences.push({ code: `OWNER_DOES_NOT_APPROVE_${actionId}`, level: lv.level, epistemic: "HYPOTHESIS", cases: lv.counted.map((o) => o.entity),
-      he: `ב-${lv.counted.length} רשומות שונות הצעתי ${actionId} וזה לא בוצע (לא אושר / נזנח — לא בהכרח סירוב) — אולי כדאי לשאול אחרת (השערה, לא כלל)`,
-      toKnowledgeHe: "לפני שזה משנה משהו: לשאול את הבוס 'שמתי לב ש… — להפוך לכלל עבודה?' ורק באישורו דרך partner_propose_knowledge",
-      showToOwner: lv.level === "REPEATED" || lv.level === "STRONG" });
+  for (const [key, list] of groups) {
+    const kind = list[0].kind, actionId = list[0].actionId;
+    const lv = patternLevel({ occurrences: list.map((e) => ({ sourceId: e.ref, at: e.at, entity: e.entity ?? e.ref, he: kind })), nowMs, contradicting: kind === "REJECTED" ? approvedOf(actionId) : 0, consequence: false });
+    if (!lv) continue;
+    // an explicit statement is already his word: propose saving it as knowledge (it is not a pattern to wait for)
+    const explicit = kind === "STATED";
+    const he = kind === "REJECTED" ? `דחית את ${actionId} ב-${lv.counted.length} מקרים (${approvedOf(actionId)} אושרו)`
+      : kind === "CHANGED" ? `החלפת את ההמלצה ${list[0].from ?? actionId} ב-${list[0].to ?? "?"} ב-${lv.counted.length} מקרים`
+      : kind === "CORRECTED" ? `תיקנת אותי על ${actionId} ב-${lv.counted.length} מקרים`
+      : `אמרת במפורש על ${actionId}`;
+    out.push({ code: `OWNER_PREFERENCE_${key}`, level: lv.level, epistemic: "HYPOTHESIS", cases: lv.counted.map((o) => o.entity),
+      he: `${he} — השערה על העדפה שלך, לא כלל`,
+      toKnowledgeHe: explicit ? "זו אמירה מפורשת שלך — להציע לשמור אותה כידע (partner_propose_knowledge) באישורך" : "לפני שזה משנה משהו: לשאול 'שמתי לב ש… — להפוך לכלל עבודה?' ורק באישורו דרך partner_propose_knowledge",
+      showToOwner: explicit || lv.level === "REPEATED" || lv.level === "STRONG" });
   }
-  return { assessments, lessons, preferences };
+  return out;
 }

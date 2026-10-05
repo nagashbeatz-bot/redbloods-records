@@ -21,13 +21,15 @@ export interface SessionRow {
   sessionType: string;
   /** who set the current status (CREATED / MANUAL / AUTO_MARK); null = before tracking began (2026-10-01) */
   statusSource: string | null;
+  /** when the session row was recorded (= when it was scheduled in Redbloods) — read-only, for "what happened since" */
+  createdAt: string | null;
 }
 
 /** ALL sessions ever recorded — no date window, one bulk query. */
 export async function listAllSessions(): Promise<SessionRow[]> {
   const { data, error } = await supabase
     .from("sessions")
-    .select("id, project_id, show_id, date, start_time, end_time, status, session_type, status_source")
+    .select("id, project_id, show_id, date, start_time, end_time, status, session_type, status_source, created_at")
     .order("date", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({
@@ -40,5 +42,6 @@ export async function listAllSessions(): Promise<SessionRow[]> {
     status: r.status as string,
     sessionType: r.session_type as string,
     statusSource: (r.status_source as string | null) ?? null,
+    createdAt: (r.created_at as string | null) ?? null,
   }));
 }

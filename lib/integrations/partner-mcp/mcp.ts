@@ -91,7 +91,7 @@ export interface McpGateway {
   withActionHistory?(kind: "inbox" | "learning", payload: Record<string, unknown>, history: ReadonlyArray<ConnectorActionItem> | null, nowMs: number): Record<string, unknown>;
 }
 /** One executed / proposed plan of the owner-scoped history op, as the Gateway transform reads it. */
-export interface ConnectorActionItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }> }
+export interface ConnectorActionItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }>; approvedBy?: string | null }
 
 /**
  * P1 answer capability (bound only where the deployment's answer switch is on). submit() is the Partner bridge:
@@ -334,7 +334,7 @@ async function actionHistory(p: Principal, deps: McpDeps): Promise<ConnectorActi
     const h = await withTimeout(deps.act!.call("status", { history: true, limit: 50 }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
     if (h.status !== "HISTORY" || !Array.isArray(h.items)) return null;
     return (h.items as Array<Record<string, unknown>>).map((x) => ({
-      planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""),
+      planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""), approvedBy: (x.approvedBy ?? null) as string | null,
       steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null })),
     }));
   } catch { return null; }

@@ -18,10 +18,13 @@ export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record
     const progress = ((summary.find((x) => x.code === "PROGRESS_BY_ENTITY")?.value as { progress?: Record<string, SinceEvent[]> } | undefined)?.progress) ?? {};
     const rest = summary.filter((x) => x.code !== "PROGRESS_BY_ENTITY" && (!history || x.code !== "LEARNING_STATUS"));
     if (!history) return { ...payload, summary: rest, learning: { status: "NOT_READ", noteHe: "לא קראתי את היסטוריית הפעולות — לא נבדק (זה לא אומר שכלום לא עבד)" } };
-    const r = assessOutcomes(history, progress, nowMs);
+    // preference evidence = ONLY the Boss's explicit moves the history records (his own approval); an un-executed plan is no signal
+    const feedback = history.filter((h) => h.approvedBy === "OWNER_APPROVAL" && h.at).flatMap((h) => h.steps.map((st) => ({ kind: "APPROVED" as const, actionId: st.actionId, entity: st.entity, at: h.at as string, ref: h.planId })));
+    const r = assessOutcomes(history, progress, nowMs, feedback);
     return { ...payload, summary: rest,
       items: r.assessments.slice(-25).map((x) => ({ id: `${x.planId}:${x.entity}`, entity: null, label: { text: `${x.actionId} — ${x.level}`, trust: "PARTNER" }, epistemic: "DERIVED", freshness: "LIVE", source: "ACTIONS", fields: x })),
-      learning: { status: "READ", plans: history.length, lessons: r.lessons, preferences: r.preferences, ruleHe: "תוצאה ≠ סיבה: CORRELATED רק קדם; שיעור הוא השערה — הופך לכלל רק באישור הבוס (BUSINESS_LEARNING)" } };
+      learning: { status: "READ", plans: history.length, lessons: r.lessons, preferences: r.preferences,
+        preferenceEvidence: { recorded: ["APPROVED"], notRecorded: ["REJECTED", "CHANGED", "CORRECTED"], noteHe: "העדפה נלמדת רק מראיה מפורשת שלך (אישור / דחייה / שינוי / תיקון / אמירה). ״לא בוצע״ = אין סיגנל. דחייה ושינוי לא נשמרים היום בהיסטוריה — לכן כרגע אין השערות העדפה." }, ruleHe: "תוצאה ≠ סיבה: CORRELATED רק קדם; שיעור הוא השערה — הופך לכלל רק באישור הבוס (BUSINESS_LEARNING)" } };
   }
   const items = Array.isArray(payload.items) ? (payload.items as Array<{ fields?: { lifecycle?: InboxLifecycle | null } }>) : [];
   if (!items.some((i) => i.fields?.lifecycle)) return payload;

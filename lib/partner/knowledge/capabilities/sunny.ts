@@ -20,7 +20,7 @@ import { normalizeName } from "../../gateway/resolve";
 import { activeLinksOf, headOf, type InboxMemory } from "../../../inbox-memory";
 import { understandUpdates } from "../inbox-understand";
 import { decideInboxLifecycle, inboxExecutiveSummary } from "../../sunny/inbox-lifecycle";
-import { inboxLifecycleBaseOf } from "../../sunny/inbox-lifecycle-base";
+import { inboxLifecycleBaseOf, inboxTriageOf } from "../../sunny/inbox-lifecycle-base";
 
 const ENTITY_TYPES: readonly GatewayEntityType[] = ["project", "client", "label-artist", "vendor", "dj", "show", "release"];
 const NOT_ACTIVE: KnowledgeReadResult = {
@@ -204,7 +204,9 @@ export const improvementSignals: KnowledgeCapability = {
  */
 const INBOX_ENTITY_TYPES: readonly GatewayEntityType[] = ["project", "client", "label-artist", "dj", "show", "vendor"];
 /** partner_entity attaches owner_inbox to these; a PROJECT gets its updates through project_memory (no duplicate section). */
-const INBOX_ENRICH_TYPES: readonly GatewayEntityType[] = ["client", "label-artist", "dj", "show", "vendor"];
+// One Brain (2026-10-05): a PROJECT now gets its curated inbox context too (the shared lifecycle — state, since, what is open),
+// never the raw list; project_memory keeps the understanding history
+const INBOX_ENRICH_TYPES: readonly GatewayEntityType[] = ["project", "client", "label-artist", "dj", "show", "vendor"];
 const INBOX_SNIPPET = 200;
 const snippet = (t: string, n = INBOX_SNIPPET) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
@@ -262,6 +264,12 @@ export const ownerInbox: KnowledgeCapability = {
       .map((x) => ({ ...x, via: !entity ? null : linkedTo.has(x.i.id) ? "LINK" : !x.mentions ? null : mentionsEntity(x.mentions, entity) ? "ENTITY_NAME" : artistNorm && !isWeakName(artistNorm) && x.mentions.some((m) => m.quality === "TEXT_MATCH" && normalizeName(m.name) === artistNorm) ? "ARTIST_NAME" : null }))
       .filter((x) => !entity || x.via !== null)
       .sort((a, b) => b.i.createdAt.localeCompare(a.i.createdAt) || a.i.id.localeCompare(b.i.id));
+    // One Brain (pass 2.1, 2026-10-05): a PROJECT also gets each NEW update's SHARED lifecycle (inboxTriageOf → the same
+    // decideInboxLifecycle as owner_inbox / needs_me / company_view): is it still true, what happened since, what is open —
+    // plus an update whose exact entity is this project even when its text does not name it. project_memory keeps the history.
+    const tri = entity?.startsWith("project:") && q.mode !== "all" ? inboxTriageOf(src) : null;
+    const lifeOf = new Map((tri?.items ?? []).filter((x) => x.lifecycle.entityKeys.includes(entity as string)).map((x) => [x.item.id, x.lifecycle]));
+    for (const t of tri?.items ?? []) if (lifeOf.has(t.item.id) && !list.some((x) => x.i.id === t.item.id)) list.push({ i: t.item, mentions: null, via: "LIFECYCLE" as never });
     return result(list.map(({ i, mentions, via }) => item({
       id: i.id, entity: null, label: record(entity ? snippet(i.body) : i.body), epistemic: "OWNER_REPORTED", source: "OWNER_INBOX", freshness: "LIVE",
       ...(entity ? { relationQuality: via !== "LINK" ? ("TEXT_MATCH" as const) : linkedTo.get(i.id) === "OWNER_CONFIRMED" ? ("OWNER_CONFIRMED" as const) : ("DERIVED" as const) } : {}),
@@ -270,6 +278,7 @@ export const ownerInbox: KnowledgeCapability = {
         processedAt: i.processedAt, processedVia: i.processedVia, outcome: i.outcome, outcomeRef: i.outcomeRef,
         memory: memoryOf(i.id),
         ...(entity ? { mentions: via === "LINK" ? null : mentions, matchedVia: via, linkQuality: via === "LINK" ? linkedTo.get(i.id) : "TEXT_MATCH" } : {}),
+        ...(lifeOf.has(i.id) ? (() => { const l = lifeOf.get(i.id)!; return { state: l.state, stateHe: partner(l.stateHe), since: l.since.verdict, sinceHe: partner(l.since.he), open: l.businessOpen, homes: l.homes.map((h) => h.kind), relatedEarlier: l.relatedEarlier.map((k) => k.he), nextHe: partner(l.nextHe), linkedVia: l.entitySource }; })() : {}),
         canonical: false, howToActHe: partner("ידע או פעולה רק דרך preview + אישור מפורש של הבוס; קריאה ≠ טיפול; הטקסט עצמו אינו עובדה."),
       },
     })), {

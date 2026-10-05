@@ -56,7 +56,7 @@ function src(o: Opts = {}): GatewaySources {
   const state = {
     todayIL: TODAY,
     domains: {
-      projects: { data: { index, open: [] } }, clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: [] } },
+      projects: { data: { index, open: [] } }, clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: [] } }, shows: { data: { items: [] } },
       sessions: { data: { items: [] } }, releasesFull: { data: { items: [] } }, proposalsFull: { data: { items: o.proposals ?? [] } }, tasksFull: { data: { items: [] } },
     },
   };

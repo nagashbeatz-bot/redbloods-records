@@ -49,8 +49,14 @@ export function inboxTriageOf(src: GatewaySources): { read: boolean; items: Arra
   const all = okv(src.ownerInbox) as OwnerInboxItem[] | null;
   if (!all) return { read: false, items: [], summary: null };
   const fresh = all.filter((i) => i.status === "NEW").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-  const u = new Map(understandUpdates(src, fresh, false).map((x) => [x.itemId, x]));
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(src.now);
-  const items = fresh.map((item) => ({ item, lifecycle: decideInboxLifecycle(inboxLifecycleBaseOf(src, item, u.get(item.id) ?? null, today)) }));
-  return { read: true, items, summary: inboxExecutiveSummary(items.map((x) => x.lifecycle)) };
+  if (!fresh.length) return { read: true, items: [], summary: inboxExecutiveSummary([]) };
+  // a source the resolver cannot read → "not checked" (never "no updates", never a thrown view)
+  try {
+    const u = new Map(understandUpdates(src, fresh, false).map((x) => [x.itemId, x]));
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(src.now);
+    const items = fresh.map((item) => ({ item, lifecycle: decideInboxLifecycle(inboxLifecycleBaseOf(src, item, u.get(item.id) ?? null, today)) }));
+    return { read: true, items, summary: inboxExecutiveSummary(items.map((x) => x.lifecycle)) };
+  } catch {
+    return { read: false, items: [], summary: null };
+  }
 }

@@ -92,7 +92,10 @@ function src(o: { status?: string; engineerStatus?: string; versions?: string[];
   const sections = entityKnowledge(PARTNER_KNOWLEDGE_REGISTRY, { ...src(), audience: { channel: "EXTERNAL", ownerAuthorized: true } } as never, KEY);
   const pm = sections.find((s) => s.capability === "project_memory");
   ok("partner_entity(project) attaches project_memory (compact: ≤ 6 items, no history)", !!pm && pm.items.length <= 6 && !pm.items.some((i) => String((i as { fields?: { layer?: string } }).fields?.layer ?? "").includes("HISTORY")), sections.map((s) => s.capability));
-  ok("…and NOT the owner_inbox section for a project (no duplicate updates)", !sections.some((s) => s.capability === "owner_inbox"));
+  // One Brain pass 2.1 (Owner decision 2026-10-05): a project ALSO gets the owner_inbox section — only its NEW updates with the
+  // shared lifecycle; the processed history stays in project_memory (never the same update listed twice)
+  const ib = sections.find((s) => s.capability === "owner_inbox");
+  ok("…and the owner_inbox section carries only NEW updates (the processed history stays in project_memory — no duplicate)", !!ib && ib.items.every((i) => (i as { fields?: { status?: string } }).fields?.status === "NEW") && !ib.items.some((i) => (i as { id?: string }).id === U(1)), ib?.items);
   const oi = ownerInbox.read(src(), { mode: "all", params: {} } as never);
   const withMem = oi.items.find((i) => i.id === U(1))?.fields.memory as { links: Array<{ linkId: string }>; interpretations: Array<{ interpretationId: string; head: boolean }> } | null;
   ok("owner_inbox items carry their memory ids (links / interpretations, head flag) — addressable", !!withMem && withMem.links[0]?.linkId === U(50) && withMem.interpretations[0]?.interpretationId === U(60) && withMem.interpretations[0]?.head === true, withMem);

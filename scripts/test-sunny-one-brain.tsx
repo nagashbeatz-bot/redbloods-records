@@ -15,7 +15,11 @@ import { actionsSince, isAfter, projectProgressEvents, summarizeSince, whatHappe
 import { decideInboxLifecycle, inboxExecutiveSummary, type InboxLifecycleBase } from "../lib/partner/sunny/inbox-lifecycle";
 import { inboxLifecycleBaseOf } from "../lib/partner/sunny/inbox-lifecycle-base";
 import { patternLevel, derivePatterns, type Occurrence } from "../lib/partner/sunny/patterns";
-import { assessOutcomes } from "../lib/partner/sunny/learning";
+import { assessOutcomes, ownerPreferences, type OwnerFeedbackEvidence } from "../lib/partner/sunny/learning";
+import { inboxTriageOf } from "../lib/partner/sunny/inbox-lifecycle-base";
+import { ownerInbox } from "../lib/partner/knowledge/capabilities/sunny";
+import { buildProjectMemory } from "../lib/partner/projects/memory";
+import { ownerUpdatesOf } from "../lib/partner/gateway/brief";
 import { extractSignals, TEAM_NAMES } from "../lib/partner/knowledge/inbox-signals";
 import { QUESTION_HOMES } from "../lib/partner/sunny/known-context";
 import { projectLastEventAt } from "../lib/partner/projects/memory";
@@ -36,7 +40,7 @@ const interp = (id: string, seq: number, o: Partial<InboxInterpretation> = {}): 
   createdAt: "2026-10-01T08:02:00Z", retractedAt: null, retractedReason: null, ...o,
 });
 
-function src(o: { versions?: Array<{ work?: string; at: string }>; sessions?: Array<{ id: string; date: string; source?: string | null; project?: string }>; status?: string; items?: OwnerInboxItem[]; memory?: InboxMemory; knowledge?: unknown[]; victorOwner?: number } = {}): GatewaySources {
+function src(o: { versions?: Array<{ work?: string; at: string }>; sessions?: Array<{ id: string; date: string; source?: string | null; project?: string; created?: string | null; status?: string }>; status?: string; items?: OwnerInboxItem[]; memory?: InboxMemory; knowledge?: unknown[]; victorOwner?: number } = {}): GatewaySources {
   const status = o.status ?? "בעבודה";
   const victor = Array.from({ length: o.victorOwner ?? 0 }, (_, i) => ({ id: U(200 + i), projectId: null, title: `W${i}`, ball: { holder: "owner" }, lastUploadAt: "2026-10-01T10:00:00Z", lastNotesSentAt: null, uploads: ["2026-10-01T10:00:00Z"] }));
   const state = {
@@ -46,8 +50,8 @@ function src(o: { versions?: Array<{ work?: string; at: string }>; sessions?: Ar
         { id: PID, name: "אין לך", status, artistText: "שליו טסמה", projectType: "שיר", businessType: "לייבל", deadline: { raw: null, ymd: null, daysTo: null, parseOk: false }, daysSinceUpdate: 1, active: true, hasFinanceSetting: true },
         { id: OTHER, name: "אחר", status: "בעבודה", artistText: "X", projectType: "שיר", businessType: "לקוח", deadline: { raw: null, ymd: null, daysTo: null, parseOk: false }, daysSinceUpdate: 1, active: true, hasFinanceSetting: true },
       ] } },
-      clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, victor: { data: { active: victor } },
-      sessions: { data: { items: (o.sessions ?? []).map((s) => ({ id: s.id, projectId: s.project ?? PID, showId: null, dateYmd: s.date, status: "התקיים", statusSource: s.source ?? "MANUAL", startTime: "10:00", endTime: "12:00", sessionType: "סשן" })) } },
+      clients: { data: { items: [] } }, labelArtists: { data: { items: [] } }, shows: { data: { items: [] } }, victor: { data: { active: victor } },
+      sessions: { data: { items: (o.sessions ?? []).map((s) => ({ id: s.id, projectId: s.project ?? PID, showId: null, dateYmd: s.date, status: s.status ?? "התקיים", createdAt: s.created ?? null, statusSource: s.source ?? "MANUAL", startTime: "10:00", endTime: "12:00", sessionType: "סשן" })) } },
       releasesFull: { data: { items: [] } }, proposalsFull: { data: { items: [] } }, tasksFull: { data: { items: [] } },
     },
   };
@@ -196,13 +200,72 @@ const hist = (planId: string, at: string, actionId: string, entity: string, outc
     const lesson = r5.lessons.find((l) => l.code === "NO_MOVEMENT_AFTER_UPDATE_PROJECT_DEADLINE");
     ok("9f. a lesson appears as a HYPOTHESIS ('לבדוק blocker / צעד הבא') — routed to existing knowledge only with the Boss's approval", !!lesson && lesson.epistemic === "HYPOTHESIS" && /blocker/.test(lesson.he) && /partner_propose_knowledge/.test(lesson.toKnowledgeHe), r5.lessons);
     const declined = [1, 2, 3].map((n) => hist(`pl_n${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", `project:${U(300 + n)}`, "NOT_EXECUTED", null));
-    const pref = assessOutcomes(declined, {}, now).preferences.find((p) => p.code === "OWNER_DOES_NOT_APPROVE_SET_FINANCE_EXCEPTION");
-    ok("9g. the same proposal not carried out on 3 different records → an Owner-PREFERENCE hypothesis (asked, never a rule; 'not necessarily a refusal')", pref?.level === "REPEATED" && /להפוך לכלל עבודה/.test(pref.toKnowledgeHe) && /לא בהכרח סירוב/.test(pref.he), pref);
-    ok("9h. on one record only (a re-plan loop) → not REPEATED / hidden", assessOutcomes([1, 2].map((n) => hist(`pl_m${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", KEY, "NOT_EXECUTED", null)), {}, now).preferences.every((p) => !p.showToOwner));
-    const superseded = [...declined, hist("pl_ok", "2026-09-29T10:00:00Z", "SET_FINANCE_EXCEPTION", `project:${U(301)}`)];
-    ok("9h2. a plan later re-planned and EXECUTED on the same record is not a 'not approved' signal", (assessOutcomes(superseded, {}, now).preferences.find((p) => p.code === "OWNER_DOES_NOT_APPROVE_SET_FINANCE_EXCEPTION")?.cases.length ?? 0) === 2);
+    ok("9g. the same proposal not carried out on 3 different records → NO preference (pass 2.1: no execution = no signal)", assessOutcomes(declined, {}, now).preferences.length === 0);
+    ok("9h. on one record (a re-plan loop) → nothing either", assessOutcomes([1, 2].map((n) => hist(`pl_m${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", KEY, "NOT_EXECUTED", null)), {}, now).preferences.length === 0);
     ok("9h3. creations (':new') and inbox housekeeping are never a preference signal", assessOutcomes([1, 2, 3].flatMap((n) => [hist(`pl_t${n}`, `2026-09-2${n}T10:00:00Z`, "CREATE_TASK", "task:new", "NOT_EXECUTED", null), hist(`pl_h${n}`, `2026-09-2${n}T10:00:00Z`, "LINK_INBOX_ENTITY", `project:${U(400 + n)}`, "NOT_EXECUTED", null)]), {}, now).preferences.length === 0);
     ok("9i. record-keeping actions are not judged as recommendations", assessOutcomes([hist("pl_8", "2026-09-10T10:00:00Z", "SET_AGREED_PRICE", KEY)], { [KEY]: [] }, now).assessments.length === 0);
+  }
+
+  console.log("\nS10. Owner preference = explicit evidence only (completeness pass 2.1)");
+  {
+    const now = NOW.getTime();
+    const notRun = [1, 2, 3, 4].map((n) => hist(`pl_q${n}`, `2026-09-2${n}T10:00:00Z`, "SET_FINANCE_EXCEPTION", `project:${U(500 + n)}`, "NOT_EXECUTED", null));
+    ok("10a. plans that were NOT executed → NO owner-preference signal at all (no inference from silence)", assessOutcomes(notRun, {}, now).preferences.length === 0 && ownerPreferences([], now).length === 0);
+    const rej = [1, 2, 3].map((n): OwnerFeedbackEvidence => ({ kind: "REJECTED", actionId: "SET_FINANCE_EXCEPTION", entity: `project:${U(510 + n)}`, at: `2026-09-2${n}T10:00:00Z`, ref: `r${n}` }));
+    const p1 = ownerPreferences(rej, now);
+    ok("10b. explicit rejections → preference EVIDENCE (a hypothesis, asked before any rule)", p1.length === 1 && p1[0].level === "REPEATED" && /דחית/.test(p1[0].he) && /להפוך לכלל עבודה/.test(p1[0].toKnowledgeHe), p1);
+    const ch = [1, 2, 3].map((n): OwnerFeedbackEvidence => ({ kind: "CHANGED", actionId: "UPDATE_PROJECT_DEADLINE", from: "+7d", to: "+14d", entity: `project:${U(520 + n)}`, at: `2026-09-2${n}T10:00:00Z`, ref: `c${n}` }));
+    const p2 = ownerPreferences(ch, now);
+    ok("10c. the same change X → Y repeated → a preference hypothesis naming X → Y", p2.length === 1 && p2[0].level === "REPEATED" && /\+7d/.test(p2[0].he) && /\+14d/.test(p2[0].he), p2);
+    ok("10d. approvals of the same action contradict a rejection pattern (downgraded)", ownerPreferences([...rej, ...[1, 2].map((n): OwnerFeedbackEvidence => ({ kind: "APPROVED", actionId: "SET_FINANCE_EXCEPTION", entity: `project:${U(530 + n)}`, at: `2026-09-2${n}T11:00:00Z`, ref: `a${n}` }))], now)[0]?.level === "WEAK");
+    ok("10e. an explicit statement is proposed as knowledge right away (still with his approval)", ownerPreferences([{ kind: "STATED", actionId: "UPDATE_PROJECT_DEADLINE", entity: null, at: "2026-10-04T10:00:00Z", ref: "s1" }], now)[0]?.showToOwner === true);
+    const out = assessOutcomes([hist("pl_d1", "2026-09-10T10:00:00Z", "UPDATE_PROJECT_DEADLINE", KEY), ...notRun], { [KEY]: [] }, now);
+    ok("10f. outcome learning still works without any preference learning (preference ≠ outcome)", out.assessments[0]?.level === "DID_NOT_RESOLVE" && out.preferences.length === 0);
+    ok("10g. the connector passes only the Boss's own approvals as preference evidence; un-executed plans never", /approvedBy === "OWNER_APPROVAL"/.test(read("lib/partner/sunny/with-history.ts")) && !/NOT_EXECUTED/.test(code(read("lib/partner/sunny/learning.ts")).split("export function ownerPreferences")[1] ?? "NOT_EXECUTED"));
+  }
+
+  console.log("\nS11. Session ↔ project 'what happened since'");
+  {
+    const w = "2026-10-01T08:00:00Z";
+    const sv = (sessions: NonNullable<Parameters<typeof src>[0]>["sessions"]) => whatHappenedSince({ src: src({ sessions }), entityKeys: [KEY], sinceIso: w, itemId: U(1) });
+    const sch = sv([{ id: U(600), date: "2026-10-09", status: "מתוכנן", source: "CREATED", created: "2026-10-03T09:00:00Z" }]);
+    ok("11a. a session of THIS project scheduled after the note → PLANNED_ONLY (scheduling ≠ progress)", sch.verdict === "PLANNED_ONLY" && sch.planning === 1 && sch.progress === 0, sch);
+    ok("11b. a session of ANOTHER project is ignored", sv([{ id: U(601), date: "2026-10-09", status: "מתוכנן", created: "2026-10-03T09:00:00Z", project: OTHER }]).verdict === "NOTHING_RECORDED");
+    ok("11c. an AUTO_MARK held session is ignored as progress (its scheduling time before the note is not 'since' either)", sv([{ id: U(602), date: "2026-10-03", source: "AUTO_MARK", created: "2026-09-20T09:00:00Z" }]).progress === 0);
+    ok("11d. a held session the Boss recorded counts by the existing rule", sv([{ id: U(603), date: "2026-10-03", source: "MANUAL", created: "2026-09-20T09:00:00Z" }]).verdict === "PROGRESSED");
+    const unk = sv([{ id: U(604), date: "2026-10-09", status: "מתוכנן", created: null }]);
+    ok("11e. no reliable creation time → NOT_CHECKED (never an invented scheduling date)", unk.verdict === "NOT_CHECKED" && /לא ממציאה/.test(unk.he), unk);
+    ok("11f. a scheduled session never makes the note OVERTAKEN (planning only)", decideInboxLifecycle(baseOf({ since: sch })).state !== "OVERTAKEN");
+    ok("11g. projectLastEventAt stays PROGRESS-only (scheduling never moves it)", projectLastEventAt(src({ sessions: [{ id: U(605), date: "2026-10-09", status: "מתוכנן", created: "2026-10-03T09:00:00Z" }] }), PID) === null);
+  }
+
+  console.log("\nS12. needs_me / partner_entity ← the shared inbox lifecycle");
+  {
+    const cur = read("lib/partner/needs-me/curate.ts");
+    ok("12a. needs_me reads the SAME triage (inboxTriageOf → decideInboxLifecycle), no parallel resolver", /inboxTriageOf\(src\)/.test(cur) && !/resolveUpdate\(|decideInboxLifecycle\(/.test(cur));
+    ok("12b. NEEDS_OWNER appears exactly once — ONE summary line, never a top-5 item", (cur.match(/key: "owner-inbox\|NEEDS_OWNER"/g) ?? []).length === 1 && /summaries\.push\(\{\s*key: "owner-inbox\|NEEDS_OWNER"/.test(cur));
+    ok("12c. an update about a record already on the board ENRICHES it (no duplicate item); REFLECTED / OVERTAKEN / UNDERSTOOD_OPEN never create one", /match\.evidence\.push\(\{ code: "INBOX_STATE"/.test(cur) && /if \(l\.state === "NEEDS_OWNER"\) needsOwner\.push/.test(cur));
+    ok("12d. exact entity identity: an item matches only by its exact key / project id", /l\.entityKeys\.some\(\(k\) => k === i\.entityKey \|\| \(k\.startsWith\("project:"\) && i\.projectId === k\.slice\("project:"\.length\)\)\)/.test(cur));
+    const s2 = src({ items: [item(U(1), "הסשן עם שליו היה טוב", "2026-10-01T08:00:00Z"), item(U(2), "משהו על הפרויקט האחר", "2026-10-01T09:00:00Z")], memory: { links: [link(U(50), U(1), KEY), link(U(51), U(2), OKEY)], interpretations: [] } });
+    const ent = ownerInbox.read(s2, { capability: "owner_inbox", mode: "new", params: { entity: KEY } } as never) as unknown as { items: Array<{ id: string; fields: Record<string, unknown> }> };
+    ok("12e. partner_entity(project) sees the relevant update with its state / since / next — curated, not the raw list", ent.items.length === 1 && ent.items[0].id === U(1) && typeof ent.items[0].fields.state === "string" && !!ent.items[0].fields.sinceHe, ent.items);
+    ok("12f. an update about project B never appears on project A", !ent.items.some((x) => x.id === U(2)));
+    ok("12g. project is now an enrichment type of owner_inbox (partner_entity attaches it)", /INBOX_ENRICH_TYPES: readonly GatewayEntityType\[\] = \["project",/.test(read("lib/partner/knowledge/capabilities/sunny.ts")));
+  }
+
+  console.log("\nS13. One truth: owner_inbox / partner_entity / company_view / needs_me / project_memory / brief agree");
+  {
+    const s3 = src({ versions: [{ at: "2026-10-03T10:00:00Z" }], items: [item(U(1), "הסשן עם שליו היה טוב", "2026-10-01T08:00:00Z")], memory: { links: [link(U(50), U(1), KEY)], interpretations: [interp(U(60), 1, { createdAt: "2026-10-01T08:02:00Z", basisEventAt: null })] } });
+    const und = ownerInbox.read(s3, { capability: "owner_inbox", mode: "understand", params: {} } as never) as unknown as { items: Array<{ id: string; fields: { lifecycle: { state: string; since: { verdict: string }; entityKeys: string[] } } }> };
+    const ent = ownerInbox.read(s3, { capability: "owner_inbox", mode: "new", params: { entity: KEY } } as never) as unknown as { items: Array<{ id: string; fields: { state: string; since: string } }> };
+    const tri = inboxTriageOf(s3);
+    const u0 = und.items[0].fields.lifecycle, e0 = ent.items[0].fields, t0 = tri.items[0].lifecycle;
+    ok("13a. owner_inbox understand, partner_entity(project) and the shared triage (needs_me / company_view) give the SAME state, since and entity", u0.state === t0.state && e0.state === t0.state && u0.since.verdict === t0.since.verdict && e0.since === t0.since.verdict && u0.entityKeys.join() === t0.entityKeys.join(), { u0, e0, t0: { state: t0.state, since: t0.since.verdict } });
+    const pm = buildProjectMemory(s3, PID);
+    ok("13b. project_memory and the lifecycle read the SAME understanding freshness (same freshnessOf + projectBasisOf)", pm.understanding?.freshness === t0.understanding?.freshness, { pm: pm.understanding?.freshness, life: t0.understanding });
+    ok("13c. the brief lists the SAME NEW updates the lifecycle covers (and drills into it)", JSON.stringify((ownerUpdatesOf(s3) as { items: Array<{ id: string }> }).items.map((x) => x.id)) === JSON.stringify(tri.items.map((x) => x.item.id)));
+    ok("13d. canonical state: every view reads the live project basis — a later version makes the understanding OUTDATED everywhere", t0.understanding?.freshness === "OUTDATED_BY_CANONICAL" && pm.understanding?.freshness === "OUTDATED_BY_CANONICAL" && t0.state === "OVERTAKEN");
+    ok("13e. company_view and needs_me both call inboxTriageOf (no second decision)", /inboxTriageOf\(src\)/.test(read("lib/partner/knowledge/capabilities/company-view.ts")) && /inboxTriageOf\(src\)/.test(read("lib/partner/needs-me/curate.ts")));
   }
 
   console.log("\nBoundaries — inference never writes; no DB / cron / push / new store");

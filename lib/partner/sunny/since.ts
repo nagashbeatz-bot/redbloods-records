@@ -26,7 +26,7 @@ const ddmm = (iso: string) => { const y = ilYmd(iso); return `${y.slice(8, 10)}.
 const valid = (x: string | null | undefined): x is string => !!x && Number.isFinite(Date.parse(x));
 
 export type SinceMeaning = "PROGRESS" | "PLANNING" | "RECORDING" | "CONTEXT";
-export type SinceKind = "MIX_VERSION" | "FINAL_FILES" | "VICTOR_UPLOAD" | "VICTOR_NOTES" | "DELIVERED" | "SESSION_HELD" | "RELEASE_STAGE" | "RELEASED" | "ACTION" | "OWNER_KNOWLEDGE" | "UNDERSTANDING";
+export type SinceKind = "SESSION_SCHEDULED" | "MIX_VERSION" | "FINAL_FILES" | "VICTOR_UPLOAD" | "VICTOR_NOTES" | "DELIVERED" | "SESSION_HELD" | "RELEASE_STAGE" | "RELEASED" | "ACTION" | "OWNER_KNOWLEDGE" | "UNDERSTANDING";
 export interface SinceEvent { at: string; kind: SinceKind; meaning: SinceMeaning; he: string; entity: string; source: string; /** the plan id of an ACTION event */ ref?: string }
 
 /** The PROGRESS events of ONE project (every time, no cut-off) — the one rule projectLastEventAt and "since" share. */
@@ -53,6 +53,24 @@ export function projectProgressEvents(src: GatewaySources, projectId: string): S
   return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
+/**
+ * The PLANNING events of ONE project from its own records (completeness pass 2.1, 2026-10-05): a session of THIS project
+ * (sessions.project_id — the canonical relation) recorded at sessions.created_at = it was scheduled then. Scheduling is
+ * PLANNING, never progress. A session whose creation time is not known gives no event — it is counted as timing-unknown.
+ */
+export function projectPlanningEvents(src: GatewaySources, projectId: string): { events: SinceEvent[]; timingUnknown: Array<{ id: string; dateYmd: string }> } {
+  const st = ok(src.state);
+  const events: SinceEvent[] = [];
+  const timingUnknown: Array<{ id: string; dateYmd: string }> = [];
+  for (const s of st?.domains.sessions.data?.items ?? []) {
+    if (s.projectId !== projectId || s.status === "בוטל" || !s.dateYmd) continue;
+    const created = (s as { createdAt?: string | null }).createdAt ?? null;
+    if (valid(created)) events.push({ at: created, kind: "SESSION_SCHEDULED", meaning: "PLANNING", he: `נקבע סשן ל-${s.dateYmd.slice(8, 10)}.${s.dateYmd.slice(5, 7)}`, entity: `project:${projectId}`, source: "SESSIONS" });
+    else timingUnknown.push({ id: s.id, dateYmd: s.dateYmd });
+  }
+  return { events, timingUnknown };
+}
+
 /** After the note: strictly later instant; a day-only event (a session) only on a LATER Israel day than the note. */
 export function isAfter(e: { at: string; kind?: SinceKind }, sinceIso: string): boolean {
   if (!valid(e.at) || !valid(sinceIso)) return false;
@@ -73,7 +91,7 @@ export const ACTION_MEANING: Readonly<Record<string, SinceMeaning>> = {
 const ACTION_HE: Readonly<Record<SinceMeaning, string>> = { PLANNING: "תכנון מחדש (לא התקדמות)", RECORDING: "רישום (לא התקדמות)", PROGRESS: "שינוי מצב שאישרת", CONTEXT: "הקשר" };
 
 /** The Action Layer history items the connector already reads (recentActions / partner_plan_status history). */
-export interface ActionHistoryItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }> }
+export interface ActionHistoryItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }>; /** OWNER_APPROVAL / STANDING_AUTHORIZATION — explicit approval evidence */ approvedBy?: string | null }
 const MARKS = new Set(["MARK_OWNER_INBOX_ITEM", "LINK_INBOX_ENTITY", "RECORD_INBOX_INTERPRETATION", "RETRACT_INBOX_LINK", "RETRACT_INBOX_INTERPRETATION"]);
 /** Executed (APPLIED_AS_EXPECTED) steps on exactly these entities after the note — inbox housekeeping never counts. */
 export function actionsSince(items: readonly ActionHistoryItem[], entityKeys: readonly string[], sinceIso: string): SinceEvent[] {
@@ -116,13 +134,21 @@ export function whatHappenedSince(o: {
 }): SinceSummary {
   const stateRead = !!ok(o.src.state) && !!ok(o.src.operations);
   const projects = o.entityKeys.filter((k) => k.startsWith("project:")).map((k) => k.slice("project:".length));
+  const planning = projects.map((id) => projectPlanningEvents(o.src, id));
+  // a session of the project with no recorded creation time and a date after the note: it MAY have been scheduled since —
+  // unknown, never invented (it makes an otherwise empty answer NOT_CHECKED)
+  const timingUnknown = planning.flatMap((x) => x.timingUnknown).filter((x) => x.dateYmd > ilYmd(o.sinceIso)).length;
   const events: SinceEvent[] = [
     ...projects.flatMap((id) => projectProgressEvents(o.src, id).filter((e) => isAfter(e, o.sinceIso))),
+    ...planning.flatMap((x) => x.events).filter((e) => isAfter(e, o.sinceIso)),
     ...(o.actions ? actionsSince(o.actions, o.entityKeys, o.sinceIso) : []),
     ...knowledgeSince((ok(o.src.ownerKnowledge) as OwnerKnowledgeRecord[] | null) ?? [], o.entityKeys, o.sinceIso),
     ...understandingsSince(ok(o.src.inboxMemory) as InboxMemory | null, o.entityKeys, o.sinceIso, o.itemId),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return summarizeSince(events, stateRead, !!o.actions);
+  const sum = summarizeSince(events, stateRead, !!o.actions);
+  return sum.verdict === "NOTHING_RECORDED" && timingUnknown > 0
+    ? { ...sum, verdict: "NOT_CHECKED", he: `לא נבדק במלואו — יש ${timingUnknown} סשן/ים בפרויקט שזמן הקביעה שלהם לא רשום (לא ממציאה מתי נקבעו)` }
+    : sum;
 }
 
 export function summarizeSince(events: SinceEvent[], stateRead: boolean, actionsRead: boolean): SinceSummary {

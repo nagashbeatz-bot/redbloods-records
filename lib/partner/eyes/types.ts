@@ -165,7 +165,9 @@ export interface ClipsFact {
  */
 export interface SessionSummary { id: string; projectId: string | null; showId: string | null; dateYmd: string; status: string; sessionType: string;
   /** who set the current status (CREATED / MANUAL / AUTO_MARK; null = before 2026-10-01 tracking) + the times (held meaning) — optional for older fixtures */
-  statusSource?: string | null; startTime?: string | null; endTime?: string | null }
+  statusSource?: string | null; startTime?: string | null; endTime?: string | null;
+  /** when the row was recorded (scheduled) — null / absent = not known (never invented) */
+  createdAt?: string | null }
 export interface SessionsFact {
   total: number;
   withProject: number;
@@ -311,7 +313,7 @@ export interface RawShowEyes {
 /** One artist_balance_entries row — just enough to compute LabelArtistBalanceTotals; no description/note (private free text) retained. */
 export interface RawBalanceEntry { id: string; artistId: string; entryType: string; amount: number; entryDate: string }
 /** Mirrors lib/sessions-store.ts's SessionRow — kept as its own local type (not imported) so this pure types.ts file never references a store module, even for a type-only import. */
-export interface RawSessionEyes { id: string; projectId: string | null; showId: string | null; date: string; startTime: string | null; endTime: string | null; status: string; sessionType: string; statusSource?: string | null }
+export interface RawSessionEyes { id: string; projectId: string | null; showId: string | null; date: string; startTime: string | null; endTime: string | null; status: string; sessionType: string; statusSource?: string | null; createdAt?: string | null }
 
 /** proposals table, full history, no status filter. No `notes` (private free text). */
 export interface RawProposalEyes {
