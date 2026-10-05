@@ -53,7 +53,7 @@ export const victorView: KnowledgeCapability = {
         { ...base, summary: [sfact("WORK", "עבודה", { key: w.key, title: w.title, status: w.status, handoff: w.handoff.state }, "FACT", "TEAM_VICTOR")] });
     }
     return result([...v.signals.map((x, i) => item({ id: `${x.code}:${i}`, entity: null, label: record(x.he), epistemic: x.kind === "UNKNOWN" ? "UNKNOWN" : x.kind === "CANONICAL_FACT" ? "FACT" : "DERIVED", source: "TEAM_VICTOR", fields: { code: x.code, work: x.work ?? null } })),
-      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_VICTOR", fields: { kind: x.kind, why: x.why, work: x.work ?? null, entity: x.entity, state: x.state, identity: x.identity, answerAs: x.answerAs } })),
+      ...v.questions.map((x, i) => item({ id: `q:${i}`, label: partner(x.questionHe), epistemic: "UNKNOWN", source: "TEAM_VICTOR", fields: { kind: x.kind, why: x.why, work: x.work ?? null, entity: x.entity, state: x.state, identity: x.identity, answerAs: x.answerAs, questionRef: x.questionRef ?? null, options: x.options ?? null } })),
       ...v.known.map((k, i) => item({ id: `known:${i}`, label: record(k.textHe), epistemic: k.epistemic, source: "TEAM_VICTOR", fields: { questionKind: k.questionKind, work: k.entityKey, state: k.state, knownAt: k.knownAt, basis: k.basis, canonicalHe: partner(k.canonicalHe), actions: k.actions } })),
     ],
       { ...base, summary: [sfact("IDENTITY", "זהות", v.identity, "FACT", "TEAM_VICTOR"), sfact("COUNTS", "ספירות רשומות", v.counts, "DERIVED", "TEAM_VICTOR"), sfact("PRESENCE", "כניסה לפורטל", v.presence, "FACT", "TEAM_VICTOR"), sfact("SIGNALS", "אותות", byCount(v.signals.map((x) => x.code)), "DERIVED", "TEAM_VICTOR")] });

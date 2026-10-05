@@ -11,10 +11,11 @@
 export const QUESTION_REF_PREFIX = "pq1.";
 export const QUESTION_REF_RE = /^pq1\.[A-Za-z0-9_-]{16,600}$/;
 
-export type QuestionRefKind = "integrity" | "finance";
+/** "case" (2026-10-05, Owner Q1): ONLY the Victor delivery question WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM (lib/partner/bridge/case-answer.ts). */
+export type QuestionRefKind = "integrity" | "finance" | "case";
 export interface QuestionRef { kind: QuestionRefKind; questionId: string; subjectId: string; fingerprint: string }
 
-const KIND_CODE: Record<QuestionRefKind, string> = { integrity: "i", finance: "f" };
+const KIND_CODE: Record<QuestionRefKind, string> = { integrity: "i", finance: "f", case: "c" };
 const HEX64 = /^[0-9a-f]{64}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
@@ -44,7 +45,7 @@ export function decodeQuestionRef(ref: unknown): QuestionRef | null {
   try { v = JSON.parse(json); } catch { return null; }
   if (!Array.isArray(v) || v.length !== 4 || !v.every((x) => typeof x === "string")) return null;
   const [k, q, s, f] = v as string[];
-  const kind = k === "i" ? "integrity" : k === "f" ? "finance" : null;
+  const kind = k === "i" ? "integrity" : k === "f" ? "finance" : k === "c" ? "case" : null;
   if (!kind || !q || q.length > 300 || CONTROL.test(q) || !s || s.length > 120 || CONTROL.test(s) || !HEX64.test(f)) return null;
   return { kind, questionId: q, subjectId: s, fingerprint: f };
 }

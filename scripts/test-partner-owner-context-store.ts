@@ -380,7 +380,9 @@ async function main() {
     // Company Integrity Register: the CompanyReadContext READS the Owner's active answers (resolveCurrentOwnerContexts) and never appends.
     const COMPANY_READER = path.join("lib", "partner", "company", "read-context.ts");
     // Company Integrity learning loop: the Owner answer binding (appends via the core only) + the injected core.
-    const INTEGRITY_CONTEXT_FILES = [path.join("lib", "partner", "integrity", "server.ts"), path.join("lib", "partner", "integrity", "answer.ts")];
+    const INTEGRITY_CONTEXT_FILES = [path.join("lib", "partner", "integrity", "server.ts"), path.join("lib", "partner", "integrity", "answer.ts"),
+      // Question memory stage 6 (Owner Q1, 2026-10-05): the Victor delivery case answer — the server binding (one append via the core) + the pure core (draft + error type only).
+      path.join("lib", "partner", "victor", "case-answer-server.ts"), path.join("lib", "partner", "investigation", "case-answer.ts")];
     check("30. nothing in app/ components/ lib/ imports the store (no route, no UI) — except the approved Partner action files + the F2.8 finance answer files + the read-only Memory V1 binding + the read-only CompanyReadContext + the integrity answer files", importers.map((f) => path.relative(ROOT, f)).filter((f) => !APPROVED_READERS.includes(f) && !FINANCE_CONTEXT_FILES.includes(f) && !INTEGRITY_CONTEXT_FILES.includes(f) && f !== MEMORY_READER && f !== COMPANY_READER), []);
     const intSrv = fs.readFileSync(path.join(ROOT, INTEGRITY_CONTEXT_FILES[0]), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     ok("30. integrity answer binding is server-only and appends only via the injected core after the Owner check", /^import "server-only";/m.test(intSrv) && /^import \{ appendOwnerContext \} from "\.\.\/investigation\/context-store";$/m.test(intSrv) && (intSrv.match(/appendOwnerContext/g) ?? []).length === 2 && /export async function answerIntegrityQuestion[\s\S]*?ownerOrFailure\(\)[\s\S]*?answerIntegrityQuestionCore\(/.test(intSrv) && /async function ownerOrFailure[\s\S]*?requireOwner\(\)/.test(intSrv));

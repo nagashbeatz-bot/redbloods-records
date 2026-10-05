@@ -149,8 +149,10 @@ const REVIEW_ANSWER_HE: Record<string, string> = { REVIEWED_OUTSIDE_SYSTEM: "ה�
 /**
  * OUTSIDE_COMMUNICATION for ONE vendor work (Victor / a mix engineer). What the Owner already said, most specific first:
  *   1 VENDOR_COMMITMENT naming THIS work (a commitment — "הוא על זה");
- *   2 the Owner Context answer about THIS work's delivery (WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM — read here when it exists;
- *     as of 2026-10-05 NO writer records it yet (no dashboard answer, no Claude bridge) — never claimed as an answer path);
+ *   2 the Owner Context answer about THIS work's delivery (WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM — written through the Claude
+ *     case bridge, lib/partner/investigation/case-answer.ts, Owner Q1 2026-10-05; Victor works only, exact work identity);
+ *   2b a PROJECT_BLOCKER WAITING_FOR_VENDOR the Owner stated on the work's PROJECT — only when the project has exactly ONE
+ *      open work of that vendor (singleWorkProjectKey), never project-wide across works;
  *   3 a processed update (inbox interpretation) on the work's PROJECT that puts the ball with the vendor — only when the
  *     project has exactly ONE active work of that vendor (never project-wide across works).
  * A version uploaded AFTER the statement is newer canonical evidence: the statement no longer counts (a real new reason).
@@ -165,6 +167,8 @@ export function vendorWorkKnown(o: {
   vendorLabel: string;
   /** the inbox ballWith that means "with this vendor" (VICTOR / ENGINEER) — any other value is not about this work */
   vendorBall: string;
+  /** the work's project key ONLY when the project has exactly one open work of this vendor (else null / absent) */
+  singleWorkProjectKey?: string | null;
 }): KnownContextItem | null {
   const upDay = ymd(o.lastUploadAt);
   const canonicalHe = `לפי המערכת ${o.vendorLabel} העלה גרסה${upDay ? ` ב-${ddmm(upDay)}` : ""} ואין הערות שלך רשומות אחריה — אין פעולה קנונית שרושמת "דיברנו מחוץ למערכת", אז הכדור לפי הרשומות נשאר אצלך עד שיישלחו הערות או תעלה גרסה`;
@@ -177,6 +181,13 @@ export function vendorWorkKnown(o: {
   const ans = wid ? (o.answers ?? []).filter((a) => a.questionId === victorDeliveryQuestionId(wid) && a.status === "ACTIVE").sort((a, b) => b.answeredAt.localeCompare(a.answeredAt))[0] : undefined;
   if (ans && !(upDay && ymd(ans.answeredAt) && upDay > ymd(ans.answeredAt)!)) {
     return knownItem({ questionKind: "OUTSIDE_COMMUNICATION", entityKey: o.workKey, label: o.label, meaningHe: REVIEW_ANSWER_HE[ans.answerCode] ?? ans.answerCode, knownAt: ymd(ans.answeredAt), basis: { kind: "OWNER_ANSWER", contextId: ans.contextId, questionType: ans.questionType, answerCode: ans.answerCode }, freshness: "CURRENT", canonicalHe });
+  }
+  if (o.singleWorkProjectKey) {
+    const b = knowledgeAbout(o.records, ["PROJECT_BLOCKER"], o.singleWorkProjectKey).find((k) => (k.value as Record<string, unknown>).reason === "WAITING_FOR_VENDOR" && !(k.value as Record<string, unknown>).proposal);
+    if (b) {
+      const fr = freshnessOf(b, o.todayIL, upDay);
+      if (fr !== "SUPERSEDED_BY_EVIDENCE") return knownItem({ questionKind: "OUTSIDE_COMMUNICATION", entityKey: o.workKey, label: o.label, meaningHe: b.meaningHe, knownAt: knownAtOf(b), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: b.id, knowledgeKind: b.kind }, freshness: fr, canonicalHe });
+    }
   }
   const u = o.projectUpdate;
   if (u && u.ballWith === o.vendorBall && !(upDay && ymd(u.createdAt) && upDay > ymd(u.createdAt)!)) {

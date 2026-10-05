@@ -26,6 +26,7 @@ import { presenceFactsOf } from "../../push-presence-pure";
 import { markerStateOf } from "../../push-claims-pure";
 import { COO_CONFIG } from "../../coo/config";
 import { sendEntryCurrent, isOpenSendState } from "../work/send-log";
+import { CASE_ANSWER_OPTIONS, victorDeliveryQuestionRef } from "../investigation/case-answer";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
 const ilToday = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -33,7 +34,9 @@ const days = (a: string | null | undefined, b: string) => (a ? Math.round((Date.
 const CLOSED_PROJECT = new Set(["הושלם", "בוטל"]);
 
 export interface VictorSignal { code: string; kind: "CANONICAL_FACT" | "DERIVED_SIGNAL" | "UNKNOWN"; he: string; work?: string }
-export interface VictorQuestion { questionHe: string; why: string; kind: string; work?: string }
+export interface VictorQuestion { questionHe: string; why: string; kind: string; work?: string;
+  /** Owner Q1 (2026-10-05): the OUTSIDE_COMMUNICATION question of ONE work is answerable through partner_answer_question (closed options, never OTHER). */
+  questionRef?: string | null; options?: ReadonlyArray<{ code: string; labelHe: string }> }
 
 interface Ctx { st: PartnerCompanyState | null; ops: OperationsRaw | null; det: ProjectDetailRaw | null; settings: SettingsState | null; kn: OwnerKnowledgeRecord[]; today: string }
 function ctxOf(src: GatewaySources): Ctx {
@@ -52,7 +55,10 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
     // stale feedback (notes on an already-superseded version) never hands the ball back to Victor — the app's own rule
     uploadVersions: w.filesSent.map((f) => ({ at: f.uploadedAt ?? null, versionKey: victorVersionKeyOf({ versionLabel: f.versionLabel ?? null, name: f.name ?? null }) })),
     reviewVersions: w.reviews.filter((r) => !!r.version).map((r) => ({ versionKey: String(r.version), sentAt: r.sentAt ?? null, draft: !!r.draft })) }, COO_CONFIG as never);
-  const sendLog = (c.det?.actions?.rows ?? []).filter((a) => a.projectId && a.projectId === w.projectId && (a.linkedWorkId === w.id || /ויקטור/.test(a.recipientName ?? "") || a.recipientRole === "external_producer"))
+  // Identity (2026-10-05): an entry linked to a work belongs to THAT work only; an unlinked entry is attributed by the
+  // recipient only when the project has exactly ONE Victor work — never work A's log on work B.
+  const victorWorksInProject = w.projectId ? (c.det?.victor?.rows ?? []).filter((x) => x.projectId === w.projectId && (!x.vendorName || x.vendorName === "victor")).length : 0;
+  const sendLog = (c.det?.actions?.rows ?? []).filter((a) => a.projectId && a.projectId === w.projectId && (a.linkedWorkId ? a.linkedWorkId === w.id : victorWorksInProject === 1 && (/ויקטור/.test(a.recipientName ?? "") || a.recipientRole === "external_producer")))
     .map((a) => {
       // B5: a send-log entry is a send-time snapshot — superseded by a LATER Victor upload (pending_version) or a later
       // recorded Owner note (pending_feedback); same day = ambiguous, kept as evidence.
@@ -86,7 +92,7 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
       // the Owner-approved cycle (lib/team-ball-cycle): version → Owner's ball; Owner notes → Victor's ball; new version → Owner
       cycle: teamBallCycle({ team: "Victor", state: state as never, latestVersionAt: ball.lastUploadAt, lastOwnerFeedbackAt: ball.lastNotesSentAt, sentAt: w.sentDate ?? null, staleFeedbackIgnored: ball.staleFeedback?.length ?? 0, todayYmd: c.today }),
       staleFeedback: ball.staleFeedback ?? [],
-      caveats: ["the Owner's own uploads count as 'uploads' in the app's rule", "outside communication (WhatsApp / phone / in person) is invisible"] },
+      caveats: ["the Owner's own uploads count as 'uploads' in the app's rule", "outside communication (WhatsApp / phone / in person) is invisible", ...(victorWorksInProject > 1 ? ["the project has several Victor works: send-log entries not linked to a work are not attributed to any of them"] : [])] },
     files: { entries: w.filesSent.length, versions, latestUpload, byVersion: versions.map((v) => ({ version: v, files: w.filesSent.filter((f) => (f.versionLabel ?? "ללא גרסה") === v).map((f) => ({ name: f.name, uploadedAt: f.uploadedAt, durationSeconds: f.durationSeconds, size: f.size, hasShareLink: f.hasShareLink, path: f.path, uploadedBy: f.uploadedBy ?? "NOT_RECORDED" })) })),
       briefFiles: w.briefFiles.length, receivedEntries: w.filesReceived.length, folder: w.dropboxFolder, hasFolderLink: w.hasFolderLink, storageListing: "NOT_AVAILABLE (capability gap) — stored entries only" },
     feedback: { reviews: w.reviews.map((r) => ({ version: r.version, sentAt: r.sentAt, draft: r.draft, sentNotes: r.sentNotes, draftNotes: r.draft ? r.notes : null, statusField: r.status, statusNote: "always 'waiting' — no UI sets it" })), draftsNotSent: drafts.length },
@@ -171,10 +177,10 @@ export function buildVictorView(src: GatewaySources) {
   const kin = vendorKnownInputs(src);
   const openPerProject = new Map<string, number>();
   for (const w of open) if (w.project?.key) openPerProject.set(w.project.key, (openPerProject.get(w.project.key) ?? 0) + 1);
-  const knownOf = (w: (typeof open)[number]) => vendorWorkKnown({ workKey: w.key, label: w.title, lastUploadAt: w.handoff.lastUploadAt ?? null, todayIL: c.today, records: c.kn, answers: kin.answers, projectUpdate: w.project?.key && openPerProject.get(w.project.key) === 1 ? kin.projectUpdate(w.project.key) : null, vendorLabel: "ויקטור", vendorBall: "VICTOR" });
+  const knownOf = (w: (typeof open)[number]) => vendorWorkKnown({ workKey: w.key, label: w.title, lastUploadAt: w.handoff.lastUploadAt ?? null, todayIL: c.today, records: c.kn, answers: kin.answers, projectUpdate: w.project?.key && openPerProject.get(w.project.key) === 1 ? kin.projectUpdate(w.project.key) : null, vendorLabel: "ויקטור", vendorBall: "VICTOR", singleWorkProjectKey: w.project?.key && openPerProject.get(w.project.key) === 1 ? w.project.key : null });
   for (const w of open) {
     if (w.handoff.state === "WAITING_ON_VICTOR") signals.push({ code: "WAITING_ON_VICTOR", kind: "DERIVED_SIGNAL", he: `${w.title}: נשלחו הערות אחרי ההעלאה האחרונה`, work: w.key });
-    if (w.handoff.state === "WAITING_ON_OWNER") { signals.push({ code: "WAITING_ON_OWNER", kind: "DERIVED_SIGNAL", he: `${w.title}: ויקטור העלה אחרי ההערות האחרונות (לפי המערכת)`, work: w.key }); const kw = knownOf(w); if (kw) known.push(kw); else if ((w.handoff.daysSinceLastUpload ?? 0) > 7) questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ויקטור העלה לפני ${w.handoff.daysSinceLastUpload} ימים ולא נשלחו הערות במערכת. טופל מחוץ למערכת?`, why: "in-app evidence only", work: w.key }); }
+    if (w.handoff.state === "WAITING_ON_OWNER") { signals.push({ code: "WAITING_ON_OWNER", kind: "DERIVED_SIGNAL", he: `${w.title}: ויקטור העלה אחרי ההערות האחרונות (לפי המערכת)`, work: w.key }); const kw = knownOf(w); if (kw) known.push(kw); else if ((w.handoff.daysSinceLastUpload ?? 0) > 7) { const ref = victorDeliveryQuestionRef(w.id, w.handoff.lastUploadAt ?? null); questions.push({ kind: "OUTSIDE_COMMUNICATION", questionHe: `"${w.title}" — ויקטור העלה לפני ${w.handoff.daysSinceLastUpload} ימים ולא נשלחו הערות במערכת. טופל מחוץ למערכת?`, why: "in-app evidence only", work: w.key, questionRef: ref, options: ref ? CASE_ANSWER_OPTIONS : [] }); } }
     if (w.handoff.state === "UNKNOWN") signals.push({ code: "HANDOFF_UNKNOWN", kind: "UNKNOWN", he: `${w.title}: ${w.handoff.appRule.basis}`, work: w.key });
     if (w.handoff.state === "CONFLICTING_EVIDENCE") { signals.push({ code: "HANDOFF_CONFLICT", kind: "DERIVED_SIGNAL", he: `${w.title}: יומן השליחה (${w.handoff.sendLogHolder}) לא תואם להעלאות / הערות (${w.handoff.appRule.holder})`, work: w.key }); questions.push({ kind: "HANDOFF", questionHe: `"${w.title}" — אצל מי זה באמת עכשיו?`, why: "send log and upload / notes evidence disagree", work: w.key }); }
     if (w.internalDeadline?.passed) signals.push({ code: "INTERNAL_DEADLINE_PASSED", kind: "DERIVED_SIGNAL", he: `${w.title}: הדדליין הפנימי (${w.internalDeadline.date}) עבר — ציפייה פנימית, לא התחייבות ללקוח; לבדוק את המצב, לא להאשים.`, work: w.key });

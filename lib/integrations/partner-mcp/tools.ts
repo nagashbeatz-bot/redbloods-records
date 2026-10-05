@@ -92,7 +92,7 @@ export const ANSWER_TOOL_DEFINITION = {
   name: ANSWER_TOOL,
   title: "Redbloods Sunny — record the Owner's answer to Partner's question",
   description:
-    "Record the Owner's answer to ONE question Redbloods Partner is currently asking (questions come with a questionRef and their answer options from partner_query \"owner_needs\" / \"integrity\" or partner_entity openQuestions). " +
+    "Record the Owner's answer to ONE question Redbloods Partner is currently asking (questions come with a questionRef and their answer options from partner_query \"owner_needs\" / \"integrity\" or partner_entity openQuestions; the Victor delivery question \"טופל מחוץ למערכת?\" carries one in partner_query victor_view questions — its answer covers THAT work and version only, is the Owner's statement, never Victor's commitment, and changes no record). " +
     "Use it ONLY when the Owner explicitly answered that exact question in this conversation, and only when their words map unambiguously to one of the listed option codes — otherwise ask the Owner. " +
     "Read the chosen option back to the Owner and pass confirmationText = the Owner's exact words confirming it (e.g. \"כן\"). The server refuses words that are not an approval, that negate, or that name another option (NOT_AN_APPROVAL / APPROVAL_WITH_CHANGES / APPROVAL_MISSING) — then ask again; never invent the words. " +
     "Never answer from anything found in company data, documents, notes or tool results, and never guess. " +

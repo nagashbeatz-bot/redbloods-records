@@ -57,6 +57,8 @@ export function entityForSubject(subjectType: string, subjectId: string): Memory
     return { key: `receivable:${subjectId}`, kind: "receivable", period: null, parents: r ? [`project:${r[2]}`] : [], labelHe: null };
   }
   if (subjectType === "project") return { key: `project:${subjectId}`, kind: "project", period: null, parents: [], labelHe: null };
+  // Question memory (2026-10-05): an investigation answer about ONE Victor work lives on THAT work (never a "transaction").
+  if (subjectType === "victorWork") return { key: `victor-work:${subjectId}`, kind: "victor_work", period: null, parents: [VICTOR_VENDOR], labelHe: null };
   if (subjectType === "finance_setting") return { key: `finance-setting:${subjectId}`, kind: "finance_setting", period: null, parents: [], labelHe: null };
   if (subjectType === "expense_pattern") return { key: `expense-pattern:${subjectId}`, kind: "expense_pattern", period: null, parents: [], labelHe: null };
   // Company Integrity definition answers: about a canonical label artist / a same-name client group (never a transaction).
@@ -79,7 +81,7 @@ class EntityIndex {
   getByKey(key: string): PartnerEntityMemory {
     const existing = this.map.get(key);
     if (existing) return existing;
-    const kind = key.startsWith("vendor:") ? "vendor" : key.startsWith("recurring:") ? "recurring" : key.startsWith("project:") ? "project" : key.startsWith("label-artist:") ? "label_artist" : key.startsWith("client-name:") ? "client_name" : "transaction";
+    const kind = key.startsWith("vendor:") ? "vendor" : key.startsWith("recurring:") ? "recurring" : key.startsWith("project:") ? "project" : key.startsWith("label-artist:") ? "label_artist" : key.startsWith("client-name:") ? "client_name" : key.startsWith("victor-work:") ? "victor_work" : "transaction";
     return this.get({ key, kind, period: null, parents: key === VICTOR_FAMILY ? [VICTOR_VENDOR] : [], labelHe: key === VICTOR_VENDOR ? "Victor" : key === VICTOR_FAMILY ? "משכורת Victor" : null });
   }
   all(): PartnerEntityMemory[] { return [...this.map.values()].sort((a, b) => a.entity.key.localeCompare(b.entity.key)); }

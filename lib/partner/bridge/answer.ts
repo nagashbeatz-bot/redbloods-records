@@ -27,6 +27,7 @@ import { answerFinanceQuestionCore, type FinanceAnswerDeps, type FinanceLiveView
 import { financeAnswerOffer } from "./finance-ref";
 import { decodeQuestionRef, encodeQuestionRef, type QuestionRef } from "./ref";
 import { ownerApprovalVerdict } from "../owner-approval";
+import { CASE_ANSWER_OPTIONS, answerCaseQuestionCore, caseLearnedMessageHe, type CaseAnswerDeps } from "../investigation/case-answer";
 
 export type BridgeAnswerStatus =
   | "LEARNED" | "ALREADY_ANSWERED" | "STALE_QUESTION" | "NOT_CURRENT" | "INVALID_ANSWER" | "NOT_AUTHORIZED"
@@ -63,6 +64,8 @@ export interface BridgeDeps {
   financeDeps?(provenance: OwnerContextProvenance): FinanceAnswerDeps;
   /** A brand-new live Finance read (post-write verification + the next questions); null when it cannot be read. */
   freshFinance?(): Promise<FinanceLiveView | null>;
+  /** The Victor delivery CASE answer (Owner Q1, 2026-10-05): absent → case refs are refused (NOT_CURRENT). */
+  caseDeps?(): CaseAnswerDeps;
 }
 
 const CODE_RE = /^[A-Z][A-Z0-9_]{1,40}$/;
@@ -120,6 +123,7 @@ export async function answerViaConnectorCore(deps: BridgeDeps, i: { questionRef:
   const ref = decodeQuestionRef(i.questionRef);
   if (!ref) return out("NOT_CURRENT", "השאלה הזו לא מזוהה. בקש מ־Partner את השאלות הנוכחיות.", null);
   if (ref.kind === "finance") return answerFinanceViaConnector(deps, ref, i);
+  if (ref.kind === "case") return answerCaseViaConnector(deps, ref, i);
   const type = ref.questionId.slice(ref.questionId.lastIndexOf("::") + 2);
   if (!isIntegrityQuestionType(type)) return out("NOT_CURRENT", "השאלה הזו לא מזוהה. בקש מ־Partner את השאלות הנוכחיות.", null);
   if (typeof i.answer !== "string" || !CODE_RE.test(i.answer) || !INTEGRITY_ANSWER_OPTIONS[type].some((o) => o.code === i.answer)) {
@@ -224,5 +228,34 @@ async function answerFinanceViaConnector(deps: BridgeDeps, ref: QuestionRef, i: 
     case "REQUEST_ID_CONFLICT": return out("NOT_CURRENT", "הבקשה הזו כבר שימשה תשובה אחרת. בקש מ־Partner את השאלות הנוכחיות.", live);
     case "LIVE_READ_FAILED": return out("UNAVAILABLE", "לא הצלחתי לקרוא את המצב הנוכחי. לא נשמר דבר — נסה שוב בעוד רגע.", live);
     default: return out("FAILED", "התשובה לא נשמרה. לא נשמר דבר — אפשר לנסות שוב או לענות בלוח הבקרה.", live);
+  }
+}
+
+// ── Case (kind "case"): ONLY the Victor delivery question WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM (Owner Q1, 2026-10-05) ──
+
+async function answerCaseViaConnector(deps: BridgeDeps, ref: QuestionRef, i: { answer: unknown; confirmationText?: unknown; actor: BridgeActor; attemptAuditId: string }): Promise<BridgeAnswerResult> {
+  const out = (status: BridgeAnswerStatus, ownerMessageHe: string, recorded: BridgeAnswerResult["recorded"] = null, persisted = false): BridgeAnswerResult => ({ status, recorded, ownerMessageHe, nextQuestions: [], persisted });
+  if (!deps.caseDeps) return out("NOT_CURRENT", "השאלה הזו לא מזוהה. בקש מ־Partner את השאלות הנוכחיות.");
+  if (typeof i.answer !== "string" || !CODE_RE.test(i.answer) || !CASE_ANSWER_OPTIONS.some((o) => o.code === i.answer)) return out("INVALID_ANSWER", "זו לא אחת מהתשובות האפשריות לשאלה. שאל את הבעלים שוב עם האפשרויות של Partner.");
+  const approval = answerApproval(i.confirmationText, CASE_ANSWER_OPTIONS, i.answer);
+  if (!approval.ok) return out(approval.code, approval.messageHe);
+  let owner = false;
+  try { owner = await deps.isOwner(i.actor.userId); } catch { owner = false; }
+  if (!owner) return out("NOT_AUTHORIZED", "רק הבעלים של Redbloods יכול לענות על שאלות של Partner.");
+  const provenance: OwnerContextProvenance = { source: "owner_via_claude", channel: "mcp", client_id: i.actor.clientId, token_id: i.actor.tokenId, attempt_audit_id: i.attemptAuditId };
+  const r = await answerCaseQuestionCore({ ...deps.caseDeps(), provenance }, i.actor.userId, ref, i.answer);
+  const label = (code: string) => CASE_ANSWER_OPTIONS.find((o) => o.code === code)?.labelHe ?? code;
+  const rec = (code: string): BridgeAnswerResult["recorded"] => ({ subject: null, questionHe: "האם המסירה של ויקטור נבדקה / טופלה מחוץ למערכת?", answerHe: label(code), answerCode: code, epistemic: "OWNER_DECISION", provenance: "OWNER_VIA_CLAUDE", answeredAt: new Date().toISOString() });
+  switch (r.status) {
+    case "ANSWER_SAVED":
+      return r.learned ? out("LEARNED", caseLearnedMessageHe(i.answer), rec(i.answer), true)
+        : out("NOT_VERIFIED", "התשובה נשלחה, אבל עוד לא הצלחתי לוודא ש־Partner משתמש בה. אל תסתמך עליה עדיין.", null, true);
+    case "ALREADY_ANSWERED":
+      return out("ALREADY_ANSWERED", r.sameAnswer ? "התשובה הזו כבר רשומה אצל Partner על הגרסה הזו." : `כבר ענית על הגרסה הזו: ${label(r.answerCode)}. שינוי תשובה קיימת עוד לא נתמך.`, null);
+    case "STALE_QUESTION": return out("STALE_QUESTION", "ויקטור העלה גרסה חדשה מאז שהשאלה הוצגה (או שהנתונים השתנו). לא נשמר דבר — בקש את השאלה העדכנית.");
+    case "NOT_CURRENT": return out("NOT_CURRENT", "Partner כבר לא שואל את השאלה הזו כרגע (למשל נשלחו הערות או שהעבודה נסגרה). לא נשמר דבר.");
+    case "INVALID": return out("NOT_CURRENT", "השאלה הזו לא תואמת לשאלות הנוכחיות של Partner.");
+    case "LIVE_READ_FAILED": return out("UNAVAILABLE", "לא הצלחתי לקרוא את המצב הנוכחי. לא נשמר דבר — נסה שוב בעוד רגע.");
+    default: return out("FAILED", "התשובה לא נשמרה. לא נשמר דבר — אפשר לנסות שוב.");
   }
 }

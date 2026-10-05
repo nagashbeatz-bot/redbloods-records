@@ -15,6 +15,7 @@ import { createCompanyReadContext } from "../company/read-context";
 import { integrityAnswerDeps } from "../integrity/server";
 import { financeAnswerDeps, loadFinanceFresh } from "../finance/answer-service";
 import { financeAnswerSwitch } from "./finance-ref";
+import { victorCaseAnswerDeps } from "../victor/case-answer-server";
 import { answerViaConnectorCore, type BridgeActor, type BridgeAnswerResult, type BridgeDeps } from "./answer";
 
 /** Is this auth user STILL the Redbloods Owner? (auth user → email → roleForEmail). Fail closed. Shared with Sunny knowledge. */
@@ -36,6 +37,8 @@ const deps: BridgeDeps = {
   // Finance answering: the dedicated switch (default off) + the EXISTING Finance answer core with owner_via_claude provenance.
   financeEnabled: () => financeAnswerSwitch(process.env),
   financeDeps: (provenance) => financeAnswerDeps(provenance),
+  // The Victor delivery CASE answer (Owner Q1, 2026-10-05): the EXISTING store binding lives in victor/case-answer-server.
+  caseDeps: () => victorCaseAnswerDeps(),
   async freshFinance() {
     const live = await loadFinanceFresh();
     if (live.status !== "OK" || !live.answersAvailable) return null;
