@@ -19,7 +19,7 @@ export function resolverProjectsOf(src: GatewaySources): ResolverProject[] {
   const st = ok(src.state);
   const ops = ok(src.operations);
   const meta = new Map((ops?.projectsMeta?.rows ?? []).map((m) => [m.id, m]));
-  return Object.entries(st?.domains.projects.data?.index ?? {}).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status ?? null, artistText: p.artistText ?? null, hidden: meta.get(id)?.isHidden ?? null }));
+  return Object.entries(st?.domains.projects.data?.index ?? {}).map(([id, p]) => ({ key: `project:${id}`, name: p.name, status: p.status ?? null, artistText: p.artistText ?? null, hidden: meta.get(id)?.isHidden ?? null, endDate: meta.get(id)?.endDate ?? null }));
 }
 
 const EMPTY_SIGNALS = { work: [], team: [], days: [], timeWords: [], numbers: [], reportsHappened: false, names: [] };

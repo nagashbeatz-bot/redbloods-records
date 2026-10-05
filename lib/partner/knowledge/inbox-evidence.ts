@@ -21,7 +21,7 @@ import type { ProjectDetailRaw } from "../projects/detail-types";
 import { activeKnowledge } from "../owner-knowledge/store";
 import { normalizeName } from "../gateway/resolve";
 import { containsWholeName, findMentions, findPartialMentions, type MentionEntry } from "./inbox-mentions";
-import { type ResolverProject } from "./inbox-resolver";
+import { eligibleProject, type ResolverProject } from "./inbox-resolver";
 import { addDays, extractSignals, type UpdateSignals } from "./inbox-signals";
 import { isClosedStatus } from "../../steven-mix-reminder-pure";
 import { buildProjectView } from "../projects/view";
@@ -85,7 +85,9 @@ function candidatesOf(item: OwnerInboxItem, g: Graph): { cands: Candidate[]; nam
     if (RANK[c.via] > RANK[prev.via]) prev.via = c.via;
     if (!prev.personKey && c.personKey) { prev.personKey = c.personKey; prev.personName = c.personName; }
   };
-  const OPEN = (k: string) => { const p = pName.get(k); return !!p && p.hidden !== true && !(p.status !== null && CLOSED_PROJECT.has(p.status)); };
+  // the ONE candidate eligibility (shared with the resolver / writer): a project completed AFTER the note still counts
+  const noteYmd = ilYmd(item.createdAt);
+  const OPEN = (k: string) => { const p = pName.get(k); return !!p && eligibleProject(p, noteYmd); };
   const personProjects = (personKey: string) => {
     const nm = normalizeName(nameOf.get(personKey) ?? "");
     const viaCredit = g.projects.filter((p) => nm && credits(p.artistText).includes(nm)).map((p) => ({ key: p.key, via: "CREDIT" as const }));
@@ -123,7 +125,7 @@ function candidatesOf(item: OwnerInboxItem, g: Graph): { cands: Candidate[]; nam
 }
 
 /** Typed evidence for one candidate project from the records (and the update's signals). */
-function evidenceFor(c: Candidate, sig: UpdateSignals, writtenYmd: string, g: Graph): void {
+function evidenceFor(c: Candidate, sig: UpdateSignals, writtenYmd: string, g: Graph, noteAt: string): void {
   const st = ok(g.src.state);
   const id = c.projectKey.slice("project:".length);
   const p = g.projects.find((x) => x.key === c.projectKey)!;
@@ -133,8 +135,15 @@ function evidenceFor(c: Candidate, sig: UpdateSignals, writtenYmd: string, g: Gr
   if (c.via === "RELEASE_LINK") ev.push(S("RELEASE_LINK", "ריליס של הלייבל מקושר לאמן (קנוני)", "RELEASES"));
   if (c.via === "CREDIT") ev.push(W("CREDIT_ONLY", `${c.personName} בקרדיט של הפרויקט (התאמת שם)`, "PROJECTS"));
   if (c.via === "PARTIAL_PROJECT_NAME") ev.push(W("PARTIAL_PROJECT_NAME", `שם פרטי שמופיע בשם הפרויקט "${c.projectName}"`, "PROJECTS"));
+  // time-aware (Owner rule 2026-10-05): "closed" contradicts the note ONLY when a recorded stamp proves it was closed
+  // BEFORE the note; a stamp after the note supports it; no reliable stamp → unknown (never a contradiction, never a fact)
   const closed = p.status !== null && CLOSED_PROJECT.has(p.status);
-  if (closed && (sig.work.length || sig.timeWords.length)) ev.push(X("PROJECT_CLOSED", `הפרויקט ${p.status} — והעדכון מדבר על עבודה פעילה`, "PROJECTS"));
+  if (closed && (sig.work.length || sig.timeWords.length)) {
+    const end = p.status === "הושלם" && p.endDate ? p.endDate.slice(0, 10) : null;
+    if (end && end < writtenYmd) ev.push(X("PROJECT_CLOSED", `הפרויקט הושלם ב-${fmt(end)} — לפני שכתבת — והעדכון מדבר על עבודה פעילה`, "PROJECTS"));
+    else if (end && end > writtenYmd) ev.push(S("PROJECT_COMPLETED_AFTER_NOTE", `הפרויקט סומן הושלם ב-${fmt(end)} — אחרי שכתבת (בזמן הפתק הוא עוד היה פעיל)`, "PROJECTS"));
+    else ev.push(I("PROJECT_CLOSED_TIMING_UNKNOWN", `הפרויקט ${p.status} עכשיו; אין חותמת זמן אמינה — לא ידוע אם היה פתוח כשכתבת (לא סותר)`, "PROJECTS"));
+  }
 
   // ── mix / master work (the app's own closed rule) ──
   const works = (g.ops?.engineerWork?.rows ?? []).filter((w) => w.projectId === id);
@@ -147,9 +156,18 @@ function evidenceFor(c: Candidate, sig: UpdateSignals, writtenYmd: string, g: Gr
   if (sig.work.includes("MIX")) {
     if (active.length) ev.push(V("MIX_ACTIVE", `עבודת ${active[0].workType ?? "מיקס"} פעילה (${active[0].status ?? "?"}) אצל ${active[0].engineerName}${vers.length ? ` · ${vers.length} גרסאות` : ""}`, "ENGINEER_WORK"));
     // no engineer work EVER recorded: the Owner may mix it himself — weak, never a contradiction (One Brain stage 2);
-    // an engineer work that exists but is closed still contradicts "we are mixing"
     else if (!works.length) ev.push(W("NO_ENGINEER_WORK", "אין עבודת מהנדס רשומה בפרויקט — ייתכן שהמיקס אצלך (לא סותר)", "ENGINEER_WORK"));
-    else ev.push(X("NO_MIX_WORK", "העדכון מדבר על מיקס — ועבודת המיקס / מאסטר של הפרויקט סגורה", "ENGINEER_WORK"));
+    else {
+      // the work is closed NOW. Time-aware (Owner rule 2026-10-05): the work has no closure stamp — the only recorded
+      // completion time is its final files' upload. Finals after the note → completed after it (supports); finals all
+      // before the note → it was already finished then (contradicts); no finals → unknown (never a contradiction)
+      const finals = (g.ops?.finalFiles?.rows ?? []).filter((f) => f.workId && works.some((w) => w.id === f.workId) && f.createdAt).map((f) => f.createdAt as string).sort();
+      const noteMs = Date.parse(noteAt);
+      const after = finals.find((t) => Date.parse(t) > noteMs);
+      if (after) ev.push(S("COMPLETED_AFTER_NOTE", `הקבצים הסופיים של המיקס הועלו ב-${fmt(ilYmd(after))} — אחרי שכתבת (בזמן הפתק המיקס עוד לא נסגר)`, "FINAL_FILES"));
+      else if (finals.length) ev.push(X("NO_MIX_WORK", `העדכון מדבר על מיקס — והקבצים הסופיים כבר הועלו ב-${fmt(ilYmd(finals.at(-1)!))}, לפני שכתבת`, "ENGINEER_WORK"));
+      else ev.push(I("MIX_CLOSED_TIMING_UNKNOWN", "עבודת המיקס סגורה עכשיו; אין זמן סגירה רשום — לא ידוע אם הייתה פתוחה כשכתבת (לא סותר)", "ENGINEER_WORK"));
+    }
     if (p.status && MIX_STATUSES.has(p.status)) ev.push(S("STATUS_MATCH", `סטטוס הפרויקט "${p.status}" מתאים למיקס`, "PROJECTS"));
     if (openComments > 0) ev.push(S("OPEN_REVISIONS", `${openComments} הערות פתוחות על הגרסה`, "MIX_COMMENTS"));
     if (lastVersion && Math.abs(days(writtenYmd, lastVersion)) <= 14) ev.push(S("RECENT_VERSION", `גרסה אחרונה הועלתה ב-${fmt(lastVersion.slice(0, 10))}`, "MIX_VERSIONS"));
@@ -294,7 +312,7 @@ export function resolveUpdate(item: OwnerInboxItem, g: Graph, deep = false): Und
       if (!cands.some((c) => c.projectKey === k)) cands.push({ projectKey: k, projectName: p.name, personKey: null, personName: w, via: "CREDIT", evidence: [W("NOTES_MENTION", `"${w}" מופיע בהערות של הפרויקט (טקסט חופשי)`, "PROJECT_DETAIL")] });
     }
   }
-  for (const c of cands) if (!c.evidence.some((e) => e.code === "NOTES_MENTION")) evidenceFor(c, sig, writtenYmd, g);
+  for (const c of cands) if (!c.evidence.some((e) => e.code === "NOTES_MENTION")) evidenceFor(c, sig, writtenYmd, g, item.createdAt);
   const out = (resolution: Resolution, context: ChosenContext | null = null): UnderstoodUpdateV2 => ({ itemId: item.id, signals: { ...sig, names }, resolution, context });
   if (!cands.length) {
     // a team member named alone ("לתקן התראות של סטיבן") → that exact vendor identity (never a project guess)

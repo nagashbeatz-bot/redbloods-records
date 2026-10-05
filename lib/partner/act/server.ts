@@ -597,7 +597,7 @@ async function inboxMemoryFamilyWriters(): Promise<InboxMemoryFamilyWriters> {
   };
   const deps: import("@/lib/writes/inbox-memory").InboxMemoryDeps = {
     store,
-    async readItem(id) { const r = await inbox.get(id); if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`); return r.item ? { body: r.item.body, status: r.item.status } : null; },
+    async readItem(id) { const r = await inbox.get(id); if (r.status !== "OK") throw new Error(`owner inbox read failed: ${r.detail}`); return r.item ? { body: r.item.body, status: r.item.status, createdAt: r.item.createdAt } : null; },
     async readMemory() { const r = await store.readAll(); if (r.status !== "OK") throw new Error(`inbox memory read failed: ${r.detail}`); return r.value; },
     async resolverContext() {
       const src = await sources();

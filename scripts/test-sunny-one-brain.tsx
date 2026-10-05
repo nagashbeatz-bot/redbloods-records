@@ -97,7 +97,7 @@ const hist = (planId: string, at: string, actionId: string, entity: string, outc
     ok("2a. 'לתקן התראות של סטיבן' → team STEVEN + a SYSTEM item (the app itself, never project progress)", s.team.includes("STEVEN") && s.work.includes("SYSTEM"), s);
     ok("2b. the inbox name index maps סטיבן to vendor:STEVEN through the SAME team lexicon (no hard-coded entity)", TEAM_NAMES["סטיבן"] === "STEVEN" && /TEAM_NAMES\[normalizeName\(d\.name\)\] !== d\.target/.test(read("lib/partner/knowledge/inbox-mentions.ts")));
     ok("2c. a team member named alone resolves to that vendor (LIKELY, VENDOR level) — never a project guess", /level: "VENDOR", key, name, quality: "CANONICAL"/.test(read("lib/partner/knowledge/inbox-evidence.ts")));
-    ok("2d. no engineer work ever → WEAK (the Boss may mix himself), a CLOSED engineer work still contradicts", /NO_ENGINEER_WORK/.test(read("lib/partner/knowledge/inbox-evidence.ts")) && /else ev\.push\(X\("NO_MIX_WORK"/.test(read("lib/partner/knowledge/inbox-evidence.ts")));
+    ok("2d. no engineer work ever → WEAK (the Boss may mix himself); a CLOSED work contradicts only when its finals PROVE it was finished before the note (time-aware, 2026-10-05)", /NO_ENGINEER_WORK/.test(read("lib/partner/knowledge/inbox-evidence.ts")) && /else if \(finals\.length\) ev\.push\(X\("NO_MIX_WORK"/.test(read("lib/partner/knowledge/inbox-evidence.ts")) && /MIX_CLOSED_TIMING_UNKNOWN/.test(read("lib/partner/knowledge/inbox-evidence.ts")));
     const n = extractSignals("היום עם מאור היה סשן טוב", "2026-09-30T23:21:09Z");
     ok("2e. night rule (unchanged, verified): 'היום' written at 02:21 Israel covers the evening before AND the day", n.days.includes("2026-09-30") && n.days.includes("2026-10-01"), n.days);
   }

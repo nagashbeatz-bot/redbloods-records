@@ -40,12 +40,12 @@ const fieldsOf = (x: { body: string; status: string; outcome: string | null; out
  * ACTION_PLANNED → the plan touched the update's exact records and ran AFTER the note. DISMISSED / LEARNED_KNOWLEDGE keep
  * their own rules. Never by age.
  */
-async function zeroInboxGuard(d: WriterDeps, itemId: string, outcome: string, outcomeRef: string | null, createdAt: string | null): Promise<{ code: string; messageHe: string } | null> {
+export async function zeroInboxGuard(d: WriterDeps, itemId: string, outcome: string, outcomeRef: string | null, createdAt: string | null): Promise<{ code: string; messageHe: string } | null> {
   if (outcome !== "NO_ACTION_NEEDED" && outcome !== "ACTION_PLANNED") return null;
   const keys = await d.inboxItemEntityKeys(itemId);
   if (!keys.length) return outcome === "NO_ACTION_NEEDED"
-    ? { code: "NO_EXACT_HOME", messageHe: "לעדכון אין רשומה מקושרת — 'לא נדרש כלום' צריך בית מדויק (קשר קודם), או DISMISSED אם הבוס מוותר עליו" }
-    : { code: "LINK_FIRST", messageHe: "קודם קשר את העדכון לרשומה המדויקת (LINK_INBOX_ENTITY) — אז אפשר לבדוק שהפעולה אכן עליה" };
+    ? { code: "NO_EXACT_HOME", messageHe: "לעדכון אין רשומה מקושרת — 'לא נדרש כלום' צריך בית מדויק: קודם קשר (LINK_INBOX_ENTITY; ישות לא חד-משמעית → שאל את הבוס מתוך המועמדים של השרת). אל תסגור כ-DISMISSED פתק שטופל — DISMISSED רק כשהבוס אומר שהפתק לא רלוונטי / מוותר עליו" }
+    : { code: "LINK_FIRST", messageHe: "קודם קשר את העדכון לרשומה המדויקת (LINK_INBOX_ENTITY; ישות לא חד-משמעית → שאל את הבוס מתוך המועמדים של השרת) — אז ACTION_PLANNED על ה-plan שטיפל בו. פתק שטופל לא נסגר כ-DISMISSED" };
   if (outcome === "ACTION_PLANNED" && outcomeRef) {
     const scope = await d.readActionPlanScope(outcomeRef);
     if (!scope || !scope.entities.some((e) => keys.includes(e))) return { code: "REF_PLAN_UNRELATED", messageHe: `ה-plan הזה לא נגע ברשומות שהעדכון מדבר עליהן (${keys.join(", ")}) — הוא לא סוגר את העדכון` };
@@ -95,7 +95,7 @@ export const OWNER_INBOX_PRIMITIVES: readonly PrimitiveSpec[] = [
       domain: "SUNNY", he: "סימון עדכון שכתבת לסאני כטופל", en: "Mark one of the Owner's 'עדכון לסאני' items handled (NEW → PROCESSED, final) with a typed outcome and its real reference — records the outcome only; creates no knowledge and no action",
       args: [
         { name: "item", kind: "entityKey", required: true, noteHe: "owner-inbox:<id> מתוך owner_inbox (mode new)" },
-        { name: "outcome", kind: "enum", required: true, values: INBOX_OUTCOMES, noteHe: "LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED (הבנה שאושרה + כל follow-up אמיתי כבר נתפס במקום אחר, או שאין מה לעשות) / DISMISSED" },
+        { name: "outcome", kind: "enum", required: true, values: INBOX_OUTCOMES, noteHe: "LEARNED_KNOWLEDGE / ACTION_PLANNED / NO_ACTION_NEEDED (הבנה שאושרה + כל follow-up אמיתי כבר נתפס במקום אחר, או שאין מה לעשות) / DISMISSED (רק כשהבוס אמר שהפתק לא רלוונטי / מוותר עליו — לעולם לא כדי לנקות פתק שטופל)" },
         { name: "outcomeRef", kind: "text", required: false, noteHe: "ACTION_PLANNED → מזהה ה-plan (pl_…); LEARNED_KNOWLEDGE → מזהה רשומת הידע (uuid); אחרת ריק. לא שדה הערה." },
       ],
       fields: ["status", "outcome", "outcomeRef", "processedVia"], effects: [], riskClass: "NORMAL_BUSINESS", reversible: "NO",

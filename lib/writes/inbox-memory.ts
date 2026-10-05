@@ -23,7 +23,7 @@ export type MemoryWriteResult = { status: "OK"; id: string; replayed: boolean } 
 
 export interface InboxMemoryDeps {
   store: InboxMemoryStore;
-  readItem(id: string): Promise<{ body: string; status: string } | null>;
+  readItem(id: string): Promise<{ body: string; status: string; createdAt?: string | null } | null>;
   readMemory(): Promise<InboxMemory>;
   /** partner_resolve's name index + the projects (for the artist → open projects rule), from the live company state. */
   resolverContext(): Promise<{ index: readonly MentionEntry[]; projects: readonly ResolverProject[] }>;
@@ -45,7 +45,9 @@ export async function checkLink(deps: InboxMemoryDeps, a: { itemId: string; enti
   if (!item) return { ok: false as const, code: "ITEM_NOT_FOUND", messageHe: "לא מצאתי את העדכון" };
   if (!LINK_KEY_RE.test(a.entityKey)) return { ok: false as const, code: "BAD_ENTITY_KEY", messageHe: "מפתח ישות לא לפי החוזה (project / client / label-artist / dj / show / session / release / vendor)" };
   const ctx = await deps.resolverContext();
-  const r = resolveSurface(item.body, a.surface, ctx.index, ctx.projects);
+  // the note's day (Israel): a project completed AFTER it is still a candidate (the ONE eligibility, inbox-resolver)
+  const noteYmd = item.createdAt ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(item.createdAt)) : null;
+  const r = resolveSurface(item.body, a.surface, ctx.index, ctx.projects, noteYmd);
   return { ...linkVerdict(r, a.entityKey, a.method, a.candidates), resolution: r };
 }
 

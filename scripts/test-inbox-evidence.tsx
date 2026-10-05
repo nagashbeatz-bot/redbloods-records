@@ -26,11 +26,11 @@ let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 900)}` : ""}`); } };
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
-interface P { id: string; name: string; status: string; artist: string; type?: string; deadline?: string | null; songProjectId?: string | null; hidden?: boolean }
+interface P { id: string; name: string; status: string; artist: string; type?: string; deadline?: string | null; songProjectId?: string | null; hidden?: boolean; endDate?: string | null }
 interface Fx {
   clients?: Array<{ id: string; name: string }>; artists?: Array<{ id: string; name: string }>; projects: P[];
   works?: Array<{ id: string; projectId: string; engineer: string; type?: string; status: string; title?: string | null }>;
-  versions?: Array<{ id: string; workId: string; createdAt: string }>; comments?: Array<{ versionId: string; status: string }>;
+  versions?: Array<{ id: string; workId: string; createdAt: string }>; comments?: Array<{ versionId: string; status: string }>; finals?: Array<{ workId: string; createdAt: string }>;
   sessions?: Array<{ id: string; projectId: string; date: string; status: string }>; tracks?: Array<{ id: string; projectId: string; n: number; title: string }>;
   knowledge?: Array<Record<string, unknown>>; notes?: Array<{ id: string; notes: string }>;
 }
@@ -47,10 +47,11 @@ function src(f: Fx): GatewaySources {
     },
   };
   const ops = {
-    projectsMeta: { rows: f.projects.map((p) => ({ id: p.id, name: p.name, status: p.status, projectType: p.type ?? "שיר", businessType: "לקוח", artistText: p.artist, deadline: p.deadline ?? null, startDate: null, endDate: null, parentProject: null, isHidden: !!p.hidden, songProjectId: p.songProjectId ?? null, plannedHours: null, plannedDays: null, updatedAt: null })), capped: false },
+    projectsMeta: { rows: f.projects.map((p) => ({ id: p.id, name: p.name, status: p.status, projectType: p.type ?? "שיר", businessType: "לקוח", artistText: p.artist, deadline: p.deadline ?? null, startDate: null, endDate: p.endDate ?? null, parentProject: null, isHidden: !!p.hidden, songProjectId: p.songProjectId ?? null, plannedHours: null, plannedDays: null, updatedAt: null })), capped: false },
     engineerWork: { rows: (f.works ?? []).map((w) => ({ id: w.id, projectId: w.projectId, engineerName: w.engineer, workType: w.type ?? "מיקס + מאסטר", workTitle: w.title ?? null, status: w.status, sentDate: null, internalDeadline: null, agreedPrice: null, amountPaid: null, currency: null, paymentDate: null })), capped: false },
     mixVersions: { rows: (f.versions ?? []).map((v) => ({ ...v, status: null })), capped: false },
     mixComments: { rows: f.comments ?? [], capped: false },
+    finalFiles: { rows: f.finals ?? [], capped: false },
     albumTracks: { rows: (f.tracks ?? []).map((t) => ({ id: t.id, projectId: t.projectId, trackNumber: t.n, title: t.title, status: null, mixStatus: null, masterStatus: null })), capped: false },
     projectActions: { rows: [], capped: false }, redFilms: { rows: [], capped: false },
   };
@@ -133,7 +134,22 @@ const g = run({ ...haim, works: [], versions: [], comments: [], projects: [{ ...
 ok("not chosen by name: two weak candidates (no engineer work anywhere) stay AMBIGUOUS — never a pick, never a contradiction", g.resolution.status === "AMBIGUOUS" && g.resolution.chosen === null && !g.resolution.contradictions.length, g.resolution);
 const g2 = run({ ...haim, works: (haim.works ?? []).map((w) => ({ ...w, status: "בוטל" })), versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
 ok("…and the other candidate (weak only) is NOT picked — AMBIGUOUS, the Boss chooses (production חיים case, 2026-10-05)", g2.resolution.status !== "LIKELY" || g2.resolution.confidence !== "LOW", g2.resolution);
-ok("a CLOSED engineer work still contradicts \"we are mixing\" (NO_MIX_WORK)", g2.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g2.resolution);
+ok("a work closed NOW with no recorded completion time is UNKNOWN — never a contradiction (Owner rule 2026-10-05)", !g2.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g2.resolution);
+const g3 = run({ ...haim, works: (haim.works ?? []).map((w) => ({ ...w, status: "אושר" })), finals: [{ workId: U(20), createdAt: "2026-09-20T10:00:00Z" }], versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
+ok("NO_MIX_WORK only when PROVED: the final files were uploaded BEFORE the note (the mix was already finished then)", g3.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g3.resolution);
+
+console.log("\nL — the production חיים case AFTER the work was handled (2026-10-05): mix approved + finals and project completed AFTER the note");
+const HAIM_NOTE_AT = "2026-09-30T23:22:26Z";
+const lFx: Fx = { ...haim, projects: [{ ...haim.projects[0], status: "הושלם", endDate: "2026-10-05" }, haim.projects[1]], works: [{ id: U(20), projectId: P_KAROV, engineer: "Steven", status: "אושר" }], finals: [{ workId: U(20), createdAt: "2026-10-02T10:00:00Z" }], comments: [] };
+const l = run(lFx, HAIM_TEXT, HAIM_NOTE_AT);
+const lAll = [...(l.resolution.chosen?.evidence ?? []).map((e) => e.code), ...l.resolution.alternatives.flatMap((a) => a.evidence)];
+ok("the completed project is STILL a candidate for the earlier note (completed after it)", l.resolution.chosen?.chain.some((c) => c.name === "קרוב אלייך") || l.resolution.alternatives.some((a) => a.project === "קרוב אלייך"), l.resolution);
+ok("no contradiction from the present state (no NO_MIX_WORK / PROJECT_CLOSED)", !l.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK" || x.code === "PROJECT_CLOSED"), l.resolution.contradictions);
+ok("the recorded chronology SUPPORTS it: COMPLETED_AFTER_NOTE (finals 02.10 after the 30.09 note) + PROJECT_COMPLETED_AFTER_NOTE (end_date 05.10)", lAll.includes("COMPLETED_AFTER_NOTE") && lAll.includes("PROJECT_COMPLETED_AFTER_NOTE"), lAll);
+const lBefore = run({ ...lFx, projects: [{ ...lFx.projects[0], endDate: "2026-09-20" }, haim.projects[1]] }, HAIM_TEXT, HAIM_NOTE_AT);
+ok("a project completed BEFORE the note is not a candidate (no invented timeline)", !lBefore.resolution.alternatives.some((a) => a.project === "קרוב אלייך") && !lBefore.resolution.chosen?.chain.some((c) => c.name === "קרוב אלייך"), lBefore.resolution);
+const lNoStamp = run({ ...lFx, projects: [{ ...lFx.projects[0], endDate: null }, haim.projects[1]] }, HAIM_TEXT, HAIM_NOTE_AT);
+ok("completed with NO stamp → not a candidate (unknown is never 'after')", !lNoStamp.resolution.alternatives.some((a) => a.project === "קרוב אלייך") && !lNoStamp.resolution.chosen?.chain.some((c) => c.name === "קרוב אלייך"), lNoStamp.resolution);
 
 console.log("\nH — an album: no invented song");
 const P_ALB = U(60);
