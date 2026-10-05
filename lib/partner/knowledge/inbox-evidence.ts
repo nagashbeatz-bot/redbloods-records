@@ -212,6 +212,9 @@ export function decide(cands: readonly Candidate[]): { status: "LIKELY" | "AMBIG
   }
   const strong = eligible.filter((c) => count(c, "STRONG") >= 2);
   if (strong.length === 1 && eligible.every((c) => c === strong[0] || count(c, "STRONG") === 0)) return { status: "LIKELY", pick: strong[0], confidence: "MEDIUM" };
+  // a single eligible candidate with ONLY weak evidence never wins over other (even contradicted) candidates — the Boss
+  // chooses (One Brain 2026-10-05: "no engineer work" is weak, so it must not turn a name match into a pick)
+  if (eligible.length === 1 && cands.length > 1 && count(eligible[0], "STRONG") === 0 && count(eligible[0], "VERY_STRONG") === 0) return { status: "AMBIGUOUS", pick: null, confidence: null };
   if (eligible.length === 1) return { status: "LIKELY", pick: eligible[0], confidence: "LOW" };
   return { status: "AMBIGUOUS", pick: null, confidence: null };
 }

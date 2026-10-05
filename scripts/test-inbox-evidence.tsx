@@ -132,6 +132,7 @@ console.log("\nG — the name matches, the business contradicts");
 const g = run({ ...haim, works: [], versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
 ok("not chosen by name: two weak candidates (no engineer work anywhere) stay AMBIGUOUS — never a pick, never a contradiction", g.resolution.status === "AMBIGUOUS" && g.resolution.chosen === null && !g.resolution.contradictions.length, g.resolution);
 const g2 = run({ ...haim, works: (haim.works ?? []).map((w) => ({ ...w, status: "בוטל" })), versions: [], comments: [], projects: [{ ...haim.projects[0], status: "לא התחיל" }, haim.projects[1]] }, HAIM_TEXT);
+ok("…and the other candidate (weak only) is NOT picked — AMBIGUOUS, the Boss chooses (production חיים case, 2026-10-05)", g2.resolution.status !== "LIKELY" || g2.resolution.confidence !== "LOW", g2.resolution);
 ok("a CLOSED engineer work still contradicts \"we are mixing\" (NO_MIX_WORK)", g2.resolution.contradictions.some((x) => x.code === "NO_MIX_WORK"), g2.resolution);
 
 console.log("\nH — an album: no invented song");
