@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { mkDeps, U, OWNER } from "./fixtures/act-harness";
-import { approveAction, executeAction, planAction, planStatus, CLAIM_RECONCILE_AFTER_MS } from "../lib/partner/act/service";
+import { approveAction, executeAction, planAction, planStatus, CLAIM_RECONCILE_AFTER_MS, MAY_HAVE_RUN } from "../lib/partner/act/service";
 import { executionKey, planHash } from "../lib/partner/act/plan";
 import { issueApprovalToken, issueDuplicateAck, DUPLICATE_ACK_TTL_MS } from "../lib/partner/act/approval";
 import { toPersistablePlan } from "../lib/partner/act/persist";
@@ -231,7 +231,8 @@ const storedPlan = (db: ReturnType<typeof mkDeps>["db"], planId: unknown) => db.
     m.db.rows(ACT_TABLES.executions).push({ execution_key: executionKey(hash, plan.steps[1]), plan_id: p.planId, step_index: 1, action_id: "ADD_TRANSACTION", action_version: 1, status: "CLAIMED", outcome: { at: old }, recorded_at: null });
     const s = await planStatus({ planId: p.planId }, OWNER, m.d);
     const rows = rowsOf(m.db, p.planId);
-    ok("R6g. an interrupted CREATE → FAILED 'OUTCOME_UNKNOWN' (never claimed as done, never re-run); the unreached step gets its NOT_RUN row; status PARTIALLY_APPLIED", s.status === "PARTIALLY_APPLIED" && rows.map((x) => x.status).join() === "APPLIED_AS_EXPECTED,FAILED,NOT_RUN" && /OUTCOME_UNKNOWN/.test(String((rows[1].outcome as { detail: string }).detail)) && creates(h.calls) === 0, { s: s.status, rows: rows.map((x) => x.status) });
+    // P0-G (Owner decision 2026-10-05): an interrupted CREATE may have created the record — OUTCOME_UNKNOWN (the MAY_HAVE_RUN marker), never "not done"
+    ok("R6g. an interrupted CREATE → OUTCOME_UNKNOWN (MAY_HAVE_RUN — never claimed as done, never as not done, never re-run); the unreached step gets its NOT_RUN row", s.status === "OUTCOME_UNKNOWN" && rows.map((x) => x.status).join() === "APPLIED_AS_EXPECTED,FAILED,NOT_RUN" && String((rows[1].outcome as { detail: string }).detail).startsWith(MAY_HAVE_RUN) && /OUTCOME_UNKNOWN/.test(String((rows[1].outcome as { detail: string }).detail)) && creates(h.calls) === 0, { s: s.status, rows: rows.map((x) => x.status) });
   }
   {
     // a run between steps (step 1 recorded a moment ago, step 2 not yet claimed) is IN_PROGRESS, not "NOT_RUN"

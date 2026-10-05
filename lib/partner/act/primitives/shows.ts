@@ -282,7 +282,7 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.djClientId === after.djClientId && s.djFee === after.djFee; },
     requiredValues: (_a, after) => [String(after.djName || "ללא DJ"), ils(Number(after.djFee))],
     warnings: (c) => (c.djName ? [`היום: ${c.djName} (${ils(Number(c.djFee))})`] : []),
-    disclosuresHe: ["שורת ההוצאה של ה-DJ (אם עוד לא שולמה) וחלוקת 50/50 מחושבות מחדש; שכר DJ או אמן ששולם לא נדרס ולא משנה סטטוס — פער מוצג לך", "DJ חדש (קלינטון) מקבל בקשת אישור בפורטל — בלי Push אוטומטי", "הסרת DJ מבטלת את שורת ההוצאה שלו (לא מוחקת) — אלא אם כבר שולמה (אז היא נשארת שולם)", "אם להופעה יש אירוע ביומן — הוא מתעדכן (שם ה-DJ בתיאור)"],
+    disclosuresHe: ["שורת ההוצאה של ה-DJ (אם עוד לא שולמה) וזכאות האמן מחושבת מחדש (רק לאמן עם הסכם — שליו טסמה / אבי מולה; לכל אמן אחר לא מוגדרת); שכר DJ או אמן ששולם לא נדרס ולא משנה סטטוס — פער מוצג לך", "DJ חדש (קלינטון) מקבל בקשת אישור בפורטל — בלי Push אוטומטי", "הסרת DJ מבטלת את שורת ההוצאה שלו (לא מוחקת) — אלא אם כבר שולמה (אז היא נשארת שולם)", "אם להופעה יש אירוע ביומן — הוא מתעדכן (שם ה-DJ בתיאור)"],
   },
   {
     actionId: "CONFIRM_SHOW", kinds: ["show"],
@@ -330,7 +330,7 @@ export const SHOW_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, id, _a, args) { ok(await d.closeShow(id, { markDone: true, incomeReceived: args.incomeReceived === true, djPaid: args.djPaid === true, note: str(args.note) })); },
     requiredValues: (a) => [`התקבל ${a.incomeReceived ? "✓" : "✗"}`, `DJ ${a.djPaid ? "✓" : "✗"}`],
     async verify(d, id, after) { const s = await d.readShow(id); return !!s && s.status === "בוצע" && (after.paymentStatus !== "שולם" || s.remaining === 0); },
-    warnings: (c) => [`${c.name}: מחיר ${ils(Number(c.showPrice))}${Number(c.djFee) > 0 ? `, DJ ${ils(Number(c.djFee))}` : ""} — זכאות האמן לפי הכלל (50/50 אחרי DJ וחזרות) נכנסת למאזן; התשלום לאמן נעשה רק דרך מאזן האמן`],
+    warnings: (c) => [`${c.name}: מחיר ${ils(Number(c.showPrice))}${Number(c.djFee) > 0 ? `, DJ ${ils(Number(c.djFee))}` : ""} — זכאות האמן לפי ההסכם (רק לשליו טסמה / אבי מולה: חצי מהנטו אחרי DJ וחזרות; לכל אמן אחר — לא מוגדרת) נכנסת למאזן; התשלום לאמן נעשה רק דרך מאזן האמן`],
     disclosuresHe: ["כמו דיאלוג הסגירה: סטטוס בוצע, סטטוסים לרשומות הכספים, ושורת סיכום בהערות", "'התקבל' = היתרה שנשארה נרשמת כתשלום אחד (מקדמה שכבר נרשמה לא נספרת שוב); 'לא התקבל' לא מוריד שום תשלום שנרשם", "'DJ שולם' מסמן את שורת שכר ה-DJ בפיננסים כשולם; סימון 'לא' לא משנה את השורה — שכר ששולם כבר נשאר שולם (ביטול סימון = MARK_SHOW_FEE_PAID, פעולה מפורשת)", "תשלום הלקוח לא משנה את סטטוס שכר ה-DJ, והפוך", "במאזן האמן (אמן לייבל יחיד): זכאות אחת להופעה נכנסת למאזן כשההופעה בוצעה — זה לא תשלום; תשלום לאמן נרשם רק במאזן האמן (ADD_LEDGER_ENTRY 'תשלומים')", "הפעלה חוזרת בטוחה, בלי כפילויות", "Push: סגירת ההופעה עצמה לא שולחת Push תשלום; רק אם סימנת 'DJ שולם' ושורת ה-DJ_FEE עוברת באמת ל'שולם' — CLEANTONE יקבל Push 'התשלום הועבר' פעם אחת לתשלום, ורק אם הוא הגיע תקבל אתה אישור. כשל ב-Push לא נוגע בכסף"],
   },
   {

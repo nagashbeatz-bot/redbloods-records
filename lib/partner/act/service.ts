@@ -604,7 +604,7 @@ async function verifyInterrupted(plan: Plan, s0: PlanStep, d: ActServiceDeps, cr
   const res = resolveStepRefs(s0, createdOf);
   if (!res) return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted and the record an earlier step created is not known — treated as not applied (never re-executed)");
   const s = res.step;
-  if (stepTargetId(s) === "new") return out("FAILED", "OUTCOME_UNKNOWN: the execution was interrupted; a created record cannot be verified without its id — check the live records before planning it again (never re-executed)");
+  if (stepTargetId(s) === "new") return out("FAILED", `${MAY_HAVE_RUN} the execution was interrupted; a created record cannot be verified without its id — it may have happened. Check the live records before planning it again (never re-executed)`);
   // A RECEIPT step (push / email / sync / file move) cannot be re-verified from records: it MAY have run — never "not applied".
   if (verifyKindOf(spec.actionId, spec.kinds) === "RECEIPT") return out("FAILED", `${MAY_HAVE_RUN} the execution was interrupted; this step's effect (a push / email / sync / file) cannot be checked from the records — it may have happened. Check before repeating it (never re-executed)`);
   try {

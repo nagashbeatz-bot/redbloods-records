@@ -148,7 +148,8 @@ const REVIEW_ANSWER_HE: Record<string, string> = { REVIEWED_OUTSIDE_SYSTEM: "ה�
 /**
  * OUTSIDE_COMMUNICATION for ONE vendor work (Victor / a mix engineer). What the Owner already said, most specific first:
  *   1 VENDOR_COMMITMENT naming THIS work (a commitment — "הוא על זה");
- *   2 the Owner Context answer about THIS work's delivery (dashboard "צריך ממך": reviewed outside / not yet / …);
+ *   2 the Owner Context answer about THIS work's delivery (WAS_DELIVERY_REVIEWED_OUTSIDE_SYSTEM — read here when it exists;
+ *     as of 2026-10-05 NO writer records it yet (no dashboard answer, no Claude bridge) — never claimed as an answer path);
  *   3 a processed update (inbox interpretation) on the work's PROJECT that puts the ball with the vendor — only when the
  *     project has exactly ONE active work of that vendor (never project-wide across works).
  * A version uploaded AFTER the statement is newer canonical evidence: the statement no longer counts (a real new reason).

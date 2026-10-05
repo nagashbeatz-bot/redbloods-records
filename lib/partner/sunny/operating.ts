@@ -23,6 +23,7 @@ import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimVa
 import { freshnessOf as knownFreshnessOf, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "./known-context";
 import { paymentPathOf } from "../finance/decision-gate";
 import { ANSWER_OPTIONS } from "../investigation/questions";
+import { agreementArtistOf } from "../../label-agreements";
 import type { PartnerMemory } from "../memory/types";
 
 const ok = <T,>(a: { status: string; value?: T } | undefined): T | null => (a && a.status === "OK" ? (a as { value: T }).value : null);
@@ -254,10 +255,12 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
   const known: Array<{ item: string; value: unknown; source: string }> = [{ item: "artist", value: { key: artistKey, name, labelArtist: !!la }, source: "CANONICAL_DATA" }];
   const questions: OwnerQuestion[] = [];
   if (!date) questions.push({ kind: "MISSING_DETAIL", questionHe: `באיזה תאריך ההופעה של ${name}?`, why: "no date given" });
+  // P0-F (2026-10-05): a DJ recorded by name only is still a DJ (both canonical representations; the label detail carries the name)
+  const existingDjName = existing ? ld?.shows?.rows.find((x) => x.id === existing.id)?.djName ?? null : null;
   if (existing) {
-    known.push({ item: "already registered", value: { show: `show:${existing.id}`, status: existing.status, price: existing.price, paymentStatus: existing.paymentStatus, djAssigned: !!existing.djClientId, djConfirmation: existing.djConfirmationStatus }, source: "CANONICAL_DATA" });
+    known.push({ item: "already registered", value: { show: `show:${existing.id}`, status: existing.status, price: existing.price, paymentStatus: existing.paymentStatus, djAssigned: !!existing.djClientId || !!existingDjName, djConfirmation: existing.djConfirmationStatus }, source: "CANONICAL_DATA" });
     if (!existing.price) questions.push({ kind: "MISSING_DETAIL", questionHe: `מה המחיר של ההופעה של ${name} ב-${date}?`, why: "the show exists without a price" });
-    if (!existing.djClientId) questions.push({ kind: "MISSING_DETAIL", questionHe: labelDj ? `האם DJ CLEANTONE מנגן בהופעה הזו, או די-ג׳יי אחר?` : "מי הדי-ג׳יי בהופעה?", why: "no DJ on the show; CLEANTONE plays most shows — a frequency, not a rule" });
+    if (!existing.djClientId && !existingDjName) questions.push({ kind: "MISSING_DETAIL", questionHe: labelDj ? `האם DJ CLEANTONE מנגן בהופעה הזו, או די-ג׳יי אחר?` : "מי הדי-ג׳יי בהופעה?", why: "no DJ on the show; CLEANTONE plays most shows — a frequency, not a rule" });
   } else if (date) {
     questions.push({ kind: "MISSING_DETAIL", questionHe: `מה המחיר של ההופעה ב-${date}?`, why: "price + currency are needed for the finance rows" });
     questions.push({ kind: "MISSING_DETAIL", questionHe: "איפה ההופעה?", why: "venue / location is not known" });
@@ -265,7 +268,7 @@ export function showWorkflow(src: GatewaySources, artistKey: string, date: strin
     questions.push({ kind: "MISSING_DETAIL", questionHe: "ההופעה סגורה, או עדיין מחכים לתשובה?", why: "status decides whether the finance rows are created" });
   }
   if (labelDj) known.push({ item: "label DJ", value: { dj: labelDj.identityKeys.find((k) => k.startsWith("dj:")) ?? labelDj.subjectKey, playsMostShows: !!djFreq }, source: "OWNER_KNOWLEDGE" });
-  known.push({ item: "DJ fee default", value: 500, source: "SYSTEM_CONTRACT" }, { item: "split", value: "net = price − DJ fee − counted rehearsal costs; artist half, label half", source: "SYSTEM_CONTRACT" });
+  known.push({ item: "DJ fee default", value: 500, source: "SYSTEM_CONTRACT" }, { item: "split", value: agreementArtistOf({ id: la?.id ?? null, name }) ? "agreement artist (שליו טסמה / אבי מולה): net = price − DJ fee − counted rehearsal costs; artist half, label half of the NET" : "NOT_DEFINED — no show agreement for this artist (only שליו טסמה / אבי מולה have one); never assume 50/50", source: "SYSTEM_CONTRACT" });
   const calUsable = !!cal && (cal.status === "CALENDAR_DATA_AVAILABLE" || cal.status === "CALENDAR_PARTIAL");
   const calendarOnDate = date ? (calUsable && date >= cal!.window.start.slice(0, 10) && date <= cal!.window.end.slice(0, 10)
     ? { status: cal!.status, events: cal!.events.filter((e) => (e.allDay ? e.start <= date && date < e.end : e.start.slice(0, 10) === date)).map((e) => ({ title: e.title, allDay: e.allDay, start: e.start, holiday: e.holidayCalendar })) }

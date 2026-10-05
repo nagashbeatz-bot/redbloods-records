@@ -93,6 +93,9 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
   const idx = c.st?.domains.projects.data?.index ?? {};
   const releases = (c.st?.domains.releasesFull.data?.items ?? []).filter((r) => r.labelArtistId === artistId);
   const relDetail = new Map((c.det?.releases?.rows ?? []).map((r) => [r.projectId, r]));
+  // P0-E (2026-10-05): the release detail (next action / blocker / responsible) may not have been read — then nothing is
+  // asserted about it (source missing ≠ fact missing)
+  const relRead = !!c.det?.releases;
   const projMap = new Map<string, { basis: "RELEASE" | "NAME_EXACT" | "NAME_COLLABORATION"; quality: "CANONICAL_RELATION" | "TEXT_MATCH" }>();
   for (const r of releases) projMap.set(r.projectId, { basis: "RELEASE", quality: "CANONICAL_RELATION" });
   for (const [id, p] of Object.entries(idx)) {
@@ -144,8 +147,8 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     // deal type (NOT a payment status): an unpaid collaboration has no payment status / price — never money, still a show
     const unpaidCollab = s.dealType === "UNPAID_COLLAB";
     return { key: `show:${s.id}`, role, name: s.name, date: s.date, time: s.startTime, location: s.location, status: s.status, dealType: unpaidCollab ? "UNPAID_COLLAB" as const : "PAID" as const, paymentStatus: unpaidCollab ? null : s.paymentStatus, price: unpaidCollab ? null : s.price, djFee: s.djFee, artistFee: s.artistFee, advancePayment: s.advancePayment,
-      splitNote: `net before rehearsals = ${r2(net)} (price − DJ fee); artist fee = half of net after counted rehearsal costs (stored artist fee ${s.artistFee ?? "—"})`, currency: "NOT_STORED (screens show ₪)",
-      dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : null,
+      splitNote: agreementArtistOf({ id: artistId, name }) ? `agreement artist: net before rehearsals = ${r2(net)} (price − DJ fee); artist share = half of the net after counted rehearsal costs (stored artist fee ${s.artistFee ?? "—"})` : `no show agreement for this artist — the split is NOT_DEFINED (never assumed 50/50); stored artist fee ${s.artistFee ?? "—"}`, currency: "NOT_STORED (screens show ₪)",
+      dj: s.djClientId ? { client: `client:${s.djClientId}`, name: s.djName, isLabelDj: s.djClientId === c.cleantoneClientId, confirmation: s.djConfirmationStatus ?? "NONE" } : s.djName ? { client: null, name: s.djName, isLabelDj: false, confirmation: "NOT_APPLICABLE (a DJ recorded by name only)" } : null,
       booker: s.bookerClientId ? `client:${s.bookerClientId}` : s.bookerName, rehearsals: rehearsals.map((x) => ({ date: x.date, status: x.status })), hasCalendarEvent: s.hasCalendarEvent,
       sentToArtist: notify("SHOW_SENT_TO_ARTIST"), sentToDj: s.djClientId ? notify("SHOW_SENT_TO_DJ") : "NO_DJ", upcoming: !!s.date && s.date >= c.today, notes: s.notes,
       link: "TEXT_MATCH (show artist → client record of the same name)" };
@@ -381,7 +384,7 @@ export function buildArtistView(src: GatewaySources, artistId: string) {
     if (r.stage === "מוכן ליציאה") signals.push({ code: "READY_FOR_RELEASE", kind: "CANONICAL_FACT", he: `"${r.projectName}" מסומן מוכן ליציאה.`, entity: r.key });
     if (r.stage === "יצא") signals.push({ code: "RELEASED", kind: "CANONICAL_FACT", he: `"${r.projectName}" יצא${r.releasedAt ? ` (${r.releasedAt.slice(0, 10)})` : " (UNKNOWN_DATE — אין תאריך יציאה רשום)"}.`, entity: r.key });
     if (r.active) nextSteps.push({ step: `ריליס "${r.projectName}": ${r.stage}`, evidence: [r.nextAction && `הצעד הבא: ${r.nextAction}`, r.blocker && `חסם: ${r.blocker}`, r.responsible && `אחראי: ${r.responsible}`, r.targetDate && `יעד: ${r.targetDate}`].filter(Boolean).join(" · ") || "אין צעד הבא / חסם / אחראי רשומים", entity: r.key });
-    if (r.active && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
+    if (r.active && relRead && !r.nextAction && !r.blocker) questions.push({ kind: "RELEASE", questionHe: `ריליס "${r.projectName}" (${r.stage}) — מה הצעד הבא ומה חסר?`, why: "no next action / blocker recorded; Redbloods has no readiness checklist" });
   }
   if (releaseRows.length === 0) signals.push({ code: "NO_RELEASE_RECORDED", kind: "CANONICAL_FACT", he: "אין שורת ריליס רשומה לאמן." });
   const futureSessions = sessions.filter((s) => s.date && s.date >= c.today && s.status !== "בוטל");

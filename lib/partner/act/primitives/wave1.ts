@@ -93,7 +93,7 @@ export const WAVE1_PRIMITIVES: readonly PrimitiveSpec[] = [
       const r = await d.writeRelease(id, cur.updatedAt, { releaseStage: String(a.releaseStage) });
       if (r !== "ok") throw new Error(r === "conflict" ? "the release changed meanwhile (optimistic lock)" : "release not found");
     },
-    disclosuresHe: [...COMMON_NO, "באותה רשומה: 'זמן בשלב' מתאפס; מעבר ל'יצא' רושם תאריך יציאה, ויציאה מ'יצא' מוחקת אותו (כמו באפליקציה)"],
+    disclosuresHe: [...COMMON_NO, "באותה רשומה: 'זמן בשלב' מתאפס; מעבר ראשון ל'יצא' רושם את תאריך היציאה הראשון; יציאה מ'יצא' לא מוחקת אותו (התאריך נשמר — כמו באפליקציה)"],
   },
   {
     actionId: "RESOLVE_MIX_COMMENT", meta: META.RESOLVE_MIX_COMMENT, kinds: ["mix-comment", "mix-work"], resolve: resolveComment("resolved"), read: commentFields,
