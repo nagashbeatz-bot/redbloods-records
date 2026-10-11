@@ -10,9 +10,16 @@ import { item, ok, partner, partnerRecord, record, result, sfact, unavailable } 
 const ACCESS = { externalRead: true, ownerOnly: true, sensitivity: "FINANCIAL" as const };
 const SEMANTICS = "Finance Brain semantics: received income = שולם/התקבל; paid expense = שולם only; expected / unpaid / cancelled are not realized; partial is not fully paid; currencies are separate and never converted or summed together.";
 
+/** How many rows of the Finance Brain's month evidence make up each total (income / expense) in one currency. */
+function countedRowsOf(evidence: readonly { sourceType: string; currency?: string | null; reasonCode: string }[], cur: string) {
+  const out = { income: 0, expense: 0 };
+  for (const e of evidence) if (e.sourceType === "transaction" && e.currency === cur) { if (e.reasonCode === "REALIZED_CASH_IN") out.income++; else if (e.reasonCode === "REALIZED_CASH_OUT") out.expense++; }
+  return out;
+}
+
 export const financePosition: KnowledgeCapability = {
   id: "finance_position", domain: "FINANCE", titleHe: "מצב כספי",
-  descriptionForModel: `The company's recorded money position from the Finance Brain: this month's actual income, actual expenses and net per currency, the month-end known position vs the Owner's ILS floor / preferred targets, and past months. ${SEMANTICS} Coverage says when recorded data is partial.`,
+  descriptionForModel: `The company's recorded money position from the Finance Brain: this month's actual income, actual expenses and net per currency, the month-end known position vs the Owner's ILS floor / preferred targets, and past months. ${SEMANTICS} Coverage says when recorded data is partial. Every month / currency item carries countedRows and a breakdown pointer: to say WHERE an amount came from, call finance_transactions with those params (month, currency, counted=yes) — the rows are exactly the ones this total counts. Never explain a total from memory of an earlier action.`,
   examplesHe: ["איך אנחנו עם כסף?", "כמה נכנס החודש?", "מה הנטו?", "איך היו החודשים הקודמים?"],
   modes: { current_month: { descriptionForModel: "This month, per currency, with pacing vs targets" }, history: { descriptionForModel: "Previous months, per currency" } },
   defaultMode: "current_month", params: {}, paging: { defaultLimit: 12, maxLimit: 36 }, access: ACCESS, needs: ["FINANCE"],
@@ -21,11 +28,16 @@ export const financePosition: KnowledgeCapability = {
     if (!f) return unavailable("Finance Brain");
     const s = f.state;
     const partial = f.brief?.coverage === "PARTIAL" || s.coverage.realizedIncome.state !== "RELIABLE" || s.coverage.realizedExpenses.state !== "RELIABLE";
-    const coverage = [partner(SEMANTICS), ...(partial ? [partner("הכיסוי חלקי: הנתונים הרשומים לא בהכרח משקפים את כל התוצאה העסקית.")] : []), ...(f.brief?.coverageNoteHe ? [partnerRecord(f.brief.coverageNoteHe)] : [])];
+    const coverage = [partner(SEMANTICS), partner("כל סכום כאן ניתן לפירוק לשורות: finance_transactions עם month + currency + counted=yes (השדה breakdown בכל פריט)."), ...(partial ? [partner("הכיסוי חלקי: הנתונים הרשומים לא בהכרח משקפים את כל התוצאה העסקית.")] : []), ...(f.brief?.coverageNoteHe ? [partnerRecord(f.brief.coverageNoteHe)] : [])];
     const months = q.mode === "history" ? [...s.history].sort((a, b) => b.month.localeCompare(a.month)) : [s.realized];
     const items: KnowledgeItem[] = months.flatMap((m) => Object.entries(m.byCurrency).sort(([a], [b]) => a.localeCompare(b)).map(([cur, flow]) => item({
       id: `${m.month}:${cur}`, label: partner(`${m.month} · ${cur}`), epistemic: "FACT", source: "FINANCE", freshness: q.mode === "history" ? "HISTORICAL" : "LIVE",
-      fields: { month: m.month, currency: cur, actualIncome: flow.cashIn, actualExpenses: flow.cashOut, net: flow.net, recordedOnly: m.historicalPartial },
+      fields: {
+        month: m.month, currency: cur, actualIncome: flow.cashIn, actualExpenses: flow.cashOut, net: flow.net, recordedOnly: m.historicalPartial,
+        // 2026-10-11: every total is reachable row by row — the Brain's own month evidence (counts only; rows on demand)
+        countedRows: countedRowsOf(m.evidence, cur),
+        breakdown: { capability: "finance_transactions", params: { month: m.month, currency: cur, counted: "yes" } },
+      },
     })));
     const summary = q.mode === "history" ? [] : [
       sfact("TARGET_POSITION", "מיקום מול היעדים (₪ בלבד)", s.realized.targetPosition, "DERIVED", "FINANCE"),

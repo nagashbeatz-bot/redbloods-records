@@ -10,7 +10,7 @@
  */
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.06-110";
+export const SYSTEM_BASELINE_VERSION = "2026.10.11-111";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -232,7 +232,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     entityTypes: ["transaction", "receivable"],
     support: { read: "FULL", learn: "PARTIAL", propose: "PARTIAL", execute: "PARTIAL" },
     states: ["AVAILABLE", "LEARN_AVAILABLE", "PROPOSAL_ONLY", "OWNER_APPROVAL_REQUIRED"],
-    readCapabilities: ["finance_position", "finance_receivables", "finance_flows", "finance_integrity", "unit_balance", "expense_shares", "victor_salary"], learnKinds: ["PAYMENT_REPORTED_BY_OWNER"], proposableActions: [],
+    readCapabilities: ["finance_position", "finance_transactions", "finance_receivables", "finance_flows", "finance_integrity", "unit_balance", "expense_shares", "victor_salary"], learnKinds: ["PAYMENT_REPORTED_BY_OWNER"], proposableActions: [],
     approval: "OWNER_CONFIRMATION_IN_CONVERSATION", freshness: "LIVE",
     rules: [
       R("INCOME_RECEIVED", "CANONICAL_BUSINESS_RULE", "Income is RECEIVED only when its status is שולם or התקבל."),
@@ -262,7 +262,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       E("TX_PAID_CLIP_ITEM", "A clip-linked transaction becomes שולם / התקבל", "The linked clip planning row is marked שולם (provenance; the Finance row is the money).", ["CLIPS"], "EVENT", "IMPLEMENTATION_BEHAVIOR"),
       E("BALANCE_REMINDER_CREATES_INCOME", "The Owner uses the project balance reminder", "An expected income for the remaining balance can be auto-created.", ["PROJECTS"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
     ],
-    limitationsHe: ["דיווח שלך על תשלום נשמר כידע בלבד — לא יוצר רישום בכספים.", "ביצוע פעולות כספים דרך סאני כבוי; פעולת 'תשלום הוצאה' קיימת רק באישור בלוח הבקרה.", "כל תשלום Red Films = הוצאה אחת מקושרת בכספים (DB-1 פעיל; כל 10 התשלומים ₪4,955 מקושרים). הפקה שאינה קליפ — אין לה שיוך כספי מוגדר (SCOPE_REQUIRED).", "שורה בכספים שנוצרה ע\"י מסך אחר (הופעה, מיקס, קליפ, Red Films, קידום, שכר ויקטור) לא נמחקת ולא משנה סכום / מטבע מהכספים — רק דרך המסך שלה.", "כל סכום מוצג לפי מטבע — אין המרה ואין סכום מעורב."],
+    limitationsHe: ["דיווח שלך על תשלום נשמר כידע בלבד — לא יוצר רישום בכספים.", "ביצוע פעולות כספים דרך סאני כבוי; פעולת 'תשלום הוצאה' קיימת רק באישור בלוח הבקרה.", "כל תשלום Red Films = הוצאה אחת מקושרת בכספים (DB-1 פעיל; כל 10 התשלומים ₪4,955 מקושרים). הפקה שאינה קליפ — אין לה שיוך כספי מוגדר (SCOPE_REQUIRED).", "שורה בכספים שנוצרה ע\"י מסך אחר (הופעה, מיקס, קליפ, Red Films, קידום, שכר ויקטור) לא נמחקת ולא משנה סכום / מטבע מהכספים — רק דרך המסך שלה.", "כל סכום מוצג לפי מטבע — אין המרה ואין סכום מעורב.", "כל סכום חודשי ניתן לפירוק לשורות שמרכיבות אותו (finance_transactions: month + currency + counted=yes) — גם שורות בלי פרויקט; תיאור / הערות הם טקסט שרשמת (ראיה), ושורה שלא נספרה מגיעה עם הסיבה. אף פעם לא מסבירים סכום מזיכרון של פעולה קודמת."],
     surfaces: S(["/finance", "/insights"], ["transactions"]),
   },
   // ───────────────────────────── LABEL ─────────────────────────────
@@ -1123,4 +1123,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.05-108", date: "2026-10-05", domain: "COMPANY_OVERVIEW", dimension: "read", from: "DASHBOARD_OWN_SOURCES", to: "EXECUTIVE_PARITY", noteHe: "Dashboard parity Phase A: (1) כדור אחד לפי הרשומות — OWNER_BALL ב-COO / readiness / BUSINESS_MOTION = אותו כלל של 'מה צריך ממני' (needs_me projectBalls); מה שאמרת ('מחכה לבעלים') = 'אמרת לי…' (OWNER_SAID_WAITING), אף פעם לא 'לפי הרשומות'. (2) היסטוריית פעולות אחת: בחירת ההגזרה, הבקשה והמיפוי משותפים לצ'אט ולשרת הראשי. (3) GET /api/partner/executive — BUSINESS_MOTION + FINANCIAL_FORWARD + needs_me עם אותה היסטוריה ואותו lifecycle כמו הצ'אט (קריאה בלבד, Owner-only). (4) הוכחה: בדיקת parity של הדשבורד מול הצ'אט. ה-UI של הדשבורד עוד לא השתנה (Phase B)." },
   { version: "2026.10.06-109", date: "2026-10-06", domain: "COMPANY_OVERVIEW", dimension: "learn", from: "MONEY_WHEN_NOT_KEPT", to: "MONEY_DECISION_WHEN", noteHe: "Decision Persistence C: החלטה שלך מתי משלמים / מתחשבנים נשמרת כהחלטה עסקית (BUSINESS_DECISION) עם מתי (במהלך החודש של ההחלטה / בסגירת המחזור / עד תאריך / בתנאי) והתנאי במילים שלך — על הרשומה המדויקת: כל עבודת מיקס בנפרד, ואמן לייבל למחזור הנוכחי בלבד. 'כסף קדימה' קורא אותה דרך זיכרון השאלות: הוחלט = לא נשאל שוב, לא הפתעה ולא מהלך; הסכום, התאריך וסטטוס התשלום לא משתנים; אין שורה בכספים ואין תאריך מומצא. עבודה חדשה שתושלם לא יורשת החלטה ישנה; אחרי החודש של ההחלטה — 'זה עדיין נכון?'." },
   { version: "2026.10.06-110", date: "2026-10-06", domain: "COMPANY_OVERVIEW", dimension: "read", from: "DASHBOARD_OWN_PRIORITY_CARDS", to: "DASHBOARD_EXECUTIVE_SURFACE", noteHe: "Dashboard V2 Phase B: הדשבורד הוא המשטח של סאני. למעלה: המהלכים של סאני להיום (עד 3, בסדר שלה) ושורת המצב (שבוע · עדכונים · צוואר בקבוק). מחכה לך (אותה רשימה כמו קודם) לצד סוגרים לולאות, הלייבל לפי סאני, ו׳כסף קדימה׳ מ׳כסף קדימה׳ של סאני בלבד (בפועל החודש, 7 ימים קדימה, מה שכבר החלטת, מה עלול להפתיע — לפי מטבע, בלי יתרת בנק). שלושת הכרטיסים הישנים ושורת ׳צפוי / לתשלום׳ ירדו. הסיבה של סאני מוצמדת לשורה ביומן / לריליס רק לפי מפתח רשומה מדויק — לא לפי שם. אין דירוג חדש, אין כתיבה, אין פוש." },
+  { version: "2026.10.11-111", date: "2026-10-11", domain: "FINANCE", dimension: "read", from: "MONTH_TOTALS_ONLY", to: "ROW_LEVEL", noteHe: "תנועות הכספים עצמן (משימת בעלים 11.10): יכולת finance_transactions — כל שורת כספים (גם בלי פרויקט: ספקים, משכורות, הוצאות כלליות) עם תאריך, סוג, סכום ומטבע כפי שנרשמו, סטטוס, קטגוריה, יחידה, פרויקט / הופעה, תיאור / הערות, והאם נספרה בסיכום החודש ולמה לא. נספר = בדיוק השורות שמנוע הכספים ספר (evidence של החודש) — בלי חישוב שני; הסיכום מציג את סיכום החודש של המנוע ליד סכום השורות (חייבים להתאים). finance_position: לכל סכום חודשי מספר השורות + הפניה לפירוק (רק לפי דרישה). ₪ ו-$ לעולם לא מחוברים. קריאה בלבד, Owner-only." },
 ];

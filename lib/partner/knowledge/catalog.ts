@@ -11,6 +11,7 @@ import type { KnowledgeCapability } from "./types";
 import { item, result } from "./capabilities/common";
 import { cases, catalogCapability, integrity, knownUnknowns, memory, outcomes, ownerDecisions, ownerNeeds } from "./capabilities/partner";
 import { financeFlows, financeIntegrity, financePosition, financeReceivables, unitBalance, expenseShares, victorSalary } from "./capabilities/finance";
+import { financeTransactions } from "./capabilities/finance-transactions";
 import { clients, projects, proposals, sessions, teamSteven, teamVictor } from "./capabilities/work";
 import { labelRoster, releases, shows } from "./capabilities/label";
 import { improvementSignals, ownerInbox, ownerKnowledge, relations } from "./capabilities/sunny";
@@ -51,7 +52,7 @@ const brief: KnowledgeCapability = {
 /** Every production capability, in catalog order. Registration here is an explicit, reviewed code change. */
 export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   brief, ownerNeeds, knownUnknowns, cases, integrity, outcomes, ownerDecisions, memory,
-  financePosition, financeReceivables, financeFlows, financeIntegrity, unitBalance, expenseShares,
+  financePosition, financeTransactions, financeReceivables, financeFlows, financeIntegrity, unitBalance, expenseShares,
   projects, clients, proposals,
   labelRoster, releases, shows,
   sessions,
