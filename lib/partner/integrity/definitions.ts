@@ -30,7 +30,7 @@ export const LABEL_ROSTER_DEFINITION = {
   supportingSources: ["clients.status = אמן לייבל", "projects.project_business_type = לייבל", "PORTAL_ARTISTS (code)"] as const,
 };
 
-/** 2. Future schedule truth: Google Calendar (not yet read by Partner); sessions = business records. */
+/** 2. Future schedule truth: Google Calendar (read live by Sunny through capability calendar — NOT by the integrity table check); sessions = business records. */
 export const SCHEDULE_DEFINITION = {
   id: "FUTURE_SCHEDULE_TRUTH",
   decidedAt: "2026-09-24",
@@ -38,7 +38,9 @@ export const SCHEDULE_DEFINITION = {
   statementHe:
     "ליומן העתידי, Google Calendar הוא מקור האמת. טבלת הסשנים היא רשומה עסקית (שיוך לפרויקט/הופעה, היסטוריה). " +
     "היעדר סשנים עתידיים בטבלה אומר רק שאין סשנים עתידיים רשומים בה — לא שהיומן ריק.",
-  googleCalendarReadApproved: false,
+  /** The integrity check itself sees only the sessions table (it never reads the live calendar) — so it keeps reporting
+   *  the coverage note. Not a statement about Sunny: Sunny reads the live calendar (capability calendar, since 2026-09-25). */
+  tableCheckSeesCalendar: false,
 };
 
 /** 3. Finance: Finance Brain is the only financial interpretation; canonical paid/received rules unchanged. */

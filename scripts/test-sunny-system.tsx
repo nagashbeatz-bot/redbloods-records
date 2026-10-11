@@ -176,7 +176,7 @@ async function main() {
   check("mix_pipeline unpaid: approved and not fully paid", q("mix_pipeline", { mode: "unpaid" }).items.map((i) => i.id), [U(852)]);
   check("deliveries", q("deliveries").items.map((i) => [i.entity, i.fields.deliveryStatus]), [[`project:${P(3)}`, "ready"]]);
   const ig = q("integrations");
-  check("integrations: connected state, and Sunny can neither read nor write the calendar", [ig.items[0].fields.connectedInRedbloods, ig.items[0].fields.sunnyCanRead, ig.items[0].fields.sunnyCanWrite, ig.items[1].fields.sunnyCanReadContents], [true, false, false, false]);
+  check("integrations: connected state; the calendar read is the RESULT of a live read (none loaded here → unknown, never false) and writes are typed actions after approval (capability truth 2026-10-11)", [ig.items[0].fields.connectedInRedbloods, ig.items[0].fields.sunnyCanRead, ig.items[0].fields.sunnyCanWrite, ig.items[1].fields.sunnyCanReadContents], [true, null, "TYPED_ACTIONS_AFTER_APPROVAL", false]);
   const un = q("red_films", {}, sources("UNAVAILABLE"));
   check("operations unavailable → UNKNOWN + missing[] (never 'none')", [un.completeness, un.items.length, un.missing.length > 0], ["UNKNOWN", 0, true]);
   const enr = entityKnowledge(REG, { ...sources(), audience: OWNER }, `project:${P(2)}`);
@@ -197,7 +197,7 @@ async function main() {
   const conflicts = q("system_awareness", { mode: "rules", params: { class: "CONFLICT" }, });
   ok("conflicts are served as OBSERVATION and policy=false (never taught as policy)", conflicts.items.length >= 10 && conflicts.items.every((i) => i.epistemic === "OBSERVATION" && i.fields.policy === false));
   const lim = q("system_awareness", { mode: "limitations", params: { domain: "GOOGLE_CALENDAR" } });
-  ok("limitations in Hebrew, incl. calendar write honesty", lim.items.some((i) => i.label.text.includes("לא כותב ליומן")));
+  ok("limitations in Hebrew, incl. calendar write honesty (only as a typed action after the Owner approves the exact preview — capability truth 2026-10-11)", lim.items.some((i) => i.label.text.includes("רק כפעולה מוקלדת אחרי שאישרת את התצוגה המדויקת")) && !lim.items.some((i) => i.label.text.includes("לא כותב ליומן")));
   const ch = q("system_awareness", { mode: "changes" });
   check("changes: newest first, baseline version in summary", [ch.items[0]?.fields.version, ch.summary[0].value], [SYSTEM_BASELINE_VERSION, SYSTEM_BASELINE_VERSION]);
   const all = JSON.stringify(["overview", "domain", "rules", "relationships", "actions", "limitations", "changes", "coverage"].flatMap((m) => DOMAIN_CONTRACTS.map((d) => q("system_awareness", { mode: m, params: m === "domain" ? { domain: d.id } : {} }))));

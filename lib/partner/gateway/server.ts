@@ -27,6 +27,8 @@ import type { KnowledgeRegistry } from "../knowledge/registry";
 import type { KnowledgeAudience, KnowledgeRequest, KnowledgeSourceNeed, QueryResponse } from "../knowledge/types";
 // One Brain (2026-10-05): the pure transform the connector applies with Sunny's own action history (no I/O, no write)
 export { deriveWithActionHistory, historyDerivationFor, ACTION_HISTORY_REQUEST, actionHistoryItemsOf } from "../sunny/with-history";
+// Capability truth (2026-10-11): the connector applies its live state to an action_registry can_i answer with these PURE functions.
+export { applyCapabilityRuntime, canIExecutableIds } from "../system/capability-truth";
 
 type AnyCtx = GatewayReadContext | CompanyReadContext;
 

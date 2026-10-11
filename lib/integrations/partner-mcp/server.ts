@@ -44,7 +44,7 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
   }
   const config = c.config;
   const { supabase } = await import("@/lib/supabase");
-  const { getPartnerBrief, resolvePartnerEntity, getPartnerEntity, queryPartnerKnowledge, describePartnerKnowledge, deriveWithActionHistory, historyDerivationFor, ACTION_HISTORY_REQUEST, actionHistoryItemsOf } = await import("@/lib/partner/gateway/server");
+  const { getPartnerBrief, resolvePartnerEntity, getPartnerEntity, queryPartnerKnowledge, describePartnerKnowledge, deriveWithActionHistory, historyDerivationFor, ACTION_HISTORY_REQUEST, actionHistoryItemsOf, applyCapabilityRuntime, canIExecutableIds } = await import("@/lib/partner/gateway/server");
   const store = supabaseMcpStore(supabase);
   limiter ??= new SlidingWindowLimiter(config.rateLimit);
   rejectedLimiter ??= new SlidingWindowLimiter([{ windowMs: 60_000, max: 120 }]);
@@ -97,6 +97,7 @@ export async function getMcpRuntime(): Promise<McpRuntime | null> {
       capabilityIndex: () => describePartnerKnowledge(MCP_AUDIENCE),
       withActionHistory: (kind, payload, history, nowMs) => deriveWithActionHistory(kind, payload, history, nowMs),
       historyDerivationFor, actionHistoryRequest: ACTION_HISTORY_REQUEST, actionHistoryItemsOf,
+      withCapabilityRuntime: applyCapabilityRuntime, capabilityRuntimeIds: canIExecutableIds,
     },
     limiter,
     audit: (row) => store.writeAudit(row),

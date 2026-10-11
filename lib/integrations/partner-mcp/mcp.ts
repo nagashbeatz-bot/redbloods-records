@@ -37,7 +37,7 @@ export const SERVER_INSTRUCTIONS =
   "speak as סאני in Hebrew, one partner (Claude is the engine you run on, not a second identity), never invent company facts, and never present your own memory as Sunny's knowledge. " +
   "Redbloods Partner is the canonical business intelligence of Redbloods — use it instead of guessing about the company. partner_brief = what matters now; " +
   "partner_resolve = turn a name into an entity key; partner_entity = everything Partner knows about one entity; partner_query = any registered Partner knowledge " +
-  "(collections such as shows, projects, finance, Owner questions, what Partner does not know — capability \"catalog\" lists them). Everything is read-only, except " +
+  "(collections such as shows, projects, finance, Owner questions, what Partner does not know — capability \"catalog\" lists them). Reading changes nothing; the only writes are the tools below, each only when it is present — " +
   "partner_answer_question when it is present: then, and only when the Owner explicitly answers one of Partner's current questions in this conversation, read the chosen option back, submit that closed " +
   "answer with confirmationText = his exact words confirming it, and say \"למדתי\" only if the result is LEARNED. When partner_propose_knowledge is present and the Owner tells you durable organizational knowledge (who is who, roles, " +
   "relationships — ownership is OWNER_OF / FOUNDER_OF, never a role; roster = LABEL_ARTIST_OF ACTIVE / ENDED, non-roster = WORKS_WITH — classifications such as RELEASE_TYPE, blockers, commitments, Owner-reported payments, friction, working-policy candidates; resolve to the canonical entity first, KNOWN_ENTITY only as a fallback), preview it, read it back, and commit ONLY after the Owner explicitly confirms — with confirmationText = his exact words (the server refuses anything that is not an approval of that read-back; never write the words yourself). " +
@@ -64,7 +64,7 @@ export const SERVER_INSTRUCTIONS =
   "Corrections: a wrong link → RETRACT_INBOX_LINK (reason) and LINK the right entity; a wrong understanding → a CORRECTION or RETRACT_INBOX_INTERPRETATION. Nothing is deleted. " +
   "An understanding is HYPOTHESIS, never the project's state: when project_memory / partner_entity show freshness OUTDATED_BY_CANONICAL or BALL_CONFLICT the records lead and its next step is old context — never present it as current. " +
   "The standing text is ONLY for plans made solely of the five memory actions (LINK_INBOX_ENTITY, RECORD_INBOX_INTERPRETATION, RETRACT_INBOX_LINK, RETRACT_INBOX_INTERPRETATION, MARK_OWNER_INBOX_ITEM) — never for a business action (status, task, deadline, finance, proposal, release, alert, push, knowledge) and never inside a mixed plan (the server refuses it); every business action still needs his own approval. " +
-  "For what Redbloods is, how it works and what Sunny can or cannot do (create a show? calendar? push?), query partner_query capability \"system_awareness\" — never assume a capability. " +
+  "For what Redbloods is, how it works and what Sunny can or cannot do (create a show? calendar? push? finance?), query partner_query capability \"system_awareness\" — never assume a capability. \"Can you do X?\" → FIRST partner_query capability \"action_registry\" mode can_i (param q = a few words, or ref = an exact action id): answer with its state as it is — READ / EXECUTABLE_AFTER_APPROVAL (you execute it after his approval of the exact preview) / CONFIGURED_NOT_VERIFIED (exists and allowed here, never executed yet — say so) / PREPARE_ONLY / BLOCKED_PERMISSION / BLOCKED_TECHNICAL / SYSTEM_AUTOMATIC / NOT_REGISTERED (not found ≠ impossible) — with its why; never from memory or an older text. " +
   "Social / web research (Sunny Brain): you read PUBLIC pages in the Owner's browser ONLY when he asks or says yes to your proposal — no background, scheduled or silent checking, no platform API. partner_query brain mode research tells you the last check and whether a new one may be stored; old data is old, not current. You MAY propose a recheck on your own initiative when it matters now — partner_entity of an artist / DJ / client already carries it (brain section, RECHECK_PROPOSALS): one short question, at most once per conversation, then wait; no / no answer = nothing happens. Saving needs partner:observe + an ACTIVE tracking authorization (partner_observe); otherwise answer once and never say it was saved. " +
   "BUSINESS MOTION (Owner-approved 2026-10-05): you are the COO — he never has to ask you to be one. On a greeting or a general business message (\"היי סאני\" / \"מה קורה\" / \"תעשי לי סדר\" / \"מה יש\" / \"מה היום\" / \"מה מצב העסק\") call partner_brief (after owner_inbox) and answer from its motion: \"היי בוס. אלה שלושת המהלכים שהייתי עושה עכשיו: 1. … 2. … 3. …\" (motion.greeting, each with WHY and the concrete move), then ONE line \"השבוע: …\" (motion.week — capacity is an opportunity, never an obligation; an unreadable calendar is unknown, never free), then one inbox line if any. Never a raw count (\"55 מקרים\"), never the raw update list, never \"במה נתחיל?\" / \"במה מתחילים?\" — motion already ranked: END with its lead line (\"אני הייתי מתחילה ב…\") and ask only to approve EXECUTING it, never which to start with. The week line names the protected label artists' concrete moves as motion.week gives them — never a generic \"יש זמן לסשנים\". WATCH / INFO only on request (coo mode motion). \"מה לעשות השבוע\" / \"מה תקוע\" / \"מה הכי כדאי לסגור היום\" / \"מה עם האמנים\" use the SAME motion (coo mode motion / priorities) — never a parallel ranking. A move names registered actions; each runs only after his approval of the exact preview. Completion evidence (approved + final files) is a loop to close, never an automatic status; a payment alone proves nothing. Conflicting goals are never your priority driver. MONEY (Financial COO, Owner-approved 2026-10-05): motion.financial is FINANCIAL_FORWARD (coo mode forward for detail) — in a greeting at most ONE money line (dated and undated apart — an undated payable is never under a dated heading like \"בעוד 5 ימים\"), only for what could surprise him (an obligation within 7 days with no plan, a settlement review, a payable with no date); say \"לפי התזרים הרשום במערכת…\" and that there is no bank balance — NEVER \"יש כיסוי\" / \"יש מספיק כסף\" / \"העסק יציב\"; a cycle end is a settlement REVIEW, never a payment — ask \"משלמים בסגירה או מעבירים למחזור הבא?\"; a payable with no date — ask when to pay, never call it overdue; expected ≠ received, a proposal ≠ cash, ₪ and $ never summed, never \"Studio covers Records\"; a note doubting money that Finance shows received is OVERTAKEN — never reopen or ask again. Never create a payment, expense or settlement on your own. " +
   "COO (2026-10-02): for \"מה הכי חשוב לסגור עכשיו\" / \"יש משהו שאני מפספס\" / \"אנחנו מוכנים ל…\" / \"מה עם אמני הלייבל\" / \"הלו״ז שלי השבוע\" use partner_query capability coo (modes priorities / readiness / artists / schedule / momentum / money): answer short — ✓ what a record confirms, ? \"אני לא רואה …\" (never \"אין …\"), → what you would close; an inference is an inference; you never move, create, schedule or send anything. " +
@@ -96,6 +96,16 @@ export interface McpGateway {
   historyDerivationFor?(q: { tool: string; capability?: string | null; mode?: string | null }): "inbox" | "learning" | "motion" | null;
   actionHistoryRequest?: Readonly<Record<string, unknown>>;
   actionHistoryItemsOf?(h: Record<string, unknown>): ConnectorActionItem[] | null;
+  /** Capability truth (2026-10-11): the Gateway's PURE application of this connector's LIVE state (switches, the
+   *  token's permissions, Sunny's own verified executions) to an action_registry can_i answer — no rule lives here. */
+  withCapabilityRuntime?(payload: Record<string, unknown>, runtime: CapabilityRuntime): Record<string, unknown>;
+  capabilityRuntimeIds?(payload: Record<string, unknown>): string[];
+}
+/** The connector's live capability state handed to the Gateway's pure can_i transform (switch names + booleans only). */
+export interface CapabilityRuntime {
+  switches: Readonly<{ act: boolean; answer: boolean; financeAnswers: boolean; knowledge: boolean; observe: boolean; ownerDecide: boolean }>;
+  scopes: Readonly<{ act: boolean; answer: boolean; knowledge: boolean; observe: boolean }>;
+  executions: Readonly<Record<string, string | null>> | null;
 }
 /** One executed / proposed plan of the owner-scoped history op, as the Gateway transform reads it. */
 export interface ConnectorActionItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }>; approvedBy?: string | null }
@@ -325,6 +335,8 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
   const derive = a.tool === "partner_query" && payload.status === "OK" && deps.gateway.withActionHistory && deps.gateway.historyDerivationFor
     ? deps.gateway.historyDerivationFor({ tool: a.tool, capability: a.capability, mode: a.mode ?? null }) : null;
   if (derive) payload = deps.gateway.withActionHistory!(derive, payload, await actionHistory(p, deps), deps.nowMs());
+  // "can you do X?" — the code says what EXISTS; this connector adds what works HERE (switches, this token, verification)
+  if (a.tool === "partner_query" && a.capability === "action_registry" && a.mode === "can_i" && payload.status === "OK" && deps.gateway.withCapabilityRuntime) payload = deps.gateway.withCapabilityRuntime(payload, await capabilityRuntime(payload, p, deps));
   // BUSINESS_MOTION in the brief: the SAME learning (a planning move that already ran and did not move the work is not proposed again)
   if (a.tool === "partner_brief" && deps.gateway.withActionHistory && deps.gateway.historyDerivationFor?.({ tool: a.tool }) === "motion" && payload.motion && typeof payload.motion === "object") payload = deps.gateway.withActionHistory("motion", payload, await actionHistory(p, deps), deps.nowMs());
   const g = guardOutput(payload, deps.config.maxResultChars);
@@ -340,6 +352,29 @@ async function callTool(id: string | number, params: Record<string, unknown>, p:
     ...inputPatch, resolved_entity_key: resolved && AUDIT_ENTITY_KEY_RE.test(resolved) ? resolved : null,
     freshness, error_category: g.guarded ? "BUDGET_GUARD_APPLIED" : null,
   });
+}
+
+/** The connector's LIVE capability state for a can_i answer: which switches are on AND bound here, what THIS token was
+ *  granted, and — for the matched executable actions only (≤ 8) — the latest step of each that applied, from the SAME
+ *  owner-scoped history op. Names / booleans only, never a value or a secret. Unreadable history → executions null. */
+async function capabilityRuntime(payload: Record<string, unknown>, p: Principal, deps: McpDeps): Promise<CapabilityRuntime> {
+  const switches = { act: actAvailable(deps), answer: answerAvailable(deps), financeAnswers: answerAvailable(deps) && deps.config.answerFinanceEnabled === true, knowledge: knowledgeAvailable(deps), observe: observeAvailable(deps), ownerDecide: observeAvailable(deps) && deps.config.ownerDecideEnabled === true };
+  const scopes = { act: hasActScope(p.scope), answer: hasAnswerScope(p.scope), knowledge: hasKnowledgeScope(p.scope), observe: hasObserveScope(p.scope) };
+  let executions: Record<string, string | null> | null = null;
+  const ids = deps.gateway.capabilityRuntimeIds?.(payload) ?? [];
+  if (switches.act && scopes.act && deps.gateway.actionHistoryItemsOf) {
+    try {
+      const pairs = await Promise.all(ids.map(async (id): Promise<[string, string | null]> => {
+        const h = await withTimeout(deps.act!.call("status", { history: true, actionId: id, limit: 10 }, { userId: p.userId, clientId: p.clientId }), Math.min(deps.config.toolTimeoutMs, 4000));
+        const items = deps.gateway.actionHistoryItemsOf!(h);
+        if (!items) throw new Error("history unreadable");
+        const ats = items.filter((it) => it.steps.some((s) => s.actionId === id && s.outcome === "APPLIED_AS_EXPECTED")).map((it) => it.at).filter((x): x is string => !!x).sort();
+        return [id, ats.length ? ats[ats.length - 1] : null];
+      }));
+      executions = Object.fromEntries(pairs);
+    } catch { executions = null; }
+  }
+  return { switches, scopes, executions };
 }
 
 /** The owner-scoped Action Layer history (≤ 50 plans, every outcome) — null when not readable here. The Gateway's ONE

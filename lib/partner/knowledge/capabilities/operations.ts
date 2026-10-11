@@ -303,17 +303,24 @@ export const deliveries: KnowledgeCapability = {
 // ── INTEGRATIONS (is Google Calendar / Dropbox connected — never the credentials) ──
 export const integrations: KnowledgeCapability = {
   id: "integrations", domain: "COMPANY", titleHe: "חיבורים חיצוניים",
-  descriptionForModel: "Whether Redbloods' external integrations are connected: Google Calendar (sessions / shows / meetings create events; Sunny reads the live calendar through capability calendar and writes only through typed actions the Boss approves) and Dropbox (all project audio, mixes, finals, portals and Red Films files live there; Sunny reads file METADATA counts only, never contents or links). 'Connected' = a stored credential exists; it does not prove the token is still valid.",
+  descriptionForModel: "Whether Redbloods' external integrations are connected (the calendar entry carries the RESULT of a live read now — sunnyCanRead true / false / null + readStatus): Google Calendar (sessions / shows / meetings create events; Sunny reads the live calendar through capability calendar and writes only through typed actions the Boss approves) and Dropbox (all project audio, mixes, finals, portals and Red Films files live there; Sunny reads file METADATA counts only, never contents or links). 'Connected' = a stored credential exists; it does not prove the token is still valid.",
   examplesHe: ["יש לך גישה ליומן?", "היומן מחובר?", "הדרופבוקס מחובר?"],
   modes: { current: { descriptionForModel: "Current connection state" } }, defaultMode: "current",
-  params: {}, paging: { defaultLimit: 5, maxLimit: 5 }, access: STD, needs: ["OPERATIONS"],
+  params: {}, paging: { defaultLimit: 5, maxLimit: 5 }, access: STD, needs: ["OPERATIONS"], optionalNeeds: ["CALENDAR"],
   read(src) {
     const o = ops(src);
     if (!o) return miss("integrations");
     const i = o.integrations;
+    // Calendar read = the RESULT of this request's live read (2026-10-11: was a hard-coded false while Sunny read it).
+    const cal = ok(src.calendar);
+    const calStatus = cal?.status ?? "NOT_READ_NOW";
+    const canRead = cal ? cal.status === "CALENDAR_DATA_AVAILABLE" || cal.status === "CALENDAR_PARTIAL" : null;
+    const calNote = canRead === true
+      ? "סאני קוראת את היומן החי עכשיו (כל היומנים, דרך השירות הראשי — בלי אסימונים אצלה): capability calendar. כתיבה ליומן — רק כפעולה מוקלדת אחרי שאישרת את התצוגה המדויקת."
+      : `קריאת היומן לא הצליחה עכשיו (${calStatus}) — זה לא יומן ריק ולא פנוי. כשהקריאה עובדת סאני קוראת את היומן החי (capability calendar); כתיבה — רק כפעולה מוקלדת באישורך.`;
     return result([
       item({ id: "google_calendar", label: partner("Google Calendar"), epistemic: i.googleCalendarConnected === null ? "UNKNOWN" : "FACT", source: "OPERATIONS",
-        fields: { connectedInRedbloods: i.googleCalendarConnected, sunnyCanRead: false, sunnyCanWrite: false, note: partner("סאני לא קורא ולא כותב ליומן. אירועים עתידיים לא ידועים לו מעבר לסשנים/הופעות/פגישות שב-Redbloods.") } }),
+        fields: { connectedInRedbloods: i.googleCalendarConnected, sunnyCanRead: canRead, readStatus: calStatus, sunnyCanWrite: "TYPED_ACTIONS_AFTER_APPROVAL", note: partner(calNote) } }),
       item({ id: "dropbox", label: partner("Dropbox"), epistemic: i.dropboxConnected === null ? "UNKNOWN" : "FACT", source: "OPERATIONS",
         fields: { connectedInRedbloods: i.dropboxConnected, sunnyCanReadContents: false, sunnyCanWrite: false, note: partner("סאני רואה רק מטא-דאטה (כמה גרסאות/קבצים ומתי) — לא תוכן, לא קישורים.") } }),
     ], { coverage: [partner("'מחובר' = יש אישור שמור; זה לא מוכיח שהאישור עדיין בתוקף.")] });

@@ -8,9 +8,10 @@
  * Content rules: semantic meaning only — no table / column / env / secret / source-code detail. Rules are classified;
  * a POSSIBLE_BUG or CONFLICT is reported as such, never taught as company policy.
  */
+import { BUSINESS_ACTION_PRIMITIVES } from "../act/coverage-map";
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.11-111";
+export const SYSTEM_BASELINE_VERSION = "2026.10.11-112";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -50,7 +51,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       E("PROJECT_COMPLETE_VICTOR", "A project is marked הושלם from the status menu", "Victor's open work on it can be closed and a delivery folder offered (both Owner choices in the UI).", ["VICTOR", "DELIVERY"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
       E("STEVEN_COMPLETION_SUGGESTS_PROJECT", "Steven's last open work on a project is completed (אושר)", "The project is NOT changed (Owner decision 2026-09-27: engineer completed ≠ project completed). An open project (not בוטל / בהשהייה / הושלם) is offered to the Owner as 'לסמן גם את הפרויקט כהושלם?' — only an explicit yes writes it.", ["STEVEN", "MIX_PIPELINE"], "MANUAL", "CANONICAL_BUSINESS_RULE"),
     ],
-    limitationsHe: ["פרויקט מקושר לאמן/לקוח לפי שם בלבד — לא קישור מזהה (גשרים מזהים דרך הצעה / פגישה / הפקה / יומן שליחות מסומנים DERIVED).", "סאני קורא הכול על הפרויקט (הערות, קבצים, תגובות, צוות, התראות) — חוץ מקישורי שיתוף / אסימונים, תוכן הקבצים והיומן החי (פערי יכולת רשומים).", "היסטוריית סטטוס / דדליין / מחיר לא נשמרת ב-Redbloods.", "כל שינוי בפרויקט (יצירה, סטטוס, דדליין, מחיקה…) עובר רק דרך פעולה מוקלדת עם תצוגה מקדימה ואישור מפורש שלך. מפת כל הפעולות: system_awareness action_inventory.", "סיווג לקוח / לייבל: שדה אחד. כלל הבעלים (שליו טסמה / אבי מולה = לייבל) חל רק ביצירה; פרויקט קיים לא מסווג מחדש אוטומטית — אי-התאמה מוצגת כ-MISMATCH_OWNER_RULE.", "באיחור = כלל אחד בכל המערכת (דדליין תקין שעבר, לא הושלם / בוטל / בהשהייה / מוסתר). דדליין לא תקין לא נחשב באיחור ומדווח."],
+    limitationsHe: ["פרויקט מקושר לאמן/לקוח לפי שם בלבד — לא קישור מזהה (גשרים מזהים דרך הצעה / פגישה / הפקה / יומן שליחות מסומנים DERIVED).", "סאני קורא הכול על הפרויקט (הערות, קבצים, תגובות, צוות, התראות) — חוץ מקישורי שיתוף / אסימונים ותוכן הקבצים (פערי יכולת רשומים). היומן החי נקרא בנפרד (capability calendar).", "היסטוריית סטטוס / דדליין / מחיר לא נשמרת ב-Redbloods.", "כל שינוי בפרויקט (יצירה, סטטוס, דדליין, מחיקה…) עובר רק דרך פעולה מוקלדת עם תצוגה מקדימה ואישור מפורש שלך. מפת כל הפעולות: system_awareness action_inventory.", "סיווג לקוח / לייבל: שדה אחד. כלל הבעלים (שליו טסמה / אבי מולה = לייבל) חל רק ביצירה; פרויקט קיים לא מסווג מחדש אוטומטית — אי-התאמה מוצגת כ-MISMATCH_OWNER_RULE.", "באיחור = כלל אחד בכל המערכת (דדליין תקין שעבר, לא הושלם / בוטל / בהשהייה / מוסתר). דדליין לא תקין לא נחשב באיחור ומדווח."],
     surfaces: S(["/projects", "/projects/[id]", "/projects-old", "/projects-preview"], ["projects"]),
   },
   {
@@ -75,7 +76,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("NO_CLIENT_LABEL_LINK", "CANONICAL_BUSINESS_RULE", "Nothing links a client record to a label-artist record except the app's canonical DJ CLEANTONE link; every other artist ↔ client link is by name.", ["LABEL_ARTISTS"]),
     ],
     sideEffects: [E("CLIENT_AUTO_CREATE", "A project is created / its artist changes / a proposal is converted", "Missing clients are created from the artist names (type אמן, status חדש; exact-case check; never removed).", ["PROJECTS"], "EVENT", "IMPLEMENTATION_BEHAVIOR")],
-    limitationsHe: ["קישור לקוח↔פרויקט הוא לפי שם בלבד — חוץ מפרויקט שנוצר מהצעה (קישור קנוני דרך ההצעה).", "סאני לא יוצר / עורך / מוחק לקוחות — הפעולות ממופות (client_model actions) ודורשות פרימיטיב עתידי + אישור.", "אין ישות ליד; אין רישום של קשר מחוץ ל-Redbloods (וואטסאפ / טלפון).", "הכנסות בלי פרויקט (למשל הופעות) משויכות ללקוח רק לפי שם האמן בטקסט."],
+    limitationsHe: ["קישור לקוח↔פרויקט הוא לפי שם בלבד — חוץ מפרויקט שנוצר מהצעה (קישור קנוני דרך ההצעה).", "שינוי שם / מחיקה של לקוח משפיעים גם על רשומות קשורות (שם האמן בפרויקטים, ההצעות שלו) — התצוגה המקדימה מראה את זה לפני האישור.","אין ישות ליד; אין רישום של קשר מחוץ ל-Redbloods (וואטסאפ / טלפון).", "הכנסות בלי פרויקט (למשל הופעות) משויכות ללקוח רק לפי שם האמן בטקסט."],
     surfaces: S(["/clients"], ["clients"]),
   },
   {
@@ -100,7 +101,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("PROPOSAL_AMOUNT_NOT_REVENUE", "CANONICAL_BUSINESS_RULE", "A proposal amount is potential money only; it becomes the project's agreed price once, at conversion (when > 0); received money exists only as received transactions."),
     ],
     sideEffects: [E("PROPOSAL_CONVERT", "A proposal is converted", "A project is created (artist = client name, status לא התחיל, business type by the Owner rule — לייבל when שליו טסמה / אבי מולה is credited, else לקוח; the same create writer as the Projects UI), the client is upserted, the project's agreed price is set from the proposal amount, the proposal becomes נסגר and its follow-up task בוצע. Not transactional.", ["PROJECTS", "CLIENTS", "FINANCE", "TASKS"], "MANUAL")],
-    limitationsHe: ["סאני לא ממיר הצעה לפרויקט ולא משנה סטטוס — זה נעשה בלוח הבקרה (פרימיטיבים עתידיים).", "Redbloods לא רושמת היסטוריית שינויים של הצעה (רק עדכון אחרון), לא רושמת תגובות לקוח ולא קשר מחוץ למערכת.", "תנאי עסקה (מקדמה / אבני דרך) לא נרשמים — סאני מראה רק מה התקבל ומה צפוי.", "אין מסמכים / קבצים להצעות."],
+    limitationsHe: ["המרת הצעה לפרויקט יוצרת פרויקט + מחיר מוסכם וסוגרת את משימת המעקב — התצוגה המקדימה מראה את כל ההשפעות לפני האישור.","Redbloods לא רושמת היסטוריית שינויים של הצעה (רק עדכון אחרון), לא רושמת תגובות לקוח ולא קשר מחוץ למערכת.", "תנאי עסקה (מקדמה / אבני דרך) לא נרשמים — סאני מראה רק מה התקבל ומה צפוי.", "אין מסמכים / קבצים להצעות."],
     surfaces: S([], ["proposals"]),
   },
   {
@@ -125,7 +126,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       E("SHOOT_DAY_EXPENSE", "A clip shoot day is added from a project", "A shoot-day session plus a separate unpaid clip expense (two calls, not atomic).", ["FINANCE", "CLIPS"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
     ],
     notifications: [N("SESSION_CREATED_SHALEV", "A session is created on a project of שליו טסמה", "Shalev + Owner", "EVENT", "one per session")],
-    limitationsHe: ["סאני רואה סשנים שב-Redbloods בלבד — לא אירועים אחרים ביומן Google.", "זמן שעבר ≠ סשן שהתקיים: סשן מתוכנן שהסתיים ולא אושר מוצג 'עבר — לא אושר'; 'התקיים' שנרשם עד 2026-09-27 יכול להיות סימון אוטומטי ישן.", "יצירה / הזזה / ביטול / סימון תוצאה של סשן — רק דרך פעולה מוקלדת עם אישור מפורש שלך."],
+    limitationsHe: ["רשומות הסשנים הן של Redbloods; שאר האירועים ביומן Google נקראים דרך היומן החי (capability calendar) — אירוע שלא מקושר לסשן הוא הקשר זמן, לא סשן.","זמן שעבר ≠ סשן שהתקיים: סשן מתוכנן שהסתיים ולא אושר מוצג 'עבר — לא אושר'; 'התקיים' שנרשם עד 2026-09-27 יכול להיות סימון אוטומטי ישן.", "יצירה / הזזה / ביטול / סימון תוצאה של סשן — רק דרך פעולה מוקלדת עם אישור מפורש שלך."],
     surfaces: S([], ["sessions"]),
   },
   {
@@ -148,7 +149,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("CALENDAR_FREE_IS_NOT_WORK_TIME", "OWNER_POLICY", "Free calendar time only means 'no calendar commitment' — it is not automatically suitable for work."),
       R("CALENDAR_WEEK_UTC_WINDOW", "POSSIBLE_BUG", "The Calendar page's week window starts at 00:00 UTC (03:00 in Israel), so events between midnight and 03:00 on the first day can be missed there. Sunny's read uses Israel-time windows."),
     ],
-    sideEffects: [], limitationsHe: ["סאני קורא את היומן החי (כל היומנים) דרך האינטגרציה של Redbloods — בלי אסימונים. קריאה יכולה לגרום לחידוש אסימון רגיל בשירות הראשי.", "סאני לא כותב ליומן: יצירה / עדכון / מחיקה / קביעת סשן הן פעולות עתידיות שידרשו אישור בעלים.", "קישורי פגישה וקבצים מצורפים מופיעים רק כ'יש / אין'.", "יומני free/busy-only ויומנים מוסתרים לא נקראים (כמו בדף היומן).", "משימות Google Tasks עצמן לא נקראות (רק משימות Redbloods)."],
+    sideEffects: [], limitationsHe: ["סאני קורא את היומן החי (כל היומנים) דרך האינטגרציה של Redbloods — בלי אסימונים. קריאה יכולה לגרום לחידוש אסימון רגיל בשירות הראשי.", "כתיבה ליומן (יצירה / עדכון / מחיקה / הזמנה / קביעת סשן) — רק כפעולה מוקלדת אחרי שאישרת את התצוגה המדויקת; הזמנה גורמת לגוגל לשלוח מייל למוזמנים.","קישורי פגישה וקבצים מצורפים מופיעים רק כ'יש / אין'.", "יומני free/busy-only ויומנים מוסתרים לא נקראים (כמו בדף היומן).", "משימות Google Tasks עצמן לא נקראות (רק משימות Redbloods)."],
     surfaces: S(["/setup/calendar"], ["calendar"]),
   },
   {
@@ -164,7 +165,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("TASK_GOOGLE_SYNC", "IMPLEMENTATION_BEHAVIOR", "Completing the mirrored Google Task marks the local task בוצע (Google → Redbloods only).", ["GOOGLE_CALENDAR"]),
       R("VICTOR_TASK_NO_RELATED", "POSSIBLE_BUG", "A Victor deadline task on a standalone work is saved as project-related with no project."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא יוצר/סוגר משימות.", "קישור משימת מעקב להצעה / הצעת הופעה / מיקס הוא לפי טקסט — לא מפתח.", "Google Tasks עצמן לא נקראות — רק מזהה המראה; השלמה בגוגל עוברת רק כשדף המשימות נטען."],
+    sideEffects: [], limitationsHe: ["קישור משימת מעקב להצעה / הצעת הופעה / מיקס הוא לפי טקסט — לא מפתח.", "Google Tasks עצמן לא נקראות — רק מזהה המראה; השלמה בגוגל עוברת רק כשדף המשימות נטען."],
     surfaces: S(["/tasks"], ["tasks"]),
   },
   {
@@ -221,7 +222,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("SHARE_PAGE_DEAD", "POSSIBLE_BUG", "The /share/<token> page requires login and its tokens are never handed out — effectively unused."),
       R("DELIVERED_ALWAYS_DATED", "CANONICAL_BUSINESS_RULE", "'Delivered' always carries a delivered date (given, else today in Israel); any other status clears it, but the last delivered date is kept as history — leaving delivered, re-creating or deleting the folder never erases that it was delivered once (2026-09-27)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא יוצר/מוחק מסירות ולא רואה את הקישורים."],
+    sideEffects: [], limitationsHe: ["סאני לא רואה את קישורי המסירה ואת תוכן התיקייה — רק את הסטטוס והתאריכים."],
     surfaces: S(["/share/[token]"], ["delivery"]),
   },
   // ───────────────────────────── MONEY ─────────────────────────────
@@ -262,7 +263,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       E("TX_PAID_CLIP_ITEM", "A clip-linked transaction becomes שולם / התקבל", "The linked clip planning row is marked שולם (provenance; the Finance row is the money).", ["CLIPS"], "EVENT", "IMPLEMENTATION_BEHAVIOR"),
       E("BALANCE_REMINDER_CREATES_INCOME", "The Owner uses the project balance reminder", "An expected income for the remaining balance can be auto-created.", ["PROJECTS"], "MANUAL", "IMPLEMENTATION_BEHAVIOR"),
     ],
-    limitationsHe: ["דיווח שלך על תשלום נשמר כידע בלבד — לא יוצר רישום בכספים.", "ביצוע פעולות כספים דרך סאני כבוי; פעולת 'תשלום הוצאה' קיימת רק באישור בלוח הבקרה.", "כל תשלום Red Films = הוצאה אחת מקושרת בכספים (DB-1 פעיל; כל 10 התשלומים ₪4,955 מקושרים). הפקה שאינה קליפ — אין לה שיוך כספי מוגדר (SCOPE_REQUIRED).", "שורה בכספים שנוצרה ע\"י מסך אחר (הופעה, מיקס, קליפ, Red Films, קידום, שכר ויקטור) לא נמחקת ולא משנה סכום / מטבע מהכספים — רק דרך המסך שלה.", "כל סכום מוצג לפי מטבע — אין המרה ואין סכום מעורב.", "כל סכום חודשי ניתן לפירוק לשורות שמרכיבות אותו (finance_transactions: month + currency + counted=yes) — גם שורות בלי פרויקט; תיאור / הערות הם טקסט שרשמת (ראיה), ושורה שלא נספרה מגיעה עם הסיבה. אף פעם לא מסבירים סכום מזיכרון של פעולה קודמת."],
+    limitationsHe: ["דיווח שלך על תשלום לא נרשם בכספים מעצמו — סאני מציעה רישום (פעולה מוקלדת), והוא נכתב רק אחרי שאישרת את התצוגה המדויקת.","כל תשלום Red Films = הוצאה אחת מקושרת בכספים (DB-1 פעיל; כל 10 התשלומים ₪4,955 מקושרים). הפקה שאינה קליפ — אין לה שיוך כספי מוגדר (SCOPE_REQUIRED).", "שורה בכספים שנוצרה ע\"י מסך אחר (הופעה, מיקס, קליפ, Red Films, קידום, שכר ויקטור) לא נמחקת ולא משנה סכום / מטבע מהכספים — רק דרך המסך שלה.", "כל סכום מוצג לפי מטבע — אין המרה ואין סכום מעורב.", "כל סכום חודשי ניתן לפירוק לשורות שמרכיבות אותו (finance_transactions: month + currency + counted=yes) — גם שורות בלי פרויקט; תיאור / הערות הם טקסט שרשמת (ראיה), ושורה שלא נספרה מגיעה עם הסיבה. אף פעם לא מסבירים סכום מזיכרון של פעולה קודמת."],
     surfaces: S(["/finance", "/insights"], ["transactions"]),
   },
   // ───────────────────────────── LABEL ─────────────────────────────
@@ -284,7 +285,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("ARTIST_NO_DELETE_NO_EDIT_UI", "IMPLEMENTATION_BEHAVIOR", "There is no artist delete, and the artist edit route has no screen; notes are never written or shown."),
       R("LABEL_PROTECTED_TRACK", "OWNER_POLICY", "Label artists are a protected growth track (Owner operating model): Sunny surfaces when label work has no recorded progress while client work continues — it never ranks label work above client work automatically."),
     ],
-    sideEffects: [], limitationsHe: ["רוב הקישורים של אמן לפרויקטים/הופעות/קליפים/סושיאל הם לפי שם; רק ריליס, מאזן, מחזורים והכנסות מדיה לפי מזהה.", "סקיצות, דירוגים, 'העבודה הבאה', קיט יח״צ, קבצי הופעות ותמונת פרופיל נשמרים בתיקיית האמן (לא בבסיס הנתונים) — סאני לא קורא אותם.", "אין הגדרת 'מוכן לריליס', אין קצב ריליסים ואין סף חוסר פעילות — סאני מציג ראיות בלבד.", "סאני לא יוצר / עורך אמנים, ריליסים, ביטים, תנועות מאזן או הופעות — כל הפעולות ממופות (artist_model actions) ודורשות פרימיטיב עתידי."],
+    sideEffects: [], limitationsHe: ["רוב הקישורים של אמן לפרויקטים/הופעות/קליפים/סושיאל הם לפי שם; רק ריליס, מאזן, מחזורים והכנסות מדיה לפי מזהה.", "סקיצות, דירוגים, 'העבודה הבאה', קיט יח״צ, קבצי הופעות ותמונת פרופיל נשמרים בתיקיית האמן (לא בבסיס הנתונים) — סאני לא קורא אותם.", "אין הגדרת 'מוכן לריליס', אין קצב ריליסים ואין סף חוסר פעילות — סאני מציג ראיות בלבד."],
     surfaces: S(["/label"], ["label/artists", "label/projects"]),
   },
   {
@@ -312,7 +313,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("SHALEV_AVAILABILITY_REMINDER", "Weekly availability not submitted", "Shalev + Owner", "SCHEDULED", "Thu 12:00, Thu 18:00, Fri 09:00; skipped once submitted"),
       N("SKETCH_NEW", "A new sketch / version on Shalev's portal", "Shalev + Owner", "EVENT", "per sketch / version (also when Shalev uploaded it himself — POSSIBLE_BUG)"),
     ],
-    limitationsHe: ["סאני לא קורא את הסקיצות, קבצי ההופעה והזמינות השבועית של האמנים (אחסון בדרופבוקס/הגדרות אישיות).", "סאני לא שולח עדכונים לפורטלים."],
+    limitationsHe: ["סאני לא קורא את הסקיצות, קבצי ההופעה והזמינות השבועית של האמנים (אחסון בדרופבוקס/הגדרות אישיות).", "סאני לא שולחת לפורטל הודעה חופשית; התראה לאמן יוצאת רק מפעולה עסקית מוקלדת שהאפליקציה עצמה שולחת בה התראה (למשל שיוך ביט), אחרי אישורך."],
     surfaces: S(["/red-artists", "/label/artists/[artistId]"], ["red-artists/availability", "red-artists/download", "red-artists/next-release", "red-artists/next-work", "red-artists/performance-files", "red-artists/ping", "red-artists/press-kit-link", "red-artists/profile-image", "red-artists/project-cover", "red-artists/push-subscribe", "red-artists/shalev-summary", "red-artists/sketches", "red-artists/stream", "red-artists/track-duration", "red-artists/upload", "red-artists/weekly"]),
   },
   {
@@ -359,7 +360,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("SHOW_NOTIFY_DJ", "The Owner presses 'send to DJ'", "DJ CLEANTONE (+ Owner ack)", "MANUAL", "deduplicated by fingerprint"),
       N("DJ_CONFIRMED", "DJ CLEANTONE confirms a show", "Owner", "EVENT", "only on a real transition"),
     ],
-    limitationsHe: ["סאני קורא כל הופעה במלואה (כסף, DJ, חזרות, יומן, מאזן, הודעות, משימות) — לא יוצר, לא עורך ולא שולח.", "קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם.", "אין 'מוכנות להופעה' ואין תזכורות אוטומטיות להופעות.", "אין לסאני פעולת 'יצירת הופעה' — הוא יכול להבין ולאסוף את פרטי ההופעה, אבל לא לטעון שהיא נוצרה.", "אין פנקס DJ — תשלומי DJ הם רק הוצאות 'שכר דיג'יי' בכספים.", "לקוח שילם ≠ DJ קיבל ≠ אמן קיבל: שורת שכר DJ הופכת ל'שולם' רק בסימון מפורש (דיאלוג סגירה 'שולם ל-DJ' / MARK_SHOW_FEE_PAID / עריכה בכספים) — אף פעם לא מתשלום הלקוח; ומעבר אמיתי כזה שולח Push ל-CLEANTONE, ואישור לבעלים רק אחרי שהוא הגיע.", "אמן לא מקבל תשלום מסגירת הופעה: כשהופעה בוצעה זכאות האמן (חצי מהנטו) נכנסת למאזן כהכנסה, והתשלום בפועל לשליו / אבי נרשם רק במאזן האמן / מחזור ההתחשבנות. אין 'שולם לאמן' בסגירה ו-MARK_SHOW_FEE_PAID לא משלם לאמן."],
+    limitationsHe: ["סאני קורא כל הופעה במלואה (כסף, DJ, חזרות, יומן, מאזן, הודעות, משימות).", "קבצי הופעה נשמרים בתיקיית האמן — סאני לא רואה אותם.", "אין 'מוכנות להופעה' ואין תזכורות אוטומטיות להופעות.", "הופעה נוצרת רק אחרי אישורך לתצוגה — עד אז סאני לא אומרת שהיא נוצרה; יצירה מאושרת יוצרת גם שורות כספים / מאזן לפי הכללים (מוצג בתצוגה).","אין פנקס DJ — תשלומי DJ הם רק הוצאות 'שכר דיג'יי' בכספים.", "לקוח שילם ≠ DJ קיבל ≠ אמן קיבל: שורת שכר DJ הופכת ל'שולם' רק בסימון מפורש (דיאלוג סגירה 'שולם ל-DJ' / MARK_SHOW_FEE_PAID / עריכה בכספים) — אף פעם לא מתשלום הלקוח; ומעבר אמיתי כזה שולח Push ל-CLEANTONE, ואישור לבעלים רק אחרי שהוא הגיע.", "אמן לא מקבל תשלום מסגירת הופעה: כשהופעה בוצעה זכאות האמן (חצי מהנטו) נכנסת למאזן כהכנסה, והתשלום בפועל לשליו / אבי נרשם רק במאזן האמן / מחזור ההתחשבנות. אין 'שולם לאמן' בסגירה ו-MARK_SHOW_FEE_PAID לא משלם לאמן."],
     surfaces: S(["/shows", "/shows-legacy", "/shows-preview"], ["shows"]),
   },
   {
@@ -442,7 +443,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("READY_IS_OWNER_STATEMENT", "IMPLEMENTATION_BEHAVIOR", "'מוכן ליציאה' is an Owner-set stage; there are no readiness checks."),
       R("RELEASE_STAGES", "CANONICAL_BUSINESS_RULE", "Stages: רעיון, הפקה, הקלטה, עריכות, מיקס, מאסטר, עטיפה, הפצה, תוכן, מוכן ליציאה, יצא, בהשהייה. The first entry into יצא stamps the released date."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא משנה שלב ריליס."],
+    sideEffects: [], limitationsHe: ["שלב ריליס הוא רשומה ידנית — סאני מציגה ראיות (מאסטר / קבצים סופיים / צעד הבא) ולא מכריעה שהריליס מוכן."],
     surfaces: S([], ["label/releases"]),
   },
   {
@@ -456,7 +457,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     rules: [R("BEAT_SCOPE", "CANONICAL_BUSINESS_RULE", "Each artist sees only beats assigned to their own portal; archived status is never written (legacy).")],
     sideEffects: [],
     notifications: [N("BEAT_ASSIGNED", "The Owner assigns a beat to an artist", "that artist (+ Owner ack)", "EVENT", "only on a brand-new assignment")],
-    limitationsHe: ["סאני לא משייך ביטים ולא שולח אותם."],
+    limitationsHe: ["שיוך ביט לאמן שולח לו התראה מהאפליקציה — זה מוצג בתצוגה לפני האישור."],
     surfaces: S(["/beats"], ["beats"]),
   },
   // ───────────────────────────── VENDORS ─────────────────────────────
@@ -491,7 +492,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("VICTOR_NEW_WORK", "The Owner sends new work", "Victor (+ Owner ack)", "MANUAL", "repeatable"),
       N("VICTOR_COMPLETED", "Victor work becomes הושלם", "Victor + Owner", "EVENT", "once per completion transition (atomic delivery claim; recorded sent only after delivery)"),
     ],
-    limitationsHe: ["סאני רואה כל עבודה של ויקטור (גם בלי פרויקט), העלאות, הערות, דדליינים, כסף ונוכחות — לא משנה, לא שולח ולא מוחק.", "האחסון עצמו (Dropbox) לא נקרא — רק רישומי הקבצים.", "אין רישום של מעבר מהפקה למיקס ואין מדד ״הפקה מוכנה״.", "סאני לא רואה את שמות הקבצים/התיקיות של ויקטור.", "תשלום משכורת לויקטור הוא פעולת כספים שמאושרת רק בלוח הבקרה."],
+    limitationsHe: ["סאני רואה כל עבודה של ויקטור (גם בלי פרויקט), העלאות, הערות, דדליינים, כסף ונוכחות.","האחסון עצמו (Dropbox) לא נקרא — רק רישומי הקבצים.", "אין רישום של מעבר מהפקה למיקס ואין מדד ״הפקה מוכנה״.", "סאני לא רואה את שמות הקבצים/התיקיות של ויקטור.", "חודש משכורת של ויקטור נחשב שולם רק כשהשורה שלו בכספים 'שולם'; רישום החודש הוא פעולת כספים מוקלדת באישורך."],
     surfaces: S(["/team", "/team/victor"], ["vendor/victor"]),
   },
   {
@@ -521,7 +522,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       N("STEVEN_MIX_READY", "The Owner marks a mix ready", "Owner + Steven", "MANUAL", "delivery claim per job (double click sends once); recorded sent only after delivery; re-sent only on an explicit resend"),
       N("STEVEN_PAID", "Payment becomes paid", "Owner + Steven", "EVENT", "once per payment date (atomic delivery claim; recorded sent only after delivery)"),
     ],
-    limitationsHe: ["סאני קורא כל עבודה, גרסה, הערה (כולל הטקסט), צרופה, קבצים סופיים וכסף — לא משנה, לא שולח ולא מוחק.", "האחסון עצמו לא נקרא — רק רישומי הקבצים.", "אין רשומת אישור מיקס, אין מי-סימן-טופל, ומי שהעלה גרסה לא ניתן להוכחה.", "תשלום למהנדס נרשם במטבע העבודה (למשל $200); ה-₪ לפי 3.25 הוא הערכה בהערות בלבד. הוצאות סטיבן ישנות נשארו בשקלים (הצורה הישנה) — לא מדיניות.", "סיום עבודה של סטיבן ≠ סיום הפרויקט: הפרויקט משתנה רק באישור שלך.", "הוצאה ששולמה לא נדרסת ולא נמחקת; ביטול תשלום — רק כתיקון מפורש בכספים."],
+    limitationsHe: ["סאני קורא כל עבודה, גרסה, הערה (כולל הטקסט), צרופה, קבצים סופיים וכסף.","האחסון עצמו לא נקרא — רק רישומי הקבצים.", "אין רשומת אישור מיקס, אין מי-סימן-טופל, ומי שהעלה גרסה לא ניתן להוכחה.", "תשלום למהנדס נרשם במטבע העבודה (למשל $200); ה-₪ לפי 3.25 הוא הערכה בהערות בלבד. הוצאות סטיבן ישנות נשארו בשקלים (הצורה הישנה) — לא מדיניות.", "סיום עבודה של סטיבן ≠ סיום הפרויקט: הפרויקט משתנה רק באישור שלך.", "הוצאה ששולמה לא נדרסת ולא נמחקת; ביטול תשלום — רק כתיקון מפורש בכספים."],
     surfaces: S(["/team/steven"], ["supplier/steven"]),
   },
   {
@@ -652,7 +653,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
     notifications: [
       N("PUSH_CRON_OWNER", "External scheduler: overdue / due-soon projects, today's sessions, overdue expected income per currency, morning / evening summary (Victor stuck is computed but never pushed — Owner decision)", "Owner", "SCHEDULED", "production only; one claim per notification type per Israel day"),
     ],
-    limitationsHe: ["לסאני אין הרשאה לשלוח Push או התראות — אף פעם.", "סאני לא קורא את היסטוריית ההתראות — הוא מכיר את כל סוגי הפושים דרך system_awareness (מצב push)."],
+    limitationsHe: ["סאני לא שולחת Push בעצמה ולא יוזמת התראה, ואין לה תהליך ברקע. Push יוצא רק מפעולה עסקית מוקלדת שהאפליקציה עצמה שולחת בה Push (למשל 'שלח לאמן'), אחרי שאישרת את התצוגה שמראה אותו.","סאני לא קורא את היסטוריית ההתראות — הוא מכיר את כל סוגי הפושים דרך system_awareness (מצב push)."],
     surfaces: S(["/push-test"], ["push", "notifications"]),
   },
   {
@@ -670,7 +671,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("REPORT_DAILY_BY_CREATED", "IMPLEMENTATION_BEHAVIOR", "The daily report counts money by creation date (not transaction date); weekly is ₪ only."),
       R("REPORT_DEDUPE_CLAIM", "IMPLEMENTATION_BEHAVIOR", "The morning / evening email is claimed once per Israel day in a durable record (sent only after the email service accepted it, else failed) — a restart, a second process or an overlapping tick never resends (2026-09-27)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא שולח דוחות.", "נשמר רק האם דוח הבוקר / הערב של כל יום נשלח (תביעת יום) — לא התוכן שנשלח.", "ההמלצות בדוח הן כללים קבועים (אין קריאה למודל)."],
+    sideEffects: [], limitationsHe: ["סאני לא שולחת דוחות מתוזמנים; שליחת דוח עכשיו או שינוי שעות הדוחות — רק כפעולה מוקלדת באישורך.","נשמר רק האם דוח הבוקר / הערב של כל יום נשלח (תביעת יום) — לא התוכן שנשלח.", "ההמלצות בדוח הן כללים קבועים (אין קריאה למודל)."],
     surfaces: S(["/setup/reports"], ["reports"]),
   },
   {
@@ -711,7 +712,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("COO_BRIEF_LEGACY_DISPLAY", "LEGACY_BEHAVIOR", "GET /api/coo/brief (the COO brief composer: headline + P0–P3 tiers) is a legacy display: /dashboard-legacy and /dashboard-preview read it (Dashboard V2 stopped reading it in Phase B, 2026-10-06). It is NOT the Owner's priority (BUSINESS_MOTION is) and is not deleted while it has consumers. The COO core itself (buildCoo: state, facts, cases, the Victor ball) is what every Sunny read builds on and stays."),
       R("PARALLEL_ATTENTION_ENGINES", "CONFLICT", "Two older attention engines exist beside Sunny: dashboard health rules and the COO brief (P0–P3 tiers); the third, Agent Alerts, was retired on 2026-10-05. Their tiers are implementation, not Owner priority."),
     ],
-    sideEffects: [], limitationsHe: ["הכדור בפרויקט = רק לפי הרשומות (אותו כלל של 'מה צריך ממני'). מה שאמרת לי ('מחכה לבעלים') מוצג כ'אמרת לי', לא כ'לפי הרשומות', ולא מכניס פריט ל'מה צריך ממני'.", "הדשבורד המנהלי (/api/partner/executive) מציג את אותה תמונה כמו הצ'אט; אם היסטוריית הפעולות לא נקראה זה נאמר במפורש (NOT_READ), לא 'לא בוצע כלום'.", "סאני COO: מוכנות מבוססת רק על מה שרשום. מה שלא רשום (אישורי צוות, רשימת ציוד להפקה, יתרת מזומנים) היא אומרת 'לא רואה', לא 'אין'. אין ספי זמן כמדיניות ואין מכסת סשנים. היא לא מזיזה, לא יוצרת ולא שולחת כלום.", "'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
+    sideEffects: [], limitationsHe: ["הכדור בפרויקט = רק לפי הרשומות (אותו כלל של 'מה צריך ממני'). מה שאמרת לי ('מחכה לבעלים') מוצג כ'אמרת לי', לא כ'לפי הרשומות', ולא מכניס פריט ל'מה צריך ממני'.", "הדשבורד המנהלי (/api/partner/executive) מציג את אותה תמונה כמו הצ'אט; אם היסטוריית הפעולות לא נקראה זה נאמר במפורש (NOT_READ), לא 'לא בוצע כלום'.", "סאני COO: מוכנות מבוססת רק על מה שרשום. מה שלא רשום (אישורי צוות, רשימת ציוד להפקה, יתרת מזומנים) היא אומרת 'לא רואה', לא 'אין'. אין ספי זמן כמדיניות ואין מכסת סשנים. הניתוח עצמו לא משנה כלום — כל מהלך שהיא מציעה רץ רק כפעולה מוקלדת אחרי אישורך.", "'מה השתנה' = רק מתי (זמני עדכון) — מה בדיוק השתנה לא נרשם ברוב הטבלאות.", "סיכום בוקר רק לפי בקשה — בלי פוש ובלי תזמון.", "החלטות פתוחות — סאני לא עונה עליהן בעצמו."],
     surfaces: S(["/", "/dashboard", "/dashboard-legacy", "/dashboard-old", "/dashboard-preview", "/dashboard-v2"], ["coo", "agent", "partner/executive"]),
   },
   {
@@ -726,7 +727,7 @@ export const DOMAIN_CONTRACTS: readonly DomainContract[] = [
       R("ROLES", "CANONICAL_BUSINESS_RULE", "Roles: owner (everything), shalev, avi, cleantone (their portals), victor, steven (their vendor pages). Everything else is Owner-only by default-deny."),
       R("ROUTE_GUARDS_PROXY_ONLY", "IMPLEMENTATION_BEHAVIOR", "About half of the Owner mutation routes rely only on the central gate (no second in-route check)."),
     ],
-    sideEffects: [], limitationsHe: ["סאני לא משנה הרשאות, משתמשים או מצב תחזוקה — אף פעם."],
+    sideEffects: [], limitationsHe: ["הרשאות, משתמשים, סיסמאות וחיבורי OAuth — אף פעם לא דרך סאני (גבול אבטחה). מצב תחזוקה וניתוק אינטגרציה — רק כפעולה מוקלדת באישורך."],
     surfaces: S(["/login", "/maintenance", "/mobile-test"], ["me", "maintenance"]),
   },
   // ───────────────────────────── SUNNY ─────────────────────────────
@@ -858,10 +859,19 @@ const confirmationsOf = (id: string, cls: ActionClass, financialRisk: BusinessAc
     ...(EXTRA_CONFIRMATION[id] ?? []),
   ])];
 const A = (id: string, domain: string, meaning: string, cls: BusinessActionContract["class"], financialRisk: BusinessActionContract["financialRisk"], externalRisk: BusinessActionContract["externalRisk"], approval: BusinessActionContract["approval"], reason: string, primitive?: string): BusinessActionContract =>
-  ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval: EXECUTABLE_THROUGH_SUNNY.has(id) ? "OWNER_CONFIRMATION_IN_CONVERSATION" : approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: EXECUTABLE_THROUGH_SUNNY.has(id), reason, ...(primitive ? { primitive } : {}) });
+  ({ id, domain, meaning, class: cls, financialRisk, externalRisk, approval: EXECUTABLE_THROUGH_SUNNY.has(id) ? "OWNER_CONFIRMATION_IN_CONVERSATION" : approval, confirmations: confirmationsOf(id, cls, financialRisk, externalRisk), sunnyCanExecuteToday: EXECUTABLE_THROUGH_SUNNY.has(id), reason: EXECUTABLE_THROUGH_SUNNY.has(id) ? executableReason(id, reason) : reason, ...(primitive ? { primitive } : {}) });
 /** Business actions Sunny executes through Claude today (Universal Action Layer; each only after the Owner approves the
- *  exact preview). Kept equal to lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES by G10. */
-const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(["ASSIGN_SHOW_DJ", "BALANCE_ENTRY", "BEAT_ASSIGN", "CALENDAR_WRITE", "CLIP_PROMOTE", "CLOSE_BALANCE_CYCLE", "CLOSE_SHOW", "CONVERT_PROPOSAL", "CREATE_CALENDAR_EVENT", "CREATE_PROJECT", "CREATE_PROPOSAL", "CREATE_SESSION", "CREATE_SHOW", "CREATE_TASK", "CREATE_TRANSACTION", "DELETE_CALENDAR_EVENT", "EDIT_OR_DELETE_TRANSACTION", "MEDIA_INCOME_WRITE", "MIX_WORKFLOW", "NOTIFY_ARTIST_DJ", "RECORD_PAID_EXPENSE", "RECORD_RECEIVED_INCOME", "RED_FILMS_WRITE", "RELEASE_STAGE", "RESCHEDULE_EVENT", "SCHEDULE_MEETING", "SCHEDULE_SESSION", "SEND_VICTOR_WORK", "SET_PROJECT_AGREED_PRICE", "SPLIT_INCOME", "STEVEN_PAYMENT", "UPDATE_CALENDAR_EVENT", "UPDATE_PROJECT_DEADLINE", "UPDATE_PROJECT_STATUS", "UPDATE_SHOW_STATUS", "VICTOR_SALARY"]);
+ *  exact preview). DERIVED from lib/partner/act/coverage-map.ts BUSINESS_ACTION_PRIMITIVES — one source, never a
+ *  hand-kept list (2026-10-11: the hand-kept reasons said "not executable" for actions Sunny already executed). */
+const EXECUTABLE_THROUGH_SUNNY: ReadonlySet<string> = new Set(Object.keys(BUSINESS_ACTION_PRIMITIVES));
+/** The served reason of an executable business action — derived, so it can never contradict the action layer. */
+const executableReason = (id: string, designNote: string): string => {
+  // keep the design detail (effects, recipients, ledger…), drop the stale availability prefix it was written with
+  const stripped = designNote.replace(/^(Not executable today[^.]*\.|Executable[^:]*:|Blocked:[^.]*\.)\s*/i, "").replace(/^Future primitives?:\s*/i, "").trim();
+  // a note that still speaks of the old state (future / dashboard / refused / fix first …) is dropped, never served
+  const note = /(future|dashboard|refused|candidate|fix(ed)? first|not executable|could propose|needs a narrow|blocked)/i.test(stripped) ? "" : stripped;
+  return `Executable through Sunny in Claude: plan → exact preview → the Boss's explicit approval → execute → verify (typed actions: ${(BUSINESS_ACTION_PRIMITIVES[id] ?? []).join(", ")}). Never in the background, never a generic write.${note ? ` Design: ${note}` : ""}`;
+};
 export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("UPDATE_PROJECT_DEADLINE", "PROJECTS", "Change a project's deadline", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Existing validated Partner primitive; Sunny proposes (preview), the Owner approves / executes in the dashboard.", "UPDATE_PROJECT_DEADLINE"),
   A("RECORD_PAID_EXPENSE", "FINANCE", "Record that a known expense was paid (Victor salary month)", "VALIDATED_ACTION_EXISTS", "HIGH", "NONE", "OWNER_APPROVAL_IN_DASHBOARD", "Executable only from the dashboard; through Sunny it is refused (finance execution via MCP is off).", "RECORD_PAID_EXPENSE"),
@@ -871,7 +881,7 @@ export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   { ...A("CREATE_SHOW", "SHOWS", "Register a new show (artist, date, price, DJ)", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "MULTIPLE", "OWNER_APPROVAL_IN_DASHBOARD", "Creating a show triggers finance transactions, ledger rows, portal visibility and optional calendar — needs a narrow typed primitive with a full side-effect preview."),
     design: {
       inputs: ["artist (label artist, resolved deterministically)", "date (YYYY-MM-DD)", "price + currency", "status (default: ממתין לתשובה unless the Owner says it is closed)"],
-      optionalInputs: ["DJ (e.g. an Owner-confirmed alias for DJ CLEANTONE)", "DJ fee (default 500)", "start time", "location", "client / booker", "add to calendar (NOT available to Sunny)"],
+      optionalInputs: ["DJ (e.g. an Owner-confirmed alias for DJ CLEANTONE)", "DJ fee (default 500)", "start time", "location", "client / booker", "add to calendar (an external effect shown in the preview)"],
       previewEffects: ["a confirmed show creates 3 finance rows (income, DJ fee, artist fee = half of net)", "Shalev shows add an expected row to his balance ledger", "the show appears in the artist's portal (by name) and the DJ's portal (by id)", "assigning DJ CLEANTONE asks him to confirm", "no push is sent automatically; calendar needs the Owner"],
     } },
   A("UPDATE_SHOW_STATUS", "SHOWS", "Move a show through the pipeline / confirm / cancel", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "MULTIPLE", "OWNER_APPROVAL_IN_DASHBOARD", "Status changes create / cancel / delete finance rows and tasks."),
@@ -908,10 +918,10 @@ export const BUSINESS_ACTIONS: readonly BusinessActionContract[] = [
   A("CLIP_PROMOTE", "CLIPS", "Promote a clip planning row to an expense", "FUTURE_PRIMITIVE_REQUIRED", "HIGH", "NONE", "NOT_EXECUTABLE_YET", "Not executable today. Not atomic (double-click risk) — fix first, then a typed primitive with financial confirmation."),
   A("SOCIAL_WRITE", "SOCIAL", "Campaign / content / promotion edits", "FUTURE_PRIMITIVE_REQUIRED", "LOW", "DROPBOX", "OWNER_APPROVAL_IN_DASHBOARD", "Promotion spend creates finance rows."),
   A("DROPBOX_WRITE", "FILES_DROPBOX", "Upload / move / delete files, create share links", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "DROPBOX", "NOT_EXECUTABLE_YET", "Not executable today (Dropbox integration mission pending). Future primitives: external, possibly destructive, public links — external-effect + destructive confirmation."),
-  A("SEND_PUSH", "PUSH_NOTIFICATIONS", "Send a push / notification", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "PUSH", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: external communication — preview of recipients and exact text; explicit Owner approval of each send."),
+  A("SEND_PUSH", "PUSH_NOTIFICATIONS", "Send a push / notification", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "PUSH", "NOT_EXECUTABLE_YET", "A generic push is never available to Sunny. A push goes out only as part of a business action whose app writer already sends it (e.g. NOTIFY_SHOW_ARTIST, SEND_VICTOR_VERSION_NOTES, ASSIGN_BEAT) — executed only after the Boss approves the preview that shows the push."),
   A("SEND_REPORT", "REPORTS", "Send an email report", "FUTURE_PRIMITIVE_REQUIRED", "NONE", "EMAIL", "NOT_EXECUTABLE_YET", "Not executable today. Future primitive: sends an email report — external-effect confirmation."),
-  A("SETTINGS_AUTH_PEOPLE", "PLATFORM_ACCESS", "Roles, users, maintenance, integrations", "SECURITY_RESTRICTED", "NONE", "MULTIPLE", "NOT_EXECUTABLE_YET", "Security boundary: roles, users, credentials and integration secrets stay with the Owner (SECURITY_RESTRICTED). Non-secret settings are readable knowledge."),
-  A("TEACH_KNOWLEDGE", "SUNNY_CORE", "Learn typed Owner knowledge", "LEARN_ONLY", "NONE", "NONE", "OWNER_CONFIRMATION_IN_CONVERSATION", "P2: preview → confirm → commit (not active yet)."),
+  A("SETTINGS_AUTH_PEOPLE", "PLATFORM_ACCESS", "Roles, users, credentials, integration connections (OAuth)", "SECURITY_RESTRICTED", "NONE", "MULTIPLE", "NOT_EXECUTABLE_YET", "Security boundary: roles, users, credentials and integration secrets stay with the Owner (SECURITY_RESTRICTED). Non-secret settings are readable knowledge."),
+  A("TEACH_KNOWLEDGE", "SUNNY_CORE", "Learn typed Owner knowledge", "LEARN_ONLY", "NONE", "NONE", "OWNER_CONFIRMATION_IN_CONVERSATION", "P2 live: preview → the Owner's explicit confirmation → commit (partner_propose_knowledge); never a record change."),
   A("ANSWER_QUESTION", "SUNNY_CORE", "Answer a surfaced Sunny question", "VALIDATED_ACTION_EXISTS", "NONE", "NONE", "OWNER_CONFIRMATION_IN_CONVERSATION", "P1 live: a closed answer code only."),
 ];
 
@@ -1124,4 +1134,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.06-109", date: "2026-10-06", domain: "COMPANY_OVERVIEW", dimension: "learn", from: "MONEY_WHEN_NOT_KEPT", to: "MONEY_DECISION_WHEN", noteHe: "Decision Persistence C: החלטה שלך מתי משלמים / מתחשבנים נשמרת כהחלטה עסקית (BUSINESS_DECISION) עם מתי (במהלך החודש של ההחלטה / בסגירת המחזור / עד תאריך / בתנאי) והתנאי במילים שלך — על הרשומה המדויקת: כל עבודת מיקס בנפרד, ואמן לייבל למחזור הנוכחי בלבד. 'כסף קדימה' קורא אותה דרך זיכרון השאלות: הוחלט = לא נשאל שוב, לא הפתעה ולא מהלך; הסכום, התאריך וסטטוס התשלום לא משתנים; אין שורה בכספים ואין תאריך מומצא. עבודה חדשה שתושלם לא יורשת החלטה ישנה; אחרי החודש של ההחלטה — 'זה עדיין נכון?'." },
   { version: "2026.10.06-110", date: "2026-10-06", domain: "COMPANY_OVERVIEW", dimension: "read", from: "DASHBOARD_OWN_PRIORITY_CARDS", to: "DASHBOARD_EXECUTIVE_SURFACE", noteHe: "Dashboard V2 Phase B: הדשבורד הוא המשטח של סאני. למעלה: המהלכים של סאני להיום (עד 3, בסדר שלה) ושורת המצב (שבוע · עדכונים · צוואר בקבוק). מחכה לך (אותה רשימה כמו קודם) לצד סוגרים לולאות, הלייבל לפי סאני, ו׳כסף קדימה׳ מ׳כסף קדימה׳ של סאני בלבד (בפועל החודש, 7 ימים קדימה, מה שכבר החלטת, מה עלול להפתיע — לפי מטבע, בלי יתרת בנק). שלושת הכרטיסים הישנים ושורת ׳צפוי / לתשלום׳ ירדו. הסיבה של סאני מוצמדת לשורה ביומן / לריליס רק לפי מפתח רשומה מדויק — לא לפי שם. אין דירוג חדש, אין כתיבה, אין פוש." },
   { version: "2026.10.11-111", date: "2026-10-11", domain: "FINANCE", dimension: "read", from: "MONTH_TOTALS_ONLY", to: "ROW_LEVEL", noteHe: "תנועות הכספים עצמן (משימת בעלים 11.10): יכולת finance_transactions — כל שורת כספים (גם בלי פרויקט: ספקים, משכורות, הוצאות כלליות) עם תאריך, סוג, סכום ומטבע כפי שנרשמו, סטטוס, קטגוריה, יחידה, פרויקט / הופעה, תיאור / הערות, והאם נספרה בסיכום החודש ולמה לא. נספר = בדיוק השורות שמנוע הכספים ספר (evidence של החודש) — בלי חישוב שני; הסיכום מציג את סיכום החודש של המנוע ליד סכום השורות (חייבים להתאים). finance_position: לכל סכום חודשי מספר השורות + הפניה לפירוק (רק לפי דרישה). ₪ ו-$ לעולם לא מחוברים. קריאה בלבד, Owner-only." },
+  { version: "2026.10.11-112", date: "2026-10-11", domain: "SUNNY_CORE", dimension: "execute", from: "HAND_WRITTEN_CLAIMS", to: "DERIVED_ONE_SOURCE", noteHe: "אמינות יכולות (P0 1–3, באישור הבעלים 11.10): 'סאני, את יכולה לעשות את זה?' נענה ממקור אחד — action_registry מצב can_i (מצב אחד לכל התאמה: קריאה / ביצוע אחרי אישור / קיים ולא אומת / רק הכנה / חסום הרשאה / חסום טכנית / אוטומטי / לא ברישום), עם המצב החי של החיבור (מתגים, הרשאות הטוקן, אימות מההיסטוריה). תוקנו הטקסטים שסתרו את שכבת הפעולות: קריאת וכתיבת יומן, פעולות כספים, משימות / לקוחות / הצעות, הופעות, ריליסים, ביטים, Push, דוחות, מצב תחזוקה; הפעולות העסקיות והשורה של כל תחום נגזרות מרישום הפעולות; integrations מראה את תוצאת קריאת היומן החיה; מספרי הפעולות מחושבים בשורה אחת שמסבירה מה כל מספר סופר." },
 ];

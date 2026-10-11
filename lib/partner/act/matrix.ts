@@ -70,7 +70,7 @@ export interface CoverageRow {
 
 /** Dependency-ordered sequencing (NOT capability exclusions). */
 export const WAVE_PLAN: ReadonlyArray<{ wave: TargetWave; titleEn: string; dependsOn: readonly TargetWave[] }> = [
-  { wave: "LIVE", titleEn: "Wave 1 — 13 internal reversible primitives (enabled)", dependsOn: [] },
+  { wave: "LIVE", titleEn: `LIVE — ${ALL_PRIMITIVES.length} registered typed primitives (each executable through Claude only after the Boss approves its exact preview)`, dependsOn: [] },
   { wave: "W2", titleEn: "Internal CRUD + lifecycle (incl. hardening the Wave 1 leftovers, creates, statuses, addressability of every sub-record)", dependsOn: ["LIVE"] },
   { wave: "W3", titleEn: "Finance + ledger + cycles + show / clip money (canonical Finance Brain rules, currencies separate, C2 values)", dependsOn: ["W2"] },
   { wave: "W4", titleEn: "Calendar / Google Tasks / public links (canonical integration writers; divergence hardened first)", dependsOn: ["W2"] },

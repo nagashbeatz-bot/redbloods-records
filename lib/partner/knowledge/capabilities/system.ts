@@ -8,6 +8,7 @@ import { accessMatrix, PEOPLE_BASELINE_VERSION, personOfRole, PUSH_CONTRACTS, SE
 import { PROJECT_BASELINE_VERSION, PROJECT_FIELDS, PROJECT_INTEGRITY, PROJECT_LINKS, PROJECT_MONEY_MODEL, PROJECT_PAGE_LOAD_EFFECTS, PROJECT_SIGNAL_MODEL, PROJECT_SURFACES, PROJECT_VOCABULARIES } from "../../system/projects";
 import { DOMAIN_KNOWLEDGE_DEPTH, KNOWLEDGE_GAPS } from "../../system/gaps";
 import { CALENDAR_CONTEXT_CONTRACT } from "../../system/calendar";
+import { actionCountsHe, domainActionsLineHe, executableByDomain, servedStatesOf } from "../../system/capability-truth";
 import { ACTION_CONTRACT_FIELDS, ACTION_FLOW, APPROVAL_CLASSES, PROJECT_ACTIONS } from "../../system/project-actions";
 import * as CM from "../../system/clients";
 import * as LM from "../../system/label-artists";
@@ -29,12 +30,12 @@ const LAYERS = [
 
 export const systemAwareness: KnowledgeCapability = {
   id: "system_awareness", domain: "PARTNER", titleHe: "מה סאני יודע על Redbloods",
-  descriptionForModel: "How Redbloods OS works and what Sunny can do in it, from the typed system contracts (not assumptions). Use for 'what do you know about shows?', 'can you create a show?', 'calendar access?', 'can you send push?', 'what can't you do?'. Modes: overview (domains + read/learn/propose/execute support), domain (purpose, canonical source, rules, side effects, notifications, limitations), rules (CONFLICT / POSSIBLE_BUG are reported problems, NOT policy), relationships (entity graph + relation quality), actions (every business mutation and whether Sunny may propose it), limitations, changes (capability change log), coverage. Execution: Sunny executes registered typed actions only through partner_plan_action → preview → the Boss's explicit approval → execute → verify (see capability action_registry); never in the background, never a generic write.",
+  descriptionForModel: "How Redbloods OS works and what Sunny can do in it, from the typed system contracts (not assumptions). Use for 'what do you know about shows?', 'what can't you do?'. ONE 'can you do X?' (create a show? calendar? push?) → FIRST action_registry mode can_i. Modes: overview (domains + read/learn/propose/execute support), domain (purpose, canonical source, rules, side effects, notifications, limitations), rules (CONFLICT / POSSIBLE_BUG are reported problems, NOT policy), relationships (entity graph + relation quality), actions (every business mutation and whether Sunny may propose it), limitations, changes (capability change log), coverage. Execution: registered typed actions only, via partner_plan_action → preview → the Boss's explicit approval → execute → verify; never in the background, never a generic write.",
   examplesHe: ["מה אתה יודע על מערכת ההופעות?", "אתה יכול ליצור הופעה?", "יש לך גישה ליומן?", "אתה יכול לשלוח Push?", "מה אתה יודע על העמוד של שליו?", "מה אתה לא יכול לעשות?", "מה חסר לך כדי לנהל את החברה?"],
   modes: {
     overview: { descriptionForModel: "Every domain + support summary" }, domain: { descriptionForModel: "One domain in full (param domain)" },
     rules: { descriptionForModel: "Business rules (optional domain / class)" }, relationships: { descriptionForModel: "Entity graph with relation quality" },
-    actions: { descriptionForModel: "Business action map (optional domain)" }, limitations: { descriptionForModel: "What Sunny cannot see / do" },
+    actions: { descriptionForModel: "Business action map (optional domain)" }, limitations: { descriptionForModel: "What Sunny cannot see / do (each domain starts with its DERIVED actions line)" },
     changes: { descriptionForModel: "Capability change log" }, coverage: { descriptionForModel: "READ / LEARN / PROPOSE / EXECUTE matrix" },
     people: { descriptionForModel: "Every person / role that can use Redbloods OS (login roles, no-login people, machine identities) with pages, money visibility, what they can do" },
     person: { descriptionForModel: "One person in full (param person): who, why access, auth, landing, every tab (purpose, data, money, writes + enforcement), cannot, pushes received / triggered, security gaps" },
@@ -85,7 +86,11 @@ export const systemAwareness: KnowledgeCapability = {
         { ...base, summary: [version(), sfact("BY_CLASS", "פעולות לפי סיווג", byCount(acts.map((a) => a.class)), "FACT", SRC)] });
     }
     if (q.mode === "limitations") {
-      return result(pick.flatMap((d) => d.limitationsHe.map((l, i) => item({ id: `${d.id}:${i}`, label: partner(l), epistemic: "FACT", source: SRC, fields: { domain: d.id, states: [...d.states] } }))), base);
+      // Each domain FIRST says what Sunny executes there — derived from the action registry (never a hand-written claim).
+      return result(pick.flatMap((d) => [
+        item({ id: `${d.id}:actions`, label: partner(domainActionsLineHe(d.id)), epistemic: "DERIVED", source: SRC, fields: { domain: d.id, states: servedStatesOf(d), executableActions: (executableByDomain()[d.id] ?? []).length } }),
+        ...d.limitationsHe.map((l, i) => item({ id: `${d.id}:${i}`, label: partner(l), epistemic: "FACT", source: SRC, fields: { domain: d.id, states: servedStatesOf(d) } })),
+      ]), base);
     }
     const peopleBase = { ...base, summary: [version(), sfact("PEOPLE_BASELINE", "גרסת הידע על משתמשים ופושים", PEOPLE_BASELINE_VERSION, "FACT", SRC)] };
     if (q.mode === "people") {
@@ -270,14 +275,14 @@ export const systemAwareness: KnowledgeCapability = {
       return result(acts.map((a) => { const { internal: _i, ...served } = a; void _i; return item({ id: a.id, label: partner(a.action), epistemic: "FACT", source: SRC, fields: served as unknown as Record<string, unknown> }); }),
         { ...base, summary: [version(), sfact("BY_GROUP", "פעולות לפי קבוצה", byCount(acts.map((a) => a.group)), "FACT", SRC), sfact("BY_APPROVAL_CLASS", "פעולות לפי סוג אישור", byCount(acts.map((a) => a.approvalClass ?? "AUTOMATIC")), "FACT", SRC),
           sfact("ACTION_CONTRACT", "חוזה פעולה קבוע", { fields: ACTION_CONTRACT_FIELDS, flow: ACTION_FLOW, approvalClasses: APPROVAL_CLASSES }, "FACT", SRC)],
-          coverage: [...base.coverage, partner("זו מפת הפעולות הקיימות ב-Redbloods — סאני לא מבצע אף אחת מהן כרגע (חוץ משינוי דדליין אחרי אישור בלוח הבקרה). כל פעולה עתידית: הצעה → תצוגה מקדימה מדויקת → אישור בעלים → ביצוע → קריאה טרייה → תוצאה.")] });
+          coverage: [...base.coverage, partner("זו מפת הפעולות הקיימות ב-Redbloods (מפת המוצר). מה סאני מבצעת מתוכן דרך Claude — capability action_registry, ומצב can_i שלה לפעולה אחת. כל ביצוע: תוכנית → תצוגה מקדימה מדויקת → האישור המפורש שלך → ביצוע → קריאה טרייה → תוצאה.")] });
     }
     if (q.mode === "changes") {
       return result([...CAPABILITY_CHANGES].reverse().map((c, i) => item({ id: `${c.version}:${c.domain}:${c.dimension}:${i}`, label: partner(c.noteHe), epistemic: "FACT", source: SRC, fields: { ...c } })), base);
     }
     const rows = q.mode === "coverage" ? coverageMatrix().filter((r) => !q.params.domain || r.domain === q.params.domain) : coverageMatrix().filter((r) => !q.params.domain || r.domain === q.params.domain);
-    return result(rows.map((r) => item({ id: r.domain, label: partner(r.title), epistemic: "FACT", source: SRC, fields: { group: r.group, read: r.read, learn: r.learn, propose: r.propose, execute: r.execute, states: r.states,
+    return result(rows.map((r) => item({ id: r.domain, label: partner(r.title), epistemic: "FACT", source: SRC, fields: { group: r.group, read: r.read, learn: r.learn, propose: r.propose, execute: r.execute, states: servedStatesOf(DOMAIN_CONTRACTS.find((d) => d.id === r.domain)!), executableActions: (executableByDomain()[r.domain] ?? []).length,
       ...(q.mode === "overview" ? { purpose: DOMAIN_CONTRACTS.find((d) => d.id === r.domain)!.purpose, readCapabilities: [...DOMAIN_CONTRACTS.find((d) => d.id === r.domain)!.readCapabilities] } : {}) } })),
-      { ...base, summary: [version(), sfact("READ_SUPPORT", "תמיכת קריאה", byCount(rows.map((r) => r.read)), "FACT", SRC)] });
+      { ...base, summary: [version(), sfact("READ_SUPPORT", "תמיכת קריאה", byCount(rows.map((r) => r.read)), "FACT", SRC), sfact("ACTION_COUNTS", "פעולות דרך Claude", actionCountsHe().countsHe, "DERIVED", SRC)] });
   },
 };

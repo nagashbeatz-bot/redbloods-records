@@ -167,7 +167,7 @@ export const integrity: KnowledgeCapability = {
 
 export const knownUnknowns: KnowledgeCapability = {
   id: "known_unknowns", domain: "COMPANY", titleHe: "מה Partner לא יודע",
-  descriptionForModel: "What Partner explicitly does NOT know or cannot conclude: unknown / conflicting integrity findings, finance coverage gaps and unknown-epistemic finance signals, sources not read (e.g. Google Calendar is not read, so the future schedule is unknown). Use for 'what don't you know?' and before stating that something does not exist.",
+  descriptionForModel: "What Partner explicitly does NOT know or cannot conclude: unknown / conflicting integrity findings, finance coverage gaps and unknown-epistemic finance signals, sources that could not be read now (a source that failed is unknown, never empty). Use for 'what don't you know?' and before stating that something does not exist.",
   examplesHe: ["מה אתה לא יודע?", "איפה המידע חסר?", "על מה אי אפשר לסמוך?"],
   modes: { current: { descriptionForModel: "Current known unknowns" } }, defaultMode: "current",
   params: {}, paging: { defaultLimit: 20, maxLimit: 40 }, access: { externalRead: true, ownerOnly: false, sensitivity: "STANDARD" }, needs: ["INTEGRITY", "FINANCE"],

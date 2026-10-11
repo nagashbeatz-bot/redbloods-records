@@ -2,6 +2,7 @@
  * Sunny System Awareness — the CALENDAR as a CROSS-DOMAIN CONTEXT SOURCE (served as system_awareness calendar_model).
  * Semantic only: no env names, no secrets, no source paths.
  */
+import { BUSINESS_ACTION_PRIMITIVES } from "../act/coverage-map";
 import { CALENDAR_CACHE_MS, CALENDAR_MAX_DAYS, CALENDAR_MAX_EVENTS, CALENDAR_MAX_PAGES_PER_CALENDAR, CALENDAR_PAGE_SIZE } from "../calendar/types";
 
 export const CALENDAR_CONTEXT_CONTRACT = {
@@ -40,6 +41,7 @@ export const CALENDAR_CONTEXT_CONTRACT = {
   ],
   inboundSync: "A scheduled calendar pull copies MOVED Google event date / times back into the linked sessions (through the session writer; a show rehearsal's finance follows its new date). It NEVER changes a session status (2026-09-27): a held session whose event moved to the future is only reported as a status conflict, a Google read error is reported apart from a missing event, and nothing is deleted. Time passed never marks a session held.",
   readCapabilities: ["calendar (summary / events / event / availability / context)", "project_view section calendar", "partner_entity enrichment for projects / clients / shows / releases / label artists"],
-  futureWriteCapabilities: ["CREATE_CALENDAR_EVENT", "UPDATE_CALENDAR_EVENT", "DELETE_CALENDAR_EVENT", "SCHEDULE_SESSION", "SCHEDULE_MEETING", "RESCHEDULE_EVENT"],
-  writesToday: "none — every calendar write is NOT_YET_EXECUTABLE and will need explicit Owner approval with external-effect (and, for deletes, destructive) confirmation.",
+  /** Derived from the action layer (one source, 2026-10-11) — never a hand-kept "future" list. */
+  writeCapabilities: [...new Set(["CALENDAR_WRITE", "CREATE_CALENDAR_EVENT", "UPDATE_CALENDAR_EVENT", "DELETE_CALENDAR_EVENT", "SCHEDULE_SESSION", "SCHEDULE_MEETING", "RESCHEDULE_EVENT"].flatMap((b) => BUSINESS_ACTION_PRIMITIVES[b] ?? []))],
+  writesToday: "Typed calendar actions only (create / update / delete an event, an invite, schedule a session / meeting, reschedule) — each runs through Claude only after the Boss approves the exact preview (external effect; an invite makes Google email the attendees; a delete is destructive). Never a background or generic calendar write.",
 } as const;

@@ -257,13 +257,13 @@ export function detectSessionStatusVocabulary(input: IntegrityInput): FindingDra
 export function detectFutureScheduleGap(input: IntegrityInput): FindingDraft[] {
   const sessions = input.state?.domains.sessions.data?.items ?? null;
   const future = sessions ? sessions.filter((x) => x.dateYmd >= input.todayIL && x.status !== "בוטל").length : null;
-  if (SCHEDULE_DEFINITION.googleCalendarReadApproved && future !== null && future > 0) return [];
+  if (SCHEDULE_DEFINITION.tableCheckSeesCalendar && future !== null && future > 0) return [];
   return [f("FUTURE_SCHEDULE_COVERAGE_GAP", { type: "domain", key: "future-schedule", label: "יומן עתידי" }, {
     severity: "MEDIUM", epistemic: "UNKNOWN", stance: "UNKNOWN",
     evidence: [
       { source: "sessions (live)", fact: "future sessions recorded (not cancelled)", value: future },
       { source: "Owner definition FUTURE_SCHEDULE_TRUTH", fact: "future schedule truth", value: "Google Calendar" },
-      { source: "Partner", fact: "Google Calendar read", value: SCHEDULE_DEFINITION.googleCalendarReadApproved ? "approved" : "not approved yet — not read" },
+      { source: "Partner", fact: "Google Calendar read", value: "read live by Sunny through capability calendar — this table check does not read it" },
     ],
     canonical: ["Google Calendar (read live through capability calendar — not by this table check)"], conflicting: [],
     he: future === 0

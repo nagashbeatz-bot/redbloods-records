@@ -76,7 +76,7 @@ export const releases: KnowledgeCapability = {
 
 export const shows: KnowledgeCapability = {
   id: "shows", domain: "SHOWS", titleHe: "הופעות",
-  descriptionForModel: "Every show in the canonical show records: name, date, status, payment status, price, performing artist / DJ / booker (client links by ID). Answers 'are there shows?', show history, upcoming shows, shows of an artist. No future show rows = none are recorded in the show records (a FACT about those records; Partner does not read the calendar). Price: stored without a currency column; the app displays it as ₪ (convention, DERIVED).",
+  descriptionForModel: "Every show in the canonical show records: name, date, status, payment status, price, performing artist / DJ / booker (client links by ID). Answers 'are there shows?', show history, upcoming shows, shows of an artist. No future show rows = none are recorded in the show records (a FACT about those records; the live calendar is read separately through capability calendar). Price: stored without a currency column; the app displays it as ₪ (convention, DERIVED).",
   examplesHe: ["יש הופעות?", "תראה לי את היסטוריית ההופעות", "מה ההופעות הקרובות?", "איזה הופעות היו לשליו?", "איזה הופעות עוד לא שולמו?"],
   modes: { recent: { descriptionForModel: "Past shows, newest first" }, upcoming: { descriptionForModel: "Shows dated today or later (not cancelled)" }, all: { descriptionForModel: "Every show, newest first" } }, defaultMode: "all",
   params: {

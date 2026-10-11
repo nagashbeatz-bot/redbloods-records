@@ -341,7 +341,7 @@ function sessionDraft(state: PartnerCompanyState, id: string): EntityDraft | nul
     facts: [fact("SESSION_DATE", "תאריך", s.dateYmd, "FACT", "SESSIONS"), fact("SESSION_TYPE", "סוג", s.sessionType, "FACT", "SESSIONS"), fact("SESSION_STATUS", "סטטוס", s.status, "FACT", "SESSIONS")],
     relationships: rels,
     missing: [
-      { fact: "calendar linkage", whyNeeded: "Partner does not read the calendar link of a session" },
+      { fact: "calendar linkage", whyNeeded: "the session's calendar event is not attached to this entity view — capability calendar (modes context / event) reads the live calendar and links events by the stored id" },
       { fact: "session finance", whyNeeded: "no canonical session ↔ transaction relation exists" },
       ...(!s.projectId && !s.showId ? [{ fact: "project / show", whyNeeded: "the session is not linked to a project or a show" }] : []),
     ],
