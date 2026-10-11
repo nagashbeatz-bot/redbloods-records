@@ -95,6 +95,8 @@ async function main() {
   ok("2b. live read failed → false + the status, and the note says it is NOT an empty calendar", igBad.fields.sunnyCanRead === false && igBad.fields.readStatus === "CALENDAR_NEEDS_REAUTH" && /זה לא יומן ריק/.test(String((igBad.fields.note as { text: string }).text)));
   ok("2c. calendar not loaded at all → null (unknown), never false", igNone.fields.sunnyCanRead === null && igNone.fields.readStatus === "NOT_READ_NOW");
   ok("2d. the calendar is an OPTIONAL source of integrations (its failure never hides the connection state)", (integrations.optionalNeeds ?? []).includes("CALENDAR") && integrations.needs.includes("OPERATIONS"));
+  const dbx = items(integrations.read({ operations: ops } as unknown as GatewaySources, { mode: "current", params: {} }))[1];
+  ok("2f. Dropbox: contents never read, but file writes are typed actions after approval (never a blanket false)", dbx.fields.sunnyCanReadContents === false && dbx.fields.sunnyCanWrite === "TYPED_ACTIONS_AFTER_APPROVAL");
   ok("2e. no integrations note says 'Sunny does not read and does not write the calendar'", ![igOk, igBad, igNone].some((i) => /לא קורא ולא כותב/.test(JSON.stringify(i))));
 
   section("3. ONE source: each domain's actions line and served states are derived from the action registry");

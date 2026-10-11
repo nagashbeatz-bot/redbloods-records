@@ -322,7 +322,7 @@ export const integrations: KnowledgeCapability = {
       item({ id: "google_calendar", label: partner("Google Calendar"), epistemic: i.googleCalendarConnected === null ? "UNKNOWN" : "FACT", source: "OPERATIONS",
         fields: { connectedInRedbloods: i.googleCalendarConnected, sunnyCanRead: canRead, readStatus: calStatus, sunnyCanWrite: "TYPED_ACTIONS_AFTER_APPROVAL", note: partner(calNote) } }),
       item({ id: "dropbox", label: partner("Dropbox"), epistemic: i.dropboxConnected === null ? "UNKNOWN" : "FACT", source: "OPERATIONS",
-        fields: { connectedInRedbloods: i.dropboxConnected, sunnyCanReadContents: false, sunnyCanWrite: false, note: partner("סאני רואה רק מטא-דאטה (כמה גרסאות/קבצים ומתי) — לא תוכן, לא קישורים.") } }),
+        fields: { connectedInRedbloods: i.dropboxConnected, sunnyCanReadContents: false, sunnyCanWrite: "TYPED_ACTIONS_AFTER_APPROVAL", note: partner("סאני רואה רק מטא-דאטה (כמה גרסאות/קבצים ומתי) — לא תוכן, לא קישורים. העלאה / מחיקה של קובץ ותיקיית מסירה — רק כפעולה מוקלדת אחרי שאישרת את התצוגה המדויקת.") } }),
     ], { coverage: [partner("'מחובר' = יש אישור שמור; זה לא מוכיח שהאישור עדיין בתוקף.")] });
   },
 };
