@@ -116,6 +116,8 @@ export interface FinancialForward {
   surprises: Obligation[];
   unitsHe: string | null;
   lineHe: string;
+  /** stage 3: recorded expenses whose date passed with no payment recorded — asked "שולם?", never assumed unpaid */
+  overdueAsks?: string[];
   unchecked: string[];
 }
 
@@ -255,6 +257,10 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
       provenance: `engineer works (agreed price − paid): ${es.map((e) => e.id.replace(/^ENGINEER_WORK:/, "mix-work:")).join(", ")}`, businessUnit: null, countsIn: "OUTFLOW", overdue: false, decision }));
   }
 
+  const salaryTitle = (txId: string | undefined): string | null => {
+    const s = txId ? (raw.victorSalary ?? []).find((x) => x.transactionId === txId) : undefined;
+    return s ? `משכורת ויקטור (${s.workMonth.slice(5, 7)}.${s.workMonth.slice(0, 4)})` : null;
+  };
   // ── Finance expected expenses (the Brain's TRANSACTION / SHOW_PAYOUT items, already deduped) ──
   for (const e of state.openExpenses.items) {
     if (e.source === "ENGINEER_WORK") continue;
@@ -271,7 +277,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
     const daysTo = dTo(e.dueDate);
     const overdue = daysTo !== null && daysTo < 0;
     obligations.push(finish({ key: e.id, kind: e.source === "SHOW_PAYOUT" ? "SHOW_PAYOUT" : "EXPECTED_EXPENSE", entity: e.projectId ? `project:${e.projectId}` : null,
-      titleHe: `${e.source === "SHOW_PAYOUT" ? "תשלום הופעה" : tx?.description || e.category || "הוצאה צפויה"}${e.projectId ? ` — ${projName(e.projectId)}` : ""}`, amount: e.amount, currency: e.currency, currencyNote: null,
+      titleHe: `${e.source === "SHOW_PAYOUT" ? "תשלום הופעה" : salaryTitle(tx?.id) ?? (tx?.description || e.category || "הוצאה צפויה")}${e.projectId ? ` — ${projName(e.projectId)}` : ""}`, amount: e.amount, currency: e.currency, currencyNote: null,
       date: e.dueDate, daysTo, strength: "LIKELY", timing: e.dueDate ? "FIXED_KNOWN" : "KNOWN_AMOUNT_UNKNOWN_DATE", dynamic: false, direction: "OUT", directionHe: "יוצא", changeDriversHe: [],
       plan: true, preparedness: "PREPARED", questionHe: overdue ? "התאריך עבר והשורה לא סומנה שולמה — שולם?" : null, confidence: "EXPECTED",
       provenance: `Finance expected row ${e.id} (Owner-recorded)`, businessUnit: unit, countsIn: "OUTFLOW", overdue }));
@@ -328,7 +334,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
     const end = addDaysYmd(today, days);
     for (const o of obligations) {
       const inWin = o.date !== null && o.date <= end;
-      if (o.countsIn === "OUTFLOW") { if (o.date === null) add(w.undatedHard, o.currency, o.amount); else if (inWin) add(w.hardOutflow, o.currency, o.amount); }
+      if (o.countsIn === "OUTFLOW") { if (o.date === null) add(w.undatedHard, o.currency, o.amount); else if (inWin && !o.overdue) add(w.hardOutflow, o.currency, o.amount); }
       else if (o.countsIn === "DYNAMIC" && inWin) add(w.dynamicExposure, o.currency, o.direction === "ARTIST_OWES_RECORDS" ? -(o.amount ?? 0) : o.amount);
       else if (o.countsIn === "CONDITIONAL") add(w.conditional, o.currency, o.amount);
     }
@@ -340,6 +346,7 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   for (const [cur, f] of Object.entries(state.realized?.byCurrency ?? {})) actualMonth[cur] = { in: f.cashIn, out: f.cashOut, net: f.net };
   const commercialGap = collectible.length === 0 && proposals === 0 && shows14 === 0;
   const rank = (o: Obligation) => LEVEL_ORDER.indexOf(o.level);
+  const overdueAsk = (o: Obligation) => o.preparedness === "PREPARED" && o.overdue && o.countsIn === "OUTFLOW";
   const surprises = obligations.filter((o) => o.preparedness !== "PREPARED" && o.preparedness !== "DECIDED" && (o.level === "MUST" || o.level === "SHOULD"))
     .sort((a, b) => rank(a) - rank(b) || (a.daysTo ?? 999) - (b.daysTo ?? 999)).slice(0, 3);
 
@@ -347,6 +354,9 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   for (const o of obligations.filter((x) => (x.countsIn === "OUTFLOW" || x.countsIn === "DYNAMIC") && x.businessUnit)) units.set(o.businessUnit!, [...(units.get(o.businessUnit!) ?? []), fmtMoney(o.amount, o.currency)]);
   const unitsHe = units.size ? `${[...units.entries()].map(([u, xs]) => `${u}: ${xs.join(", ")}`).join(" · ")} (כל יחידה בנפרד — לא מסיקה שיחידה אחת מכסה אחרת)` : null;
 
+  // stage 3 (Owner-approved 2026-10-12): a recorded row whose date passed with no payment recorded is a QUESTION ("שולם?") —
+  // never "going out in the next 7 days", never "unpaid" (no record ≠ not paid), never a surprise slot or a motion move
+  const overdueAsks = obligations.filter(overdueAsk).map((o) => `${o.titleHe} ${fmtMoney(o.amount, o.currency)} (${o.date ? `${o.date.slice(8, 10)}.${o.date.slice(5, 7)}` : "?"})`);
   const w7 = windows[0];
   // undated hard money: the SAME totals as the windows; only the wording knows which part the Owner already decided
   const undatedOpen: Totals = {};
@@ -356,10 +366,11 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
     `כסף עם תאריך, 7 ימים: יוצא בוודאות ${totalsHe(w7.hardOutflow)}${Object.keys(w7.dynamicExposure).length ? ` · התחשבנות דינמית ${totalsHe(w7.dynamicExposure)}` : ""}`,
     `נכנס צפוי ${totalsHe(w7.expectedInflow)}${commercialGap ? " (אין גבייה, הצעות או הופעות קרובות)" : ""}`,
     Object.keys(undatedOpen).length ? `בלי תאריך (לא בתוך ה-7 ימים): חוב פתוח ${totalsHe(undatedOpen)} — מחכה להחלטה שלך מתי לשלם` : null,
+    overdueAsks.length ? `המועד עבר ואין רישום תשלום: ${overdueAsks.join(" · ")} — שולם?` : null,
     decidedLines.length ? `כבר החלטת: ${decidedLines.join(" | ")}` : null,
     coverageHe,
   ].filter(Boolean).join(" · ");
   return { status: "OK", today, coverage: "UNKNOWN", coverageHe, actualMonth, obligations, windows, settlements: obligations.filter((o) => o.kind === "SETTLEMENT"),
     vendorPayables: obligations.filter((o) => o.kind === "VENDOR_PAYABLE"), duplicates,
-    inflow: { receivables: collectible.length, expectedInflow, overdueInflow, proposals, shows14, proposalsAreNotCash: true }, commercialGap, surprises, unitsHe, lineHe, unchecked };
+    inflow: { receivables: collectible.length, expectedInflow, overdueInflow, proposals, shows14, proposalsAreNotCash: true }, commercialGap, surprises, overdueAsks, unitsHe, lineHe, unchecked };
 }

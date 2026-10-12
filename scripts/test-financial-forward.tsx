@@ -193,7 +193,9 @@ async function main() {
   ok("35. an Owner-recorded dated expected expense = PREPARED (quiet)", !!rent && rent.preparedness === "PREPARED" && rent.level === "INFO", rent);
   const late = ob(F, "TX:late")!;
   ok("36. a real past date not marked paid → overdue, asks 'שולם?' (WATCH, not hidden)", !!late && late.overdue && late.level === "WATCH" && /שולם\?/.test(late.questionHe ?? ""));
-  ok("37. dated expected outflow inside 7d counted (₪300 + overdue ₪150)", F.windows[0].hardOutflow["₪"] === 450, F.windows[0].hardOutflow);
+  // stage 3 (Owner-approved 2026-10-12): an overdue recorded row is a QUESTION ("שולם?"), never "going out in the next 7 days"
+  ok("37. dated expected outflow inside 7d counts only what is still ahead (₪300); the overdue ₪150 is asked, not counted", F.windows[0].hardOutflow["₪"] === 300, F.windows[0].hardOutflow);
+  ok("37b. the overdue recorded row is in overdueAsks + the line as 'שולם?' — never a surprise slot (no record ≠ not paid)", (F.overdueAsks ?? []).some((x) => x.includes("150")) && /המועד עבר ואין רישום תשלום: [^·]*150[^—]*— שולם?/.test(F.lineHe) && !F.surprises.some((o) => o.overdue && o.preparedness === "PREPARED"), [F.overdueAsks, F.lineHe]);
 
   section("SETTLEMENT — a review, never a payment; direction in words; dynamic");
   const sh = ob(F, `settlement:label-artist:${SHALEV_ARTIST_ID}`)!;

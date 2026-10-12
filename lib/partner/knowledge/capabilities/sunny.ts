@@ -21,6 +21,7 @@ import { activeLinksOf, headOf, type InboxMemory } from "../../../inbox-memory";
 import { understandUpdates } from "../inbox-understand";
 import { decideInboxLifecycle, inboxExecutiveSummary } from "../../sunny/inbox-lifecycle";
 import { inboxLifecycleBaseOf, inboxTriageOf } from "../../sunny/inbox-lifecycle-base";
+import { freshnessOf, statedDatePassed } from "../../sunny/known-context";
 
 const ENTITY_TYPES: readonly GatewayEntityType[] = ["project", "client", "label-artist", "vendor", "dj", "show", "release"];
 const NOT_ACTIVE: KnowledgeReadResult = {
@@ -86,7 +87,16 @@ export const ownerKnowledge: KnowledgeCapability = {
     const list = all.filter((r) => inMode(r) && (!q.params.entity || touches(r, q.params.entity)) && (!knownKey || touches(r, knownKey)) && (!q.params.kind || r.kind === q.params.kind)
       && (!q.params.relation || r.value.relation === q.params.relation) && (!q.params.area || r.value.area === q.params.area) && (!q.params.classification || r.value.classificationType === q.params.classification))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-    return result(list.map((r) => toItem(r, active.has(r.id), temporal.get(r.id) ?? "CURRENT")), {
+    // stage 3: the SAME freshness rule every Sunny surface uses (a closed project / a stated date that passed → not current)
+    const st = ok(src.state) as { domains?: { projects?: { data?: { index?: Record<string, { status?: string }> } } } } | null;
+    const statusOf = (key: string) => (key.startsWith("project:") ? st?.domains?.projects?.data?.index?.[key.slice(8)]?.status ?? null : null);
+    const freshOf = (r: OwnerKnowledgeRecord) => {
+      const s = statusOf(r.subjectKey);
+      const f = freshnessOf(r, today, null, { closed: s === "הושלם" || s === "בוטל" });
+      const passed = statedDatePassed(r, today);
+      return { freshness: f, freshnessHe: f === "SUPERSEDED_BY_EVIDENCE" ? `הפרויקט ${s ?? "סגור"} ברשומות — זו היסטוריה, לא מצב נוכחי` : f === "REVIEW_DUE" ? `${passed ? `התאריך שאמרת (${passed.slice(8, 10)}.${passed.slice(5, 7)}) עבר` : "מועד הבדיקה עבר"} — זה עדיין נכון?` : null };
+    };
+    return result(list.map((r) => { const it = toItem(r, active.has(r.id), temporal.get(r.id) ?? "CURRENT"); return { ...it, fields: { ...it.fields, ...freshOf(r) } }; }), {
       summary: [sfact("BY_KIND", "ידע לפי סוג", byCount(list.map((r) => r.kind)), "OWNER_DECISION", "OWNER_KNOWLEDGE"), sfact("BY_TEMPORAL", "ידע לפי מצב בזמן", byCount(list.map((r) => temporal.get(r.id) ?? "CURRENT")), "OWNER_DECISION", "OWNER_KNOWLEDGE")],
     });
   },

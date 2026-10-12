@@ -59,11 +59,39 @@ export function knownAtOf(k: Pick<OwnerKnowledgeRecord, "createdAt" | "value">):
  * D3: newer canonical evidence (a real event — upload, version, sent notes, session, send-log entry, payment — never
  * updatedAt / wording) wins; else a passed reviewAt asks "still true?"; else the statement stands.
  */
-export function freshnessOf(k: Pick<OwnerKnowledgeRecord, "createdAt" | "value" | "reviewAt">, todayIL: string, lastEvidenceYmd: string | null): KnownFreshness {
+export function freshnessOf(k: Pick<OwnerKnowledgeRecord, "createdAt" | "value" | "reviewAt"> & { meaningHe?: string }, todayIL: string, lastEvidenceYmd: string | null, o: { closed?: boolean } = {}): KnownFreshness {
   const at = knownAtOf(k);
   if (lastEvidenceYmd && at && lastEvidenceYmd > at) return "SUPERSEDED_BY_EVIDENCE";
+  // stage 3 (Owner-approved 2026-10-12): the record it is about is CLOSED (הושלם / בוטל) — canonical wins, the statement is history
+  if (o.closed) return "SUPERSEDED_BY_EVIDENCE";
   if (k.reviewAt && k.reviewAt < todayIL) return "REVIEW_DUE";
+  // a date HE stated as still ahead when he said it has passed → ask, never conclude (free text = evidence for a question only)
+  if (statedDatePassed(k, todayIL)) return "REVIEW_DUE";
   return "CURRENT";
+}
+
+/**
+ * Stage 3: a date the Owner STATED in his own words (dd.mm or dd.mm.yy[yy]) that was still AHEAD when he said it and has
+ * passed by today (e.g. "מסיים אפקטים עד 04.10", said 01.10) → that date (YYYY-MM-DD), else null. A date on / before the
+ * day he said it is a past fact he reported ("שלח ב-27.09"), never a commitment. Free text only ever triggers a QUESTION.
+ */
+export function statedDatePassed(k: Pick<OwnerKnowledgeRecord, "createdAt" | "value"> & { meaningHe?: string }, todayIL: string): string | null {
+  const at = knownAtOf(k);
+  if (!at) return null;
+  const v = k.value as Record<string, unknown>;
+  const text = [v.detail, v.decisionHe, v.statementHe, k.meaningHe].filter((x): x is string => typeof x === "string").join(" ");
+  const re = /(?<!\d)(\d{1,2})\.(\d{1,2})(?:\.(\d{4}|\d{2}))?(?!\d)/g;
+  let best: string | null = null;
+  for (const m of text.matchAll(re)) {
+    const day = Number(m[1]), mon = Number(m[2]);
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) continue;
+    let year = m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : Number(at.slice(0, 4));
+    let d = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    // no year written and the date reads as before the statement by more than half a year → next year (December → January)
+    if (!m[3] && d < at && (Date.parse(at) - Date.parse(d)) / 86_400_000 > 180) { year += 1; d = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`; }
+    if (d > at && d < todayIL && (!best || d > best)) best = d;
+  }
+  return best;
 }
 
 /** Exact-key match: the subject / identity keys, or a typed reference field of the value (never text). */
@@ -77,12 +105,14 @@ export function knowledgeAbout(records: readonly OwnerKnowledgeRecord[], kinds: 
 export function knownItem(o: {
   questionKind: KnownQuestionKind; entityKey: string; label: string | null; meaningHe: string; knownAt: string | null; basis: KnownBasis;
   freshness: Exclude<KnownFreshness, "SUPERSEDED_BY_EVIDENCE">; canonicalHe: string; actions?: ReconcileAction[]; epistemic?: KnownContextItem["epistemic"];
+  /** stage 3: why it is asked again (e.g. "התאריך שאמרת (04.10) עבר") — said before "זה עדיין נכון?" */
+  reviewReasonHe?: string | null;
 }): KnownContextItem {
   const actions = o.actions ?? [];
   const pre = o.label ? `"${o.label}": ` : "";
   const knownHe = `${o.freshness === "REVIEW_DUE" ? "אמרת לי" : "כבר אמרת לי"}${o.knownAt ? ` (${ddmm(o.knownAt)})` : ""}: ${clip(o.meaningHe, 200)}`;
   const state: KnownContextState = o.freshness === "REVIEW_DUE" ? "STILL_TRUE_CHECK" : actions.length ? (o.basis.kind === "OWNER_ANSWER" ? "KNOWN_DECISION_RECONCILE" : "KNOWN_CONTEXT_RECONCILE") : "KNOWN_MATCHES";
-  const tail = o.freshness === "REVIEW_DUE" ? " — זה עדיין נכון?" : actions.length ? ` — לפי הרשומות: ${o.canonicalHe}. לסנכרן?` : ` — לפי הרשומות: ${o.canonicalHe}.`;
+  const tail = o.freshness === "REVIEW_DUE" ? ` — ${o.reviewReasonHe ? `${o.reviewReasonHe}; ` : ""}זה עדיין נכון?` : actions.length ? ` — לפי הרשומות: ${o.canonicalHe}. לסנכרן?` : ` — לפי הרשומות: ${o.canonicalHe}.`;
   return {
     questionKind: o.questionKind, entityKey: o.entityKey, state, knownHe, knownAt: o.knownAt, basis: o.basis, canonicalHe: o.canonicalHe, actions,
     textHe: clip(`${pre}${knownHe}${tail}`, 420), epistemic: o.epistemic ?? (o.basis.kind === "OWNER_ANSWER" ? "OWNER_DECISION" : "OWNER_REPORTED"),

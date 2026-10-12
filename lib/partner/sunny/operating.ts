@@ -20,7 +20,7 @@ import { sendEntryCurrent, evidenceFor } from "../work/send-log";
 import { HISTORICAL_DEBT_CUTOFF, QUESTION_TYPE_TO_MISSING_CONCEPT, WORKFLOW_MODELS } from "../system/owner-model";
 import type { LabelDetailRaw } from "../label/detail-types";
 import { computeShowNotifyFingerprint, showNotifyStateOf, type ShowNotifyClaimValue } from "../../show-notify-pure";
-import { freshnessOf as knownFreshnessOf, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "./known-context";
+import { freshnessOf as knownFreshnessOf, statedDatePassed, knownAtOf, knownItem, knowledgeAbout, ownerSaidBallOf, projectKnowledgeFor, vendorKnownInputs, vendorWorkKnown, type KnownContextItem } from "./known-context";
 import { paymentPathOf } from "../finance/decision-gate";
 import { ANSWER_OPTIONS } from "../investigation/questions";
 import { agreementArtistOf } from "../../label-agreements";
@@ -110,13 +110,15 @@ export function projectOperating(src: GatewaySources, projectId: string) {
   const lastEvidence = evDays.length ? evDays[evDays.length - 1] : null;
   const known: KnownContextItem[] = [];
   for (const k of projectKnowledgeFor(kn, projKey)) {
-    const fr = knownFreshnessOf(k, today, lastEvidence);
-    if (fr === "SUPERSEDED_BY_EVIDENCE") continue; // the records moved on after he said it
+    const fr = knownFreshnessOf(k, today, lastEvidence, { closed });
+    if (fr === "SUPERSEDED_BY_EVIDENCE") continue; // the records moved on after he said it (or the project is closed)
+    const passed = statedDatePassed(k, today);
     const v = k.value as Record<string, unknown>;
     ball.push(k.kind === "PROJECT_BLOCKER"
       ? { holder: String(v.reason ?? "UNKNOWN"), basis: "the Owner said so (P2 blocker)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false }
       : { holder: ownerSaidBallOf(k) === "OWNER" ? "OWNER" : "COUNTERPART", basis: "the Owner said so (P2 follow-up expectation)", confidence: "OWNER_REPORTED", outsideCommunicationPossible: false });
     known.push(knownItem({ questionKind: "PROJECT_STATE", entityKey: projKey, label: null, meaningHe: k.meaningHe, knownAt: knownAtOf(k), basis: { kind: "OWNER_KNOWLEDGE", knowledgeId: k.id, knowledgeKind: k.kind }, freshness: fr,
+      reviewReasonHe: fr === "REVIEW_DUE" && passed ? `התאריך שאמרת (${passed.slice(8, 10)}.${passed.slice(5, 7)}) עבר` : null,
       canonicalHe: lastEvidence ? `הפעילות הרשומה האחרונה ב-${lastEvidence}, ואין רשומה שמראה אצל מי הפרויקט` : "אין רשומה שמראה אצל מי הפרויקט" }));
   }
 

@@ -109,7 +109,11 @@ export function projectMomentum(c: CooCtx, projectId: string, horizon: number = 
   const ballUndecided = rec !== "UNREAD" && rec.undecided;
   const saidOwner = (op?.ballHolder.evidence ?? []).some((e) => isOwnerHolder(e.holder) && e.confidence === "OWNER_REPORTED");
   const saidAt = saidOwner ? (op?.known ?? []).filter((k) => k.questionKind === "PROJECT_STATE" && k.basis.kind === "OWNER_KNOWLEDGE" && k.knownAt).map((k) => k.knownAt as string).sort().at(-1) ?? null : null;
-  const ownerSaid = saidOwner && !ownerBall ? { he: `אמרת לי${saidAt ? ` (${heDate(saidAt)})` : ""} שזה מחכה לך — זו האמירה שלך, לא רשומה`, at: saidAt } : null;
+  // stage 3: a statement whose stated date passed / whose review is due is re-asked, never presented as current
+  const recheck = (op?.known ?? []).find((k) => k.questionKind === "PROJECT_STATE" && k.basis.kind === "OWNER_KNOWLEDGE" && k.state === "STILL_TRUE_CHECK");
+  const ownerSaid = saidOwner && !ownerBall ? (recheck
+    ? { he: `${recheck.textHe.replace(/^"[^"]*": /, "")} (זו האמירה שלך, לא רשומה)`, at: saidAt }
+    : { he: `אמרת לי${saidAt ? ` (${heDate(saidAt)})` : ""} שזה מחכה לך — זו האמירה שלך, לא רשומה`, at: saidAt }) : null;
   const external = [...new Set(holders.filter((h) => !isOwnerHolder(h) && h !== "UNKNOWN").map(holderHe))];
   const openWork = works.some((w) => !ENGINEER_DONE.has(w.status ?? "")) || vw.length > 0;
   const state: MomentumState = ownerBall ? "OWNER_BALL" : scheduledNext ? "SCHEDULED" : external.length || openWork ? "WAITING_EXTERNAL" : next.length ? "SCHEDULED" : "NO_NEXT_STEP";
