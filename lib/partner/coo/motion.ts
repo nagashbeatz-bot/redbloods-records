@@ -133,8 +133,17 @@ export interface MotionItem {
   learning?: { changed: boolean; he: string; planIds: string[] } | null;
   /** a money item from FINANCIAL_FORWARD (shown in the greeting's ONE money line, never as an operational move) */
   financial?: boolean;
+  /**
+   * Stage 4 (Owner-approved 2026-10-12): the business THREAD — entities linked to this item by a CANONICAL id link only
+   * (release → label artist, clip project ↔ its song by song_project_id). Presentation only: no record, link or money
+   * changes; each member's money stays its own project's (never summed, never converted). A text / name match never
+   * joins a thread. An entity in a thread is never also its own served item.
+   */
+  thread?: MotionThreadMember[];
   he: string;
 }
+
+export interface MotionThreadMember { entity: string; role: "ARTIST" | "CLIP" | "SONG"; quality: "CANONICAL_RELATION"; titleHe: string; noteHe: string }
 
 export type CapacityState = "OPEN" | "NORMAL" | "BUSY" | "UNKNOWN";
 export interface MotionWeek {
@@ -543,6 +552,32 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     const busy = (k: string) => { const x = map.get(k); return !!x && (x.level === "MUST" || x.sections.includes("CLOSE_LOOPS") || x.sections.includes("AT_RISK")); };
     // label motion = the artist's LABEL projects only (a guest spot on a client project is that client's work)
     const free = a.projects.filter((p) => p.labelWork && (p.state === "NO_NEXT_STEP" || p.state === "OWNER_BALL") && !busy(p.key));
+    // stage 4: the artist's thread — a MUST / SHOULD item on a project linked to him CANONICALLY (his release) leads; the
+    // artist joins it (one item, never a second competing move); his other free projects are said as context only
+    const anchors = a.projects.filter((p) => p.link === "CANONICAL_RELATION").map((p) => map.get(p.key)).filter((x): x is MotionItem => !!x && !x.financial && (x.level === "MUST" || x.level === "SHOULD"))
+      .sort((x, y) => lv(x.level) - lv(y.level) || (x.daysTo ?? 10_000) - (y.daysTo ?? 10_000));
+    if (anchors.length) {
+      const anchor = anchors[0];
+      const others = free.filter((p) => p.key !== anchor.entity);
+      const noteHe = `${a.name}: זה הצעד שלו עכשיו${others.length ? `; עוד בלי צעד הבא: ${others.slice(0, 3).map((p) => p.name).join(", ")}` : ""}`;
+      (anchor.thread ??= []).push({ entity: a.key, role: "ARTIST", quality: "CANONICAL_RELATION", titleHe: a.name, noteHe });
+      if (!anchor.entities.includes(a.key)) anchor.entities.push(a.key);
+      if (!anchor.reasonsHe.includes(noteHe)) anchor.reasonsHe.push(noteHe);
+      anchor.labelWork = true; anchor.labelProtected ||= isProtected;
+      if (!anchor.sections.includes("LABEL")) anchor.sections.push("LABEL");
+      anchor.evidence.push({ source: "LABEL_ARTISTS", ref: a.key, he: "the artist's release links this project by id (CANONICAL) — one thread, one move", epistemic: "FACT" });
+      // his weaker free-project items are absorbed as context (one item per artist), never a competing move
+      for (const p of others) {
+        const prev = map.get(p.key);
+        if (!prev || prev.key === anchor.key || lv(prev.level) < lv(anchor.level)) continue;
+        map.delete(p.key);
+        if (!anchor.entities.includes(p.key)) anchor.entities.push(p.key);
+        anchor.evidence.push(...prev.evidence);
+      }
+      anchor.he = lineOf(anchor);
+      labelItems.push(anchor);
+      continue;
+    }
     if (!free.length) continue;
     const base: MotionLevel = "WATCH";
     const level: MotionLevel = isProtected && capacity === "OPEN" ? raise(base) : base;
@@ -637,6 +672,47 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     g.he = lineOf(g);
     for (const i of its) map.delete(i.entity!);
     map.set(g.key, g);
+  }
+
+  // ── stage 4: song ↔ clip — ONE thread by the clip project's song_project_id (CANONICAL); a similar name never joins ──
+  for (const it of [...map.values()]) {
+    // an item already joined to another thread in this pass is no longer served on its own
+    if (it.financial || !it.entity?.startsWith("project:") || ![...map.values()].includes(it)) continue;
+    const view = c.project(it.entity.slice(8)).identity;
+    if (!view) continue;
+    const related: Array<{ key: string; role: "CLIP" | "SONG"; name: string; status: string | null }> = [
+      ...view.clipProjects.filter((l) => l.quality === "CANONICAL_RELATION").map((l) => ({ key: l.value.key, role: "CLIP" as const, name: l.value.name, status: l.value.status })),
+      ...(view.songProject?.quality === "CANONICAL_RELATION" ? [{ key: view.songProject.value.key, role: "SONG" as const, name: view.songProject.value.name ?? "השיר", status: c.project(view.songProject.value.key.slice(8)).identity?.status ?? null }] : []),
+    ];
+    for (const r of related) {
+      if (it.thread?.some((m) => m.entity === r.key)) continue;
+      const other = [...map.values()].find((x) => x !== it && !x.financial && x.entity === r.key);
+      const label = r.role === "CLIP" ? "הקליפ (פרויקט נפרד, מקושר לשיר)" : "השיר (פרויקט נפרד, הקליפ מקושר אליו)";
+      if (other) {
+        // two served items of ONE thread → the stronger leads (equal: the song), the other joins it with its reasons
+        const lead = lv(other.level) < lv(it.level) || (other.level === it.level && r.role === "SONG") ? other : it;
+        const sub = lead === it ? other : it;
+        const subRole: "CLIP" | "SONG" = lead === it ? r.role : r.role === "CLIP" ? "SONG" : "CLIP";
+        const subLabel = subRole === "CLIP" ? "הקליפ (פרויקט נפרד, מקושר לשיר)" : "השיר (פרויקט נפרד, הקליפ מקושר אליו)";
+        const noteHe = `${subLabel}: ${sub.titleHe} — ${sub.reasonsHe[0] ?? ""}`;
+        (lead.thread ??= []).push({ entity: sub.entity!, role: subRole, quality: "CANONICAL_RELATION", titleHe: sub.titleHe, noteHe });
+        for (const e of sub.entities) if (!lead.entities.includes(e)) lead.entities.push(e);
+        lead.reasonsHe.push(noteHe);
+        lead.evidence.push(...sub.evidence, { source: "PROJECTS", ref: sub.entity, he: "song_project_id (CANONICAL) — one thread; each project's money stays its own", epistemic: "FACT" });
+        for (const cd of sub.codes) if (!lead.codes.includes(cd)) lead.codes.push(cd);
+        for (const s of sub.sections) if (!lead.sections.includes(s)) lead.sections.push(s);
+        lead.move = mergeMoves(lead.move, sub.move);
+        lead.labelWork ||= sub.labelWork; lead.labelProtected ||= sub.labelProtected;
+        if (sub.daysTo !== null && (lead.daysTo === null || sub.daysTo < lead.daysTo)) lead.daysTo = sub.daysTo;
+        lead.he = lineOf(lead);
+        for (const [k, v] of map) if (v === sub) map.delete(k);
+        if (sub === it) break;
+      } else {
+        const noteHe = `${label}: ${r.name}${r.status ? ` — ${r.status}` : ""}`;
+        (it.thread ??= []).push({ entity: r.key, role: r.role, quality: "CANONICAL_RELATION", titleHe: r.name, noteHe });
+        if (!it.entities.includes(r.key)) it.entities.push(r.key);
+      }
+    }
   }
 
   // ── rank + sections ──
@@ -872,7 +948,7 @@ export function prioritiesAnswerHe(items: ReadonlyArray<{ he: string }>, more: n
 
 /** The compact motion object (the connector applies the Action-Layer learning to it; partner_brief carries the same object). */
 export function motionSummary(m: BusinessMotion) {
-  const slim = (i: MotionItem) => ({ key: i.key, entity: i.entity, entities: i.entities, level: i.level, codes: i.codes, he: i.he, titleHe: i.titleHe, reasonsHe: i.reasonsHe.slice(0, 4), move: i.move, daysTo: i.daysTo, labelProtected: i.labelProtected, epistemic: i.epistemic, learning: i.learning ?? null });
+  const slim = (i: MotionItem) => ({ key: i.key, entity: i.entity, entities: i.entities, level: i.level, codes: i.codes, he: i.he, titleHe: i.titleHe, reasonsHe: i.reasonsHe.slice(0, 4), move: i.move, thread: i.thread ?? [], daysTo: i.daysTo, labelProtected: i.labelProtected, epistemic: i.epistemic, learning: i.learning ?? null });
   return { today: m.today, answerHe: m.answerHe, greeting: m.greeting.map(slim), todayItems: m.todayItems.map(slim), more: m.more, atRisk: m.atRisk.map(slim), closeLoops: m.closeLoops.map(slim), label: m.label.map(slim), watch: m.watch.map(slim),
     ownerBottleneck: m.ownerBottleneck, revenue: m.revenue, week: m.week, inbox: m.inbox, patterns: m.patterns, financial: m.financial, progress: m.progress, learning: m.learning, unchecked: m.unchecked, heuristics: m.heuristics };
 }

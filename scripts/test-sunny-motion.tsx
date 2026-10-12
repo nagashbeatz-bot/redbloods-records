@@ -91,7 +91,8 @@ async function main() {
   ok("31. DJ / team identities never enter the label moves", !M.all.some((i) => i.entity === `label-artist:${A_CT}`));
   ok("32. a completed show counts as artist ACTIVITY in the reasoning (not as music movement)", shalev.reasonsHe.some((r) => r.includes("הופעה אחרונה")));
   ok("33. no cadence / quota exists in motion (no 'every week' rule)", !/כל שבוע|weekly quota|sessionsPerWeek/i.test(read("lib/partner/coo/motion.ts")));
-  ok("34. rosterCare and motion agree on label identity (#62)", M.label.every((i) => buildCooView(src()).artists.some((a) => a.key === i.entity)));
+  // stage 4 (2026-10-12): an artist may lead through his release (entity = the project, the artist in its thread)
+  ok("34. rosterCare and motion agree on label identity (#62) — the artist is the entity or a CANONICAL thread member", M.label.every((i) => { const ks = [i.entity, ...(i.thread ?? []).filter((m) => m.role === "ARTIST").map((m) => m.entity)].filter((k): k is string => !!k && k.startsWith("label-artist:")); return ks.length > 0 && ks.every((k) => buildCooView(src()).artists.some((a) => a.key === k)); }));
 
   section("5. CAPACITY × WORK NEED — an opportunity, never an obligation");
   ok("35. a relatively open week + label / mix need → CAPACITY opportunity (#49)", M.week.capacity === "OPEN" && !!M.week.opportunity && M.week.opportunity.candidates.length > 0 && M.week.opportunity.candidates.length <= 3, M.week);

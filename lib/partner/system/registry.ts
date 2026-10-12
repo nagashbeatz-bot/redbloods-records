@@ -11,7 +11,7 @@
 import { BUSINESS_ACTION_PRIMITIVES } from "../act/coverage-map";
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.12-114";
+export const SYSTEM_BASELINE_VERSION = "2026.10.12-115";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1137,4 +1137,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.11-112", date: "2026-10-11", domain: "SUNNY_CORE", dimension: "execute", from: "HAND_WRITTEN_CLAIMS", to: "DERIVED_ONE_SOURCE", noteHe: "אמינות יכולות (P0 1–3, באישור הבעלים 11.10): 'סאני, את יכולה לעשות את זה?' נענה ממקור אחד — action_registry מצב can_i (מצב אחד לכל התאמה: קריאה / ביצוע אחרי אישור / קיים ולא אומת / רק הכנה / חסום הרשאה / חסום טכנית / אוטומטי / לא ברישום), עם המצב החי של החיבור (מתגים, הרשאות הטוקן, אימות מההיסטוריה). תוקנו הטקסטים שסתרו את שכבת הפעולות: קריאת וכתיבת יומן, פעולות כספים, משימות / לקוחות / הצעות, הופעות, ריליסים, ביטים, Push, דוחות, מצב תחזוקה; הפעולות העסקיות והשורה של כל תחום נגזרות מרישום הפעולות; integrations מראה את תוצאת קריאת היומן החיה; מספרי הפעולות מחושבים בשורה אחת שמסבירה מה כל מספר סופר." },
   { version: "2026.10.12-113", date: "2026-10-12", domain: "COMPANY_OVERVIEW", dimension: "propose", from: "MOVES_AS_TEXT", to: "MOVES_WITH_DRAFTS", noteHe: "שלב 2 (באישור הבעלים 12.10): לכל מהלך ב-motion יש טיוטה — הפעולה, הפרמטרים שנקראו ברשומות בלבד, מה חסר (שאלה אחת בכל פעם) והקשר שאינו ערך (הוצאה צפויה = תקציב, לא מחיר מוסכם). שורת \"ביומן ולא ב-Redbloods\" לאירועי עבודה ביומן בלי רשומה. שורת הפתיחה היא המהלך עצמו. שום ביצוע בלי אישור." },
   { version: "2026.10.12-114", date: "2026-10-12", domain: "SUNNY_CORE", dimension: "learn", from: "STATEMENTS_STAY_CURRENT", to: "FRESHNESS_CHECKED", noteHe: "שלב 3 (באישור הבעלים 12.10): מה שאמרת על פרויקט שנסגר ברשומות הוא היסטוריה ולא מצב נוכחי; תאריך שאמרת שעדיין היה לפניך ועבר — סאני שואלת \"זה עדיין נכון?\" (שאלה, לא מסקנה). הוצאה רשומה שמועדה עבר בלי רישום תשלום — \"שולם?\", לא \"יוצא השבוע\" ולא \"לא שולם\"." },
+  { version: "2026.10.12-115", date: "2026-10-12", domain: "COMPANY_OVERVIEW", dimension: "read", from: "ITEMS_PER_RECORD", to: "BUSINESS_THREADS", noteHe: "שלב 4 (באישור הבעלים 12.10): חוט עסקי ב-motion — אמן לייבל מצטרף לפריט של הריליס שלו (קישור לפי מזהה) במקום פריט מתחרה; קליפ ושיר (song_project_id) מוצגים כחוט אחד. תצוגה בלבד: שום רשומה, קישור או כסף לא משתנים; הכסף של כל פרויקט נשאר שלו; התאמת שם לא מחברת." },
 ];
