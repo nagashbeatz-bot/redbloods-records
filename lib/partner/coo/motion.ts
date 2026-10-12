@@ -92,7 +92,24 @@ export const MOTION_ACTION_IDS = [
 ] as const;
 export type MotionActionId = (typeof MOTION_ACTION_IDS)[number];
 
-export interface MotionMove { he: string; actionIds: MotionActionId[]; canAct: boolean; approval: "OWNER_APPROVAL" }
+/**
+ * Stage 2 (Owner-approved 2026-10-12): the move's DRAFT — what Sunny can put into partner_plan_action without inventing
+ * anything. args = only values read in the records (entity keys, a status the evidence proves); missing = the material
+ * parameters nobody verified (asked ONE at a time, in order); contextHe = evidence that is NOT a value (a planned expense
+ * is a budget, never the agreed price of a new work; "all earlier works were at X" is an inference, never a choice).
+ * A draft never executes and is never a plan: the server still resolves, previews and waits for the Boss's approval.
+ */
+export interface MotionDraft {
+  actionId: MotionActionId;
+  args: Record<string, string>;
+  confirmedHe: string[];
+  missing: Array<{ arg: string; questionHe: string }>;
+  contextHe: string[];
+  epistemic: "DERIVED";
+}
+export interface MotionMove { he: string; actionIds: MotionActionId[]; canAct: boolean; approval: "OWNER_APPROVAL"; draft?: MotionDraft | null }
+/** A calendar event in the week that looks like work and has NO Redbloods record (title-only TEXT_MATCH / AMBIGUOUS / UNLINKED). */
+export interface UntrackedWorkEvent { date: string; start: string | null; end: string | null; title: string; quality: string; entity: string | null }
 export interface MotionEvidence { source: string; ref: string | null; he: string; epistemic: "FACT" | "DERIVED" | "OWNER_REPORTED" | "HYPOTHESIS" }
 export interface MotionItem {
   key: string;
@@ -133,6 +150,9 @@ export interface MotionWeek {
   external: number;
   opportunity: { he: string; candidates: string[]; epistemic: "HYPOTHESIS" } | null;
   lineHe: string;
+  /** stage 2: work-like events in the calendar with no Redbloods record (capacity counts them; the greeting names them) */
+  untracked: UntrackedWorkEvent[];
+  untrackedHe: string | null;
 }
 
 export interface BusinessMotion {
@@ -651,11 +671,21 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     start: today, end, calendarStatus: c.calStatus, capacity, openDays, heavyToday, recordedEvents, dueThisWeek,
     label: protectedLabel.length ? `לייבל: ל${protectedLabel.join(" ול")} אין סשן מתוכנן ויש עבודה שמחכה לצעד` : null,
     money: revenue.state === "PIPELINE_EMPTY" ? "כסף: הצנרת ריקה (אין גבייה פתוחה / הצעות / הופעות קרובות)" : null,
-    external, opportunity,
+    external, opportunity, untracked: [], untrackedHe: null,
     lineHe: [`(${heDate(today)}–${heDate(end)}) ${capHe}${recordedEvents ? `, ${recordedEvents === 1 ? "אירוע אחד רשום" : `${recordedEvents} אירועים רשומים`} ב-Redbloods` : ", בלי סשנים / הופעות / צילומים רשומים"}`,
       dueThisWeek.length ? dueThisWeek.slice(0, 3).join(", ") : null, protectedItems.length ? `לייבל: ${protectedLabelHe}` : null,
       revenue.state === "PIPELINE_EMPTY" ? "הצנרת המסחרית ריקה" : null, external ? (external === 1 ? "עבודה אחת אצל אחרים" : `${external} עבודות אצל אחרים`) : null].filter(Boolean).join(" · "),
   };
+
+  // ── stage 2: work-like calendar events with no Redbloods record (the SAME link classification as capability calendar) ──
+  week.untracked = c.calReadable ? c.linked().filter((l) => l.category === "LIKELY_WORK" && l.quality !== "CANONICAL_RELATION")
+    .map((l) => ({ l, date: l.event.allDay ? l.event.start.slice(0, 10) : ilDay(l.event.start) }))
+    .filter((x) => x.date >= today && x.date <= end)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.l.event.start.localeCompare(b.l.event.start))
+    .map(({ l, date }) => ({ date, start: l.event.allDay ? null : hm(l.event.start), end: l.event.allDay || !l.event.end ? null : hm(l.event.end), title: l.event.title ?? "(בלי כותרת)", quality: l.quality, entity: l.edges[0]?.to ?? null })) : [];
+  week.untrackedHe = week.untracked.length
+    ? `ביומן ולא ב-Redbloods: ${week.untracked.slice(0, 3).map((u) => `${u.title} (${u.date === today ? "היום" : heDate(u.date)}${u.start ? ` ${u.start}${u.end ? `–${u.end}` : ""}` : ""})`).join(" · ")}${week.untracked.length > 3 ? ` ועוד ${week.untracked.length - 3}` : ""} — אין להם רשומת סשן ב-Redbloods; לרשום?`
+    : null;
 
   // absorbed (rule B) = a move on the update's exact entity whose PROPOSED MOVE covers every business topic the update
   // names (mix / session / feedback / delivery). LIKELY stays a hypothesis: the move gets a "כנראה" reason, nothing is linked.
@@ -693,6 +723,9 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
     try { progress[e] = projectProgressEvents(src, e.slice(8)).slice(-5); } catch { /* unreadable → no progress claimed */ }
   }
 
+  // ── stage 2: a draft on every move (args only from records; missing asked one at a time; context is never a value) ──
+  for (const i of all) if (i.move && !i.financial) i.move.draft = draftFor(i, c, ff, week.openDays);
+
   const m: BusinessMotion = {
     today, todayItems, greeting, more: Math.max(0, act.length - todayItems.length), atRisk, closeLoops, ownerBottleneck, label: labelItems, revenue, week, inbox, watch, all,
     patterns: pats.map((p) => ({ code: p.code, level: p.level, he: p.hypothesisHe })), progress,
@@ -704,6 +737,46 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   return m;
 }
 
+const hm = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+
+/**
+ * Stage 2: the draft of one move. Only the actions whose parameters the records can partly fill get one; every value in
+ * args is read (an entity key, a status the evidence proves) — never a guessed engineer / date / amount / price.
+ */
+function draftFor(i: MotionItem, c: CooCtx, ff: FinancialForward | null, openDays: readonly string[]): MotionDraft | null {
+  const ids = i.move?.actionIds ?? [];
+  const pk = [i.entity, ...i.entities].find((e): e is string => !!e && e.startsWith("project:")) ?? null;
+  const pid = pk ? pk.slice(8) : null;
+  const pname = pid ? c.projectName(pid) ?? "הפרויקט" : null;
+  const ref = (prefix: string) => i.evidence.map((e) => e.ref).find((r): r is string => !!r && r.startsWith(prefix)) ?? null;
+  const D = (actionId: MotionActionId, args: Record<string, string>, confirmedHe: string[], missing: MotionDraft["missing"], contextHe: string[] = []): MotionDraft => ({ actionId, args, confirmedHe, missing, contextHe, epistemic: "DERIVED" });
+
+  // close a done work: the evidence (approved + final files) is what makes the status a fact; the Boss still approves it
+  if (i.codes.includes("COMPLETION_NOT_RECORDED") && ids.includes("UPDATE_PROJECT_STATUS") && pk) return D("UPDATE_PROJECT_STATUS", { project: pk, status: "הושלם" }, ["עבודת המיקס אושרה ויש קבצים סופיים"], []);
+  if (ids.includes("SEND_VICTOR_VERSION_NOTES")) {
+    const vw = ref("victor-work:");
+    if (vw) return D("SEND_VICTOR_VERSION_NOTES", { victorWork: vw }, ["ויקטור העלה גרסה ואין הערות שלך אחריה"], [{ arg: "notes", questionHe: "מה ההערות שלך לגרסה האחרונה? (או שכבר טיפלת בזה מחוץ למערכת?)" }], ["את מפתח הגרסה אקח מ-action_targets של העבודה"]);
+  }
+  if (ids.includes("SEND_MIX_NOTES") || ids.includes("SET_ENGINEER_WORK_STATUS")) {
+    const mw = ref("mix-work:");
+    if (mw) return D("SEND_MIX_NOTES", { mixWork: mw }, ["המהנדס העלה גרסה ואין פידבק שלך אחריה"], [{ arg: "decision", questionHe: "שמעת את הגרסה — לשלוח הערות או לאשר?" }]);
+  }
+  if (ids.includes("CREATE_ENGINEER_WORK") && pk && pid) {
+    const ctx: string[] = [];
+    const planned = (ff?.obligations ?? []).find((o) => o.kind === "CONDITIONAL_COST" && o.entity === pk && o.titleHe.startsWith("מיקס") && o.amount !== null);
+    if (planned) ctx.push(`יש הוצאת מיקס צפויה ${planned.currency ?? ""}${planned.amount} — זה תקציב, לא מחיר מוסכם של העבודה`);
+    const engineers = [...new Set((c.ops?.engineerWork?.rows ?? []).map((w) => w.engineerName).filter((n): n is string => !!n))];
+    if (engineers.length === 1) ctx.push(`כל עבודות המיקס הרשומות היו אצל ${engineers[0]} — זו הסקה, לא בחירה`);
+    return D("CREATE_ENGINEER_WORK", { project: pk, title: pname ?? "" }, [`אין עבודת מיקס פתוחה ב${pname}`],
+      [{ arg: "engineerName", questionHe: engineers.length === 1 ? `אצל ${engineers[0]}?` : "אצל איזה מהנדס?" }, { arg: "workType", questionHe: "מיקס, מאסטר או מיקס + מאסטר?" }, { arg: "agreedPrice", questionHe: "באיזה מחיר סיכמת איתו (אם בכלל)?" }], ctx);
+  }
+  if (ids.includes("SCHEDULE_SESSION") && pk) {
+    const free = openDays.slice(0, 3).map((d) => heDate(d));
+    return D("SCHEDULE_SESSION", { project: pk }, [`אין סשן מתוכנן ל${pname}`], [{ arg: "date", questionHe: "באיזה יום ובאיזו שעה?" }, { arg: "startTime", questionHe: "באיזו שעה מתחילים?" }], free.length ? [`ימים יחסית פנויים ביומן: ${free.join(", ")} — מועמדים בלבד, לא קביעה`] : []);
+  }
+  return null;
+}
+
 function lastShowOf(c: CooCtx, artistName: string): string | null {
   const clients = new Map((c.st?.domains.clients.data?.items ?? []).map((x) => [x.id, x.name]));
   const n = normalizeName(artistName);
@@ -712,7 +785,7 @@ function lastShowOf(c: CooCtx, artistName: string): string | null {
 }
 
 /** The executive Hebrew answer: ≤3 moves + the week line + the inbox line — never a dump, never "במה נתחיל?". */
-export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity">; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
+export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean; draft?: MotionDraft | null } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity"> & { untrackedHe?: string | null }; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
   financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; coverageHe: string } | null }
 
 /** Money in the greeting: dated and undated are never under one heading (an undated payable is never "due" on a date). */
@@ -726,6 +799,14 @@ function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undate
 /** The COO leads: motion already ranked the first move — recommend it; only its EXECUTION needs the Boss's approval. */
 function leadHe(first: MotionAnswerInput["greeting"][number] | undefined): string | null {
   if (!first || !first.titleHe) return null;
+  const d = first.move?.draft ?? null;
+  // stage 2: the move itself — what the records confirm + ONE question for the first missing parameter (never "shall I prepare?")
+  if (d && first.move) {
+    const confirmed = d.confirmedHe.length ? ` לפי הרשומות: ${d.confirmedHe.slice(0, 2).join("; ")}.` : "";
+    const context = d.contextHe.length ? ` ${d.contextHe[0]}.` : "";
+    const ask = d.missing.length ? ` ${d.missing[0].questionHe}` : " כל מה שצריך רשום — תגיד כן ואציג את התוכנית לאישור.";
+    return `אני הייתי מתחילה ב${first.titleHe} — ${first.move.he}.${confirmed}${context}${ask}`;
+  }
   return `אני הייתי מתחילה ב${first.titleHe}${first.move ? ` — ${first.move.he}` : ""}.${first.move?.canAct ? " אם תאשר, אכין את זה לאישור שלך." : ""}`;
 }
 
@@ -735,6 +816,7 @@ export function motionAnswerHe(m: MotionAnswerInput): string {
   const lines = m.greeting.map((i, k) => `${k + 1}. ${i.he}`);
   const extra = [
     `השבוע: ${m.week.lineHe}`,
+    m.week.untrackedHe ?? null,
     // ONE money line — only what could surprise him (MUST / SHOULD, not prepared); never an accounting dump
     m.financial && (m.financial.surprises.length || m.financial.decided?.length) ? moneyLineHe(m.financial) : null,
     m.week.opportunity ? m.week.opportunity.he : null,
@@ -761,7 +843,8 @@ export function learnItem<T extends LearnableItem>(i: T, assessments: readonly O
   if (!planning) return i;
   const actionIds = i.move.actionIds.filter((x) => x !== "UPDATE_PROJECT_DEADLINE");
   const learningHe = `תכנון מחדש כבר נוסה כאן (${tried.map((a) => heDate(ymdOf(a.at))).join(", ")}) וזה לא הזיז את העבודה`;
-  const move: MotionMove = { he: "לבדוק מה באמת חוסם ולקבוע מהלך קונקרטי אחד — לא להזיז שוב את התאריך", actionIds, canAct: actionIds.length > 0, approval: "OWNER_APPROVAL" };
+  const keep = i.move.draft && (actionIds as readonly string[]).includes(i.move.draft.actionId) ? i.move.draft : null;
+  const move: MotionMove = { he: "לבדוק מה באמת חוסם ולקבוע מהלך קונקרטי אחד — לא להזיז שוב את התאריך", actionIds, canAct: actionIds.length > 0, approval: "OWNER_APPROVAL", ...(keep ? { draft: keep } : {}) };
   const reasonsHe = [...i.reasonsHe, `${learningHe} (השערה מתוך התוצאות, לא כלל)`];
   return { ...i, move, reasonsHe, learning: { changed: true, he: learningHe, planIds: tried.map((a) => a.planId) }, he: lineOf({ titleHe: i.titleHe, reasonsHe, move }) };
 }
