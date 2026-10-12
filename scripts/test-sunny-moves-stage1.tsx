@@ -17,6 +17,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { SERVER_INSTRUCTIONS } from "../lib/integrations/partner-mcp/mcp";
 import { KNOWLEDGE_KINDS } from "../lib/partner/owner-knowledge/kinds";
+import { calendarCap } from "../lib/partner/knowledge/capabilities/calendar";
+import { PARTNER_KNOWLEDGE_REGISTRY } from "../lib/partner/knowledge/catalog";
+import { ACT_TOOL_DEFINITIONS } from "../lib/partner/act/mcp-tools";
 
 let pass = 0, fail = 0;
 const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass++; console.log(`  ✓ ${name}`); } else { fail++; console.log(`  ✗ ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); } };
@@ -63,4 +66,21 @@ ok("6c. stage 1 touched no approval / motion / memory / finance module (instruct
 ok("6d. no future promises rule kept (no background follow-up)", I.includes("NO FUTURE PROMISES"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);
+
+console.log("\n7. Stage 1b (2026-10-12, from the real conversation)");
+const B = I.slice(I.indexOf("STAGE 1b"), I.indexOf("COO (2026-10-02)"));
+ok("7a. a stage-1b block exists inside the moves section, before COO", B.length > 300 && I.indexOf("STAGE 1b") > I.indexOf("MOVES, NOT REPORTS"));
+ok("7b. greeting / today / this week → ALSO read the live calendar and name work-like events with NO Redbloods record", B.includes("ALSO read the live calendar") && B.includes("ביומן ולא ב-Redbloods") && B.includes("propose recording it, never record it on your own") && B.includes("never free"));
+const filt = (calendarCap.params.filter as { values: readonly string[] }).values;
+ok("7c. the calendar capability really has mode events + filters work / unlinked (the instruction is true)", !!calendarCap.modes.events && filt.includes("work") && filt.includes("unlinked"));
+ok("7d. 'what did you do on X' → partner_plan_status history + entity + since; recentActions (5) is never the answer", B.includes("partner_plan_status with history: true + entity") && B.includes("since") && B.includes("only the last 5 and is never the answer"));
+const ps = ACT_TOOL_DEFINITIONS.find((t) => t.name === "partner_plan_status") as unknown as { inputSchema: { properties: Record<string, unknown> } } | undefined;
+ok("7e. partner_plan_status really takes history / entity / since, and the brief really attaches only 5", !!ps && ["history", "entity", "since"].every((k) => k in ps.inputSchema.properties) && read("lib/integrations/partner-mcp/mcp.ts").includes("history: true, limit: 5"));
+ok("7f. history ≠ every record: an app-made record is seen in the live records and its author is unknown", B.includes("who made it is unknown"));
+ok("7g. a miss of hers: say what and why; never promise future behaviour nor save it as a procedure / policy", B.includes("never promise future behaviour") && B.includes("never offer to save your own behaviour as a procedure") && B.includes("זה תיקון שצריך להיכנס להוראות שלי"));
+ok("7h. a product gap: a code change she cannot make; only PROCESS_FRICTION with his approval; never 'reaches the developer'", B.includes("PROCESS_FRICTION through partner_propose_knowledge with his approval") && B.includes("never say it"));
+ok("7i. PROCESS_FRICTION and improvement_signals really exist (the instruction is true)", KNOWLEDGE_KINDS.some((k) => k.kind === "PROCESS_FRICTION") && !!PARTNER_KNOWLEDGE_REGISTRY.get("improvement_signals"));
+ok("7j. the lead move: never repeat motion's ready sentence; record + action + confirmed + ONE missing question", B.includes("do not repeat motion's ready sentence") && B.includes("exactly what is missing (one question)"));
+console.log(`\n${pass} passed, ${fail} failed (incl. stage 1b)`);
 if (fail) process.exit(1);
