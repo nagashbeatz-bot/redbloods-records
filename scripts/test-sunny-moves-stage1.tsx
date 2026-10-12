@@ -73,6 +73,7 @@ const B = I.slice(I.indexOf("STAGE 1b"), I.indexOf("COO (2026-10-02)"));
 ok("7a. a stage-1b block exists inside the moves section, before COO", B.length > 300 && I.indexOf("STAGE 1b") > I.indexOf("MOVES, NOT REPORTS"));
 ok("7b. greeting / today / this week → ALSO read the live calendar and name work-like events with NO Redbloods record", B.includes("ALSO read the live calendar") && B.includes("ביומן ולא ב-Redbloods") && B.includes("propose recording it, never record it on your own") && B.includes("never free"));
 const filt = (calendarCap.params.filter as { values: readonly string[] }).values;
+ok("7b2. filter work (NOT unlinked — a title-only TEXT_MATCH event like the 12.10 Itamar session is not unlinked); no record = not CANONICAL_RELATION", B.includes("filter work — NOT unlinked") && B.includes("relationship not CANONICAL_RELATION"));
 ok("7c. the calendar capability really has mode events + filters work / unlinked (the instruction is true)", !!calendarCap.modes.events && filt.includes("work") && filt.includes("unlinked"));
 ok("7d. 'what did you do on X' → partner_plan_status history + entity + since; recentActions (5) is never the answer", B.includes("partner_plan_status with history: true + entity") && B.includes("since") && B.includes("only the last 5 and is never the answer"));
 const ps = ACT_TOOL_DEFINITIONS.find((t) => t.name === "partner_plan_status") as unknown as { inputSchema: { properties: Record<string, unknown> } } | undefined;
