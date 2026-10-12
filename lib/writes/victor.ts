@@ -392,7 +392,7 @@ export async function removeVictorReference(workId: string, refId: string): Prom
 // can never write these. Stored on the matching brief_files[].segments — no new
 // DB column/table. Sanitized server-side so a bad client can't inject junk.
 const SEGMENT_TYPES = new Set<BriefSegmentType>([
-  "intro", "verse1", "prechorus", "chorus1", "verse2", "chorus3",
+  "intro", "verse1", "prechorus", "chorus1", "verse2", "chorus2", "chorus3",
   "cpart", "bridge", "finalChorus", "outro", "custom",
 ]);
 

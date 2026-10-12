@@ -174,7 +174,7 @@ export const LINK_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
 ];
 
-const SEGMENT_TYPES = ["intro", "verse1", "prechorus", "chorus1", "verse2", "chorus3", "cpart", "bridge", "finalChorus", "outro", "custom"] as const;
+const SEGMENT_TYPES = ["intro", "verse1", "prechorus", "chorus1", "verse2", "chorus2", "chorus3", "cpart", "bridge", "finalChorus", "outro", "custom"] as const;
 type Seg = { type: string; start: number; end: number; label?: string };
 /** "intro 0-12.5; chorus1 40-62; custom:Hook 62-70" → markers (the route sanitizes again). "" / "none" = clear all. */
 export function parseSegments(v: unknown): Seg[] | string {

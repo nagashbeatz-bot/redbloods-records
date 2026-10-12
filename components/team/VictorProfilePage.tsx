@@ -725,7 +725,7 @@ function AudioPlayer({
 // ── Brief structure segments — canonical types → preset colors + localized ─────
 //    labels. This is BRIEF-ONLY: separate <audio>, never touches versions /
 //    versionGroups / reviews. Owner edits; Victor is strictly read-only.
-const SEG_ORDER: BriefSegmentType[] = ["intro", "verse1", "prechorus", "chorus1", "verse2", "chorus3", "cpart", "bridge", "finalChorus", "outro", "custom"];
+const SEG_ORDER: BriefSegmentType[] = ["intro", "verse1", "prechorus", "chorus1", "verse2", "chorus2", "chorus3", "cpart", "bridge", "finalChorus", "outro", "custom"];
 // Colors are consistent by musical role so Victor reads structure at a glance:
 // every verse shares one color, every chorus shares another.
 const VERSE_C = "#8B5CF6";   // all verses
@@ -736,6 +736,7 @@ const SEG_COLOR: Record<BriefSegmentType, string> = {
   prechorus: "#06B6D4",
   chorus1: CHORUS_C,
   verse2: VERSE_C,
+  chorus2: CHORUS_C,
   chorus3: CHORUS_C,
   cpart: "#EC4899",
   bridge: "#F43F5E",
