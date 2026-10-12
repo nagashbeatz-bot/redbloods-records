@@ -55,6 +55,9 @@ async function main() {
   ok("2a. the song and its clip are ONE thread (CANONICAL member), never two unrelated items", !!joined, { y: y?.thread, c: c?.thread });
   ok("2b. the two project keys are never both served as separate items", !(served(S).some((i) => i.entity === K(P_YAHALOM)) && served(S).some((i) => i.entity === K(P_CLIP))));
   const plain = motionOf(src());
+  const lead2 = [y, c].find((i) => i && (i.thread ?? []).some((m) => m.role === "CLIP" || m.role === "SONG"));
+  const subItem = motionOf(src()).all.find((i) => i.entity === (lead2?.entity === K(P_YAHALOM) ? K(P_CLIP) : K(P_YAHALOM)));
+  ok("2b2. a weaker member never adds its move to the lead (reasons only)", !lead2 || !subItem || subItem.level === lead2.level || !subItem.move || !(lead2.move?.he ?? "").includes(subItem.move.he), [lead2?.move?.he, subItem?.move?.he, subItem?.level, lead2?.level]);
   ok("2c. without song_project_id there is no song / clip thread (a similar name never joins)", !plain.all.some((i) => i.thread?.some((m) => m.role === "CLIP" || m.role === "SONG")));
 
   section("3. Never by text, never twice");

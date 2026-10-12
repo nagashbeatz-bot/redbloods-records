@@ -701,7 +701,8 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
         lead.evidence.push(...sub.evidence, { source: "PROJECTS", ref: sub.entity, he: "song_project_id (CANONICAL) — one thread; each project's money stays its own", epistemic: "FACT" });
         for (const cd of sub.codes) if (!lead.codes.includes(cd)) lead.codes.push(cd);
         for (const s of sub.sections) if (!lead.sections.includes(s)) lead.sections.push(s);
-        lead.move = mergeMoves(lead.move, sub.move);
+        // a weaker member adds its reasons only — never its move (an INFO "לקבוע סשן" must not dilute a MUST move)
+        if (sub.level === lead.level) lead.move = mergeMoves(lead.move, sub.move);
         lead.labelWork ||= sub.labelWork; lead.labelProtected ||= sub.labelProtected;
         if (sub.daysTo !== null && (lead.daysTo === null || sub.daysTo < lead.daysTo)) lead.daysTo = sub.daysTo;
         lead.he = lineOf(lead);
