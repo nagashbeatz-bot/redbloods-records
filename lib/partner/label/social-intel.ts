@@ -163,7 +163,7 @@ const ANGLES: Record<OpportunityKind, string[]> = {
 };
 const LINK_HE: Record<OpportunityLink, string> = { CANONICAL: "קישור קנוני לאמן", TEXT_MATCH: "התאמה לפי שם — לא קישור קנוני", AMBIGUOUS: "שיתוף פעולה / אורח — האמן לא משויך בוודאות" };
 const qualityOf = (basis: string | undefined, quality: string | undefined): OpportunityLink => (basis === "NAME_COLLABORATION" ? "AMBIGUOUS" : quality === "CANONICAL_RELATION" ? "CANONICAL" : "TEXT_MATCH");
-export function opportunitiesOf(v: ArtistViewLite | null, todayIL: string, horizon = OPPORTUNITY_HORIZON_DAYS): { readable: boolean; horizonDays: number; items: ContentOpportunity[]; attention: ContentOpportunity[]; noteHe: string } {
+export function opportunitiesOf(v: ArtistViewLite | null, todayIL: string, horizon = OPPORTUNITY_HORIZON_DAYS, mentions: ReadonlyArray<{ title: string; start: string }> = []): { readable: boolean; horizonDays: number; items: ContentOpportunity[]; attention: ContentOpportunity[]; noteHe: string } {
   if (!v) return { readable: false, horizonDays: horizon, items: [], attention: [], noteHe: "לא קראתי את פעילות האמן (פרויקטים / סשנים / הופעות / צילומים) — זה לא אומר שאין פעילות." };
   const end = addDays(todayIL, horizon);
   const inWin = (d: string | null) => !!d && /^\d{4}-\d{2}-\d{2}/.test(d) && d.slice(0, 10) >= todayIL && d.slice(0, 10) <= end;
@@ -199,6 +199,13 @@ export function opportunitiesOf(v: ArtistViewLite | null, todayIL: string, horiz
     const d = e.start?.slice(0, 10) ?? null;
     if (!inWin(d)) continue;
     items.push({ kind: "CALENDAR_MENTION", date: d, titleHe: `ביומן: ${e.title}`, source: null, link: "TEXT_MATCH", linkHe: "השם מופיע בכותרת אירוע ביומן — לא קישור קנוני", anglesHe: angles("CALENDAR_MENTION"), noteHe: null });
+  }
+  // calendar events whose TITLE names the artist although the event belongs to another record (e.g. a session of a partner's
+  // project): the artist may take part — TEXT_MATCH, never attributed; skipped when his own record already covers that day
+  for (const e of mentions) {
+    const d = e.start?.slice(0, 10) ?? null;
+    if (!inWin(d) || items.some((o) => o.date === d && (o.kind === "SESSION" || o.kind === "SHOW" || o.kind === "SHOOT"))) continue;
+    items.push({ kind: "CALENDAR_MENTION", date: d, titleHe: `ביומן: ${e.title}`, source: null, link: "TEXT_MATCH", linkHe: "השם שלו מופיע בכותרת אירוע של רשומה אחרת — לא קישור קנוני", anglesHe: [...ANGLES.SESSION], noteHe: "לוודא עם הבוס שהוא משתתף לפני תכנון" });
   }
   items.sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || a.titleHe.localeCompare(b.titleHe));
   return { readable: true, horizonDays: horizon, items, attention,

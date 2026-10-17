@@ -120,6 +120,11 @@ const K: OwnerKnowledgeRecord[] = [
   ok("3d. a collaboration's material is AMBIGUOUS — never attributed with certainty; a passed shoot date never proves it is ready", op.items.some((o) => o.kind === "EDIT_MATERIAL" && o.link === "AMBIGUOUS" && /לא מוכיח/.test(o.noteHe ?? "")));
   ok("3e. a near release still at stage 'רעיון' is flagged to check; a passed release target is ATTENTION (passed ≠ released)", op.items.some((o) => o.kind === "RELEASE" && /לבדוק/.test(o.noteHe ?? "")) && op.attention.some((a) => /עבר הזמן ≠ יצא/.test(a.noteHe ?? "")));
   ok("3f. a calendar title that only names the artist = TEXT_MATCH", op.items.some((o) => o.kind === "CALENDAR_MENTION" && o.link === "TEXT_MATCH"));
+  const ment = [{ title: "סשן שליו טסמה ונגש ביטס", start: `${addDays(TODAY, 2)}T16:30:00+03:00` }];
+  const nag = opportunitiesOf({ ...view, sessions: [], calendar: { status: "CALENDAR_DATA_AVAILABLE" } }, TODAY, 14, ment);
+  ok("3h. a calendar title naming the artist on ANOTHER record's event (the shared session) = TEXT_MATCH opportunity, to verify with the Owner", nag.items.some((o) => o.kind === "CALENDAR_MENTION" && o.link === "TEXT_MATCH" && /לוודא/.test(o.noteHe ?? "")));
+  ok("3i. the artist whose own session covers that day gets no duplicate mention", opportunitiesOf({ ...view, calendar: { status: "CALENDAR_DATA_AVAILABLE" } }, TODAY, 14, ment).items.filter((o) => o.date === addDays(TODAY, 2) && o.kind === "CALENDAR_MENTION").length === 0);
+  ok("3j. the mention rule is the calendar engine's own (titleNamesPerson), shared — not copied", /titleNamesPerson\(e\.title, v\.artistName\)/.test(read("lib/partner/knowledge/capabilities/artist-social.ts")) && /idx\.people\.filter\(\(p\) => titleNamesPerson\(title, p\.name\)\)/.test(read("lib/partner/calendar/links.ts")));
   ok("3g. unread activity = UNKNOWN (never 'no activity')", !opportunitiesOf(null, TODAY).readable && /לא אומר שאין/.test(opportunitiesOf(null, TODAY).noteHe));
 
   section("4. Results — exact post match only, baseline, one result ≠ conclusion");

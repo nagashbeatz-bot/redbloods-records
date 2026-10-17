@@ -11,6 +11,7 @@ import { artistSocialOf, type ArtistSocial, type SocialAccount } from "../../lab
 import { identityOf, opportunitiesOf, researchOf, resultsOf, reviewOf, BASIS_HE, RESULT_HEURISTICS, SOCIAL_PROFILE_TOPICS, type ArtistViewLite, type ResearchDigest } from "../../label/social-intel";
 import { postHashOf } from "../../label/post-hash";
 import { buildArtistView } from "../../label/view";
+import { titleNamesPerson } from "../../calendar/links";
 import type { BrainSnapshot } from "../../brain/model";
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeReadResult, KnowledgeSources } from "../types";
 import { item, ok, partner, record, result, sfact, state } from "./common";
@@ -77,7 +78,9 @@ function intelOf(src: KnowledgeSources, v: ArtistSocial, brain: BrainSnapshot, t
   const identity = identityOf(ok(src.ownerKnowledge) ?? [], v.artistKey, today);
   const artistId = v.artistKey.slice("label-artist:".length);
   const view = ok(src.projectDetail) ? (buildArtistView(src, artistId) as unknown as ArtistViewLite | null) : null;
-  const opportunities = opportunitiesOf(view, today);
+  const cal = ok(src.calendar) as { status?: string; events?: Array<{ title?: string | null; start?: string | null }> } | null;
+  const mentions = cal && (cal.status === "CALENDAR_DATA_AVAILABLE" || cal.status === "CALENDAR_PARTIAL") ? (cal.events ?? []).filter((e) => e.title && e.start && titleNamesPerson(e.title, v.artistName)).map((e) => ({ title: String(e.title), start: String(e.start) })) : [];
+  const opportunities = opportunitiesOf(view, today, undefined, mentions);
   const o = ok(src.operations);
   const rows = o?.contentItems?.rows ?? null;
   const hashOfResource = new Map(brain.resources.filter((x) => x.resourceKind === "CONTENT" && x.canonicalUrl).map((x) => [x.id, postHashOf(x.canonicalUrl)!] as const).filter(([, h]) => !!h));

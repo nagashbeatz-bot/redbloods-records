@@ -52,8 +52,7 @@ export function linkCalendarEvent(ev: SunnyCalendarEvent, idx: CalendarLinkIndex
   const title = norm(ev.title ?? "");
   const hay = norm(`${ev.title ?? ""} ${ev.location ?? ""}`);
   const projectHits = title ? idx.projects.filter((p) => hay.includes(norm(p.name))) : [];
-  const segments = title.split(/\s*[-–—|/,·:]\s*/).map((x) => x.trim()).filter(Boolean);
-  const personHits = title ? idx.people.filter((p) => segments.includes(norm(p.name)) || (norm(p.name).split(" ").length > 1 && title.includes(norm(p.name)))) : [];
+  const personHits = title ? idx.people.filter((p) => titleNamesPerson(title, p.name)) : [];
   const workish = WORK_WORDS.some((w) => title.includes(w));
   const candidates = [...projectHits.map((p) => `project:${p.id}`), ...personHits.map((p) => p.key)];
   if (projectHits.length > 1 || (projectHits.length === 0 && personHits.length > 1 && new Set(personHits.map((p) => norm(p.name))).size > 1)) {
@@ -65,6 +64,14 @@ export function linkCalendarEvent(ev: SunnyCalendarEvent, idx: CalendarLinkIndex
   ];
   if (edges.length) return { event: ev, quality: "TEXT_MATCH", category: "LIKELY_WORK", edges: dedupe(edges), candidates };
   return { event: ev, quality: "UNLINKED", category: workish ? "LIKELY_WORK" : "PERSONAL_OR_OTHER", edges: [], candidates: [] };
+}
+
+/** THE rule "an event title names this person" (a whole segment, or a multi-word name anywhere) — shared, never copied. */
+export function titleNamesPerson(rawTitle: string, name: string): boolean {
+  const title = norm(rawTitle ?? ""), n = norm(name ?? "");
+  if (!title || n.length < 3) return false;
+  const segments = title.split(/\s*[-–—|/,·:]\s*/).map((x) => x.trim()).filter(Boolean);
+  return segments.includes(n) || (n.split(" ").length > 1 && title.includes(n));
 }
 
 const dedupe = (e: CalendarEdge[]) => e.filter((x, i) => e.findIndex((y) => y.to === x.to && y.quality === x.quality) === i);
