@@ -746,7 +746,7 @@ async function actionHistory(input: Record<string, unknown>, c: Caller, d: ActSe
     return {
       planId: r.plan.planId, createdAt: r.plan.createdAt, executedAt: r.executedAt, intentHe: { text: r.plan.intentHe, trust: "OWNER_REQUEST" },
       compound: r.plan.steps.length > 1, approved: lc.approved, approvedBy: lc.approved ? approvedByOf(r.approvalDetail ?? "") : null, outcome: lc.outcome, partiallyApplied: lc.partial, staleSeen: lc.stale,
-      steps: r.plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], fields: s.changes.map((x) => x.field), outcome: lc.steps.find((x) => x.index === s.index)?.status ?? null, verifyKind: verifyKindOf(s.actionId, PRIMITIVES_BY_ID.get(s.actionId)?.kinds ?? []) })),
+      steps: r.plan.steps.map((s) => ({ index: s.index, actionId: s.actionId, entity: s.entities[0], fields: s.changes.map((x) => x.field), outcome: lc.steps.find((x) => x.index === s.index)?.status ?? null, createdKey: r.executions.find((x) => x.stepIndex === s.index && x.status === "APPLIED_AS_EXPECTED")?.outcome?.createdKey ?? null, verifyKind: verifyKindOf(s.actionId, PRIMITIVES_BY_ID.get(s.actionId)?.kinds ?? []) })),
     };
   });
   if (typeof input.outcome === "string") items = items.filter((x) => x.outcome === input.outcome);

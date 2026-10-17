@@ -140,7 +140,9 @@ async function main() {
   const f1 = fakeClient({ fail: ["beats"] });
   const raw = await readOperationsRaw(f1.client);
   const cols = f1.calls.map((c) => c.columns).join(",");
-  ok("no free text / file paths / links / receipts / phones / secrets are selected", !/notes|caption|hook|script|concept|dropbox_path|dropbox_url|_link|url|receipt|phone|comment_text|body|token|value\b|recipient_name|serial/.test(cols.replace(/value->>deliveryStatus|value->>deliveredAt/g, "")));
+  ok("no free text / file paths / links / receipts / phones / secrets are selected", !/notes|caption|hook|script|concept|dropbox_path|dropbox_url|_link|url|receipt|phone|comment_text|body|token|value\b|recipient_name|serial/.test(cols.replace(/value->>deliveryStatus|value->>deliveredAt/g, "").replace(/, posted_url\b/g, "")));
+  // Sunny Social Intelligence (2026-10-17): posted_url is the ONE allowed link column — read only to compute an exact post hash, never kept
+  ok("social content posted_url → postedHash only (a 32-hex hash, never the link)", /postedHash: postHashOf\(s\(r\.posted_url\)\)/.test(read("lib/partner/operations/readers.ts")) && !/postedUrl|posted_url:/.test(read("lib/partner/operations/readers.ts")) && /slice\(0, 32\)/.test(read("lib/partner/label/post-hash.ts")));
   ok("the integrations check selects the settings KEY only (never a credential value)", f1.calls.some((c) => c.table === "settings" && c.columns === "key" && c.filters.includes("in:key:google_calendar_token,dropbox_tokens")));
   ok("delivery selects only status + delivered date out of the setting JSON", f1.calls.some((c) => c.table === "settings" && c.columns === "key, status:value->>deliveryStatus, delivered:value->>deliveredAt" && c.filters.includes("like:key:delivery_%")));
   check("a failing section is null (UNAVAILABLE) while the others still read", [raw.beats, raw.meetings?.rows.length, raw.integrations], [null, 1, { googleCalendarConnected: true, dropboxConnected: false }]);

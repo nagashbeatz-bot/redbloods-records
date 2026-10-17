@@ -91,7 +91,7 @@ export const ACTION_MEANING: Readonly<Record<string, SinceMeaning>> = {
 const ACTION_HE: Readonly<Record<SinceMeaning, string>> = { PLANNING: "תכנון מחדש (לא התקדמות)", RECORDING: "רישום (לא התקדמות)", PROGRESS: "שינוי מצב שאישרת", CONTEXT: "הקשר" };
 
 /** The Action Layer history items the connector already reads (recentActions / partner_plan_status history). */
-export interface ActionHistoryItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null }>; /** OWNER_APPROVAL / STANDING_AUTHORIZATION — explicit approval evidence */ approvedBy?: string | null }
+export interface ActionHistoryItem { planId: string; at: string | null; outcome: string; steps: ReadonlyArray<{ actionId: string; entity: string | null; outcome: string | null; /** the record a CREATE step made (exact) */ createdKey?: string | null }>; /** OWNER_APPROVAL / STANDING_AUTHORIZATION — explicit approval evidence */ approvedBy?: string | null }
 const MARKS = new Set(["MARK_OWNER_INBOX_ITEM", "LINK_INBOX_ENTITY", "RECORD_INBOX_INTERPRETATION", "RETRACT_INBOX_LINK", "RETRACT_INBOX_INTERPRETATION"]);
 /** Executed (APPLIED_AS_EXPECTED) steps on exactly these entities after the note — inbox housekeeping never counts. */
 export function actionsSince(items: readonly ActionHistoryItem[], entityKeys: readonly string[], sinceIso: string): SinceEvent[] {

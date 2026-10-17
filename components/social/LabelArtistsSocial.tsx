@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import ArtistContentSection from "./ArtistContentSection";
 import ArtistCadenceSection, { PLATFORM_LABEL, type Cadence } from "./ArtistCadenceSection";
+import ArtistStrategySection from "./ArtistStrategySection";
 import { ArtistSocialView, PLATFORM_HE, fmt, heDate, metricName, nameOf, type ArtistSocialResp } from "@/components/label/ArtistSocialPanel";
 
 const CARD = "rgba(255,255,255,0.058)";
@@ -199,6 +200,7 @@ export default function LabelArtistsSocial({ isMobile }: { isMobile: boolean }) 
             </div>
             <ArtistContentSection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} autoOpenAdd={openAdd} onChanged={() => setDirty(true)} />
             <ArtistCadenceSection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} isMobile={isMobile} onChanged={() => setDirty(true)} />
+            <ArtistStrategySection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} />
             <ArtistSocialView data={open.data as unknown as ArtistSocialResp} artistName={open.name} />
           </div>
         </div>

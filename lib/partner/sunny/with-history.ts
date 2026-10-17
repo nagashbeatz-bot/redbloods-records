@@ -8,12 +8,13 @@
  *             the work is not proposed again by default (learnItem) — derived only, never policy
  * history null = not readable here → said so (never "nothing was done" / "nothing worked"). No write, no store.
  */
+import { plansToCreated, reviewOf, type ResearchDigest, type ResultRow } from "../label/social-intel";
 import { decideInboxLifecycle, inboxExecutiveSummary, type InboxLifecycle } from "./inbox-lifecycle";
 import { assessOutcomes } from "./learning";
 import type { ActionHistoryItem, SinceEvent } from "./since";
 import { learnItem, learningNote, motionAnswerHe, motionInboxEntry, motionInboxOf, prioritiesAnswerHe, type LearnableItem, type MotionAnswerInput, type MotionInbox } from "../coo/motion";
 
-export type HistoryDerivation = "inbox" | "learning" | "motion";
+export type HistoryDerivation = "inbox" | "learning" | "motion" | "social";
 
 // ── ONE history read for every surface (Owner decision 2026-10-05, Dashboard parity Phase A2) ──────────────────────
 // The connector (chat) and Redbloods MAIN (the Owner's executive dashboard) ask the action service the SAME request,
@@ -29,6 +30,8 @@ export function historyDerivationFor(q: { tool: string; capability?: string | nu
   if (q.tool !== "partner_query") return null;
   if (q.capability === "owner_inbox" && (q.mode === "understand" || q.mode === "deep")) return "inbox";
   if (q.capability === "coo" && q.mode === "learning") return "learning";
+  // Sunny Social Intelligence: a recommendation → the plan that implemented it → the content item it created (exact createdKey)
+  if (q.capability === "artist_social" && (q.mode === "strategy" || q.mode === "weekly")) return "social";
   if (q.capability === "coo" && (!q.mode || q.mode === "priorities" || q.mode === "motion")) return "motion";
   return null;
 }
@@ -38,7 +41,7 @@ export function actionHistoryItemsOf(h: Record<string, unknown> | null | undefin
   if (!h || h.status !== "HISTORY" || !Array.isArray(h.items)) return null;
   return (h.items as Array<Record<string, unknown>>).map((x) => ({
     planId: String(x.planId ?? ""), at: (x.executedAt ?? x.createdAt ?? null) as string | null, outcome: String(x.outcome ?? ""), approvedBy: (x.approvedBy ?? null) as string | null,
-    steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null })),
+    steps: ((x.steps as Array<Record<string, unknown>> | undefined) ?? []).map((st) => ({ actionId: String(st.actionId ?? ""), entity: (st.entity ?? null) as string | null, outcome: (st.outcome ?? null) as string | null, createdKey: typeof st.createdKey === "string" ? st.createdKey : null })),
   }));
 }
 
@@ -67,6 +70,7 @@ function motionWithHistory(m: SlimMotion, history: readonly ActionHistoryItem[] 
 
 export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record<string, unknown>, history: readonly ActionHistoryItem[] | null, nowMs: number): Record<string, unknown> {
   const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
+  if (kind === "social") return socialWithHistory(payload, history);
   if (kind === "motion") {
     // partner_brief carries motion at the top level; coo priorities / motion in the MOTION summary fact
     if (payload.motion && typeof payload.motion === "object" && (payload.motion as { status?: string }).status !== "UNAVAILABLE") return { ...payload, motion: motionWithHistory(payload.motion as SlimMotion, history, nowMs) };
@@ -109,4 +113,19 @@ export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record
   });
   const lives = next.map((i) => i.fields?.lifecycle).filter((x): x is InboxLifecycle => !!x);
   return { ...payload, items: next, summary: summary.map((x) => (x.code === "EXECUTIVE" ? { ...x, value: { ...(x.value as Record<string, unknown>), ...inboxExecutiveSummary(lives) } } : x)), inboxActions: { status: "READ", plans: history.length } };
+}
+
+/** Sunny Social Intelligence: re-decide each recommendation review WITH the action history (plan → created content item).
+ *  The served REVIEW fact carries its inputs; nothing else is recomputed. Unread history = said so (never "not tried"). */
+function socialWithHistory(payload: Record<string, unknown>, history: readonly ActionHistoryItem[] | null): Record<string, unknown> {
+  const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
+  const swap = (v: unknown): unknown => {
+    const r = v as { inputs?: { recs: ResearchDigest[]; results: ResultRow[]; contentKeys: string[] } } | null;
+    if (!r || !r.inputs) return v;
+    const created = plansToCreated(history);
+    return { ...(r as object), historyRead: !!history, reviews: reviewOf(r.inputs.recs, r.inputs.results, created, new Set(r.inputs.contentKeys)) };
+  };
+  const next = summary.map((x) => (x.code === "REVIEW" ? { ...x, value: swap(x.value) } : x));
+  const items = Array.isArray(payload.items) ? (payload.items as Array<{ fields?: Record<string, unknown> }>).map((it) => (it.fields && it.fields.review ? { ...it, fields: { ...it.fields, review: swap(it.fields.review) } } : it)) : payload.items;
+  return { ...payload, summary: next, items };
 }

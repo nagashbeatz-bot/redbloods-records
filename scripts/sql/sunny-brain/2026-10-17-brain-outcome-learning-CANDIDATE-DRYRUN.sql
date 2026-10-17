@@ -1,0 +1,230 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+-- Sunny Brain v1.1 — OUTCOME + RESULT_OF + PRODUCED_LEARNING  (DRY RUN — one transaction, ends in ROLLBACK, writes nothing)
+-- Owner mission 2026-10-17 ("Sunny Social Intelligence", part 6 stage 2). Run ONLY after the Owner's explicit approval.
+--
+-- WHAT: closed-loop learning stored as evidence, never as truth:
+--   OUTCOME record     Sunny's measured result of an implemented recommendation (an INFERENCE: source INFERRED,
+--                      never CONFIRMED). body: resultHe, verdict ABOVE_BASELINE|NEAR_BASELINE|BELOW_BASELINE|INCONCLUSIVE,
+--                      measuredOn, optional baselineHe / expectedVsActualHe / nextHe / postAgeDays.
+--   RESULT_OF link     OUTCOME → the RECOMMENDATION it measures — exactly ONE per outcome (RPC + unique index).
+--   EVIDENCE_FOR       observation → OUTCOME — at least one measured observation (OUTCOME_NEEDS_MEASUREMENT).
+--   PRODUCED_LEARNING  OUTCOME → knowledge:<id> — ONLY when that row is a live BUSINESS_LEARNING whose sourceRef =
+--                      record:<this outcome> (the Owner approved the learning through the existing P2 path; the DB proves it).
+--   EXPERIMENT / TESTS stay RESERVED. Lifecycle: Sunny OPEN / WITHDRAWN / INVALIDATED / SUPERSEDED; the Owner ENDORSED / REJECTED.
+-- HOW: CREATE OR REPLACE of the four v1 functions (exact v1 text + the marked v1.1 lines), one CHECK swap, one index.
+--   No table is created, no row is written, no grant changes (the functions keep their owner / SECURITY DEFINER / grants).
+-- PREFLIGHT (read-only, BEFORE running): compare md5(prosrc) of the four live functions with this file's v1 text
+--   (SELECT proname, md5(prosrc) FROM pg_proc WHERE proname IN (...)) — any difference = STOP (the live version changed).
+-- TS AFTER APPLY (separate change): lib/partner/brain/vocab.ts (OUTCOME / RESULT_OF / PRODUCED_LEARNING out of RESERVED),
+--   observe-tool create_record OUTCOME, social-intel REVIEW reads stored outcomes, tests.
+-- ROLLBACK: 2026-10-17-brain-outcome-learning-CANDIDATE-rollback.sql (refuses while any OUTCOME / RESULT_OF / PRODUCED_LEARNING exists).
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+BEGIN;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM public.sunny_intel_records WHERE record_type IN ('OUTCOME','EXPERIMENT')) THEN RAISE EXCEPTION 'PREFLIGHT: reserved records already exist'; END IF;
+  IF EXISTS (SELECT 1 FROM public.sunny_brain_links WHERE role IN ('TESTS','RESULT_OF','PRODUCED_LEARNING')) THEN RAISE EXCEPTION 'PREFLIGHT: reserved links already exist'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sunny_links_v1_roles') THEN RAISE EXCEPTION 'PREFLIGHT: v1 roles CHECK missing — the live schema differs'; END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.sunny_intel_body_ok(p_type text, p_body jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog AS $$
+DECLARE allowed text[]; required text[]; r record;
+BEGIN
+  IF p_body IS NULL OR jsonb_typeof(p_body) <> 'object' OR octet_length(p_body::text) > 4096 THEN RETURN false; END IF;
+  CASE p_type
+    WHEN 'INSIGHT'        THEN allowed := ARRAY['statementHe','insightKind','reasoningHe','causalStatus','counterEvidenceHe','periodFrom','periodTo'];
+                               required := ARRAY['statementHe','insightKind','causalStatus'];
+    WHEN 'RECOMMENDATION' THEN allowed := ARRAY['recommendationHe','presentedHe','whyHe','expectedEffectHe','effort','urgency'];
+                               required := ARRAY['recommendationHe','presentedHe'];
+    WHEN 'OUTCOME'        THEN allowed := ARRAY['resultHe','verdict','measuredOn','baselineHe','expectedVsActualHe','nextHe','postAgeDays'];
+                               required := ARRAY['resultHe','verdict','measuredOn'];
+    ELSE RETURN false;   -- EXPERIMENT: still reserved (v1.1 enables OUTCOME only)
+  END CASE;
+  IF EXISTS (SELECT 1 FROM unnest(required) q WHERE NOT p_body ? q) THEN RETURN false; END IF;
+  FOR r IN SELECT key, value FROM jsonb_each(p_body) LOOP
+    IF NOT (r.key = ANY (allowed)) THEN RETURN false; END IF;
+    IF jsonb_typeof(r.value) = 'string' THEN
+      IF char_length(r.value #>> '{}') NOT BETWEEN 1 AND 600 THEN RETURN false; END IF;
+    ELSIF jsonb_typeof(r.value) = 'array' THEN
+      IF jsonb_array_length(r.value) > 12 OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.value) e
+           WHERE jsonb_typeof(e) <> 'string' OR char_length(e #>> '{}') NOT BETWEEN 1 AND 200) THEN RETURN false; END IF;
+    ELSIF jsonb_typeof(r.value) <> 'number' THEN RETURN false;
+    END IF;
+  END LOOP;
+  IF p_type = 'INSIGHT' AND (p_body->>'insightKind' NOT IN ('EXPLANATION','GAP','PATTERN','ANOMALY','RISK','OPPORTUNITY','COMPARISON','TREND')
+                             OR p_body->>'causalStatus' NOT IN ('CORRELATION_ONLY','PLAUSIBLE_CAUSE','TESTED')) THEN RETURN false; END IF;
+  IF p_type = 'RECOMMENDATION' AND p_body ? 'effort' AND p_body->>'effort' NOT IN ('LOW','MEDIUM','HIGH') THEN RETURN false; END IF;
+  IF p_type = 'RECOMMENDATION' AND p_body ? 'urgency' AND p_body->>'urgency' NOT IN ('NOW','SOON','LATER') THEN RETURN false; END IF;
+  IF p_type = 'OUTCOME' AND (p_body->>'verdict' NOT IN ('ABOVE_BASELINE','NEAR_BASELINE','BELOW_BASELINE','INCONCLUSIVE')
+                             OR p_body->>'measuredOn' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') THEN RETURN false; END IF;
+  RETURN true;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.sunny_intel_transition_ok(p_type text, p_from text, p_to text, p_actor text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
+  SELECT (p_type, coalesce(p_from, '∅'), p_to, p_actor) IN (
+    ('INSIGHT','∅','OPEN','SUNNY'),
+    ('INSIGHT','OPEN','WITHDRAWN','SUNNY'), ('INSIGHT','OPEN','INVALIDATED','SUNNY'), ('INSIGHT','OPEN','SUPERSEDED','SUNNY'),
+    ('INSIGHT','OPEN','ENDORSED','OWNER'), ('INSIGHT','OPEN','REJECTED','OWNER'), ('INSIGHT','OPEN','INVALIDATED','OWNER'),
+    ('INSIGHT','ENDORSED','REJECTED','OWNER'), ('INSIGHT','ENDORSED','INVALIDATED','OWNER'),
+    ('RECOMMENDATION','∅','OPEN','SUNNY'),
+    ('RECOMMENDATION','OPEN','STALE','SUNNY'), ('RECOMMENDATION','OPEN','ACTED_ON','SUNNY'), ('RECOMMENDATION','OPEN','WITHDRAWN','SUNNY'),
+    ('RECOMMENDATION','OPEN','INVALIDATED','SUNNY'), ('RECOMMENDATION','OPEN','SUPERSEDED','SUNNY'), ('RECOMMENDATION','ACCEPTED','ACTED_ON','SUNNY'),
+    ('RECOMMENDATION','OPEN','ACCEPTED','OWNER'), ('RECOMMENDATION','OPEN','REJECTED','OWNER'),
+    ('RECOMMENDATION','ACCEPTED','REJECTED','OWNER'), ('RECOMMENDATION','ACCEPTED','STALE','OWNER'),
+    ('OUTCOME','∅','OPEN','SUNNY'), ('OUTCOME','OPEN','WITHDRAWN','SUNNY'), ('OUTCOME','OPEN','INVALIDATED','SUNNY'), ('OUTCOME','OPEN','SUPERSEDED','SUNNY'),
+    ('OUTCOME','OPEN','ENDORSED','OWNER'), ('OUTCOME','OPEN','REJECTED','OWNER'), ('OUTCOME','ENDORSED','INVALIDATED','OWNER'))
+    -- v1.1 (2026-10-17 candidate): OUTCOME tuples added; EXPERIMENT stays reserved
+$$;
+
+CREATE OR REPLACE FUNCTION public.sunny_brain_insert_links(p_links jsonb, p_auth public.sunny_tracking_authorizations, p_request_key uuid, p_offset integer) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE
+  l jsonb; i integer := 0; v_role text; fr uuid; fo uuid; fref text; tr uuid; tres uuid; tref text; ft text; tt text; ok boolean;
+BEGIN
+  IF p_links IS NULL OR jsonb_typeof(p_links) <> 'array' THEN RETURN 0; END IF;
+  IF jsonb_array_length(p_links) + p_offset > 40 THEN RAISE EXCEPTION 'TOO_MANY_LINKS' USING ERRCODE = '22023'; END IF;
+  FOR l IN SELECT * FROM jsonb_array_elements(p_links) LOOP
+    v_role := l->>'role'; ft := NULL; tt := NULL;
+    fr := NULLIF(l->>'fromRecord', '')::uuid; fo := NULLIF(l->>'fromObs', '')::uuid; fref := NULLIF(l->>'fromRef', '');
+    tr := NULLIF(l->>'toRecord', '')::uuid; tres := NULLIF(l->>'toResource', '')::uuid; tref := NULLIF(l->>'toRef', '');
+    IF coalesce(tref, '') ~ '^(knowledge|inbox|context):' AND NOT (v_role = 'PRODUCED_LEARNING' AND tref ~ '^knowledge:') THEN RAISE EXCEPTION 'LINK_TO_OWNER_MEMORY_RESERVED: no link may end at Owner knowledge in v1' USING ERRCODE = '42501'; END IF;
+    IF fr IS NOT NULL THEN SELECT record_type INTO ft FROM public.sunny_intel_records WHERE id = fr;
+      IF ft IS NULL THEN RAISE EXCEPTION 'RECORD_NOT_FOUND: %', fr USING ERRCODE = '22023'; END IF;
+      IF NOT public.sunny_auth_covers_record(p_auth, fr) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT: record %', fr USING ERRCODE = '22023'; END IF;
+    END IF;
+    IF tr IS NOT NULL THEN SELECT record_type INTO tt FROM public.sunny_intel_records WHERE id = tr;
+      IF tt IS NULL THEN RAISE EXCEPTION 'RECORD_NOT_FOUND: %', tr USING ERRCODE = '22023'; END IF;
+      IF NOT public.sunny_auth_covers_record(p_auth, tr) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT: record %', tr USING ERRCODE = '22023'; END IF;
+    END IF;
+    IF fo IS NOT NULL THEN
+      IF NOT EXISTS (SELECT 1 FROM public.sunny_observations WHERE id = fo) THEN RAISE EXCEPTION 'OBSERVATION_NOT_FOUND: %', fo USING ERRCODE = '22023'; END IF;
+      IF NOT public.sunny_auth_covers_observation(p_auth, fo) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT: observation %', fo USING ERRCODE = '22023'; END IF;
+    END IF;
+    IF tres IS NOT NULL THEN
+      IF NOT EXISTS (SELECT 1 FROM public.sunny_resources WHERE id = tres) THEN RAISE EXCEPTION 'RESOURCE_NOT_FOUND: %', tres USING ERRCODE = '22023'; END IF;
+      IF NOT public.sunny_auth_covers_resource(p_auth, tres) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT: resource %', tres USING ERRCODE = '22023'; END IF;
+    END IF;
+    IF (fref IS NOT NULL AND NOT public.sunny_brain_ref_ok(fref)) OR (tref IS NOT NULL AND NOT public.sunny_brain_ref_ok(tref)) THEN RAISE EXCEPTION 'REF_NOT_FOUND' USING ERRCODE = '22023'; END IF;
+    IF fref IS NOT NULL AND fref ~ '^plan:' THEN RAISE EXCEPTION 'LINK_NOT_ALLOWED: a plan is never evidence' USING ERRCODE = '22023'; END IF;
+    ok := CASE v_role
+      WHEN 'EVIDENCE_FOR'      THEN tt IN ('INSIGHT','RECOMMENDATION','OUTCOME')
+      WHEN 'EVIDENCE_AGAINST'  THEN tt IN ('INSIGHT','RECOMMENDATION')
+      WHEN 'DERIVED_FROM'      THEN ft = 'INSIGHT' AND tt = 'INSIGHT'
+      WHEN 'COMPARES_TO'       THEN ft = 'INSIGHT' AND (tres IS NOT NULL OR (tref IS NOT NULL AND public.sunny_brain_entity_ok(tref) AND tref = ANY (p_auth.entity_keys)))
+      WHEN 'RECOMMENDS'        THEN ft = 'INSIGHT' AND tt = 'RECOMMENDATION'
+      WHEN 'IMPLEMENTED_BY'    THEN ft = 'RECOMMENDATION' AND tref ~ '^plan:'
+      WHEN 'RESULT_OF'         THEN ft = 'OUTCOME' AND tt = 'RECOMMENDATION'
+      -- DB-provable Owner approval: the target is a LIVE BUSINESS_LEARNING row (stored only through the Owner-approved P2 path)
+      -- whose sourceRef cites exactly this outcome record
+      WHEN 'PRODUCED_LEARNING' THEN ft = 'OUTCOME' AND tref ~ '^knowledge:' AND EXISTS (SELECT 1 FROM public.partner_owner_knowledge k
+                                       WHERE k.id = substr(tref, 11)::uuid AND k.kind = 'BUSINESS_LEARNING' AND k.operation = 'ASSERT'
+                                         AND k.value->>'sourceRef' = 'record:' || fr::text)
+      ELSE false END;
+    IF NOT coalesce(ok, false) THEN RAISE EXCEPTION 'LINK_NOT_ALLOWED: % (% → %)', v_role, coalesce(ft, CASE WHEN fo IS NOT NULL THEN 'OBSERVATION' ELSE 'REF' END), coalesce(tt, CASE WHEN tres IS NOT NULL THEN 'RESOURCE' ELSE 'REF' END) USING ERRCODE = '22023'; END IF;
+    INSERT INTO public.sunny_brain_links (role, from_record_id, from_observation_id, from_ref, to_record_id, to_resource_id, to_ref, note_he, approval_basis, authorization_id, request_key, item_index)
+      VALUES (v_role, fr, fo, fref, tr, tres, tref, NULLIF(btrim(l->>'noteHe'), ''), 'TRACKING_AUTHORIZATION', p_auth.id, p_request_key, p_offset + i);
+    i := i + 1;
+  END LOOP;
+  RETURN i;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.sunny_create_intel_record(
+  p_record_type text, p_entity_keys text[], p_resource_ids uuid[], p_topic text, p_area text, p_title_he text, p_body jsonb,
+  p_source_type text, p_confidence text, p_review_at date, p_supersedes_id uuid, p_supersede_reason text,
+  p_links jsonb, p_authorization_id uuid, p_request_key uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE
+  v_hash text; v_row public.sunny_intel_records; v_auth public.sunny_tracking_authorizations; v_old public.sunny_intel_records; v_old_status text;
+  v_id uuid; v_n integer; k text; r uuid; v_links jsonb; v_ref text;
+BEGIN
+  IF p_request_key IS NULL OR p_record_type IS NULL THEN RAISE EXCEPTION 'INVALID_REQUEST' USING ERRCODE = '22023'; END IF;
+  v_hash := encode(sha256(convert_to(jsonb_build_object('t', p_record_type, 'e', to_jsonb(p_entity_keys), 'r', to_jsonb(p_resource_ids), 'topic', p_topic,
+    'area', p_area, 'title', p_title_he, 'body', p_body, 'src', p_source_type, 'conf', p_confidence, 'reviewAt', p_review_at,
+    'sup', p_supersedes_id, 'supr', p_supersede_reason, 'links', p_links, 'auth', p_authorization_id)::text, 'UTF8')), 'hex');
+  SELECT * INTO v_row FROM public.sunny_intel_records WHERE request_key = p_request_key;
+  IF FOUND THEN
+    IF v_row.payload_hash <> v_hash THEN RAISE EXCEPTION 'REQUEST_KEY_REUSED' USING ERRCODE = '22023'; END IF;
+    RETURN jsonb_build_object('recordId', v_row.id, 'replayed', true);
+  END IF;
+  IF p_record_type NOT IN ('INSIGHT','RECOMMENDATION','OUTCOME') THEN RAISE EXCEPTION 'TYPE_RESERVED: %', p_record_type USING ERRCODE = '22023'; END IF;
+  v_auth := public.sunny_auth_active(p_authorization_id);
+  v_ref := 'authorization:' || v_auth.id::text;
+  IF p_record_type = 'INSIGHT' AND NOT v_auth.insights_allowed THEN RAISE EXCEPTION 'INSIGHTS_NOT_AUTHORIZED' USING ERRCODE = '22023'; END IF;
+  IF p_record_type = 'RECOMMENDATION' AND NOT v_auth.recommendations_allowed THEN RAISE EXCEPTION 'RECOMMENDATIONS_NOT_AUTHORIZED' USING ERRCODE = '22023'; END IF;
+  IF p_record_type = 'OUTCOME' AND NOT v_auth.insights_allowed THEN RAISE EXCEPTION 'OUTCOMES_NOT_AUTHORIZED' USING ERRCODE = '22023'; END IF;
+  IF p_record_type = 'OUTCOME' AND p_source_type IS DISTINCT FROM 'INFERRED' THEN RAISE EXCEPTION 'OUTCOME_IS_INFERENCE' USING ERRCODE = '22023'; END IF;
+  FOREACH k IN ARRAY coalesce(p_entity_keys, '{}') LOOP
+    IF NOT public.sunny_brain_entity_ok(k) THEN RAISE EXCEPTION 'ENTITY_NOT_FOUND: %', k USING ERRCODE = '22023'; END IF;
+  END LOOP;
+  FOREACH r IN ARRAY coalesce(p_resource_ids, '{}') LOOP
+    IF NOT EXISTS (SELECT 1 FROM public.sunny_resources WHERE id = r) THEN RAISE EXCEPTION 'RESOURCE_NOT_FOUND: %', r USING ERRCODE = '22023'; END IF;
+  END LOOP;
+  IF NOT public.sunny_auth_covers_subjects(v_auth, p_entity_keys, p_resource_ids) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT' USING ERRCODE = '22023'; END IF;
+  IF p_supersedes_id IS NOT NULL THEN
+    SELECT * INTO v_old FROM public.sunny_intel_records WHERE id = p_supersedes_id FOR UPDATE;
+    IF NOT FOUND OR v_old.record_type <> p_record_type THEN RAISE EXCEPTION 'SUPERSEDES_INVALID' USING ERRCODE = '22023'; END IF;
+    SELECT status INTO v_old_status FROM public.sunny_intel_record_status WHERE record_id = v_old.id;
+    IF NOT public.sunny_intel_transition_ok(p_record_type, v_old_status, 'SUPERSEDED', 'SUNNY') THEN RAISE EXCEPTION 'SUPERSEDES_NOT_ALLOWED: % (only an OPEN record; the Owner decides the rest)', v_old_status USING ERRCODE = '22023'; END IF;
+    IF NOT public.sunny_auth_covers_subjects(v_auth, v_old.entity_keys, v_old.resource_ids) THEN RAISE EXCEPTION 'OUTSIDE_AUTHORIZATION_SUBJECT: superseded record' USING ERRCODE = '22023'; END IF;
+  END IF;
+  BEGIN
+    INSERT INTO public.sunny_intel_records (record_type, entity_keys, resource_ids, topic, area, title_he, body, source_type, confidence, review_at,
+        supersedes_id, approval_basis, authorization_id, approval_ref, request_key, payload_hash)
+      VALUES (p_record_type, coalesce(p_entity_keys, '{}'), coalesce(p_resource_ids, '{}'), p_topic, p_area, btrim(p_title_he), p_body, p_source_type, p_confidence,
+        p_review_at, p_supersedes_id, 'TRACKING_AUTHORIZATION', v_auth.id, v_ref, p_request_key, v_hash)
+      RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN RAISE EXCEPTION 'CONCURRENT_SUPERSEDE' USING ERRCODE = '40001';
+  END;
+  INSERT INTO public.sunny_brain_events (record_id, from_status, to_status, actor, approval_basis, approval_ref, request_key)
+    VALUES (v_id, NULL, 'OPEN', 'SUNNY', 'TRACKING_AUTHORIZATION', v_ref, gen_random_uuid());
+  IF p_supersedes_id IS NOT NULL THEN
+    INSERT INTO public.sunny_brain_events (record_id, from_status, to_status, reason_he, actor, approval_basis, approval_ref, request_key)
+      VALUES (p_supersedes_id, v_old_status, 'SUPERSEDED', coalesce(NULLIF(btrim(p_supersede_reason), ''), 'הוחלפה ברשומה חדשה'), 'SUNNY', 'TRACKING_AUTHORIZATION', v_ref, gen_random_uuid());
+  END IF;
+  v_links := replace(coalesce(p_links, '[]'::jsonb)::text, '"$self"', to_jsonb(v_id::text)::text)::jsonb;
+  v_n := public.sunny_brain_insert_links(v_links, v_auth, p_request_key, 0);
+  IF p_record_type = 'INSIGHT' AND NOT EXISTS (SELECT 1 FROM public.sunny_brain_links WHERE to_record_id = v_id AND role = 'EVIDENCE_FOR') THEN
+    RAISE EXCEPTION 'INSIGHT_NEEDS_EVIDENCE' USING ERRCODE = '22023';
+  END IF;
+  IF p_record_type = 'RECOMMENDATION' AND NOT EXISTS (SELECT 1 FROM public.sunny_brain_links WHERE to_record_id = v_id AND role IN ('RECOMMENDS','EVIDENCE_FOR')) THEN
+    RAISE EXCEPTION 'RECOMMENDATION_NEEDS_GROUNDING' USING ERRCODE = '22023';
+  END IF;
+  IF p_record_type = 'OUTCOME' AND NOT EXISTS (SELECT 1 FROM public.sunny_brain_links WHERE to_record_id = v_id AND role = 'EVIDENCE_FOR' AND from_observation_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'OUTCOME_NEEDS_MEASUREMENT' USING ERRCODE = '22023';
+  END IF;
+  IF p_record_type = 'OUTCOME' AND (SELECT count(*) FROM public.sunny_brain_links WHERE from_record_id = v_id AND role = 'RESULT_OF') <> 1 THEN
+    RAISE EXCEPTION 'OUTCOME_NEEDS_ONE_RECOMMENDATION' USING ERRCODE = '22023';
+  END IF;
+  RETURN jsonb_build_object('recordId', v_id, 'links', v_n, 'replayed', false);
+END $$;
+
+ALTER TABLE public.sunny_brain_links DROP CONSTRAINT sunny_links_v1_roles;
+ALTER TABLE public.sunny_brain_links ADD CONSTRAINT sunny_links_v11_roles CHECK (role <> 'TESTS');   -- TESTS stays reserved
+CREATE UNIQUE INDEX sunny_links_one_result_of_uk ON public.sunny_brain_links (from_record_id) WHERE role = 'RESULT_OF';
+
+-- ── dry-run checks (inside the same transaction; everything below is rolled back) ──
+DO $$ BEGIN
+  IF NOT public.sunny_intel_body_ok('OUTCOME', '{"resultHe":"20K מול חציון 7K","verdict":"ABOVE_BASELINE","measuredOn":"2026-10-20"}') THEN RAISE EXCEPTION 'T1 valid OUTCOME body refused'; END IF;
+  IF public.sunny_intel_body_ok('OUTCOME', '{"resultHe":"x","verdict":"VIRAL","measuredOn":"2026-10-20"}') THEN RAISE EXCEPTION 'T2 unknown verdict accepted'; END IF;
+  IF public.sunny_intel_body_ok('OUTCOME', '{"resultHe":"x","verdict":"ABOVE_BASELINE"}') THEN RAISE EXCEPTION 'T3 missing measuredOn accepted'; END IF;
+  IF public.sunny_intel_body_ok('OUTCOME', '{"resultHe":"x","verdict":"ABOVE_BASELINE","measuredOn":"20.10"}') THEN RAISE EXCEPTION 'T4 bad date accepted'; END IF;
+  IF public.sunny_intel_body_ok('EXPERIMENT', '{"resultHe":"x"}') THEN RAISE EXCEPTION 'T5 EXPERIMENT not reserved'; END IF;
+  IF NOT public.sunny_intel_body_ok('INSIGHT', '{"statementHe":"x","insightKind":"PATTERN","causalStatus":"CORRELATION_ONLY"}') THEN RAISE EXCEPTION 'T6 INSIGHT body broken'; END IF;
+  IF NOT public.sunny_intel_body_ok('RECOMMENDATION', '{"recommendationHe":"x","presentedHe":"y"}') THEN RAISE EXCEPTION 'T7 RECOMMENDATION body broken'; END IF;
+  IF NOT public.sunny_intel_transition_ok('OUTCOME', NULL, 'OPEN', 'SUNNY') THEN RAISE EXCEPTION 'T8 OUTCOME create refused'; END IF;
+  IF public.sunny_intel_transition_ok('OUTCOME', 'OPEN', 'ENDORSED', 'SUNNY') THEN RAISE EXCEPTION 'T9 Sunny may not endorse'; END IF;
+  IF NOT public.sunny_intel_transition_ok('OUTCOME', 'OPEN', 'ENDORSED', 'OWNER') THEN RAISE EXCEPTION 'T10 Owner endorse refused'; END IF;
+  IF NOT public.sunny_intel_transition_ok('RECOMMENDATION', 'OPEN', 'ACTED_ON', 'SUNNY') THEN RAISE EXCEPTION 'T11 v1 tuple lost'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sunny_links_v11_roles' AND pg_get_constraintdef(oid) LIKE '%TESTS%') THEN RAISE EXCEPTION 'T12 roles CHECK'; END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sunny_links_v1_roles') THEN RAISE EXCEPTION 'T13 old CHECK still there'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'sunny_links_one_result_of_uk') THEN RAISE EXCEPTION 'T14 index'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'sunny_create_intel_record' AND prosecdef) THEN RAISE EXCEPTION 'T15 SECURITY DEFINER lost'; END IF;
+  IF position('OUTCOME_NEEDS_ONE_RECOMMENDATION' IN (SELECT prosrc FROM pg_proc WHERE proname = 'sunny_create_intel_record')) = 0 THEN RAISE EXCEPTION 'T16 RESULT_OF rule missing'; END IF;
+  IF position('PRODUCED_LEARNING' IN (SELECT prosrc FROM pg_proc WHERE proname = 'sunny_brain_insert_links')) = 0 THEN RAISE EXCEPTION 'T17 learning link rule missing'; END IF;
+  IF EXISTS (SELECT 1 FROM public.sunny_intel_records WHERE record_type = 'OUTCOME') THEN RAISE EXCEPTION 'T18 a row was written'; END IF;
+  RAISE NOTICE 'DRY RUN: 18 checks passed';
+END $$;
+
+ROLLBACK;

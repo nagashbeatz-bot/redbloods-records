@@ -15,6 +15,7 @@
  *  - bounded: at most ROW_CAP rows per section (paged); a capped section is reported as capped.
  */
 
+import { postHashOf } from "../label/post-hash";
 import type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OpsCalendarLink, OperationsRaw } from "./types";
 export type { Section, Maybe, OpsRedFilmsProduction, OpsBudgetItem, OpsBudgetPayment, OpsClipItem, OpsMeeting, OpsProjectAction, OpsBeat, OpsBeatAssignment, OpsCampaign, OpsContentItem, OpsPromotion, OpsBalanceCycle, OpsAlbumTrack, OpsEngineerWork, OpsMixVersion, OpsMixComment, OpsFinalFile, OpsDelivery, OpsEquipment, OpsProjectMeta, OpsCalendarLink, OperationsRaw };
 
@@ -63,7 +64,8 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "beats", "id, name, genre, musical_key, status, created_at"),
     readSection(client, "beat_artist_assignments", "beat_id, artist_slug"),
     readSection(client, "social_campaigns", "id, project_id, title, artist_name, release_date, status, promotion_budget, label_artist_id"),
-    readSection(client, "social_content_items", "id, title, campaign_id, label_artist_id, series_id, status, content_type, platform, due_date, publish_date"),
+    // posted_url is read ONLY to compute an exact post hash (never kept, never served) — Sunny Social Intelligence results
+    readSection(client, "social_content_items", "id, title, campaign_id, label_artist_id, series_id, status, content_type, platform, due_date, publish_date, posted_url"),
     readSection(client, "social_promotions", "id, name, campaign_id, channel, planned_amount, status, promo_date, linked_transaction_id"),
     readSection(client, "artist_balance_cycles", "artist_id, cycle_index, start_date, end_date, income, payments, expenses, ending_balance, closed_at"),
     readSection(client, "album_tracks", "id, project_id, track_number, title, status, mix_status, master_status"),
@@ -112,7 +114,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     campaigns: mapSection(camps, (r) => (s(r.id) ? { id: String(r.id), projectId: s(r.project_id), title: s(r.title) ?? "", artistName: s(r.artist_name), releaseDate: s(r.release_date), status: s(r.status), promotionBudget: n(r.promotion_budget), labelArtistId: s(r.label_artist_id) } : null)),
     socialSeries: mapSection(series, (r) => (s(r.id) ? { id: String(r.id), name: s(r.name) ?? "", owner_scope: (s(r.owner_scope) === "LABEL" ? "LABEL" : "ARTIST") as "ARTIST" | "LABEL", label_artist_id: s(r.label_artist_id), platforms: Array.isArray(r.platforms) ? (r.platforms as unknown[]).map(String) : [], status: (s(r.status) ?? "ACTIVE") as "ACTIVE" | "PAUSED" | "ENDED", notes: "", created_at: s(r.created_at) ?? "", updated_at: s(r.updated_at) ?? "" } : null)),
     socialTargets: mapSection(targets, (r) => (s(r.id) && s(r.valid_from) ? { id: String(r.id), scope: s(r.scope) as "OVERALL" | "BREAKDOWN" | "SERIES", label_artist_id: s(r.label_artist_id), series_id: s(r.series_id), platform: s(r.platform), content_type: s(r.content_type), action: (s(r.action) === "END" ? "END" : "SET") as "SET" | "END", per_week: n(r.per_week), valid_from: String(r.valid_from).slice(0, 10), valid_until: s(r.valid_until)?.slice(0, 10) ?? null, supersedes_id: s(r.supersedes_id), source: (s(r.source) === "OWNER_APPROVED_RECOMMENDATION" ? "OWNER_APPROVED_RECOMMENDATION" : "OWNER_STATEMENT") as "OWNER_STATEMENT" | "OWNER_APPROVED_RECOMMENDATION", recommendation_id: s(r.recommendation_id), note_he: null, created_at: s(r.created_at) ?? "" } : null)),
-    contentItems: mapSection(content, (r) => ({ id: s(r.id), title: s(r.title), campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), seriesId: s(r.series_id), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
+    contentItems: mapSection(content, (r) => ({ id: s(r.id), title: s(r.title), campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), seriesId: s(r.series_id), postedHash: postHashOf(s(r.posted_url)), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
     promotions: mapSection(promos, (r) => ({ id: s(r.id), name: s(r.name), campaignId: s(r.campaign_id), channel: s(r.channel), plannedAmount: n(r.planned_amount), status: s(r.status), promoDate: s(r.promo_date), hasTransaction: !!s(r.linked_transaction_id), linkedTransactionId: s(r.linked_transaction_id) })),
     balanceCycles: mapSection(cycles, (r) => (s(r.artist_id) ? { artistId: String(r.artist_id), cycleIndex: Number(r.cycle_index), startDate: s(r.start_date), endDate: s(r.end_date), income: n(r.income), payments: n(r.payments), expenses: n(r.expenses), endingBalance: n(r.ending_balance), closedAt: s(r.closed_at) } : null)),
     albumTracks: mapSection(tracks, (r) => ({ id: s(r.id), projectId: s(r.project_id), trackNumber: n(r.track_number), title: s(r.title) ?? "", status: s(r.status), mixStatus: s(r.mix_status), masterStatus: s(r.master_status) })),

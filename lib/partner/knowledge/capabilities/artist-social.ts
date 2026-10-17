@@ -8,6 +8,10 @@
  * status. Unreadable Brain / knowledge = UNKNOWN, never "no social".
  */
 import { artistSocialOf, type ArtistSocial, type SocialAccount } from "../../label/social";
+import { identityOf, opportunitiesOf, researchOf, resultsOf, reviewOf, BASIS_HE, RESULT_HEURISTICS, SOCIAL_PROFILE_TOPICS, type ArtistViewLite, type ResearchDigest } from "../../label/social-intel";
+import { postHashOf } from "../../label/post-hash";
+import { buildArtistView } from "../../label/view";
+import type { BrainSnapshot } from "../../brain/model";
 import type { KnowledgeCapability, KnowledgeItem, KnowledgeReadResult, KnowledgeSources } from "../types";
 import { item, ok, partner, record, result, sfact, state } from "./common";
 
@@ -63,19 +67,110 @@ const summaryOf = (v: ArtistSocial) => [
   sfact("UNASSIGNED_ACCOUNTS", "חשבונות במעקב שעוד לא שויכו לאף אחד (פער — לא מנחשים לפי שם)", v.unassignedAccounts, "FACT", "SUNNY_BRAIN"),
 ];
 
+// ── Sunny Social Intelligence (2026-10-17): strategy + weekly modes over the SAME sources (lib/partner/label/social-intel) ──
+const childrenOf = (brain: BrainSnapshot, ids: readonly string[]) => new Set([...ids, ...brain.resources.filter((r) => r.parentId && ids.includes(r.parentId)).map((r) => r.id)]);
+function intelOf(src: KnowledgeSources, v: ArtistSocial, brain: BrainSnapshot, today: string) {
+  const ownIds = childrenOf(brain, v.accounts.map((a) => a.resourceId));
+  const inspirationIds = childrenOf(brain, v.inspirations.map((a) => a.resourceId));
+  const sharedIds = childrenOf(brain, v.labelChannels.map((a) => a.resourceId));
+  const research = researchOf(brain, { artistKey: v.artistKey, todayIL: today, ownIds, inspirationIds, sharedIds }, src.now);
+  const identity = identityOf(ok(src.ownerKnowledge) ?? [], v.artistKey, today);
+  const artistId = v.artistKey.slice("label-artist:".length);
+  const view = ok(src.projectDetail) ? (buildArtistView(src, artistId) as unknown as ArtistViewLite | null) : null;
+  const opportunities = opportunitiesOf(view, today);
+  const o = ok(src.operations);
+  const rows = o?.contentItems?.rows ?? null;
+  const hashOfResource = new Map(brain.resources.filter((x) => x.resourceKind === "CONTENT" && x.canonicalUrl).map((x) => [x.id, postHashOf(x.canonicalUrl)!] as const).filter(([, h]) => !!h));
+  const mine = (rows ?? []).filter((x) => x.labelArtistId === artistId && x.id).map((x) => ({ id: String(x.id), title: x.title ?? "", status: x.status, platform: x.platform, publishDate: x.publishDate, postedHash: x.postedHash ?? null }));
+  const results = rows ? resultsOf(mine, brain, hashOfResource, today, src.now) : null;
+  const contentKeys = (rows ?? []).filter((x) => x.id).map((x) => `social-content:${x.id}`);
+  const recs = [...research.own, ...research.inspiration, ...research.acted];
+  const slim = (d: ResearchDigest) => ({ recordId: d.recordId, recordType: d.recordType, titleHe: d.titleHe, implementedBy: d.implementedBy }) as unknown as ResearchDigest;
+  const review = { historyRead: false, reviews: reviewOf(recs, results ?? [], null, new Set(contentKeys)), inputs: { recs: recs.map(slim), results: results ?? [], contentKeys },
+    noteHe: "המלצה ← התוכנית שביצעה אותה (קישור ב-Brain) ← הפריט שנוצר (היסטוריית הפעולות) ← התוצאה. תוצאה אחת = אין מסקנה." };
+  return { research, identity, opportunities, results, review, viewRead: !!view };
+}
+const digestItem = (d: ResearchDigest, entity: string) => item({
+  id: `${d.recordType.toLowerCase()}:${d.recordId}`, entity, label: record(d.titleHe), epistemic: "HYPOTHESIS", source: "SUNNY_BRAIN", freshness: "HISTORICAL",
+  relationQuality: d.basis === "ARTIST_NAMED" ? "ID" : "DERIVED",
+  fields: { ...d, titleHe: record(d.titleHe), claimHe: d.claimHe ? record(d.claimHe) : null, whyHe: d.whyHe ? record(d.whyHe) : null, counterHe: d.counterHe ? record(d.counterHe) : null, expectedHe: d.expectedHe ? record(d.expectedHe) : null, presentedHe: d.presentedHe ? record(d.presentedHe) : null,
+    note: partner(`${d.recordType === "INSIGHT" ? "תובנה" : "המלצה"} = השערה של סאני. ${d.basisHe}.${d.performanceOfArtist ? "" : " אסור לייחס את המספרים האלה לאמן."}${d.evidence.latestCheckedOn ? ` ראיות נבדקו ב-${d.evidence.latestCheckedOn}.` : ""}`) },
+});
+const OTHER_RESEARCH_LIMIT = 10;
+function strategyResult(src: KnowledgeSources, v: ArtistSocial, brain: BrainSnapshot, today: string) {
+  const x = intelOf(src, v, brain, today);
+  const other = x.research.other.slice(0, OTHER_RESEARCH_LIMIT);
+  return result([
+    ...x.research.own.map((d) => digestItem(d, v.artistKey)),
+    ...x.research.inspiration.map((d) => digestItem(d, v.artistKey)),
+    ...other.map((d) => digestItem(d, v.artistKey)),
+    ...x.research.acted.map((d) => digestItem(d, v.artistKey)),
+  ], {
+    summary: [
+      sfact("IDENTITY", "זהות ואסטרטגיה מאושרות (החלטה עסקית, תחום סושיאל)", x.identity, "OWNER_DECISION", "OWNER_KNOWLEDGE"),
+      sfact("RESEARCH", "מחקר לפי בסיס — ביצועי האמן / השראה / מחקר אחר (לא מחברים ביניהם)", { own: x.research.own.length, inspiration: x.research.inspiration.length, other: x.research.other.length, otherServed: other.length, acted: x.research.acted.length, basisHe: BASIS_HE }, "HYPOTHESIS", "SUNNY_BRAIN"),
+      sfact("INSPIRATIONS_LEARN", "מה לומדים מכל השראה (באישור הבוס)", v.inspirations.map((a) => ({ resourceId: a.resourceId, label: a.label, platform: a.platform, learnHe: a.learnHe, lastCheckedOn: a.lastCheckedOn })), "OWNER_DECISION", "OWNER_KNOWLEDGE"),
+      sfact("OPPORTUNITIES", `הזדמנויות תוכן מהפעילות האמיתית (${x.opportunities.horizonDays} יום קדימה)`, x.opportunities, x.opportunities.readable ? "DERIVED" : "UNKNOWN", "PROJECTS"),
+      sfact("RESULTS", "תוצאות התוכן שפורסם (התאמה מדויקת לפי קישור הפוסט בלבד)", x.results === null ? null : { rows: x.results, heuristics: RESULT_HEURISTICS }, x.results === null ? "UNKNOWN" : "DERIVED", "OPERATIONS"),
+      sfact("REVIEW", "בחינת המלצות מול מה שבוצע ומה שנמדד", x.review, "DERIVED", "SUNNY_BRAIN"),
+      sfact("CADENCE", "יעדים, סדרות ומעקב שבועי (ראשון–שבת) — פריטים ופרסומים בנפרד", cadenceFact(v), "FACT", "OPERATIONS"),
+    ],
+    coverage: [
+      partner("תובנה והמלצה הן השערות של סאני. מחקר על חשבון השראה הוא לא ביצועים של האמן. מחקר אחר הוא מאגר רעיונות, לא שייך לאמן."),
+      ...(x.identity.known.length ? [] : [partner("עוד אין זהות ואסטרטגיה מאושרות לאמן הזה — לשאול את הבוס, להציע ניסוח, ולשמור רק אחרי אישור.")]),
+      ...(x.viewRead ? [] : [partner("לא קראתי את פעילות האמן (סשנים / הופעות / צילומים) — ההזדמנויות לא ידועות, לא 'אין'.")]),
+      ...(x.research.other.length > other.length ? [partner(`הוגשו ${other.length} מתוך ${x.research.other.length} רשומות מחקר אחרות (החדשות). השאר — brain mode records.`)] : []),
+    ],
+  });
+}
+function weeklyResult(src: KnowledgeSources, views: ArtistSocial[], brain: BrainSnapshot, today: string) {
+  const since = new Date(Date.parse(`${today}T12:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
+  const items = views.map((v) => {
+    const x = intelOf(src, v, brain, today);
+    const w = v.cadence.readable ? v.cadence.weeks[0] : null;
+    const fresh = [...x.research.own, ...x.research.inspiration].filter((d) => d.createdOn >= since);
+    const recent = (x.results ?? []).filter((r) => r.publishDate && r.publishDate >= since);
+    const decisions = [
+      ...(x.identity.complete ? [] : [`זהות ואסטרטגיה: חסרים ${x.identity.missing.length} נושאים לאישור`]),
+      ...(v.cadence.readable && !v.cadence.targets.length ? ["אין יעד שבועי — להחליט אם לקבוע"] : []),
+      ...(x.review.reviews.filter((r) => r.verdict === "NOT_TRIED").length ? [`${x.review.reviews.filter((r) => r.verdict === "NOT_TRIED").length} המלצות פתוחות שעוד לא נוסו — לאשר / לדחות`] : []),
+      ...x.opportunities.attention.map((a) => a.titleHe),
+    ];
+    return item({
+      id: `week:${v.artistKey}`, entity: v.artistKey, label: record(v.artistName), epistemic: "DERIVED", source: "OPERATIONS", freshness: "LIVE",
+      fields: {
+        week: w ? { weekStart: w.weekStart, items: w.items, publications: w.publications, overall: w.overall?.progress ?? null, breakdown: w.breakdown.map((b) => b.progress), series: w.series.map((s) => ({ name: s.series.name, progress: s.progress })), signals: w.signals } : null,
+        results: recent, newResearch: fresh.map((d) => ({ recordId: d.recordId, recordType: d.recordType, titleHe: d.titleHe, basis: d.basis, createdOn: d.createdOn })),
+        opportunities: x.opportunities.readable ? x.opportunities.items.slice(0, 5) : null, opportunitiesTotal: x.opportunities.items.length,
+        identity: { known: x.identity.known.map((k) => k.topic), missing: x.identity.missing.length },
+        review: x.review, decisionsHe: decisions,
+        note: partner("תמונת מצב לפי בקשה בלבד. פריטים ≠ פרסומים; תוצאה אחת = אין מסקנה; מחקר השראה ≠ ביצועים של האמן."),
+      },
+    });
+  });
+  return result(items, { summary: [
+    sfact("WEEK", "השבוע (ראשון–שבת, שעון ישראל)", { from: views[0]?.cadence.weeks[0]?.weekStart ?? null, to: views[0]?.cadence.weeks[0]?.weekEnd ?? null, newSince: since }, "FACT", "OPERATIONS"),
+    sfact("PROFILE_TOPICS", "נושאי הזהות שסאני שואלת עליהם (שאלה אחת בכל פעם)", SOCIAL_PROFILE_TOPICS, "DERIVED", "OWNER_KNOWLEDGE"),
+  ], coverage: [partner("שלוש ההמלצות ברמת הלייבל הן החשיבה של סאני מעל העובדות האלה — עם הבסיס לכל אחת, ובלי לשמור או לבצע דבר בלי אישור.")] });
+}
+
 export const artistSocial: KnowledgeCapability = {
   id: "artist_social", domain: "LABEL", titleHe: "סושיאל לכל אמן — זהות, השראות, מעקב",
-  descriptionForModel: "Per label artist: approved accounts (OWNS_RESOURCE), shared label channels APART (never the artist's performance), inspirations, measurements with check date + change (old is never now), insights / recommendations (HYPOTHESIS), at most ONE recheck proposal (ask first) and unassignedAccounts (link only with approval). CONTENT = own items by phase. CADENCE = this week (Sun–Sat) + 4 back: items vs platform publications (never added), planned / overdue, Owner targets with history + source, series, signals, externalEvidence (browser checks, never counted). Explain from these facts; you MAY recommend targets / series / ideas (say they are hypotheses + the basis) — never invent numbers; a target or series is saved only via SET_SOCIAL_CADENCE_TARGET / CREATE_SOCIAL_SERIES after the Owner approves the preview.",
+  descriptionForModel: "Sunny as the label's social manager. artist = accounts, measurements (dated, old ≠ now), inspirations, content, CADENCE (Sun–Sat; items ≠ publications). BEFORE any social idea / plan / strategy call mode strategy: approved IDENTITY (missing topic → ask ONE question, propose wording, save only via partner_propose_knowledge BUSINESS_DECISION area SOCIAL about the artist after approval — never invent identity), research by basis (inspiration ≠ the artist's performance), OPPORTUNITIES (real activity, 14 days), RESULTS + REVIEW (one result = no conclusion). weekly = the label's week. Recommend concrete pieces with the why + basis (hypothesis); a target / series / content item is created only via its typed action after the Owner approves the preview.",
   examplesHe: ["מה מצב הסושיאל של אבי?", "מה החשבונות של שליו?", "ממי נגש לומד?", "מתי בדקנו את האינסטגרם של שליו?", "איזה חשבונות עוד לא שויכו?", "איך שליו עומד ביעד השבועי?", "מה מצב הסדרה Red Bars?"],
   modes: {
     artist: { descriptionForModel: "ONE label artist (params.entity = label-artist:<id>): accounts, inspirations, measurements, insights, content, weekly cadence (targets, series, 4 weeks back), label channels apart, unassigned accounts" },
     roster: { descriptionForModel: "Every roster artist side by side: accounts, last check, inspirations, open insights; plus the shared label channels and the unassigned accounts" },
+    strategy: { descriptionForModel: "THE thinking package for ONE artist (params.entity): IDENTITY (Owner-approved profile topics + missing ones with the question to ask), research digests by BASIS (ARTIST_NAMED / ARTIST_ACCOUNTS = his performance; INSPIRATION = research on his inspiration, never his performance; OTHER_RESEARCH = idea pool) with claim / why / counter-evidence / confidence / correlation-vs-cause / evidence dates, INSPIRATIONS_LEARN, OPPORTUNITIES (real sessions / shows / shoots / releases, 14 days, link quality), RESULTS (exact post match only), REVIEW (recommendation → plan → item → results), CADENCE" },
+    weekly: { descriptionForModel: "The label's social week (on request only), per artist: this week's items / publications / targets / signals, results published in the last 7 days, new research, the next opportunities, identity gaps, recommendation reviews and the decisions the Owner must make" },
   },
   defaultMode: "artist",
   params: { entity: { kind: "entityKey", types: ["label-artist"], descriptionForModel: "The label artist (mode artist)" } },
   entityScope: { types: ["label-artist"], param: "entity", mode: "artist", limit: 10 },
   paging: { defaultLimit: 20, maxLimit: 40 }, recordTextLimit: 300,
   access: { externalRead: true, ownerOnly: true, sensitivity: "STANDARD" }, needs: ["BRAIN", "OWNER_KNOWLEDGE", "STATE"], optionalNeeds: ["OPERATIONS"],
+  // the thinking modes read the artist's real activity too (the artist view's own sources); mode artist stays light
+  modeNeeds: { strategy: ["PROJECT_DETAIL", "LABEL_DETAIL", "CALENDAR"], weekly: ["PROJECT_DETAIL", "LABEL_DETAIL", "CALENDAR"] },
   read(src, q) {
     const bad = sourcesMissing(src);
     if (bad) return bad;
@@ -102,11 +197,13 @@ export const artistSocial: KnowledgeCapability = {
         sfact("UNASSIGNED_ACCOUNTS", "חשבונות במעקב שעוד לא שויכו (פער)", first ? first.unassignedAccounts : [], "FACT", "SUNNY_BRAIN"),
       ], ...partial });
     }
+    if (q.mode === "weekly") return weeklyResult(src, roster.map(viewOf), brain!, today);
     const key = q.params.entity;
     if (!key) return result([], { completeness: "UNKNOWN", missing: [{ fact: "entity", whyNeeded: "pass params.entity = label-artist:<id> (mode roster lists every artist)" }] });
     const a = roster.find((x) => `label-artist:${x.id}` === key);
     if (!a) return result([], { completeness: "UNKNOWN", missing: [{ fact: "label_artist", whyNeeded: `${key} is not on the current roster` }] });
     const v = viewOf(a);
+    if (q.mode === "strategy") return strategyResult(src, v, brain!, today);
     return result(artistItems(v), {
       summary: summaryOf(v), ...partial,
       coverage: [
