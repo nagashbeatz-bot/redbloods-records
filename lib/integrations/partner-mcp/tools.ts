@@ -294,7 +294,9 @@ const PROTECTED = ["schemaVersion", "knowledgeSchemaVersion", "tool", "query", "
   "capability", "mode", "params", "completeness", "coverage", "page", "error",
   // Claim contract (P0-1, 2026-10-05): an action result never loses what its verification proves — a trimmed result must
   // never read as a bare APPLIED_AS_EXPECTED (= "re-read and in place") when the proof was a RECEIPT / PARTIAL / unknown.
-  "planId", "planStatus", "refusal", "canonicalEffect", "verification", "verifyKind", "outcomeUnknown", "partial", "messageHe", "ownerMessageHe", "steps", "created"];
+  "planId", "planStatus", "refusal", "canonicalEffect", "verification", "verifyKind", "outcomeUnknown", "partial", "messageHe", "ownerMessageHe", "steps", "created",
+  // P_VICTOR_SALARY_PAID (2026-10-17): what a payment push actually did (from its delivery record) is never trimmed
+  "pushDelivery"];
 
 export function guardOutput(payload: Record<string, unknown>, maxChars: number): { payload: Record<string, unknown>; text: string; guarded: boolean } {
   let text = JSON.stringify(payload);

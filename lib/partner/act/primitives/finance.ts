@@ -65,7 +65,7 @@ function statusPushWarnings(c: Fields, a?: Readonly<Record<string, unknown>>): s
     const line = victorSalaryPushPreviewHe({ linkedSessionId: String(c.linkedSessionId ?? ""), type: String(c.type), before: String(c.paymentStatus ?? "") });
     return line ? [line] : [];
   }
-  if (c.owner === "DJ_FEE") return c.paymentStatus === "שולם" ? ["לא יישלח Push — שכר ה-DJ כבר מסומן 'שולם'"] : ["יישלח Push ל-CLEANTONE (\"התשלום הועבר\") אם הוא ה-DJ של ההופעה ויש לו מכשיר רשום; אחרי שנמסר תקבל אישור"];
+  if (c.owner === "DJ_FEE") return c.paymentStatus === "שולם" ? ["לא יישלח Push — שכר ה-DJ כבר מסומן 'שולם'"] : ["יישלח Push ל-CLEANTONE (\"התשלום הועבר\") אם הוא ה-DJ של ההופעה ויש לו מכשיר רשום. אחרי שהוא נמסר לו, גם אתה תקבל Push לטלפון: \"עדכון תשלום נשלח ל-CLEANTONE ✓\""];
   return [];
 }
 const statusesFor = (type: unknown) => (type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES);

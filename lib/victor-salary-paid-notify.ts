@@ -53,7 +53,7 @@ export async function notifyVictorSalaryPaid(input: { txId: string; before: stri
     const { sendPushToRoles } = await import("./push");
     const eventId = victorSalaryPaidClaimKey(el.workMonth);
 
-    const { outcome } = await deliverOnce(settingsClaimStore, eventId, VICTOR_SALARY_PAID_CLAIM_VERSION, Date.now(), async () =>
+    const { outcome, claim } = await deliverOnce(settingsClaimStore, eventId, VICTOR_SALARY_PAID_CLAIM_VERSION, Date.now(), async () =>
       classify(await sendPushToRoles(["victor"], { title: msg.title, body: msg.body, url: "/team/victor", tag: `victor-salary-${el.workMonth}`, eventId })),
     );
     if (outcome === "already_sent" || outcome === "in_progress") return { kind: "attempted", victor: outcome, ownerAck: "not_attempted" };
@@ -72,6 +72,8 @@ export async function notifyVictorSalaryPaid(input: { txId: string; before: stri
     } catch (e) {
       console.error("[victor-salary-paid-notify] owner ack push threw:", e instanceof Error ? e.message : e);
     }
+    // the Owner ack result joins the month's claim, so Sunny (and anyone) reads delivery from the record, never assumes it
+    if (claim) { try { await settingsClaimStore.cas(eventId, claim, { ...claim, ownerAck, ownerAckAt: new Date().toISOString() }); } catch { /* evidence only */ } }
     if (ownerAck === "failed") return { kind: "attempted", victor: "sent", ownerAck, warning: "ויקטור קיבל את ההתראה, אבל האישור אליך לא נשלח." };
     return { kind: "attempted", victor: "sent", ownerAck };
   } catch (e) {

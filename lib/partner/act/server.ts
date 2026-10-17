@@ -338,6 +338,7 @@ async function victorFamilyWriters(): Promise<VictorFamilyWriters> {
     async sendVictorVersionNotes(id, vk) { const r = await W.sendVictorVersionNotes(id, vk); return r.ok ? { ok: true } : { ok: false, reason: r.reason }; },
     async readVictorSettings() { const s = await VS.getVictorSettings(); return { monthlyGoal: s.monthlyGoal, monthlySalary: s.monthlySalary, salaryCurrency: s.salaryCurrency, salaryPayDay: s.salaryPayDay, stuckAfterDays: s.stuckAfterDays }; },
     updateVictorSettings: (p) => VS.updateVictorSettings(p),
+    async readSalaryPushDelivery(m) { return W.victorSalaryPushDelivery(m); },
     async readVictorSalaryMonth(m) { return { row: await W.victorSalaryRow(m), ...(await W.victorMonthStatements(m)) }; },
     async recordVictorSalaryMonth(p) { return (await W.recordVictorSalaryMonth(p)).kind; },
     async setVictorSalaryOverride(m, p) { if (p.amount !== undefined) await VS.setSalaryAmountOverride(m, p.amount); if (p.status !== undefined) await VS.setSalaryStatusOverride(m, p.status); },

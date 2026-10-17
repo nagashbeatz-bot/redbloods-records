@@ -78,7 +78,23 @@ export function victorSalaryPushPreviewHe(i: { linkedSessionId: string | null | 
   if (!isSalaryRealPaidTransition(i.before, "שולם")) return "לא יישלח Push — המשכורת כבר מסומנת 'שולם'";
   const el = victorSalaryEligibility({ linkedSessionId: i.linkedSessionId, type: i.type, status: "שולם", todayYmd: i.todayYmd ?? israelTodayYmd() });
   if (!el.ok) return `לא יישלח Push לויקטור — מועד התשלום עבר לפני יותר מ-${VICTOR_SALARY_PUSH_MAX_LATE_DAYS} יום (רישום בדיעבד)`;
-  return "יישלח Push לויקטור (\"המשכורת שולמה\", החודש בלבד, בלי סכום) — פעם אחת לחודש, רק אם יש לו מכשיר רשום; אחרי שנמסר תקבל אישור";
+  return "יישלח Push לויקטור (\"המשכורת שולמה\", החודש בלבד, בלי סכום) — פעם אחת לחודש, רק אם יש לו מכשיר רשום. אחרי שהוא נמסר לו, גם אתה תקבל Push לטלפון: \"ויקטור עודכן ✓\"";
+}
+
+/**
+ * What actually happened, from the month's delivery claim (the canonical evidence the notifier writes) — shown to Sunny
+ * after an execution so she reports delivery from the record, never from the preview. null claim = no send was attempted.
+ */
+export function victorSalaryDeliveryHe(claim: unknown): { state: "DELIVERED" | "DELIVERED_NO_OWNER_ACK" | "NOT_DELIVERED" | "IN_PROGRESS" | "NOT_ATTEMPTED"; he: string } {
+  const c = (claim && typeof claim === "object" ? claim : null) as { status?: string; result?: string; ownerAck?: string } | null;
+  if (!c) return { state: "NOT_ATTEMPTED", he: "לא נרשם ניסיון שליחה לויקטור (אין מעבר אמיתי ל'שולם', רישום בדיעבד מעל 45 יום, או לא בסביבת production) — לא נשלח Push לאף אחד" };
+  if (c.status === "processing") return { state: "IN_PROGRESS", he: "השליחה לויקטור עדיין בתהליך — עוד לא ידוע אם נמסרה" };
+  if (c.status === "sent") {
+    if (c.ownerAck === "sent") return { state: "DELIVERED", he: "ה-Push נמסר לויקטור, ואישור Push (\"ויקטור עודכן ✓\") נשלח לטלפון שלך" };
+    if (c.ownerAck === "failed") return { state: "DELIVERED_NO_OWNER_ACK", he: "ה-Push נמסר לויקטור, אבל אישור ה-Push לטלפון שלך לא נמסר" };
+    return { state: "DELIVERED", he: "ה-Push נמסר לויקטור (על האישור אליך אין רישום — כנראה נשלח קודם, לפני שהתחלנו לרשום אותו)" };
+  }
+  return { state: "NOT_DELIVERED", he: c.result === "no_subscription" ? "ה-Push לא נמסר — לויקטור אין מכשיר רשום להתראות. גם אליך לא נשלח אישור" : "ה-Push לויקטור לא נמסר (שגיאת שליחה). גם אליך לא נשלח אישור" };
 }
 
 /** The Owner's ack — sent ONLY after Victor's push was delivered. */

@@ -17,6 +17,8 @@ import { victorSalaryPushPreviewHe } from "@/lib/victor-salary-paid-notify-pure"
 export type VictorWorkView = { title: string; projectId: string | null; projectName: string; status: string; workState: string | null; sentDate: string | null; internalDeadline: string | null; briefText: string; hasTask: boolean; reviewKeys: string; vendorName: string };
 type Send = { ok: boolean; reason?: string };
 export interface VictorFamilyWriters {
+  /** P_VICTOR_SALARY_PAID: the month's delivery claim (settings victor_salary_paid_pushed_<YYYY-MM>) — evidence read after an execution. */
+  readSalaryPushDelivery?(workMonth: string): Promise<unknown | null>;
   victorFolderState(workId: string): Promise<{ hasFolder: boolean } | null>;
   setUpVictorFolder(workId: string): Promise<void>;
   victorWorkFiles(workId: string): Promise<Array<{ ref: string; name: string; uploadedBy: string | null }> | null>;

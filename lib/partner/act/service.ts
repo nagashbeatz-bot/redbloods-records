@@ -30,6 +30,7 @@
  *     own verify against the planned after-values → APPLIED_AS_EXPECTED or FAILED ("outcome unknown → not applied");
  *     it is NEVER re-executed.
  */
+import { salaryMonthOfLinkedId, victorSalaryDeliveryHe } from "@/lib/victor-salary-paid-notify-pure";
 import { STANDING_PHRASE, approvedByOf, mentionsStanding, standingEligible } from "./standing";
 import { COVERAGE_MAP } from "./coverage-map";
 import { randomBytes } from "node:crypto";
@@ -504,6 +505,17 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
     const id = key.slice(key.indexOf(":") + 1);
     try { return { entity: key, now: id === "new" || REF_TARGET_KEY_RE.test(key) ? null : await sp.read(d.writers, id), readFailed: false }; } catch { return { entity: key, now: null, readFailed: true }; }
   }));
+  // P_VICTOR_SALARY_PAID (2026-10-17): a step that made a salary month שולם reports what the push ACTUALLY did, from the
+  // month's delivery claim (the canonical evidence) — never from the preview. Unreadable = said so, never "sent".
+  const pushDelivery = (await Promise.all(plan.steps.map(async (s, i) => {
+    if (out.steps[i]?.status !== "APPLIED_AS_EXPECTED" || !d.writers.readSalaryPushDelivery) return null;
+    const now = fresh[i]?.now;
+    const month = s.actionId === "SET_TRANSACTION_STATUS" && s.args.paymentStatus === "שולם" && now?.owner === "VICTOR_SALARY" ? salaryMonthOfLinkedId(String(now.linkedSessionId ?? ""))
+      : s.actionId === "RECORD_VICTOR_SALARY_MONTH" && s.args.historicPaid === true ? String(s.args.workMonth ?? "") : null;
+    if (!month) return null;
+    try { const r = victorSalaryDeliveryHe(await d.writers.readSalaryPushDelivery(month)); return { index: s.index, push: "P_VICTOR_SALARY_PAID", month, state: r.state, he: r.he }; }
+    catch { return { index: s.index, push: "P_VICTOR_SALARY_PAID", month, state: "UNREADABLE", he: "לא הצלחתי לקרוא אם ה-Push נמסר — אל תניח שנמסר" }; }
+  }))).filter((x): x is NonNullable<typeof x> => x !== null);
   const s0 = plan.steps[0];
   const now: Fields | null = fresh[0].now;
   const next = nextStepFor(s0.actionId, now);
@@ -535,6 +547,7 @@ export async function executeAction(input: { planId: unknown; approvalToken: unk
     freshState: asState(fresh[0], 0),
     ...(plan.steps.length > 1 ? { freshStates: fresh.map((f, i) => asState(f, i)), partial } : {}),
     canonicalEffect, verification,
+    ...(pushDelivery.length ? { pushDelivery } : {}),
     nextStep: next ? { ...next, epistemic: "DERIVED" } : null,
     messageHe: ok ? (out.status === "NO_CHANGE" ? "בוס, לא היה מה לשנות — המצב כבר כזה" : appliedHe) : out.status === "STALE" ? "בוס, המצב השתנה מאז התצוגה, לא ביצעתי כלום. צריך תצוגה חדשה" : out.status === "PARTIALLY_APPLIED" ? `בוס, התהליך בוצע חלקית: שלבים ${partial?.applied.map((i) => i + 1).join(", ") || "—"} בוצעו, ${partial?.failed.map((i) => i + 1).join(", ") || "—"} נכשל, ${partial?.notRun.map((i) => i + 1).join(", ") || "—"} לא רצו. זה המצב החי עכשיו` : "בוס, הפעולה לא בוצעה — הנה מה שקרה",
   };

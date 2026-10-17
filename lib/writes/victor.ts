@@ -179,6 +179,13 @@ export async function victorSalaryRow(workMonth: string): Promise<{ id: string; 
   return data ? { id: String(data.id), status: String(data.payment_status ?? ""), amount: Number(data.amount) || 0, currency: String(data.currency ?? "") } : null;
 }
 
+/** P_VICTOR_SALARY_PAID: the month's push delivery claim (evidence: Victor delivered / failed, the Owner ack) — null = no send attempted. */
+export async function victorSalaryPushDelivery(workMonth: string): Promise<unknown | null> {
+  const { data, error } = await supabase.from("settings").select("value").eq("key", `victor_salary_paid_pushed_${workMonth}`).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.value as unknown) ?? null;
+}
+
 /** The Owner's statements about one salary month (settings): amount / status overrides + the legacy monthly mark.
  *  null = no statement recorded (the legacy getter's "צפוי" default is NOT treated as a statement). */
 export async function victorMonthStatements(workMonth: string): Promise<{ amountOverride: number | null; statusOverride: string | null; legacyMark: string | null }> {

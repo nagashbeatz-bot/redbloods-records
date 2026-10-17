@@ -129,6 +129,18 @@ const toOwner = () => PUSH.calls.filter((c) => c.role === "owner");
   ok("P5. SET_TRANSACTION_STATUS no longer promises 'no Push' unconditionally; its warnings name the push", !/"לא יישלח Push או הודעה"\],\s*\},\s*\{\s*\/\/ task 4/.test(finPrim) && /\.\.\.statusPushWarnings\(c, a\)/.test(finPrim));
   ok("P6. RECORD_VICTOR_SALARY_MONTH no longer says 'לא יישלח Push' unconditionally", !/לא מחוברים; לא יישלח Push"/.test(vicPrim) && /victorSalaryPushPreviewHe\(/.test(vicPrim));
 
+  ok("P7. the preview says the Owner gets a Push to his phone", /גם אתה תקבל Push לטלפון/.test(pv("לא שולם") ?? ""));
+  console.log("Delivery report (what Sunny says after the execution, from the claim)");
+  const dl = Pure.victorSalaryDeliveryHe;
+  ok("D1. no claim → NOT_ATTEMPTED (no push to anyone)", dl(null).state === "NOT_ATTEMPTED");
+  ok("D2. sent + ownerAck sent → DELIVERED, names your phone", dl({ status: "sent", ownerAck: "sent" }).state === "DELIVERED" && /לטלפון שלך/.test(dl({ status: "sent", ownerAck: "sent" }).he));
+  ok("D3. sent + ownerAck failed → DELIVERED_NO_OWNER_ACK", dl({ status: "sent", ownerAck: "failed" }).state === "DELIVERED_NO_OWNER_ACK");
+  ok("D4. failed no_subscription → NOT_DELIVERED, says no device", dl({ status: "failed", result: "no_subscription" }).state === "NOT_DELIVERED" && /אין מכשיר רשום/.test(dl({ status: "failed", result: "no_subscription" }).he));
+  ok("D5. processing → IN_PROGRESS", dl({ status: "processing" }).state === "IN_PROGRESS");
+  const svcSrc = read("lib/partner/act/service.ts");
+  ok("D6. the execution result carries pushDelivery read from the claim (readSalaryPushDelivery), unreadable never 'sent'", /pushDelivery/.test(svcSrc) && /readSalaryPushDelivery\(month\)/.test(svcSrc) && /UNREADABLE/.test(svcSrc));
+  ok("D7. the connector never trims pushDelivery", /"pushDelivery"\]/.test(read("lib/integrations/partner-mcp/tools.ts")));
+
   console.log("1. Finance edit → paid: one push to Victor + the Owner ack");
   reset();
   const r1 = salaryRow(FRESH, "לא שולם");
@@ -137,6 +149,8 @@ const toOwner = () => PUSH.calls.filter((c) => c.role === "owner");
   ok("1b. it opens /team/victor", toVictor()[0]?.payload.url === "/team/victor");
   ok("1c. the Owner got the ack after delivery", toOwner().length === 1 && /ויקטור קיבל עדכון/.test(toOwner()[0].payload.body));
   ok("1d. the month claim is sent", claim(FRESH)?.status === "sent", claim(FRESH));
+  ok("1e. the claim records the Owner ack (evidence for Sunny)", (claim(FRESH) as { ownerAck?: string } | undefined)?.ownerAck === "sent", claim(FRESH));
+  ok("1f. the delivery report from that claim: DELIVERED", Pure.victorSalaryDeliveryHe(claim(FRESH)).state === "DELIVERED");
 
   console.log("2. a re-save of the same paid row → no push");
   PUSH.calls = [];

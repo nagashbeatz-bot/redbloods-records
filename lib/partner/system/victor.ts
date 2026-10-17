@@ -231,8 +231,8 @@ export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/victor-salary-format.ts": "d751da8dbf76d8fbc264416137750d73d7b5da1ae3df1a36949dd9e98025b73b",
   "lib/victor-completed-notify.ts": "96b7c01e0180a2bb409e12991bc7cba8e55830ee9ce6c1a3f1b5b1361722cdfb",
   // 2026-10-17 review (P_VICTOR_SALARY_PAID): the salary-paid notifier + Victor's language through his ping
-  "lib/victor-salary-paid-notify.ts": "3897a34c46a2c725ddea3367213fb54244eab98ad5cc37d0c7484a87d4b3496c",
-  "lib/victor-salary-paid-notify-pure.ts": "d3d118bab3020d942248551da4f73ba2d674c586f55d5dc3202fabdcea71a808",
+  "lib/victor-salary-paid-notify.ts": "719b5c5178125df02aecc2a5ba5313afcda3889cf242c748a189e07ea7388680",
+  "lib/victor-salary-paid-notify-pure.ts": "b03c0a722c2604b92f7c9f48bc7cb9e6342ddc11dd57ba2f13f5699e2baa5513",
   "app/api/vendor/victor/ping/route.ts": "7bfeec396353865f689fd39919990392bd8082bb8562c861dc869610a9c5d258",
   "lib/victor-upload-notify.ts": "842ec33fc7ca22ebaa761d631c1c3647daa6c69180cadfb4eaf826effc0fbfca",
   "lib/victor-work-notify.ts": "7f5a56a97cbaf261ed40df759d16a154263fa0d8e67168d91b8d548e00d48306",
