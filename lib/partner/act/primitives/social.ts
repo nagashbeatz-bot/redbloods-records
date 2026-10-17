@@ -325,7 +325,7 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     // Stage 2 (2026-10-17): a content series — an artist's (one artist) or the label's. No delete (end it instead).
     actionId: "CREATE_SOCIAL_SERIES", kinds: ["social-series"],
-    meta: meta("פתיחת סדרת תוכן (של אמן או של הלייבל)", "Create a content series owned by a label artist or by the label (name / platforms / notes; status active)", [T("name", true), K("artist", false), E("owner", ["ARTIST", "LABEL"], true), T("platforms"), T("notes")], ["name", "ownerScope", "status"], "createSocialSeries (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "UPDATE_SOCIAL_SERIES (status ENDED)" }),
+    meta: meta("פתיחת סדרת תוכן (של אמן או של הלייבל)", "Create a content series owned by a label artist or by the label (name / platforms / notes; status active)", [T("name", true), K("artist", false), E("owner", ["ARTIST", "LABEL"], true), T("platforms"), T("notes")], ["name", "ownerScope", "platforms", "notes", "status"], "createSocialSeries (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "UPDATE_SOCIAL_SERIES (status ENDED)" }),
     createContext: async (d, a) => { const r = await resolveSeriesCreate(d, a); return "ok" in r ? {} : r.fields; },
     resolve: (d, a) => resolveSeriesCreate(d, a),
     read: readSeriesFields,
@@ -334,14 +334,16 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
       if (cur.nameTaken === true) return refuse("DUPLICATE", "כבר יש סדרה בשם הזה לאותו בעלים");
       if (a.platforms !== undefined && a.platforms !== "" && isRef(platformsOf(a.platforms))) return platformsOf(a.platforms) as PlanRefusal;
       if (a.notes !== undefined && a.notes !== "" && text(a.notes, 500) === null) return refuse("BAD_TEXT", "הערות עד 500 תווים");
-      return { ok: true, after: { name: n.trim(), ownerScope: String(cur.ownerScope), status: "ACTIVE" } };
+      // EVERY value the create writes is in the preview (2026-10-17 fix: platforms + the definition were written unseen)
+      const pl = a.platforms !== undefined && a.platforms !== "" ? (platformsOf(a.platforms) as string[]).join(",") : "";
+      return { ok: true, after: { name: n.trim(), ownerScope: String(cur.ownerScope), platforms: pl, notes: typeof a.notes === "string" ? a.notes.trim() : "", status: "ACTIVE" } };
     },
     async apply(d, _id, after, a) {
-      const pl = a.platforms !== undefined && a.platforms !== "" ? (platformsOf(a.platforms) as string[]) : [];
       const ak = after.ownerScope === "ARTIST" ? parseKey(a.artist, ["label-artist"]) : null;
-      return { createdId: await d.createSocialSeries({ name: after.name, owner_scope: after.ownerScope, label_artist_id: ak?.id ?? null, platforms: pl, notes: typeof a.notes === "string" ? a.notes.trim() : "" }) };
+      return { createdId: await d.createSocialSeries({ name: after.name, owner_scope: after.ownerScope, label_artist_id: ak?.id ?? null, platforms: String(after.platforms ?? "").split(",").filter(Boolean), notes: String(after.notes ?? "") }) };
     },
-    async verify(d, id, after) { const f = await readSeriesFields(d, id); return !!f && f.name === after.name && f.ownerScope === after.ownerScope && f.status === "ACTIVE"; },
+    // the fresh read must show EVERY planned value (name, owner, platforms, definition, status) — else the step is not verified
+    async verify(d, id, after) { const f = await readSeriesFields(d, id); return !!f && f.name === after.name && f.ownerScope === after.ownerScope && f.platforms === after.platforms && f.notes === after.notes && f.status === "ACTIVE"; },
     disclosuresHe: ["רק רשומת סדרה — לא נוצר תוכן, יעד, אירוע ביומן או Push", "סדרה של אמן מקבלת רק תוכן של אותו אמן; הבעלים לא משתנים אחרי שיש בה תוכן", "סדרה לא נמחקת מהממשק — מסיימים אותה"],
   },
   {

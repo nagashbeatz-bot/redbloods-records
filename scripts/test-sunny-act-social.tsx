@@ -11,6 +11,7 @@ import { runCases, mkDeps, fullFlow, U, OWNER, type FamilyCase } from "./fixture
 import { planAction } from "../lib/partner/act/service";
 import { PROMO_CHANNEL_VALUES, PROMO_STATUS_VALUES, PROMO_TYPE_VALUES, SOCIAL_PRIMITIVES } from "../lib/partner/act/primitives/social";
 import { ACTION_REGISTRY, HARDENED, NEEDS_HARDENING } from "../lib/partner/act/registry";
+import { CUSTOM_FRESH_READ, PARTIAL_VERIFIED } from "../lib/partner/act/verify-kind";
 import { ilYmd, addDays, targetProblem, TARGET_PROBLEM_HE, type CadenceTargetRow } from "../lib/social-cadence";
 
 let pass = 0, fail = 0;
@@ -138,6 +139,17 @@ const CASES: FamilyCase<W>[] = [
   { const h = mk(); const r = await fullFlow(mkDeps(h.writers).d, "SET_SOCIAL_CADENCE_TARGET", { scope: "SERIES", series: S70, perWeek: 1, recommendationId: U(99) }, "מאשר");
     ok("a target from an approved recommendation stores the source + the recommendation", r.e?.status === "APPLIED_AS_EXPECTED" && h.w.targets.some((t) => t.scope === "SERIES" && t.series_id === U(70) && t.label_artist_id === U(60) && t.source === "OWNER_APPROVED_RECOMMENDATION" && t.recommendation_id === U(99)), r.e?.status); }
   { const h = mk(); h.w.targets.push({ ...h.w.targets[0], id: U(82), per_week: 4, supersedes_id: U(80), valid_from: TODAY }); ok("ending an already replaced target is refused", (await q("END_SOCIAL_CADENCE_TARGET", { target: T80 }, h)).status === "TARGET_HAS_SUCCESSOR"); }
+  { const h = mk(); const args = { name: "Red Bars 2", owner: "ARTIST", artist: LA60, platforms: "instagram, tiktok", notes: "ורס פריסטייל של כ-40 שניות" };
+    const p = await q("CREATE_SOCIAL_SERIES", args, h);
+    const shown = JSON.stringify(p);
+    ok("the series preview shows EVERY value it will store (name, owner, platforms, definition, status)", p.status === "PREVIEW" && shown.includes("instagram,tiktok") && shown.includes("ורס פריסטייל של כ-40 שניות") && shown.includes("ACTIVE") && shown.includes("Red Bars 2"), p);
+    const r = await fullFlow(mkDeps(h.writers).d, "CREATE_SOCIAL_SERIES", args, "מאשר");
+    const fs_ = JSON.stringify((r.e as { freshState?: unknown } | undefined)?.freshState ?? null);
+    ok("after execution the read-back returns every stored field (platforms + definition) for Sunny to verify", r.e?.status === "APPLIED_AS_EXPECTED" && fs_.includes("instagram,tiktok") && fs_.includes("ורס פריסטייל של כ-40 שניות"), fs_); }
+  { const h = mk(); const base = h.writers.createSocialSeries; h.writers.createSocialSeries = async (b: Row) => base({ ...b, notes: "" });
+    const r = await fullFlow(mkDeps(h.writers).d, "CREATE_SOCIAL_SERIES", { name: "Red Bars 3", owner: "ARTIST", artist: LA60, platforms: "instagram", notes: "הגדרה" }, "מאשר");
+    ok("a create whose stored definition differs from the preview is NOT reported as done", r.e?.status !== "APPLIED_AS_EXPECTED", r.e?.status); }
+  ok("series create verification is a full fresh read (every planned value), not partial", !PARTIAL_VERIFIED.has("CREATE_SOCIAL_SERIES") && CUSTOM_FRESH_READ.has("CREATE_SOCIAL_SERIES"));
   ok("no target / series action has a delete, push, calendar or finance effect", ["CREATE_SOCIAL_SERIES", "UPDATE_SOCIAL_SERIES", "SET_SOCIAL_CADENCE_TARGET", "END_SOCIAL_CADENCE_TARGET", "ASSIGN_SOCIAL_CONTENT_SERIES"].every((id) => ACTION_REGISTRY.get(id)!.effects.length === 0));
   ok("the Hebrew problem texts exist for every guard code", ["TARGET_BACKDATED", "TARGET_OVERLAP", "BREAKDOWN_OVERLAP", "TARGET_HAS_SUCCESSOR", "SERIES_ARTIST_MISMATCH"].every((k) => !!TARGET_PROBLEM_HE[k as keyof typeof TARGET_PROBLEM_HE]));
   ok("the series / target routes use the shared writers and are Owner-only in the route (no DELETE)", /createSocialSeries\(/.test(read("app/api/social/series/route.ts")) && /updateSocialSeries\(/.test(read("app/api/social/series/[id]/route.ts")) && /setSocialCadenceTarget\(/.test(read("app/api/social/targets/route.ts")) && ["app/api/social/series/route.ts", "app/api/social/series/[id]/route.ts", "app/api/social/targets/route.ts"].every((f) => /requireOwner/.test(read(f)) && !/export async function DELETE/.test(read(f))));

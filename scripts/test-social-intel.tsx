@@ -185,6 +185,8 @@ const K: OwnerKnowledgeRecord[] = [
 
   section("7. Instructions, UI and guards");
   ok("7a. Sunny is told to read mode strategy before ANY social idea, never invent identity, judge only from measured results", /before ANY social idea, plan or strategy/.test(SERVER_INSTRUCTIONS) && /never one viral video/.test(SERVER_INSTRUCTIONS) && /one result = no conclusion/.test(SERVER_INSTRUCTIONS) && /IMPLEMENTED_BY plan:<id>/.test(SERVER_INSTRUCTIONS));
+  ok("7a2. no superlative without the whole comparison set ('מבין X שבדקתי')", /never say 'הכי מצליח' \/ 'החזק ביותר' \/ 'המוביל'/.test(SERVER_INSTRUCTIONS) && /מבין X הפרסומים שבדקתי/.test(SERVER_INSTRUCTIONS) && /never call a post the strongest/.test(read("lib/integrations/partner-mcp/observe-tool.ts")));
+  ok("7a3. 'בדקתי / אימתתי / נשמר כך' only with a tool result that shows the exact value — never inferred from what was sent", /only when a tool result in THIS conversation shows that exact value/.test(SERVER_INSTRUCTIONS) && /never infer a stored value from what you sent/.test(SERVER_INSTRUCTIONS));
   const core = SERVER_INSTRUCTIONS.slice(0, SERVER_INSTRUCTIONS.indexOf("You are talking to the Owner"));
   ok("7b. the instruction core stays ≤ 1,200 chars (the protocol lives after it)", core.length <= 1200, core.length);
   ok("7c. the observe tool asks for entityKeys of every fitting artist + counter-evidence", /entityKeys every label artist a record fits/.test(read("lib/integrations/partner-mcp/observe-tool.ts")));
