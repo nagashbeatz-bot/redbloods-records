@@ -47,10 +47,11 @@ function deps(secret: string): KnowledgeProposeDeps {
     isOwner: isRedbloodsOwner,
     async loadLive() {
       const ctx = createCompanyReadContext();
-      const [state, finance, records] = await Promise.all([ctx.state(), ctx.finance(), store.list()]);
+      // the Brain snapshot only resolves an account key (OWNS_RESOURCE / INSPIRATION_SOURCE); unreadable → those items are refused
+      const [state, finance, records, brain] = await Promise.all([ctx.state(), ctx.finance(), store.list(), ctx.brain()]);
       if (state.status !== "OK") return { ok: false, detail: "company state unavailable" };
       if (records.status !== "OK") return { ok: false, detail: records.status === "READ_FAILED" ? "knowledge unavailable" : "stored knowledge unreadable" };
-      const src: GatewaySources = { now: ctx.now, state, finance, identities: APP_IDENTITIES };
+      const src: GatewaySources = { now: ctx.now, state, finance, brain, identities: APP_IDENTITIES };
       return { ok: true, live: { src, records: records.records, facts: liveFacts(src, state.value.todayIL) } };
     },
     store,

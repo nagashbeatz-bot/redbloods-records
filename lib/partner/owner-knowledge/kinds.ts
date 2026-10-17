@@ -9,7 +9,7 @@
  * kind (compile-enforced). An Owner-reported payment stays OWNER_REPORTED; a Finance record only ever comes from a
  * Finance Action. A frequency ("most shows") never becomes a booking rule; a policy stays a CANDIDATE.
  */
-import { BUSINESS_AREAS, BUSINESS_AREA_HE, ALL_CLASSIFICATION_VALUES, CLASSIFICATION_REGISTRY, CLASSIFICATION_TYPES, CLASSIFICATION_VALUE_HE, CONFIDENCES, RELATION_HE, RELATION_TYPES, SOURCE_TYPES, SOURCE_TYPE_HE, TIME_STATUSES, TIME_STATUS_HE, classificationValueAllowed } from "./taxonomy";
+import { BUSINESS_AREAS, BUSINESS_AREA_HE, ALL_CLASSIFICATION_VALUES, CLASSIFICATION_REGISTRY, CLASSIFICATION_TYPES, CLASSIFICATION_VALUE_HE, CONFIDENCES, RELATION_HE, RELATION_TYPES, SOURCE_TYPES, SOURCE_TYPE_HE, TIME_STATUSES, TIME_STATUS_HE, classificationValueAllowed, isResourceRelation } from "./taxonomy";
 import { checkProvenanceAndTime, provenanceOf } from "./provenance";
 import { checkDecisionTiming, decisionTimingHe, DECISION_TIMINGS, DECISION_TIMING_HE } from "./decision-timing";
 
@@ -27,7 +27,9 @@ export type FieldSpec =
   | { type: "amount"; required: boolean }
   | { type: "entity"; subjectTypes: readonly KnowledgeSubjectType[]; required: boolean }
   /** A typed reference to a record that is not a knowledge subject (a proposal / a Victor work / a mix work) — exact key only. */
-  | { type: "ref"; refKinds: readonly KnowledgeRefKind[]; required: boolean };
+  | { type: "ref"; refKinds: readonly KnowledgeRefKind[]; required: boolean }
+  /** A tracked Sunny Brain ACCOUNT (`resource:<uuid>`, exact key only — never a name, never a content item / page). */
+  | { type: "resource"; required: boolean };
 /** Records a value may point at without being a subject (2026-10-05): the most specific identity of a follow-up / commitment. */
 export type KnowledgeRefKind = "proposal" | "victor-work" | "mix-work" | "transaction" | "rf-production";
 /** Who a referenced record belongs to (for the ownership check) — client / project / vendor keys, null = unknown. */
@@ -148,17 +150,33 @@ export const KNOWLEDGE_KINDS: readonly KnowledgeKind[] = [
   },
   {
     kind: "ENTITY_RELATIONSHIP", family: "IDENTITY_RELATIONSHIP", titleHe: "קשר בין ישויות", subjectTypes: RELATABLE,
-    descriptionForModel: "A typed relationship between two entities the Owner states: OWNER_OF, FOUNDER_OF, LABEL_ARTIST_OF (the label roster; the object is the company), WORKS_WITH (is NOT a label artist), PRODUCER_FOR, MANAGES, COLLABORATES_WITH — plus the legacy PARTICIPATES_IN_SHOWS / REPRESENTS (a frequency describes the past, never a booking rule). status ACTIVE / ENDED / HISTORICAL with validFrom / validUntil: an ended relationship is kept as history (assert the same relation again with status ENDED), never deleted.",
+    descriptionForModel: "A typed relationship between two entities the Owner states: OWNER_OF, FOUNDER_OF, LABEL_ARTIST_OF (the label roster; the object is the company), WORKS_WITH (is NOT a label artist), PRODUCER_FOR, MANAGES, COLLABORATES_WITH — plus the legacy PARTICIPATES_IN_SHOWS / REPRESENTS (a frequency describes the past, never a booking rule). status ACTIVE / ENDED / HISTORICAL with validFrom / validUntil: an ended relationship is kept as history (assert the same relation again with status ENDED), never deleted. ARTIST SOCIAL (2026-10-17): OWNS_RESOURCE = whose tracked account it is — subject a label artist (or Redbloods for a shared label channel), resource = the exact Brain account key resource:<uuid>, channelPurpose required (a shared label channel = LABEL_MAIN and only with subject Redbloods); INSPIRATION_SOURCE = an account a label artist learns from — subject a label artist, resource, learnHe? (what we learn from it). Both use resource, never object; one account has ONE current owner.",
     fields: {
       relation: { type: "enum", values: RELATION_TYPES, required: true, labelsHe: RELATION_HE },
-      object: { type: "entity", subjectTypes: RELATABLE, required: true },
+      object: { type: "entity", subjectTypes: RELATABLE, required: false },
+      resource: { type: "resource", required: false },
+      channelPurpose: { type: "enum", values: Object.keys(CLASSIFICATION_REGISTRY.CHANNEL_PURPOSE.values), required: false, labelsHe: CLASSIFICATION_REGISTRY.CHANNEL_PURPOSE.values },
+      learnHe: { type: "text", maxLength: 160, required: false },
       frequency: { type: "enum", values: Object.keys(FREQ_HE), required: false, labelsHe: FREQ_HE },
       ...TIME_FIELDS, ...PROVENANCE_FIELDS,
     },
-    epistemic: "OWNER_DECISION", slot: (v) => `rel:${s(v.relation)}:${s(v.object)}`, reviewAt: () => null, expiresAt: () => null,
-    readBackHe: (l, v) => `${l} ${RELATION_HE[s(v.relation) as keyof typeof RELATION_HE] ?? s(v.relation)}${v.frequency ? ` (${FREQ_HE[s(v.frequency)] ?? ""})` : ""} — ${s(v.objectLabel) || s(v.object)}${timeHe(v)}${provHe(v)}.`,
+    epistemic: "OWNER_DECISION", slot: (v) => `rel:${s(v.relation)}:${isResourceRelation(v.relation) ? s(v.resource) : s(v.object)}`, reviewAt: () => null, expiresAt: () => null,
+    readBackHe: (l, v) => isResourceRelation(v.relation)
+      ? `${s(v.resourceLabel) || s(v.resource)} — ${RELATION_HE[s(v.relation) as keyof typeof RELATION_HE]} ${l}${v.channelPurpose ? ` (${CLASSIFICATION_VALUE_HE[s(v.channelPurpose)] ?? s(v.channelPurpose)})` : ""}${v.learnHe ? ` — מה לומדים: ${s(v.learnHe)}` : ""}${timeHe(v)}${provHe(v)}.`
+      : `${l} ${RELATION_HE[s(v.relation) as keyof typeof RELATION_HE] ?? s(v.relation)}${v.frequency ? ` (${FREQ_HE[s(v.frequency)] ?? ""})` : ""} — ${s(v.objectLabel) || s(v.object)}${timeHe(v)}${provHe(v)}.`,
     check: (v) => {
       const e = checkProvenanceAndTime(v);
+      if (isResourceRelation(v.relation)) {
+        if (!v.resource) e.push(`resource: ${s(v.relation)} needs the exact tracked account key (resource:<uuid>, from the brain capability mode resources)`);
+        if (v.object) e.push(`object: ${s(v.relation)} points at an account (resource), never at an entity`);
+        if (v.frequency) e.push(`frequency: not used with ${s(v.relation)}`);
+        if (v.relation === "OWNS_RESOURCE" && !v.channelPurpose) e.push("channelPurpose: required for OWNS_RESOURCE (what the channel is for — e.g. ARTIST_PERSONAL / PRODUCER_BRAND / LABEL_MAIN)");
+        if (v.relation === "OWNS_RESOURCE" && v.learnHe) e.push("learnHe: only for INSPIRATION_SOURCE");
+        if (v.relation === "INSPIRATION_SOURCE" && v.channelPurpose) e.push("channelPurpose: only for OWNS_RESOURCE");
+      } else {
+        if (!v.object) e.push("object: required");
+        if (v.resource || v.channelPurpose || v.learnHe) e.push("resource / channelPurpose / learnHe: only for OWNS_RESOURCE / INSPIRATION_SOURCE");
+      }
       if (v.relation === "LABEL_ARTIST_OF" && v.object !== COMPANY_KEY) e.push("object: LABEL_ARTIST_OF points at the company (Redbloods) — someone who only works with us is WORKS_WITH");
       return e;
     },

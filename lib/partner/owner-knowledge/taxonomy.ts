@@ -17,17 +17,25 @@ export const BUSINESS_AREA_HE: Record<BusinessArea, string> = {
 };
 
 export const LEGACY_RELATION_TYPES = ["PARTICIPATES_IN_SHOWS", "WORKS_WITH", "REPRESENTS", "COLLABORATES_WITH"] as const;
-export const RELATION_TYPES = [...LEGACY_RELATION_TYPES, "OWNER_OF", "FOUNDER_OF", "LABEL_ARTIST_OF", "PRODUCER_FOR", "MANAGES"] as const;
+export const RELATION_TYPES = [...LEGACY_RELATION_TYPES, "OWNER_OF", "FOUNDER_OF", "LABEL_ARTIST_OF", "PRODUCER_FOR", "MANAGES", "OWNS_RESOURCE", "INSPIRATION_SOURCE"] as const;
 export type RelationType = (typeof RELATION_TYPES)[number];
 export const RELATION_HE: Record<RelationType, string> = {
   PARTICIPATES_IN_SHOWS: "משתתף בהופעות", WORKS_WITH: "עובד עם", REPRESENTS: "מייצג את", COLLABORATES_WITH: "משתף פעולה עם",
   OWNER_OF: "הבעלים של", FOUNDER_OF: "המייסד של", LABEL_ARTIST_OF: "אמן/ית לייבל של", PRODUCER_FOR: "מפיק/ה עבור", MANAGES: "מנהל/ת את",
+  OWNS_RESOURCE: "החשבון של", INSPIRATION_SOURCE: "חשבון השראה של",
 };
+/**
+ * Artist social, stage 0 (Owner approval 2026-10-17): relations whose object is a tracked Sunny Brain ACCOUNT
+ * (`resource:<uuid>`), never an entity. OWNS_RESOURCE = whose account it is (subject = a label artist, or the company for a
+ * shared label channel, + channelPurpose); INSPIRATION_SOURCE = an account a label artist learns from (+ learnHe).
+ */
+export const RESOURCE_RELATIONS = ["OWNS_RESOURCE", "INSPIRATION_SOURCE"] as const satisfies readonly RelationType[];
+export const isResourceRelation = (r: unknown): r is (typeof RESOURCE_RELATIONS)[number] => (RESOURCE_RELATIONS as readonly string[]).includes(String(r));
 
 export const CLASSIFICATION_REGISTRY = {
   RELEASE_TYPE: { titleHe: "סוג ריליס", values: { SINGLE: "סינגל", EP: "EP", ALBUM: "אלבום", NEW_VERSION: "גרסה חדשה", REMIX: "רמיקס", FEATURE: "פיצ׳ר", COMPILATION: "אוסף" } },
   PROJECT_TYPE: { titleHe: "סוג פרויקט", values: { SONG: "שיר", CLIP: "קליפ", ALBUM: "אלבום", MIX_MASTER: "מיקס / מאסטר", PRODUCTION: "הפקה", CLIENT_SERVICE: "שירות ללקוח", LABEL_RELEASE_WORK: "עבודת ריליס לייבל" } },
-  CHANNEL_PURPOSE: { titleHe: "ייעוד ערוץ", values: { LABEL_MAIN: "ערוץ הלייבל הראשי", ARTIST_PERSONAL: "ערוץ אישי של אמן", BEHIND_THE_SCENES: "מאחורי הקלעים", CLIPS_ARCHIVE: "ארכיון קליפים", CONTENT_SERIES: "סדרות תוכן", SHOWS_AND_LIVE: "הופעות ולייב" } },
+  CHANNEL_PURPOSE: { titleHe: "ייעוד ערוץ", values: { LABEL_MAIN: "ערוץ הלייבל הראשי", ARTIST_PERSONAL: "ערוץ אישי של אמן", PRODUCER_BRAND: "ערוץ המפיק / המותג של האמן", BEHIND_THE_SCENES: "מאחורי הקלעים", CLIPS_ARCHIVE: "ארכיון קליפים", CONTENT_SERIES: "סדרות תוכן", SHOWS_AND_LIVE: "הופעות ולייב" } },
   CONTENT_SERIES: { titleHe: "סדרת תוכן", values: { RED_BARS: "Red Bars" } },
   CATALOG_POSITION: { titleHe: "מיקום בקטלוג", values: { FLAGSHIP: "דגל", CORE: "ליבה", SUPPORTING: "תומך", ARCHIVE: "ארכיון" } },
 } as const satisfies Record<string, { titleHe: string; values: Record<string, string> }>;

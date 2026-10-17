@@ -16,6 +16,7 @@ import { saveFileAs } from "@/lib/download-file";
 import ProjectCover from "@/components/ui/ProjectCover";
 import type { ProjectCoverConfig } from "@/lib/project-cover";
 import { usePortalPresence } from "@/components/team/usePortalPresence";
+import ArtistSocialPanel from "@/components/label/ArtistSocialPanel";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -175,8 +176,11 @@ const LIBRARY: LibTrack[] = [
 // Shorter labels for the compact mobile KPI strip.
 const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "עם אודיו": "אודיו" };
 
-const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים", "קבצי הופעות ויח״צ"] as const;
+const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים", "קבצי הופעות ויח״צ", "סושיאל"] as const;
 type Tab = (typeof TABS)[number];
+// "סושיאל" (artist social, stage 0 — 2026-10-17) is OWNER-ONLY: never part of an artist's own tab list (its data route is
+// requireOwner too, so hiding the tab is not the only guard).
+const PORTAL_TABS: readonly Tab[] = TABS.filter((t) => t !== "סושיאל");
 
 const DEFAULT_TAB: Tab = "בית";
 // Stable ASCII slugs for the `?tab=` URL param (the tab labels themselves are Hebrew).
@@ -188,6 +192,7 @@ const TAB_SLUGS: Record<Tab, string> = {
   "ביטים פנויים": "beats",
   "לו״ז ועדכונים": "schedule",
   "קבצי הופעות ויח״צ": "files",
+  "סושיאל": "social",
 };
 const SLUG_TO_TAB: Record<string, Tab> = Object.fromEntries(
   (Object.entries(TAB_SLUGS) as [Tab, string][]).map(([t, slug]) => [slug, t]),
@@ -594,12 +599,14 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // (isShalev / isAvi / isOwner) stays role-based, so the owner keeps owner
   // rights while previewing.
   const isAviPortal = isAvi || artistName === AVI_PORTAL_NAME;
-  const visibleTabs: readonly Tab[] =
+  const baseTabs: readonly Tab[] =
     // Owner previewing Avi also sees "מאזן" (his cycle, Owner decision Q9 2026-09-28); Avi's own session never does.
     isAviPortal ? (isAvi ? (["בית", "ההופעות שלי", "המוזיקה שלי", "ביטים פנויים"] as const) : (["בית", "ההופעות שלי", "המוזיקה שלי", "מאזן", "ביטים פנויים"] as const))
     : isCleantonePortal ? (["בית", "ההופעות שלי"] as const)
     : isNagashPortal ? (["בית", "המוזיקה שלי"] as const)
-    : TABS;
+    : PORTAL_TABS;
+  // The Owner (never the artist) also gets the artist's social tab — every roster portal, never the DJ (team).
+  const visibleTabs: readonly Tab[] = isOwner && !!artistId && !isCleantonePortal ? [...baseTabs, "סושיאל"] : baseTabs;
 
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
@@ -1050,6 +1057,8 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           <PortalHero title="ביטים פנויים" badge="♫" subtitle={isOwner ? "ניהול ביטים זמינים לעבודה" : "ביטים זמינים להאזנה"} />
         ) : tab === "קבצי הופעות ויח״צ" ? (
           <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
+        ) : tab === "סושיאל" ? (
+          <PortalHero title="סושיאל" subtitle="החשבונות, ההשראות והמעקב של האמן — כל נתון עם התאריך שלו" />
         ) : (
           <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
         )}
@@ -1071,6 +1080,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
                 cycleState={cycleState} cycleLoadState={cycleLoadState} onReloadCycles={reloadCycles} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={!isOwner} artistSlug={slugForPortalArtistName(artistName) ?? undefined} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
+            : tab === "סושיאל" && isOwner && artistId ? <ArtistSocialPanel artistId={artistId} artistName={artistName} />
             : <ComingSoon tab={tab} />}
         </div>
       </div>

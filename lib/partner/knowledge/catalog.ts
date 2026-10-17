@@ -25,6 +25,7 @@ import { calendarCap } from "./capabilities/calendar";
 import { operatingModel } from "./capabilities/operating";
 import { clientPortfolioCap, clientView } from "./capabilities/clients-deep";
 import { artistPortfolioCap, artistView } from "./capabilities/label-deep";
+import { artistSocial } from "./capabilities/artist-social";
 import { showPortfolioCap, showView } from "./capabilities/shows-deep";
 import { victorPortfolio, victorView } from "./capabilities/victor-deep";
 import { mixPortfolio, mixView } from "./capabilities/mix-deep";
@@ -65,7 +66,7 @@ export const PARTNER_KNOWLEDGE_CAPABILITIES: readonly KnowledgeCapability[] = [
   calendarCap,
   operatingModel,
   clientView, clientPortfolioCap,
-  artistView, artistPortfolioCap,
+  artistView, artistPortfolioCap, artistSocial,
   showView, showPortfolioCap,
   victorView, victorPortfolio,
   mixView, mixPortfolio,

@@ -21,6 +21,7 @@ import { canonicalStableStringify, sha256Hex } from "../actions/canonical";
 import { resolvePartnerEntityCore } from "../gateway/resolve";
 import { parseEntityKey } from "../gateway/keys";
 import type { GatewaySources } from "../gateway/core";
+import { isResourceRelation } from "./taxonomy";
 import { COMPANY_KEY, knowledgeKind, type FieldSpec, type KnowledgeConflict, type KnowledgeKind, type KnowledgeLiveFacts, type KnowledgeRefKind, type KnowledgeRefOwner, type KnowledgeSubjectType, type KnowledgeValue } from "./kinds";
 import { activeKnowledge, assertedTerminal, terminalOfSlot, type OwnerKnowledgeDraft, type OwnerKnowledgeRecord, type OwnerKnowledgeStore } from "./store";
 import { isAuthoritative, withProvenanceDefaults } from "./provenance";
@@ -188,6 +189,7 @@ function validField(name: string, spec: FieldSpec, raw: unknown, src: GatewaySou
   if (spec.type === "ymd") { const t = String(raw); const d = new Date(`${t}T12:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t) errors.push(`${name}: YYYY-MM-DD`); else value[name] = t; return; }
   if (spec.type === "amount") { const n = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, "")); if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) errors.push(`${name}: a positive amount`); else value[name] = Math.round(n * 100) / 100; return; }
   if (spec.type === "ref") { const r = resolveRef(src, raw, spec.refKinds, name); if (!r.ok) errors.push(r.error); else { value[name] = r.key; value[`${name}Label`] = r.label; } return; }
+  if (spec.type === "resource") { const r = resolveResource(src, raw, name); if (!r.ok) errors.push(r.error); else { value[name] = r.key; value[`${name}Label`] = r.label; } return; }
   const r = resolveEntity(src, raw, spec.subjectTypes, name, known);
   if (!r.ok) { if ("clarify" in r) clarify.v = r; else errors.push(r.error); return; }
   value[name] = r.key; value[`${name}Label`] = r.label;
@@ -222,6 +224,42 @@ function resolveRef(src: GatewaySources, raw: unknown, kinds: readonly Knowledge
   if (!m || !kinds.includes(m[1] as KnowledgeRefKind)) return { ok: false, error: `${what}: an exact key (${kinds.map((k) => `${k}:<id>`).join(" / ")}) — a name is not enough here` };
   const r = refRecordOf(src, key);
   return r ? { ok: true, key, label: r.label } : { ok: false, error: `${what}: ${key} does not exist (or is no longer active)` };
+}
+
+const RESOURCE_KEY_RE = /^resource:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+/**
+ * A tracked Sunny Brain ACCOUNT, by its exact key (artist social, 2026-10-17). Only an active ACCOUNT resource — a content
+ * item / page is never "someone's account" — read from the Brain snapshot already loaded for this preview. Unreadable
+ * Brain → refused (never guessed).
+ */
+export function resolveResource(src: GatewaySources, raw: unknown, what: string): { ok: true; key: string; label: string } | { ok: false; error: string } {
+  const key = typeof raw === "string" ? raw.trim() : typeof (raw as { key?: unknown } | null)?.key === "string" ? String((raw as { key: string }).key).trim() : "";
+  const m = RESOURCE_KEY_RE.exec(key);
+  if (!m) return { ok: false, error: `${what}: the exact tracked account key resource:<uuid> (brain capability, mode resources) — a name or handle is not enough` };
+  const b = src.brain?.status === "OK" ? src.brain.value : null;
+  if (!b) return { ok: false, error: `${what}: Sunny's Brain could not be read — no account can be linked right now` };
+  const r = b.resources.find((x) => x.id === m[1]);
+  if (!r) return { ok: false, error: `${what}: ${key} is not a tracked resource` };
+  if (r.resourceKind !== "ACCOUNT") return { ok: false, error: `${what}: ${key} is a ${r.resourceKind.toLowerCase()} item, not an account — only an account belongs to someone` };
+  if (b.events.some((e) => e.resourceId === r.id)) return { ok: false, error: `${what}: ${key} is no longer an active resource` };
+  return { ok: true, key, label: `${r.platform} ${r.displayName ?? r.firstHandle ?? r.identityKey}`.trim() };
+}
+
+/** Subjects a resource relation may have: whose account (a label artist, or the company for a shared label channel) / who learns. */
+function resourceRelationProblems(kindId: string, subjectKey: string, value: KnowledgeValue, records: readonly OwnerKnowledgeRecord[], todayIL: string): { errors: string[]; conflicts: KnowledgeConflict[] } {
+  const errors: string[] = [], conflicts: KnowledgeConflict[] = [];
+  if (kindId !== "ENTITY_RELATIONSHIP" || !isResourceRelation(value.relation)) return { errors, conflicts };
+  const isArtist = subjectKey.startsWith("label-artist:"), isCompany = subjectKey === COMPANY_KEY;
+  if (value.relation === "OWNS_RESOURCE") {
+    if (!isArtist && !isCompany) errors.push("subject: an account belongs to a label artist, or to Redbloods for a shared label channel");
+    if (value.channelPurpose === "LABEL_MAIN" && !isCompany) errors.push("channelPurpose: LABEL_MAIN is a shared label channel — its owner is Redbloods, never one artist (it never counts as an artist's own performance)");
+    // ONE current owner per account: a second owner is refused until the current one is ended (never a silent move)
+    if ((value.status ?? "ACTIVE") === "ACTIVE") {
+      const other = activeKnowledge(records, todayIL).find((k) => k.kind === "ENTITY_RELATIONSHIP" && k.value.relation === "OWNS_RESOURCE" && k.value.resource === value.resource && k.subjectKey !== subjectKey);
+      if (other) conflicts.push({ code: "RESOURCE_ALREADY_OWNED", severity: "BLOCKING", messageHe: `החשבון הזה כבר משויך: ${other.meaningHe} — כדי להעביר אותו צריך קודם לסיים את השיוך הקיים (status ENDED), באישורך.` });
+    }
+  } else if (!isArtist) errors.push("subject: an inspiration account is listed for a label artist");
+  return { errors, conflicts };
 }
 
 /**
@@ -286,9 +324,11 @@ export function normalizeItems(inputs: unknown, live: KnowledgeLive): NormalizeO
     if (op === "ASSERT" && (kind.provenance || kind.timeAware)) Object.assign(value, withProvenanceDefaults(value, new Set(Object.keys(kind.fields))));
     if (op === "ASSERT" && kind.check) { const ce = kind.check(value); if (ce.length) { for (const m of ce) errors.push(`items[${i}].fields: ${m}`); continue; } }
     if (!isDeclare && typeof value.object === "string" && value.object === subj.key) { errors.push(`items[${i}].fields.object: an entity cannot be related to itself`); continue; }
+    const rr = op === "ASSERT" ? resourceRelationProblems(kind.kind, subj.key, value, live.records, live.facts.todayIL) : { errors: [], conflicts: [] };
+    if (rr.errors.length) { for (const m of rr.errors) errors.push(`items[${i}].${m}`); continue; }
     const slotKey = `${kind.kind}|${subj.key}|${kind.slot(value)}`.slice(0, 300);
     const terminal = terminalOfSlot(live.records, slotKey);
-    const conflicts = op === "ASSERT" ? kind.conflicts(subj.key, value, live.facts) : [];
+    const conflicts = op === "ASSERT" ? [...kind.conflicts(subj.key, value, live.facts), ...rr.conflicts] : [];
     // 2026-10-05: a corrected amount / date opens a new slot — an ACTIVE report on the same subject + direction is named, and
     // the Owner says whether this one replaces it (withdraw the old one) or is another payment. Never decided silently.
     if (op === "ASSERT" && kind.kind === "PAYMENT_REPORTED_BY_OWNER") {

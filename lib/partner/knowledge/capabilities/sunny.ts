@@ -142,13 +142,13 @@ export const relations: KnowledgeCapability = {
       const edgeRows = kn.filter((x) => knowledgeKind(x.kind)?.relationQuality && touches(x, key) && (temporal.get(x.id) === "CURRENT" || temporal.get(x.id) === "HISTORICAL" || temporal.get(x.id) === "FUTURE"));
       for (const r of edgeRows) {
         const prov = provenanceFields(r);
-        const other = r.identityKeys.includes(key) ? (typeof r.value.object === "string" ? r.value.object : null) : (r.servedSubjectKey ?? r.subjectKey);
+        const other = r.identityKeys.includes(key) ? (typeof r.value.object === "string" ? r.value.object : typeof r.value.resource === "string" ? r.value.resource : null) : (r.servedSubjectKey ?? r.subjectKey);
         const t = temporal.get(r.id) ?? "CURRENT";
         items.push(item({ id: `owner:${r.id}`, entity: other && !other.startsWith("company:") ? gatewayKey(other) : null, label: partnerRecord(r.meaningHe), epistemic: epistemicOf(r), source: "OWNER_KNOWLEDGE", freshness: t === "CURRENT" ? "LIVE" : "HISTORICAL",
           relationQuality: prov.sourceType === "INFERRED" ? "DERIVED" : "OWNER_CONFIRMED",
           fields: { relation: r.kind === "ORGANIZATIONAL_ROLE" ? `ROLE:${r.value.role}` : String(r.value.relation ?? r.kind), frequency: r.value.frequency ?? null, relationQuality: prov.sourceType === "INFERRED" ? "DERIVED_RELATION" : "OWNER_CONFIRMED_RELATION",
             temporal: t, validity: { status: r.value.status ?? "ACTIVE", validFrom: r.value.validFrom ?? null, validUntil: r.value.validUntil ?? null }, provenance: prov,
-            counterpartKey: other, counterpart: other ? record(String(r.value.objectLabel ?? other)) : null } }));
+            counterpartKey: other, counterpart: other ? record(String(r.value.objectLabel ?? r.value.resourceLabel ?? other)) : null, ...(r.value.channelPurpose ? { channelPurpose: r.value.channelPurpose } : {}), ...(r.value.learnHe ? { learnHe: record(String(r.value.learnHe)) } : {}) } }));
       }
     }
     return result(items, {
