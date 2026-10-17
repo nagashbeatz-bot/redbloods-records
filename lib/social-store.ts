@@ -133,6 +133,7 @@ export async function createContentItem(input: {
   /** Stage 1: an artist's own content may have no campaign (the DB CHECK requires a campaign or an artist). */
   campaign_id: string | null;
   label_artist_id?: string | null;
+  series_id?: string | null;
   project_id?: string | null;
   title: string;
   content_type?: string;
@@ -151,6 +152,7 @@ export async function createContentItem(input: {
     .insert({
       campaign_id:  input.campaign_id,
       label_artist_id: input.label_artist_id ?? null,
+      series_id:    input.series_id ?? null,
       project_id:   input.project_id ?? null,
       title:        input.title,
       content_type: input.content_type ?? "אחר",
@@ -216,6 +218,7 @@ function normalizeItem(row: Record<string, unknown>): SocialContentItem {
     id:               row.id as string,
     campaign_id:      (row.campaign_id as string) ?? null,
     label_artist_id:  (row.label_artist_id as string) ?? null,
+    series_id:        (row.series_id as string) ?? null,
     project_id:       (row.project_id as string) ?? null,
     title:            (row.title as string) ?? "",
     content_type:     (row.content_type as string) ?? "",

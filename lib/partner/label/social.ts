@@ -21,6 +21,7 @@ import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/s
 import { CLASSIFICATION_VALUE_HE } from "../owner-knowledge/taxonomy";
 import { isSocialItemOverdue, socialPhaseOf, type SocialPhase } from "@/lib/types";
 import type { OpsCampaign, OpsContentItem } from "../operations/types";
+import { addDays, cadenceHistory, chainOf, ilYmd as ilDay, overdueCount, targetsInEffect, weekStartOf, type CadenceItem, type CadenceTargetRow, type SeriesRow, type WeekSummary } from "@/lib/social-cadence";
 
 export const COMPANY_OWNER_KEY = "company:REDBLOODS";
 const LIVE_RECORD = new Set(["OPEN", "ENDORSED", "ACCEPTED"]);
@@ -98,6 +99,18 @@ export function artistContentOf(artistId: string, ops: { campaigns: readonly Ops
   };
 }
 
+/**
+ * Stage 2 (2026-10-17): weekly targets + series + plan-vs-published, from the ONE computation (lib/social-cadence). External
+ * evidence (browser-checked publish dates of the artist's own account content) is served APART — never counted.
+ */
+export interface ArtistCadence {
+  readable: boolean;
+  weeks: WeekSummary[];
+  targets: Array<{ current: CadenceTargetRow; history: CadenceTargetRow[] }>;
+  series: SeriesRow[];
+  overdueItems: number;
+  external: Array<{ weekStart: string; publishedPosts: number; checks: Array<{ resourceId: string; label: string; publishedOn: string; checkedOn: string }> }>;
+}
 export interface ArtistSocial {
   artistKey: string; artistName: string;
   accounts: SocialAccount[];
@@ -109,6 +122,7 @@ export interface ArtistSocial {
   recheck: RecheckProposal | null;
   unassignedAccounts: Array<{ resourceId: string; platform: string; label: string }>;
   content: ArtistContent;
+  cadence: ArtistCadence;
 }
 
 const labelOfResource = (r: BrainResource) => `${r.platform} ${r.displayName ?? r.firstHandle ?? r.identityKey}`.trim();
@@ -130,7 +144,7 @@ export interface ArtistSocialInput {
   artist: { id: string; name: string };
   releases?: ResearchContext["releases"];
   /** stage 1: the content source (null = could not be read, so content is UNKNOWN) */
-  ops?: { campaigns: readonly OpsCampaign[]; items: readonly OpsContentItem[] } | null;
+  ops?: { campaigns: readonly OpsCampaign[]; items: readonly OpsContentItem[]; series?: readonly SeriesRow[] | null; targets?: readonly CadenceTargetRow[] | null } | null;
 }
 
 export function artistSocialOf(i: ArtistSocialInput): ArtistSocial {
@@ -199,5 +213,35 @@ export function artistSocialOf(i: ArtistSocialInput): ArtistSocial {
     artistKey, artistName: i.artist.name, accounts, labelChannels, inspirations: insp, records, historyRecords: tied.length - records.length,
     lastCheckedOn: latest(accounts.map((a) => a.lastCheckedOn)), recheck, unassignedAccounts,
     content: artistContentOf(i.artist.id, i.ops ?? null, todayIL),
+    cadence: artistCadenceOf(i.artist.id, i.ops ?? null, todayIL, s, accounts.map((a) => a.resourceId), now),
+  };
+}
+
+const asCadenceItem = (x: OpsContentItem): CadenceItem => ({ id: String(x.id), title: x.title ?? "", label_artist_id: x.labelArtistId ?? null, series_id: x.seriesId ?? null, status: x.status, content_type: x.contentType, platform: x.platform, due_date: x.dueDate, publish_date: x.publishDate });
+/** Stage 2: the artist's cadence picture. Series / targets unreadable → readable false (UNKNOWN — never "no target"). */
+export function artistCadenceOf(artistId: string, ops: ArtistSocialInput["ops"], todayIL: string, brain: BrainSnapshot, accountIds: readonly string[], now: Date): ArtistCadence {
+  const empty: ArtistCadence = { readable: false, weeks: [], targets: [], series: [], overdueItems: 0, external: [] };
+  if (!ops || !ops.series || !ops.targets) return empty;
+  const items = ops.items.filter((x) => x.id).map(asCadenceItem);
+  const targets = ops.targets;
+  const weeks = cadenceHistory({ artistId, todayIL, items, targets, series: ops.series });
+  const mine = (t: CadenceTargetRow) => t.label_artist_id === artistId;
+  const current = targetsInEffect(targets, todayIL).filter(mine);
+  // external evidence: browser-checked publish dates of content under the artist's OWN accounts (not counted, shown apart)
+  const st = brainState(brain, todayIL, now.toISOString());
+  const kids = brain.resources.filter((r) => r.resourceKind === "CONTENT" && r.parentId && accountIds.includes(r.parentId) && st.resourceActive(r.id));
+  const pubs = kids.flatMap((r) => brain.observations.filter((o) => o.resourceId === r.id && /\.PUBLISHED_AT$/.test(o.type) && st.observationValid(o.id) && typeof o.valueText === "string")
+    .map((o) => ({ resourceId: r.id, label: r.displayName ?? r.identityKey, publishedOn: String(o.valueText).slice(0, 10), checkedOn: ilDay(new Date(o.observedAt)) })));
+  const cur = weekStartOf(todayIL);
+  const external = weeks.map((_, k) => addDays(cur, -7 * k)).map((ws) => {
+    const checks = pubs.filter((p) => p.publishedOn >= ws && p.publishedOn <= addDays(ws, 6));
+    return { weekStart: ws, publishedPosts: new Set(checks.map((c) => c.resourceId)).size, checks };
+  });
+  return {
+    readable: true, weeks,
+    targets: current.map((t) => ({ current: t, history: chainOf(targets, t.id) })),
+    series: ops.series.filter((x) => x.owner_scope === "ARTIST" && x.label_artist_id === artistId),
+    overdueItems: overdueCount(items, artistId, todayIL),
+    external,
   };
 }

@@ -520,6 +520,12 @@ async function socialFamilyWriters(): Promise<SocialFamilyWriters> {
     updatePromotionFields: (id, p) => W.updatePromotionFields(id, p),
     syncActualExpense: (id, n) => W.syncActualExpense(id, n),
     deletePromotion: (id) => W.deletePromotion(id),
+    readSocialSeries: async (id) => row(await W.readSocialSeries(id)),
+    listSocialSeries: async () => (await W.listSocialSeries()).map((x) => x as unknown as Record<string, unknown>),
+    createSocialSeries: async (b) => String((await W.createSocialSeries(b)).id),
+    updateSocialSeries: async (id, b) => { await W.updateSocialSeries(id, b); },
+    listSocialTargets: () => W.listSocialTargets(),
+    setSocialCadenceTarget: async (b) => String((await W.setSocialCadenceTarget(b)).id),
   };
 }
 

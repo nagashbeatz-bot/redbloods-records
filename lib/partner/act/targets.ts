@@ -38,10 +38,10 @@ export const TARGET_KINDS: Readonly<Record<string, readonly string[]>> = {
   "social-content": ["social-attachment"],
   "mix-work": ["mix-version", "mix-comment", "mix-attachment", "mix-line", "premix-note"],
   "rf-production": ["rf-budget-line", "rf-payment", "rf-document", "rf-reference", "rf-video-reference"],
-  "label-artist": ["ledger-entry", "media-income"],
+  "label-artist": ["ledger-entry", "media-income", "social-content", "social-series", "social-target"],
   client: ["proposal", "meeting", "task"],
   show: ["session", "task"],
-  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat"],
+  company: ["mix-work", "victor-work", "rf-production", "proposal", "session", "meeting", "task", "rf-equipment", "beat", "social-series", "social-target"],
 };
 
 const rows = <T>(m: { rows: readonly T[] } | null | undefined): readonly T[] => (m && Array.isArray(m.rows) ? m.rows : []);
@@ -106,6 +106,15 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       if (!lab) throw new Error("LABEL_DETAIL");
       for (const x of rows(lab.ledger)) if (x.artistId === pid) add("ledger-entry", x.id, j(x.entryDate, x.entryType, x.amount, x.description));
       for (const x of rows(lab.mediaIncome)) if (x.artistId === pid) add("media-income", x.id, j(x.reportPeriod, x.source, x.grossAmount), x.status);
+      // social stage 1–2 (2026-10-17): the artist's content, series and weekly targets (open heads only — history is read, not targeted)
+      if (want("social-content") || want("social-series") || want("social-target")) {
+        if (!ops) throw new Error("OPERATIONS");
+        for (const x of rows(ops.contentItems)) if (x.labelArtistId === pid) add("social-content", x.id ?? null, j(x.contentType, x.title, x.publishDate), x.status);
+        const ser = rows(ops.socialSeries);
+        for (const x of ser) if (x.label_artist_id === pid) add("social-series", x.id, j(x.name, x.platforms.join(",")), x.status);
+        const tg = rows(ops.socialTargets); const sup = new Set(tg.map((t) => t.supersedes_id).filter(Boolean));
+        for (const t of tg) if (t.label_artist_id === pid && t.action === "SET" && !sup.has(t.id)) add("social-target", t.id, j(t.scope, t.platform, t.content_type, ser.find((x) => x.id === t.series_id)?.name, `${t.per_week}/week`, `from ${t.valid_from}`));
+      }
     } else if (pk === "client") {
       const d = needDet();
       for (const x of rows(d.proposals)) if (x.clientId === pid) add("proposal", x.id, j(x.title));
@@ -128,6 +137,14 @@ export function buildActionTargets(src: GatewaySources, parentKey: string, kind?
       for (const x of rows(d.rfEquipment)) if (!x.removedAt) add("rf-equipment", x.id, j(x.name, x.category, x.quantity), x.status);
       if (!lab) throw new Error("LABEL_DETAIL");
       for (const x of rows(lab.beats)) add("beat", x.id, j(x.name, x.genre, x.musicalKey), x.status);
+      // label-owned content series (artist series are listed under their artist) + their open weekly targets
+      if (want("social-series") || want("social-target")) {
+        if (!ops) throw new Error("OPERATIONS");
+        const ser = rows(ops.socialSeries).filter((x) => x.owner_scope === "LABEL");
+        for (const x of ser) add("social-series", x.id, j(x.name, x.platforms.join(",")), x.status);
+        const tg = rows(ops.socialTargets); const sup = new Set(tg.map((t) => t.supersedes_id).filter(Boolean));
+        for (const t of tg) if (!t.label_artist_id && t.action === "SET" && !sup.has(t.id)) add("social-target", t.id, j(t.scope, ser.find((x) => x.id === t.series_id)?.name, `${t.per_week}/week`, `from ${t.valid_from}`));
+      }
     }
   } catch (e) {
     return { ok: false, reason: "SOURCE_UNAVAILABLE", detail: e instanceof Error ? e.message : "source" };

@@ -46,7 +46,14 @@ function artistItems(v: ArtistSocial): KnowledgeItem[] {
   ];
 }
 
+const cadenceFact = (v: ArtistSocial) => v.cadence.readable ? {
+  week: v.cadence.weeks[0], previousWeeks: v.cadence.weeks.slice(1),
+  targets: v.cadence.targets.map((t) => ({ current: t.current, history: t.history })),
+  series: v.cadence.series, overdueItems: v.cadence.overdueItems, externalEvidence: v.cadence.external,
+  metricsNote: "items = unique content items; publications = item x platform — never added together; external evidence = browser checks, never counted",
+} : null;
 const summaryOf = (v: ArtistSocial) => [
+  sfact("CADENCE", "יעדים, סדרות ומעקב שבועי (ראשון–שבת) — פריטים ופרסומים בנפרד", cadenceFact(v), "FACT", "OPERATIONS"),
   sfact("CONTENT", "התוכן של האמן (קישור קנוני — עם או בלי קמפיין)", v.content.readable ? { total: v.content.total, byPhase: v.content.byPhase, upcoming: v.content.upcoming, overdue: v.content.overdue, undated: v.content.undated, recentPublished: v.content.recentPublished, withoutCampaign: v.content.withoutCampaign, campaignsLinked: v.content.campaignsLinked } : null, "FACT", "OPERATIONS"),
   sfact("ACCOUNTS", "החשבונות של האמן (שיוך שאישרת)", v.accounts.length, "OWNER_DECISION", "OWNER_KNOWLEDGE"),
   sfact("LAST_CHECKED_ON", "בדיקה אחרונה של החשבונות שלו", v.lastCheckedOn, "OBSERVATION", "SUNNY_BRAIN", "HISTORICAL"),
@@ -58,10 +65,10 @@ const summaryOf = (v: ArtistSocial) => [
 
 export const artistSocial: KnowledgeCapability = {
   id: "artist_social", domain: "LABEL", titleHe: "סושיאל לכל אמן — זהות, השראות, מעקב",
-  descriptionForModel: "Per label artist: the artist's social accounts (only those the Owner approved — ENTITY_RELATIONSHIP OWNS_RESOURCE + channelPurpose), shared label channels APART (owner Redbloods, never the artist's own performance), the artist's inspirations (INSPIRATION_SOURCE + what we learn), every stored measurement with its check date, age, TODAY / EARLIER and change since the previous check (old is never now), insights / recommendations that name the artist or rest on the artist's accounts (HYPOTHESIS, tie CANONICAL / DERIVED), at most ONE recheck proposal (ask first, never browse before the Owner's yes) and unassignedAccounts (a gap — never guess by name; link via partner_propose_knowledge with the Owner's approval). summary CONTENT = the artist's own content items (by phase, upcoming, overdue, undated). roster = all artists. Browser checks only.",
-  examplesHe: ["מה מצב הסושיאל של אבי?", "מה החשבונות של שליו?", "ממי נגש לומד?", "מתי בדקנו את האינסטגרם של שליו?", "איזה חשבונות עוד לא שויכו?"],
+  descriptionForModel: "Per label artist: approved accounts (OWNS_RESOURCE), shared label channels APART (never the artist's performance), inspirations, measurements with check date + change (old is never now), insights / recommendations (HYPOTHESIS), at most ONE recheck proposal (ask first) and unassignedAccounts (link only with approval). CONTENT = own items by phase. CADENCE = this week (Sun–Sat) + 4 back: items vs platform publications (never added), planned / overdue, Owner targets with history + source, series, signals, externalEvidence (browser checks, never counted). Explain from these facts; you MAY recommend targets / series / ideas (say they are hypotheses + the basis) — never invent numbers; a target or series is saved only via SET_SOCIAL_CADENCE_TARGET / CREATE_SOCIAL_SERIES after the Owner approves the preview.",
+  examplesHe: ["מה מצב הסושיאל של אבי?", "מה החשבונות של שליו?", "ממי נגש לומד?", "מתי בדקנו את האינסטגרם של שליו?", "איזה חשבונות עוד לא שויכו?", "איך שליו עומד ביעד השבועי?", "מה מצב הסדרה Red Bars?"],
   modes: {
-    artist: { descriptionForModel: "ONE label artist (params.entity = label-artist:<id>): accounts, inspirations, measurements, insights, label channels apart, unassigned accounts" },
+    artist: { descriptionForModel: "ONE label artist (params.entity = label-artist:<id>): accounts, inspirations, measurements, insights, content, weekly cadence (targets, series, 4 weeks back), label channels apart, unassigned accounts" },
     roster: { descriptionForModel: "Every roster artist side by side: accounts, last check, inspirations, open insights; plus the shared label channels and the unassigned accounts" },
   },
   defaultMode: "artist",
@@ -78,7 +85,7 @@ export const artistSocial: KnowledgeCapability = {
     const releases = (st.domains.releasesFull.data?.items ?? []).map((r) => ({ labelArtistId: r.labelArtistId, targetYmd: r.targetYmd, released: !!r.releasedAt, changedAt: r.stageEnteredAt ?? r.createdAt }));
     const roster = st.domains.labelArtists.data!.items;
     const o = ok(src.operations);
-    const ops = o?.campaigns && o.contentItems ? { campaigns: o.campaigns.rows, items: o.contentItems.rows } : null;
+    const ops = o?.campaigns && o.contentItems ? { campaigns: o.campaigns.rows, items: o.contentItems.rows, series: o.socialSeries?.rows ?? null, targets: o.socialTargets?.rows ?? null } : null;
     const viewOf = (a: { id: string; name: string }) => artistSocialOf({ brain: brain!, knowledge: ok(src.ownerKnowledge)!, todayIL: today, now: src.now, artist: { id: a.id, name: a.name }, releases, ops });
     const partial = brain!.truncated ? { completeness: "PARTIAL" as const, coverage: [partner("נקראו רק 1,000 השורות האחרונות מכל סוג במוח של סאני.")] } : {};
     if (q.mode === "roster") {
@@ -88,6 +95,7 @@ export const artistSocial: KnowledgeCapability = {
         id: `artist:${v.artistKey}`, entity: v.artistKey, label: record(v.artistName), epistemic: "DERIVED", source: "SUNNY_BRAIN", freshness: "HISTORICAL",
         fields: { accounts: v.accounts.map((a) => ({ resourceId: a.resourceId, label: record(a.label), channelPurposeHe: a.ownership?.channelPurposeHe ?? null, lastCheckedOn: a.lastCheckedOn })), lastCheckedOn: v.lastCheckedOn, inspirations: v.inspirations.length, liveRecords: v.records.length,
           content: v.content.readable ? { total: v.content.total, byPhase: v.content.byPhase, overdue: v.content.overdue.length, upcoming: v.content.upcoming.length, undated: v.content.undated } : null,
+          week: v.cadence.readable ? { items: v.cadence.weeks[0]?.items, publications: v.cadence.weeks[0]?.publications, overallTarget: v.cadence.weeks[0]?.overall?.progress ?? null, signals: v.cadence.weeks[0]?.signals ?? [], activeSeries: v.cadence.series.filter((x) => x.status === "ACTIVE").map((x) => x.name) } : null,
           note: partner(v.accounts.length ? "רק חשבונות שהבוס אישר כשלו נספרים כאן." : "עוד אין חשבון שאושר כשלו — אין לפרש זאת כ'אין לו סושיאל'.") },
       })), { summary: [
         sfact("LABEL_CHANNELS", "ערוצי לייבל משותפים (לא נספרים לאף אמן)", first ? first.labelChannels.map((a) => ({ resourceId: a.resourceId, label: a.label, lastCheckedOn: a.lastCheckedOn })) : [], "OWNER_DECISION", "OWNER_KNOWLEDGE"),

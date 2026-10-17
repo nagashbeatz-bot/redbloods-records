@@ -8,6 +8,7 @@
 import type { ArgSpec } from "../types";
 import { artistFields, finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { SOCIAL_CAMPAIGN_STATUSES, SOCIAL_CONTENT_STATUSES, SOCIAL_CONTENT_TYPES, SOCIAL_PLATFORMS } from "@/lib/types";
+import { SCOPE_HE, SERIES_STATUSES, SERIES_STATUS_HE, TARGET_PROBLEM_HE, chainOf, effectiveWindows, ilYmd, slotOf, targetProblem, type CadenceTargetRow } from "@/lib/social-cadence";
 
 type Row = Record<string, unknown>;
 export interface SocialFamilyWriters {
@@ -31,6 +32,13 @@ export interface SocialFamilyWriters {
   updatePromotionFields(id: string, patch: Row): Promise<void>;
   syncActualExpense(id: string, amount: number): Promise<void>;
   deletePromotion(id: string): Promise<void>;
+  /** Stage 2 (2026-10-17): content series + append-only weekly targets (lib/writes/social). */
+  readSocialSeries(id: string): Promise<Row | null>;
+  listSocialSeries(): Promise<Row[]>;
+  createSocialSeries(body: Row): Promise<string>;
+  updateSocialSeries(id: string, body: Row): Promise<void>;
+  listSocialTargets(): Promise<CadenceTargetRow[]>;
+  setSocialCadenceTarget(body: Row): Promise<string>;
 }
 /** Pinned to components/social/SocialPromotions.tsx + lib/writes/social by the family test. */
 export const PROMO_CHANNEL_VALUES: readonly string[] = ["YouTube", "TikTok", "Instagram", "אחר"];
@@ -69,7 +77,7 @@ async function onCampaign(d: WriterDeps, a: Readonly<Record<string, unknown>>): 
   const f = await campaignFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הקמפיין");
   return { key: `social-campaign:${k.id}`, id: k.id, label: `קמפיין ${f.title}`, fields: f };
 }
-const contentFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialContent(id); return r ? { campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), title: String(r.title ?? ""), contentType: String(r.content_type ?? ""), platform: s(r.platform), status: String(r.status ?? ""), dueDate: s(r.due_date), publishDate: s(r.publish_date), publishTime: s(r.publish_time), ownerName: String(r.owner_name ?? ""), hook: String(r.hook ?? ""), caption: String(r.caption ?? ""), notes: String(r.notes ?? "") } : null; };
+const contentFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialContent(id); return r ? { campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), seriesId: s(r.series_id), title: String(r.title ?? ""), contentType: String(r.content_type ?? ""), platform: s(r.platform), status: String(r.status ?? ""), dueDate: s(r.due_date), publishDate: s(r.publish_date), publishTime: s(r.publish_time), ownerName: String(r.owner_name ?? ""), hook: String(r.hook ?? ""), caption: String(r.caption ?? ""), notes: String(r.notes ?? "") } : null; };
 async function onContent(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.content, ["social-content"]); if (!k) return refuse("BAD_ENTITY", "צריך פריט תוכן (social-content:…)");
   const f = await contentFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את פריט התוכן");
@@ -128,12 +136,24 @@ function promoPatch(a: Readonly<Record<string, unknown>>): Fields | PlanRefusal 
 const promoBody = (after: Fields): Row => { const m: Record<string, string> = { name: "name", channel: "channel", promoType: "promo_type", plannedAmount: "planned_amount", status: "status", promoDate: "promo_date", notes: "notes" }; const b: Row = {}; for (const [k, v] of Object.entries(after)) if (m[k]) b[m[k]] = v; return b; };
 /** ADD_SOCIAL_CONTENT target (stage 1): a campaign, a label artist, or both — one artist per item. */
 async function resolveAddContent(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const base = await resolveAddContentBase(d, a); if ("ok" in base) return base;
+  if (a.series === undefined) return base;
+  // stage 2: a series — exists, not ended; an artist series gives its artist (another artist is refused)
+  const sr = await seriesTarget(d, a.series); if ("ok" in sr) return sr;
+  if (sr.fields.status === "ENDED") return refuse("SERIES_ENDED", "הסדרה הסתיימה — לא מוסיפים אליה תוכן");
+  const sArtist = sr.fields.labelArtistId ? String(sr.fields.labelArtistId) : null;
+  const who = base.fields.labelArtistId ? String(base.fields.labelArtistId) : null;
+  if (sArtist && who && sArtist !== who) return refuse("SERIES_ARTIST_MISMATCH", TARGET_PROBLEM_HE.SERIES_ARTIST_MISMATCH);
+  return { ...base, label: `${base.label} · סדרה ${sr.label}`, fields: { ...base.fields, seriesId: sr.id, seriesName: sr.label, ...((who ?? sArtist) ? { labelArtistId: (who ?? sArtist)! } : {}) } };
+}
+async function resolveAddContentBase(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const ak = a.artist !== undefined ? parseKey(a.artist, ["label-artist"]) : null;
   if (a.artist !== undefined && !ak) return refuse("BAD_ENTITY", "אמן = label-artist:…");
   const art = ak ? await artistFields(d, ak.id) : null;
   if (ak && !art) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את האמן");
   if (a.campaign === undefined) {
-    if (!ak) return refuse("BAD_ENTITY", "צריך קמפיין (social-campaign:…) או אמן (label-artist:…)");
+    if (!ak && a.series !== undefined) return { key: "social-content:new", id: "new", label: "תוכן", fields: {} };
+    if (!ak) return refuse("BAD_ENTITY", "צריך קמפיין (social-campaign:…), אמן (label-artist:…) או סדרה (social-series:…)");
     return { key: "social-content:new", id: "new", label: `תוכן של ${art!.name}`, fields: { labelArtistId: ak.id, artistName: String(art!.name) } };
   }
   const r = await onCampaign(d, a); if ("ok" in r) return r;
@@ -142,6 +162,49 @@ async function resolveAddContent(d: WriterDeps, a: Readonly<Record<string, unkno
   const who = ak?.id ?? campArtist;
   return { key: "social-content:new", id: "new", label: `תוכן ל${r.label}`, fields: { campaignTitle: String(r.fields.title), ...(who ? { labelArtistId: who } : {}), ...(art ? { artistName: String(art.name) } : {}) } };
 }
+
+// ── stage 2 (2026-10-17): series + weekly targets ──
+const seriesFields = (r: Row): Fields => ({ name: String(r.name ?? ""), ownerScope: String(r.owner_scope ?? ""), labelArtistId: s(r.label_artist_id), platforms: (Array.isArray(r.platforms) ? r.platforms : []).map(String).join(","), status: String(r.status ?? ""), notes: String(r.notes ?? "") });
+async function seriesTarget(d: WriterDeps, v: unknown): Promise<ResolvedTarget | PlanRefusal> {
+  const k = parseKey(v, ["social-series"]); if (!k) return refuse("BAD_ENTITY", "סדרה = social-series:…");
+  const r = await d.readSocialSeries(k.id); if (!r) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הסדרה");
+  return { key: `social-series:${k.id}`, id: k.id, label: String(r.name ?? "סדרה"), fields: seriesFields(r) };
+}
+const readSeriesFields = async (d: WriterDeps, id: string) => { const r = await d.readSocialSeries(id); return r ? seriesFields(r) : null; };
+const SERIES_STATUS_VALUES = SERIES_STATUSES as readonly string[];
+const SCOPES = ["OVERALL", "BREAKDOWN", "SERIES"] as const;
+/** The weekly-target slot a SET plan addresses + its current head (the row a replacement supersedes). */
+async function targetSlot(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const scope = String(a.scope ?? "");
+  if (!(SCOPES as readonly string[]).includes(scope)) return refuse("BAD_SCOPE", "רמה: OVERALL (כולל) / BREAKDOWN (פירוט) / SERIES (סדרה)");
+  let artistId: string | null = null, seriesId: string | null = null, label = "";
+  if (scope === "SERIES") {
+    if (a.artist !== undefined) return refuse("BAD_ENTITY", "יעד סדרה נקבע לפי הסדרה (בלי אמן)");
+    const sr = await seriesTarget(d, a.series); if ("ok" in sr) return sr;
+    if (sr.fields.status === "ENDED") return refuse("SERIES_ENDED", "הסדרה הסתיימה");
+    seriesId = sr.id; artistId = sr.fields.labelArtistId ? String(sr.fields.labelArtistId) : null; label = `יעד שבועי לסדרה ${sr.label}`;
+  } else {
+    if (a.series !== undefined) return refuse("BAD_ENTITY", "סדרה רק ביעד סדרה (SERIES)");
+    const ak = parseKey(a.artist, ["label-artist"]); if (!ak) return refuse("BAD_ENTITY", "אמן = label-artist:…");
+    const art = await artistFields(d, ak.id); if (!art) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את האמן");
+    artistId = ak.id; label = `${SCOPE_HE[scope as "OVERALL"]} שבועי של ${art.name}`;
+  }
+  const platform = scope === "BREAKDOWN" && a.platform !== undefined ? String(a.platform) : null;
+  const contentType = scope === "BREAKDOWN" && a.contentType !== undefined ? String(a.contentType) : null;
+  if (scope !== "BREAKDOWN" && (a.platform !== undefined || a.contentType !== undefined)) return refuse("BAD_SCOPE", "פלטפורמה / סוג תוכן רק ביעד פירוט (BREAKDOWN)");
+  if (scope === "BREAKDOWN" && !platform && !contentType) return refuse("BAD_SCOPE", "יעד פירוט צריך פלטפורמה או סוג תוכן");
+  if (platform) label += ` · ${platform}`; if (contentType) label += ` · ${contentType}`;
+  const rows = await d.listSocialTargets();
+  const slot = slotOf({ scope: scope as CadenceTargetRow["scope"], label_artist_id: artistId, series_id: seriesId, platform, content_type: contentType });
+  const w = effectiveWindows(rows);
+  const succ = new Set(rows.map((r) => r.supersedes_id).filter(Boolean));
+  // the slot's head: the last SET row nothing supersedes (never an ended chain)
+  const head = rows.filter((r) => slotOf(r) === slot && r.action === "SET" && !succ.has(r.id) && !w.get(r.id)!.empty).sort((x, y) => (x.valid_from < y.valid_from ? 1 : -1))[0] ?? null;
+  return { key: "social-target:new", id: "new", label, fields: { scope, ...(artistId ? { labelArtistId: artistId } : {}), ...(seriesId ? { seriesId } : {}), ...(platform ? { platform } : {}), ...(contentType ? { contentType } : {}), currentPerWeek: head ? Number(head.per_week) : 0, currentFrom: head ? head.valid_from : "none", currentId: head ? head.id : "none", currentSource: head ? head.source : "none", slotRows: rows.filter((r) => slotOf(r) === slot).length } };
+}
+const targetRowFields = (r: CadenceTargetRow, rows: readonly CadenceTargetRow[]): Fields => ({ scope: r.scope, action: r.action, perWeek: r.per_week === null ? 0 : Number(r.per_week), validFrom: r.valid_from, source: r.source, superseded: rows.some((x) => x.supersedes_id === r.id), endedBy: rows.find((x) => x.supersedes_id === r.id && x.action === "END")?.valid_from ?? "none" });
+async function readTargetFields(d: WriterDeps, id: string): Promise<Fields | null> { const rows = await d.listSocialTargets(); const r = rows.find((x) => x.id === id); return r ? targetRowFields(r, rows) : null; }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const exists = <T extends { fields: Fields }>(r: T | PlanRefusal) => ("ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } });
 
 export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
@@ -191,19 +254,19 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
     actionId: "ADD_SOCIAL_CONTENT", kinds: ["social-content"],
     // Stage 1 (2026-10-17): a campaign, a label artist (the artist's own content, no campaign), or both. Inside a campaign that
     // is linked to an artist the item inherits that artist (the shared writer refuses a different one).
-    meta: meta("הוספת פריט תוכן — לקמפיין או לאמן", "Add a content item to a campaign and/or to a label artist's own content (type / platform / status / dates / texts)", [K("campaign", false), K("artist", false), T("title", true), ...CONTENT_EDIT.filter((x) => x.name !== "title")], ["title", "status", "labelArtistId"], "createSocialContent (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "DELETE_SOCIAL_CONTENT" }),
+    meta: meta("הוספת פריט תוכן — לקמפיין או לאמן", "Add a content item to a campaign and/or to a label artist's own content (type / platform / status / dates / texts)", [K("campaign", false), K("artist", false), K("series", false), T("title", true), ...CONTENT_EDIT.filter((x) => x.name !== "title")], ["title", "status", "labelArtistId", "seriesId"], "createSocialContent (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "DELETE_SOCIAL_CONTENT" }),
     // the creation context IS the resolved target's fields (the same live values the plan was made on — stale detection)
     createContext: async (d, a) => { const r = await resolveAddContent(d, a); return "ok" in r ? {} : r.fields; },
     resolve: (d, a) => resolveAddContent(d, a),
     read: contentFields,
-    plan(a, cur) { const p = contentPatch(a); if (isRef(p)) return p; if (!p.title) return refuse("BAD_TEXT", "שם הפריט חסר"); return { ok: true, after: { title: p.title, status: String(p.status ?? "idea"), ...(cur.labelArtistId ? { labelArtistId: String(cur.labelArtistId) } : {}) } }; },
+    plan(a, cur) { const p = contentPatch(a); if (isRef(p)) return p; if (!p.title) return refuse("BAD_TEXT", "שם הפריט חסר"); return { ok: true, after: { title: p.title, status: String(p.status ?? "idea"), ...(cur.labelArtistId ? { labelArtistId: String(cur.labelArtistId) } : {}), ...(cur.seriesId ? { seriesId: String(cur.seriesId) } : {}) } }; },
     async apply(d, _id, after, a) {
       const k = a.campaign !== undefined ? parseKey(a.campaign, ["social-campaign"]) : null;
       const c = k ? await d.readSocialCampaign(k.id) : null;
       const p = contentPatch(a) as Fields;
-      return { createdId: await d.createSocialContent({ ...contentBody(p), campaign_id: k?.id ?? null, label_artist_id: after.labelArtistId ?? null, project_id: c?.project_id ?? null, status: after.status }) };
+      return { createdId: await d.createSocialContent({ ...contentBody(p), campaign_id: k?.id ?? null, label_artist_id: after.labelArtistId ?? null, series_id: after.seriesId ?? null, project_id: c?.project_id ?? null, status: after.status }) };
     },
-    async verify(d, id, after) { const f = await contentFields(d, id); return !!f && f.title === after.title && f.status === after.status && (f.labelArtistId ?? null) === (after.labelArtistId ?? null); },
+    async verify(d, id, after) { const f = await contentFields(d, id); return !!f && f.title === after.title && f.status === after.status && (f.labelArtistId ?? null) === (after.labelArtistId ?? null) && (f.seriesId ?? null) === (after.seriesId ?? null); },
     disclosuresHe: ["פריט תכנון בלבד — לא מתפרסם כלום ולא נוצר אירוע ביומן", "קישורים (נכס / אחסון / פוסט) לא נכתבים דרך סאני", "פריט של אמן בלי קמפיין נשאר אצל האמן גם אם יימחק קמפיין"],
   },
   {
@@ -260,6 +323,118 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
     disclosuresHe: ["הקובץ נמחק מהאחסון ומהרשימה; כשל באחסון מדווח"],
   },
   {
+    // Stage 2 (2026-10-17): a content series — an artist's (one artist) or the label's. No delete (end it instead).
+    actionId: "CREATE_SOCIAL_SERIES", kinds: ["social-series"],
+    meta: meta("פתיחת סדרת תוכן (של אמן או של הלייבל)", "Create a content series owned by a label artist or by the label (name / platforms / notes; status active)", [T("name", true), K("artist", false), E("owner", ["ARTIST", "LABEL"], true), T("platforms"), T("notes")], ["name", "ownerScope", "status"], "createSocialSeries (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "UPDATE_SOCIAL_SERIES (status ENDED)" }),
+    createContext: async (d, a) => { const r = await resolveSeriesCreate(d, a); return "ok" in r ? {} : r.fields; },
+    resolve: (d, a) => resolveSeriesCreate(d, a),
+    read: readSeriesFields,
+    plan(a, cur) {
+      const n = text(a.name, 80); if (!n || !n.trim()) return refuse("BAD_TEXT", "שם הסדרה חסר (עד 80 תווים)");
+      if (cur.nameTaken === true) return refuse("DUPLICATE", "כבר יש סדרה בשם הזה לאותו בעלים");
+      if (a.platforms !== undefined && a.platforms !== "" && isRef(platformsOf(a.platforms))) return platformsOf(a.platforms) as PlanRefusal;
+      if (a.notes !== undefined && a.notes !== "" && text(a.notes, 500) === null) return refuse("BAD_TEXT", "הערות עד 500 תווים");
+      return { ok: true, after: { name: n.trim(), ownerScope: String(cur.ownerScope), status: "ACTIVE" } };
+    },
+    async apply(d, _id, after, a) {
+      const pl = a.platforms !== undefined && a.platforms !== "" ? (platformsOf(a.platforms) as string[]) : [];
+      const ak = after.ownerScope === "ARTIST" ? parseKey(a.artist, ["label-artist"]) : null;
+      return { createdId: await d.createSocialSeries({ name: after.name, owner_scope: after.ownerScope, label_artist_id: ak?.id ?? null, platforms: pl, notes: typeof a.notes === "string" ? a.notes.trim() : "" }) };
+    },
+    async verify(d, id, after) { const f = await readSeriesFields(d, id); return !!f && f.name === after.name && f.ownerScope === after.ownerScope && f.status === "ACTIVE"; },
+    disclosuresHe: ["רק רשומת סדרה — לא נוצר תוכן, יעד, אירוע ביומן או Push", "סדרה של אמן מקבלת רק תוכן של אותו אמן; הבעלים לא משתנים אחרי שיש בה תוכן", "סדרה לא נמחקת מהממשק — מסיימים אותה"],
+  },
+  {
+    actionId: "UPDATE_SOCIAL_SERIES", kinds: ["social-series"],
+    meta: meta("עדכון סדרת תוכן (שם / פלטפורמות / סטטוס: פעילה · מושהית · הסתיימה / הערות)", "Update a content series' allowed fields (name / platforms / status ACTIVE·PAUSED·ENDED / notes) — the owner never changes", [K("series"), T("name"), T("platforms"), E("status", SERIES_STATUS_VALUES), T("notes")], ["name", "platforms", "status", "notes"], "updateSocialSeries (lib/writes/social)", {}),
+    resolve: (d, a) => seriesTarget(d, a.series), read: readSeriesFields,
+    plan(a, cur) {
+      const after: Fields = {};
+      if (a.name !== undefined) { const n = text(a.name, 80); if (!n || !n.trim()) return refuse("BAD_TEXT", "שם הסדרה חסר"); after.name = n.trim(); }
+      if (a.platforms !== undefined) { if (a.platforms === "") after.platforms = ""; else { const p = platformsOf(a.platforms); if (isRef(p)) return p; after.platforms = p.join(","); } }
+      if (a.notes !== undefined) { if (a.notes !== "" && text(a.notes, 500) === null) return refuse("BAD_TEXT", "הערות עד 500 תווים"); after.notes = String(a.notes).trim(); }
+      if (a.status !== undefined) { if (cur.status === "ENDED" && a.status !== "ENDED") return refuse("SERIES_ENDED", "סדרה שהסתיימה לא נפתחת מחדש — יוצרים סדרה חדשה"); after.status = String(a.status); }
+      return finishPlan(cur, after);
+    },
+    apply: async (d, id, after) => { const b: Row = {}; for (const [k, v] of Object.entries(after)) b[k] = k === "platforms" ? String(v).split(",").filter(Boolean) : v; await d.updateSocialSeries(id, b); },
+    warnings: (c, a) => (a?.status === "ENDED" && c.status !== "ENDED" ? ["סדרה שהסתיימה לא נפתחת מחדש ולא מקבלת תוכן חדש; התוכן והיעדים שלה נשארים בהיסטוריה"] : []),
+    disclosuresHe: ["הבעלים (אמן / לייבל) לא משתנים", `סטטוסים: ${SERIES_STATUSES.map((x) => SERIES_STATUS_HE[x]).join(" / ")}`, "לא נמחק כלום ולא נשלח כלום"],
+  },
+  {
+    // Stage 2 (2026-10-17): weekly targets are the Owner's — never Sunny's. SET opens a slot or REPLACES its current head (a new
+    // row that supersedes it; history is never edited). Source = OWNER_STATEMENT, or OWNER_APPROVED_RECOMMENDATION + the record.
+    actionId: "SET_SOCIAL_CADENCE_TARGET", kinds: ["social-target"],
+    meta: meta("קביעת יעד שבועי (כולל / פירוט / סדרה) — או החלפת היעד הנוכחי", "Set or replace a weekly content target (OVERALL items / BREAKDOWN by platform or content type / SERIES); the old target stays in history", [E("scope", SCOPES, true), K("artist", false), K("series", false), E("platform", PLATFORMS), E("contentType", CONTENT_TYPES), { name: "perWeek", kind: "number", required: true }, D("validFrom"), D("validUntil"), T("noteHe"), T("recommendationId")], ["perWeek", "validFrom", "source"], "setSocialCadenceTarget (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "END_SOCIAL_CADENCE_TARGET or a new SET_SOCIAL_CADENCE_TARGET" }),
+    createContext: async (d, a) => { const r = await targetSlot(d, a); return "ok" in r ? {} : r.fields; },
+    resolve: (d, a) => targetSlot(d, a),
+    read: readTargetFields,
+    plan(a, cur) {
+      const n = Number(a.perWeek); if (!Number.isInteger(n) || n < 1 || n > 50) return refuse("BAD_NUMBER", "יעד שבועי = מספר שלם בין 1 ל-50");
+      const today = ilYmd(new Date());
+      const from = a.validFrom !== undefined ? String(a.validFrom) : today;
+      if (a.validFrom !== undefined && !realYmd(a.validFrom)) return refuse("BAD_DATE", "תאריך לא תקין");
+      if (from < today) return refuse("TARGET_BACKDATED", TARGET_PROBLEM_HE.TARGET_BACKDATED);
+      if (a.validUntil !== undefined && (!realYmd(a.validUntil) || String(a.validUntil) < from)) return refuse("BAD_DATE", "תאריך סיום לא תקין");
+      if (cur.currentId !== "none" && from < String(cur.currentFrom)) return refuse("TARGET_BEFORE_PREVIOUS", TARGET_PROBLEM_HE.TARGET_BEFORE_PREVIOUS);
+      if (a.recommendationId !== undefined && !UUID_RE.test(String(a.recommendationId))) return refuse("BAD_ENTITY", "מזהה ההמלצה לא תקין");
+      if (a.noteHe !== undefined && a.noteHe !== "" && text(a.noteHe, 300) === null) return refuse("BAD_TEXT", "הערה עד 300 תווים");
+      if (cur.currentId !== "none" && Number(cur.currentPerWeek) === n && a.validUntil === undefined) return refuse("NO_CHANGE", `היעד הנוכחי כבר ${n} בשבוע`);
+      return { ok: true, after: { perWeek: n, validFrom: from, source: a.recommendationId !== undefined ? "OWNER_APPROVED_RECOMMENDATION" : "OWNER_STATEMENT" } };
+    },
+    async apply(d, _id, after, a) {
+      const r = await targetSlot(d, a); if ("ok" in r) throw new Error(r.messageHe);
+      const f = r.fields;
+      return { createdId: await d.setSocialCadenceTarget({ scope: f.scope, label_artist_id: f.scope === "SERIES" ? null : f.labelArtistId ?? null, series_id: f.seriesId ?? null, platform: f.platform ?? null, content_type: f.contentType ?? null, action: "SET", per_week: after.perWeek, valid_from: after.validFrom, valid_until: a.validUntil ?? null, supersedes_id: f.currentId !== "none" ? f.currentId : null, source: after.source, recommendation_id: a.recommendationId ?? null, note_he: typeof a.noteHe === "string" && a.noteHe.trim() ? a.noteHe.trim() : null }) };
+    },
+    async verify(d, id, after) { const f = await readTargetFields(d, id); return !!f && f.action === "SET" && f.perWeek === after.perWeek && f.validFrom === after.validFrom && f.source === after.source; },
+    requiredValues: (_c, after) => [`${after.perWeek} בשבוע`],
+    warnings: (c, a) => { const from = a?.validFrom !== undefined ? String(a.validFrom) : ilYmd(new Date()); return [c.currentId !== "none" ? `מחליף את היעד הנוכחי (${c.currentPerWeek} בשבוע מ-${c.currentFrom}) מ-${from}; הקודם נשאר בהיסטוריה` : `יעד ראשון לרמה הזו — מ-${from}`,
+      a?.recommendationId !== undefined ? "מקור: המלצה של סאני שאישרת (ההמלצה נשמרת כמקור)" : "מקור: החלטה שלך"]; },
+    disclosuresHe: ["שבוע = ראשון–שבת (שעון ישראל); יעד לא חל אחורה", "יעד כולל ויעד סדרה סופרים פריטים; יעד לפי פלטפורמה סופר פרסומים — לא מחברים ביניהם", "אין Push, יומן, פרסום או שינוי בתוכן"],
+  },
+  {
+    actionId: "END_SOCIAL_CADENCE_TARGET", kinds: ["social-target"],
+    meta: meta("סיום יעד שבועי (מתאריך) — ההיסטוריה נשמרת", "End a weekly target from a date (an END row supersedes it; history stays)", [K("target"), D("validFrom"), T("noteHe")], ["endedBy"], "setSocialCadenceTarget action END (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "a new SET_SOCIAL_CADENCE_TARGET" }),
+    async resolve(d, a) {
+      const k = parseKey(a.target, ["social-target"]); if (!k) return refuse("BAD_ENTITY", "יעד = social-target:…");
+      const rows = await d.listSocialTargets(); const r = rows.find((x) => x.id === k.id); if (!r) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את היעד");
+      if (r.action === "END") return refuse("TARGET_ALREADY_ENDED", TARGET_PROBLEM_HE.TARGET_ALREADY_ENDED);
+      if (rows.some((x) => x.supersedes_id === r.id)) return refuse("TARGET_HAS_SUCCESSOR", TARGET_PROBLEM_HE.TARGET_HAS_SUCCESSOR);
+      return { key: `social-target:${k.id}`, id: k.id, label: `יעד ${SCOPE_HE[r.scope]} · ${r.per_week} בשבוע`, fields: targetRowFields(r, rows) };
+    },
+    read: readTargetFields,
+    plan(a, cur) {
+      const today = ilYmd(new Date()); const from = a.validFrom !== undefined ? String(a.validFrom) : today;
+      if (a.validFrom !== undefined && !realYmd(a.validFrom)) return refuse("BAD_DATE", "תאריך לא תקין");
+      if (from < today) return refuse("TARGET_BACKDATED", TARGET_PROBLEM_HE.TARGET_BACKDATED);
+      if (from < String(cur.validFrom)) return refuse("TARGET_BEFORE_PREVIOUS", TARGET_PROBLEM_HE.TARGET_BEFORE_PREVIOUS);
+      return { ok: true, after: { endedBy: from } };
+    },
+    async apply(d, id, after, a) {
+      const r = (await d.listSocialTargets()).find((x) => x.id === id); if (!r) throw new Error("target not found");
+      await d.setSocialCadenceTarget({ scope: r.scope, label_artist_id: r.scope === "SERIES" ? null : r.label_artist_id, series_id: r.series_id, platform: r.platform, content_type: r.content_type, action: "END", valid_from: after.endedBy, supersedes_id: id, source: "OWNER_STATEMENT", note_he: typeof a.noteHe === "string" && a.noteHe.trim() ? a.noteHe.trim() : null });
+    },
+    warnings: (c, a) => [`היעד (${c.perWeek} בשבוע) חל עד ${a?.validFrom !== undefined ? String(a.validFrom) : ilYmd(new Date())} (לא כולל); ממנו והלאה אין יעד ברמה הזו`],
+    disclosuresHe: ["שום שורה לא נמחקת או משתנה — שורת סיום נוספת להיסטוריה", "שבועות שעברו נמדדים מול היעד שחל בהם"],
+  },
+  {
+    actionId: "ASSIGN_SOCIAL_CONTENT_SERIES", kinds: ["social-content"],
+    meta: meta("שיוך פריט תוכן לסדרה (או הוצאה מסדרה)", "Assign a content item to a series, or remove it from its series (an artist series takes only that artist's content)", [K("content"), K("series", false), E("remove", ["yes"])], ["seriesId"], "updateSocialContent series_id (lib/writes/social)", {}),
+    async resolve(d, a) {
+      const r = await onContent(d, a); if ("ok" in r) return r;
+      if (a.series === undefined) { if (a.remove !== "yes") return refuse("BAD_ENTITY", "צריך סדרה (social-series:…) או remove = yes"); if (!r.fields.seriesId) return refuse("NO_CHANGE", "הפריט לא בסדרה"); if (!r.fields.campaignId && !r.fields.labelArtistId) return refuse("ORPHAN", "לפריט אין קמפיין ואין אמן — אי אפשר להוציא אותו מהסדרה"); return r; }
+      if (a.remove !== undefined) return refuse("BAD_ENTITY", "סדרה או remove — לא שניהם");
+      const sr = await seriesTarget(d, a.series); if ("ok" in sr) return sr;
+      if (sr.fields.status === "ENDED") return refuse("SERIES_ENDED", "הסדרה הסתיימה — לא מוסיפים אליה תוכן");
+      if (sr.fields.ownerScope === "ARTIST" && sr.fields.labelArtistId !== r.fields.labelArtistId) return refuse("SERIES_ARTIST_MISMATCH", TARGET_PROBLEM_HE.SERIES_ARTIST_MISMATCH);
+      return { ...r, label: `${r.label} → ${sr.label}` };
+    },
+    read: contentFields,
+    plan(a, cur) { const k = a.series !== undefined ? parseKey(a.series, ["social-series"]) : null; return finishPlan(cur, { seriesId: k ? k.id : null }); },
+    apply: (d, id, after) => d.updateSocialContent(id, { series_id: after.seriesId ?? null }),
+    disclosuresHe: ["פריט בסדרה נספר גם ביעד הכולל של האמן וגם ביעד הסדרה — פעם אחת בכל סיכום", "רק השיוך משתנה (לא סטטוס, תאריכים או קבצים)"],
+  },
+  {
     actionId: "ADD_PROMOTION", kinds: ["promotion"],
     meta: meta("הוספת פעולת קידום (תכנון)", "Add a paid-promotion planning row to a campaign (the actual spend is a separate financial action)", [K("campaign"), T("name", true), E("channel", PROMO_CHANNEL_VALUES), E("promoType", PROMO_TYPE_VALUES), M("plannedAmount"), E("status", PROMO_STATUS_VALUES), D("promoDate"), T("notes")], ["name", "plannedAmount"], "createPromotion (lib/social-promotions-store via lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "DELETE_PROMOTION" }),
     createContext: async (d, a) => { const k = parseKey(a.campaign, ["social-campaign"]); const c = k ? await campaignFields(d, k.id) : null; return { campaignTitle: c ? String(c.title) : null }; },
@@ -304,3 +479,14 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
     disclosuresHe: ["רק רשומת התכנון נמחקת", "לפני המחיקה נרשם סימון מקור בהערות ההוצאה (הוספה, לא דריסה); אם הרישום נכשל — הקידום לא נמחק"],
   },
 ];
+
+async function resolveSeriesCreate(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const owner = String(a.owner ?? "");
+  if (owner !== "ARTIST" && owner !== "LABEL") return refuse("BAD_ENTITY", "בעלים: ARTIST (אמן) או LABEL (לייבל)");
+  let artistId: string | null = null, who = "הלייבל";
+  if (owner === "ARTIST") { const ak = parseKey(a.artist, ["label-artist"]); if (!ak) return refuse("BAD_ENTITY", "סדרת אמן צריכה אמן (label-artist:…)"); const art = await artistFields(d, ak.id); if (!art) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את האמן"); artistId = ak.id; who = String(art.name); }
+  else if (a.artist !== undefined) return refuse("BAD_ENTITY", "סדרת לייבל לא שייכת לאמן");
+  const nm = typeof a.name === "string" ? a.name.trim().toLowerCase() : "";
+  const taken = (await d.listSocialSeries()).some((x) => String(x.name ?? "").trim().toLowerCase() === nm && (x.label_artist_id ?? null) === artistId);
+  return { key: "social-series:new", id: "new", label: `סדרה של ${who}`, fields: { ownerScope: owner, ...(artistId ? { labelArtistId: artistId } : {}), ownerName: who, nameTaken: taken } };
+}

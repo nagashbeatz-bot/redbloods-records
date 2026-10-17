@@ -1041,6 +1041,8 @@ export interface SocialContentItem {
   campaign_id: string | null;
   /** Stage 1: the label artist the content belongs to (canonical id link). */
   label_artist_id?: string | null;
+  /** Stage 2 (2026-10-17): the content series (social_series) — an artist series only takes that artist's items (DB trigger). */
+  series_id?: string | null;
   project_id: string | null;
   title: string;
   content_type: string;

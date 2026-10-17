@@ -24,7 +24,7 @@ export interface OpsProjectAction { id: string; projectId: string | null; action
 export interface OpsBeat { id: string; name: string; genre: string | null; musicalKey: string | null; status: string | null; createdAt: string | null }
 export interface OpsBeatAssignment { beatId: string; artistSlug: string }
 export interface OpsCampaign { id: string; projectId: string | null; title: string; artistName: string | null; releaseDate: string | null; status: string | null; promotionBudget: number | null; /** stage 1: the canonical artist link (null = not linked) */ labelArtistId?: string | null }
-export interface OpsContentItem { campaignId: string | null; status: string | null; contentType: string | null; platform: string | null; dueDate: string | null; publishDate: string | null; /** stage 1 (2026-10-17): id, title and the canonical artist link (null = not an artist's content) */ id?: string | null; title?: string | null; labelArtistId?: string | null }
+export interface OpsContentItem { campaignId: string | null; status: string | null; contentType: string | null; platform: string | null; dueDate: string | null; publishDate: string | null; /** stage 1 (2026-10-17): id, title and the canonical artist link (null = not an artist's content) */ id?: string | null; title?: string | null; labelArtistId?: string | null; /** stage 2: the content series */ seriesId?: string | null }
 export interface OpsPromotion { id?: string | null; name?: string | null; campaignId: string | null; channel: string | null; plannedAmount: number | null; status: string | null; promoDate: string | null; hasTransaction: boolean; /** the promotion's Finance expense id (ownership lookup only; optional for older fixtures) */ linkedTransactionId?: string | null }
 export interface OpsBalanceCycle { artistId: string; cycleIndex: number; startDate: string | null; endDate: string | null; income: number | null; payments: number | null; expenses: number | null; endingBalance: number | null; closedAt: string | null }
 /** id = the track id (its action target album-track:<id>). Free text (notes) is never selected here — PROJECT_DETAIL carries it. */
@@ -62,6 +62,9 @@ export interface OperationsRaw {
   beatAssignments: Maybe<OpsBeatAssignment>;
   campaigns: Maybe<OpsCampaign>;
   contentItems: Maybe<OpsContentItem>;
+  /** stage 2 (2026-10-17): content series + the append-only weekly target rows (lib/social-cadence row shapes). Optional: older fixtures omit them. */
+  socialSeries?: Maybe<import("@/lib/social-cadence").SeriesRow>;
+  socialTargets?: Maybe<import("@/lib/social-cadence").CadenceTargetRow>;
   promotions: Maybe<OpsPromotion>;
   balanceCycles: Maybe<OpsBalanceCycle>;
   albumTracks: Maybe<OpsAlbumTrack>;

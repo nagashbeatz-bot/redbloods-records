@@ -52,7 +52,7 @@ export const mapSection = <T,>(sec: Section<Record<string, unknown>> | null, f: 
   sec ? { rows: sec.rows.map(f).filter((x): x is T => x !== null), capped: sec.capped } : null;
 
 export async function readOperationsRaw(client: OperationsReadClient): Promise<OperationsRaw> {
-  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta, clSess, clMeet, clShow, clSocial] = await Promise.all([
+  const [prods, items, pays, equip, clip, meet, acts, beats, assign, camps, content, promos, cycles, tracks, work, versions, comments, finals, deliv, integ, pmeta, clSess, clMeet, clShow, clSocial, series, targets] = await Promise.all([
     readSection(client, "red_films_productions", "id, title, production_type, status, project_id, client_id, artist_name, client_source, shoot_date, publish_date, edit_status, collection_status, general_budget, client_price, advance_required, advance_received, currency"),
     readSection(client, "red_films_budget_items", "id, production_id, planned_amount, actual_amount, status, linked_transaction_id, currency"),
     readSection(client, "red_films_budget_payments", "production_id, budget_item_id, amount, payment_date, currency, linked_transaction_id"),
@@ -63,7 +63,7 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "beats", "id, name, genre, musical_key, status, created_at"),
     readSection(client, "beat_artist_assignments", "beat_id, artist_slug"),
     readSection(client, "social_campaigns", "id, project_id, title, artist_name, release_date, status, promotion_budget, label_artist_id"),
-    readSection(client, "social_content_items", "id, title, campaign_id, label_artist_id, status, content_type, platform, due_date, publish_date"),
+    readSection(client, "social_content_items", "id, title, campaign_id, label_artist_id, series_id, status, content_type, platform, due_date, publish_date"),
     readSection(client, "social_promotions", "id, name, campaign_id, channel, planned_amount, status, promo_date, linked_transaction_id"),
     readSection(client, "artist_balance_cycles", "artist_id, cycle_index, start_date, end_date, income, payments, expenses, ending_balance, closed_at"),
     readSection(client, "album_tracks", "id, project_id, track_number, title, status, mix_status, master_status"),
@@ -82,6 +82,9 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     readSection(client, "meetings", "id, project_id, client_id, date, status, calendar_event_id"),
     readSection(client, "shows", "id, artist_client_id, date, status, calendar_event_id"),
     readSection(client, "social_content_items", "id, project_id, due_date, status, calendar_event_id"),
+    // stage 2 (2026-10-17): content series + the weekly target history (append-only)
+    readSection(client, "social_series", "id, name, owner_scope, label_artist_id, platforms, status, created_at, updated_at"),
+    readSection(client, "social_cadence_targets", "id, scope, label_artist_id, series_id, platform, content_type, action, per_week, valid_from, valid_until, supersedes_id, source, recommendation_id, created_at"),
   ]);
   const links = (sec: Section<Record<string, unknown>> | null, kind: OpsCalendarLink["kind"], f: (r: Record<string, unknown>) => Omit<OpsCalendarLink, "eventId" | "kind" | "entityId">): Section<OpsCalendarLink> | null =>
     sec ? { rows: sec.rows.filter((r) => s(r.calendar_event_id) && s(r.id)).map((r) => ({ eventId: String(r.calendar_event_id), kind, entityId: String(r.id), ...f(r) })), capped: sec.capped } : null;
@@ -107,7 +110,9 @@ export async function readOperationsRaw(client: OperationsReadClient): Promise<O
     beats: mapSection(beats, (r) => (s(r.id) ? { id: String(r.id), name: s(r.name) ?? "", genre: s(r.genre), musicalKey: s(r.musical_key), status: s(r.status), createdAt: s(r.created_at) } : null)),
     beatAssignments: mapSection(assign, (r) => (s(r.beat_id) && s(r.artist_slug) ? { beatId: String(r.beat_id), artistSlug: String(r.artist_slug) } : null)),
     campaigns: mapSection(camps, (r) => (s(r.id) ? { id: String(r.id), projectId: s(r.project_id), title: s(r.title) ?? "", artistName: s(r.artist_name), releaseDate: s(r.release_date), status: s(r.status), promotionBudget: n(r.promotion_budget), labelArtistId: s(r.label_artist_id) } : null)),
-    contentItems: mapSection(content, (r) => ({ id: s(r.id), title: s(r.title), campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
+    socialSeries: mapSection(series, (r) => (s(r.id) ? { id: String(r.id), name: s(r.name) ?? "", owner_scope: (s(r.owner_scope) === "LABEL" ? "LABEL" : "ARTIST") as "ARTIST" | "LABEL", label_artist_id: s(r.label_artist_id), platforms: Array.isArray(r.platforms) ? (r.platforms as unknown[]).map(String) : [], status: (s(r.status) ?? "ACTIVE") as "ACTIVE" | "PAUSED" | "ENDED", notes: "", created_at: s(r.created_at) ?? "", updated_at: s(r.updated_at) ?? "" } : null)),
+    socialTargets: mapSection(targets, (r) => (s(r.id) && s(r.valid_from) ? { id: String(r.id), scope: s(r.scope) as "OVERALL" | "BREAKDOWN" | "SERIES", label_artist_id: s(r.label_artist_id), series_id: s(r.series_id), platform: s(r.platform), content_type: s(r.content_type), action: (s(r.action) === "END" ? "END" : "SET") as "SET" | "END", per_week: n(r.per_week), valid_from: String(r.valid_from).slice(0, 10), valid_until: s(r.valid_until)?.slice(0, 10) ?? null, supersedes_id: s(r.supersedes_id), source: (s(r.source) === "OWNER_APPROVED_RECOMMENDATION" ? "OWNER_APPROVED_RECOMMENDATION" : "OWNER_STATEMENT") as "OWNER_STATEMENT" | "OWNER_APPROVED_RECOMMENDATION", recommendation_id: s(r.recommendation_id), note_he: null, created_at: s(r.created_at) ?? "" } : null)),
+    contentItems: mapSection(content, (r) => ({ id: s(r.id), title: s(r.title), campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), seriesId: s(r.series_id), status: s(r.status), contentType: s(r.content_type), platform: s(r.platform), dueDate: s(r.due_date), publishDate: s(r.publish_date) })),
     promotions: mapSection(promos, (r) => ({ id: s(r.id), name: s(r.name), campaignId: s(r.campaign_id), channel: s(r.channel), plannedAmount: n(r.planned_amount), status: s(r.status), promoDate: s(r.promo_date), hasTransaction: !!s(r.linked_transaction_id), linkedTransactionId: s(r.linked_transaction_id) })),
     balanceCycles: mapSection(cycles, (r) => (s(r.artist_id) ? { artistId: String(r.artist_id), cycleIndex: Number(r.cycle_index), startDate: s(r.start_date), endDate: s(r.end_date), income: n(r.income), payments: n(r.payments), expenses: n(r.expenses), endingBalance: n(r.ending_balance), closedAt: s(r.closed_at) } : null)),
     albumTracks: mapSection(tracks, (r) => ({ id: s(r.id), projectId: s(r.project_id), trackNumber: n(r.track_number), title: s(r.title) ?? "", status: s(r.status), mixStatus: s(r.mix_status), masterStatus: s(r.master_status) })),

@@ -3142,7 +3142,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "LEDGER"
   ],
-  "fields": []
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
  },
  "app/api/social/campaigns/route.ts": {
   "methods": [
@@ -3156,7 +3175,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "LEDGER"
   ],
-  "fields": []
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
  },
  "app/api/social/content/[id]/route.ts": {
   "methods": [
@@ -3171,7 +3209,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "LEDGER"
   ],
-  "fields": []
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
  },
  "app/api/social/content/route.ts": {
   "methods": [
@@ -3185,7 +3242,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "LEDGER"
   ],
-  "fields": []
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
  },
  "app/api/social/files/route.ts": {
   "methods": [
@@ -3199,7 +3275,26 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "FINANCE",
    "LEDGER"
   ],
-  "fields": []
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
  },
  "app/api/social/migrate-paths/route.ts": {
   "methods": [
@@ -3263,6 +3358,105 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "promo_date",
    "promo_type",
    "status"
+  ]
+ },
+ "app/api/social/series/[id]/route.ts": {
+  "methods": [
+   "PATCH"
+  ],
+  "getWrites": false,
+  "sha256": "95268a83a83094cf09839dc41bece1518c9f1d142c1d2482159325788efe9caa",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "LEDGER"
+  ],
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
+ },
+ "app/api/social/series/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "03b4954035dc1de495eab8a9834427446a1b5819a4db4b1836c805afbad95f69",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "LEDGER"
+  ],
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
+  ]
+ },
+ "app/api/social/targets/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "f4f60aa4a290bdf0ff16f090f66b44f81f8259c38168add36b78a5f88c07d562",
+  "effects": [
+   "DELETION",
+   "FILES",
+   "FINANCE",
+   "LEDGER"
+  ],
+  "fields": [
+   "action",
+   "content_type",
+   "label_artist_id",
+   "name",
+   "note_he",
+   "notes",
+   "owner_scope",
+   "per_week",
+   "platform",
+   "platforms",
+   "recommendation_id",
+   "scope",
+   "series_id",
+   "source",
+   "status",
+   "supersedes_id",
+   "valid_from",
+   "valid_until"
   ]
  },
  "app/api/social/upload/route.ts": {

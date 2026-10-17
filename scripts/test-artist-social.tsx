@@ -194,7 +194,7 @@ const SH = `label-artist:${LA_SHALEV}`, AVI = `label-artist:${LA_AVI}`, NG = `la
   ok("6e. the tab is Owner-only, needs an artist id, never the DJ portal; never in an artist's own list", /const visibleTabs: readonly Tab\[\] = isOwner && !!artistId && !isCleantonePortal \? \[\.\.\.baseTabs, "סושיאל"\] : baseTabs;/.test(portal) && /const PORTAL_TABS: readonly Tab\[\] = TABS\.filter\(\(t\) => t !== "סושיאל"\);/.test(portal) && /: PORTAL_TABS;/.test(portal));
   ok("6f. the panel renders only for the Owner", /tab === "סושיאל" && isOwner && artistId \? <ArtistSocialPanel/.test(portal));
   const sqlFiles = fs.readdirSync(path.join(ROOT, "scripts/sql")).filter((f) => /social/i.test(f)).sort();
-  ok("6g. the ONLY social SQL = the stage 1 record (applied / dry run / rollback) — stage 0 added none", sqlFiles.join() === ["2026-10-17-artist-social-stage1-APPLIED.sql", "2026-10-17-artist-social-stage1-DRYRUN.sql", "2026-10-17-artist-social-stage1-rollback.sql"].join(), sqlFiles);
+  ok("6g. the ONLY social SQL = the stage 1 + stage 2 records (applied / dry run / rollback) — stage 0 added none", sqlFiles.join() === ["2026-10-17-artist-social-stage1-APPLIED.sql", "2026-10-17-artist-social-stage1-DRYRUN.sql", "2026-10-17-artist-social-stage1-rollback.sql", "2026-10-17-artist-social-stage2-APPLIED.sql", "2026-10-17-artist-social-stage2-DRYRUN.sql", "2026-10-17-artist-social-stage2-rollback.sql"].join(), sqlFiles);
   ok("6h. the knowledge tool documents both resource relations", /OWNS_RESOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")) && /INSPIRATION_SOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")));
   ok("6i. activeKnowledge is the one 'current' rule used by the view", /activeKnowledge\(records, todayIL\)/.test(read("lib/partner/label/social.ts")) && activeKnowledge(K, TODAY).length === 4);
 
@@ -233,7 +233,7 @@ const SH = `label-artist:${LA_SHALEV}`, AVI = `label-artist:${LA_AVI}`, NG = `la
   ok("8g. artist_social serves the CONTENT summary to Sunny (and the hub card)", (rc.summary.find((x) => x.code === "CONTENT")?.value as { total: number } | null)?.total === 4);
   ok("8h. the content source is optional: unreadable content never blanks the social picture", PARTNER_KNOWLEDGE_REGISTRY.get("artist_social")!.optionalNeeds?.includes("OPERATIONS") === true && q(srcOf(brain(), K), "artist", { entity: SH }).completeness !== "UNKNOWN");
   const W = read("lib/writes/social.ts");
-  ok("8i. writer: a campaign or an artist; an artist campaign is inherited; a different artist refused; roster-checked by id", /campaign_id חסר \(או אמן — label_artist_id\)/.test(W) && /artistId = artistId \?\? camp\.label_artist_id/.test(W) && /הקמפיין שייך לאמן אחר/.test(W) && /labelArtistNameById/.test(W));
+  ok("8i. writer: a campaign or an artist; an artist campaign is inherited; a different artist refused; roster-checked by id", /campaign_id חסר \(או אמן — label_artist_id, או סדרה — series_id\)/.test(W) && /artistId = artistId \?\? camp\.label_artist_id/.test(W) && /הקמפיין שייך לאמן אחר/.test(W) && /labelArtistNameById/.test(W));
   ok("8j. campaign → artist link is compare-and-swap (never overwrites another artist)", /\.is\("label_artist_id", null\)/.test(W) && /הקמפיין כבר מקושר לאמן אחר/.test(W));
   const UP = read("lib/writes/uploads.ts");
   ok("8k. upload: the item decides the campaign (a mismatching client value refused); artist content → /Social/Artists/<artist>/Media", /campaignIdFromClient !== campaignId/.test(UP) && /\/Social\/Artists\/\$\{artistFolder\}\/Media/.test(UP));

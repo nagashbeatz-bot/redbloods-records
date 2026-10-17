@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import ArtistContentSection from "./ArtistContentSection";
+import ArtistCadenceSection, { PLATFORM_LABEL, type Cadence } from "./ArtistCadenceSection";
 import { ArtistSocialView, PLATFORM_HE, fmt, heDate, metricName, nameOf, type ArtistSocialResp } from "@/components/label/ArtistSocialPanel";
 
 const CARD = "rgba(255,255,255,0.058)";
@@ -43,6 +44,7 @@ function ArtistCard({ c, onOpen, onAdd }: { c: Card; onOpen: () => void; onAdd: 
   const records = d?.items.filter((i) => i.fields.recordType) ?? [];
   const insp = d?.items.filter((i) => i.fields.kind === "INSPIRATION").length ?? 0;
   const last = d?.summary.find((s) => s.code === "LAST_CHECKED_ON")?.value as string | null | undefined;
+  const cad = d?.summary.find((s) => s.code === "CADENCE")?.value as Cadence | null | undefined;
   const content = d?.summary.find((s) => s.code === "CONTENT")?.value as { total: number; byPhase: Record<string, number>; overdue: unknown[]; upcoming: Array<{ title: string; publishDate: string }>; undated: number } | null | undefined;
   return (
     <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "15px 17px 14px", display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -89,6 +91,18 @@ function ArtistCard({ c, onOpen, onAdd }: { c: Card; onOpen: () => void; onAdd: 
                   {content.overdue.length > 0 && <span style={{ color: RED }}> · עבר תאריך {content.overdue.length}</span>}
                   {content.upcoming[0] && <div style={{ color: TEXT }}>הבא לפרסום: {content.upcoming[0].title} ({heDate(content.upcoming[0].publishDate)})</div>}
                 </div>}
+          </div>
+          <div style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 11, padding: "8px 10px", marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT }}>השבוע (ראשון–שבת)</div>
+            {!cad ? <div style={{ fontSize: 11.5, color: AMBER, marginTop: 3 }}>יעדים ומעקב לא נקראו כרגע — זה לא אומר שאין</div> : (() => {
+              const w = cad.week; const gaps = w.signals.filter((x) => x.code !== "NO_TARGET").length; const act = cad.series.filter((x) => x.status === "ACTIVE");
+              return <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 3, lineHeight: 1.65 }}>
+                פריטים שפורסמו: <b style={{ color: TEXT }}>{w.items.published}</b>{w.overall ? <> מתוך יעד <b style={{ color: TEXT }}>{w.overall.progress.required}</b></> : <span style={{ color: MUTED }}> · אין יעד</span>}
+                <div>פרסומים בפלטפורמות: <b style={{ color: TEXT }}>{w.publications.total}</b>{w.publications.total > 0 && <span> ({Object.entries(w.publications.byPlatform).map(([p, n]) => `${PLATFORM_LABEL[p] ?? p} ${n}`).join(" · ")})</span>} · מתוכננים: <b style={{ color: TEXT }}>{w.items.plannedRemaining}</b></div>
+                {gaps > 0 && <div style={{ color: AMBER }}>פערים: {gaps}</div>}
+                <div>סדרות פעילות: {act.length ? act.map((x) => x.name).join(" · ") : <span style={{ color: MUTED }}>אין</span>}</div>
+              </div>;
+            })()}
           </div>
           <div style={{ fontSize: 12, color: TEXT2, marginBottom: 6 }}>
             תובנות והמלצות פתוחות של סאני: <b style={{ color: TEXT }}>{records.length}</b>{insp ? ` · השראות: ${insp}` : ""}
@@ -184,6 +198,7 @@ export default function LabelArtistsSocial({ isMobile }: { isMobile: boolean }) 
               <button onClick={close} aria-label="סגור" style={{ background: "transparent", border: `1px solid ${BDR}`, borderRadius: 8, color: TEXT2, fontSize: 14, padding: "3px 10px", cursor: "pointer" }}>✕</button>
             </div>
             <ArtistContentSection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} autoOpenAdd={openAdd} onChanged={() => setDirty(true)} />
+            <ArtistCadenceSection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} isMobile={isMobile} onChanged={() => setDirty(true)} />
             <ArtistSocialView data={open.data as unknown as ArtistSocialResp} artistName={open.name} />
           </div>
         </div>

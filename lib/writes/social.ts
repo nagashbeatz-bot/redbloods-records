@@ -15,6 +15,8 @@ import { SOCIAL_CAMPAIGN_STATUSES, SOCIAL_CONTENT_STATUSES, SOCIAL_PLATFORMS } f
 import { createCampaign, createContentItem, deleteCampaign, deleteContentItem, getCampaign, getContentItem, labelArtistNameById, listContentItemsByArtist, listContentItemsWithoutCampaign, updateCampaign, updateContentItem } from "@/lib/social-store";
 import { deleteSocialFile, getFile, listFiles } from "@/lib/social-files-store";
 import { createPromotion, deletePromotion, promotionSpend, syncActualExpense, updatePromotionFields } from "@/lib/social-promotions-store";
+import { getSeries, insertSeries, insertTarget, listSeries, listTargets, patchSeries } from "@/lib/social-cadence-store";
+import { ilYmd, SERIES_STATUSES, targetProblem, TARGET_PROBLEM_HE, type CadenceTargetRow, type SeriesRow, type TargetScope } from "@/lib/social-cadence";
 
 export class SocialInputError extends Error {}
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -115,8 +117,8 @@ export async function linkSocialCampaignArtist(campaignId: string, labelArtistId
  * artist it inherits that artist; an explicit different artist is refused (never two owners). No campaign → the artist is required.
  */
 export async function createSocialContent(body: Body) {
-  const fields: Body = { ...body }; const campaign_id = fields.campaign_id, project_id = fields.project_id, artistRaw = fields.label_artist_id;
-  delete fields.campaign_id; delete fields.project_id; delete fields.label_artist_id;
+  const fields: Body = { ...body }; const campaign_id = fields.campaign_id, project_id = fields.project_id, artistRaw = fields.label_artist_id, seriesRaw = fields.series_id;
+  delete fields.campaign_id; delete fields.project_id; delete fields.label_artist_id; delete fields.series_id;
   const campaignId = typeof campaign_id === "string" && campaign_id ? campaign_id : null;
   let artistId: string | null = null;
   if (artistRaw !== undefined && artistRaw !== null && artistRaw !== "") {
@@ -128,12 +130,125 @@ export async function createSocialContent(body: Body) {
     if (!camp) throw new SocialInputError("campaign_id: הקמפיין לא נמצא");
     if (camp.label_artist_id && artistId && camp.label_artist_id !== artistId) throw new SocialInputError("label_artist_id: הקמפיין שייך לאמן אחר");
     artistId = artistId ?? camp.label_artist_id ?? null;
-  } else if (!artistId) throw new SocialInputError("campaign_id חסר (או אמן — label_artist_id)");
+  }
+  // stage 2: a series (an artist series gives its artist; a different artist is refused — the DB trigger enforces it too)
+  let seriesId: string | null = null;
+  if (seriesRaw !== undefined && seriesRaw !== null && seriesRaw !== "") {
+    const s = await seriesForContent(seriesRaw, artistId);
+    seriesId = s.id; artistId = artistId ?? s.label_artist_id;
+  }
+  if (!campaignId && !artistId && !seriesId) throw new SocialInputError("campaign_id חסר (או אמן — label_artist_id, או סדרה — series_id)");
   const p = pick(fields, CONTENT_FIELDS, "content");
   if (!p.title) throw new SocialInputError("title: חסר שם");
-  return createContentItem({ ...(p as Parameters<typeof createContentItem>[0]), campaign_id: campaignId, label_artist_id: artistId, project_id: typeof project_id === "string" && project_id ? project_id : null });
+  return createContentItem({ ...(p as Parameters<typeof createContentItem>[0]), campaign_id: campaignId, label_artist_id: artistId, series_id: seriesId, project_id: typeof project_id === "string" && project_id ? project_id : null });
 }
-export async function updateSocialContent(id: string, body: Body) { return updateContentItem(id, pick(body, CONTENT_FIELDS, "content")); }
+export async function updateSocialContent(id: string, body: Body) {
+  const fields: Body = { ...body }; const hasSeries = Object.prototype.hasOwnProperty.call(fields, "series_id"); const seriesRaw = fields.series_id; delete fields.series_id;
+  const patch = pick(fields, CONTENT_FIELDS, "content");
+  if (hasSeries) {
+    if (seriesRaw === null || seriesRaw === "") patch.series_id = null;
+    else {
+      const item = await getContentItem(id);
+      if (!item) throw new SocialInputError("פריט התוכן לא נמצא");
+      const s = await seriesForContent(seriesRaw, item.label_artist_id ?? null);
+      if (!item.campaign_id && !item.label_artist_id && s.owner_scope === "ARTIST") throw new SocialInputError(TARGET_PROBLEM_HE.SERIES_ARTIST_MISMATCH);
+      patch.series_id = s.id;
+    }
+    // removing the series from an item that has neither a campaign nor an artist would orphan it (the DB CHECK refuses it too)
+    if (patch.series_id === null) { const item = await getContentItem(id); if (item && !item.campaign_id && !item.label_artist_id) throw new SocialInputError("לפריט אין קמפיין ואין אמן — אי אפשר להוציא אותו מהסדרה"); }
+  }
+  try { return await updateContentItem(id, patch); } catch (e) { throw dbProblem(e); }
+}
+
+// ── stage 2: content series + weekly targets (2026-10-17) ──
+/** A series a content item may join: exists, not ENDED, and an ARTIST series only for that artist (or an item with no artist yet). */
+async function seriesForContent(raw: unknown, artistId: string | null): Promise<SeriesRow> {
+  if (typeof raw !== "string" || !UUID.test(raw)) throw new SocialInputError("series_id: סדרה לא תקינה");
+  const s = await getSeries(raw);
+  if (!s) throw new SocialInputError("series_id: הסדרה לא נמצאה");
+  if (s.status === "ENDED") throw new SocialInputError("הסדרה הסתיימה — לא מוסיפים אליה תוכן");
+  if (s.owner_scope === "ARTIST" && artistId && s.label_artist_id !== artistId) throw new SocialInputError(TARGET_PROBLEM_HE.SERIES_ARTIST_MISMATCH);
+  return s;
+}
+/** The DB guards' coded messages → a clear Hebrew SocialInputError (the trigger stays the authority). */
+function dbProblem(e: unknown): Error {
+  const msg = String((e as { message?: unknown } | null)?.message ?? e);
+  for (const code of Object.keys(TARGET_PROBLEM_HE) as Array<keyof typeof TARGET_PROBLEM_HE>) if (msg.includes(code)) return new SocialInputError(TARGET_PROBLEM_HE[code]);
+  if (/social_targets_one_successor_uk|duplicate key/.test(msg) && /supersedes/.test(msg)) return new SocialInputError(TARGET_PROBLEM_HE.TARGET_HAS_SUCCESSOR);
+  if (/social_series_name_uk/.test(msg)) return new SocialInputError("כבר יש סדרה בשם הזה");
+  return e instanceof Error ? e : new Error(msg);
+}
+const PLATFORM_SET = new Set<string>(SOCIAL_PLATFORMS as readonly string[]);
+const cleanText = (v: unknown, max: number, what: string): string => { if (v === undefined || v === null) return ""; if (typeof v !== "string" || v.length > max) throw new SocialInputError(`${what}: טקסט לא תקין`); return v.trim(); };
+const cleanPlatforms = (v: unknown): string[] => { if (v === undefined || v === null || v === "") return []; const xs = Array.isArray(v) ? v.map(String) : String(v).split(","); const out = [...new Set(xs.map((x) => x.trim()).filter(Boolean))]; if (!out.every((x) => PLATFORM_SET.has(x))) throw new SocialInputError("פלטפורמות לא תקינות"); return out; };
+
+export async function listSocialSeries() { return listSeries(); }
+export async function readSocialSeries(id: string) { return UUID.test(id) ? getSeries(id) : null; }
+export async function createSocialSeries(body: Body): Promise<SeriesRow> {
+  const extra = Object.keys(body).filter((k) => !["name", "owner_scope", "label_artist_id", "platforms", "notes"].includes(k));
+  if (extra.length) throw new SocialInputError(`שדות לא מותרים: ${extra.join(", ")}`);
+  const name = cleanText(body.name, 80, "name"); if (!name) throw new SocialInputError("name: חסר שם");
+  const scope = body.owner_scope === "LABEL" ? "LABEL" : body.owner_scope === "ARTIST" ? "ARTIST" : null;
+  if (!scope) throw new SocialInputError("owner_scope: ARTIST או LABEL");
+  let artist: string | null = null;
+  if (scope === "ARTIST") { artist = await labelArtistExists(body.label_artist_id); if (!artist) throw new SocialInputError("סדרת אמן צריכה אמן מהרוסטר"); }
+  else if (body.label_artist_id) throw new SocialInputError("סדרת לייבל לא שייכת לאמן");
+  try { return await insertSeries({ name, owner_scope: scope, label_artist_id: artist, platforms: cleanPlatforms(body.platforms), notes: cleanText(body.notes, 500, "notes") }); }
+  catch (e) { throw dbProblem(e); }
+}
+/** Allowed edits only: name, platforms, status (ACTIVE / PAUSED / ENDED), notes — the owner never changes; no delete. */
+export async function updateSocialSeries(id: string, body: Body): Promise<SeriesRow> {
+  const extra = Object.keys(body).filter((k) => !["name", "platforms", "status", "notes"].includes(k));
+  if (extra.length) throw new SocialInputError(`שדות לא מותרים (בעלים לא משתנים): ${extra.join(", ")}`);
+  const cur = await readSocialSeries(id); if (!cur) throw new SocialInputError("הסדרה לא נמצאה");
+  const patch: Partial<Pick<SeriesRow, "name" | "platforms" | "status" | "notes">> = {};
+  if (body.name !== undefined) { const n = cleanText(body.name, 80, "name"); if (!n) throw new SocialInputError("name: חסר שם"); patch.name = n; }
+  if (body.platforms !== undefined) patch.platforms = cleanPlatforms(body.platforms);
+  if (body.notes !== undefined) patch.notes = cleanText(body.notes, 500, "notes");
+  if (body.status !== undefined) { if (!(SERIES_STATUSES as readonly string[]).includes(String(body.status))) throw new SocialInputError("status: פעילה / מושהית / הסתיימה"); if (cur.status === "ENDED" && body.status !== "ENDED") throw new SocialInputError("סדרה שהסתיימה לא נפתחת מחדש — יוצרים סדרה חדשה"); patch.status = body.status as SeriesRow["status"]; }
+  try { return await patchSeries(id, patch); } catch (e) { throw dbProblem(e); }
+}
+export async function listSocialTargets() { return listTargets(); }
+/**
+ * A weekly target, Owner-decided only (OWNER_STATEMENT, or OWNER_APPROVED_RECOMMENDATION with the recommendation record).
+ * SET opens / replaces (supersedes_id = the slot's current head); END ends a chain. Never edited, never deleted.
+ */
+export async function setSocialCadenceTarget(body: Body): Promise<CadenceTargetRow> {
+  const allowed = ["scope", "label_artist_id", "series_id", "platform", "content_type", "action", "per_week", "valid_from", "valid_until", "supersedes_id", "source", "recommendation_id", "note_he"];
+  const extra = Object.keys(body).filter((k) => !allowed.includes(k));
+  if (extra.length) throw new SocialInputError(`שדות לא מותרים: ${extra.join(", ")}`);
+  const today = ilYmd(new Date());
+  const scope = String(body.scope ?? "") as TargetScope;
+  if (!["OVERALL", "BREAKDOWN", "SERIES"].includes(scope)) throw new SocialInputError("scope: OVERALL / BREAKDOWN / SERIES");
+  const action = body.action === "END" ? "END" : body.action === "SET" || body.action === undefined ? "SET" : null;
+  if (!action) throw new SocialInputError("action: SET / END");
+  const ymd = (v: unknown, what: string) => { if (v === undefined || v === null || v === "") return null; if (typeof v !== "string" || !YMD.test(v)) throw new SocialInputError(`${what}: תאריך לא תקין`); return v; };
+  const artist = body.label_artist_id ? await labelArtistExists(body.label_artist_id) : null;
+  if (body.label_artist_id && !artist) throw new SocialInputError("אמן לא קיים ברוסטר");
+  let series: SeriesRow | null = null;
+  if (body.series_id) { series = await readSocialSeries(String(body.series_id)); if (!series) throw new SocialInputError("הסדרה לא נמצאה"); }
+  const platform = body.platform ? String(body.platform) : null;
+  if (platform && !PLATFORM_SET.has(platform)) throw new SocialInputError("פלטפורמה לא תקינה");
+  const contentType = body.content_type ? cleanText(body.content_type, 60, "content_type") : null;
+  const perWeek = action === "SET" ? Number(body.per_week) : null;
+  if (action === "SET" && (!Number.isInteger(perWeek) || perWeek! < 1 || perWeek! > 50)) throw new SocialInputError("per_week: מספר שלם בין 1 ל-50");
+  const source = body.source === "OWNER_APPROVED_RECOMMENDATION" ? "OWNER_APPROVED_RECOMMENDATION" : "OWNER_STATEMENT";
+  const rec = body.recommendation_id ? String(body.recommendation_id) : null;
+  if ((source === "OWNER_APPROVED_RECOMMENDATION") !== !!rec) throw new SocialInputError("יעד מהמלצה מאושרת צריך את ההמלצה עצמה");
+  const row: Omit<CadenceTargetRow, "id" | "created_at"> = {
+    scope, label_artist_id: scope === "SERIES" ? (series?.label_artist_id ?? null) : artist, series_id: scope === "SERIES" ? series?.id ?? null : null,
+    platform: scope === "BREAKDOWN" ? platform : null, content_type: scope === "BREAKDOWN" ? contentType : null, action, per_week: perWeek,
+    valid_from: ymd(body.valid_from, "valid_from") ?? today, valid_until: action === "SET" ? ymd(body.valid_until, "valid_until") : null,
+    supersedes_id: body.supersedes_id ? String(body.supersedes_id) : null, source, recommendation_id: rec, note_he: body.note_he ? cleanText(body.note_he, 300, "note_he") || null : null,
+  };
+  if (scope !== "SERIES" && !row.label_artist_id) throw new SocialInputError("יעד כולל / פירוט צריך אמן");
+  if (scope === "SERIES" && !row.series_id) throw new SocialInputError("יעד סדרה צריך סדרה");
+  if (scope === "BREAKDOWN" && !row.platform && !row.content_type) throw new SocialInputError("יעד פירוט צריך פלטפורמה או סוג תוכן");
+  if (action === "END" && !row.supersedes_id) throw new SocialInputError("סיום יעד צריך את היעד שמסתיים");
+  const problem = targetProblem(row, await listTargets(), today);
+  if (problem) throw new SocialInputError(TARGET_PROBLEM_HE[problem]);
+  try { return await insertTarget(row); } catch (e) { throw dbProblem(e); }
+}
 export async function readSocialContent(id: string) { return getContentItem(id); }
 
 async function deleteStored(paths: string[]): Promise<number> {
