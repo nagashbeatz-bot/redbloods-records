@@ -12,7 +12,7 @@
 import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
 import { SOCIAL_CAMPAIGN_STATUSES, SOCIAL_CONTENT_STATUSES, SOCIAL_PLATFORMS } from "@/lib/types";
-import { createCampaign, createContentItem, deleteCampaign, deleteContentItem, getCampaign, getContentItem, updateCampaign, updateContentItem } from "@/lib/social-store";
+import { createCampaign, createContentItem, deleteCampaign, deleteContentItem, getCampaign, getContentItem, labelArtistNameById, listContentItemsByArtist, listContentItemsWithoutCampaign, updateCampaign, updateContentItem } from "@/lib/social-store";
 import { deleteSocialFile, getFile, listFiles } from "@/lib/social-files-store";
 import { createPromotion, deletePromotion, promotionSpend, syncActualExpense, updatePromotionFields } from "@/lib/social-promotions-store";
 
@@ -71,18 +71,67 @@ export async function campaignForProject(projectId: string): Promise<string | nu
   if (error) throw new Error(error.message);
   return (data?.id as string | undefined) ?? null;
 }
-export async function campaignCounts(id: string): Promise<{ content: number; promotions: number; files: number }> {
+export async function campaignCounts(id: string): Promise<{ content: number; promotions: number; files: number; artistContentKept: number }> {
   const c = async (table: string) => { const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("campaign_id", id); if (error) throw new Error(error.message); return count ?? 0; };
-  return { content: await c("social_content_items"), promotions: await c("social_promotions"), files: await c("social_content_files") };
+  // stage 1 (DB trigger social_campaign_before_delete): content that belongs to an artist is KEPT (detached), the rest goes
+  const { count: kept, error: ke } = await supabase.from("social_content_items").select("id", { count: "exact", head: true }).eq("campaign_id", id).not("label_artist_id", "is", null);
+  if (ke) throw new Error(ke.message);
+  return { content: await c("social_content_items"), promotions: await c("social_promotions"), files: await c("social_content_files"), artistContentKept: kept ?? 0 };
+}
+
+// ── stage 1: artist content (2026-10-17) ──
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A roster artist by exact id — the canonical link (never a name). */
+export async function labelArtistExists(id: unknown): Promise<string | null> {
+  if (typeof id !== "string" || !UUID.test(id)) return null;
+  return (await labelArtistNameById(id)) !== null ? id : null;
+}
+export async function listSocialContentForArtist(labelArtistId: string) { return listContentItemsByArtist(labelArtistId); }
+export async function listSocialContentWithoutCampaign() { return listContentItemsWithoutCampaign(); }
+/**
+ * Link a campaign to its label artist (ONE approved change): the campaign and its content that has no artist yet. Compare-and-
+ * swap — a campaign / item already linked to ANOTHER artist is never overwritten; nothing else changes.
+ */
+export async function linkSocialCampaignArtist(campaignId: string, labelArtistId: string): Promise<{ campaign: boolean; items: number }> {
+  if (!(await labelArtistExists(labelArtistId))) throw new SocialInputError("אמן לא קיים ברוסטר");
+  const camp = await getCampaign(campaignId);
+  if (!camp) throw new SocialInputError("הקמפיין לא נמצא");
+  if (camp.label_artist_id && camp.label_artist_id !== labelArtistId) throw new SocialInputError("הקמפיין כבר מקושר לאמן אחר");
+  let linked = false;
+  if (!camp.label_artist_id) {
+    const { data, error } = await supabase.from("social_campaigns").update({ label_artist_id: labelArtistId, updated_at: new Date().toISOString() }).eq("id", campaignId).is("label_artist_id", null).select("id");
+    if (error) throw new Error(error.message);
+    linked = (data ?? []).length === 1;
+    if (!linked) throw new SocialInputError("הקמפיין השתנה בינתיים — לא קישרתי");
+  }
+  const { data: items, error: ie } = await supabase.from("social_content_items").update({ label_artist_id: labelArtistId, updated_at: new Date().toISOString() }).eq("campaign_id", campaignId).is("label_artist_id", null).select("id");
+  if (ie) throw new Error(ie.message);
+  return { campaign: linked, items: (items ?? []).length };
 }
 
 // ── content ──
+/**
+ * Stage 1: a content item belongs to a campaign, to a label artist, or both (DB CHECK). Inside a campaign that is linked to an
+ * artist it inherits that artist; an explicit different artist is refused (never two owners). No campaign → the artist is required.
+ */
 export async function createSocialContent(body: Body) {
-  const fields: Body = { ...body }; const campaign_id = fields.campaign_id, project_id = fields.project_id; delete fields.campaign_id; delete fields.project_id;
-  if (typeof campaign_id !== "string" || !campaign_id) throw new SocialInputError("campaign_id חסר");
+  const fields: Body = { ...body }; const campaign_id = fields.campaign_id, project_id = fields.project_id, artistRaw = fields.label_artist_id;
+  delete fields.campaign_id; delete fields.project_id; delete fields.label_artist_id;
+  const campaignId = typeof campaign_id === "string" && campaign_id ? campaign_id : null;
+  let artistId: string | null = null;
+  if (artistRaw !== undefined && artistRaw !== null && artistRaw !== "") {
+    artistId = await labelArtistExists(artistRaw);
+    if (!artistId) throw new SocialInputError("label_artist_id: אמן לא קיים ברוסטר");
+  }
+  if (campaignId) {
+    const camp = await getCampaign(campaignId);
+    if (!camp) throw new SocialInputError("campaign_id: הקמפיין לא נמצא");
+    if (camp.label_artist_id && artistId && camp.label_artist_id !== artistId) throw new SocialInputError("label_artist_id: הקמפיין שייך לאמן אחר");
+    artistId = artistId ?? camp.label_artist_id ?? null;
+  } else if (!artistId) throw new SocialInputError("campaign_id חסר (או אמן — label_artist_id)");
   const p = pick(fields, CONTENT_FIELDS, "content");
   if (!p.title) throw new SocialInputError("title: חסר שם");
-  return createContentItem({ ...(p as Parameters<typeof createContentItem>[0]), campaign_id, project_id: typeof project_id === "string" && project_id ? project_id : null });
+  return createContentItem({ ...(p as Parameters<typeof createContentItem>[0]), campaign_id: campaignId, label_artist_id: artistId, project_id: typeof project_id === "string" && project_id ? project_id : null });
 }
 export async function updateSocialContent(id: string, body: Body) { return updateContentItem(id, pick(body, CONTENT_FIELDS, "content")); }
 export async function readSocialContent(id: string) { return getContentItem(id); }

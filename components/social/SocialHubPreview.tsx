@@ -126,7 +126,12 @@ export default function SocialHubPreview() {
 
   useEffect(() => {
     if (camLoading) return;
-    if (campaigns.length === 0) { setDataLoading(false); return; }
+    // stage 1 (2026-10-17): an artist's own content (no campaign) also counts in the board / summary
+    const ownContent = fetch(`/api/social/content?scope=no-campaign`)
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then(d => (d.items ?? []) as SocialContentItem[])
+      .catch(() => [] as SocialContentItem[]);
+    if (campaigns.length === 0) { ownContent.then(items => { setAllItems(items); setDataLoading(false); }); return; }
     const cap = campaigns.slice(0, 8);
     const fetches = cap.flatMap(c => [
       fetch(`/api/social/content?campaignId=${c.id}`)
@@ -141,8 +146,8 @@ export default function SocialHubPreview() {
         })
         .catch(() => [] as ContentFile[]),
     ]);
-    Promise.all(fetches).then(results => {
-      const items: SocialContentItem[] = [];
+    Promise.all([Promise.all(fetches), ownContent]).then(([results, own]) => {
+      const items: SocialContentItem[] = [...own];
       const files: ContentFile[] = [];
       results.forEach((r, i) => {
         if (i % 2 === 0) items.push(...(r as SocialContentItem[]));

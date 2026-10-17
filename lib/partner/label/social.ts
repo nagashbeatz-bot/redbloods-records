@@ -19,6 +19,8 @@ import { recheckProposals, researchSeries, type RecheckProposal, type ResearchCo
 import { STATUS_HE } from "../brain/vocab";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { CLASSIFICATION_VALUE_HE } from "../owner-knowledge/taxonomy";
+import { isSocialItemOverdue, socialPhaseOf, type SocialPhase } from "@/lib/types";
+import type { OpsCampaign, OpsContentItem } from "../operations/types";
 
 export const COMPANY_OWNER_KEY = "company:REDBLOODS";
 const LIVE_RECORD = new Set(["OPEN", "ENDORSED", "ACCEPTED"]);
@@ -56,6 +58,46 @@ export interface SocialRecord {
   /** CANONICAL = the record itself names the artist; DERIVED = it rests on one of the artist's accounts (through the Owner-approved ownership). */
   tie: "CANONICAL" | "DERIVED"; evidenceCheckedOn: string | null; evidenceFreshnessHe: string | null; alsoSharedChannel: boolean;
 }
+/** Stage 1 (2026-10-17): the artist's OWN content — items whose canonical artist link is this artist (with or without a campaign). */
+export interface SocialContentRow { id: string; title: string; contentType: string | null; platform: string | null; status: string | null; phase: SocialPhase; dueDate: string | null; publishDate: string | null; campaignId: string | null; campaignTitle: string | null; overdue: boolean }
+export interface ArtistContent {
+  /** false = the content source could not be read (UNKNOWN — never "no content"). */
+  readable: boolean;
+  total: number;
+  byPhase: Record<SocialPhase, number>;
+  /** not published / cancelled, a publish date today or later — soonest first (at most 5) */
+  upcoming: SocialContentRow[];
+  /** the app's own rule (isSocialItemOverdue): a due date before today and not published / cancelled */
+  overdue: SocialContentRow[];
+  /** open items with neither a due nor a publish date */
+  undated: number;
+  /** published, newest publish date first (at most 3) */
+  recentPublished: SocialContentRow[];
+  withoutCampaign: number;
+  campaignsLinked: number;
+}
+const PHASES: readonly SocialPhase[] = ["IDEA", "WORK", "READY", "PUBLISHED", "CANCELLED", "UNKNOWN"];
+export function artistContentOf(artistId: string, ops: { campaigns: readonly OpsCampaign[]; items: readonly OpsContentItem[] } | null, todayIL: string): ArtistContent {
+  const byPhase = Object.fromEntries(PHASES.map((p) => [p, 0])) as Record<SocialPhase, number>;
+  if (!ops) return { readable: false, total: 0, byPhase, upcoming: [], overdue: [], undated: 0, recentPublished: [], withoutCampaign: 0, campaignsLinked: 0 };
+  const title = new Map(ops.campaigns.map((c) => [c.id, c.title]));
+  const rows: SocialContentRow[] = ops.items.filter((i) => i.labelArtistId === artistId && i.id).map((i) => {
+    const phase = socialPhaseOf(i.status);
+    return { id: String(i.id), title: i.title ?? "", contentType: i.contentType, platform: i.platform, status: i.status, phase, dueDate: i.dueDate, publishDate: i.publishDate, campaignId: i.campaignId, campaignTitle: i.campaignId ? title.get(i.campaignId) ?? null : null, overdue: isSocialItemOverdue({ status: i.status, due_date: i.dueDate }, todayIL) };
+  });
+  for (const r of rows) byPhase[r.phase]++;
+  const open = (r: SocialContentRow) => r.phase !== "PUBLISHED" && r.phase !== "CANCELLED";
+  return {
+    readable: true, total: rows.length, byPhase,
+    upcoming: rows.filter((r) => open(r) && !!r.publishDate && r.publishDate >= todayIL).sort((a, b) => a.publishDate!.localeCompare(b.publishDate!) || a.id.localeCompare(b.id)).slice(0, 5),
+    overdue: rows.filter((r) => r.overdue).sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "") || a.id.localeCompare(b.id)),
+    undated: rows.filter((r) => open(r) && !r.dueDate && !r.publishDate).length,
+    recentPublished: rows.filter((r) => r.phase === "PUBLISHED").sort((a, b) => (b.publishDate ?? "").localeCompare(a.publishDate ?? "") || a.id.localeCompare(b.id)).slice(0, 3),
+    withoutCampaign: rows.filter((r) => !r.campaignId).length,
+    campaignsLinked: ops.campaigns.filter((c) => c.labelArtistId === artistId).length,
+  };
+}
+
 export interface ArtistSocial {
   artistKey: string; artistName: string;
   accounts: SocialAccount[];
@@ -66,6 +108,7 @@ export interface ArtistSocial {
   lastCheckedOn: string | null;
   recheck: RecheckProposal | null;
   unassignedAccounts: Array<{ resourceId: string; platform: string; label: string }>;
+  content: ArtistContent;
 }
 
 const labelOfResource = (r: BrainResource) => `${r.platform} ${r.displayName ?? r.firstHandle ?? r.identityKey}`.trim();
@@ -86,6 +129,8 @@ export interface ArtistSocialInput {
   brain: BrainSnapshot; knowledge: readonly OwnerKnowledgeRecord[]; todayIL: string; now: Date;
   artist: { id: string; name: string };
   releases?: ResearchContext["releases"];
+  /** stage 1: the content source (null = could not be read, so content is UNKNOWN) */
+  ops?: { campaigns: readonly OpsCampaign[]; items: readonly OpsContentItem[] } | null;
 }
 
 export function artistSocialOf(i: ArtistSocialInput): ArtistSocial {
@@ -153,5 +198,6 @@ export function artistSocialOf(i: ArtistSocialInput): ArtistSocial {
   return {
     artistKey, artistName: i.artist.name, accounts, labelChannels, inspirations: insp, records, historyRecords: tied.length - records.length,
     lastCheckedOn: latest(accounts.map((a) => a.lastCheckedOn)), recheck, unassignedAccounts,
+    content: artistContentOf(i.artist.id, i.ops ?? null, todayIL),
   };
 }

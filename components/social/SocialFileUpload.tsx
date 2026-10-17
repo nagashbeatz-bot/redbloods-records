@@ -9,7 +9,7 @@ const WARN_SIZE = 150 * 1024 * 1024;  // 150MB — show warning
 
 interface Props {
   contentItemId: string;
-  campaignId: string;
+  campaignId: string | null;
   projectId: string | null;
   files: SocialContentFile[];
   onFilesChange: (files: SocialContentFile[]) => void;
@@ -61,7 +61,7 @@ export default function SocialFileUpload({
     const formData = new FormData();
     formData.append("file", file);
     formData.append("contentItemId", contentItemId);
-    formData.append("campaignId", campaignId);
+    if (campaignId) formData.append("campaignId", campaignId);
     if (projectId) formData.append("projectId", projectId);
 
     setUploading(true);

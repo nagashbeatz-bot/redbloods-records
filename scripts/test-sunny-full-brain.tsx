@@ -59,8 +59,8 @@ const PROD_COLUMNS: Record<string, string[]> = {
   meetings: ["id", "client_id", "client_name", "project_id", "date", "time", "duration", "location", "notes", "status", "calendar_event_id", "created_at"],
   album_tracks: ["id", "project_id", "track_number", "title", "status", "mix_status", "master_status", "notes", "created_at", "updated_at"],
   final_files: ["id", "work_id", "project_id", "file_name", "dropbox_path", "file_size", "file_type", "uploaded_by", "created_at"],
-  social_campaigns: ["id", "project_id", "title", "artist_name", "release_date", "status", "marketing_angle", "target_audience", "main_message", "platforms", "owner_id", "notes", "created_at", "updated_at", "promotion_budget"],
-  social_content_items: ["id", "campaign_id", "project_id", "title", "content_type", "status", "platform", "due_date", "publish_date", "owner_name", "asset_link", "dropbox_link", "calendar_event_id", "task_id", "caption", "hook", "notes", "posted_url", "created_at", "updated_at", "publish_time"],
+  social_campaigns: ["id", "project_id", "title", "artist_name", "release_date", "status", "marketing_angle", "target_audience", "main_message", "platforms", "owner_id", "notes", "created_at", "updated_at", "promotion_budget", "label_artist_id"],
+  social_content_items: ["id", "campaign_id", "project_id", "title", "content_type", "status", "platform", "due_date", "publish_date", "owner_name", "asset_link", "dropbox_link", "calendar_event_id", "task_id", "caption", "hook", "notes", "posted_url", "created_at", "updated_at", "publish_time", "label_artist_id"],
   social_content_files: ["id", "content_item_id", "campaign_id", "project_id", "file_name", "file_type", "file_size", "dropbox_path", "dropbox_file_id", "dropbox_share_link", "uploaded_by", "created_at", "updated_at"],
   social_promotions: ["id", "campaign_id", "channel", "promo_type", "name", "planned_amount", "status", "promo_date", "notes", "linked_transaction_id", "created_at", "updated_at"],
 };

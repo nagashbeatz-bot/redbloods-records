@@ -193,7 +193,8 @@ const SH = `label-artist:${LA_SHALEV}`, AVI = `label-artist:${LA_AVI}`, NG = `la
   const portal = read("components/red-artists/ArtistPortalPage.tsx");
   ok("6e. the tab is Owner-only, needs an artist id, never the DJ portal; never in an artist's own list", /const visibleTabs: readonly Tab\[\] = isOwner && !!artistId && !isCleantonePortal \? \[\.\.\.baseTabs, "סושיאל"\] : baseTabs;/.test(portal) && /const PORTAL_TABS: readonly Tab\[\] = TABS\.filter\(\(t\) => t !== "סושיאל"\);/.test(portal) && /: PORTAL_TABS;/.test(portal));
   ok("6f. the panel renders only for the Owner", /tab === "סושיאל" && isOwner && artistId \? <ArtistSocialPanel/.test(portal));
-  ok("6g. no SQL / migration added for stage 0", !fs.readdirSync(path.join(ROOT, "scripts/sql")).some((f) => /social|artist-social/i.test(f)));
+  const sqlFiles = fs.readdirSync(path.join(ROOT, "scripts/sql")).filter((f) => /social/i.test(f)).sort();
+  ok("6g. the ONLY social SQL = the stage 1 record (applied / dry run / rollback) — stage 0 added none", sqlFiles.join() === ["2026-10-17-artist-social-stage1-APPLIED.sql", "2026-10-17-artist-social-stage1-DRYRUN.sql", "2026-10-17-artist-social-stage1-rollback.sql"].join(), sqlFiles);
   ok("6h. the knowledge tool documents both resource relations", /OWNS_RESOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")) && /INSPIRATION_SOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")));
   ok("6i. activeKnowledge is the one 'current' rule used by the view", /activeKnowledge\(records, todayIL\)/.test(read("lib/partner/label/social.ts")) && activeKnowledge(K, TODAY).length === 4);
 
@@ -205,6 +206,41 @@ const SH = `label-artist:${LA_SHALEV}`, AVI = `label-artist:${LA_AVI}`, NG = `la
   ok("7c. the full view is the existing ArtistSocialView (no second rendering of the artist)", /import \{ ArtistSocialView[^}]*\} from "@\/components\/label\/ArtistSocialPanel"/.test(las) && /<ArtistSocialView /.test(las));
   ok("7d. the shared label channel is rendered apart, from the roster's LABEL_CHANNELS, never inside a card", /LABEL_CHANNELS/.test(las) && /ערוץ לייבל משותף/.test(las) && !/LABEL_CHANNEL"/.test(las.slice(las.indexOf("function ArtistCard"), las.indexOf("export default"))));
   ok("7e. no business rule in the section (no ownership / freshness logic of its own)", !/activeKnowledge|OWNS_RESOURCE|researchSeries|ageDays\s*[<>]/.test(las));
+
+  section("8. Stage 1 — the artist's own content (schema applied 2026-10-17; code reads / writes it)");
+  const sql = (f: string) => read(`scripts/sql/${f}`);
+  const dry = sql("2026-10-17-artist-social-stage1-DRYRUN.sql"), fwd = sql("2026-10-17-artist-social-stage1-APPLIED.sql"), rb = sql("2026-10-17-artist-social-stage1-rollback.sql");
+  ok("8a. the dry run can never persist: one DO block ending in RAISE + ROLLBACK, no COMMIT statement", /RAISE EXCEPTION 'DRYRUN_RESULT %'/.test(dry) && /\nROLLBACK;\s*$/.test(dry) && !/^\s*COMMIT;/m.test(dry));
+  ok("8b. the applied forward is one DO block with pre- and postconditions", /DO \$fwd\$/.test(fwd) && /FORWARD_FAIL precondition items FK/.test(fwd) && /FORWARD_FAIL a row got an artist/.test(fwd) && /ON DELETE SET NULL/.test(fwd) && /social_campaign_before_delete/.test(fwd));
+  ok("8c. the rollback refuses while artist-only content exists (nothing is deleted)", /ROLLBACK_BLOCKED/.test(rb) && !/DELETE FROM/i.test(rb));
+  const ops = {
+    campaigns: [{ id: U(9001), projectId: null, title: "פרנציפ", artistName: "שליו טסמה", releaseDate: null, status: "active", promotionBudget: 0, labelArtistId: LA_SHALEV }],
+    items: [
+      { id: U(9101), title: "רילס 1", campaignId: null, labelArtistId: LA_SHALEV, status: "idea", contentType: "ריל", platform: "instagram", dueDate: null, publishDate: "2026-09-26" },
+      { id: U(9102), title: "טיזר", campaignId: U(9001), labelArtistId: LA_SHALEV, status: "in_edit", contentType: "טיזר", platform: "tiktok", dueDate: "2026-09-20", publishDate: null },
+      { id: U(9103), title: "פורסם", campaignId: null, labelArtistId: LA_SHALEV, status: "published", contentType: "פוסט", platform: "instagram", dueDate: "2026-09-01", publishDate: "2026-09-02" },
+      { id: U(9104), title: "בלי תאריך", campaignId: null, labelArtistId: LA_SHALEV, status: "draft", contentType: "BTS", platform: null, dueDate: null, publishDate: null },
+      { id: U(9105), title: "של אבי", campaignId: null, labelArtistId: LA_AVI, status: "idea", contentType: "ריל", platform: null, dueDate: null, publishDate: null },
+      { id: U(9106), title: "קמפיין בלי אמן", campaignId: U(9001), labelArtistId: null, status: "idea", contentType: "ריל", platform: null, dueDate: null, publishDate: null },
+    ],
+  };
+  const vc = artistSocialOf({ brain: brain(), knowledge: K, todayIL: TODAY, now: NOW, artist: { id: LA_SHALEV, name: "שליו טסמה" }, ops }).content;
+  ok("8d. only the canonically linked items are the artist's (never another artist's, never an artist-less campaign item)", vc.readable && vc.total === 4, vc.total);
+  ok("8e. phases by the app's socialPhaseOf; overdue by isSocialItemOverdue; upcoming / undated / without campaign", vc.byPhase.IDEA === 2 && vc.byPhase.WORK === 1 && vc.byPhase.PUBLISHED === 1 && vc.overdue.map((x) => x.id).join() === U(9102) && vc.upcoming[0]?.id === U(9101) && vc.undated === 1 && vc.withoutCampaign === 3 && vc.campaignsLinked === 1, vc);
+  ok("8f. the content source unreadable → content UNKNOWN (never 'no content')", artistSocialOf({ brain: brain(), knowledge: K, todayIL: TODAY, now: NOW, artist: { id: LA_SHALEV, name: "שליו טסמה" }, ops: null }).content.readable === false);
+  const withOps = { ...srcOf(brain(), K), operations: { status: "OK" as const, value: { campaigns: { rows: ops.campaigns, capped: false }, contentItems: { rows: ops.items, capped: false } } as never } };
+  const rc = q(withOps, "artist", { entity: SH });
+  ok("8g. artist_social serves the CONTENT summary to Sunny (and the hub card)", (rc.summary.find((x) => x.code === "CONTENT")?.value as { total: number } | null)?.total === 4);
+  ok("8h. the content source is optional: unreadable content never blanks the social picture", PARTNER_KNOWLEDGE_REGISTRY.get("artist_social")!.optionalNeeds?.includes("OPERATIONS") === true && q(srcOf(brain(), K), "artist", { entity: SH }).completeness !== "UNKNOWN");
+  const W = read("lib/writes/social.ts");
+  ok("8i. writer: a campaign or an artist; an artist campaign is inherited; a different artist refused; roster-checked by id", /campaign_id חסר \(או אמן — label_artist_id\)/.test(W) && /artistId = artistId \?\? camp\.label_artist_id/.test(W) && /הקמפיין שייך לאמן אחר/.test(W) && /labelArtistNameById/.test(W));
+  ok("8j. campaign → artist link is compare-and-swap (never overwrites another artist)", /\.is\("label_artist_id", null\)/.test(W) && /הקמפיין כבר מקושר לאמן אחר/.test(W));
+  const UP = read("lib/writes/uploads.ts");
+  ok("8k. upload: the item decides the campaign (a mismatching client value refused); artist content → /Social/Artists/<artist>/Media", /campaignIdFromClient !== campaignId/.test(UP) && /\/Social\/Artists\/\$\{artistFolder\}\/Media/.test(UP));
+  const hub2 = read("components/social/SocialHubPreview.tsx"), sec = read("components/social/ArtistContentSection.tsx"), hook = read("components/social/useArtistContent.ts");
+  ok("8l. the hub board / counts include the artist's own content (scope no-campaign) — campaigns untouched", /\/api\/social\/content\?scope=no-campaign/.test(hub2) && /campaigns\.slice\(0, 8\)/.test(hub2));
+  ok("8m. the artist content section reuses the EXISTING content components and the same routes", /import ContentItemsTable from "\.\/ContentItemsTable"/.test(sec) && /import AddContentModal from "\.\/AddContentModal"/.test(sec) && /campaignId=\{null\}/.test(sec) && /labelArtistId=\$\{encodeURIComponent/.test(hook) && /label_artist_id: labelArtistId/.test(hook));
+  ok("8n. the hub opens the content section inside the existing full view", /<ArtistContentSection labelArtistId=/.test(las) && /\+ תוכן חדש/.test(las));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

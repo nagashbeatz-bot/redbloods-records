@@ -183,7 +183,7 @@ export const PROJECT_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/projects-store.ts": "367952f3d58dd8514421fb6fc752f5e8fb0a27799511135f93fdee7bd5d6c3dc",
   // 2026-09-29 review (song ↔ clip P1): Project gained optional songProjectId (canonical clip → song link); parentProject documented as legacy / display — no vocabulary change
   // 2026-10-01 review (one clip model): no "שיר + קליפ" type; a clip is its own project; matchesTypeFilter = exact type
-  "lib/types.ts": "d86143de4cfaa2cc47dc203ce438019958b1c57d1f03ab6b46c9f621296de879",
+  "lib/types.ts": "d046b42d88a80fa4bae8cb69c9ce54af9cc6a501e12474ebed2b66e20dbbd22d", // 2026-10-17 social stage 1: SocialContentItem / SocialCampaign / SocialContentFile gain label_artist_id + a nullable campaign — no project field changed
   // 2026-09-27 review (Universal Actions): create / status / rename logic moved into the shared writers lib/writes/projects
   // (identical behaviour; the same writers back Sunny's typed primitives). No field, vocabulary or link semantics changed.
   "app/api/projects/route.ts": "486ceb2e7b45ed5419e86a97f5f59dfff0a3fd9925e2eca10af1e5b650dbbca5",

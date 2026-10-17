@@ -7,7 +7,8 @@ import { SOCIAL_CONTENT_TYPES, SOCIAL_PLATFORMS, SOCIAL_PLATFORM_LABELS, SOCIAL_
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 interface Props {
-  campaignId: string;
+  /** null = an artist's own content (stage 1) — the file goes to the artist's folder (the server decides). */
+  campaignId: string | null;
   projectId: string | null;
   onAdd: (input: Partial<SocialContentItem>) => Promise<SocialContentItem>;
   onClose: () => void;
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export default function AddContentModal({ campaignId, projectId, onAdd, onClose, onFileUploaded }: Props) {
+  // a file can be stored for a project's content (as before) or for an artist's own content (no campaign → the artist's folder)
+  const canUpload = !!projectId || !campaignId;
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState<SocialContentType>("טיזר");
   const [platform, setPlatform] = useState<SocialPlatform>("instagram");
@@ -56,12 +59,12 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
 
   function uploadFile(contentItemId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!pendingFile || !projectId) { resolve(); return; }
+      if (!pendingFile || !canUpload) { resolve(); return; }
       const formData = new FormData();
       formData.append("file", pendingFile);
       formData.append("contentItemId", contentItemId);
-      formData.append("campaignId", campaignId);
-      formData.append("projectId", projectId);
+      if (campaignId) formData.append("campaignId", campaignId);
+      if (projectId) formData.append("projectId", projectId);
 
       const xhr = new XMLHttpRequest();
       xhr.upload.onprogress = (e) => {
@@ -107,7 +110,7 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
         notes: notes.trim(),
         project_id: projectId ?? undefined,
       });
-      if (pendingFile && projectId) {
+      if (pendingFile && canUpload) {
         setSaving(false);
         setUploading(true);
         setUploadProgress(0);
@@ -217,7 +220,7 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
               קובץ (אופציונלי)
             </div>
 
-            {!projectId ? (
+            {!canUpload ? (
               <div style={{
                 padding: "10px 14px", borderRadius: 8,
                 background: "#F59E0B11", border: "1px solid #F59E0B33",

@@ -7,6 +7,7 @@
  * The shared label channel stays apart (never inside an artist card). Writes nothing, sends nothing, browses nothing.
  */
 import { useEffect, useState } from "react";
+import ArtistContentSection from "./ArtistContentSection";
 import { ArtistSocialView, PLATFORM_HE, fmt, heDate, metricName, nameOf, type ArtistSocialResp } from "@/components/label/ArtistSocialPanel";
 
 const CARD = "rgba(255,255,255,0.058)";
@@ -35,13 +36,14 @@ function headline(metrics: Metric[]): Metric | null {
   return metrics.find((m) => /\.(FOLLOWERS|SUBSCRIBERS)$/.test(m.type)) ?? metrics[0] ?? null;
 }
 
-function ArtistCard({ c, onOpen }: { c: Card; onOpen: () => void }) {
+function ArtistCard({ c, onOpen, onAdd }: { c: Card; onOpen: () => void; onAdd: () => void }) {
   const d = c.data;
   const unreadable = !d || d.status !== "OK" || d.completeness === "UNKNOWN";
   const accounts = d?.items.filter((i) => i.fields.kind === "ACCOUNT") ?? [];
   const records = d?.items.filter((i) => i.fields.recordType) ?? [];
   const insp = d?.items.filter((i) => i.fields.kind === "INSPIRATION").length ?? 0;
   const last = d?.summary.find((s) => s.code === "LAST_CHECKED_ON")?.value as string | null | undefined;
+  const content = d?.summary.find((s) => s.code === "CONTENT")?.value as { total: number; byPhase: Record<string, number>; overdue: unknown[]; upcoming: Array<{ title: string; publishDate: string }>; undated: number } | null | undefined;
   return (
     <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "15px 17px 14px", display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
@@ -75,6 +77,19 @@ function ArtistCard({ c, onOpen }: { c: Card; onOpen: () => void }) {
               );
             }) : <div style={{ fontSize: 12.5, color: TEXT2 }}>עוד לא אושר חשבון כשל {c.name}.</div>}
           </div>
+          <div style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 11, padding: "8px 10px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT }}>תוכן</span>
+              <button onClick={onAdd} style={{ background: "none", border: "none", color: "#FF6B6B", fontSize: 12, fontWeight: 800, cursor: "pointer", padding: 0 }}>+ תוכן חדש</button>
+            </div>
+            {content === undefined || content === null ? <div style={{ fontSize: 11.5, color: AMBER, marginTop: 3 }}>לא נקרא כרגע — זה לא אומר שאין תוכן</div>
+              : content.total === 0 ? <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>עוד אין תוכן של האמן</div>
+              : <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 3, lineHeight: 1.6 }}>
+                  רעיון {content.byPhase.IDEA ?? 0} · בעבודה {content.byPhase.WORK ?? 0} · מוכן {content.byPhase.READY ?? 0} · פורסם {content.byPhase.PUBLISHED ?? 0}
+                  {content.overdue.length > 0 && <span style={{ color: RED }}> · עבר תאריך {content.overdue.length}</span>}
+                  {content.upcoming[0] && <div style={{ color: TEXT }}>הבא לפרסום: {content.upcoming[0].title} ({heDate(content.upcoming[0].publishDate)})</div>}
+                </div>}
+          </div>
           <div style={{ fontSize: 12, color: TEXT2, marginBottom: 6 }}>
             תובנות והמלצות פתוחות של סאני: <b style={{ color: TEXT }}>{records.length}</b>{insp ? ` · השראות: ${insp}` : ""}
           </div>
@@ -98,11 +113,11 @@ function ArtistCard({ c, onOpen }: { c: Card; onOpen: () => void }) {
 }
 
 /** The presentational part (pure over the artist_social answers). */
-export function LabelArtistsCards({ cards, channels, isMobile, onOpen }: { cards: Card[]; channels: Array<{ resourceId: string; label: string; lastCheckedOn: string | null }>; isMobile: boolean; onOpen: (c: Card) => void }) {
+export function LabelArtistsCards({ cards, channels, isMobile, onOpen, onAdd = () => {} }: { cards: Card[]; channels: Array<{ resourceId: string; label: string; lastCheckedOn: string | null }>; isMobile: boolean; onOpen: (c: Card) => void; onAdd?: (c: Card) => void }) {
   return (
     <>
       <div style={{ display: "grid", gap: 14, gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "repeat(auto-fit, minmax(280px, 1fr))" }}>
-        {cards.map((c) => <ArtistCard key={c.key} c={c} onOpen={() => onOpen(c)} />)}
+        {cards.map((c) => <ArtistCard key={c.key} c={c} onOpen={() => onOpen(c)} onAdd={() => onAdd(c)} />)}
       </div>
       {channels.length > 0 && (
         <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 11, border: "1px dashed rgba(245,158,11,0.40)", fontSize: 12, color: TEXT2 }}>
@@ -119,6 +134,10 @@ export default function LabelArtistsSocial({ isMobile }: { isMobile: boolean }) 
   const [channels, setChannels] = useState<Array<{ resourceId: string; label: string; lastCheckedOn: string | null }>>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [open, setOpen] = useState<Card | null>(null);
+  const [openAdd, setOpenAdd] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const close = () => { setOpen(null); setOpenAdd(false); if (dirty) { setDirty(false); setTick((t) => t + 1); } };
 
   useEffect(() => {
     let alive = true;
@@ -134,14 +153,14 @@ export default function LabelArtistsSocial({ isMobile }: { isMobile: boolean }) 
       setState("ready");
     }).catch(() => { if (alive) setState("error"); });
     return () => { alive = false; };
-  }, []);
+  }, [tick]);
 
   useEffect(() => {
     if (!open) return;
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
-  }, [open]);
+  }, [open, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "14px 20px 16px", marginBottom: 12 }}>
@@ -155,15 +174,16 @@ export default function LabelArtistsSocial({ isMobile }: { isMobile: boolean }) 
         </div>
       ) : state === "error" || !cards ? (
         <div style={{ fontSize: 13, color: AMBER, padding: "10px 0" }}>לא הצלחתי לקרוא את סושיאל האמנים כרגע — זה לא אומר שאין נתונים.</div>
-      ) : <LabelArtistsCards cards={cards} channels={channels} isMobile={isMobile} onOpen={setOpen} />}
+      ) : <LabelArtistsCards cards={cards} channels={channels} isMobile={isMobile} onOpen={(c) => { setOpenAdd(false); setOpen(c); }} onAdd={(c) => { setOpenAdd(true); setOpen(c); }} />}
 
       {open?.data && (
-        <div role="dialog" aria-modal="true" onClick={() => setOpen(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.72)", display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: isMobile ? "12px" : "40px 16px" }}>
+        <div role="dialog" aria-modal="true" onClick={close} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.72)", display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: isMobile ? "12px" : "40px 16px" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 920, background: "#0d0d12", border: `1px solid ${BDR}`, borderRadius: 18, padding: isMobile ? "14px 12px" : "18px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>הסושיאל של {open.name}</div>
-              <button onClick={() => setOpen(null)} aria-label="סגור" style={{ background: "transparent", border: `1px solid ${BDR}`, borderRadius: 8, color: TEXT2, fontSize: 14, padding: "3px 10px", cursor: "pointer" }}>✕</button>
+              <button onClick={close} aria-label="סגור" style={{ background: "transparent", border: `1px solid ${BDR}`, borderRadius: 8, color: TEXT2, fontSize: 14, padding: "3px 10px", cursor: "pointer" }}>✕</button>
             </div>
+            <ArtistContentSection labelArtistId={open.key.slice("label-artist:".length)} artistName={open.name} autoOpenAdd={openAdd} onChanged={() => setDirty(true)} />
             <ArtistSocialView data={open.data as unknown as ArtistSocialResp} artistName={open.name} />
           </div>
         </div>

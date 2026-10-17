@@ -507,6 +507,7 @@ async function socialFamilyWriters(): Promise<SocialFamilyWriters> {
     updateSocialCampaign: async (id, b) => { await W.updateSocialCampaign(id, b); },
     deleteSocialCampaign: (id) => W.deleteSocialCampaign(id),
     campaignCounts: (id) => W.campaignCounts(id),
+    linkSocialCampaignArtist: (cid, aid) => W.linkSocialCampaignArtist(cid, aid),
     readSocialContent: async (id) => row(await W.readSocialContent(id)),
     createSocialContent: async (b) => String((await W.createSocialContent(b)).id),
     updateSocialContent: async (id, b) => { await W.updateSocialContent(id, b); },

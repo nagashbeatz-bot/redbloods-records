@@ -1031,11 +1031,16 @@ export interface SocialCampaign {
   notes: string;
   created_at: string;
   updated_at: string;
+  /** Stage 1 (2026-10-17): the canonical link to the label artist (NULL = not linked; artist_name stays the legacy text). */
+  label_artist_id?: string | null;
 }
 
 export interface SocialContentItem {
   id: string;
-  campaign_id: string;
+  /** NULL only for an artist's own content (stage 1): the DB CHECK requires a campaign or an artist. */
+  campaign_id: string | null;
+  /** Stage 1: the label artist the content belongs to (canonical id link). */
+  label_artist_id?: string | null;
   project_id: string | null;
   title: string;
   content_type: string;
@@ -1060,7 +1065,8 @@ export interface SocialContentItem {
 export interface SocialContentFile {
   id: string;
   content_item_id: string;
-  campaign_id: string;
+  /** NULL for a file of an artist's own content (stage 1) — always the same as its content item's campaign. */
+  campaign_id: string | null;
   project_id: string | null;
   file_name: string;
   file_type: string;          // MIME type, e.g. "video/mp4"

@@ -11,8 +11,8 @@ export async function POST(req: NextRequest) {
     const campaignId = formData.get("campaignId") as string | null;
     const projectId = (formData.get("projectId") as string | null) || null;
     if (!file) return NextResponse.json({ error: "חסר קובץ" }, { status: 400 });
-    if (!contentItemId || !campaignId) {
-      return NextResponse.json({ error: "חסרים contentItemId / campaignId" }, { status: 400 });
+    if (!contentItemId) {
+      return NextResponse.json({ error: "חסר contentItemId" }, { status: 400 });
     }
     // Shared writer (lib/writes/uploads) — the same one Sunny's file channel uses (500MB limit, same folders, share link).
     const r = await uploadSocialContentFile(contentItemId, campaignId, projectId, file);

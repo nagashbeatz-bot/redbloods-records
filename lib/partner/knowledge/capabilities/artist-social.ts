@@ -17,7 +17,7 @@ function sourcesMissing(src: KnowledgeSources): KnowledgeReadResult | null {
   const missing: KnowledgeReadResult["missing"] = [];
   if (src.brain?.status !== "OK") missing.push({ fact: "sunny_brain", whyNeeded: "the tracked accounts and measurements could not be read" });
   if (!ok(src.ownerKnowledge)) missing.push({ fact: "owner_knowledge", whyNeeded: "whose account it is comes from the Owner's approved knowledge, which could not be read" });
-  if (!state(src)?.domains.labelArtists.data) missing.push({ fact: "label_artists", whyNeeded: "the roster could not be read" });
+  if (!state(src)?.domains.labelArtists.data) missing.push({ fact: "label_roster", whyNeeded: "the roster could not be read" });
   return missing.length ? result([], { completeness: "UNKNOWN", coverage: [partner("לא הצלחתי לקרוא את מקורות הסושיאל — שום דבר כאן לא אומר 'אין סושיאל'.")], missing }) : null;
 }
 
@@ -47,6 +47,7 @@ function artistItems(v: ArtistSocial): KnowledgeItem[] {
 }
 
 const summaryOf = (v: ArtistSocial) => [
+  sfact("CONTENT", "התוכן של האמן (קישור קנוני — עם או בלי קמפיין)", v.content.readable ? { total: v.content.total, byPhase: v.content.byPhase, upcoming: v.content.upcoming, overdue: v.content.overdue, undated: v.content.undated, recentPublished: v.content.recentPublished, withoutCampaign: v.content.withoutCampaign, campaignsLinked: v.content.campaignsLinked } : null, "FACT", "OPERATIONS"),
   sfact("ACCOUNTS", "החשבונות של האמן (שיוך שאישרת)", v.accounts.length, "OWNER_DECISION", "OWNER_KNOWLEDGE"),
   sfact("LAST_CHECKED_ON", "בדיקה אחרונה של החשבונות שלו", v.lastCheckedOn, "OBSERVATION", "SUNNY_BRAIN", "HISTORICAL"),
   sfact("INSPIRATIONS", "חשבונות השראה שלו", v.inspirations.length, "OWNER_DECISION", "OWNER_KNOWLEDGE"),
@@ -57,7 +58,7 @@ const summaryOf = (v: ArtistSocial) => [
 
 export const artistSocial: KnowledgeCapability = {
   id: "artist_social", domain: "LABEL", titleHe: "סושיאל לכל אמן — זהות, השראות, מעקב",
-  descriptionForModel: "Per label artist: the artist's social accounts (only those the Owner approved — ENTITY_RELATIONSHIP OWNS_RESOURCE + channelPurpose), shared label channels APART (owner Redbloods, never the artist's own performance), the artist's inspirations (INSPIRATION_SOURCE + what we learn), every stored measurement with its check date, age, TODAY / EARLIER and change since the previous check (old is never now), insights / recommendations that name the artist or rest on the artist's accounts (HYPOTHESIS, tie CANONICAL / DERIVED), at most ONE recheck proposal (ask first, never browse before the Owner's yes) and unassignedAccounts (a gap — never guess by name; link via partner_propose_knowledge with the Owner's approval). mode roster = all artists. Data = Owner-requested browser checks only.",
+  descriptionForModel: "Per label artist: the artist's social accounts (only those the Owner approved — ENTITY_RELATIONSHIP OWNS_RESOURCE + channelPurpose), shared label channels APART (owner Redbloods, never the artist's own performance), the artist's inspirations (INSPIRATION_SOURCE + what we learn), every stored measurement with its check date, age, TODAY / EARLIER and change since the previous check (old is never now), insights / recommendations that name the artist or rest on the artist's accounts (HYPOTHESIS, tie CANONICAL / DERIVED), at most ONE recheck proposal (ask first, never browse before the Owner's yes) and unassignedAccounts (a gap — never guess by name; link via partner_propose_knowledge with the Owner's approval). summary CONTENT = the artist's own content items (by phase, upcoming, overdue, undated). roster = all artists. Browser checks only.",
   examplesHe: ["מה מצב הסושיאל של אבי?", "מה החשבונות של שליו?", "ממי נגש לומד?", "מתי בדקנו את האינסטגרם של שליו?", "איזה חשבונות עוד לא שויכו?"],
   modes: {
     artist: { descriptionForModel: "ONE label artist (params.entity = label-artist:<id>): accounts, inspirations, measurements, insights, label channels apart, unassigned accounts" },
@@ -67,7 +68,7 @@ export const artistSocial: KnowledgeCapability = {
   params: { entity: { kind: "entityKey", types: ["label-artist"], descriptionForModel: "The label artist (mode artist)" } },
   entityScope: { types: ["label-artist"], param: "entity", mode: "artist", limit: 10 },
   paging: { defaultLimit: 20, maxLimit: 40 }, recordTextLimit: 300,
-  access: { externalRead: true, ownerOnly: true, sensitivity: "STANDARD" }, needs: ["BRAIN", "OWNER_KNOWLEDGE", "STATE"],
+  access: { externalRead: true, ownerOnly: true, sensitivity: "STANDARD" }, needs: ["BRAIN", "OWNER_KNOWLEDGE", "STATE"], optionalNeeds: ["OPERATIONS"],
   read(src, q) {
     const bad = sourcesMissing(src);
     if (bad) return bad;
@@ -76,7 +77,9 @@ export const artistSocial: KnowledgeCapability = {
     const today = st.todayIL ?? ilToday(src.now);
     const releases = (st.domains.releasesFull.data?.items ?? []).map((r) => ({ labelArtistId: r.labelArtistId, targetYmd: r.targetYmd, released: !!r.releasedAt, changedAt: r.stageEnteredAt ?? r.createdAt }));
     const roster = st.domains.labelArtists.data!.items;
-    const viewOf = (a: { id: string; name: string }) => artistSocialOf({ brain: brain!, knowledge: ok(src.ownerKnowledge)!, todayIL: today, now: src.now, artist: { id: a.id, name: a.name }, releases });
+    const o = ok(src.operations);
+    const ops = o?.campaigns && o.contentItems ? { campaigns: o.campaigns.rows, items: o.contentItems.rows } : null;
+    const viewOf = (a: { id: string; name: string }) => artistSocialOf({ brain: brain!, knowledge: ok(src.ownerKnowledge)!, todayIL: today, now: src.now, artist: { id: a.id, name: a.name }, releases, ops });
     const partial = brain!.truncated ? { completeness: "PARTIAL" as const, coverage: [partner("נקראו רק 1,000 השורות האחרונות מכל סוג במוח של סאני.")] } : {};
     if (q.mode === "roster") {
       const views = roster.map(viewOf);
@@ -84,6 +87,7 @@ export const artistSocial: KnowledgeCapability = {
       return result(views.map((v) => item({
         id: `artist:${v.artistKey}`, entity: v.artistKey, label: record(v.artistName), epistemic: "DERIVED", source: "SUNNY_BRAIN", freshness: "HISTORICAL",
         fields: { accounts: v.accounts.map((a) => ({ resourceId: a.resourceId, label: record(a.label), channelPurposeHe: a.ownership?.channelPurposeHe ?? null, lastCheckedOn: a.lastCheckedOn })), lastCheckedOn: v.lastCheckedOn, inspirations: v.inspirations.length, liveRecords: v.records.length,
+          content: v.content.readable ? { total: v.content.total, byPhase: v.content.byPhase, overdue: v.content.overdue.length, upcoming: v.content.upcoming.length, undated: v.content.undated } : null,
           note: partner(v.accounts.length ? "רק חשבונות שהבוס אישר כשלו נספרים כאן." : "עוד אין חשבון שאושר כשלו — אין לפרש זאת כ'אין לו סושיאל'.") },
       })), { summary: [
         sfact("LABEL_CHANNELS", "ערוצי לייבל משותפים (לא נספרים לאף אמן)", first ? first.labelChannels.map((a) => ({ resourceId: a.resourceId, label: a.label, lastCheckedOn: a.lastCheckedOn })) : [], "OWNER_DECISION", "OWNER_KNOWLEDGE"),
@@ -101,6 +105,7 @@ export const artistSocial: KnowledgeCapability = {
         ...(partial.coverage ?? []),
         ...(v.accounts.length ? [] : [partner("עוד אין חשבון שאושר כשל האמן הזה — זה לא אומר שאין לו סושיאל. שיוך נעשה רק באישור הבוס.")]),
         partner("המדידות מגיעות רק מבדיקות דפדפן שהבוס ביקש — אין API ואין מעקב ברקע."),
+        ...(v.content.readable ? [] : [partner("לא הצלחתי לקרוא את התוכן של האמן — זה לא אומר שאין תוכן.")]),
       ],
     });
   },

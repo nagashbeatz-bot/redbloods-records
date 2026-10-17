@@ -6,7 +6,7 @@ function normalize(row: Record<string, unknown>): SocialContentFile {
   return {
     id: row.id as string,
     content_item_id: row.content_item_id as string,
-    campaign_id: row.campaign_id as string,
+    campaign_id: (row.campaign_id as string | null) ?? null,
     project_id: (row.project_id as string | null) ?? null,
     file_name: (row.file_name as string) ?? "",
     file_type: (row.file_type as string) ?? "",

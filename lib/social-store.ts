@@ -89,6 +89,36 @@ export async function listContentItems(campaignId: string): Promise<SocialConten
   return (data ?? []).map(normalizeItem);
 }
 
+/** Stage 1: the roster artist's display name by exact id (the canonical link) — null when no such artist. */
+export async function labelArtistNameById(id: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const { data, error } = await supabase.from("label_artists").select("name").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data?.name as string | undefined) ?? null;
+}
+
+/** Stage 1: every content item of ONE label artist (canonical id link), with or without a campaign. */
+export async function listContentItemsByArtist(labelArtistId: string): Promise<SocialContentItem[]> {
+  const { data, error } = await supabase
+    .from("social_content_items")
+    .select("*")
+    .eq("label_artist_id", labelArtistId)
+    .order("publish_date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data ?? []).map(normalizeItem);
+}
+
+/** Stage 1: content that belongs to no campaign (an artist's own content) — the Social Hub adds it to its board / counts. */
+export async function listContentItemsWithoutCampaign(): Promise<SocialContentItem[]> {
+  const { data, error } = await supabase
+    .from("social_content_items")
+    .select("*")
+    .is("campaign_id", null)
+    .order("publish_date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data ?? []).map(normalizeItem);
+}
+
 export async function getContentItem(id: string): Promise<SocialContentItem | null> {
   const { data, error } = await supabase
     .from("social_content_items")
@@ -100,7 +130,9 @@ export async function getContentItem(id: string): Promise<SocialContentItem | nu
 }
 
 export async function createContentItem(input: {
-  campaign_id: string;
+  /** Stage 1: an artist's own content may have no campaign (the DB CHECK requires a campaign or an artist). */
+  campaign_id: string | null;
+  label_artist_id?: string | null;
   project_id?: string | null;
   title: string;
   content_type?: string;
@@ -118,6 +150,7 @@ export async function createContentItem(input: {
     .from("social_content_items")
     .insert({
       campaign_id:  input.campaign_id,
+      label_artist_id: input.label_artist_id ?? null,
       project_id:   input.project_id ?? null,
       title:        input.title,
       content_type: input.content_type ?? "אחר",
@@ -174,13 +207,15 @@ function normalizeCampaign(row: Record<string, unknown>): SocialCampaign {
     notes:           (row.notes as string) ?? "",
     created_at:      (row.created_at as string) ?? "",
     updated_at:      (row.updated_at as string) ?? "",
+    label_artist_id: (row.label_artist_id as string) ?? null,
   };
 }
 
 function normalizeItem(row: Record<string, unknown>): SocialContentItem {
   return {
     id:               row.id as string,
-    campaign_id:      (row.campaign_id as string) ?? "",
+    campaign_id:      (row.campaign_id as string) ?? null,
+    label_artist_id:  (row.label_artist_id as string) ?? null,
     project_id:       (row.project_id as string) ?? null,
     title:            (row.title as string) ?? "",
     content_type:     (row.content_type as string) ?? "",

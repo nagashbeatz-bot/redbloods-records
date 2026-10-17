@@ -145,16 +145,34 @@ export async function attachFileToMixComment(commentId: string, file: File) {
 
 // ── social content file (POST /api/social/upload) ────────────────────────────────────────────────────────────────────
 export const SOCIAL_MAX_SIZE = 500 * 1024 * 1024; // 500MB
-export async function uploadSocialContentFile(contentItemId: string, campaignId: string, projectId: string | null, file: File) {
+/**
+ * Stage 1 (2026-10-17, Owner decision 1 = א): the content item decides its campaign (never the client), and an artist's own
+ * content (no campaign, no project) goes to /Social/Artists/<artist name>/Media. Project and campaign paths are unchanged.
+ */
+export async function uploadSocialContentFile(contentItemId: string, campaignIdFromClient: string | null, projectId: string | null, file: File) {
   if (file.size > SOCIAL_MAX_SIZE) return fail(413, "הקובץ גדול מדי (מקסימום 500MB)");
+  const { getContentItem } = await import("@/lib/social-store");
+  const item = await getContentItem(contentItemId);
+  if (!item) return fail(404, "פריט התוכן לא נמצא");
+  const campaignId = item.campaign_id;
+  if (campaignIdFromClient && campaignIdFromClient !== campaignId) return fail(400, "הקמפיין לא תואם לפריט התוכן");
   const t = await token();
   const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
   let dropboxPath: string;
-  if (projectId) {
+  if (!projectId && !campaignId) {
+    const { labelArtistNameById } = await import("@/lib/social-store");
+    const artistFolder = String((item.label_artist_id ? await labelArtistNameById(item.label_artist_id) : null) ?? "").trim().replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!artistFolder) return fail(400, "לפריט אין קמפיין ואין אמן — אין לאן להעלות");
+    const { createDropboxFolder } = await import("@/lib/dropbox-folder");
+    await createDropboxFolder(t, "/Social/Artists");
+    await createDropboxFolder(t, `/Social/Artists/${artistFolder}`);
+    await createDropboxFolder(t, `/Social/Artists/${artistFolder}/Media`);
+    dropboxPath = `/Social/Artists/${artistFolder}/Media/${sanitizedName}`;
+  } else if (projectId) {
     dropboxPath = `/${projectId}/Social/${contentItemId}/${sanitizedName}`; // production project — the existing path stays
   } else {
     const { getCampaign } = await import("@/lib/social-store");
-    const campaign = await getCampaign(campaignId);
+    const campaign = await getCampaign(campaignId!);
     const campaignFolder = (campaign?.title ?? "").trim().replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim().slice(0, 60) || `campaign-${campaignId}`;
     const mediaFolder = `/Social/${campaignFolder}/Media`;
     const { createDropboxFolder } = await import("@/lib/dropbox-folder");

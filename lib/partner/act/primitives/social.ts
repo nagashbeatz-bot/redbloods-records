@@ -6,7 +6,7 @@
  * — planned amounts and the campaign budget are planning only. The social checklist is the app's, never a verdict.
  */
 import type { ArgSpec } from "../types";
-import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
+import { artistFields, finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { SOCIAL_CAMPAIGN_STATUSES, SOCIAL_CONTENT_STATUSES, SOCIAL_CONTENT_TYPES, SOCIAL_PLATFORMS } from "@/lib/types";
 
 type Row = Record<string, unknown>;
@@ -16,7 +16,9 @@ export interface SocialFamilyWriters {
   createSocialCampaign(body: Row): Promise<string>;
   updateSocialCampaign(id: string, body: Row): Promise<void>;
   deleteSocialCampaign(id: string): Promise<void>;
-  campaignCounts(id: string): Promise<{ content: number; promotions: number; files: number }>;
+  campaignCounts(id: string): Promise<{ content: number; promotions: number; files: number; artistContentKept?: number }>;
+  /** Stage 1 (2026-10-17): link a campaign + its artist-less content to a label artist (compare-and-swap, never overwrites). */
+  linkSocialCampaignArtist(campaignId: string, labelArtistId: string): Promise<{ campaign: boolean; items: number }>;
   readSocialContent(id: string): Promise<Row | null>;
   createSocialContent(body: Row): Promise<string>;
   updateSocialContent(id: string, body: Row): Promise<void>;
@@ -61,13 +63,13 @@ const textArg = (a: Readonly<Record<string, unknown>>, k: string, max = 2000): s
 };
 
 // ── readers ──
-const campaignFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialCampaign(id); return r ? { projectId: s(r.project_id), title: String(r.title ?? ""), status: String(r.status ?? ""), releaseDate: s(r.release_date), marketingAngle: String(r.marketing_angle ?? ""), targetAudience: String(r.target_audience ?? ""), mainMessage: String(r.main_message ?? ""), platforms: (Array.isArray(r.platforms) ? r.platforms : []).map(String).join(","), notes: String(r.notes ?? ""), promotionBudget: Number(r.promotion_budget) || 0 } : null; };
+const campaignFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialCampaign(id); return r ? { projectId: s(r.project_id), labelArtistId: s(r.label_artist_id), title: String(r.title ?? ""), status: String(r.status ?? ""), releaseDate: s(r.release_date), marketingAngle: String(r.marketing_angle ?? ""), targetAudience: String(r.target_audience ?? ""), mainMessage: String(r.main_message ?? ""), platforms: (Array.isArray(r.platforms) ? r.platforms : []).map(String).join(","), notes: String(r.notes ?? ""), promotionBudget: Number(r.promotion_budget) || 0 } : null; };
 async function onCampaign(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.campaign, ["social-campaign"]); if (!k) return refuse("BAD_ENTITY", "צריך קמפיין (social-campaign:…)");
   const f = await campaignFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את הקמפיין");
   return { key: `social-campaign:${k.id}`, id: k.id, label: `קמפיין ${f.title}`, fields: f };
 }
-const contentFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialContent(id); return r ? { campaignId: s(r.campaign_id), title: String(r.title ?? ""), contentType: String(r.content_type ?? ""), platform: s(r.platform), status: String(r.status ?? ""), dueDate: s(r.due_date), publishDate: s(r.publish_date), publishTime: s(r.publish_time), ownerName: String(r.owner_name ?? ""), hook: String(r.hook ?? ""), caption: String(r.caption ?? ""), notes: String(r.notes ?? "") } : null; };
+const contentFields = async (d: WriterDeps, id: string): Promise<Fields | null> => { const r = await d.readSocialContent(id); return r ? { campaignId: s(r.campaign_id), labelArtistId: s(r.label_artist_id), title: String(r.title ?? ""), contentType: String(r.content_type ?? ""), platform: s(r.platform), status: String(r.status ?? ""), dueDate: s(r.due_date), publishDate: s(r.publish_date), publishTime: s(r.publish_time), ownerName: String(r.owner_name ?? ""), hook: String(r.hook ?? ""), caption: String(r.caption ?? ""), notes: String(r.notes ?? "") } : null; };
 async function onContent(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
   const k = parseKey(a.content, ["social-content"]); if (!k) return refuse("BAD_ENTITY", "צריך פריט תוכן (social-content:…)");
   const f = await contentFields(d, k.id); if (!f) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את פריט התוכן");
@@ -124,6 +126,22 @@ function promoPatch(a: Readonly<Record<string, unknown>>): Fields | PlanRefusal 
   return after;
 }
 const promoBody = (after: Fields): Row => { const m: Record<string, string> = { name: "name", channel: "channel", promoType: "promo_type", plannedAmount: "planned_amount", status: "status", promoDate: "promo_date", notes: "notes" }; const b: Row = {}; for (const [k, v] of Object.entries(after)) if (m[k]) b[m[k]] = v; return b; };
+/** ADD_SOCIAL_CONTENT target (stage 1): a campaign, a label artist, or both — one artist per item. */
+async function resolveAddContent(d: WriterDeps, a: Readonly<Record<string, unknown>>): Promise<ResolvedTarget | PlanRefusal> {
+  const ak = a.artist !== undefined ? parseKey(a.artist, ["label-artist"]) : null;
+  if (a.artist !== undefined && !ak) return refuse("BAD_ENTITY", "אמן = label-artist:…");
+  const art = ak ? await artistFields(d, ak.id) : null;
+  if (ak && !art) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את האמן");
+  if (a.campaign === undefined) {
+    if (!ak) return refuse("BAD_ENTITY", "צריך קמפיין (social-campaign:…) או אמן (label-artist:…)");
+    return { key: "social-content:new", id: "new", label: `תוכן של ${art!.name}`, fields: { labelArtistId: ak.id, artistName: String(art!.name) } };
+  }
+  const r = await onCampaign(d, a); if ("ok" in r) return r;
+  const campArtist = r.fields.labelArtistId ? String(r.fields.labelArtistId) : null;
+  if (ak && campArtist && campArtist !== ak.id) return refuse("ARTIST_MISMATCH", "הקמפיין שייך לאמן אחר — פריט תוכן הוא של אמן אחד");
+  const who = ak?.id ?? campArtist;
+  return { key: "social-content:new", id: "new", label: `תוכן ל${r.label}`, fields: { campaignTitle: String(r.fields.title), ...(who ? { labelArtistId: who } : {}), ...(art ? { artistName: String(art.name) } : {}) } };
+}
 const exists = <T extends { fields: Fields }>(r: T | PlanRefusal) => ("ok" in r ? r : { ...r, fields: { ...r.fields, exists: true } });
 
 export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
@@ -159,25 +177,56 @@ export const SOCIAL_PRIMITIVES: readonly PrimitiveSpec[] = [
   {
     actionId: "DELETE_SOCIAL_CAMPAIGN", kinds: ["social-campaign"],
     meta: meta("מחיקת קמפיין סושיאל", "Delete a social campaign (hard delete, like the screen)", [K("campaign")], ["exists"], "deleteSocialCampaign (lib/writes/social)", { effects: ["DELETION", "CASCADE"], riskClass: "DESTRUCTIVE", reversible: "NO", compensation: null }),
-    async resolve(d, a) { const r = await onCampaign(d, a); if ("ok" in r) return r; const c = await d.campaignCounts(r.id); return { ...r, fields: { ...r.fields, exists: true, contentCount: c.content, promotionCount: c.promotions, fileCount: c.files } }; },
-    async read(d, id) { const f = await campaignFields(d, id); if (!f) return null; const c = await d.campaignCounts(id); return { ...f, exists: true, contentCount: c.content, promotionCount: c.promotions, fileCount: c.files }; },
+    async resolve(d, a) { const r = await onCampaign(d, a); if ("ok" in r) return r; const c = await d.campaignCounts(r.id); return { ...r, fields: { ...r.fields, exists: true, contentCount: c.content, promotionCount: c.promotions, fileCount: c.files, artistContentKept: c.artistContentKept ?? 0 } }; },
+    async read(d, id) { const f = await campaignFields(d, id); if (!f) return null; const c = await d.campaignCounts(id); return { ...f, exists: true, contentCount: c.content, promotionCount: c.promotions, fileCount: c.files, artistContentKept: c.artistContentKept ?? 0 }; },
     plan: () => ({ ok: true, after: { exists: false } }),
     apply: (d, id) => d.deleteSocialCampaign(id),
     async verify(d, id) { return (await d.readSocialCampaign(id)) === null; },
     requiredValues: () => ["מחיקה"],
-    warnings: (c) => [`לקמפיין ${c.contentCount} פריטי תוכן, ${c.promotionCount} פעולות קידום ו-${c.fileCount} קבצים — מה שמסד הנתונים מקשר לקמפיין נמחק / מתנתק איתו`, "הוצאות קידום שכבר נרשמו בכספים נשארות — כל אחת מקבלת קודם סימון מקור בהערות (\"[קידום נמחק …]\")"],
+    warnings: (c) => [`לקמפיין ${c.contentCount} פריטי תוכן, ${c.promotionCount} פעולות קידום ו-${c.fileCount} קבצים — מה שמסד הנתונים מקשר לקמפיין נמחק / מתנתק איתו`,
+      ...(Number(c.artistContentKept) > 0 ? [`${c.artistContentKept} מפריטי התוכן שייכים לאמן — הם והקבצים שלהם נשארים אצל האמן (מתנתקים מהקמפיין); השאר נמחקים`] : []), "הוצאות קידום שכבר נרשמו בכספים נשארות — כל אחת מקבלת קודם סימון מקור בהערות (\"[קידום נמחק …]\")"],
     disclosuresHe: ["מחיקה לצמיתות, כמו במסך", "אם סימון המקור של הוצאה כלשהי נכשל — הקמפיין לא נמחק"],
   },
   {
     actionId: "ADD_SOCIAL_CONTENT", kinds: ["social-content"],
-    meta: meta("הוספת פריט תוכן לקמפיין", "Add a content item to a campaign (type / platform / status / dates / texts)", [K("campaign"), T("title", true), ...CONTENT_EDIT.filter((x) => x.name !== "title")], ["title", "status"], "createSocialContent (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "DELETE_SOCIAL_CONTENT" }),
-    createContext: async (d, a) => { const k = parseKey(a.campaign, ["social-campaign"]); const c = k ? await campaignFields(d, k.id) : null; return { campaignTitle: c ? String(c.title) : null }; },
-    async resolve(d, a) { const r = await onCampaign(d, a); if ("ok" in r) return r; return { key: "social-content:new", id: "new", label: `תוכן ל${r.label}`, fields: { campaignTitle: String(r.fields.title) } }; },
+    // Stage 1 (2026-10-17): a campaign, a label artist (the artist's own content, no campaign), or both. Inside a campaign that
+    // is linked to an artist the item inherits that artist (the shared writer refuses a different one).
+    meta: meta("הוספת פריט תוכן — לקמפיין או לאמן", "Add a content item to a campaign and/or to a label artist's own content (type / platform / status / dates / texts)", [K("campaign", false), K("artist", false), T("title", true), ...CONTENT_EDIT.filter((x) => x.name !== "title")], ["title", "status", "labelArtistId"], "createSocialContent (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "PARTIAL", compensation: "DELETE_SOCIAL_CONTENT" }),
+    // the creation context IS the resolved target's fields (the same live values the plan was made on — stale detection)
+    createContext: async (d, a) => { const r = await resolveAddContent(d, a); return "ok" in r ? {} : r.fields; },
+    resolve: (d, a) => resolveAddContent(d, a),
     read: contentFields,
-    plan(a) { const p = contentPatch(a); if (isRef(p)) return p; if (!p.title) return refuse("BAD_TEXT", "שם הפריט חסר"); return { ok: true, after: { title: p.title, status: String(p.status ?? "idea") } }; },
-    async apply(d, _id, after, a) { const k = parseKey(a.campaign, ["social-campaign"])!; const c = await d.readSocialCampaign(k.id); const p = contentPatch(a) as Fields; return { createdId: await d.createSocialContent({ ...contentBody(p), campaign_id: k.id, project_id: c?.project_id ?? null, status: after.status }) }; },
-    async verify(d, id, after) { const f = await contentFields(d, id); return !!f && f.title === after.title && f.status === after.status; },
-    disclosuresHe: ["פריט תכנון בלבד — לא מתפרסם כלום ולא נוצר אירוע ביומן", "קישורים (נכס / אחסון / פוסט) לא נכתבים דרך סאני"],
+    plan(a, cur) { const p = contentPatch(a); if (isRef(p)) return p; if (!p.title) return refuse("BAD_TEXT", "שם הפריט חסר"); return { ok: true, after: { title: p.title, status: String(p.status ?? "idea"), ...(cur.labelArtistId ? { labelArtistId: String(cur.labelArtistId) } : {}) } }; },
+    async apply(d, _id, after, a) {
+      const k = a.campaign !== undefined ? parseKey(a.campaign, ["social-campaign"]) : null;
+      const c = k ? await d.readSocialCampaign(k.id) : null;
+      const p = contentPatch(a) as Fields;
+      return { createdId: await d.createSocialContent({ ...contentBody(p), campaign_id: k?.id ?? null, label_artist_id: after.labelArtistId ?? null, project_id: c?.project_id ?? null, status: after.status }) };
+    },
+    async verify(d, id, after) { const f = await contentFields(d, id); return !!f && f.title === after.title && f.status === after.status && (f.labelArtistId ?? null) === (after.labelArtistId ?? null); },
+    disclosuresHe: ["פריט תכנון בלבד — לא מתפרסם כלום ולא נוצר אירוע ביומן", "קישורים (נכס / אחסון / פוסט) לא נכתבים דרך סאני", "פריט של אמן בלי קמפיין נשאר אצל האמן גם אם יימחק קמפיין"],
+  },
+  {
+    // Stage 1 (2026-10-17): the canonical campaign → label-artist link (artist_name stays the legacy text). The campaign and
+    // its content that has no artist yet get the artist — compare-and-swap; another artist is never overwritten.
+    actionId: "LINK_SOCIAL_CAMPAIGN_ARTIST", kinds: ["social-campaign"],
+    meta: meta("קישור קמפיין לאמן הלייבל (הקמפיין + התוכן שלו שעוד לא משויך)", "Link a social campaign (and its content that has no artist yet) to a label artist — the canonical id link", [K("campaign"), K("artist")], ["labelArtistId", "contentToLink"], "linkSocialCampaignArtist (lib/writes/social)", { riskClass: "NORMAL_BUSINESS", reversible: "YES" }),
+    async resolve(d, a) {
+      const ak = parseKey(a.artist, ["label-artist"]); if (!ak) return refuse("BAD_ENTITY", "אמן = label-artist:…");
+      if (!(await artistFields(d, ak.id))) return refuse("ENTITY_NOT_FOUND", "לא מצאתי את האמן");
+      const r = await onCampaign(d, a); if ("ok" in r) return r; const c = await d.campaignCounts(r.id); return { ...r, fields: { ...r.fields, contentToLink: c.content - (c.artistContentKept ?? 0) } };
+    },
+    async read(d, id) { const f = await campaignFields(d, id); if (!f) return null; const c = await d.campaignCounts(id); return { ...f, contentToLink: c.content - (c.artistContentKept ?? 0) }; },
+    plan(a, cur) {
+      const ak = parseKey(a.artist, ["label-artist"]); if (!ak) return refuse("BAD_ENTITY", "אמן = label-artist:…");
+      if (cur.labelArtistId && cur.labelArtistId !== ak.id) return refuse("ALREADY_LINKED", "הקמפיין כבר מקושר לאמן אחר — לא מחליפה קישור");
+      if (cur.labelArtistId === ak.id && Number(cur.contentToLink) === 0) return refuse("NO_CHANGE", "הקמפיין והתוכן שלו כבר מקושרים לאמן הזה");
+      return { ok: true, after: { labelArtistId: ak.id, contentToLink: 0 } };
+    },
+    apply: async (d, id, after) => { await d.linkSocialCampaignArtist(id, String(after.labelArtistId)); },
+    async verify(d, id, after) { const f = await campaignFields(d, id); if (!f || f.labelArtistId !== after.labelArtistId) return false; const c = await d.campaignCounts(id); return c.content - (c.artistContentKept ?? 0) === 0; },
+    warnings: (c) => [`${Number(c.contentToLink)} פריטי תוכן של הקמפיין יקבלו את האמן — ואז יישארו אצלו גם אם הקמפיין יימחק`],
+    disclosuresHe: ["רק קישור: שם האמן בטקסט, הסטטוס, התאריכים, הקבצים והקידומים לא משתנים", "פריט שכבר שייך לאמן אחר לא נדרס"],
   },
   {
     actionId: "UPDATE_SOCIAL_CONTENT", kinds: ["social-content"],

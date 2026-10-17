@@ -17,8 +17,9 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) { pass
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 type Row = Record<string, unknown>;
-interface W { projects: Record<string, { name: string; artist: string }>; campaigns: Record<string, Row>; content: Record<string, Row>; files: Record<string, Row>; promos: Record<string, Row>; tx: Record<string, number>; storageDeleted: number }
+interface W { artists: Record<string, string>; projects: Record<string, { name: string; artist: string }>; campaigns: Record<string, Row>; content: Record<string, Row>; files: Record<string, Row>; promos: Record<string, Row>; tx: Record<string, number>; storageDeleted: number }
 const world = (): W => ({
+  artists: { [U(60)]: "שליו טסמה" },
   projects: { [U(1)]: { name: "סינגל קיץ", artist: "שליו" }, [U(2)]: { name: "אלבום", artist: "דנה" } },
   campaigns: { [U(10)]: { project_id: U(2), title: "קמפיין אלבום", status: "active", release_date: "2026-11-01", marketing_angle: "", target_audience: "", main_message: "", platforms: ["tiktok"], notes: "", promotion_budget: 0 } },
   content: { [U(20)]: { campaign_id: U(10), project_id: U(2), title: "טיזר ראשון", content_type: "טיזר", platform: "tiktok", status: "idea", due_date: null, publish_date: null, publish_time: null, owner_name: "", hook: "", caption: "", notes: "" } },
@@ -35,7 +36,9 @@ function mk() {
     async createSocialCampaign(b: Row) { calls.push("createSocialCampaign"); const id = U(++n); w.campaigns[id] = { marketing_angle: "", target_audience: "", main_message: "", notes: "", promotion_budget: 0, ...b }; return id; },
     async updateSocialCampaign(id: string, b: Row) { calls.push("updateSocialCampaign"); Object.assign(w.campaigns[id], b); },
     async deleteSocialCampaign(id: string) { calls.push("deleteSocialCampaign"); delete w.campaigns[id]; },
-    async campaignCounts(id: string) { return { content: Object.values(w.content).filter((c) => c.campaign_id === id).length, promotions: Object.values(w.promos).filter((p) => p.campaign_id === id).length, files: 2 }; },
+    async campaignCounts(id: string) { return { content: Object.values(w.content).filter((c) => c.campaign_id === id).length, promotions: Object.values(w.promos).filter((p) => p.campaign_id === id).length, files: 2, artistContentKept: Object.values(w.content).filter((c) => c.campaign_id === id && c.label_artist_id).length }; },
+    async readLabelArtist(id: string) { return w.artists[id] ? { name: w.artists[id], notes: "", status: "פעיל" } : null; },
+    async linkSocialCampaignArtist(cid: string, aid: string) { calls.push("linkSocialCampaignArtist"); const c = w.campaigns[cid]; if (c.label_artist_id && c.label_artist_id !== aid) throw new Error("other artist"); c.label_artist_id = aid; let n_ = 0; for (const x of Object.values(w.content)) if (x.campaign_id === cid && !x.label_artist_id) { x.label_artist_id = aid; n_++; } return { campaign: true, items: n_ }; },
     async readSocialContent(id: string) { return w.content[id] ? { ...w.content[id] } : null; },
     async createSocialContent(b: Row) { calls.push("createSocialContent"); const id = U(++n); w.content[id] = { platform: null, due_date: null, publish_date: null, publish_time: null, owner_name: "", hook: "", caption: "", notes: "", content_type: "אחר", ...b }; return id; },
     async updateSocialContent(id: string, b: Row) { calls.push("updateSocialContent"); Object.assign(w.content[id], b); },
@@ -64,11 +67,14 @@ const CASES: FamilyCase<W>[] = [
   { id: "UPDATE_PROMOTION", args: { promotion: PR40, status: "פעיל", plannedAmount: 650 }, bad: { promotion: PR40, status: "הושלם" }, missing: { promotion: `promotion:${U(9)}`, status: "פעיל" }, wrongKind: { promotion: C10, status: "פעיל" }, stale: (w) => { w.promos[U(40)].notes = "x"; }, check: (w) => w.promos[U(40)].status === "פעיל" && w.promos[U(40)].planned_amount === 650 },
   { id: "SET_PROMOTION_ACTUAL_SPEND", args: { promotion: PR40, amount: 480 }, confirm: "כן בוס, ₪480", bad: { promotion: PR40, amount: -5 }, missing: { promotion: `promotion:${U(9)}`, amount: 1 }, stale: (w) => { w.promos[U(40)].planned_amount = 700; }, check: (w, calls) => Object.values(w.tx).join() === "480" && calls.filter((c) => c === "syncActualExpense").length === 1 },
   { id: "DELETE_PROMOTION", args: { promotion: PR40 }, confirm: "כן בוס, מחיקה", bad: { promotion: "promotion:1" }, missing: { promotion: `promotion:${U(9)}` }, stale: (w) => { w.promos[U(40)].status = "בוטל"; }, check: (w) => !w.promos[U(40)] },
+  // stage 1 (2026-10-17): an artist's own content (no campaign) + the campaign → artist link
+  { id: "ADD_SOCIAL_CONTENT", args: { artist: `label-artist:${U(60)}`, title: "רילס בין ריליסים", contentType: "BTS", status: "idea" }, bad: { artist: `label-artist:${U(60)}`, title: "" }, missing: { artist: `label-artist:${U(61)}`, title: "x" }, stale: (w) => { w.artists[U(60)] = "שליו ט."; }, check: (w) => Object.values(w.content).some((c) => c.title === "רילס בין ריליסים" && c.campaign_id === null && c.label_artist_id === U(60)) },
+  { id: "LINK_SOCIAL_CAMPAIGN_ARTIST", args: { campaign: C10, artist: `label-artist:${U(60)}` }, bad: { campaign: C10, artist: "shalev" }, missing: { campaign: `social-campaign:${U(9)}`, artist: `label-artist:${U(60)}` }, wrongKind: { campaign: X20, artist: `label-artist:${U(60)}` }, stale: (w) => { w.content[U(89)] = { campaign_id: U(10), title: "חדש" }; }, check: (w, calls) => w.campaigns[U(10)].label_artist_id === U(60) && w.content[U(20)].label_artist_id === U(60) && calls.includes("linkSocialCampaignArtist") },
 ];
 
 (async () => {
   console.log("Social — standard checks");
-  ok("the case table covers every social primitive", CASES.map((c) => c.id).sort().join() === SOCIAL_PRIMITIVES.map((p) => p.actionId).sort().join());
+  ok("the case table covers every social primitive", [...new Set(CASES.map((c) => c.id))].sort().join() === SOCIAL_PRIMITIVES.map((p) => p.actionId).sort().join());
   await runCases(CASES, mk, ok);
 
   console.log("\nFamily rules");
