@@ -703,6 +703,7 @@ export interface VendorWork {
   workState: VictorWorkState | null;  // detail state within active work
   outcome: VictorOutcome | null;     // what came out of the work
   sentDate: string | null;           // YYYY-MM-DD
+  attributedMonth: string | null;    // YYYY-MM — the Owner's month attribution ("העבר לחודש אחר"); null = by sent date (lib/victor-segments monthRef)
   internalDeadline: string | null;   // YYYY-MM-DD
   returnedDate: string | null;       // YYYY-MM-DD
   dropboxFolder: string | null;      // base path, e.g. "Victor/Artist - Project"

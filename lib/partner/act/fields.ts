@@ -95,6 +95,7 @@ export const ACCEPTED_FIELD_CLASSES: Readonly<Record<string, { kind: AcceptedFie
   fileRef: { kind: "TARGET_SELECTOR", noteEn: "Victor file reference (scope-checked)" },
   sketchId: { kind: "TARGET_SELECTOR", noteEn: "sketch target" },
   versionKey: { kind: "TARGET_SELECTOR", noteEn: "Victor version target" },
+  toMonth: { kind: "DERIVED_INPUT", noteEn: "'העבר לחודש אחר' (2026-10-17): the target month (YYYY-MM); the writer stores it as vendor_project_work.attributed_month, or clears it when it equals the work's sent-date month" },
   versionNumber: { kind: "TARGET_SELECTOR", noteEn: "sketch version target" },
   batchId: { kind: "TARGET_SELECTOR", noteEn: "final-files batch" },
   tracks: { kind: "TARGET_SELECTOR", noteEn: "album track order" },

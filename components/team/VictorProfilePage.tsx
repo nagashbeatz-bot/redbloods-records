@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
-import { inMonth, monthRef } from "@/lib/victor-segments";
+import { inMonth, monthRef, workMonthOf } from "@/lib/victor-segments";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { saveFileAs } from "@/lib/download-file";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
@@ -1635,6 +1635,14 @@ function VictorProjectDrawer({
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendDone, setSendDone] = useState(false);
   const sendingRef = useRef(false); // double-click guard (state lags a fast 2nd click)
+  // ── "העבר לחודש אחר" (owner only): changes ONLY the month attribution (no push, no other field) ──
+  const workMonth = workMonthOf(work);
+  const [moveStep, setMoveStep] = useState<"closed" | "pick" | "confirm">("closed");
+  const [moveTo, setMoveTo] = useState<string>(workMonth);
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const movingRef = useRef(false);
+  const moveYears = (() => { const y = new Date().getFullYear(), w = Number(workMonth.slice(0, 4)); return [...new Set([w - 1, w, w + 1, y - 1, y, y + 1])].sort((a, b) => a - b); })();
   // Brief ("קרא אותי קודם") — owner edits, Victor views.
   const [effectiveBrief, setEffectiveBrief] = useState<string>(work.briefText ?? "");
   const [editingBrief, setEditingBrief] = useState(false);
@@ -1733,6 +1741,30 @@ function VictorProjectDrawer({
   // reloads the row and builds both texts from vendor_project_work.title, so the
   // name can't be spoofed and never falls back to a project/artist name.
   // Changes no status/data; never runs automatically.
+  async function moveWorkMonth() {
+    if (movingRef.current) return; // double-click → exactly one request
+    movingRef.current = true;
+    setMoving(true);
+    setMoveError(null);
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${encodeURIComponent(work.id)}/month`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toMonth: moveTo }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { setMoveError(d.error || t("err.networkRetry")); return; }
+      setMoveStep("closed");
+      onRefresh?.();
+      onClose(); // the work now belongs to another month's list
+    } catch {
+      setMoveError(t("err.networkRetry"));
+    } finally {
+      movingRef.current = false;
+      setMoving(false);
+    }
+  }
+
   async function sendWorkToVictor() {
     if (sendingRef.current) return; // double-click → exactly one request
     sendingRef.current = true;
@@ -3434,6 +3466,77 @@ function VictorProjectDrawer({
             </div>
           ))}
 
+          {/* ── Move to another month (owner only) — only the month attribution changes ── */}
+          {isOwner && (moveStep === "closed" ? (
+            <button
+              type="button"
+              onClick={() => { setMoveTo(workMonth); setMoveError(null); setMoveStep("pick"); }}
+              style={{
+                width: "100%", padding: "11px 0", borderRadius: 12,
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.14)",
+                color: TEXT2, fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              {t("drawer.moveMonth")}
+            </button>
+          ) : (
+            <div style={{ borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.14)", padding: "12px 16px" }}>
+              {moveStep === "pick" ? (
+                <>
+                  <div style={{ fontSize: 12, color: TEXT2, fontWeight: 700, marginBottom: 10, textAlign: "center" }}>{t("drawer.moveMonthPick")}</div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                    <select aria-label="month" value={moveTo.slice(5, 7)} onChange={(e) => setMoveTo(`${moveTo.slice(0, 4)}-${e.target.value}`)} style={{ flex: 2, padding: "8px 10px", borderRadius: 9, background: "#16161E", color: TEXT, border: "1px solid rgba(255,255,255,0.14)", fontFamily: "inherit", fontSize: 13 }}>
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                        <option key={m} value={m}>{victorMonthName(`2000-${m}`, lang)}</option>
+                      ))}
+                    </select>
+                    <select aria-label="year" value={moveTo.slice(0, 4)} onChange={(e) => setMoveTo(`${e.target.value}-${moveTo.slice(5, 7)}`)} style={{ flex: 1, padding: "8px 10px", borderRadius: 9, background: "#16161E", color: TEXT, border: "1px solid rgba(255,255,255,0.14)", fontFamily: "inherit", fontSize: 13 }}>
+                      {moveYears.map((y) => (<option key={y} value={String(y)}>{y}</option>))}
+                    </select>
+                  </div>
+                  {moveTo === workMonth && (
+                    <div style={{ fontSize: 11, color: MUTED, marginBottom: 8, textAlign: "center" }}>{t("drawer.moveMonthSame")}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => { setMoveError(null); setMoveStep("confirm"); }}
+                      disabled={moveTo === workMonth}
+                      style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: "none", background: moveTo === workMonth ? "#52526A" : PURPLE, color: "#fff", fontSize: 13, fontWeight: 800, cursor: moveTo === workMonth ? "default" : "pointer", fontFamily: "inherit" }}
+                    >
+                      {t("drawer.moveMonthNext")}
+                    </button>
+                    <button onClick={() => setMoveStep("closed")} style={{ flex: 1, padding: "9px 0", borderRadius: 9, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "#A0A0B0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      {t("drawer.cancel")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: TEXT2, fontWeight: 700, marginBottom: 6, textAlign: "center", lineHeight: 1.6, unicodeBidi: "plaintext" } as React.CSSProperties}>
+                    {t("drawer.moveMonthConfirm", { title: effectiveTitle.trim() || work.projectName, from: victorMonthYear(workMonth, lang), to: victorMonthYear(moveTo, lang) })}
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 10, textAlign: "center", lineHeight: 1.5 }}>{t("drawer.moveMonthNote")}</div>
+                  {moveError && (
+                    <div style={{ fontSize: 11, color: "#FCA5A5", marginBottom: 8, textAlign: "center", unicodeBidi: "plaintext" } as React.CSSProperties}>{moveError}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={moveWorkMonth}
+                      disabled={moving}
+                      style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: "none", background: moving ? "#52526A" : PURPLE, color: "#fff", fontSize: 13, fontWeight: 800, cursor: moving ? "default" : "pointer", fontFamily: "inherit" }}
+                    >
+                      {moving ? t("drawer.moveMonthMoving") : t("drawer.confirm")}
+                    </button>
+                    <button onClick={() => { setMoveStep("pick"); setMoveError(null); }} disabled={moving} style={{ flex: 1, padding: "9px 0", borderRadius: 9, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "#A0A0B0", fontSize: 13, fontWeight: 700, cursor: moving ? "default" : "pointer", fontFamily: "inherit" }}>
+                      {t("drawer.cancel")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+
           {/* ── Remove from Victor board (owner only) ── */}
           {isOwner && (!confirmRemove ? (
             <button
@@ -3984,7 +4087,10 @@ export default function VictorProfilePage() {
       };
     }
   }
-  const displayWork = monthWork.slice(0, 12);
+  // The list shows 12 rows; "+N more" expands it (it used to be plain text with no way to see the rest). Collapses on a month change.
+  const [showAllWork, setShowAllWork] = useState(false);
+  useEffect(() => { setShowAllWork(false); }, [month]);
+  const displayWork = showAllWork ? monthWork : monthWork.slice(0, 12);
 
   // Monthly capacity = work actually handled in the selected month (active +
   // completed, excluding cancelled), taken from the SAME monthWork array the
@@ -4364,7 +4470,7 @@ export default function VictorProfilePage() {
                 ))}
                 {monthWork.length > 12 && (
                   <div style={{ paddingTop: 4, textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>{t("projects.more", { n: monthWork.length - 12 })}</span>
+                    <button type="button" onClick={() => setShowAllWork((v) => !v)} style={{ background: "none", border: "none", padding: 0, fontFamily: "inherit", fontSize: 11, color: MUTED, cursor: "pointer", textDecoration: "underline" }}>{showAllWork ? t("projects.less") : t("projects.more", { n: monthWork.length - 12 })}</button>
                   </div>
                 )}
               </div>
@@ -4441,7 +4547,7 @@ export default function VictorProfilePage() {
                 </div>
                 {monthWork.length > 12 && (
                   <div style={{ padding: "10px 16px", borderTop: `1px solid ${BDR}`, textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>{t("projects.more", { n: monthWork.length - 12 })}</span>
+                    <button type="button" onClick={() => setShowAllWork((v) => !v)} style={{ background: "none", border: "none", padding: 0, fontFamily: "inherit", fontSize: 11, color: MUTED, cursor: "pointer", textDecoration: "underline" }}>{showAllWork ? t("projects.less") : t("projects.more", { n: monthWork.length - 12 })}</button>
                   </div>
                 )}
               </>

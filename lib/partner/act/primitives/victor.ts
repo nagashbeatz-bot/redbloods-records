@@ -14,7 +14,11 @@ import { VICTOR_PAYMENT_STATUSES, VICTOR_SALARY_CURRENCIES, validateVictorSettin
 import { VICTOR_WORK_STATES } from "@/lib/types";
 import { victorSalaryPushPreviewHe } from "@/lib/victor-salary-paid-notify-pure";
 
-export type VictorWorkView = { title: string; projectId: string | null; projectName: string; status: string; workState: string | null; sentDate: string | null; internalDeadline: string | null; briefText: string; hasTask: boolean; reviewKeys: string; vendorName: string };
+export type VictorWorkView = { title: string; projectId: string | null; projectName: string; status: string; workState: string | null; sentDate: string | null; internalDeadline: string | null; briefText: string; hasTask: boolean; reviewKeys: string; vendorName: string;
+  /** The month the work counts in (YYYY-MM) — THE one rule (lib/victor-segments workMonthOf): attributed month, else sent date, else created. */
+  month: string;
+  /** The Owner's explicit attribution (null = by sent date). */
+  attributedMonth: string | null };
 type Send = { ok: boolean; reason?: string };
 export interface VictorFamilyWriters {
   /** P_VICTOR_SALARY_PAID: the month's delivery claim (settings victor_salary_paid_pushed_<YYYY-MM>) — evidence read after an execution. */
@@ -27,6 +31,8 @@ export interface VictorFamilyWriters {
   victorWorkForProject(projectId: string): Promise<string | null>;
   createVictorWorkRecord(projectId: string | null, f: { title: string | null; workState: string | null; sentDate: string; notes: string }): Promise<string>;
   ownerPatchVictorWork(id: string, body: Record<string, unknown>): Promise<void>;
+  /** lib/writes/victor-month moveVictorWorkMonth — ONLY the month attribution (no other field, no push). */
+  moveVictorWorkMonth(id: string, toMonth: string): Promise<"ok" | "no_change" | "invalid" | "not_found" | "conflict">;
   removeVictorWork(id: string): Promise<{ removedTask: boolean }>;
   notifyVictorWork(id: string): Promise<Send>;
   readVictorReview(id: string, versionKey: string): Promise<{ notes: string; draft: boolean; sent: boolean } | null>;
@@ -120,6 +126,21 @@ export const VICTOR_PRIMITIVES: readonly PrimitiveSpec[] = [
     async apply(d, _id, after, a) { return { createdId: await d.createVictorWorkRecord(parseKey(a.project, ["project"])?.id ?? null, { title: (after.title as string | null) ?? null, workState: (after.workState as string | null) ?? null, sentDate: String(after.sentDate), notes: str(a.notes) ?? "" }) }; },
     async verify(d, id, after) { const w = await d.readVictorWorkFull(id); return !!w && w.sentDate === after.sentDate && w.vendorName === "victor"; },
     disclosuresHe: ["נפתחת עבודה בסטטוס פעיל; שום דבר לא נשלח לויקטור (Push הוא פעולה נפרדת, וצריך לו שם עבודה לויקטור)", "תיקייה / קישור ב-Dropbox לא נוצרים כאן"],
+  },
+  {
+    // "העבר לחודש אחר" (Owner decision 2026-10-17): the month the work COUNTS in — never its sent date / completion / deadline /
+    // status / files / notes / money; no push. A completed work moves with its count.
+    actionId: "MOVE_VICTOR_WORK_MONTH", kinds: ["victor-work"],
+    meta: meta("העברת עבודת ויקטור לחודש אחר (החודש שבו היא נספרת)", "Move a Victor work to another month — only its month attribution (the month list, counts, capacity and KPI follow; nothing else changes, no push)", [K("victorWork"), T("toMonth", true)], ["month"], "moveVictorWorkMonth (lib/writes/victor-month)", {}),
+    resolve: onVictor, read: vFields,
+    plan(a, cur) {
+      const to = str(a.toMonth)?.trim() ?? "";
+      if (!MONTH.test(to)) return refuse("BAD_MONTH", "חודש לא תקין (YYYY-MM)");
+      return finishPlan(cur, { month: to });
+    },
+    async apply(d, id, after) { const r = await d.moveVictorWorkMonth(id, String(after.month)); if (r !== "ok" && r !== "no_change") throw new Error(`month not moved: ${r}`); },
+    warnings: (c) => (c.status === "הושלם" ? ["העבודה כבר הושלמה — היא תיספר כ'הושלמה' בחודש היעד ולא בחודש המקור (תאריך ההשלמה לא משתנה)"] : c.status === "בוטל" ? ["העבודה מבוטלת — היא תופיע כמבוטלת בחודש היעד"] : []),
+    disclosuresHe: ["משתנה רק החודש שבו העבודה נספרת: רשימת החודש, הספירות, הקיבולת וה-KPI — אצלך, אצל ויקטור ואצלי", "תאריך השליחה, תאריך ההשלמה, הדדליין, הסטטוס, הקבצים, ההערות והכסף לא משתנים; לא יישלח Push", "העברה חזרה לחודש של תאריך השליחה מנקה את השיוך"],
   },
   {
     actionId: "UPDATE_VICTOR_WORK_DETAILS", kinds: ["victor-work"],

@@ -70,6 +70,7 @@ function mapRow(
     workState:        (row.work_state as VictorWorkState | null) ?? null,
     outcome:          (row.outcome    as VictorOutcome   | null) ?? null,
     sentDate,
+    attributedMonth:  (row.attributed_month as string | null) ?? null,
     internalDeadline: (row.internal_deadline as string | null) ?? null,
     returnedDate:     (row.returned_date     as string | null) ?? null,
     dropboxFolder:    (row.dropbox_folder    as string | null) ?? null,

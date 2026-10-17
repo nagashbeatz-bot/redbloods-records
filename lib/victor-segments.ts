@@ -5,10 +5,23 @@
  */
 import type { VendorWork } from "@/lib/types";
 
-/** Month attribution: sent_date if available, else created_at date part */
-export function monthRef(w: VendorWork): string {
+/** The NATURAL month date (no Owner attribution): sent_date if available, else created_at date part. */
+export function naturalMonthRef(w: Pick<VendorWork, "sentDate" | "createdAt">): string {
   return w.sentDate ?? w.createdAt.slice(0, 10);
 }
+
+/**
+ * THE month attribution (one rule for every screen, count, capacity, KPI, report and Sunny): the Owner's explicit
+ * attributed_month ("העבר לחודש אחר", 2026-10-17) wins; else sent_date; else created_at. It never changes the sent
+ * date itself (stuck / age / the ball keep reading sent_date).
+ */
+export function monthRef(w: Pick<VendorWork, "sentDate" | "createdAt"> & { attributedMonth?: string | null }): string {
+  return w.attributedMonth ? `${w.attributedMonth}-01` : naturalMonthRef(w);
+}
+
+/** The work's month (YYYY-MM) by the one rule above. */
+export const workMonthOf = (w: Parameters<typeof monthRef>[0]): string => monthRef(w).slice(0, 7);
+export const VICTOR_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Is this record attributed to the given month? */
 export function inMonth(w: VendorWork, month: string): boolean {

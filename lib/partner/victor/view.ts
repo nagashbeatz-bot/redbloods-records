@@ -19,6 +19,7 @@ import type { SettingsState } from "../settings/types";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { validateTx } from "../finance/core";
 import { projectOperating } from "../sunny/operating";
+import { workMonthOf } from "@/lib/victor-segments";
 import { computeVictorBall, victorVersionKeyOf } from "../../coo/victor-ball";
 import { teamBallCycle } from "../../team-ball-cycle";
 import { isVictorWorkStuck, DEFAULT_STUCK_AFTER_DAYS, VICTOR_STUCK_PUSH_ENABLED } from "../../victor-stuck";
@@ -84,7 +85,9 @@ export function buildWork(src: GatewaySources, w: DetailVictorWork) {
   const task = w.linkedTaskId ? (c.det?.tasks?.rows ?? []).find((t) => t.id === w.linkedTaskId) ?? null : null;
   const completedMarker = setting(c, "PUSH_SENT_ONCE_MARKERS", `victor_work_completed_pushed_${w.id}`);
   return {
-    key: `victor-work:${w.id}`, id: w.id, title: w.title ?? p?.name ?? "(ללא שם)", status: w.status, workState: w.workState, workStateNote: "display-only — never updated after the send", sentDate: w.sentDate, daysSinceSent: days(w.sentDate, c.today), returnedDate: w.returnedDate,
+    key: `victor-work:${w.id}`, id: w.id, title: w.title ?? p?.name ?? "(ללא שם)", status: w.status, workState: w.workState, workStateNote: "display-only — never updated after the send", sentDate: w.sentDate,
+    // the month the work COUNTS in — the ONE rule every screen uses (the Owner's attribution, else the sent date, else created)
+    month: workMonthOf({ sentDate: w.sentDate ?? null, createdAt: w.createdAt ?? "", attributedMonth: w.attributedMonth ?? null }) || null, monthSource: w.attributedMonth ? "OWNER_ATTRIBUTED" : w.sentDate ? "SENT_DATE" : "CREATED", daysSinceSent: days(w.sentDate, c.today), returnedDate: w.returnedDate,
     project: w.projectId ? { key: `project:${w.projectId}`, name: p?.name ?? null, status: p?.status ?? null, businessType: p?.businessType ?? null, exists: !!p, link: "CANONICAL (stored project id)" } : null,
     artistText: p?.artistText ?? null, labelWork: op?.label.labelWork ?? null, clientDeadline: op ? { date: op.clientDeadline.date, class: op.clientDeadline.class, meaning: "the CLIENT / project commitment — separate from Victor's internal deadline" } : null,
     internalDeadline: w.internalDeadline ? { date: w.internalDeadline, passed: deadlinePassed, meaning: "Victor's INTERNAL expectation — not a client commitment; passed = investigate, not blame", task: task ? { title: task.title, status: task.status, due: task.dueDate } : null } : null,

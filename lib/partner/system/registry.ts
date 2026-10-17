@@ -11,7 +11,7 @@
 import { BUSINESS_ACTION_PRIMITIVES } from "../act/coverage-map";
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.17-116";
+export const SYSTEM_BASELINE_VERSION = "2026.10.17-117";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1139,4 +1139,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.12-114", date: "2026-10-12", domain: "SUNNY_CORE", dimension: "learn", from: "STATEMENTS_STAY_CURRENT", to: "FRESHNESS_CHECKED", noteHe: "שלב 3 (באישור הבעלים 12.10): מה שאמרת על פרויקט שנסגר ברשומות הוא היסטוריה ולא מצב נוכחי; תאריך שאמרת שעדיין היה לפניך ועבר — סאני שואלת \"זה עדיין נכון?\" (שאלה, לא מסקנה). הוצאה רשומה שמועדה עבר בלי רישום תשלום — \"שולם?\", לא \"יוצא השבוע\" ולא \"לא שולם\"." },
   { version: "2026.10.12-115", date: "2026-10-12", domain: "COMPANY_OVERVIEW", dimension: "read", from: "ITEMS_PER_RECORD", to: "BUSINESS_THREADS", noteHe: "שלב 4 (באישור הבעלים 12.10): חוט עסקי ב-motion — אמן לייבל מצטרף לפריט של הריליס שלו (קישור לפי מזהה) במקום פריט מתחרה; קליפ ושיר (song_project_id) מוצגים כחוט אחד. תצוגה בלבד: שום רשומה, קישור או כסף לא משתנים; הכסף של כל פרויקט נשאר שלו; התאמת שם לא מחברת." },
   { version: "2026.10.17-116", date: "2026-10-17", domain: "VICTOR", dimension: "domain", from: "NO_SALARY_PUSH", to: "SALARY_PAID_PUSH", noteHe: "משכורת ויקטור: מעבר אמיתי של שורת הכספים של חודש משכורת ל'שולם' (עריכה בכספים / 'שלח לכספים' כשולם היסטורית / RECORD_PAID_EXPENSE) שולח לויקטור פוש אחד לכל חודש, בשפה שבחר בפורטל (אנגלית / רוסית), עם החודש בלבד — בלי סכום; ורק אחרי שהפוש נמסר — אישור לבעלים. חודש שמועד התשלום שלו עבר לפני יותר מ-45 יום לא שולח. סימון הסטטוס בחלון המשכורת (הצהרת בעלים בהגדרות) לא שולח. סאני לא שולחת פוש בעצמה — רק הכותב של האפליקציה (P_VICTOR_SALARY_PAID)." },
+  { version: "2026.10.17-117", date: "2026-10-17", domain: "VICTOR", dimension: "execute", from: "MONTH_BY_SENT_DATE", to: "OWNER_MONTH_ATTRIBUTION", noteHe: "העברת עבודת ויקטור לחודש אחר (החלטת בעלים + SQL מאושר 17.10): עמודה חדשה attributed_month. החודש של עבודה = השיוך של הבעלים, אחרת תאריך השליחה, אחרת תאריך היצירה — כלל אחד לרשימות, לספירות, לקיבולת, ל-KPI, לדוחות ולסאני (victor_view מציג month + monthSource). סאני מבצעת MOVE_VICTOR_WORK_MONTH רק אחרי אישור הבעלים לתצוגה המקדימה, ומאמתת בקריאה חוזרת. משתנה רק השיוך — לא תאריך השליחה, ההשלמה, הדדליין, הסטטוס, הקבצים, ההערות או הכסף, ובלי Push. עבודה שהושלמה עוברת עם הספירה שלה." },
 ];

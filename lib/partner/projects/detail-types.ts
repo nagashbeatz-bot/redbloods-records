@@ -45,7 +45,7 @@ export interface DetailVictorReview { version: string; status: string | null; no
 export interface DetailVictorWork {
   id: string; projectId: string | null; notes: string | null; briefText: string | null;
   /** Additive (Victor Deep Brain): the work record itself — vendor, title, status, work state, dates, deadline task. Optional for older fixtures. */
-  vendorName?: string | null; title?: string | null; status?: string | null; workState?: string | null; sentDate?: string | null; internalDeadline?: string | null; linkedTaskId?: string | null; createdAt?: string | null; updatedAt?: string | null; references: Array<{ title: string | null; note: string | null; publicUrl: string | null }>; reviews: DetailVictorReview[];
+  vendorName?: string | null; title?: string | null; status?: string | null; workState?: string | null; sentDate?: string | null; attributedMonth?: string | null; internalDeadline?: string | null; linkedTaskId?: string | null; createdAt?: string | null; updatedAt?: string | null; references: Array<{ title: string | null; note: string | null; publicUrl: string | null }>; reviews: DetailVictorReview[];
   filesSent: DetailFile[]; filesReceived: DetailFile[]; briefFiles: DetailFile[]; returnedDate: string | null; outcome: string | null; quality: string | null; enteredProject: unknown; dropboxFolder: string | null; hasFolderLink: boolean;
 }
 export interface DetailProduction { currency?: string | null;

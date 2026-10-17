@@ -5,6 +5,7 @@ import "server-only";
  * The writers are the SAME shared functions the Redbloods UI routes use; nothing here calls an internal API over HTTP,
  * and nothing here is a generic writer. Built lazily, only when the action endpoint is enabled and authenticated.
  */
+import { workMonthOf } from "@/lib/victor-segments";
 import type { ActServiceDeps } from "./service";
 import type { CoreWriters, WriterDeps } from "./primitives";
 import type { ProjectFamilyWriters } from "./primitives/projects";
@@ -326,11 +327,12 @@ async function victorFamilyWriters(): Promise<VictorFamilyWriters> {
     async readVictorWorkFull(id) {
       const w = await VS.getVictorWorkById(id);
       if (!w) return null;
-      return { title: w.title ?? "", projectId: w.projectId ?? null, projectName: w.projectName ?? "", status: w.status, workState: w.workState ?? null, sentDate: w.sentDate ?? null, internalDeadline: w.internalDeadline ?? null, briefText: w.briefText ?? "", hasTask: !!w.linkedTaskId, reviewKeys: Object.keys(w.versionReviews ?? {}).join(","), vendorName: w.vendorName };
+      return { title: w.title ?? "", projectId: w.projectId ?? null, projectName: w.projectName ?? "", status: w.status, workState: w.workState ?? null, sentDate: w.sentDate ?? null, internalDeadline: w.internalDeadline ?? null, briefText: w.briefText ?? "", hasTask: !!w.linkedTaskId, reviewKeys: Object.keys(w.versionReviews ?? {}).join(","), vendorName: w.vendorName, month: workMonthOf(w), attributedMonth: w.attributedMonth ?? null };
     },
     victorWorkForProject: async (pid) => (await VS.getVictorWorkForProject(pid))?.id ?? null,
     createVictorWorkRecord: async (pid, f) => (await VS.createVictorWork(pid, { title: f.title, sentDate: f.sentDate, notes: f.notes, ...(f.workState ? { workState: f.workState as Init["workState"] } : {}) })).id,
     ownerPatchVictorWork: (id, body) => W.ownerPatchVictorWork(id, body),
+    moveVictorWorkMonth: async (id, toMonth) => (await (await import("@/lib/writes/victor-month")).moveVictorWorkMonth(id, toMonth)).kind,
     removeVictorWork: (id) => W.removeVictorWork(id),
     async notifyVictorWork(id) { const r = await W.notifyVictorWork(id); return r.ok ? { ok: true } : { ok: false, reason: r.reason }; },
     async readVictorReview(id, vk) { const w = await VS.getVictorWorkById(id); const r = w?.versionReviews?.[vk]; return r ? { notes: r.notes ?? "", draft: !!r.draft, sent: !!r.sentAt } : null; },

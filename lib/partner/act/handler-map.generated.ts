@@ -4187,6 +4187,17 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "fileRef"
   ]
  },
+ "app/api/vendor/victor/work/[id]/month/route.ts": {
+  "methods": [
+   "POST"
+  ],
+  "getWrites": false,
+  "sha256": "9262ecc2f9339052d3ecb0bf645f1fe17a2bce66525c5e1c024caa932d68dc48",
+  "effects": [],
+  "fields": [
+   "toMonth"
+  ]
+ },
  "app/api/vendor/victor/work/[id]/route.ts": {
   "methods": [
    "DELETE",
