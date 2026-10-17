@@ -360,7 +360,8 @@ async function main() {
     // otherwise the unchanged deadline core). The actor always comes from the session.
     ok("1. executeApprovedAction resolves the Owner (requireOwner + session user) BEFORE any core; actor never from input",
       /export async function executeApprovedAction\(input: unknown\)[^{]*\{\s*const a = await resolveOwnerActor\(\);\s*if \(!a\.ok\) return a\.result;/.test(ACTION_SERVICE)
-      && /if \(fin\.status === "FOUND"\) return executeFinanceActionCore\(financeDeps, a\.actor, input\);\s*\}\s*return executeApprovedActionCore\(deps, a\.actor, input\);/.test(ACTION_SERVICE)
+      // 2026-10-17 (P_VICTOR_SALARY_PAID): the finance branch keeps its result and only adds the salary notifier after EXECUTED
+      && /if \(fin\.status === "FOUND"\) \{\s*const r = await executeFinanceActionCore\(financeDeps, a\.actor, input\);[\s\S]*?return r;\s*\}\s*\}\s*return executeApprovedActionCore\(deps, a\.actor, input\);/.test(ACTION_SERVICE)
       && /requireOwner\(\)[\s\S]*getAuthUser\(\)[\s\S]*actor: \{ userId: user\.id \}/.test(ACTION_SERVICE));
     svc.mode = "FORBIDDEN";
     const f = await post({ approvalEventId: APPROVAL, requestId: randomUUID() });
@@ -637,7 +638,11 @@ async function main() {
     const F1K = ["app/api/partner/actions/execute/route.ts", "components/partner/PartnerActionsSection.tsx", "components/partner/PartnerActionCard.tsx", "components/partner/partner-decision-client.ts", "lib/partner/actions/surface.ts", "lib/partner/actions/surface-dto.ts", "lib/partner/actions/action-service.ts", "lib/partner/actions/service.ts", "lib/partner/actions/event-persistence.ts"].map((f) => strip(rd(f)));
     ok("38. no cron in the execution path (node-cron / instrumentation / schedules)", F1K.every((s) => !/node-cron|instrumentation|cron/i.test(s)));
     ok("38. no cron / instrumentation module reaches Partner actions", !/partner\/actions|executeApprovedAction/.test(rd("instrumentation.ts")) && fs.readdirSync(path.join(ROOT, "lib", "agent")).every((f) => !/partner\/actions|executeApprovedAction/.test(fs.readFileSync(path.join(ROOT, "lib", "agent", f), "utf8"))));
-    ok("39. no Push in the execution path", F1K.every((s) => !/web-push|lib\/push|sendPush|pushTo|notify/i.test(s)) && !/partner\/actions/.test(rd("lib/push.ts")));
+    // 2026-10-17 (Owner spec P_VICTOR_SALARY_PAID): the ONE allowed exception — action-service calls the app's own salary
+    // notifier after an EXECUTED finance result (the writer sends it, never Sunny). Nothing else in the path may push.
+    const SALARY_HOOK = /if \(r\.status === "EXECUTED"[^\n]*\n\s*try \{\n\s*const \{ notifyVictorSalaryPaid \} = await import\("@\/lib\/victor-salary-paid-notify"\);\n\s*await notifyVictorSalaryPaid\(\{ txId: r\.transactionId, before: null \}\);\n\s*\} catch \(e\) \{ console\.error\("\[partner\/actions\] Victor salary notification failed[^\n]*\n/;
+    ok("39. the salary notifier is called exactly once, only after an EXECUTED finance result", (ACTION_SERVICE.match(/notifyVictorSalaryPaid\(/g) ?? []).length === 1 && SALARY_HOOK.test(ACTION_SERVICE));
+    ok("39. no other Push in the execution path", F1K.map((s) => s.replace(SALARY_HOOK, "").replace(/\/\/ P_VICTOR_SALARY_PAID:[^\n]*\n[^\n]*\n/, "")).every((s) => !/web-push|lib\/push|sendPush|pushTo|notify/i.test(s)) && !/partner\/actions/.test(rd("lib/push.ts")));
     ok("40. no Agent Alerts in the execution path", F1K.every((s) => !/agent_alerts|alerts-store|lib\/agent\/|createAlert/i.test(s)));
     ok("the RPC name is defined ONLY in events.ts; only event-persistence.ts calls .rpc(", (() => {
       const dir = path.join(ROOT, "lib", "partner", "actions");

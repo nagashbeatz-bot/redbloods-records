@@ -11,7 +11,7 @@
 import { BUSINESS_ACTION_PRIMITIVES } from "../act/coverage-map";
 import type { ConfirmationClass, ActionClass, BusinessActionContract, BusinessRule, CapabilityChange, DomainContract, NotificationContract, Relationship, SideEffect, SurfaceExclusion } from "./types";
 
-export const SYSTEM_BASELINE_VERSION = "2026.10.12-115";
+export const SYSTEM_BASELINE_VERSION = "2026.10.17-116";
 
 const R = (id: string, cls: BusinessRule["class"], text: string, touches?: string[]): BusinessRule => ({ id, class: cls, text, ...(touches ? { touches } : {}) });
 const E = (id: string, when: string, effect: string, targets: string[], trigger: SideEffect["trigger"] = "EVENT", quality: SideEffect["quality"] = "CANONICAL_BUSINESS_RULE"): SideEffect => ({ id, when, effect, targets, trigger, quality });
@@ -1138,4 +1138,5 @@ export const CAPABILITY_CHANGES: readonly CapabilityChange[] = [
   { version: "2026.10.12-113", date: "2026-10-12", domain: "COMPANY_OVERVIEW", dimension: "propose", from: "MOVES_AS_TEXT", to: "MOVES_WITH_DRAFTS", noteHe: "שלב 2 (באישור הבעלים 12.10): לכל מהלך ב-motion יש טיוטה — הפעולה, הפרמטרים שנקראו ברשומות בלבד, מה חסר (שאלה אחת בכל פעם) והקשר שאינו ערך (הוצאה צפויה = תקציב, לא מחיר מוסכם). שורת \"ביומן ולא ב-Redbloods\" לאירועי עבודה ביומן בלי רשומה. שורת הפתיחה היא המהלך עצמו. שום ביצוע בלי אישור." },
   { version: "2026.10.12-114", date: "2026-10-12", domain: "SUNNY_CORE", dimension: "learn", from: "STATEMENTS_STAY_CURRENT", to: "FRESHNESS_CHECKED", noteHe: "שלב 3 (באישור הבעלים 12.10): מה שאמרת על פרויקט שנסגר ברשומות הוא היסטוריה ולא מצב נוכחי; תאריך שאמרת שעדיין היה לפניך ועבר — סאני שואלת \"זה עדיין נכון?\" (שאלה, לא מסקנה). הוצאה רשומה שמועדה עבר בלי רישום תשלום — \"שולם?\", לא \"יוצא השבוע\" ולא \"לא שולם\"." },
   { version: "2026.10.12-115", date: "2026-10-12", domain: "COMPANY_OVERVIEW", dimension: "read", from: "ITEMS_PER_RECORD", to: "BUSINESS_THREADS", noteHe: "שלב 4 (באישור הבעלים 12.10): חוט עסקי ב-motion — אמן לייבל מצטרף לפריט של הריליס שלו (קישור לפי מזהה) במקום פריט מתחרה; קליפ ושיר (song_project_id) מוצגים כחוט אחד. תצוגה בלבד: שום רשומה, קישור או כסף לא משתנים; הכסף של כל פרויקט נשאר שלו; התאמת שם לא מחברת." },
+  { version: "2026.10.17-116", date: "2026-10-17", domain: "VICTOR", dimension: "domain", from: "NO_SALARY_PUSH", to: "SALARY_PAID_PUSH", noteHe: "משכורת ויקטור: מעבר אמיתי של שורת הכספים של חודש משכורת ל'שולם' (עריכה בכספים / 'שלח לכספים' כשולם היסטורית / RECORD_PAID_EXPENSE) שולח לויקטור פוש אחד לכל חודש, בשפה שבחר בפורטל (אנגלית / רוסית), עם החודש בלבד — בלי סכום; ורק אחרי שהפוש נמסר — אישור לבעלים. חודש שמועד התשלום שלו עבר לפני יותר מ-45 יום לא שולח. סימון הסטטוס בחלון המשכורת (הצהרת בעלים בהגדרות) לא שולח. סאני לא שולחת פוש בעצמה — רק הכותב של האפליקציה (P_VICTOR_SALARY_PAID)." },
 ];

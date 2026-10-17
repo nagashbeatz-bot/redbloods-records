@@ -154,6 +154,12 @@ Victor's work is a system contract in `lib/partner/system/victor.ts`. It covers 
   - Victor responses carry no storage path, link or salary.
   - Lookups by project id, the folder builder and the raw storage routes are Owner-only, checked in-route as well as at the proxy.
 - A new Victor-reachable route or file operation must use that scope module and extend that test.
+- **Salary paid push (Owner spec 2026-10-17, `P_VICTOR_SALARY_PAID`):** a REAL not-paid → שולם transition of a salary month's Finance row (`victor_salary_<YYYY-MM>`) pushes Victor ONCE per month, and the Owner gets an ack only after that push was delivered. ONE notifier, `lib/victor-salary-paid-notify.ts`, sits behind the three writers: a Finance edit (`updateTransactionRecord`), `recordVictorSalaryMonth` with historic paid, and an executed RECORD_PAID_EXPENSE.
+  - The message names the month only, never the amount, in Victor's portal language (en / ru, from his ping → `victor_push_lang`).
+  - A month due more than 45 days ago stays silent (the spec default, an open Owner decision).
+  - The dedupe is a delivery claim `victor_salary_paid_pushed_<YYYY-MM>`.
+  - The salary modal's settings override never pushes.
+  - `scripts/test-victor-salary-paid-push.tsx` must pass.
 - Remaining findings stay in `SECURITY_GAPS` with an honest status (REPORTED_NOT_FIXED / REMEDIATED with proof / PARTIALLY_REMEDIATED). Fixing an open one is a separate, approved mission.
 
 ## Sunny Awareness Check: the team ball cycle + retired income status (2026-09-27)

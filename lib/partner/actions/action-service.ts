@@ -80,7 +80,18 @@ export async function executeApprovedAction(input: unknown): Promise<ExecuteResu
     const fin = await actionEventStore.getFinanceEventById(id);
     if (fin.status === "READ_FAILED") return { kind: "FINANCE", status: "RETRYABLE", detail: fin.detail, sqlstate: null };
     if (fin.status === "INVALID_STORED_EVENT") return { kind: "FINANCE", status: "INVARIANT_VIOLATION", detail: fin.errors.join("; ") };
-    if (fin.status === "FOUND") return executeFinanceActionCore(financeDeps, a.actor, input);
+    if (fin.status === "FOUND") {
+      const r = await executeFinanceActionCore(financeDeps, a.actor, input);
+      // P_VICTOR_SALARY_PAID: an executed finance action inserts a שולם salary row → the one shared notifier decides.
+      // The app's own writer sends it (Sunny never triggers a push herself); a push problem never touches the result.
+      if (r.status === "EXECUTED" && "transactionId" in r && typeof r.transactionId === "string") {
+        try {
+          const { notifyVictorSalaryPaid } = await import("@/lib/victor-salary-paid-notify");
+          await notifyVictorSalaryPaid({ txId: r.transactionId, before: null });
+        } catch (e) { console.error("[partner/actions] Victor salary notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
+      }
+      return r;
+    }
   }
   return executeApprovedActionCore(deps, a.actor, input);
 }

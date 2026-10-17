@@ -195,7 +195,7 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
   },
   {
     actionId: "SET_TRANSACTION_STATUS", kinds: ["transaction"],
-    meta: meta("שינוי סטטוס תשלום (התקבל / שולם / צפוי / …)", "Change a transaction's payment status (the app's own received / paid rules decide what counts)", [K("transaction"), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: false }, E("paymentMethod", PAYMENT_METHODS)], ["paymentStatus", "date", "paymentMethod"], "updateTransactionRecord (lib/writes/finance)", {}),
+    meta: meta("שינוי סטטוס תשלום (התקבל / שולם / צפוי / …)", "Change a transaction's payment status (the app's own received / paid rules decide what counts)", [K("transaction"), E("paymentStatus", [...new Set([...INCOME_STATUSES, ...EXPENSE_STATUSES])], true), { name: "date", kind: "ymd", required: false }, E("paymentMethod", PAYMENT_METHODS)], ["paymentStatus", "date", "paymentMethod"], "updateTransactionRecord (lib/writes/finance)", { effects: ["FINANCE", "PUSH"] }),
     resolve: onTx, read: txFields,
     plan(a, cur) {
       const s = String(a.paymentStatus);

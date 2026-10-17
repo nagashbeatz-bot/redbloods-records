@@ -121,6 +121,11 @@ export async function updateTransactionRecord(id: string, body: TransactionPatch
         const { notifyDjFeePaid } = await import("@/lib/dj-payment-notify");
         await notifyDjFeePaid({ txId: id, before: String(curRow.payment_status ?? "") });
       } catch (e) { console.error("[finance] DJ payment notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
+      // P_VICTOR_SALARY_PAID (Owner spec 2026-10-17): the same transition on a Victor salary month row tells Victor (one point).
+      try {
+        const { notifyVictorSalaryPaid } = await import("@/lib/victor-salary-paid-notify");
+        await notifyVictorSalaryPaid({ txId: id, before: String(curRow.payment_status ?? "") });
+      } catch (e) { console.error("[finance] Victor salary notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
     }
   }
   // business unit (task 4): an explicit choice is the Owner's decision; otherwise only a RULE / unclassified unit is

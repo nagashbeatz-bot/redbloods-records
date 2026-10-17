@@ -142,6 +142,7 @@ export async function recordVictorSalaryMonth(p: { workMonth: string; amount: nu
       payment_status: historicPaid ? "שולם" : "לא שולם", amount, currency, date: paidDate ?? dueDate, notes: historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
     }).eq("id", ex.id).select().single();
     if (updateErr) return { kind: "error", message: updateErr.message };
+    if (historicPaid) await notifySalaryPaid(ex.id, ex.payment_status);
     return { kind: "ok", transaction: updated as Record<string, unknown> };
   }
   const { data, error } = await supabase.from("transactions").insert({
@@ -159,7 +160,16 @@ export async function recordVictorSalaryMonth(p: { workMonth: string; amount: nu
     }
     return { kind: "error", message: error.message };
   }
+  if (historicPaid) await notifySalaryPaid(String((data as { id: unknown }).id), null);
   return { kind: "ok", transaction: data as Record<string, unknown> };
+}
+
+/** P_VICTOR_SALARY_PAID: a salary row written as שולם tells Victor (the one shared notifier; never fails the write). */
+async function notifySalaryPaid(txId: string, before: string | null): Promise<void> {
+  try {
+    const { notifyVictorSalaryPaid } = await import("@/lib/victor-salary-paid-notify");
+    await notifyVictorSalaryPaid({ txId, before });
+  } catch (e) { console.error("[victor] salary notification failed (the payment is unaffected):", e instanceof Error ? e.message : e); }
 }
 
 /** The salary month's finance row (paid only when שולם). */

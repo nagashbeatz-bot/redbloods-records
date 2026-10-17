@@ -3856,7 +3856,8 @@ export default function VictorProfilePage() {
   // Portal presence — ping on open + a visible-page heartbeat (components/team/usePortalPresence.ts). The SERVER
   // records last-seen and pushes the Owner once per claimed new visit (30 minutes without any ping), so a refresh,
   // a second tab, in-page navigation or a heartbeat never pushes; owner never pings. NOT /api/push/check.
-  usePortalPresence(isVictor ? "/api/vendor/victor/ping" : null);
+  // The ping also tells the server Victor's UI language (en / ru) so his pushes speak it (P_VICTOR_SALARY_PAID).
+  usePortalPresence(isVictor ? `/api/vendor/victor/ping?lang=${lang === "ru" ? "ru" : "en"}` : null);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);

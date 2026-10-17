@@ -4056,7 +4056,7 @@ export const HANDLER_MAP: Readonly<Record<string, HandlerEntry>> = {
    "POST"
   ],
   "getWrites": false,
-  "sha256": "b9732eae815893a6a374b0c8064d1bc8895c6f0fe0798b67dc18bfd56c215863",
+  "sha256": "7bfeec396353865f689fd39919990392bd8082bb8562c861dc869610a9c5d258",
   "effects": [
    "PUSH",
    "SETTINGS"
