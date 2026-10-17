@@ -82,8 +82,8 @@ const reset = (o: Partial<typeof PUSH> = {}) => {
   PUSH.calls = []; PUSH.victor = "ok"; PUSH.owner = "ok"; PUSH.allowed = true; Object.assign(PUSH, o);
   CLAIMS.data.clear(); CLAIMS.writes.length = 0;
   DB["push_subscriptions"] = [
-    ...(PUSH.victor === "none" ? [] : [{ id: "s1", endpoint: "ep-victor", p256dh: "k", auth: "a", role: "victor", user_id: "u-victor" }]),
-    ...(PUSH.owner === "none" ? [] : [{ id: "s2", endpoint: "ep-owner", p256dh: "k", auth: "a", role: "owner", user_id: "u-owner" }]),
+    ...((PUSH.victor as Mode) === "none" ? [] : [{ id: "s1", endpoint: "ep-victor", p256dh: "k", auth: "a", role: "victor", user_id: "u-victor" }]),
+    ...((PUSH.owner as Mode) === "none" ? [] : [{ id: "s2", endpoint: "ep-owner", p256dh: "k", auth: "a", role: "owner", user_id: "u-owner" }]),
   ];
   DB["notifications"] = []; DB["transactions"] = []; DB["settings"] = [];
 };
