@@ -11,6 +11,7 @@ import type {
 import { SOCIAL_PLATFORM_LABELS, SOCIAL_PHASE_READY, SOCIAL_PHASE_PUBLISHED } from "@/lib/types";
 import { useSocialCampaigns } from "./useSocialCampaign";
 import CreateCampaignModal from "./CreateCampaignModal";
+import LabelArtistsSocial from "./LabelArtistsSocial";
 
 // ── Design tokens (aligned to the campaign page / SocialDesignPreview) ──────────
 const BG     = "#090910";
@@ -315,6 +316,9 @@ export default function SocialHubPreview() {
           </div>
         ))}
       </div>
+
+      {/* ── Label artists social (stage 0, read-only — the same artist_social answer Sunny gets) ── */}
+      <LabelArtistsSocial isMobile={isMobile} />
 
       {/* ── Active campaigns ── */}
       <div style={{

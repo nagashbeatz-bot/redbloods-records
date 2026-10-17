@@ -30,11 +30,11 @@ const METRIC_HE: Record<string, string> = {
   FOLLOWERS: "עוקבים", FOLLOWING: "נעקבים", POSTS: "פוסטים", SUBSCRIBERS: "מנויים", VIEWS: "צפיות", TOTAL_VIEWS: "צפיות מצטברות",
   VIDEOS: "סרטונים", LIKES: "לייקים", COMMENTS: "תגובות", SHARES: "שיתופים", REELS: "רילס", ENGAGEMENT_RATE: "מעורבות",
 };
-const PLATFORM_HE: Record<string, string> = { instagram: "אינסטגרם", youtube: "יוטיוב", tiktok: "טיקטוק", spotify: "ספוטיפיי", facebook: "פייסבוק", x: "X", web: "אתר" };
-const nameOf = (label: string, platform: string) => (label.startsWith(`${platform} `) ? label.slice(platform.length + 1) : label);
-const metricName = (t: string) => { const m = t.split(".")[1] ?? t; return METRIC_HE[m] ?? m.toLowerCase().replace(/_/g, " "); };
-const fmt = (v: unknown) => (typeof v === "number" ? v.toLocaleString("he-IL") : v === true ? "כן" : v === false ? "לא" : v == null ? "—" : String(v));
-const heDate = (ymd: string | null | undefined) => (ymd ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}` : "—");
+export const PLATFORM_HE: Record<string, string> = { instagram: "אינסטגרם", youtube: "יוטיוב", tiktok: "טיקטוק", spotify: "ספוטיפיי", facebook: "פייסבוק", x: "X", web: "אתר" };
+export const nameOf = (label: string, platform: string) => (label.startsWith(`${platform} `) ? label.slice(platform.length + 1) : label);
+export const metricName = (t: string) => { const m = t.split(".")[1] ?? t; return METRIC_HE[m] ?? m.toLowerCase().replace(/_/g, " "); };
+export const fmt = (v: unknown) => (typeof v === "number" ? v.toLocaleString("he-IL") : v === true ? "כן" : v === false ? "לא" : v == null ? "—" : String(v));
+export const heDate = (ymd: string | null | undefined) => (ymd ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.${ymd.slice(0, 4)}` : "—");
 
 function Change({ m }: { m: Metric }) {
   if (!m.previous || !m.change) return <span style={{ color: MUTED, fontSize: 11 }}>בדיקה ראשונה</span>;

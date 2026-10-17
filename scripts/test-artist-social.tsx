@@ -197,6 +197,15 @@ const SH = `label-artist:${LA_SHALEV}`, AVI = `label-artist:${LA_AVI}`, NG = `la
   ok("6h. the knowledge tool documents both resource relations", /OWNS_RESOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")) && /INSPIRATION_SOURCE \{resource/.test(read("lib/integrations/partner-mcp/tools.ts")));
   ok("6i. activeKnowledge is the one 'current' rule used by the view", /activeKnowledge\(records, todayIL\)/.test(read("lib/partner/label/social.ts")) && activeKnowledge(K, TODAY).length === 4);
 
+  section("7. Social Hub section (one entry point, no second logic)");
+  const hub = read("components/social/SocialHubPreview.tsx");
+  const las = read("components/social/LabelArtistsSocial.tsx");
+  ok("7a. the hub mounts the section before the campaigns, keeping every existing section", /<LabelArtistsSocial isMobile=\{isMobile\} \/>[\s\S]*Active campaigns/.test(hub) && /קמפיינים פעילים/.test(hub) && /useSocialCampaigns\(\)/.test(hub));
+  ok("7b. the section reads ONLY artist_social over the Owner-only knowledge route (GET, no write)", /\/api\/partner\/knowledge\?capability=artist_social/.test(las) && !/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(las) && (las.match(/fetch\(/g) ?? []).length === 1);
+  ok("7c. the full view is the existing ArtistSocialView (no second rendering of the artist)", /import \{ ArtistSocialView[^}]*\} from "@\/components\/label\/ArtistSocialPanel"/.test(las) && /<ArtistSocialView /.test(las));
+  ok("7d. the shared label channel is rendered apart, from the roster's LABEL_CHANNELS, never inside a card", /LABEL_CHANNELS/.test(las) && /ערוץ לייבל משותף/.test(las) && !/LABEL_CHANNEL"/.test(las.slice(las.indexOf("function ArtistCard"), las.indexOf("export default"))));
+  ok("7e. no business rule in the section (no ownership / freshness logic of its own)", !/activeKnowledge|OWNS_RESOURCE|researchSeries|ageDays\s*[<>]/.test(las));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 })();
