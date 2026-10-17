@@ -12,6 +12,7 @@ import type { ArgSpec } from "../types";
 import { finishPlan, parseKey, realYmd, refuse, text, type Fields, type PlanRefusal, type PrimitiveMeta, type PrimitiveSpec, type ResolvedTarget, type WriterDeps } from "./core";
 import { VICTOR_PAYMENT_STATUSES, VICTOR_SALARY_CURRENCIES, validateVictorSettingsPatch } from "@/lib/victor-settings-input";
 import { VICTOR_WORK_STATES } from "@/lib/types";
+import { victorSalaryPushPreviewHe } from "@/lib/victor-salary-paid-notify-pure";
 
 export type VictorWorkView = { title: string; projectId: string | null; projectName: string; status: string; workState: string | null; sentDate: string | null; internalDeadline: string | null; briefText: string; hasTask: boolean; reviewKeys: string; vendorName: string };
 type Send = { ok: boolean; reason?: string };
@@ -235,8 +236,9 @@ export const VICTOR_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     async apply(d, id, after, a) { const r = await d.recordVictorSalaryMonth({ workMonth: id, amount: Number(after.rowAmount), currency: String(after.rowCurrency), historicPaid: a.historicPaid === true, paidDate: str(a.paidDate) }); if (r !== "ok") throw new Error(`salary row not recorded: ${r}`); },
     requiredValues: (a, after) => [String(a.workMonth), money(Number(after.rowAmount), String(after.rowCurrency)), String(after.rowStatus)],
-    warnings: (c) => [...(c.amountOverride !== null ? [`יש הצהרת סכום לחודש: ${c.amountOverride}`] : []), ...(c.statusOverride ? [`יש הצהרת סטטוס לחודש: ${c.statusOverride}`] : []), ...(c.rowStatus === "בוטל" ? ["שורה מבוטלת קיימת — היא תשמש מחדש (כמו באפליקציה)"] : [])],
-    disclosuresHe: ["חודש נחשב משולם רק כששורת הכספים שלו 'שולם'", "$ ו-₪ לא מחוברים; לא יישלח Push"],
+    warnings: (c, a) => [...(c.amountOverride !== null ? [`יש הצהרת סכום לחודש: ${c.amountOverride}`] : []), ...(c.statusOverride ? [`יש הצהרת סטטוס לחודש: ${c.statusOverride}`] : []), ...(c.rowStatus === "בוטל" ? ["שורה מבוטלת קיימת — היא תשמש מחדש (כמו באפליקציה)"] : []),
+      ...(a?.historicPaid === true ? [victorSalaryPushPreviewHe({ linkedSessionId: `victor_salary_${String(a.workMonth)}`, type: "expense", before: (c.rowStatus as string | null) ?? null }) ?? ""].filter(Boolean) : [])],
+    disclosuresHe: ["חודש נחשב משולם רק כששורת הכספים שלו 'שולם'", "$ ו-₪ לא מחוברים", "Push לויקטור רק כשהחודש נרשם כ'שולם' (תשלום היסטורי) ומועדו לא עבר לפני יותר מ-45 יום — ואז זה כתוב באזהרות; רישום כ'לא שולם' לא שולח Push"],
   },
   {
     actionId: "SET_VICTOR_SALARY_OVERRIDE", kinds: ["victor-month"],

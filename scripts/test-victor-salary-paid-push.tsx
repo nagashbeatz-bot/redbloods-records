@@ -119,6 +119,16 @@ const toOwner = () => PUSH.calls.filter((c) => c.role === "owner");
   ok("Owner ack wording", Pure.buildVictorSalaryOwnerAck("2026-09").body === "ויקטור קיבל עדכון שהמשכורת לספטמבר 2026 שולמה.");
   ok("the language is en unless exactly ru", Pure.normalizeVictorPushLang("ru") === "ru" && Pure.normalizeVictorPushLang("he") === "en" && Pure.normalizeVictorPushLang(undefined) === "en");
 
+  console.log("Preview line (Sunny's action layer says exactly what will happen)");
+  const pv = (before: string | null, todayYmd = "2026-10-17") => Pure.victorSalaryPushPreviewHe({ linkedSessionId: "victor_salary_2026-09", type: "expense", before, todayYmd });
+  ok("P1. unpaid → paid within 45 days: 'יישלח Push לויקטור'", /^יישלח Push לויקטור/.test(pv("לא שולם") ?? ""), pv("לא שולם"));
+  ok("P2. already paid: 'לא יישלח Push'", /^לא יישלח Push/.test(pv("שולם") ?? ""));
+  ok("P3. due more than 45 days ago: 'לא יישלח Push לויקטור'", /^לא יישלח Push לויקטור/.test(pv("לא שולם", "2026-12-01") ?? ""));
+  ok("P4. not a salary row: no line", Pure.victorSalaryPushPreviewHe({ linkedSessionId: "", type: "expense", before: null, todayYmd: "2026-10-17" }) === null);
+  const finPrim = read("lib/partner/act/primitives/finance.ts"), vicPrim = read("lib/partner/act/primitives/victor.ts");
+  ok("P5. SET_TRANSACTION_STATUS no longer promises 'no Push' unconditionally; its warnings name the push", !/"לא יישלח Push או הודעה"\],\s*\},\s*\{\s*\/\/ task 4/.test(finPrim) && /\.\.\.statusPushWarnings\(c, a\)/.test(finPrim));
+  ok("P6. RECORD_VICTOR_SALARY_MONTH no longer says 'לא יישלח Push' unconditionally", !/לא מחוברים; לא יישלח Push"/.test(vicPrim) && /victorSalaryPushPreviewHe\(/.test(vicPrim));
+
   console.log("1. Finance edit → paid: one push to Victor + the Owner ack");
   reset();
   const r1 = salaryRow(FRESH, "לא שולם");

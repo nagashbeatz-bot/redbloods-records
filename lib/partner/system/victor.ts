@@ -232,7 +232,7 @@ export const VICTOR_REVIEWED_FINGERPRINTS: Readonly<Record<string, string>> = {
   "lib/victor-completed-notify.ts": "96b7c01e0180a2bb409e12991bc7cba8e55830ee9ce6c1a3f1b5b1361722cdfb",
   // 2026-10-17 review (P_VICTOR_SALARY_PAID): the salary-paid notifier + Victor's language through his ping
   "lib/victor-salary-paid-notify.ts": "3897a34c46a2c725ddea3367213fb54244eab98ad5cc37d0c7484a87d4b3496c",
-  "lib/victor-salary-paid-notify-pure.ts": "e2bb3e76439290d687247e21188a299d2e457f71ea6d97485ee250c8fa8ecbc0",
+  "lib/victor-salary-paid-notify-pure.ts": "d3d118bab3020d942248551da4f73ba2d674c586f55d5dc3202fabdcea71a808",
   "app/api/vendor/victor/ping/route.ts": "7bfeec396353865f689fd39919990392bd8082bb8562c861dc869610a9c5d258",
   "lib/victor-upload-notify.ts": "842ec33fc7ca22ebaa761d631c1c3647daa6c69180cadfb4eaf826effc0fbfca",
   "lib/victor-work-notify.ts": "7f5a56a97cbaf261ed40df759d16a154263fa0d8e67168d91b8d548e00d48306",

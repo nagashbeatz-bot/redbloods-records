@@ -18,6 +18,7 @@ import { dupContext, dupGate, dupWarnings, DUP_ARGS, type DupQuery } from "./dup
 import { FINANCE_OWNER_HE, transactionEditVerdict, type FinanceOwnerCode, type TxPatchField } from "@/lib/finance/ownership";
 import { ACTIVE_INCOME_STATUSES } from "@/lib/finance/classify";
 import { INCOME_SCOPES } from "@/lib/clip-rf-money-pure";
+import { victorSalaryPushPreviewHe } from "@/lib/victor-salary-paid-notify-pure";
 import { BUSINESS_UNITS, BUSINESS_UNIT_HE, BUSINESS_UNIT_SOURCE_HE, isBusinessUnit, isBusinessUnitSource } from "@/lib/business-unit";
 
 type Tx = { projectId: string | null; scope: string; type: string; date: string | null; description: string; artist: string; amount: number; currency: string; paymentStatus: string; paymentMethod: string; receiptRef: string; notes: string; category: string; expenseScope: string; linkedSessionId: string; businessUnit?: string | null; businessUnitSource?: string | null };
@@ -57,6 +58,16 @@ const T = (name: string, required = false): ArgSpec => ({ name, kind: "text", re
 const E = (name: string, values: readonly string[], required = false): ArgSpec => ({ name, kind: "enum", required, values });
 const meta = (he: string, en: string, args: readonly ArgSpec[], fields: readonly string[], writer: string, o: Partial<PrimitiveMeta>): PrimitiveMeta =>
   ({ domain: "FINANCE", he, en, args, fields, effects: ["FINANCE"], riskClass: "FINANCIAL", reversible: "PARTIAL", writer, compensation: "a new approved plan restoring the previous value shown in the preview", ...o });
+/** What the app's own writer will push for THIS status change (P_DJ_PAYMENT_PAID / P_VICTOR_SALARY_PAID) — said in the preview, never guessed. */
+function statusPushWarnings(c: Fields, a?: Readonly<Record<string, unknown>>): string[] {
+  if (a?.paymentStatus !== "שולם" || c.type !== "expense") return [];
+  if (c.owner === "VICTOR_SALARY") {
+    const line = victorSalaryPushPreviewHe({ linkedSessionId: String(c.linkedSessionId ?? ""), type: String(c.type), before: String(c.paymentStatus ?? "") });
+    return line ? [line] : [];
+  }
+  if (c.owner === "DJ_FEE") return c.paymentStatus === "שולם" ? ["לא יישלח Push — שכר ה-DJ כבר מסומן 'שולם'"] : ["יישלח Push ל-CLEANTONE (\"התשלום הועבר\") אם הוא ה-DJ של ההופעה ויש לו מכשיר רשום; אחרי שנמסר תקבל אישור"];
+  return [];
+}
 const statusesFor = (type: unknown) => (type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES);
 
 // ── resolvers ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -210,8 +221,8 @@ export const FINANCE_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     apply: (d, id, a) => d.updateTransaction(id, { ...a }),
     requiredValues: (_a, after) => [String(after.paymentStatus)],
-    warnings: (c) => [`הרשומה: ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}, היום '${c.paymentStatus}'`, ...(c.owner === "CLIP_ROW" ? ["סטטוס ששולם מסמן גם את שורת הקליפ המקושרת כ'שולם' (כמו באפליקציה)"] : [])],
-    disclosuresHe: ["רק הסטטוס (ותאריך / אמצעי אם ציינת) משתנה — הסכום והמטבע לא", "חלק האמן ביומן עוקב אחרי הסטטוס: שולם = פעיל; בוטל / צפוי = השורה נשמרת ב-0 (לא נמחקת)", "התקבל / שולם = כסף שעבר; חלקי, צפוי, לא שולם, בוטל — לא", "לא יישלח Push או הודעה"],
+    warnings: (c, a) => [`הרשומה: ${typeHe(c.type)} ${money(Number(c.amount), String(c.currency))}, היום '${c.paymentStatus}'`, ...(c.owner === "CLIP_ROW" ? ["סטטוס ששולם מסמן גם את שורת הקליפ המקושרת כ'שולם' (כמו באפליקציה)"] : []), ...statusPushWarnings(c, a)],
+    disclosuresHe: ["רק הסטטוס (ותאריך / אמצעי אם ציינת) משתנה — הסכום והמטבע לא", "חלק האמן ביומן עוקב אחרי הסטטוס: שולם = פעיל; בוטל / צפוי = השורה נשמרת ב-0 (לא נמחקת)", "התקבל / שולם = כסף שעבר; חלקי, צפוי, לא שולם, בוטל — לא", "Push נשלח רק כששורת שכר DJ או משכורת ויקטור עוברת ל'שולם' (ואז זה כתוב באזהרות של השינוי הזה); בכל שינוי אחר לא יישלח Push או הודעה"],
   },
   {
     // task 4 (2026-09-28): the Owner's unit for an existing row — a classification, allowed on rows owned by another writer

@@ -69,6 +69,18 @@ export function buildVictorSalaryPush(workMonth: string, lang: VictorPushLang): 
   return { title: "Salary paid", body: `Your salary for ${monthYear(workMonth, MONTHS.en)} has been paid. Thank you!` };
 }
 
+/** The preview line (Sunny's action layer) for a write that makes a salary row שולם: exactly what the notifier will do. */
+/** Today in Israel (YYYY-MM-DD). */
+export const israelTodayYmd = (nowMs = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(nowMs));
+
+export function victorSalaryPushPreviewHe(i: { linkedSessionId: string | null | undefined; type: string | null | undefined; before: string | null | undefined; todayYmd?: string }): string | null {
+  if (!salaryMonthOfLinkedId(i.linkedSessionId) || i.type !== "expense") return null;
+  if (!isSalaryRealPaidTransition(i.before, "שולם")) return "לא יישלח Push — המשכורת כבר מסומנת 'שולם'";
+  const el = victorSalaryEligibility({ linkedSessionId: i.linkedSessionId, type: i.type, status: "שולם", todayYmd: i.todayYmd ?? israelTodayYmd() });
+  if (!el.ok) return `לא יישלח Push לויקטור — מועד התשלום עבר לפני יותר מ-${VICTOR_SALARY_PUSH_MAX_LATE_DAYS} יום (רישום בדיעבד)`;
+  return "יישלח Push לויקטור (\"המשכורת שולמה\", החודש בלבד, בלי סכום) — פעם אחת לחודש, רק אם יש לו מכשיר רשום; אחרי שנמסר תקבל אישור";
+}
+
 /** The Owner's ack — sent ONLY after Victor's push was delivered. */
 export function buildVictorSalaryOwnerAck(workMonth: string): { title: string; body: string } {
   return { title: "ויקטור עודכן ✓", body: `ויקטור קיבל עדכון שהמשכורת ל${monthYear(workMonth, HE_MONTHS)} שולמה.` };
