@@ -336,12 +336,15 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
           transition:   "background 0.12s",
           minWidth:     0,
           maxWidth:     "100%",
+          // the whole cell is the click target — an empty project showed only a tiny "—" to hit
+          width:        "100%",
+          minHeight:    22,
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(168,85,247,0.08)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
         {parsed.length === 0 ? (
-          <span style={{ color: "#383838", fontSize: 12 }}>—</span>
+          <span style={{ color: "#6B6B6B", fontSize: 11, fontWeight: 600 }}>+ אמן</span>
         ) : (
           <>
             {viewChips.map((name) => (
