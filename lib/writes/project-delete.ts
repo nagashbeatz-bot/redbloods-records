@@ -69,7 +69,8 @@ async function ids(table: string, col: string, values: string | readonly string[
   return ((data ?? []) as Array<{ id: unknown }>).map((r) => String(r.id));
 }
 async function count(table: string, col: string, value: string, extra?: (q: any) => any): Promise<number> { // eslint-disable-line @typescript-eslint/no-explicit-any
-  let q = supabase.from(table).select("id", { count: "exact", head: true }).eq(col, value);
+  // count on the filter column itself — not every table has an `id` (project_release_details is keyed by project_id)
+  let q = supabase.from(table).select(col, { count: "exact", head: true }).eq(col, value);
   if (extra) q = extra(q);
   const { count: n, error } = await q;
   if (error) throw new Error(`${table}: ${error.message}`);
