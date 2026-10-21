@@ -219,7 +219,7 @@ export default function ActionMenu({ projectId, projectName, artist, projectType
       )}
 
       {/* Send-to-mix shortcut → reuses the existing SendModal, opened on מיקס / מאסטר.
-          On success: Steven → navigate to /team/steven; Bill → no active page, just close. */}
+          On success: Steven → the new work's materials on /team/steven; Bill → no active page, just close. */}
       {showSend && (
         <SendModal
           projectId={projectId}
@@ -227,7 +227,10 @@ export default function ActionMenu({ projectId, projectName, artist, projectType
           artistName={artist}
           projectType={projectType}
           initialDest="מיקס / מאסטר"
-          onSuccess={({ selection }) => { if (selection === "Steven") router.push("/team/steven"); }}
+          onSuccess={({ selection, engineerWorkId }) => {
+            if (selection !== "Steven") return;
+            router.push(engineerWorkId ? `/team/steven?work=${encodeURIComponent(engineerWorkId)}&materials=1` : "/team/steven");
+          }}
           onClose={() => setShowSend(false)}
         />
       )}

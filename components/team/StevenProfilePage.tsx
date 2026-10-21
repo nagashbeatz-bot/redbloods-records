@@ -1008,7 +1008,8 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
   // Deep link: /team/steven?work={id} opens that work's modal, and &notes=1 also
-  // focuses the shared comments. Two ways in, and both have to work:
+  // focuses the shared comments; &materials=1 opens its work materials instead
+  // (the Owner's "send to Steven" lands there). Two ways in, and both have to work:
   //   • tapping the real push — a fresh document with the query already in the URL
   //   • clicking the row in the header bell — Steven is ALREADY on this page (it
   //     is his only one), so router.push swaps the query and nothing remounts
@@ -1024,20 +1025,22 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   //
   // The param names stay `work` / `notes` / `target`: URLs already written into
   // notification rows use them. NO push is sent here — pure client navigation.
-  const [pendingDeepLink, setPendingDeepLink] = useState<{ id: string; notes: boolean; targetId: string | null } | null>(null);
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ id: string; notes: boolean; materials: boolean; targetId: string | null } | null>(null);
   const handledWorkIdRef = useRef<string | null>(null);
   useEffect(() => {
     const wid = searchParams.get("work");
     if (!wid) { handledWorkIdRef.current = null; return; } // query cleared → ready for the next one
     if (handledWorkIdRef.current === wid) return;          // already handled this navigation
     handledWorkIdRef.current = wid;
-    setPendingDeepLink({ id: wid, notes: searchParams.get("notes") === "1", targetId: searchParams.get("target") });
+    setPendingDeepLink({ id: wid, notes: searchParams.get("notes") === "1", materials: searchParams.get("materials") === "1", targetId: searchParams.get("target") });
     router.replace("/team/steven"); // clean URL → refresh won't reopen
   }, [searchParams, router]);
   // Apply the pending deep link once the works list has loaded.
   useEffect(() => {
     if (!pendingDeepLink || !works.length) return;
-    if (works.some(w => w.id === pendingDeepLink.id)) {
+    if (works.some(w => w.id === pendingDeepLink.id) && pendingDeepLink.materials) {
+      setOpenMaterialsId(pendingDeepLink.id);
+    } else if (works.some(w => w.id === pendingDeepLink.id)) {
       setOpenId(pendingDeepLink.id);
       if (pendingDeepLink.targetId) setPendingFocusTarget({ workId: pendingDeepLink.id, targetId: pendingDeepLink.targetId });
       if (pendingDeepLink.notes) setFocusNotesId(pendingDeepLink.id);

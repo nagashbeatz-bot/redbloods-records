@@ -228,7 +228,7 @@ interface SendModalProps {
   initialDest?:  SendDestination;
   /** Fired on a successful send, right before onClose. Lets a caller react
    *  (e.g. navigate) based on where/to-whom the send went. */
-  onSuccess?:    (info: { dest: SendDestination; selection: string }) => void;
+  onSuccess?:    (info: { dest: SendDestination; selection: string; engineerWorkId?: string }) => void;
   /** The project's canonical projects.project_type. Steven only takes
    *  שיר / רידים / אלבום / EP, so his card is disabled for anything else. */
   projectType?:  string;
@@ -352,6 +352,7 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
       // POST that was rejected (e.g. Steven does not take this project type) is
       // not a send, and must not be allowed to move the project's status.
       let engineerWorkCreated = false;
+      let engineerWorkId: string | undefined;
 
       // For Mix/Master sends to a sound engineer: create the sound_engineer_work
       // record FIRST so we can link it to the action (parallels the Victor flow).
@@ -390,8 +391,9 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
           // vendor_project_work(id) ONLY, so a sound_engineer_work id would
           // violate project_actions_linked_work_id_fkey. The action is saved
           // without a link (linkedWorkId stays null for the sound-engineer case).
-          const workData = await workPost.json().catch(() => ({})) as { ok?: boolean };
+          const workData = await workPost.json().catch(() => ({})) as { ok?: boolean; work?: { id?: string } };
           engineerWorkCreated = workPost.ok && workData.ok === true;
+          if (engineerWorkCreated && typeof workData.work?.id === "string") engineerWorkId = workData.work.id;
         } catch {
           // Work creation failure is non-fatal — continue to save the action
           // (engineerWorkCreated stays false, so no status follows it).
@@ -429,7 +431,7 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
         }
       }
 
-      if (onSuccess && dest && selection) onSuccess({ dest, selection });
+      if (onSuccess && dest && selection) onSuccess({ dest, selection, engineerWorkId });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -1675,13 +1677,15 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           artistName={project.artist}
           projectType={project.projectType}
           onClose={() => setShowSendModal(false)}
-          onSuccess={({ dest, selection }) => {
-            // After a successful send, go to the recipient's page. Only navigate —
+          onSuccess={({ dest, selection, engineerWorkId }) => {
+            // After a successful send, go to the recipient's page (Steven: straight
+            // into the new work's materials, ?materials=1). Only navigate —
             // the global drawer auto-closes when the path becomes /team/* (see
             // GlobalProjectDrawer), which avoids racing its /projects URL-sync.
             // Bill (no page) / client → stay put.
             const target = dest === "הפקה" ? "/team/victor"
-              : (dest === "מיקס / מאסטר" && selection === "Steven") ? "/team/steven"
+              : (dest === "מיקס / מאסטר" && selection === "Steven")
+                ? (engineerWorkId ? `/team/steven?work=${encodeURIComponent(engineerWorkId)}&materials=1` : "/team/steven")
               : null;
             if (target) router.push(target);
           }}
