@@ -34,6 +34,10 @@ import { inboxTriageOf } from "../sunny/inbox-lifecycle-base";
 import type { InboxDisplayState, InboxLifecycle } from "../sunny/inbox-lifecycle";
 import { ALMOST_RE, derivePatterns, type DerivedPattern } from "../sunny/patterns";
 import { projectProgressEvents, type SinceEvent } from "../sunny/since";
+import { dayActivity, israelYesterday, PROGRESS_DAY_KINDS } from "../sunny/day-activity";
+import { isSocialItemOverdue } from "@/lib/types";
+import type { ProjectDetailRaw } from "../projects/detail-types";
+import type { OperationsRaw } from "../operations/types";
 import { activeKnowledge, type OwnerKnowledgeRecord } from "../owner-knowledge/store";
 import { KNOWLEDGE_GAPS } from "../system/gaps";
 import { OWNER_LABEL_ARTIST_IDS } from "../../project-classification";
@@ -188,7 +192,12 @@ export interface BusinessMotion {
   unchecked: string[];
   heuristics: typeof MOTION_HEURISTICS;
   /** FINANCIAL_FORWARD (an input — never a second engine): the compact money picture */
-  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; datedSurprises: string[]; undatedSurprises: string[]; decided: string[]; overdueAsks?: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
+  financial: { status: string; lineHe: string; coverageHe: string; surprises: string[]; datedSurprises: string[]; undatedSurprises: string[]; decided: string[]; overdueAsks?: string[]; overdueTasks?: string[]; duplicates: string[]; unitsHe: string | null; windows: FinancialForward["windows"]; commercialGap: boolean } | null;
+  /** NEW since yesterday (Owner request 2026-10-22): real work progress stamped yesterday / today (the ONE day rule,
+   *  lib/partner/sunny/day-activity) that no greeting move already carries — so a fresh event is never hidden by the 3-move limit */
+  fresh: { lineHe: string | null; events: Array<{ he: string; day: string; time: string | null; entity: string | null; project: string | null }>; read: boolean };
+  /** social in ONE line: the app's own overdue rule (isSocialItemOverdue) — never a list of titles in the greeting */
+  social: { overdue: number; from: string | null; to: string | null; lineHe: string | null; read: boolean };
   answerHe: string;
 }
 
@@ -803,10 +812,39 @@ export function buildMotion(src: GatewaySources, c: CooCtx, input: MotionInput):
   // ── stage 2: a draft on every move (args only from records; missing asked one at a time; context is never a value) ──
   for (const i of all) if (i.move && !i.financial) i.move.draft = draftFor(i, c, ff, week.openDays);
 
+  // ── NEW since yesterday: progress events of yesterday + today; one already carried by a greeting move is not repeated ──
+  const greetingEntities = new Set(greeting.flatMap((g) => [g.entity, ...g.entities]).filter((x): x is string => !!x));
+  let fresh: BusinessMotion["fresh"] = { lineHe: null, events: [], read: false };
+  try {
+    const ys = israelYesterday(src.now);
+    const days = [dayActivity(src, ys, null), dayActivity(src, today, null)];
+    const read = days.every((d) => !d.unread.some((u) => u.startsWith("פרטי הפרויקטים")));
+    const seen = new Set<string>();
+    const events = days.flatMap((d) => d.happened).filter((e) => PROGRESS_DAY_KINDS.includes(e.kind) && !(e.project && greetingEntities.has(e.project)))
+      .filter((e) => { const k = `${e.kind}|${e.entity}`; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+    fresh = { read, events: events.map((e) => ({ he: e.he, day: e.day, time: e.time, entity: e.entity, project: e.project ?? null })),
+      lineHe: events.length ? `חדש מאתמול: ${events.slice(0, 3).map((e) => `${e.he} (${e.day === today ? "היום" : "אתמול"}${e.time ? ` ${e.time}` : ""})`).join(" · ")}${events.length > 3 ? ` ועוד ${events.length - 3}` : ""}` : null };
+  } catch { fresh = { lineHe: null, events: [], read: false }; }
+
+  // ── social in one line (the app's own overdue rule) ──
+  const opsRaw = ok(src.operations) as OperationsRaw | null;
+  const overdueSocial = (opsRaw?.contentItems?.rows ?? []).filter((i) => isSocialItemOverdue({ status: i.status, due_date: i.dueDate }, today)).map((i) => i.dueDate!).sort();
+  const social: BusinessMotion["social"] = { read: !!opsRaw, overdue: overdueSocial.length, from: overdueSocial[0] ?? null, to: overdueSocial.at(-1) ?? null,
+    lineHe: overdueSocial.length ? `סושיאל: ${overdueSocial.length === 1 ? "תוכן אחד באיחור" : `${overdueSocial.length} תכנים באיחור`} (${heDate(overdueSocial[0])}${overdueSocial.length > 1 && overdueSocial.at(-1) !== overdueSocial[0] ? `–${heDate(overdueSocial.at(-1)!)}` : ""}) שלא סומנו כפורסמו — לפרסם, להזיז תאריך או לוותר? (אעדכן אחרי אישורך)` : null };
+
+  // ── a money question and an open task about the SAME payment are one matter (the amount in the task title) ──
+  const detRaw = ok(src.projectDetail) as ProjectDetailRaw | null;
+  const digits = (x: string) => x.replace(/[,\s]/g, "");
+  const askAmounts = (ff?.overdueAsks ?? []).flatMap((a) => (a.match(/\d[\d,]{2,}/g) ?? []).map(digits));
+  const overdueTasks = askAmounts.length ? (detRaw?.tasks?.rows ?? []).filter((t) => t.status === "פתוח" && t.title && askAmounts.some((n) => digits(t.title!).includes(n)))
+    .map((t) => `"${t.title}"${t.dueDate ? ` (${heDate(t.dueDate)})` : ""}`) : [];
+
   const m: BusinessMotion = {
+    fresh, social,
     today, todayItems, greeting, more: Math.max(0, act.length - todayItems.length), atRisk, closeLoops, ownerBottleneck, label: labelItems, revenue, week, inbox, watch, all,
     patterns: pats.map((p) => ({ code: p.code, level: p.level, he: p.hypothesisHe })), progress,
-    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), datedSurprises: ff.surprises.filter((o) => o.date).map((o) => o.he), undatedSurprises: ff.surprises.filter((o) => !o.date).map((o) => o.he), decided: ff.obligations.filter((o) => o.preparedness === "DECIDED" && o.decision).map((o) => `${o.titleHe} ${o.he.slice(o.titleHe.length + 2).split(" · ")[0]} — ${o.decision!.he}`), overdueAsks: ff.overdueAsks ?? [], duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
+    financial: ff ? { status: ff.status, lineHe: ff.lineHe, coverageHe: ff.coverageHe, surprises: ff.surprises.map((o) => o.he), datedSurprises: ff.surprises.filter((o) => o.date).map((o) => o.he), undatedSurprises: ff.surprises.filter((o) => !o.date).map((o) => o.he), decided: ff.obligations.filter((o) => o.preparedness === "DECIDED" && o.decision).map((o) => `${o.titleHe} ${o.he.slice(o.titleHe.length + 2).split(" · ")[0]} — ${o.decision!.he}`), overdueAsks: ff.overdueAsks ?? [], overdueTasks, duplicates: ff.duplicates.map((d) => d.he), unitsHe: ff.unitsHe, windows: ff.windows, commercialGap: ff.commercialGap } : null,
     learning: { status: "NOT_READ", changed: 0, noteHe: "היסטוריית הפעולות לא נקראה כאן — ההמלצות לא נבדקו מול מה שכבר נוסה (זה לא אומר שכלום לא נוסה)" },
     unchecked: [...new Set(unchecked)], heuristics: MOTION_HEURISTICS, answerHe: "",
   };
@@ -862,15 +900,15 @@ function lastShowOf(c: CooCtx, artistName: string): string | null {
 }
 
 /** The executive Hebrew answer: ≤3 moves + the week line + the inbox line — never a dump, never "במה נתחיל?". */
-export interface MotionAnswerInput { greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean; draft?: MotionDraft | null } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity"> & { untrackedHe?: string | null }; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
-  financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; overdueAsks?: string[]; coverageHe: string } | null }
+export interface MotionAnswerInput { fresh?: { lineHe: string | null } | null; social?: { lineHe: string | null } | null; greeting: ReadonlyArray<{ he: string; titleHe?: string; move?: { he: string; canAct?: boolean; draft?: MotionDraft | null } | null }>; week: Pick<MotionWeek, "lineHe" | "heavyToday" | "opportunity"> & { untrackedHe?: string | null }; ownerBottleneck: { lineHe: string | null }; inbox: { lineHe: string | null }; more: number;
+  financial?: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; overdueAsks?: string[]; overdueTasks?: string[]; coverageHe: string } | null }
 
 /** Money in the greeting: dated and undated are never under one heading (an undated payable is never "due" on a date). */
-function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; overdueAsks?: string[]; coverageHe: string }): string {
-  const dated = f.datedSurprises ?? f.surprises, undated = f.undatedSurprises ?? [], decided = f.decided ?? [], asks = f.overdueAsks ?? [];
+function moneyLineHe(f: { surprises: string[]; datedSurprises?: string[]; undatedSurprises?: string[]; decided?: string[]; overdueAsks?: string[]; overdueTasks?: string[]; coverageHe: string }): string {
+  const dated = f.datedSurprises ?? f.surprises, undated = f.undatedSurprises ?? [], decided = f.decided ?? [], asks = f.overdueAsks ?? [], tasks = f.overdueTasks ?? [];
   // what he already decided is said as his decision (when / on what condition) — never asked again
   const parts = [dated.length ? `עם תאריך: ${dated.slice(0, 2).join(" · ")}` : null, undated.length ? `בלי תאריך: ${undated.slice(0, 1).join(" · ")}` : null, decided.length ? `כבר החלטת: ${decided.slice(0, 2).join(" · ")}` : null,
-    asks.length ? `המועד עבר ואין רישום תשלום: ${asks.slice(0, 2).join(" · ")} — שולם?` : null].filter(Boolean);
+    asks.length ? `המועד עבר ואין רישום תשלום: ${asks.slice(0, 2).join(" · ")} — שולם?${tasks.length ? ` (זה אותו עניין כמו המשימה הפתוחה ${tasks[0]} — אם שולם, אסמן את שתיהן אחרי אישורך)` : ""}` : null].filter(Boolean);
   return `מבחינת כסף — ${parts.join(" | ")} (${f.coverageHe})`;
 }
 
@@ -893,10 +931,13 @@ export function motionAnswerHe(m: MotionAnswerInput): string {
   const head = n === 0 ? "לא רואה כרגע מהלך שחייב אותך היום." : n === 1 ? (m.week.heavyToday ? "היום עמוס ביומן — מהלך אחד שהייתי עושה:" : "המהלך שהייתי עושה עכשיו:") : `${n === 2 ? "שני" : "שלושת"} המהלכים שהייתי עושה עכשיו:`;
   const lines = m.greeting.map((i, k) => `${k + 1}. ${i.he}`);
   const extra = [
+    // a fresh event is never hidden by the 3-move limit
+    m.fresh?.lineHe ?? null,
     `השבוע: ${m.week.lineHe}`,
     m.week.untrackedHe ?? null,
     // ONE money line — only what could surprise him (MUST / SHOULD, not prepared); never an accounting dump
     m.financial && (m.financial.surprises.length || m.financial.decided?.length || m.financial.overdueAsks?.length) ? moneyLineHe(m.financial) : null,
+    m.social?.lineHe ?? null,
     m.week.opportunity ? m.week.opportunity.he : null,
     m.ownerBottleneck.lineHe,
     m.inbox.lineHe,
@@ -950,6 +991,6 @@ export function prioritiesAnswerHe(items: ReadonlyArray<{ he: string }>, more: n
 /** The compact motion object (the connector applies the Action-Layer learning to it; partner_brief carries the same object). */
 export function motionSummary(m: BusinessMotion) {
   const slim = (i: MotionItem) => ({ key: i.key, entity: i.entity, entities: i.entities, level: i.level, codes: i.codes, he: i.he, titleHe: i.titleHe, reasonsHe: i.reasonsHe.slice(0, 4), move: i.move, thread: i.thread ?? [], daysTo: i.daysTo, labelProtected: i.labelProtected, epistemic: i.epistemic, learning: i.learning ?? null });
-  return { today: m.today, answerHe: m.answerHe, greeting: m.greeting.map(slim), todayItems: m.todayItems.map(slim), more: m.more, atRisk: m.atRisk.map(slim), closeLoops: m.closeLoops.map(slim), label: m.label.map(slim), watch: m.watch.map(slim),
+  return { today: m.today, answerHe: m.answerHe, fresh: m.fresh, social: m.social, greeting: m.greeting.map(slim), todayItems: m.todayItems.map(slim), more: m.more, atRisk: m.atRisk.map(slim), closeLoops: m.closeLoops.map(slim), label: m.label.map(slim), watch: m.watch.map(slim),
     ownerBottleneck: m.ownerBottleneck, revenue: m.revenue, week: m.week, inbox: m.inbox, patterns: m.patterns, financial: m.financial, progress: m.progress, learning: m.learning, unchecked: m.unchecked, heuristics: m.heuristics };
 }

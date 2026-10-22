@@ -12,9 +12,10 @@ import { plansToCreated, reviewOf, type ResearchDigest, type ResultRow } from ".
 import { decideInboxLifecycle, inboxExecutiveSummary, type InboxLifecycle } from "./inbox-lifecycle";
 import { assessOutcomes } from "./learning";
 import type { ActionHistoryItem, SinceEvent } from "./since";
+import { finishDay, TIME_KIND_HE, type DayActivity } from "./day-activity";
 import { learnItem, learningNote, motionAnswerHe, motionInboxEntry, motionInboxOf, prioritiesAnswerHe, type LearnableItem, type MotionAnswerInput, type MotionInbox } from "../coo/motion";
 
-export type HistoryDerivation = "inbox" | "learning" | "motion" | "social";
+export type HistoryDerivation = "inbox" | "learning" | "motion" | "social" | "day";
 
 // ── ONE history read for every surface (Owner decision 2026-10-05, Dashboard parity Phase A2) ──────────────────────
 // The connector (chat) and Redbloods MAIN (the Owner's executive dashboard) ask the action service the SAME request,
@@ -30,6 +31,7 @@ export function historyDerivationFor(q: { tool: string; capability?: string | nu
   if (q.tool !== "partner_query") return null;
   if (q.capability === "owner_inbox" && (q.mode === "understand" || q.mode === "deep")) return "inbox";
   if (q.capability === "coo" && q.mode === "learning") return "learning";
+  if (q.capability === "coo" && q.mode === "day") return "day";
   // Sunny Social Intelligence: a recommendation → the plan that implemented it → the content item it created (exact createdKey)
   if (q.capability === "artist_social" && (q.mode === "strategy" || q.mode === "weekly")) return "social";
   if (q.capability === "coo" && (!q.mode || q.mode === "priorities" || q.mode === "motion")) return "motion";
@@ -71,6 +73,7 @@ function motionWithHistory(m: SlimMotion, history: readonly ActionHistoryItem[] 
 export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record<string, unknown>, history: readonly ActionHistoryItem[] | null, nowMs: number): Record<string, unknown> {
   const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
   if (kind === "social") return socialWithHistory(payload, history);
+  if (kind === "day") return dayWithHistory(payload, history);
   if (kind === "motion") {
     // partner_brief carries motion at the top level; coo priorities / motion in the MOTION summary fact
     if (payload.motion && typeof payload.motion === "object" && (payload.motion as { status?: string }).status !== "UNAVAILABLE") return { ...payload, motion: motionWithHistory(payload.motion as SlimMotion, history, nowMs) };
@@ -113,6 +116,19 @@ export function deriveWithActionHistory(kind: HistoryDerivation, payload: Record
   });
   const lives = next.map((i) => i.fields?.lifecycle).filter((x): x is InboxLifecycle => !!x);
   return { ...payload, items: next, summary: summary.map((x) => (x.code === "EXECUTIVE" ? { ...x, value: { ...(x.value as Record<string, unknown>), ...inboxExecutiveSummary(lives) } } : x)), inboxActions: { status: "READ", plans: history.length } };
+}
+
+/** "What happened on a day": the SAME finishDay with Sunny's executed actions of that Israel day added (unread = said so). */
+function dayWithHistory(payload: Record<string, unknown>, history: readonly ActionHistoryItem[] | null): Record<string, unknown> {
+  const summary = Array.isArray(payload.summary) ? (payload.summary as Array<{ code?: string; value?: unknown }>) : [];
+  const fact = summary.find((x) => x.code === "DAY");
+  const a = fact?.value as DayActivity | undefined;
+  if (!a || !history) return payload;
+  const next = finishDay(a.day, [...a.happened, ...a.dated, ...a.lastUpdated], a.unread, history);
+  const added = next.happened.filter((e) => e.kind === "SUNNY_ACTION").map((e, k) => ({ id: `action:${k}:${e.at}`, entity: null, label: { text: e.he, trust: "PARTNER" }, epistemic: "FACT", freshness: "LIVE", source: "ACTIONS",
+    fields: { group: "happened", timeKind: e.timeKind, timeKindHe: { text: TIME_KIND_HE[e.timeKind], trust: "PARTNER" }, time: e.time, at: e.at, kind: e.kind, ref: e.entity, source: e.source } }));
+  const items = Array.isArray(payload.items) ? [...(payload.items as unknown[]), ...added] : added;
+  return { ...payload, items, summary: summary.map((x) => (x.code === "DAY" ? { ...x, value: next } : x.code === "ANSWER" ? { ...x, value: next.summaryHe } : x)) };
 }
 
 /** Sunny Social Intelligence: re-decide each recommendation review WITH the action history (plan → created content item).

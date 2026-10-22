@@ -350,9 +350,15 @@ export function buildFinancialForward(src: GatewaySources, c: CooCtx): Financial
   const surprises = obligations.filter((o) => o.preparedness !== "PREPARED" && o.preparedness !== "DECIDED" && (o.level === "MUST" || o.level === "SHOULD"))
     .sort((a, b) => rank(a) - rank(b) || (a.daysTo ?? 999) - (b.daysTo ?? 999)).slice(0, 3);
 
-  const units = new Map<string, string[]>();
-  for (const o of obligations.filter((x) => (x.countsIn === "OUTFLOW" || x.countsIn === "DYNAMIC") && x.businessUnit)) units.set(o.businessUnit!, [...(units.get(o.businessUnit!) ?? []), fmtMoney(o.amount, o.currency)]);
-  const unitsHe = units.size ? `${[...units.entries()].map(([u, xs]) => `${u}: ${xs.join(", ")}`).join(" · ")} (כל יחידה בנפרד — לא מסיקה שיחידה אחת מכסה אחרת)` : null;
+  // per unit: a total per currency + the row count (a list of every recurring amount repeated — "₪4,060, ₪4,060, …" — is noise)
+  const units = new Map<string, Map<string, { sum: number; n: number }>>();
+  for (const o of obligations.filter((x) => (x.countsIn === "OUTFLOW" || x.countsIn === "DYNAMIC") && x.businessUnit && x.amount !== null)) {
+    const byCur = units.get(o.businessUnit!) ?? new Map<string, { sum: number; n: number }>();
+    const cur = byCur.get(o.currency ?? "?") ?? { sum: 0, n: 0 };
+    byCur.set(o.currency ?? "?", { sum: cur.sum + (o.amount ?? 0), n: cur.n + 1 });
+    units.set(o.businessUnit!, byCur);
+  }
+  const unitsHe = units.size ? `${[...units.entries()].map(([u, byCur]) => `${u}: ${[...byCur.entries()].map(([c, v]) => `${fmtMoney(v.sum, c === "?" ? null : c)} (${v.n === 1 ? "שורה אחת" : `${v.n} שורות`})`).join(" + ")}`).join(" · ")} (כל יחידה וכל מטבע בנפרד — לא מסיקה שיחידה אחת מכסה אחרת)` : null;
 
   // stage 3 (Owner-approved 2026-10-12): a recorded row whose date passed with no payment recorded is a QUESTION ("שולם?") —
   // never "going out in the next 7 days", never "unpaid" (no record ≠ not paid), never a surprise slot or a motion move

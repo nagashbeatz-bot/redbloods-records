@@ -15,6 +15,7 @@ import { artistCare, projectMomentum } from "../../coo/momentum";
 import { moneyReadiness } from "../../coo/money";
 import { derivePatterns, PATTERN_WINDOWS } from "../../sunny/patterns";
 import { projectProgressEvents } from "../../sunny/since";
+import { dayActivity, israelYesterday, TIME_KIND_HE, type DayEvent } from "../../sunny/day-activity";
 import { LEARNING_HEURISTICS } from "../../sunny/learning";
 import { INTERNAL_COO_HEURISTICS, type Readiness } from "../../coo/model";
 
@@ -55,12 +56,14 @@ export const coo: KnowledgeCapability = {
     money: { descriptionForModel: "Money readiness of one project (param entity)" },
     entity: { descriptionForModel: "Enrichment for partner_entity (project / label-artist / show / session / release)" },
     patterns: { descriptionForModel: "Derived operational PATTERNS (HYPOTHESES, never facts / policy): repeated 'צריך לקדם' without progress, 'almost done' that repeats, sessions on a 'לא התחיל' project, the Owner as the feedback bottleneck, progress without a price. Levels OBSERVATION / WEAK (internal only) / REPEATED / STRONG (may be raised) — say 'אני רואה דפוס אפשרי…', never 'X תמיד…'." },
+    day: { descriptionForModel: "WHAT HAPPENED ON A DAY ('מה קרה אתמול / ביום X') — param date (YYYY-MM-DD, Israel; default = yesterday). Every event carries its TIME KIND: EVENT_TIME (the act itself: a version upload, notes, final files, an action you executed) / STATUS_CHANGED (stamped separately: session status, release, project end date) / RECORDED_AT (row created) / ENTERED_DATE (a typed date — a day claim, never proof it was written or happened that day) / LAST_UPDATED (last edit — an OBSERVATION, never the payment time, never a status change). Days are Israel days (00:40 belongs to that day). Answer FIRST with what happened (happened), then the typed dates (dated) labelled as such; lastUpdated only when asked or relevant. notRecorded lists what Redbloods never stores (when a payment was marked paid, when a task was done, when a project status changed) — say it plainly, never infer it from a payment date or updated_at. The connector adds your executed actions." },
     learning: { descriptionForModel: "Closed-loop outcome learning: each action Sunny executed (after the Boss's approval) vs the LATER recorded evidence on the same record — CORRELATED / LIKELY_HELPFUL / INSUFFICIENT_EVIDENCE / DID_NOT_RESOLVE / CONTRADICTED (never causal by default) + lessons and Owner-preference signals as HYPOTHESES. A lesson becomes a rule ONLY if the Boss confirms it (partner_propose_knowledge BUSINESS_LEARNING). The connector adds the action history; without it nothing is assessed." },
   }, defaultMode: "priorities",
   params: {
     entity: { kind: "entityKey", types: ["project", "show", "session", "release", "label-artist"], descriptionForModel: "readiness / momentum / money / entity: one entity" },
     artist: { kind: "entityKey", types: ["label-artist"], descriptionForModel: "artists: one roster artist" },
     production: { kind: "text", maxLength: 40, descriptionForModel: "readiness: one Red Films production id (uuid)" },
+    date: { kind: "ymd", descriptionForModel: "day: the Israel day to explain (YYYY-MM-DD; default yesterday)" },
   },
   entityScope: { types: ["project", "label-artist", "show", "session", "release"], param: "entity", mode: "entity", limit: 6 },
   paging: { defaultLimit: 25, maxLimit: 50 }, recordTextLimit: 1200, access: OWNER_FIN,
@@ -96,6 +99,16 @@ export const coo: KnowledgeCapability = {
       for (const w of c.st?.domains.victor.data?.active ?? []) progress[`victor-work:${w.id}`] = [...(w.uploads ?? [])].filter(Boolean).map((at) => ({ at, kind: "VICTOR_UPLOAD", meaning: "PROGRESS", he: "ויקטור העלה גרסה", entity: `victor-work:${w.id}`, source: "TEAM_VICTOR" }));
       return result([], { ...base, summary: [sfact("PROGRESS_BY_ENTITY", "ראיות מאוחרות לכל רשומה (לבדיקת תוצאות)", { progress, heuristics: LEARNING_HEURISTICS }, "DERIVED", "PARTNER_KNOWLEDGE"),
         sfact("LEARNING_STATUS", "מצב הלמידה", { status: "NEEDS_ACTION_HISTORY", noteHe: "בדיקת התוצאות דורשת את היסטוריית הפעולות (מתווספת בחיבור); בלעדיה — לא נבדק, לא 'כלום לא עבד'" }, "DERIVED", "PARTNER_KNOWLEDGE")] });
+    }
+    if (q.mode === "day") {
+      // what happened on ONE Israel day, each time labelled by kind (lib/partner/sunny/day-activity) — the connector adds the action history
+      const day = q.params.date ?? israelYesterday(src.now);
+      const a = dayActivity(src, day, null);
+      const ev = (e: DayEvent, k: number) => item({ id: `${k}:${e.kind}:${e.entity ?? ""}`, entity: e.entity && /^(project|show|session|release|label-artist|client):/.test(e.entity) ? e.entity : null, label: partner(e.he), epistemic: e.epistemic === "OBSERVATION" ? "OBSERVATION" : "FACT", source: "PARTNER_KNOWLEDGE",
+        fields: { group: e.timeKind === "ENTERED_DATE" ? "dated" : e.timeKind === "LAST_UPDATED" ? "lastUpdated" : "happened", timeKind: e.timeKind, timeKindHe: partner(TIME_KIND_HE[e.timeKind]), time: e.time, at: e.at, kind: e.kind, ref: e.entity, source: e.source } });
+      return result([...a.happened, ...a.dated, ...a.lastUpdated].map(ev), { ...base, completeness: a.unread.length ? "PARTIAL" : base.completeness,
+        summary: [sfact("DAY", "מה קרה ביום (לפי סוג הזמן)", a, "DERIVED", "PARTNER_KNOWLEDGE"), sfact("ANSWER", "תשובה קצרה", a.summaryHe, "DERIVED", "PARTNER_KNOWLEDGE"),
+          sfact("NOT_RECORDED", "מה Redbloods לא שומר (לא מנחשים)", a.notRecorded, "FACT", "PARTNER_KNOWLEDGE")] });
     }
     if (q.mode === "momentum") {
       const list = entity?.startsWith("project:") ? [projectMomentum(c, entity.slice(8))] : buildCooView(src).momentum;

@@ -29,6 +29,9 @@ import { teamBallCycle } from "../../team-ball-cycle";
 import { presenceFactsOf } from "../../push-presence-pure";
 import { markerStateOf } from "../../push-claims-pure";
 
+/** "22.10 00:40" in Israel time — a stamp shown as the Owner reads time (never UTC). */
+const ilStamp = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)).replace("/", ".").replace(",", "");
+
 /** The "Send to Steven" push marker, stated honestly (sent only after delivery; legacy = unverified; failed says so). */
 function mixReadyPushOf(marker: unknown, settingsRead: boolean): string {
   const st = markerStateOf(marker);
@@ -174,6 +177,14 @@ export function buildMixWork(src: GatewaySources, w: DetailEngineerWork) {
     money: { agreed, currency, amountPaid: paid, balance: Math.max(0, agreed - paid), paymentDate: w.paymentDate ?? null, paid: paidByWork, priceRecorded: agreed > 0,
       payStatus: agreed <= 0 ? "NO_PRICE" : engineerPayStatus({ agreedPrice: agreed, amountPaid: paid, paymentDate: w.paymentDate ?? null }),
       legacyPaidWithoutDate: legacyPaidNoDate,
+      // "when was it paid?" — three different times, never merged; the moment it was MARKED paid is not stored anywhere
+      timing: {
+        paymentDate: { value: w.paymentDate ?? null, kind: "ENTERED_DATE", he: "תאריך התשלום שהוזן בסימון (יום בלבד)" },
+        workLastUpdatedAt: { value: w.updatedAt ?? null, israel: w.updatedAt ? ilStamp(w.updatedAt) : null, kind: "LAST_UPDATED", epistemic: "OBSERVATION",
+          he: "העבודה עודכנה לאחרונה בזמן הזה. סימון תשלום מעדכן אותו — אבל גם כל עריכה מאוחרת יותר, ולכן זה לא זמן התשלום ולא הוכחה מתי סומן 'שולם'" },
+        expenseCreatedAt: tx ? { value: tx.createdAt ?? null, israel: tx.createdAt ? ilStamp(tx.createdAt) : null, kind: "RECORDED_AT", he: "מתי נוצרה שורת ההוצאה בכספים (שורה מתוכננת יכולה להיווצר הרבה לפני התשלום)" } : null,
+        paidMarkedAt: { value: null, kind: "NOT_RECORDED", gap: "MIX_PAYMENT_MARKED_AT_NOT_RECORDED", he: "מתי סומן 'שולם' — לא נשמר (אין תיעוד שינוי סטטוס לתשלום)" },
+      },
       sourceAgreement: !tx ? (w.linkedTransactionId && !c.txs ? "UNKNOWN" : moneyConflicts.length ? "CONFLICTING_SOURCES" : "NO_EXPENSE") : moneyConflicts.length ? "CONFLICTING_SOURCES" : "AGREE",
       expense: tx ? { status: tx.status, amount: txv?.amount ?? null, currency: txv?.currency ?? tx.currency, date: tx.date, category: tx.category, expenseScope: tx.expenseScope, validPaid: !!txv?.received, shape: txv && txv.currency !== currency ? `historical payment-sync shape (${currency} → ${txv.currency} at the retired sync's working ratio ${APP_PAYMENT_RATIO}; kept untouched)` : "work-currency shape (the one writer)" } : null,
       expenseLink: w.linkedTransactionId ? (tx ? "LINKED" : c.txs ? "DANGLING" : "UNKNOWN") : "NONE", conflicts: moneyConflicts, expenseScopeGeneral: scopeGeneral,

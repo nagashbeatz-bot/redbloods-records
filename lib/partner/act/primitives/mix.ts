@@ -186,7 +186,15 @@ export const MIX_PRIMITIVES: readonly PrimitiveSpec[] = [
     },
     apply: (d, id, a) => d.recordEngineerPayment(id, Number(a.amountPaid) > 0, (a.paymentDate as string | null) ?? null),
     requiredValues: (_a, after) => (Number(after.amountPaid) > 0 ? ["שולם", String(after.paymentDate)] : ["לא שולם"]),
-    warnings: (c) => [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))}`, ...(isSteven(c) ? ["Steven: Push 'התשלום אושר' נשלח במעבר לשולם"] : []), ...(c.expenseStatus === "שולם" ? ["ההוצאה המקושרת כבר 'שולם' — היא לא תשתנה (שורה ששולמה לא נדרסת)"] : [])],
+    warnings: (c, a) => {
+      // already paid by the shared rule → this is a payment-DATE correction only: no push (the push fires only on a real
+      // not-paid → paid transition, shouldPushPaymentConfirmed) and a paid Finance row keeps its own date
+      const wasPaid = Number(c.agreedPrice) > 0 && Number(c.amountPaid) >= Number(c.agreedPrice) && !!c.paymentDate;
+      const dateFix = wasPaid && a?.paid === true && realYmd(a.paymentDate) && a.paymentDate !== c.paymentDate;
+      return [`${c.engineerName}: ${money(Number(c.agreedPrice), String(c.currency))}`,
+        ...(dateFix ? [`כבר שולם — תיקון תאריך התשלום בעבודה בלבד: ${String(c.paymentDate)} → ${String(a!.paymentDate)}; לא יישלח Push`] : isSteven(c) ? ["Steven: Push 'התשלום אושר' נשלח במעבר לשולם"] : []),
+        ...(c.expenseStatus === "שולם" ? [dateFix ? "ההוצאה המקושרת בכספים כבר 'שולם' — התאריך שלה לא ישתנה (שורה ששולמה לא נדרסת), ולכן אחרי התיקון תאריך העבודה ותאריך שורת הכספים יהיו שונים" : "ההוצאה המקושרת כבר 'שולם' — היא לא תשתנה (שורה ששולמה לא נדרסת)"] : [])];
+    },
     disclosuresHe: ["שולם רק כשהסכום ששולם ≥ המחיר ויש תאריך — הכלל המשותף של האפליקציה", "ההוצאה נרשמת בכספים במטבע העבודה ובסכום שסוכם — בלי המרה ל-₪ (הערכת ₪ מופיעה רק בהערות)", "ביטול תשלום לא מוחק שורה ששולמה", "$ ו-₪ לא מחוברים"],
   },
   {
